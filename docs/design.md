@@ -4814,6 +4814,18 @@ and uses the production SQLite call ledger for aggregate spend reservation and s
 settled content-addressed evidence consumes no request; a crash-open request conflicts in that ledger
 before transport rather than being retried speculatively.
 
+The complete-video half of the shadow uses the same truth-blind, one-family-at-a-time discipline over
+the public 24-case manifest. Its production preparer creates or revalidates one exact canonical
+derivative per source before the family call. A completed-operation publication keyed by source,
+derivative, assessor profile, current prompt digest, and current schema digest points to the full
+settled call record only after response, structured output, and record bytes are durable. Restart
+therefore replays accepted or closed failure evidence without another request; an interrupted call
+whose reservation has no completed publication remains held by the durable inference ledger rather
+than being guessed or repeated. Each complete-video family result retains those records and cost
+totals and grants no authority. Only two complete family results may be reduced into the complete-
+video shadow decision set, and both decision sets must descend from their exact family artifacts
+before the representation comparison begins.
+
 The first long-reel corpus plan reuses only the twelve family-distinct bounded anchors and six
 programme parents already locked by the 60-case holdout. One private deterministic planner binds
 that authoring and receipt and emits 24 programme-with-spots constructions: six place a same-role

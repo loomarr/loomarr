@@ -7,14 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 const (
-	structureAssessmentRecordMaxBytes   = 1 << 20
-	structureAssessmentResponseMaxBytes = fillerstructure.AssessmentMaximumResponseBytes
+	structureAssessmentRecordMaxBytes      = 1 << 20
+	structureAssessmentResponseMaxBytes    = fillerstructure.AssessmentMaximumResponseBytes
+	structureAssessmentPublicationMaxBytes = 64 << 10
 )
 
 // FileStructureAssessmentEvidenceRepository is the private content-addressed store for complete-
@@ -58,7 +60,53 @@ func (r *FileStructureAssessmentEvidenceRepository) PutStructureAssessmentEviden
 	if err := r.putImmutable(ctx, r.blobPath("records", recorded.Record.SHA256), recordRaw, structureAssessmentRecordMaxBytes); err != nil {
 		return fmt.Errorf("persist structure assessment record: %w", err)
 	}
+	publication, err := fillerstructure.NewAssessmentPublication(recorded.Record)
+	if err != nil {
+		return err
+	}
+	publicationRaw, err := json.Marshal(publication)
+	if err != nil || len(publicationRaw) == 0 || len(publicationRaw) > structureAssessmentPublicationMaxBytes {
+		return errors.New("marshal bounded structure assessment publication")
+	}
+	if err := r.putImmutable(ctx, r.blobPath("assessment-publications", publication.OperationSHA256), publicationRaw, structureAssessmentPublicationMaxBytes); err != nil {
+		return fmt.Errorf("publish structure assessment operation: %w", err)
+	}
 	return nil
+}
+
+// FindStructureAssessmentEvidence resolves an exact completed operation. Absence is resumable;
+// malformed or detached publication evidence fails closed.
+func (r *FileStructureAssessmentEvidenceRepository) FindStructureAssessmentEvidence(ctx context.Context, source fillerstructure.Source, media fillerstructure.AssessmentMedia, profile fillerstructure.AssessorProfile) (fillerstructure.RecordedAssessment, bool, error) {
+	if r == nil || r.root == "" || fillerstructure.ValidateAssessmentMedia(source, media) != nil ||
+		fillerstructure.ValidateAssessorProfile(profile) != nil {
+		return fillerstructure.RecordedAssessment{}, false, errors.New("structure assessment operation is invalid")
+	}
+	operationSHA256 := fillerstructure.AssessmentOperationSHA256(source, media, profile)
+	raw, err := r.readImmutable(ctx, r.blobPath("assessment-publications", operationSHA256), structureAssessmentPublicationMaxBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fillerstructure.RecordedAssessment{}, false, nil
+	}
+	if err != nil {
+		return fillerstructure.RecordedAssessment{}, false, fmt.Errorf("read structure assessment publication: %w", err)
+	}
+	var publication fillerstructure.AssessmentPublication
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&publication); err != nil {
+		return fillerstructure.RecordedAssessment{}, false, fmt.Errorf("decode structure assessment publication: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) || publication.OperationSHA256 != operationSHA256 {
+		return fillerstructure.RecordedAssessment{}, false, errors.New("decode structure assessment publication: trailing or mismatched content")
+	}
+	recorded, err := r.GetStructureAssessmentEvidence(ctx, publication.RecordSHA256)
+	if err != nil {
+		return fillerstructure.RecordedAssessment{}, false, err
+	}
+	if err := fillerstructure.ValidateAssessmentPublication(publication, recorded.Record); err != nil {
+		return fillerstructure.RecordedAssessment{}, false, err
+	}
+	return recorded, true, nil
 }
 
 func (r *FileStructureAssessmentEvidenceRepository) GetStructureAssessmentEvidence(ctx context.Context, assessmentSHA256 string) (fillerstructure.RecordedAssessment, error) {

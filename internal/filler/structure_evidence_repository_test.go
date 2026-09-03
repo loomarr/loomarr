@@ -31,6 +31,7 @@ func TestFileStructureAssessmentEvidenceRepositoryRoundTripsAndReplays(t *testin
 		repository.blobPath("records", recorded.Record.SHA256),
 		repository.blobPath("responses", recorded.Record.ResponseSHA256),
 		repository.blobPath("outputs", recorded.Record.StructuredOutputSHA256),
+		repository.blobPath("assessment-publications", fillerstructure.AssessmentOperationSHA256(recorded.Record.Source, recorded.Record.Media, recorded.Record.Assessor)),
 	} {
 		info, statErr := os.Lstat(path)
 		if statErr != nil {
@@ -39,6 +40,10 @@ func TestFileStructureAssessmentEvidenceRepositoryRoundTripsAndReplays(t *testin
 		if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
 			t.Fatalf("evidence path %s mode=%v", path, info.Mode())
 		}
+	}
+	found, ok, err := repository.FindStructureAssessmentEvidence(t.Context(), recorded.Record.Source, recorded.Record.Media, recorded.Record.Assessor)
+	if err != nil || !ok || found.Record.SHA256 != recorded.Record.SHA256 {
+		t.Fatalf("find completed operation=%+v ok=%v error=%v", found.Record, ok, err)
 	}
 }
 
@@ -70,6 +75,20 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsConflictingOrMissingBlo
 		}
 		if _, err := repository.GetStructureAssessmentEvidence(t.Context(), recorded.Record.SHA256); err == nil {
 			t.Fatal("record replayed without its raw response")
+		}
+	})
+	t.Run("detached publication invalidates resume", func(t *testing.T) {
+		repository := structureEvidenceRepositoryFixture(t)
+		if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err != nil {
+			t.Fatal(err)
+		}
+		operation := fillerstructure.AssessmentOperationSHA256(recorded.Record.Source, recorded.Record.Media, recorded.Record.Assessor)
+		path := repository.blobPath("assessment-publications", operation)
+		if err := os.WriteFile(path, []byte(`{"schemaVersion":1,"contractVersion":"filler-structure-assessment-publication-v1","operationSha256":"drifted"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := repository.FindStructureAssessmentEvidence(t.Context(), recorded.Record.Source, recorded.Record.Media, recorded.Record.Assessor); err == nil {
+			t.Fatal("detached publication resumed")
 		}
 	})
 }

@@ -255,7 +255,8 @@ func runtimeAssessorFixtures(source SplitSourceAsset, order *[]string) []Complet
 		}
 		recorded, err := fillerstructure.NewAssessmentRecord(fillerstructure.AssessmentRecordInput{
 			Source: coreSource, Media: media, Assessor: profile,
-			PromptSHA256: strings.Repeat("d", 64), SchemaSHA256: strings.Repeat("e", 64),
+			PromptSHA256:  fillerstructure.DirectVideoPromptSHA256(coreSource.DurationMS),
+			SchemaSHA256:  fillerstructure.DirectVideoSchemaSHA256(coreSource.DurationMS),
 			RequestSHA256: strings.Repeat(assessmentDigest, 64), RawResponse: []byte(`{"id":"generation"}`),
 			StructuredOutput: `{"segments":[{"endMs":5000,"role":"commercial","decisiveAtMs":[1000],"reason":"offer"},{"endMs":10000,"role":"promo","decisiveAtMs":[7000],"reason":"promotion"}]}`,
 			ResolvedProvider: "captured", ResolvedModel: "video-model-revision",
