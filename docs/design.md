@@ -3334,6 +3334,18 @@ complete decode, seek, keyframe, A/V, loudness, and fast-start evidence; the con
 rejects objective dead air and holds long black, silent, or frozen spans. A sparse-hash match alone never
 passes because middle-of-file changes must be caught by the full digest.
 
+The rights evaluator has one deliberately narrow dependency: a current-use authority queried for the exact
+child subject, source, acquisition, source-master bytes, production policy, `filler_broadcast` use, and UTC
+decision instant. A provider-declared licence string, source `autoAdmit`, acquisition preference, old corpus
+rights worksheet, or matching document digest is not that authority. Missing source/acquisition identity or
+an absent/unknown current decision produces a rights hold; an exact current prohibition or withdrawal
+rejects; only an exact, unexpired, withdrawal-clear authorization passes. Malformed, stale, differently bound,
+or self-inconsistent authority is an operational failure rather than a guessed semantic answer. The private
+raw axis evidence retains the path-free request and content-addressed decision. The settled screening result
+is immutable historical evidence; terminal release must query the same current-use boundary again so a later
+expiry or withdrawal cannot be hidden by replaying an earlier pass. No production implementation is implied
+by this port: until a source/acquisition rights registry can satisfy it, the rights axis remains held.
+
 Screening aggregates, provider-neutral axis records, operation identities, and opaque raw evidence live
 separately in a private content-addressed repository. The immutable screening-release authority is explicitly
 non-authorizing by default, names exactly one canonical profile per axis, and locks the aggregate contract.
