@@ -119,6 +119,7 @@ func validateReviewers(item AuthorityCase, excludedFamilies, attestations map[st
 	adjudicator := ""
 	for _, reviewer := range item.Reviewers {
 		if !validOpaqueID(reviewer.ReviewerID, "reviewer-") || !validSHA256(reviewer.AttestationSHA256) ||
+			!validSHA256(reviewer.EvidenceSHA256) ||
 			(reviewer.Decision != ReviewDecisionVerified && reviewer.Decision != ReviewDecisionRejected) {
 			return fmt.Errorf("reviewer identity, attestation, or decision is invalid")
 		}

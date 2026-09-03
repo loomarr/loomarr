@@ -10,8 +10,7 @@ func TestMarshalPrimaryModelReviewAcceptsRejectedCleanControl(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthorityBuildFixture(t)
 	review := fixture.first
-	review.Method = ReviewerModel
-	review.ModelFamily = "independent-review-model"
+	attachFixtureModelEvidence(&review, "independent-review-model")
 	review.Assessments[MinimumPositiveFamilies].Decision = ReviewDecisionRejected
 
 	first, firstSHA, err := MarshalPrimaryModelReview(fixture.draft, review.DraftSHA256, review)
@@ -31,8 +30,7 @@ func TestMarshalPrimaryModelReviewRejectsEvaluatedModelFamily(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthorityBuildFixture(t)
 	review := fixture.first
-	review.Method = ReviewerModel
-	review.ModelFamily = fixture.draft.AudioRoute.ModelFamily
+	attachFixtureModelEvidence(&review, fixture.draft.AudioRoute.ModelFamily)
 
 	if _, _, err := MarshalPrimaryModelReview(fixture.draft, review.DraftSHA256, review); err == nil ||
 		!strings.Contains(err.Error(), "not independent") {

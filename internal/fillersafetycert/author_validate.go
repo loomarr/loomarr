@@ -136,6 +136,9 @@ func validateCompleteReview(review AuthorityReview, draft AuthorityDraft, draftS
 		}
 		result[assessment.CaseID] = assessment
 	}
+	if err := validateModelReviewEvidence(review); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -158,20 +161,23 @@ func validateAdjudication(review AuthorityReview, draft AuthorityDraft, draftSHA
 		}
 		result[assessment.CaseID] = assessment
 	}
+	if err := validateModelReviewEvidence(review); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
 func validateReviewEnvelope(review AuthorityReview, draftSHA, role string, authoredAt time.Time) error {
 	if review.SchemaVersion != AuthorityReviewSchemaVersion || review.ContractVersion != AuthorityReviewContractVersion ||
 		review.DraftSHA256 != draftSHA || !boundedPrivateID(review.ReviewerID) || review.Role != role ||
-		review.SubmittedAt.IsZero() || review.SubmittedAt.After(authoredAt) {
+		!validSHA256(review.EvidenceSHA256) || review.SubmittedAt.IsZero() || review.SubmittedAt.After(authoredAt) {
 		return fmt.Errorf("review envelope does not bind the draft, role, identity, or time")
 	}
 	if review.Method == ReviewerHuman {
-		if review.ModelFamily != "" {
+		if review.ModelFamily != "" || review.ModelEvidence != nil {
 			return fmt.Errorf("human reviewer declares a model family")
 		}
-	} else if review.Method != ReviewerModel || !boundedID(review.ModelFamily) {
+	} else if review.Method != ReviewerModel || !boundedID(review.ModelFamily) || review.ModelEvidence == nil {
 		return fmt.Errorf("review method or model family is invalid")
 	}
 	return nil
@@ -197,13 +203,15 @@ func reviewAttestationSHA256(review AuthorityReview, assessment ReviewAssessment
 		Role            string           `json:"role"`
 		Method          string           `json:"method"`
 		ModelFamily     string           `json:"modelFamily,omitempty"`
+		EvidenceSHA256  string           `json:"evidenceSha256"`
 		SubmittedAt     time.Time        `json:"submittedAt"`
 		Assessment      ReviewAssessment `json:"assessment"`
 	}{
 		SchemaVersion: review.SchemaVersion, ContractVersion: review.ContractVersion,
 		DraftSHA256: review.DraftSHA256, ReviewerID: review.ReviewerID, Role: review.Role,
 		Method: review.Method, ModelFamily: review.ModelFamily, SubmittedAt: review.SubmittedAt.UTC(),
-		Assessment: assessment,
+		EvidenceSHA256: review.EvidenceSHA256,
+		Assessment:     assessment,
 	})
 	if err != nil {
 		return ""

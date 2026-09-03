@@ -97,7 +97,8 @@ func TestBuildAuthorityUsesAdjudicationOnlyForDisagreement(t *testing.T) {
 	fixture.adjudicator = AuthorityReview{
 		SchemaVersion: AuthorityReviewSchemaVersion, ContractVersion: AuthorityReviewContractVersion,
 		ReviewerID: "reviewer-three", Role: ReviewerAdjudicator, Method: ReviewerHuman,
-		SubmittedAt: fixture.config.AuthoredAt.Add(-time.Minute),
+		EvidenceSHA256: hashBytes([]byte("review evidence:reviewer-three")),
+		SubmittedAt:    fixture.config.AuthoredAt.Add(-time.Minute),
 		Assessments: []ReviewAssessment{{
 			CaseID: fixture.draft.Cases[0].CaseID, Decision: ReviewDecisionVerified,
 			PositiveIntervals: append([]PositiveInterval(nil), fixture.draft.Cases[0].PositiveIntervals...),
@@ -129,7 +130,8 @@ func TestBuildAuthorityCanAdjudicateRejectedCleanControl(t *testing.T) {
 	fixture.adjudicator = AuthorityReview{
 		SchemaVersion: AuthorityReviewSchemaVersion, ContractVersion: AuthorityReviewContractVersion,
 		ReviewerID: "reviewer-three", Role: ReviewerAdjudicator, Method: ReviewerHuman,
-		SubmittedAt: fixture.config.AuthoredAt.Add(-time.Minute),
+		EvidenceSHA256: hashBytes([]byte("review evidence:reviewer-three")),
+		SubmittedAt:    fixture.config.AuthoredAt.Add(-time.Minute),
 		Assessments: []ReviewAssessment{{
 			CaseID: fixture.draft.Cases[cleanIndex].CaseID, Decision: ReviewDecisionVerified,
 		}},
@@ -159,8 +161,8 @@ func TestBuildAuthorityRejectsCleanControlRejectedByBothPrimaries(t *testing.T) 
 func TestBuildAuthorityRejectsRepeatedModelReviewerFamily(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthorityBuildFixture(t)
-	fixture.first.Method, fixture.second.Method = ReviewerModel, ReviewerModel
-	fixture.first.ModelFamily, fixture.second.ModelFamily = "review-model-family", "review-model-family"
+	attachFixtureModelEvidence(&fixture.first, "review-model-family")
+	attachFixtureModelEvidence(&fixture.second, "review-model-family")
 	fixture.rewrite(t)
 
 	if _, err := BuildAuthority(t.Context(), fixture.config); err == nil || !strings.Contains(err.Error(), "families are not independent") {

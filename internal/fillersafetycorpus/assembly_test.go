@@ -133,7 +133,8 @@ func fixtureAuthorityReviewFromDraft(
 		SchemaVersion:   fillersafetycert.AuthorityReviewSchemaVersion,
 		ContractVersion: fillersafetycert.AuthorityReviewContractVersion,
 		DraftSHA256:     draftSHA, ReviewerID: reviewerID, Role: fillersafetycert.ReviewerPrimary,
-		Method: fillersafetycert.ReviewerHuman, SubmittedAt: submittedAt,
+		Method:         fillersafetycert.ReviewerHuman,
+		EvidenceSHA256: hashBytes([]byte("review evidence:" + reviewerID)), SubmittedAt: submittedAt,
 	}
 	for _, item := range draft.Cases {
 		review.Assessments = append(review.Assessments, fillersafetycert.ReviewAssessment{

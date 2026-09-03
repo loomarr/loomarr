@@ -135,6 +135,7 @@ func makeReviewerAttestation(seed []byte, review AuthorityReview, assessment Rev
 	return ReviewerAttestation{
 		ReviewerID: opaqueID(seed, "reviewer", review.ReviewerID, "reviewer-"), Role: review.Role,
 		Method: review.Method, ModelFamily: review.ModelFamily, Decision: assessment.Decision,
+		EvidenceSHA256:    review.EvidenceSHA256,
 		AttestationSHA256: reviewAttestationSHA256(review, assessment),
 	}
 }

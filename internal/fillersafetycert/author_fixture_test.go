@@ -112,7 +112,7 @@ func fixtureAuthorityReview(draft AuthorityDraft, draftSHA, reviewerID string, s
 	review := AuthorityReview{
 		SchemaVersion: AuthorityReviewSchemaVersion, ContractVersion: AuthorityReviewContractVersion,
 		DraftSHA256: draftSHA, ReviewerID: reviewerID, Role: ReviewerPrimary, Method: ReviewerHuman,
-		SubmittedAt: submittedAt,
+		EvidenceSHA256: hashBytes([]byte("review evidence:" + reviewerID)), SubmittedAt: submittedAt,
 	}
 	for _, item := range draft.Cases {
 		review.Assessments = append(review.Assessments, ReviewAssessment{
@@ -121,6 +121,38 @@ func fixtureAuthorityReview(draft AuthorityDraft, draftSHA, reviewerID string, s
 		})
 	}
 	return review
+}
+
+func attachFixtureModelEvidence(review *AuthorityReview, modelFamily string) {
+	review.Method = ReviewerModel
+	review.ModelFamily = modelFamily
+	evidence := ModelReviewEvidence{
+		SchemaVersion: ModelReviewEvidenceSchemaVersion, ContractVersion: ModelReviewEvidenceContractVersion,
+		PlanSHA256: fixtureSHA(8100), WorklistSHA256: fixtureSHA(8101), PolicySHA256: fixtureSHA(10),
+		SnapshotSHA256: fixtureSHA(8102), RequestedModel: "vendor/reviewer-model",
+		ResolvedModel: "vendor/reviewer-model-2026", UpstreamProvider: "provider",
+		UpstreamProviderSlug: "provider", ModelFamily: modelFamily, PromptSHA256: fixtureSHA(8103),
+		SchemaSHA256: fixtureSHA(8104),
+		FFmpeg:       fillersafety.ToolIdentity{Version: "ffmpeg 7.1", BinarySHA256: fixtureSHA(8105)},
+		StartedAt:    review.SubmittedAt.Add(-2 * time.Minute), CompletedAt: review.SubmittedAt,
+		MaximumRequests: len(review.Assessments), MaximumChargeNanoUSD: 1_000,
+		MaximumSpendNanoUSD: int64(len(review.Assessments)) * 1_000,
+	}
+	for index, assessment := range review.Assessments {
+		evidence.Attempts = append(evidence.Attempts, ModelReviewAttemptEvidence{
+			CaseID: assessment.CaseID, Attempt: 1, RequestedAt: review.SubmittedAt.Add(-time.Minute),
+			ReviewedAt: review.SubmittedAt.Add(-30 * time.Second), RequestSHA256: fixtureSHA(8200 + index*3),
+			ResponseSHA256: fixtureSHA(8201 + index*3), GenerationID: fmt.Sprintf("generation-%d", index+1),
+			State: ModelReviewAttemptAccepted, ObservationSHA256: fixtureSHA(8202 + index*3),
+			PromptTokens: 10, CompletionTokens: 2, ChargedNanoUSD: 100,
+		})
+		evidence.PromptTokens += 10
+		evidence.CompletionTokens += 2
+		evidence.ChargedNanoUSD += 100
+	}
+	evidence.Requests = len(evidence.Attempts)
+	review.ModelEvidence = &evidence
+	review.EvidenceSHA256, _ = ModelReviewEvidenceSHA256(evidence)
 }
 
 func (fixture *authorityBuildFixture) rewrite(t *testing.T) {
