@@ -4540,7 +4540,8 @@ regardless of status.
 Authority locking is a separate offline operation over a private path-bearing draft, two independent complete
 review bundles, an optional disagreement-only adjudication bundle, a private alias seed, and the exact source
 and evidence bytes. It verifies source-authority and media identity, policy and implementation identity,
-review order and draft binding, rights and truth-provenance bytes, family uniqueness, and all corpus minima
+review order and draft binding, draft-pinned rights and truth-provenance digests against their current bytes,
+family uniqueness, and all corpus minima
 before emitting a path-free authority. Opaque case, family, and reviewer ids are keyed derivations from the
 private seed. Reviewers are blind to evaluation output and one another; known-script reviewers may see the
 claim they must verify. Model-backed primary/adjudicating reviewers are permitted only when their model

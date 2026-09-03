@@ -17,7 +17,8 @@ truth or challenge membership.
 The builder consumes a private source-and-truth draft, two independent review bundles, an
 optional adjudication bundle containing exactly the disputed cases, a private alias seed, and
 the root containing the exact complete-audiovisual sources and rights/truth evidence. It checks
-the actual source bytes through each certification-independent source authority, then derives
+the actual source bytes through each certification-independent source authority and verifies the
+draft-pinned rights/truth digests against their current files, then derives
 opaque case, source-family, and reviewer IDs. The output contains no path or private source,
 family, or reviewer identifier.
 
