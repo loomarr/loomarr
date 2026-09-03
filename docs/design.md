@@ -3235,6 +3235,27 @@ identity drift, unavailable route, malformed output, missing attribution, or uns
 interval unresolved. Merely implementing or capability-checking this route does not certify it and cannot
 expand unattended publication; only the locked source/signal-slice result below may do that.
 
+Raw assessors are observations, not competing publication authorities. A deterministic
+**structure-decision reducer** receives complete, content-addressed candidate assessments from at least
+two independently locked producer families bound by the current reducer certificate. Two routes serving
+the same model family count once. The
+reducer first validates exact source identity and complete timeline coverage, then requires the candidates
+to agree on the source unit, interval count, per-interval disposition and role, and ordered joins. Joins may
+differ only inside the locked boundary tolerance; the reducer selects their deterministic midpoint and
+revalidates complete coverage. A hard detector conflict, operational failure, missing interval, different
+unit, different role, excessive join distance, or unsupported candidate produces an explicit hold.
+Majority voting cannot turn disagreement into a decision, and one valid prohibited observation remains
+governed by the separate safety reducer rather than this structure policy.
+
+The reducer's immutable artifact retains every candidate identity and the exact reason each case was
+confirmed or held. Certification scores this deterministic policy as the production candidate: every
+automatic decision must have zero under-splits, over-splits, unexplained gaps, wrong filler/programme
+dispositions, wrong roles, or boundary misses beyond tolerance. Abstentions remain in the denominator and
+are reported as coverage, globally and per predeclared slice. Raw assessors may be imperfect; they do not
+individually need perfect recall when their disagreement correctly becomes a hold. Each enabled slice still
+requires its predeclared minimum number of independently sourced decided cases and zero wrong automatic
+decisions. This changes what is measured, not the safety bar.
+
 Every proposed `keep` interval also carries one content-addressed screening record bound to the exact
 source bytes and half-open span. It contains exactly four independent closed outcomes: `visual_safety`
 (including explicit imagery), `spoken_safety` (including prohibited language), `rights`, and
