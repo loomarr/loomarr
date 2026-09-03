@@ -282,7 +282,9 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 		if segs, dropped := segmentsFromChapters(chapters, floor); len(segs) > 0 {
 			p.Detection.ScannedThroughMs = durationMs
 			p.Detection.Chapters = true
+			p.Detection.ChapterEdges = chapterEdges(chapters)
 			p.Detection.CoarseSegments = segs
+			p.Detection.Discarded = append([]Interval(nil), dropped.Spans...)
 			p.Dropped = dropped
 			if err := sp.saveProposal(ctx, *p); err != nil {
 				return p, false, err
@@ -319,6 +321,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 				}
 				p.Detection.ScannedThroughMs = durationMs
 				p.Detection.CoarseSegments, p.Dropped = segmentsFromBoundaries(durationMs, nil, floor)
+				p.Detection.Discarded = append([]Interval(nil), p.Dropped.Spans...)
 			} else {
 				p.Detection.Black = append(p.Detection.Black, black...)
 				p.Detection.Silence = append(p.Detection.Silence, silence...)
@@ -328,6 +331,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 		if p.Detection.ScannedThroughMs >= durationMs && len(p.Detection.CoarseSegments) == 0 {
 			gaps := sourcedGaps(p.Detection.Black, p.Detection.Silence)
 			p.Detection.CoarseSegments, p.Dropped = segmentsFromBoundaries(durationMs, gaps, floor)
+			p.Detection.Discarded = append([]Interval(nil), p.Dropped.Spans...)
 			if len(p.Detection.CoarseSegments) == 0 {
 				return p, false, fmt.Errorf("no usable segments detected in %s (everything was under %dms — filler.min_duration)", clipHash, floor.ms())
 			}
@@ -397,11 +401,16 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	// has flagged duplicates, so every fact the ladder reads is final. Scoring earlier would
 	// stamp numbers the rest of Propose then invalidates (§10 V34).
 	scoreBoundaries(segs)
+	structure, err := assessCurrentSplitStructure(p.Source, *p.Detection, segs, sp.now().UTC())
+	if err != nil {
+		return p, false, fmt.Errorf("assess source structure: %w", err)
+	}
 	// ⚠ The proposal carries the compilation's HASH, not its path. Confirm looks the clip back up
 	// with `GetClip`, which is hash-keyed — writing `clip.Path` here (as this did until V51a) meant
 	// that lookup never matched and no split could ever be committed. The file location Confirm
 	// needs is derived from the hash, so there is one identity and nothing to disagree with it.
 	p.Segments = segs
+	p.Structure = &structure
 	p.Detection = nil
 	if p.Dropped.Count > 0 && sp.log != nil {
 		// INFO, not WARN: discarding sub-floor fragments is the design working, not a fault. It is

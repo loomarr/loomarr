@@ -14,6 +14,21 @@ func buildStructurePlan(durationMs int64, boundaries []StructureBoundary, claims
 			cutStatuses[boundary.AtMs] = boundary.Status
 		}
 	}
+	// A V34 shadow discard may use the legacy detector's exact cut while V67 fusion reports a
+	// narrower uncertainty midpoint. Preserve the discarded interval as unresolved structure
+	// instead of moving or losing time; unresolved edges keep the assessment out of auto-publish.
+	for _, discard := range discards {
+		if discard.StartMs > 0 && discard.StartMs < durationMs {
+			if _, exists := cutStatuses[discard.StartMs]; !exists {
+				cutStatuses[discard.StartMs] = BoundaryUnresolved
+			}
+		}
+		if discard.EndMs > 0 && discard.EndMs < durationMs {
+			if _, exists := cutStatuses[discard.EndMs]; !exists {
+				cutStatuses[discard.EndMs] = BoundaryUnresolved
+			}
+		}
+	}
 	cuts := make([]int64, 0, len(cutStatuses))
 	for cut := range cutStatuses {
 		cuts = append(cuts, cut)

@@ -3003,13 +3003,15 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		Detection: &filler.SplitDetectionProgress{
 			ScannedThroughMs: 600_000,
 			Black:            []filler.Interval{{StartMs: 29_900, EndMs: 30_100}},
+			ChapterEdges:     []int64{0, 30_000, 33_000, 600_000},
+			Discarded:        []filler.Interval{{StartMs: 30_000, EndMs: 33_000}},
 		},
 	}
 	if err := s.UpsertSplitProposal(ctx, draft); err != nil {
 		t.Fatal(err)
 	}
 	gotDraft, err := s.GetSplitProposal(ctx, draft.ID)
-	if err != nil || gotDraft.Ready() || gotDraft.Detection.ScannedThroughMs != 600_000 || len(gotDraft.Detection.Black) != 1 {
+	if err != nil || gotDraft.Ready() || gotDraft.Detection.ScannedThroughMs != 600_000 || len(gotDraft.Detection.Black) != 1 || len(gotDraft.Detection.ChapterEdges) != 4 || len(gotDraft.Detection.Discarded) != 1 {
 		t.Fatalf("detector checkpoint round-trip = (%+v, %v)", gotDraft, err)
 	}
 	if err := s.DeleteSplitProposal(ctx, draft.ID); err != nil {

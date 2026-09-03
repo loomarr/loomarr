@@ -197,11 +197,13 @@ func scoreBoundaries(segs []SplitSegment) {
 type dropTally struct {
 	Count int
 	Ms    int64
+	Spans []Interval
 }
 
 func (d *dropTally) add(startMs, endMs int64) {
 	d.Count++
 	d.Ms += endMs - startMs
+	d.Spans = append(d.Spans, Interval{StartMs: startMs, EndMs: endMs})
 }
 
 // SplitSegment is one proposed clip inside a compilation (§10 V34). The detector
@@ -288,6 +290,12 @@ type SplitDetectionProgress struct {
 	ScannedThroughMs int64      `json:"scannedThroughMs"`
 	Black            []Interval `json:"black,omitempty"`
 	Silence          []Interval `json:"silence,omitempty"`
+	// ChapterEdges retains every declared edge, including the bounds of a below-floor chapter
+	// omitted from CoarseSegments. V67 needs those facts to account for the omitted interval.
+	ChapterEdges []int64 `json:"chapterEdges,omitempty"`
+	// Discarded retains exact below-floor spans across the durable detection checkpoint. The old
+	// in-memory aggregate remains display data; these intervals are structure authority.
+	Discarded []Interval `json:"discarded,omitempty"`
 	// Chapters says CoarseSegments came from container-authored chapter boundaries. It is private
 	// checkpoint provenance, not review data, and lets a resume restore scoring evidence even when
 	// a source supplied one untitled chapter (otherwise indistinguishable from a whole-reel

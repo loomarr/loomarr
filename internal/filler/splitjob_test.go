@@ -907,6 +907,9 @@ func TestPropose_CoarseSplit(t *testing.T) {
 	if p.Segments[0].StartMs != 1000 || p.Segments[2].EndMs != 90_000 {
 		t.Errorf("cut positions wrong: %+v", p.Segments)
 	}
+	if p.Structure == nil || p.Structure.Kind != filler.StructureAmbiguous || p.Structure.Source != p.Source || p.Structure.Plan[0].StartMs != 0 || p.Structure.Plan[len(p.Structure.Plan)-1].EndMs != p.Source.DurationMs {
+		t.Fatalf("proposal did not retain an exact-source complete shadow assessment: %+v", p.Structure)
+	}
 }
 
 // ⚠ The rescue's reason to exist: a 149s block with NO A/V boundaries, holding
@@ -943,6 +946,9 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 	}
 	if len(p.Segments) != 3 {
 		t.Fatalf("rescue produced %+v, want 3 segments", p.Segments)
+	}
+	if p.Structure == nil || len(p.Structure.Boundaries) != 2 || p.Structure.Boundaries[0].Status != filler.BoundaryUnresolved || p.Structure.Kind != filler.StructureAmbiguous {
+		t.Fatalf("transcript rescue was treated as certifying structure: %+v", p.Structure)
 	}
 	if p.Segments[1].Name != "Aqua Globes" || p.Segments[1].StartMs != 27_000 {
 		t.Errorf("rescued boundary wrong: %+v", p.Segments[1])
