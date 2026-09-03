@@ -33,6 +33,19 @@ live ZDR endpoint. The request disables fallbacks and data collection. A
 second primary reviewer needs another model family, reviewer ID, plan,
 checkpoint directory, and output file.
 
+Before any local media tool, checkpoint write, charge reservation, or HTTP
+request, the reviewer reopens each rights document. The corpus module
+recognizes its own known-script rights contract, strictly decodes it, and
+revalidates the participant binding, complete hosted-evaluation grant,
+expiry/withdrawal state, processor schedule, and any time-sensitive asset
+rights at the review time. It authorizes only an exact match for the review
+plan's OpenRouter base URL, requested/resolved model, upstream provider
+name/slug, and ZDR requirement. A recognized malformed contract or an
+unmatched route stops preflight without printing participant identity, consent
+contents, or private paths. Unrelated rights formats continue through their
+existing contract-specific checks; their bytes are never mistaken for
+participant consent.
+
 ```json
 {
   "schemaVersion": 1,
