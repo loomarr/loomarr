@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v7"
+	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v8"
 	temporalStructureReasonMaximumCharacters = 512
 )
 
@@ -55,7 +55,7 @@ func temporalStructureOpenRouterSchema(durationMS int64) map[string]any {
 			"endMs":        map[string]any{"type": "integer", "minimum": 1, "maximum": durationMS},
 			"role":         map[string]any{"type": "string", "enum": segmentRoles},
 			"decisiveAtMs": times,
-			"reason":       map[string]any{"type": "string", "maxLength": temporalStructureReasonMaximumCharacters},
+			"reason":       map[string]any{"type": "string"},
 		},
 	}
 	return map[string]any{

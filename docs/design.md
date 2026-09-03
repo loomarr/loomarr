@@ -4503,7 +4503,9 @@ filler are programme-with-spots. One whole-file ambiguous,
 non-filler, or unusable interval projects to unclear, unclear, or unusable respectively; any other
 mixed shape is unclear. A standalone role and its evidence come from its sole interval. This
 projection keeps provider output smaller while preserving the exact unit, role, boundary, and
-per-segment claims scored by certification. Before concatenation, every segment is encoded
+per-segment claims scored by certification. Provider schemas use only the structured-output subset
+advertised by every pinned route; Loomarr's strict decoder and validator retain semantic and length
+constraints that a route cannot express. Before concatenation, every segment is encoded
 deterministically to a common 960-by-720, 30-frame-per-second profile with aspect-preserving padding
 and a fixed video track time base; the measured part durations, rather than requested timestamps,
 remain the join authority. Coverage-only suitability holds may remain as evaluation material;

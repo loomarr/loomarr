@@ -217,6 +217,10 @@ func TestTemporalStructureOpenRouterSchemaRequiresCompleteSegmentPlan(t *testing
 	if !ok || itemProperties["startMs"] != nil {
 		t.Fatalf("provider schema duplicates segment boundaries: %#v", item)
 	}
+	reason, ok := itemProperties["reason"].(map[string]any)
+	if !ok || reason["maxLength"] != nil {
+		t.Fatalf("provider schema includes an unsupported string-length keyword: %#v", reason)
+	}
 }
 
 func TestNormalizeTemporalStructureOpenRouterWireSortsMechanicalTimestamps(t *testing.T) {
