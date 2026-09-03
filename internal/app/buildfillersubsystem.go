@@ -107,7 +107,7 @@ func buildFillerSubsystem(
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)
 	taggerProvider, tagger := buildTagger(st, set, layout, log, wake, metricRecorder)
-	fetcher := buildFetcher(set, layout, log)
+	fetcher := buildFetcher(set, layout, log, st)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder)
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
