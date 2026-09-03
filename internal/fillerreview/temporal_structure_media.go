@@ -1,7 +1,6 @@
 package fillerreview
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -71,12 +70,12 @@ func (media *FFmpegTemporalStructureMedia) Render(ctx context.Context, segments 
 			return TemporalStructureRenderResult{}, err
 		}
 		arguments := fillerstructuremedia.ConcatArguments("concat.txt", output)
-		var stderr bytes.Buffer
+		commandOutput := &boundedTemporalStructureMediaOutput{}
 		command := exec.CommandContext(ctx, media.media.identity.FFmpeg.Path, arguments...)
 		command.Dir = temporary
-		command.Stderr = &stderr
-		if err := command.Run(); err != nil {
-			return TemporalStructureRenderResult{}, fmt.Errorf("join normalized parts: %w: %s", err, strings.TrimSpace(stderr.String()))
+		command.Stdout, command.Stderr = commandOutput, commandOutput
+		if err := runTemporalStructureMediaCommand(ctx, command, commandOutput); err != nil {
+			return TemporalStructureRenderResult{}, fmt.Errorf("join normalized parts: %w", err)
 		}
 	}
 	result.Video, err = media.media.probeReviewVideo(ctx, output)
@@ -88,11 +87,11 @@ func (media *FFmpegTemporalStructureMedia) Render(ctx context.Context, segments 
 
 func (media *FFmpegTemporalStructureMedia) writePart(ctx context.Context, segment TemporalStructureRenderSegment, output string) (TemporalTruthVideoInfo, error) {
 	arguments := fillerstructuremedia.PartArguments(segment.SourcePath, segment.StartMS, segment.DurationMS, output)
-	var stderr bytes.Buffer
+	commandOutput := &boundedTemporalStructureMediaOutput{}
 	command := exec.CommandContext(ctx, media.media.identity.FFmpeg.Path, arguments...)
-	command.Stderr = &stderr
-	if err := command.Run(); err != nil {
-		return TemporalTruthVideoInfo{}, fmt.Errorf("render normalized structure part: %w: %s", err, strings.TrimSpace(stderr.String()))
+	command.Stdout, command.Stderr = commandOutput, commandOutput
+	if err := runTemporalStructureMediaCommand(ctx, command, commandOutput); err != nil {
+		return TemporalTruthVideoInfo{}, fmt.Errorf("render normalized structure part: %w", err)
 	}
 	return media.media.probeReviewVideo(ctx, output)
 }

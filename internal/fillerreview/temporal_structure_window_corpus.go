@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	TemporalStructureWindowCorpusSchemaVersion   = 1
-	TemporalStructureWindowCorpusContractVersion = "filler-temporal-structure-window-corpus-plan-v1"
+	TemporalStructureWindowCorpusSchemaVersion   = 2
+	TemporalStructureWindowCorpusContractVersion = "filler-temporal-structure-window-corpus-plan-v2"
 	TemporalStructureWindowCorpusCases           = 24
 	TemporalStructureWindowCorpusCasesPerPattern = 6
 

@@ -38,6 +38,10 @@ func TestBuildTemporalStructureWindowCorpusPlanReproducesSeamConstructions(t *te
 	}
 	authoring := readStrictTestJSON[TemporalStructureChallengeAuthoring](t, config.HoldoutAuthoringPath)
 	receipt := readStrictTestJSON[TemporalStructureHoldoutReceipt](t, config.HoldoutReceiptPath)
+	sources := make(map[string]TemporalStructureChallengeSource, len(authoring.Sources))
+	for _, source := range authoring.Sources {
+		sources[source.ID] = source
+	}
 	tampered := plan
 	tampered.Cases = slices.Clone(plan.Cases)
 	tampered.Cases[0].TargetBoundaryMS++
@@ -52,6 +56,10 @@ func TestBuildTemporalStructureWindowCorpusPlanReproducesSeamConstructions(t *te
 		patterns[item.Pattern]++
 		if item.TargetSeamMS != fillerstructurewindow.PrimarySpanMS || item.DurationMS <= fillerstructurewindow.PrimarySpanMS {
 			t.Fatalf("case is not a long-reel seam case: %+v", item)
+		}
+		parent := sources[item.Segments[0].SourceID]
+		if item.Segments[0].StartMS != parent.DurationMS/3 {
+			t.Fatalf("case programme prefix does not use the measured interior start: %+v", item.Segments[0])
 		}
 		for index := range item.Segments {
 			if item.Truth[index].EndMS-item.Truth[index].StartMS != item.Segments[index].DurationMS {

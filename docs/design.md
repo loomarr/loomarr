@@ -4783,10 +4783,34 @@ filler join ten seconds inside shared seam context, six place it one second left
 six place it one second right, and six place one complete filler unit across a primary seam. Programme
 material brackets every construction, filler sources are always used whole, same-role pairs never
 share a source or source family, and exact source-relative truth is derived from requested parts rather
-than entered separately. The plan performs no rendering or model call. A later renderer measures the
+than entered separately. The programme prefix begins one third into its parent and the suffix retains
+a ten-second end margin: packet measurement found ten-second timestamp holes at 100 seconds in one
+otherwise useful parent and near 650 seconds in another, so the formerly arbitrary ten-second prefix
+start was not continuous evidence. The plan performs no rendering or model call. A later renderer measures the
 canonical encoded parts and may publish a certification suite only when wordless, motion, and largest-
 byte evidence also satisfy the fixed slice counts; insufficiency fails the corpus rather than causing
 model-outcome-guided case substitution.
+
+Rendering that plan is one atomic, non-authorizing operation. It reopens and hashes every declared
+source before any output is created, renders each construction through the canonical structure-media
+recipe, completely decodes both output streams, and publishes only opaque case names plus exact
+full-file, sparse-file, duration, profile, tool, and complete-coverage window-plan identities. Its
+private authority retains the construction plan, source provenance, requested parts, measured encoded
+part durations, and the resulting complete source-relative truth. Interior truth boundaries come from
+the measured encoded part joins rather than requested timestamps; only a bounded final container-
+duration reconciliation may extend or trim the final programme interval. A rendered case that leaves
+its predeclared seam slice, exceeds the ordinary retained-source byte ceiling, lacks audio or video,
+or fails complete decode aborts the entire publication. The resulting files remain corpus inputs, not
+training examples or production-admission authority.
+
+One subsequent atomic packager reopens that public/private join, snapshots every exact constructed
+source into its own staging root, and invokes the production structure-window media preparer over the
+already-bound complete-coverage plan. Its public manifest exposes only opaque aliases, exact source
+identity, path-free media sets, and the local paths of their content-addressed windows; its private
+authority binds those aliases back to the rendered truth. A missing window, byte or lineage drift,
+profile mismatch, over-ceiling window, incomplete decode, or partial source snapshot aborts the whole
+package. This packager does not measure semantic traits, call an assessor, assign a certificate, or
+grant materialization authority.
 
 The agreement policy itself is one provider-neutral production-domain module, not a scorer-owned
 copy: both the challenge adapter and the eventual production runtime supply source-bound immutable

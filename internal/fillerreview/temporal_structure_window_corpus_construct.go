@@ -152,9 +152,10 @@ func selectTemporalStructureWindowPairs(seed, pattern string, boundaryMS int64, 
 
 func buildTemporalStructureWindowJoinCase(seed, pattern string, boundaryMS int64, parent TemporalStructureChallengeSource, pair temporalStructureWindowPair) TemporalStructureWindowCorpusCase {
 	prefixMS := boundaryMS - pair.first.source.DurationMS
+	prefixStartMS := temporalStructureWindowProgrammePrefixStart(parent)
 	endStartMS := parent.DurationMS - temporalStructureWindowCorpusProgrammeSuffixMS - 10_000
 	segments := []TemporalStructureChallengeSegment{
-		{SourceID: parent.ID, StartMS: 10_000, DurationMS: prefixMS},
+		{SourceID: parent.ID, StartMS: prefixStartMS, DurationMS: prefixMS},
 		{SourceID: pair.first.source.ID, DurationMS: pair.first.source.DurationMS},
 		{SourceID: pair.second.source.ID, DurationMS: pair.second.source.DurationMS},
 		{SourceID: parent.ID, StartMS: endStartMS, DurationMS: temporalStructureWindowCorpusProgrammeSuffixMS},
@@ -176,9 +177,10 @@ func buildTemporalStructureWindowJoinCase(seed, pattern string, boundaryMS int64
 
 func buildTemporalStructureWindowCrossingCase(seed string, parent TemporalStructureChallengeSource, anchor temporalStructureWindowAnchor) TemporalStructureWindowCorpusCase {
 	prefixMS := fillerstructurewindow.PrimarySpanMS - anchor.source.DurationMS/2
+	prefixStartMS := temporalStructureWindowProgrammePrefixStart(parent)
 	endStartMS := parent.DurationMS - temporalStructureWindowCorpusProgrammeSuffixMS - 10_000
 	segments := []TemporalStructureChallengeSegment{
-		{SourceID: parent.ID, StartMS: 10_000, DurationMS: prefixMS},
+		{SourceID: parent.ID, StartMS: prefixStartMS, DurationMS: prefixMS},
 		{SourceID: anchor.source.ID, DurationMS: anchor.source.DurationMS},
 		{SourceID: parent.ID, StartMS: endStartMS, DurationMS: temporalStructureWindowCorpusProgrammeSuffixMS},
 	}
@@ -192,6 +194,10 @@ func buildTemporalStructureWindowCrossingCase(seed string, parent TemporalStruct
 		TargetSeamMS: fillerstructurewindow.PrimarySpanMS, DurationMS: truth[len(truth)-1].EndMS,
 		FillerFamilyIDs: []string{anchor.receipt.FamilyID}, Segments: segments, Truth: truth,
 	}
+}
+
+func temporalStructureWindowProgrammePrefixStart(parent TemporalStructureChallengeSource) int64 {
+	return parent.DurationMS / 3
 }
 
 func temporalStructureWindowTruth(segments []TemporalStructureChallengeSegment, roles map[string]fillerstructure.Role) []fillerstructure.Segment {
