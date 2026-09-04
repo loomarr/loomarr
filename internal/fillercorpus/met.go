@@ -18,10 +18,11 @@ import (
 const (
 	MetAuthority = "metmuseum.org/collection"
 
-	metAPIBase   = "https://collectionapi.metmuseum.org/public/collection/v1"
-	metAPIHost   = "collectionapi.metmuseum.org"
-	metImageHost = "images.metmuseum.org"
-	metWebHost   = "www.metmuseum.org"
+	metAPIBase               = "https://collectionapi.metmuseum.org/public/collection/v1"
+	metAPIHost               = "collectionapi.metmuseum.org"
+	metImageHost             = "images.metmuseum.org"
+	metWebHost               = "www.metmuseum.org"
+	metSourceRequestAttempts = 3
 )
 
 // MetCaptureConfig freezes every input and resource ceiling needed to turn
@@ -83,8 +84,11 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 		lookups++
 		objectID := discovery.objectID
 		metadataURL := metAPIBase + "/objects/" + strconv.FormatInt(objectID, 10)
-		raw, retrievedAt, err := client.Get(ctx, metadataURL)
+		raw, retrievedAt, err := getMetSource(ctx, client, metadataURL)
 		if err != nil {
+			if IsSourceHTTPStatus(err, http.StatusNotFound) {
+				continue
+			}
 			return Inventory{}, fmt.Errorf("capture Met object %d: %w", objectID, err)
 		}
 		object, ok := decodeMetObject(raw, objectID, config.RequiredSubjectTerms, config.ExcludedSubjectTerms)
@@ -124,6 +128,39 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 		return Inventory{}, fmt.Errorf("capture Met inventory: %s", strings.Join(failures, "; "))
 	}
 	return result, nil
+}
+
+func getMetSource(ctx context.Context, client *SourceClient, sourceURL string) ([]byte, time.Time, error) {
+	var lastErr error
+	for range metSourceRequestAttempts {
+		raw, retrievedAt, err := client.Get(ctx, sourceURL)
+		if err == nil {
+			return raw, retrievedAt, nil
+		}
+		lastErr = err
+		if !retryableMetSourceError(err) {
+			break
+		}
+	}
+	return nil, time.Time{}, lastErr
+}
+
+func retryableMetSourceError(err error) bool {
+	for _, statusCode := range []int{
+		http.StatusForbidden,
+		http.StatusRequestTimeout,
+		http.StatusTooEarly,
+		http.StatusTooManyRequests,
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+	} {
+		if IsSourceHTTPStatus(err, statusCode) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateMetCaptureConfig(ctx context.Context, config MetCaptureConfig) error {

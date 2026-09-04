@@ -43,7 +43,7 @@ func discoverMetObjectIDs(ctx context.Context, client *SourceClient, terms []str
 	foundBy := make(map[int64][]string)
 	var latest time.Time
 	for _, term := range terms {
-		raw, retrievedAt, err := client.Get(ctx, metSearchURL(term))
+		raw, retrievedAt, err := getMetSource(ctx, client, metSearchURL(term))
 		if err != nil {
 			return nil, "", time.Time{}, fmt.Errorf("capture Met search %q: %w", term, err)
 		}

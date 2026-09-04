@@ -161,6 +161,95 @@ func TestCaptureMetInventorySkipsRepeatedCreatorBeforeImageProbe(t *testing.T) {
 	}
 }
 
+func TestCaptureMetInventorySkipsStaleSearchObject(t *testing.T) {
+	selectionDigest := metSelectionDigest([]string{"venus"}, []string{"Female Nudes", "Male Nudes"}, []string{"Children", "Infants"})
+	ids := []int64{195733, 431922}
+	slices.SortFunc(ids, func(left, right int64) int {
+		return strings.Compare(metObjectRank(selectionDigest, left), metObjectRank(selectionDigest, right))
+	})
+	staleID, validID := ids[0], ids[1]
+	headRequests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/public/collection/v1/search":
+			_, _ = fmt.Fprintf(w, `{"total":2,"objectIDs":[%d,%d]}`, staleID, validID)
+		case request.Method == http.MethodGet && request.URL.Path == "/public/collection/v1/objects/"+strconv.FormatInt(staleID, 10):
+			http.NotFound(w, request)
+		case request.Method == http.MethodGet && request.URL.Path == "/public/collection/v1/objects/"+strconv.FormatInt(validID, 10):
+			_, _ = fmt.Fprintf(w, `{"objectID":%d,"isPublicDomain":true,"primaryImage":"https://images.metmuseum.org/valid.jpg","title":"Valid work","artistDisplayName":"Valid Creator","objectURL":"https://www.metmuseum.org/art/collection/search/%d","tags":[{"term":"Female Nudes"}]}`, validID, validID)
+		case request.Method == http.MethodHead && request.URL.Path == "/valid.jpg":
+			headRequests++
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Content-Length", "100")
+		default:
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+	config := metTestConfig(t, server)
+	config.MaxObjectLookups = 2
+	config.MaxRequests = 4
+	inventory, err := CaptureMetInventory(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headRequests != 1 || len(inventory.Cases) != 1 || inventory.Cases[0].SourceFamily != "met-object:"+strconv.FormatInt(validID, 10) {
+		t.Fatalf("heads=%d cases=%+v", headRequests, inventory.Cases)
+	}
+}
+
+func TestCaptureMetInventoryDoesNotSkipSourceFailure(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.Method + " " + request.URL.Path {
+		case "GET /public/collection/v1/search":
+			_, _ = w.Write([]byte(`{"total":1,"objectIDs":[195733]}`))
+		case "GET /public/collection/v1/objects/195733":
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		default:
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+	config := metTestConfig(t, server)
+	config.MaxRequests = 4
+	_, err := CaptureMetInventory(context.Background(), config)
+	if err == nil || !strings.Contains(err.Error(), "503 Service Unavailable") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCaptureMetInventoryRetriesTransientSourceFailure(t *testing.T) {
+	objectRequests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.Method + " " + request.URL.Path {
+		case "GET /public/collection/v1/search":
+			_, _ = w.Write([]byte(`{"total":1,"objectIDs":[195733]}`))
+		case "GET /public/collection/v1/objects/195733":
+			objectRequests++
+			if objectRequests == 1 {
+				http.Error(w, "retry", http.StatusForbidden)
+				return
+			}
+			_, _ = w.Write([]byte(`{"objectID":195733,"isPublicDomain":true,"primaryImage":"https://images.metmuseum.org/valid.jpg","title":"Valid work","artistDisplayName":"Valid Creator","objectURL":"https://www.metmuseum.org/art/collection/search/195733","tags":[{"term":"Female Nudes"}]}`))
+		case "HEAD /valid.jpg":
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Content-Length", "100")
+		default:
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+	config := metTestConfig(t, server)
+	config.MaxRequests = 4
+	inventory, err := CaptureMetInventory(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if objectRequests != 2 || len(inventory.Cases) != 1 {
+		t.Fatalf("object requests=%d cases=%+v", objectRequests, inventory.Cases)
+	}
+}
+
 func TestCaptureMetInventorySearchHitCannotGrantPublicDomainStatus(t *testing.T) {
 	headRequests := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {

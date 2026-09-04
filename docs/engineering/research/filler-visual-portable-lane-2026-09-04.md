@@ -511,6 +511,22 @@ any image request. The current inventory also produced a schema-4 inert rights w
 `56d2d74b05eb41607108e9f1692a833f0cbb6cdea2de56410c41bbdc109add47`; every reviewer and decision field
 remains blank. No external image was fetched in these adapter probes.
 
+A full current-code metadata capture subsequently froze exactly 120 candidates with 120 distinct Met creator
+display identities, 120 distinct works, and 120 distinct source families. The mode-`0600` schema-4 inventory
+beneath its mode-`0700` private root is 208,086 bytes at SHA-256
+`ad27c9238fec2dfea0893d9b1391f1cc16ffd5d5c656c6e1bda65dfac57844f2`; it predicts 292,769,745 bytes of
+media but downloaded none. The observed admission yield was 105 candidates after 600 object lookups, so the
+committed defaults now allow 750 lookups and 1,000 total requests at a gentler 500-millisecond interval.
+The run also exposed two transport cases that are now pinned by race-enabled regressions: a stale search id
+whose object record returns 404 is excluded before an image probe, while transient 403, 408, 425, 429, and
+selected 5xx metadata responses receive at most three attempts inside the existing request and wall-time ceilings.
+A persistent transient-class response and every other transport error still fail the complete capture. The
+first two 250-millisecond passes each encountered an isolated object-detail 403 on a different id; each object
+returned 200 immediately outside the failed run. The cache-backed 500-millisecond pass reached all 120
+candidates, and its final validation/publication pass used six live requests, 1,713,952 response bytes, and
+2.988 seconds. These are still discovery nominations: creator display-name uniqueness does not establish
+identity, adult subject status, rights approval, policy truth, or suitability for air.
+
 The existing rights-bound downloader is now the one shared materializer rather than a second visual-only
 implementation. Its shared schema-3 ledger supports MP4, JPEG, and PNG; derives the local extension from the admitted
 MIME type; enforces the response MIME type, exact byte count, optional source hashes, complete image decode,

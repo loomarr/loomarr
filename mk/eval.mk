@@ -291,13 +291,13 @@ filler-corpus-met: ## freeze a bounded metadata-only Met Museum inventory
 	    --cache-dir "$${LOOMARR_FILLER_CORPUS_MET_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-cache}" \
 	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
 	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_MET_SNAPSHOT_AT" \
-	    --max-requests "$${LOOMARR_FILLER_CORPUS_MET_MAX_REQUESTS:-650}" \
-	    --max-object-lookups "$${LOOMARR_FILLER_CORPUS_MET_MAX_OBJECT_LOOKUPS:-500}" \
+	    --max-requests "$${LOOMARR_FILLER_CORPUS_MET_MAX_REQUESTS:-1000}" \
+	    --max-object-lookups "$${LOOMARR_FILLER_CORPUS_MET_MAX_OBJECT_LOOKUPS:-750}" \
 	    --max-items "$${LOOMARR_FILLER_CORPUS_MET_MAX_ITEMS:-120}" \
 	    --max-response-bytes "$${LOOMARR_FILLER_CORPUS_MET_MAX_RESPONSE_BYTES:-134217728}" \
 	    --max-item-bytes "$${LOOMARR_FILLER_CORPUS_MET_MAX_ITEM_BYTES:-134217728}" \
 	    --max-total-bytes "$${LOOMARR_FILLER_CORPUS_MET_MAX_TOTAL_BYTES:-17179869184}" \
-	    --delay "$${LOOMARR_FILLER_CORPUS_MET_DELAY:-250ms}" \
+	    --delay "$${LOOMARR_FILLER_CORPUS_MET_DELAY:-500ms}" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_MET_MAX_WALL_TIME:-1h}"
 
 filler-corpus-nasa: ## freeze bounded NASA pilot and full-inventory artifacts

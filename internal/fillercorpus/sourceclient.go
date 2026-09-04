@@ -49,6 +49,24 @@ type SourceHead struct {
 	ContentType   string `json:"contentType"`
 }
 
+type sourceHTTPStatusError struct {
+	method     string
+	rawURL     string
+	status     string
+	statusCode int
+}
+
+func (e *sourceHTTPStatusError) Error() string {
+	return fmt.Sprintf("%s %s: %s", e.method, e.rawURL, e.status)
+}
+
+// IsSourceHTTPStatus reports whether err came from a completed source request
+// with the given HTTP status. Callers retain no access to the response body.
+func IsSourceHTTPStatus(err error, statusCode int) bool {
+	var statusErr *sourceHTTPStatusError
+	return errors.As(err, &statusErr) && statusErr.statusCode == statusCode
+}
+
 func NewSourceClient(config SourceClientConfig) (*SourceClient, error) {
 	if config.HTTP == nil || config.CacheDir == "" || config.UserAgent == "" || config.MaxRequests <= 0 || config.MaxResponseBytes <= 0 || config.Delay < 0 || len(config.AllowedHosts) == 0 {
 		return nil, fmt.Errorf("source client requires HTTP transport, cache, identity, exact hosts, and positive ceilings")
@@ -103,7 +121,7 @@ func (c *SourceClient) Get(ctx context.Context, rawURL string) ([]byte, time.Tim
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, time.Time{}, fmt.Errorf("GET %s: %s", rawURL, resp.Status)
+		return nil, time.Time{}, &sourceHTTPStatusError{method: http.MethodGet, rawURL: rawURL, status: resp.Status, statusCode: resp.StatusCode}
 	}
 	remaining := c.maxResponseBytes - c.responseBytes
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, remaining+1))
@@ -149,7 +167,7 @@ func (c *SourceClient) Head(ctx context.Context, rawURL string) (SourceHead, tim
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return SourceHead{}, time.Time{}, fmt.Errorf("HEAD %s: %s", rawURL, resp.Status)
+		return SourceHead{}, time.Time{}, &sourceHTTPStatusError{method: http.MethodHead, rawURL: rawURL, status: resp.Status, statusCode: resp.StatusCode}
 	}
 	head := SourceHead{ContentLength: resp.ContentLength, ContentType: resp.Header.Get("Content-Type")}
 	if head.ContentLength <= 0 || head.ContentType == "" {
