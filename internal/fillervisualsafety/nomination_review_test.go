@@ -23,7 +23,7 @@ func TestVisualCorpusNominationReviewBoardUsesBoundSourceAndExportsLockCSV(t *te
 	for _, required := range []string{
 		worksheet.SHA256, worksheet.Cases[0].CaseID, worksheet.Cases[0].Asset.SHA256, assetURL,
 		`const header = ["rank","inventory_sha256"`, `link.download = "review.csv"`,
-		`proposed.sourceSha256 !== item.contentSha256`, `document.inventorySha256 !== first[1]`,
+		`proposed.sourceSha256 !== item.contentSha256`, `manifest.inventorySha256 !== first[1]`,
 		`manifest proposal fields are invalid`, `Positive and clean always require an individual click or key.`,
 		`const cleanReviewMode = false;`, `excludeNonProposals.hidden = cleanReviewMode`,
 	} {
@@ -49,7 +49,8 @@ func TestVisualCorpusNominationReviewBoardEnablesBoundedCleanReviewOnlyForCanoni
 	}
 	for _, required := range []string{
 		`const cleanReviewMode = true;`, `const cleanPageSize = 12;`,
-		`I reviewed every exact image on this page for adult nudity, minors, sexual or graphic content, hate symbols or text`,
+		`I reviewed every exact image on this page for sexual content; minor or age-ambiguous sexual risk`,
+		`prohibited visible written language`, `content unsuitable for the intended audience`,
 		`pageItems.every(item => cleanPageLoads.get(item.caseId) === true)`,
 		`!decisions[item.caseId] && !needsIndividualReview(item)`,
 		`decisions[item.caseId] === "clean" && needsIndividualReview(item)`,
@@ -59,7 +60,13 @@ func TestVisualCorpusNominationReviewBoardEnablesBoundedCleanReviewOnlyForCanoni
 		`inspect.textContent = "Inspect required"`,
 		`!assistanceLoaded || !allLoaded`, `Load a bound machine-assistance manifest before confirming a page.`,
 		`filler-visual-corpus-clean-assistance-v1`, `two_local_vlm_plus_local_ocr_text_v1`,
-		`document.leftModel === document.rightModel`,
+		`filler-visual-corpus-clean-assistance-v2`, `two_local_vlm_plus_local_ocr_text_plus_frontier_audience_review_v2`,
+		`filler-frontier-audience-review-record-v1`, `frontierAudienceReviewLedgerSha256`,
+		`canonicalJSON(manifest.suitabilityVocabulary) !== canonicalJSON(suitabilityVocabulary)`,
+		`await sealedDigest(record) !== record.sha256`, `await sha256Hex(ledgerRaw)`,
+		`await sealedDigest(manifest) !== manifest.sha256`, `proposed.controlEligibility !== expectedEligibility`,
+		`proposed.suitabilityObservations.length > 0`, `Suitability: `,
+		`manifest.leftModel === manifest.rightModel`,
 		`OCR text detected`,
 	} {
 		if !strings.Contains(string(board), required) {

@@ -100,7 +100,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   <div id="clean-grid" class="clean-grid"></div>
   <p class="attestation">
     <input id="clean-attestation" type="checkbox">
-    <label for="clean-attestation">I reviewed every exact image on this page for adult nudity, minors, sexual or graphic content, hate symbols or text, and any other content unsuitable for broadcast.</label>
+    <label for="clean-attestation">I reviewed every exact image on this page for sexual content; minor or age-ambiguous sexual risk; violence, gore, death, self-harm, animal harm, weapons, or frightening imagery; tobacco, alcohol, drugs, gambling, or regulated-product promotion; hateful or extremist material; prohibited visible written language; and any other content unsuitable for the intended audience.</label>
   </p>
   <button id="confirm-page-clean" disabled>Confirm eligible undecided images as clean</button>
   <p id="clean-page-status" class="muted"></p>
@@ -124,8 +124,20 @@ const decisions = Object.create(null);
 const suggestions = Object.create(null);
 const storageKey = "loomarr-visual-nomination:" + worksheet;
 const assistanceContracts = new Set(["filler-visual-corpus-model-assistance-v1", "filler-visual-corpus-model-assistance-v2"]);
-const cleanAssistanceContract = "filler-visual-corpus-clean-assistance-v1";
+const cleanAssistanceContracts = new Set(["filler-visual-corpus-clean-assistance-v1", "filler-visual-corpus-clean-assistance-v2"]);
 const allowedActions = new Set(["propose_positive_candidate", "exclude_age_risk", "exclude_no_visible_nudity", "hold_cross_batch_creator_overlap", "targeted_human_review"]);
+const suitabilityVocabulary = [
+  "adult_nudity", "minor_nudity_or_sexual_risk", "minor_present", "age_ambiguous",
+  "weapon_depiction", "non_graphic_violence", "graphic_violence_or_gore", "human_death_or_corpse",
+  "animal_harm_or_death", "self_harm_or_suicide", "tobacco_or_nicotine", "alcohol", "drug",
+  "gambling", "regulated_product_promotion", "hate_or_extremist_symbol", "slur_or_degrading_language",
+  "profanity", "explicit_sexual_language", "frightening_or_disturbing", "religious_suffering",
+  "war_or_military", "commercial_or_brand",
+];
+const suitabilityFlags = new Set(suitabilityVocabulary);
+const suitabilitySeverities = new Set(["low", "moderate", "high"]);
+const suitabilityContexts = new Set(["presence", "depiction", "promotion", "instruction"]);
+const suitabilityConfidences = new Set(["low", "medium", "high"]);
 let order = cases.map((_, index) => index);
 let cursor = 0;
 const cleanPageSize = 12;
@@ -162,7 +174,9 @@ function counts() {
 }
 function needsIndividualReview(item) {
   const proposed = suggestions[item.caseId];
-  return proposed && proposed.action !== "exclude_no_visible_nudity";
+  return proposed && (proposed.action !== "exclude_no_visible_nudity" ||
+    proposed.controlEligibility === "individual_review_required" ||
+    (Array.isArray(proposed.suitabilityObservations) && proposed.suitabilityObservations.length > 0));
 }
 function suggestionText(proposed) {
   if (!proposed) return "No model assistance loaded";
@@ -174,7 +188,10 @@ function suggestionText(proposed) {
     targeted_human_review: "Uncertain or possible policy signal — inspect individually",
   };
   const ocr = Number.isInteger(proposed.ocrTextCount) && proposed.ocrTextCount > 0 ? " · OCR text detected" : "";
-  return labels[proposed.action] + " · " + proposed.reason + ocr;
+  const flags = Array.isArray(proposed.suitabilityObservations) && proposed.suitabilityObservations.length > 0
+    ? " · Suitability: " + proposed.suitabilityObservations.map(value => value.flag.replaceAll("_", " ")).join(", ")
+    : "";
+  return labels[proposed.action] + " · " + proposed.reason + flags + ocr;
 }
 function cleanPageItems() {
   const start = cleanPage * cleanPageSize;
@@ -362,27 +379,117 @@ function save() {
   link.click();
   URL.revokeObjectURL(link.href);
 }
-function validateAssistance(document) {
+function canonicalJSON(value) {
+  if (Array.isArray(value)) return "[" + value.map(canonicalJSON).join(",") + "]";
+  if (value !== null && typeof value === "object") {
+    return "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + canonicalJSON(value[key])).join(",") + "}";
+  }
+  return JSON.stringify(value);
+}
+async function sha256Hex(raw) {
+  if (!globalThis.crypto || !globalThis.crypto.subtle) throw new Error("browser SHA-256 support is unavailable");
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+async function sealedDigest(value) {
+  return sha256Hex(canonicalJSON({...value, sha256: ""}));
+}
+function validNonAuthorityRecord(value) {
+  return value.candidateModelOutput === true && value.truthAuthorityCreated === false &&
+    value.trainingAllowed === false && value.productionUseAllowed === false && value.ingestionAllowed === false &&
+    value.schedulingAllowed === false && value.broadcastAllowed === false;
+}
+function validateSuitabilityObservations(observations) {
+  if (!Array.isArray(observations)) throw new Error("frontier suitability observations are invalid");
+  const seen = new Set();
+  let previous = "";
+  for (const observation of observations) {
+    const keys = observation && typeof observation === "object" ? Object.keys(observation).sort().join(",") : "";
+    if (keys !== "confidence,context,flag,severity" || !suitabilityFlags.has(observation.flag) ||
+        !suitabilitySeverities.has(observation.severity) || !suitabilityContexts.has(observation.context) ||
+        !suitabilityConfidences.has(observation.confidence) || seen.has(observation.flag) ||
+        (previous && observation.flag < previous)) {
+      throw new Error("frontier suitability observation is invalid");
+    }
+    seen.add(observation.flag);
+    previous = observation.flag;
+  }
+  return observations;
+}
+async function validateFrontierAudienceReview(manifest) {
+  if (manifest.frontierAudienceReviewer !== "openai-codex-frontier-session" ||
+      !/^[0-9a-f]{64}$/.test(manifest.frontierAudienceReviewLedgerSha256) ||
+      !Array.isArray(manifest.suitabilityVocabulary) ||
+      canonicalJSON(manifest.suitabilityVocabulary) !== canonicalJSON(suitabilityVocabulary) ||
+      !manifest.suitabilityFlagCounts || Array.isArray(manifest.suitabilityFlagCounts) ||
+      !Array.isArray(manifest.frontierAudienceReviewRecords) ||
+      manifest.frontierAudienceReviewRecords.length !== cases.length) {
+    throw new Error("frontier audience-review coverage is invalid");
+  }
+  const records = new Map();
+  const observedFlags = Object.create(null);
+  const allowedRecordKeys = new Set([
+    "schemaVersion", "contractVersion", "worksheetSha256", "rank", "caseId", "sourceSha256",
+    "reviewer", "reviewMethod", "observations", "absenceIsTruth", "candidateModelOutput",
+    "truthAuthorityCreated", "trainingAllowed", "productionUseAllowed", "ingestionAllowed",
+    "schedulingAllowed", "broadcastAllowed", "sha256",
+  ]);
+  for (let index = 0; index < manifest.frontierAudienceReviewRecords.length; index++) {
+    const record = manifest.frontierAudienceReviewRecords[index];
+    const item = cases[index];
+    if (!record || typeof record !== "object" || Object.keys(record).length !== allowedRecordKeys.size ||
+        Object.keys(record).some(key => !allowedRecordKeys.has(key)) || record.schemaVersion !== 1 ||
+        record.contractVersion !== "filler-frontier-audience-review-record-v1" ||
+        record.worksheetSha256 !== worksheet || record.rank !== item.rank || record.caseId !== item.caseId ||
+        record.sourceSha256 !== item.contentSha256 || record.reviewer !== manifest.frontierAudienceReviewer ||
+        !new Set(["complete_contact_sheet", "exact_source_image_plus_complete_contact_sheet"]).has(record.reviewMethod) ||
+        record.absenceIsTruth !== false || !validNonAuthorityRecord(record) || !/^[0-9a-f]{64}$/.test(record.sha256) ||
+        records.has(record.caseId)) {
+      throw new Error("frontier audience-review case binding is invalid");
+    }
+    const observations = validateSuitabilityObservations(record.observations);
+    if (await sealedDigest(record) !== record.sha256) throw new Error("frontier audience-review record digest is invalid");
+    for (const observation of observations) observedFlags[observation.flag] = (observedFlags[observation.flag] || 0) + 1;
+    records.set(record.caseId, record);
+  }
+  const ledgerRaw = manifest.frontierAudienceReviewRecords.map(record => canonicalJSON(record) + "\n").join("");
+  if (await sha256Hex(ledgerRaw) !== manifest.frontierAudienceReviewLedgerSha256) {
+    throw new Error("frontier audience-review ledger digest is invalid");
+  }
+  const flagKeys = new Set([...Object.keys(manifest.suitabilityFlagCounts), ...Object.keys(observedFlags)]);
+  for (const key of flagKeys) {
+    if (!suitabilityFlags.has(key) || manifest.suitabilityFlagCounts[key] !== (observedFlags[key] || 0)) {
+      throw new Error("frontier suitability flag counts are invalid");
+    }
+  }
+  return records;
+}
+async function validateAssistance(manifest) {
   const first = cases[0].immutableCsv;
-  const contractAccepted = cleanReviewMode ? document && document.contractVersion === cleanAssistanceContract
-    : document && assistanceContracts.has(document.contractVersion);
-  if (!document || document.schemaVersion !== 1 || !contractAccepted ||
-      !/^[0-9a-f]{64}$/.test(document.sha256) || document.worksheetSha256 !== worksheet ||
-      document.inventorySha256 !== first[1] || document.materializationSha256 !== first[2] ||
-      document.candidateModelOutput !== true || document.truthAuthorityCreated !== false ||
-      document.trainingAllowed !== false || document.productionUseAllowed !== false ||
-      document.ingestionAllowed !== false || document.schedulingAllowed !== false || document.broadcastAllowed !== false ||
-      !document.counts || !Array.isArray(document.proposals) || document.proposals.length !== cases.length) throw new Error("manifest authority or worksheet binding is invalid");
-  if (cleanReviewMode && (document.machineReviewPolicy !== "two_local_vlm_plus_local_ocr_text_v1" ||
-      typeof document.leftModel !== "string" || typeof document.rightModel !== "string" || document.leftModel === document.rightModel ||
-      !/^[0-9a-f]{64}$/.test(document.leftLedgerSha256) || !/^[0-9a-f]{64}$/.test(document.rightLedgerSha256) ||
-      !/^[0-9a-f]{64}$/.test(document.ocrLedgerSha256) || !/^[0-9a-f]{64}$/.test(document.textSafetyLedgerSha256))) {
+  const cleanV2 = cleanReviewMode && manifest && manifest.contractVersion === "filler-visual-corpus-clean-assistance-v2";
+  const contractAccepted = cleanReviewMode ? manifest && cleanAssistanceContracts.has(manifest.contractVersion)
+    : manifest && assistanceContracts.has(manifest.contractVersion);
+  if (!manifest || manifest.schemaVersion !== (cleanV2 ? 2 : 1) || !contractAccepted ||
+      !/^[0-9a-f]{64}$/.test(manifest.sha256) || manifest.worksheetSha256 !== worksheet ||
+      manifest.inventorySha256 !== first[1] || manifest.materializationSha256 !== first[2] ||
+      manifest.candidateModelOutput !== true || manifest.truthAuthorityCreated !== false ||
+      manifest.trainingAllowed !== false || manifest.productionUseAllowed !== false ||
+      manifest.ingestionAllowed !== false || manifest.schedulingAllowed !== false || manifest.broadcastAllowed !== false ||
+      !manifest.counts || Array.isArray(manifest.counts) || !Array.isArray(manifest.proposals) ||
+      manifest.proposals.length !== cases.length) throw new Error("manifest authority or worksheet binding is invalid");
+  const expectedMachinePolicy = cleanV2 ? "two_local_vlm_plus_local_ocr_text_plus_frontier_audience_review_v2"
+    : "two_local_vlm_plus_local_ocr_text_v1";
+  if (cleanReviewMode && (manifest.machineReviewPolicy !== expectedMachinePolicy ||
+      typeof manifest.leftModel !== "string" || typeof manifest.rightModel !== "string" || manifest.leftModel === manifest.rightModel ||
+      !/^[0-9a-f]{64}$/.test(manifest.leftLedgerSha256) || !/^[0-9a-f]{64}$/.test(manifest.rightLedgerSha256) ||
+      !/^[0-9a-f]{64}$/.test(manifest.ocrLedgerSha256) || !/^[0-9a-f]{64}$/.test(manifest.textSafetyLedgerSha256))) {
     throw new Error("clean assistance coverage is invalid");
   }
   const byCase = new Map(cases.map(item => [item.caseId, item]));
+  const frontierRecords = cleanV2 ? await validateFrontierAudienceReview(manifest) : null;
   const seen = new Set();
   const observedCounts = Object.create(null);
-  for (const proposed of document.proposals) {
+  for (const proposed of manifest.proposals) {
     const item = byCase.get(proposed.caseId);
     if (!item || seen.has(proposed.caseId) || proposed.rank !== item.rank || proposed.sourceSha256 !== item.contentSha256 ||
         !allowedActions.has(proposed.action) || proposed.candidateModelOutput !== true || proposed.truthAuthorityCreated !== false ||
@@ -397,16 +504,28 @@ function validateAssistance(document) {
         positive !== (Array.isArray(proposed.proposedSlices) && proposed.proposedSlices.length === 1 && proposed.proposedSlices[0] === "historical_graphics")) {
       throw new Error("manifest proposal fields are invalid");
     }
+    if (cleanV2) {
+      const record = frontierRecords.get(proposed.caseId);
+      const observations = validateSuitabilityObservations(proposed.suitabilityObservations);
+      const expectedEligibility = proposed.action !== "exclude_no_visible_nudity" || observations.length > 0
+        ? "individual_review_required" : "page_confirmable_clean";
+      if (!record || proposed.frontierReviewRecordSha256 !== record.sha256 ||
+          canonicalJSON(observations) !== canonicalJSON(record.observations) ||
+          proposed.controlEligibility !== expectedEligibility) {
+        throw new Error("manifest frontier proposal fields are invalid");
+      }
+    }
     seen.add(proposed.caseId);
     observedCounts[proposed.action] = (observedCounts[proposed.action] || 0) + 1;
   }
-  const countKeys = new Set([...Object.keys(document.counts), ...Object.keys(observedCounts)]);
-  for (const key of countKeys) if (!allowedActions.has(key) || document.counts[key] !== (observedCounts[key] || 0)) throw new Error("manifest counts are invalid");
-  return document.proposals;
+  const countKeys = new Set([...Object.keys(manifest.counts), ...Object.keys(observedCounts)]);
+  for (const key of countKeys) if (!allowedActions.has(key) || manifest.counts[key] !== (observedCounts[key] || 0)) throw new Error("manifest counts are invalid");
+  if (cleanV2 && await sealedDigest(manifest) !== manifest.sha256) throw new Error("manifest sealed digest is invalid");
+  return manifest.proposals;
 }
 async function loadAssistance(event) {
   try {
-    const proposals = validateAssistance(JSON.parse(await event.target.files[0].text()));
+    const proposals = await validateAssistance(JSON.parse(await event.target.files[0].text()));
     for (const key of Object.keys(suggestions)) delete suggestions[key];
     for (const proposed of proposals) suggestions[proposed.caseId] = proposed;
     assistanceLoaded = true;

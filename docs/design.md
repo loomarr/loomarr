@@ -3375,6 +3375,26 @@ absence, or visual-model prose cannot satisfy any of those complete-coverage saf
 opaque reason code, and binds the SHA-256 of one immutable axis-evidence record. Raw restricted phrases and
 descriptions never enter proposal, catalog, or public admission records.
 
+Airworthiness is audience-policy evaluation over evidence, not a model synonym for `safe`. The three
+safety evaluators therefore preserve closed **suitability flags** separately from their axis verdicts:
+sexual or nude content; minor presence and age ambiguity; weapons, threats, non-graphic violence,
+graphic violence or gore, human death, animal harm, and self-harm; tobacco, alcohol, drugs, and gambling;
+hateful targeting, extremist symbols, slurs, profanity, explicit language, and threats; frightening or
+disturbing imagery; and regulated-product promotion. Where it changes the policy meaning, evidence also
+distinguishes presence or depiction from promotion and instruction, and records a closed severity. Company,
+brand, product, logo, and ordinary commercial presence remain enrichment facts unless a policy specifically
+consumes them. Religion, politics, war, and historical subject matter are descriptive context, never automatic
+prohibitions. `minor_present` is likewise not a prohibited verdict: it may exclude a case from an adult-only
+control while remaining acceptable under an audience policy.
+
+The first policy profiles are `all_ages`, `general_audience`, and `restricted_archive`. A deterministic policy
+maps complete, certified flags and context to `pass`, `reject`, or `hold`; it never asks a model to choose an
+audience verdict. `restricted_archive` permits deliberate retention, not unattended playout. An unknown flag,
+unsupported severity/context, missing modality coverage, or conflicting evidence holds. Public records expose
+only stable flag and reason identifiers; private raw evidence retains the restricted text or imagery needed for
+audit. Certification is policy- and category-specific: evidence that certifies adult-nudity detection cannot
+silently authorize violence, hateful-language, substance, or other audience-policy decisions.
+
 Each axis record binds the complete child subject described above, its outcome, and the evaluator's policy,
 certification, implementation, and evidence-contract profile, plus the SHA-256 of its private bounded raw
 ledger or measurement bytes. The axis record publishes only after those raw bytes are durable. A child
@@ -3480,6 +3500,11 @@ carrier of that work shares the same family and adds no independent sample. Stil
 rather than replace natural programme, advertising, and animation video in the declared clean slices. Until
 that immutable certificate and a separate production release authority exist, the
 qualification evaluator continues to return `visual_safety_not_certified` and no catalog behavior changes.
+Every visual suitability flag enabled by a production audience policy additionally requires its own
+predeclared positive population, severity/context boundary, and confusable hard negatives. A corpus containing
+only adult nudity can certify only that narrow flag; historical battles, weapons, accidents, corpses, animal
+harm, frightening imagery, substance depiction, and regulated-product promotion are separate measured slices,
+not informal examples folded into a generic sensitive-content score.
 
 The file evidence adapter gives each subject/profile pair one deterministic operation identity pointing at
 its settled axis record. Once present, a different result cannot replace it; paid evaluators still own their
@@ -6027,7 +6052,21 @@ images on that page as clean only after a fully bound clean-assistance manifest 
 case with two distinct local vision-model families plus a local OCR text-safety screen, every image
 has loaded, and the reviewer attests that they
 checked the whole page for adult nudity, minors, sexual or graphic content, hate symbols or text, and
-other broadcast-unsuitable content. A model-positive, age-risk, overlap-hold, or targeted-review row
+other broadcast-unsuitable content. A version-two assistance manifest may add one complete, source-bound
+frontier audience-review ledger with a closed suitability-flag vocabulary. It records observations and routes
+cases only: every record binds the worksheet case, rank, exact source SHA-256, review method, and non-authority
+flags; absence is never truth. The board accepts the version-two manifest only when its ledger digest, reviewer,
+vocabulary, all per-case record digests, and complete worksheet coverage reproduce. Any observed suitability
+flag makes the case ineligible for page confirmation and is rendered as a concise factual candidate signal for
+individual inspection. Those digests are consistency seals, not reviewer-authentication signatures; the reviewer
+still explicitly selects the private manifest. The page attestation explicitly covers sexual content; minor or
+age-ambiguous sexual risk; violence, gore, death, self-harm, animal harm, weapons, and frightening imagery;
+tobacco, alcohol, drugs,
+gambling, and regulated-product promotion; hateful or extremist material; and prohibited visible written
+language. It does not call ordinary minor presence, religion, politics, war, historical context, or brand
+presence automatically prohibited.
+
+A model-positive, age-risk, overlap-hold, or targeted-review row
 is never eligible for that page action and must receive an individual decision; loading assistance
 also clears any earlier convenience clean decision on such a row. Positive decisions always remain
 individual. Every unresolved row remains blank so locking fails. The assistance bytes are neither

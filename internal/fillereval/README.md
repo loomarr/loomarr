@@ -166,6 +166,14 @@ screen, every exact source image loads, and the reviewer checks the page-level b
 Model-positive, age-risk, overlap-hold, and
 targeted-review rows are withheld from that action and must be opened for an individual decision; loading model
 assistance clears any earlier convenience clean decision on those rows. Positive decisions are always individual.
+The clean board also accepts the audience-aware v2 assistance contract. That version must embed one record for
+every worksheet case from the declared complete frontier-review ledger, using the closed suitability vocabulary
+and exact worksheet/rank/source bindings. The browser recomputes every record digest, the canonical JSONL ledger
+digest, per-action and per-flag counts, proposal-to-record observations and eligibility, and the sealed manifest
+digest. Any observed flag requires individual review and is shown only as a concise factual signal. The reviewer
+attestation names the visual suitability categories explicitly; spoken language remains a separate complete-source
+evaluator. A v2 record remains routing assistance: absence is not truth and neither the record nor the manifest can
+grant clean, Airworthiness, training, production, ingestion, scheduling, or broadcast authority.
 
 `make filler-visual-corpus-nomination-lock` reconstructs that worksheet from the original bytes before
 accepting the completed CSV. It rejects changed cells, blank or unknown dispositions, contradictory judgments,

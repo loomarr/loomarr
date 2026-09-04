@@ -745,6 +745,27 @@ SHA-256 `b5120439862afc6b3994c23dd5d29203adfb4f80dba115eaafd95e1985ea32cc` and i
 `8c1f6bc862530b1729d0f5de9246a90cb492309cc1b7dad08a30114e9b81dee9`. These are routing results only;
 human clean and positive decisions remain pending.
 
+A separate complete frontier-model audience-suitability pass then reviewed all 350 contact-sheet cases and
+opened 70 exact source images for ambiguous or high-consequence inspection. Its 350 source-bound records contain
+90 closed observations across 62 cases; absence is explicitly not truth, and every record denies truth, training,
+production, ingestion, scheduling, and broadcast authority. The sealed JSONL ledger has SHA-256
+`78fe292789b5efed9b9cddf48e10a1cf75d416eb6918fb37ac7b60e0b9998540`. It found adult nudity, minor
+or age-ambiguous sexual risk, weapons, non-graphic and graphic violence, death/corpses, animal harm, frightening
+imagery, alcohol, tobacco promotion, and contextual commercial, religious-suffering, and war/military signals
+that the adult-nudity-oriented join did not consistently route. Ordinary minor presence and contextual religion,
+war, history, or brand evidence remain factual observations rather than automatic prohibited verdicts.
+
+The audience-aware v2 assistance manifest embeds all 350 records, their exact case/source bindings, the complete
+closed vocabulary, per-flag counts, and the ledger digest. It routes 220 cases to page confirmation and 130 to
+individual review (11 existing positive proposals, 19 age risks, and 100 targeted cases). Its file SHA-256 is
+`22f74cdc22caaf12b9d5849183e982c421b7cc0105148de7a550eb0486cd1498`; its internal sealed digest is
+`adff8841b4793b508369bb3130a338b112b66e0db813954ce30661a3201c66cd`. The regenerated inert board has
+SHA-256 `a684e16c4996786a972b3c0196ea620a1fd9039d36527ebe2944c04c6eeae32f` and the unchanged worksheet
+identity above. A headless-browser exercise loaded all 350 records, reproduced the 130/220 routing, rendered the
+rank-320 tobacco/regulated-promotion/commercial observations, and rejected a deliberately changed eligibility
+field while clearing all loaded suggestions. This improves review routing only; it creates no clean truth,
+Airworthiness verdict, category certification, or operational authority.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:
