@@ -1324,18 +1324,25 @@ The first executable holdout slice, retained as `planner-certification-v1`, has 
 The retained `planner-certification-v2` expands those 25 auditable semantic families with five explicit,
 frozen alternative phrasings apiece: exactly 150 unique Intents in
 the `certification` split, each bound to its family's case in the digest-pinned
-`planner-catalog-v1` fixture. Active `planner-certification-v3` digest-pins and layers its scoring
-answers over those unchanged v2 Intent bytes rather than rewriting the frozen holdout.
+`planner-catalog-v1` fixture. Retained v3-v5 contracts layer their scoring answers over those
+unchanged v2 Intent bytes rather than rewriting the frozen holdout. Active
+`planner-certification-v6` instead digest-pins a new immutable base and `planner-catalog-v2`
+fixture: it preserves all 25 families and adds separate network, cast, and creator routing
+families with five frozen phrasings apiece, for exactly 168 Intents. Their synthetic candidates
+carry the exact resolved network/person evidence that production returns. The structural observer
+records those three operations independently, so a generic genre call or a call that mixes cast
+and creator fields cannot receive correct-route credit.
 The manifest explicitly permits only `train` and `development` as training-source splits, so its
-certification cases cannot be repurposed as training examples. It covers named-title, genre, and
-keyword routing; include/exclude and refine constraints; season and audience limits; ambiguous,
+certification cases cannot be repurposed as training examples. It covers named-title, genre,
+keyword, network, cast, and creator routing; include/exclude and refine constraints; season and audience limits; ambiguous,
 conflicting, thin, empty, tool-error, repair, and fabrication attempts. Every case runs through the
 production Suggester and public evaluator `Runner`; the only live boundary is the candidate model.
 The fixture owns synthetic ids, ownership, genres, ratings, and injected empty/error responses, so
 models never gain an advantage from catalog drift. Each case hard-gates unsupported ids and the
-production call/candidate bounds. Grounded completion and the expected title/genre/keyword operation
-are quality measurements rather than safety failures. Of the 150 Intents, 132 expect at least one
-grounded pick; exactly 18 manifest-declared empty/conflicting phrasings permit an explicit
+production call/candidate bounds. Grounded completion and the expected
+title/genre/keyword/network/cast/creator operation are quality measurements rather than safety
+failures. Of the 150 v2 Intents, 132 expect at least one grounded pick; in v6, 150 of 168 expect
+one. Exactly 18 manifest-declared empty/conflicting phrasings permit an explicit
 no-grounded-title abstention. The model
 still has no acquisition, approval, or authorization capability: the evaluator observes a Proposal,
 not an effectful workflow.
@@ -1344,7 +1351,7 @@ not an effectful workflow.
 positive per-run and suite call/token/USD ceilings as other required semantic certification and
 local inference still requires `LOOMARR_EVAL_ALLOW_LOCAL=1`; it never starts or provisions a model.
 Before constructing the provider it verifies the embedded fixture digest and corpus references.
-Scorecard schema v10 records the corpus, fixture digest, prompt contract, catalog-tool schema, scorer,
+Scorecard schema v11 records the corpus, fixture digest, prompt contract, catalog-tool schema, scorer,
 and separate hard/quality metric lists, then writes both the JSON result manifest and a Markdown
 comparison summary. V2 pre-registers a 95% grounded-completion floor over the 132 completion cases,
 a 90% correct-operation floor, a 98% final-schema-validity floor, and a maximum of three tool calls at
