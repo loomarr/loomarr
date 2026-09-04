@@ -64,7 +64,11 @@ func runPrepare(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	if err := writer.Error(); err != nil {
 		return err
 	}
-	if err := publishWorksheetDirectory(*outputDir, worksheetRaw, csvBuffer.Bytes()); err != nil {
+	boardRaw, err := fillervisualsafety.RenderVisualCorpusNominationReviewBoard(worksheet, *mediaRoot)
+	if err != nil {
+		return err
+	}
+	if err := publishWorksheetDirectory(*outputDir, worksheetRaw, csvBuffer.Bytes(), boardRaw); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintf(stdout, "filler-visual-corpus-nominate: prepared %d inert rows; worksheet %s\n", len(worksheet.Cases), worksheet.SHA256)

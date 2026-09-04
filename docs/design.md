@@ -6004,6 +6004,17 @@ published candidate; the locker reopens the original inventory, materialization 
 and media before publication. This is a workflow exclusion only: it creates no truth, training,
 provider-transfer, certification, ingestion, scheduling, production, or broadcast authority.
 
+Nomination preparation also emits a private, non-blind keyboard review board beside the inert JSON
+and CSV. It shows the institution-authored identity and the worksheet-bound source image, and exports
+the ordinary completed CSV consumed by the locker. A reviewer may load a separate local model-
+assistance manifest only when its worksheet, case, rank, and exact content identities reproduce. The
+browser may then prioritize proposed positives and, after one explicit confirmation, mark every
+non-proposal as excluded; it never authors a positive or clean decision. Those decisions require an
+individual reviewer action, and every unresolved row remains blank so locking fails. The assistance
+bytes are neither copied into the worksheet nor accepted by the locker. The board is development
+ergonomics, not the candidate-blind certification review, and the locker still reopens every source
+byte after the review.
+
 The certification holdout uses a distinct schema-v4 rights contract; a schema-v3 approval remains
 readable development history but cannot authorize certification acquisition or preparation. The
 caller must name the `development` or `certification` profile before either locking rights decisions

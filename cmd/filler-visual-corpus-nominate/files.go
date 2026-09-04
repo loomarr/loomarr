@@ -47,7 +47,7 @@ func decodeStrictJSON(raw []byte, destination any) error {
 	return nil
 }
 
-func publishWorksheetDirectory(output string, worksheet, reviewCSV []byte) error {
+func publishWorksheetDirectory(output string, worksheet, reviewCSV, board []byte) error {
 	if output == "" || !filepath.IsAbs(output) || filepath.Clean(output) != output {
 		return errors.New("worksheet output must be an absolute clean path")
 	}
@@ -68,7 +68,8 @@ func publishWorksheetDirectory(output string, worksheet, reviewCSV []byte) error
 	for _, file := range []struct {
 		name string
 		raw  []byte
-	}{{".incomplete", []byte("incomplete\n")}, {nominationWorksheetFilename, worksheet}, {nominationReviewFilename, reviewCSV}} {
+	}{{".incomplete", []byte("incomplete\n")}, {nominationWorksheetFilename, worksheet},
+		{nominationReviewFilename, reviewCSV}, {nominationBoardFilename, board}} {
 		if err := writePrivateFile(filepath.Join(output, file.name), file.raw); err != nil {
 			return err
 		}

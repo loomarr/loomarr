@@ -35,20 +35,20 @@ func TestPrivateNominationInputsAndWorksheetPublication(t *testing.T) {
 	}
 
 	output := filepath.Join(root, "worksheet")
-	if err := publishWorksheetDirectory(output, []byte("worksheet\n"), []byte("review\n")); err != nil {
+	if err := publishWorksheetDirectory(output, []byte("worksheet\n"), []byte("review\n"), []byte("board\n")); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Lstat(output)
 	if err != nil || info.Mode().Perm() != 0o700 {
 		t.Fatalf("worksheet directory = %v, %v", info, err)
 	}
-	for _, name := range []string{nominationWorksheetFilename, nominationReviewFilename} {
+	for _, name := range []string{nominationWorksheetFilename, nominationReviewFilename, nominationBoardFilename} {
 		info, err := os.Lstat(filepath.Join(output, name))
 		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
 			t.Fatalf("worksheet file %s = %v, %v", name, info, err)
 		}
 	}
-	if err := publishWorksheetDirectory(output, []byte("changed"), []byte("changed")); err == nil {
+	if err := publishWorksheetDirectory(output, []byte("changed"), []byte("changed"), []byte("changed")); err == nil {
 		t.Fatal("publishWorksheetDirectory overwrote an existing review")
 	}
 }

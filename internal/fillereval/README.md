@@ -147,7 +147,11 @@ file, media, and normalized-image identities are prefilled. The maintainer edits
 `subject_status`, `generated_status`, and `slices_json`. The current closed projection accepts only Met JPEGs
 whose independent rights rationale starts with the versioned
 `met_cc0_open_access_object_reviewed_v1: ` basis and a non-empty explanation and carries no restriction; it does not infer a
-new licence from tags or search results.
+new licence from tags or search results. Preparation also emits a private `review.html` keyboard board. It
+shows the exact worksheet-bound image and source metadata and exports the same CSV. A separately selected local
+model-assistance JSON may prioritize proposals and explicitly exclude all non-proposals only after its worksheet,
+rank, case, and source-content bindings reproduce in the browser. It cannot author a positive or clean decision,
+and it is not consumed by the lock operation.
 
 `make filler-visual-corpus-nomination-lock` reconstructs that worksheet from the original bytes before
 accepting the completed CSV. It rejects changed cells, blank or unknown dispositions, contradictory judgments,

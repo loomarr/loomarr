@@ -15,6 +15,7 @@ const (
 	maximumNominationInputBytes = int64(16 << 20)
 	nominationWorksheetFilename = "worksheet.json"
 	nominationReviewFilename    = "review.csv"
+	nominationBoardFilename     = "review.html"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
