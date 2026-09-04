@@ -93,6 +93,10 @@ type Session struct {
 	// one number that tracks the black-screen symptom directly; 0 until the first bytes arrive.
 	// Written once in pump under mu, read in stat().
 	coldStartMs int64
+	// hasTransport distinguishes a genuinely warm session from a process that started but never
+	// emitted a byte. coldStartMs cannot do that: a healthy first read may complete in under 1ms and
+	// legitimately round to zero. Only proven transport earns the idle grace window.
+	hasTransport bool
 	// encoder is the hardware/software choice the CURRENT program resolved (§9.1). The single
 	// most actionable telemetry an operator has: it is the difference between four concurrent
 	// streams and one.
@@ -499,6 +503,7 @@ func (s *Session) pump() {
 				// First bytes — the cold-start window (start → first frame) closes here.
 				s.mu.Lock()
 				s.coldStartMs = time.Since(s.startedAt).Milliseconds()
+				s.hasTransport = true
 				vc := len(s.viewers)
 				cold := s.coldStartMs
 				s.mu.Unlock()
@@ -620,9 +625,21 @@ func (s *Session) removeViewer(id int) {
 		viewer.close()
 	}
 	last := len(s.viewers) == 0 && !s.closed
+	warm := s.hasTransport
 	s.mu.Unlock()
 
 	if last {
+		if !warm {
+			// A process that never produced transport is not a warm channel. Retaining it would
+			// keep its conservative admission cost through the grace window and can block the
+			// baseline retry that the waiting tuner is about to make.
+			if s.log != nil {
+				s.log.Debug("playout: stopping zero-byte session without idle grace",
+					"channel", s.ChannelID, "plan", s.Plan.String())
+			}
+			s.close()
+			return
+		}
 		s.onIdle()
 	}
 }
