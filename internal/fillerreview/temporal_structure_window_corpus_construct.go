@@ -246,7 +246,7 @@ func buildTemporalStructureWindowDurationEdgeCase(seed, pattern string, duration
 	prefixMS := programmeMS / 2
 	suffixMS := programmeMS - prefixMS
 	prefixStartMS := temporalStructureWindowProgrammePrefixStart(parent)
-	endStartMS := parent.DurationMS - suffixMS - 10_000
+	endStartMS := temporalStructureWindowProgrammeEdgeSuffixStart(parent)
 	segments := []TemporalStructureChallengeSegment{
 		{SourceID: parent.ID, StartMS: prefixStartMS, DurationMS: prefixMS},
 		{SourceID: anchor.source.ID, DurationMS: anchor.source.DurationMS},
@@ -265,6 +265,10 @@ func buildTemporalStructureWindowDurationEdgeCase(seed, pattern string, duration
 
 func temporalStructureWindowProgrammePrefixStart(parent TemporalStructureChallengeSource) int64 {
 	return parent.DurationMS / 3
+}
+
+func temporalStructureWindowProgrammeEdgeSuffixStart(parent TemporalStructureChallengeSource) int64 {
+	return parent.DurationMS * 2 / 3
 }
 
 func temporalStructureWindowTruth(segments []TemporalStructureChallengeSegment, roles map[string]fillerstructure.Role) []fillerstructure.Segment {

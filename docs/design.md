@@ -4895,10 +4895,14 @@ filler join ten seconds inside shared seam context, six place it one second left
 six place it one second right, and six place one complete filler unit across a primary seam. Programme
 material brackets every construction, filler sources are always used whole, same-role pairs never
 share a source or source family, and exact source-relative truth is derived from requested parts rather
-than entered separately. The programme prefix begins one third into its parent and the suffix retains
-a ten-second end margin: packet measurement found ten-second timestamp holes at 100 seconds in one
-otherwise useful parent and near 650 seconds in another, so the formerly arbitrary ten-second prefix
-start was not continuous evidence. The plan performs no rendering or model call. A later renderer measures the
+than entered separately. The programme prefix begins one third into its parent. For the four
+duration-edge constructions, the suffix begins two thirds into that parent rather than being packed
+against EOF; even the shortest locked parent therefore retains more than fifteen seconds between the
+longest possible prefix and suffix and more than fifteen seconds after that suffix. The seam
+constructions retain their separate ten-second end margin. Packet measurement found ten-second
+timestamp holes at 100 seconds in one otherwise useful parent and near 650 seconds in another, so
+neither an arbitrary ten-second prefix start nor a long EOF-relative edge suffix is continuous
+evidence. The plan performs no rendering or model call. A later renderer measures the
 canonical encoded parts and may publish a certification suite only when wordless, motion, and largest-
 byte evidence also satisfy the fixed slice counts; insufficiency fails the corpus rather than causing
 model-outcome-guided case substitution.

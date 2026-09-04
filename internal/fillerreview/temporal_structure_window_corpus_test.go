@@ -105,6 +105,12 @@ func TestBuildTemporalStructureWindowCorpusPlanReproducesSeamConstructions(t *te
 				item.Truth[1].Role == fillerstructure.RoleProgrammeFragment {
 				t.Fatalf("duration edge is not programme/filler/programme: %+v", item)
 			}
+			prefixEndMS := item.Segments[0].StartMS + item.Segments[0].DurationMS
+			suffixEndMS := item.Segments[2].StartMS + item.Segments[2].DurationMS
+			if item.Segments[2].StartMS != temporalStructureWindowProgrammeEdgeSuffixStart(parent) ||
+				item.Segments[2].StartMS-prefixEndMS <= 15_000 || parent.DurationMS-suffixEndMS <= 15_000 {
+				t.Fatalf("duration edge does not retain interior programme margins: parent=%+v case=%+v", parent, item)
+			}
 			if edgeFamilies[item.Pattern] == nil {
 				edgeFamilies[item.Pattern] = make(map[string]struct{})
 			}
