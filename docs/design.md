@@ -6020,10 +6020,20 @@ the ordinary completed CSV consumed by the locker. A reviewer may load a separat
 assistance manifest only when its worksheet, case, rank, and exact content identities reproduce. The
 browser may then prioritize proposed positives and, after one explicit confirmation, mark every
 non-proposal as excluded; it never authors a positive or clean decision. Those decisions require an
-individual reviewer action, and every unresolved row remains blank so locking fails. The assistance
-bytes are neither copied into the worksheet nor accepted by the locker. The board is development
-ergonomics, not the candidate-blind certification review, and the locker still reopens every source
-byte after the review.
+individual reviewer action except in a worksheet whose every row carries the sole canonical
+`policy-clean-nomination` role. For that clean-control worksheet, the board may render a bounded page
+of exact source images and let the reviewer explicitly confirm all eligible, previously undecided
+images on that page as clean only after a fully bound clean-assistance manifest covers every exact
+case with two distinct local vision-model families plus a local OCR text-safety screen, every image
+has loaded, and the reviewer attests that they
+checked the whole page for adult nudity, minors, sexual or graphic content, hate symbols or text, and
+other broadcast-unsuitable content. A model-positive, age-risk, overlap-hold, or targeted-review row
+is never eligible for that page action and must receive an individual decision; loading assistance
+also clears any earlier convenience clean decision on such a row. Positive decisions always remain
+individual. Every unresolved row remains blank so locking fails. The assistance bytes are neither
+copied into the worksheet nor accepted by the locker. The board is development ergonomics, not the
+candidate-blind certification review, and the locker still reopens every source byte after the
+review.
 
 The certification holdout uses a distinct schema-v4 rights contract; a schema-v3 approval remains
 readable development history but cannot authorize certification acquisition or preparation. The

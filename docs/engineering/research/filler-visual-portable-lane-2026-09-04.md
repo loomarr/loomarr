@@ -711,8 +711,39 @@ the ordinary item-level rights lock is SHA-256 `5261eee30624590ab4904adf836dac1c
 Materialization completely decoded 350 distinct JPEGs and exactly 800,602,506 bytes in 350 serial requests;
 the schema-3 ledger is SHA-256 `625d45f9912356db8113bf25307511037265f2b79a863138080b7fc830a7a850`.
 The inert, non-blind nomination worksheet now covers all 350 files at internal digest
-`98b38615ee4900b7bb60b7208c906946c8bb4339e342c44cdc724769eb3d2517`. No clean truth, model result,
+`cd3b1dfe8f4693965e8a6aaeab9a7ec3b5ba16a95eeb589f840fac08c9c009fb`. Its review board is
+SHA-256 `f373df73bf1b7236922f532fbae59ae5d4bd028f44ffc9ad535ae69e659e85fd`. No clean truth,
 certification, provider transfer, training, production, ingestion, scheduling, or broadcast authority exists.
+
+The clean-control board now treats clean review as a separate interface rather than overloading the ordinary
+one-image nomination loop. Exactly 12 source-bound images appear per page; every image must load and the
+reviewer must explicitly attest that the page contains no visible adult nudity, minors or age-ambiguous people,
+sexual or graphic content, hate symbols or slurs, or other broadcast-unsuitable material before eligible rows
+can be marked clean together. A fully bound assistance manifest is mandatory. It must cover all 350 worksheet
+cases with two distinct local vision-model families plus local OCR text-safety evidence. Any positive signal,
+age risk, model disagreement, OCR uncertainty, or targeted hold remains an individual inspection. Positive
+decisions are always individual, and reloading assistance clears any convenience clean decision that is no
+longer eligible. The browser never grants model output clean, truth, training, or operational authority.
+
+The first complete assistance pass used local Gemma 4 12B over the exact source JPEGs and local Qwen 3.5 9B
+over deterministic auto-oriented, metadata-stripped, maximum-1,024-pixel PNG review renditions still bound to
+the exact source SHA-256. Gemma's 350-row ledger is SHA-256
+`6e2003fd037a35b81e1f6f0fe2a85cb2977f36b4b8d5611b6cb726f575dabb02`; it proposed 24 visible-adult
+positives, raised 15 age risks, cleared 310 images for no visible nudity, and held one graphic-content case.
+Qwen's independent 350-row ledger is SHA-256
+`fb9cafab6d2c41f51f27270a5d39712a085ce0d01e536c9a184a18d9fb18a3db`; it proposed 16 positives,
+raised nine age risks, cleared 323, and held two. Neither output is a label.
+
+Apple Vision OCR also covered all 350 exact sources at ledger SHA-256
+`58d6edd65e7245fcd4e99c15658aa484bf9f1fdf5c51d2408c8959a08cf8b1e1`. A separate local Gemma
+categorical text-safety pass covered all cases at SHA-256
+`4d540804670be5feeac53476ef3b7da7af52ad6d96bf4802ab67080adf2d7b5e`; only 92 actionable OCR cases
+required inference. Raw recognized text remains in the private OCR ledger and never enters the assistance
+manifest or review UI. The conservative four-stream join produced 236 page-confirmable clean candidates,
+11 positive holds, 19 age-risk holds, and 84 targeted inspections. Its clean-assistance manifest has file
+SHA-256 `b5120439862afc6b3994c23dd5d29203adfb4f80dba115eaafd95e1985ea32cc` and internal digest
+`8c1f6bc862530b1729d0f5de9246a90cb492309cc1b7dad08a30114e9b81dee9`. These are routing results only;
+human clean and positive decisions remain pending.
 
 ## Required development measurements
 

@@ -158,7 +158,14 @@ new licence from tags or search results. Preparation also emits a private `revie
 shows the exact worksheet-bound image and source metadata and exports the same CSV. A separately selected local
 model-assistance JSON may prioritize proposals and explicitly exclude all non-proposals only after its worksheet,
 rank, case, and source-content bindings reproduce in the browser. It cannot author a positive or clean decision,
-and it is not consumed by the lock operation.
+and it is not consumed by the lock operation. When every worksheet row carries only the canonical
+`policy-clean-nomination` role, the board instead starts in a 12-image contact sheet. It permits one explicit
+human clean confirmation for the eligible undecided images on a page only after a fully bound clean-assistance
+manifest covers every exact case with two distinct local vision-model families and a local OCR text-safety
+screen, every exact source image loads, and the reviewer checks the page-level broadcast-safety attestation.
+Model-positive, age-risk, overlap-hold, and
+targeted-review rows are withheld from that action and must be opened for an individual decision; loading model
+assistance clears any earlier convenience clean decision on those rows. Positive decisions are always individual.
 
 `make filler-visual-corpus-nomination-lock` reconstructs that worksheet from the original bytes before
 accepting the completed CSV. It rejects changed cells, blank or unknown dispositions, contradictory judgments,

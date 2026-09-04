@@ -14,6 +14,7 @@ const (
 	VisualCorpusNominationSetContractVersion       = "filler-visual-corpus-nomination-set-v2"
 	VisualCorpusMetCC0ApprovalBasisPrefix          = fillercorpus.MetRightsApprovalBasisPrefix
 	VisualCorpusNominationExclude                  = "exclude"
+	VisualCorpusCleanNominationRoleHint            = "policy-clean-nomination"
 )
 
 // VisualCorpusNominationWorksheet freezes every mechanically derived field
