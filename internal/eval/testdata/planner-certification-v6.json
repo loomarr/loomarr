@@ -2,8 +2,8 @@
   "schemaVersion": 6,
   "version": "planner-certification-v6",
   "base": {
-    "path": "testdata/planner-certification-v2.json",
-    "sha256": "70934f608f7e3a2ebc1e00e9c92b402b231805caccb5cb3c6d5dda5d6f2969da"
+    "path": "testdata/planner-certification-v6-base.json",
+    "sha256": "425cda4635eb4bc38b35d57f95a3dde6f93f7ccb0c587e95a356273d7f61e99d"
   },
   "promptVersion": "suggester-prompt-v4",
   "toolSchemaVersion": "catalog-search-v4",

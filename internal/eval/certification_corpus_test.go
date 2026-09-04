@@ -4,12 +4,15 @@ package eval
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -33,8 +36,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if corpus.Split != "certification" {
 		t.Fatalf("corpus split = %q, want certification", corpus.Split)
 	}
-	if len(corpus.Cases) != 25 {
-		t.Fatalf("certification scenario families = %d, want 25", len(corpus.Cases))
+	if len(corpus.Cases) != 28 {
+		t.Fatalf("certification scenario families = %d, want 28", len(corpus.Cases))
 	}
 	if corpus.Fixture.SHA256 == "" {
 		t.Fatal("catalog fixture digest is empty")
@@ -61,7 +64,7 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 		"tool-routing", "must-include", "must-exclude", "refinement",
 		"season-window", "audience-ceiling", "ambiguous", "conflicting",
 		"thin-results", "empty-results", "tool-error", "repair-turn",
-		"adversarial-fabrication",
+		"adversarial-fabrication", "network-qualifier", "person-qualifier",
 	} {
 		if !axes[axis] {
 			t.Errorf("certification corpus does not cover %q", axis)
@@ -80,6 +83,80 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	}
 	if corpus.Selection.QualityMargin != 0.02 || validateSelection(corpus.Selection) != nil {
 		t.Fatalf("certification selection contract drifted: %+v", corpus.Selection)
+	}
+}
+
+func TestV6NetworkAndPersonFamiliesPinExactToolRoutesAndEvidence(t *testing.T) {
+	cases, err := CertificationCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantOperations := map[string]string{
+		"network-discovery": "network",
+		"cast-discovery":    "cast",
+		"creator-discovery": "creator",
+	}
+	for _, c := range cases {
+		if want, ok := wantOperations[c.Name]; ok {
+			if c.ExpectedToolOperation != want {
+				t.Errorf("case %q operation = %q, want %q", c.Name, c.ExpectedToolOperation, want)
+			}
+			delete(wantOperations, c.Name)
+		}
+	}
+	if len(wantOperations) != 0 {
+		t.Fatalf("missing v6 operation families: %v", wantOperations)
+	}
+
+	corpus, err := LoadEmbeddedCertificationCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtureBlob, err := certificationFiles.ReadFile(corpus.Fixture.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture certificationCatalogFixture
+	if err := json.Unmarshal(fixtureBlob, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	wantEvidence := map[string]func(catalog.Candidate) bool{
+		"network-discovery": func(c catalog.Candidate) bool { return slices.Equal(c.Networks, []string{"Synthetic Network"}) },
+		"cast-discovery":    func(c catalog.Candidate) bool { return slices.Equal(c.Cast, []string{"Synthetic Performer"}) },
+		"creator-discovery": func(c catalog.Candidate) bool { return slices.Equal(c.Creators, []string{"Synthetic Filmmaker"}) },
+	}
+	for _, fixtureCase := range fixture.Cases {
+		check, ok := wantEvidence[fixtureCase.ID]
+		if !ok {
+			continue
+		}
+		if len(fixtureCase.Responses) != 1 || len(fixtureCase.Responses[0].Candidates) != 1 ||
+			!check(fixtureCase.Responses[0].Candidates[0]) {
+			t.Errorf("fixture case %q does not pin its resolved evidence: %+v", fixtureCase.ID, fixtureCase.Responses)
+		}
+		delete(wantEvidence, fixtureCase.ID)
+	}
+	if len(wantEvidence) != 0 {
+		t.Fatalf("missing v6 evidence fixtures: %v", wantEvidence)
+	}
+}
+
+func TestObservedProviderClassifiesSpecificDiscoveryQualifierRoutes(t *testing.T) {
+	observer := &observedProvider{}
+	observer.Begin()
+	observer.observeToolCalls([]llm.Message{{Role: llm.Assistant, ToolCalls: []llm.ToolCall{
+		{Arguments: map[string]any{"media_type": "series", "network": "Synthetic Network"}},
+		{Arguments: map[string]any{"media_type": "movie", "cast": []any{"Synthetic Performer"}}},
+		{Arguments: map[string]any{"media_type": "movie", "creators": []any{"Synthetic Filmmaker"}}},
+		{Arguments: map[string]any{"media_type": "movie", "cast": []any{"Synthetic Performer"}, "creators": []any{"Synthetic Filmmaker"}}},
+	}}})
+
+	got := observer.Snapshot(nil)
+	if got.ToolCalls != 4 || got.NetworkCalls != 1 || got.CastCalls != 1 || got.CreatorCalls != 1 || got.PeopleCalls != 1 {
+		t.Fatalf("specific operation counts = %+v, want one network/cast/creator/combined call", got)
+	}
+	if got.TitleCalls != 0 || got.GenreCalls != 0 || got.KeywordCalls != 0 {
+		t.Fatalf("specific qualifiers leaked into legacy operation counts: %+v", got)
 	}
 }
 
@@ -335,8 +412,8 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 150 {
-		t.Fatalf("executable certification cases = %d, want 150", len(cases))
+	if len(cases) != 168 {
+		t.Fatalf("executable certification cases = %d, want 168", len(cases))
 	}
 	abstentions := 0
 	policyCases := 0
@@ -373,8 +450,8 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 	if abstentions != 18 {
 		t.Fatalf("abstention cases = %d, want exactly 18 explicit empty/conflict cases", abstentions)
 	}
-	if policyCases != 30 || proposalCases != 150 || recoveryCases != 6 {
-		t.Fatalf("quality answer coverage: policy=%d proposal=%d recovery=%d, want 30/150/6",
+	if policyCases != 30 || proposalCases != 168 || recoveryCases != 6 {
+		t.Fatalf("quality answer coverage: policy=%d proposal=%d recovery=%d, want 30/168/6",
 			policyCases, proposalCases, recoveryCases)
 	}
 }
@@ -384,8 +461,8 @@ func TestCertificationFamilySmokeCasesSelectExactlyOneBaseIntentPerFamily(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 25 {
-		t.Fatalf("family smoke cases = %d, want 25", len(cases))
+	if len(cases) != 28 {
+		t.Fatalf("family smoke cases = %d, want 28", len(cases))
 	}
 	seen := make(map[string]bool, len(cases))
 	for _, c := range cases {
