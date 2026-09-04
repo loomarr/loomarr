@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSegmentScreeningSummaryReproducesBrowserSafeFiveAxisEvidence(t *testing.T) {
@@ -19,7 +20,11 @@ func TestSegmentScreeningSummaryReproducesBrowserSafeFiveAxisEvidence(t *testing
 	if ValidateSegmentScreeningSummary(summary) != nil || summary.State != ScreeningSummaryAvailable ||
 		summary.SubjectSHA256 != subject.SHA256 || summary.EvidenceSHA256 != aggregate.SHA256 ||
 		summary.Outcome != ScreenPass || summary.Airworthiness == nil ||
-		!reflect.DeepEqual(summary.Airworthiness, &aggregate.Airworthiness) {
+		!reflect.DeepEqual(summary.Airworthiness, &aggregate.Airworthiness) || summary.RightsScope == nil ||
+		summary.RightsScope.SourceID != subject.SourceID || summary.RightsScope.AcquisitionID != subject.AcquisitionID ||
+		summary.RightsScope.SourceMasterSHA256 != subject.SourceMasterSHA256 ||
+		summary.RightsScope.PolicySHA256 != screeningProfileFixture(ScreenRights, "4").PolicySHA256 ||
+		summary.RightsScope.Use != FillerBroadcastUse {
 		t.Fatalf("summary = %+v", summary)
 	}
 	wantAxes := []SegmentScreeningAxis{ScreenVisualSafety, ScreenSpokenSafety, ScreenWrittenSafety, ScreenRights, ScreenPlayback}
@@ -27,6 +32,30 @@ func TestSegmentScreeningSummaryReproducesBrowserSafeFiveAxisEvidence(t *testing
 		if axis.Axis != wantAxes[index] || axis.EvidenceSHA256 == "" || axis.ReasonCode == "" {
 			t.Fatalf("axis %d = %+v", index, axis)
 		}
+	}
+}
+
+func TestSegmentScreeningSummaryReadsNoPrivateRawRightsEvidence(t *testing.T) {
+	service, mediaPath, subject, aggregate := segmentScreeningSummaryFixture(t, true)
+	repository := service.evidence.(*FileSegmentScreeningEvidenceRepository)
+	var rightsAuthority string
+	for _, result := range aggregate.Results {
+		if result.Axis == ScreenRights {
+			rightsAuthority = result.AuthoritySHA256
+			break
+		}
+	}
+	rightsRecord, err := repository.GetSegmentScreeningAxisRecord(t.Context(), rightsAuthority)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(repository.axisPath("screening-axis-raw", rightsRecord.RawEvidenceSHA256)); err != nil {
+		t.Fatal(err)
+	}
+
+	summary, err := service.ReadSegmentScreeningSummary(t.Context(), subject.CatalogHash, mediaPath)
+	if err != nil || summary.State != ScreeningSummaryAvailable || summary.RightsScope == nil {
+		t.Fatalf("summary=%+v err=%v", summary, err)
 	}
 }
 
@@ -95,6 +124,25 @@ func TestSegmentScreeningSummaryDistinguishesNotScreenedFromUnavailable(t *testi
 			t.Fatalf("summary=%+v err=%v", summary, err)
 		}
 	})
+
+	t.Run("rights context record missing", func(t *testing.T) {
+		service, mediaPath, subject, aggregate := segmentScreeningSummaryFixture(t, true)
+		repository := service.evidence.(*FileSegmentScreeningEvidenceRepository)
+		for _, result := range aggregate.Results {
+			if result.Axis == ScreenRights {
+				if err := os.Remove(repository.axisPath("screening-axis-records", result.AuthoritySHA256)); err != nil {
+					t.Fatal(err)
+				}
+				break
+			}
+		}
+		summary, err := service.ReadSegmentScreeningSummary(t.Context(), subject.CatalogHash, mediaPath)
+		if err == nil || summary.State != ScreeningSummaryUnavailable ||
+			summary.ReasonCode != ScreeningSummaryReasonEvidenceUnavailable || summary.RightsScope != nil ||
+			ValidateSegmentScreeningSummary(summary) != nil {
+			t.Fatalf("summary=%+v err=%v", summary, err)
+		}
+	})
 }
 
 func TestSegmentScreeningSummaryRejectsAnOverallOutcomeThatDisagreesWithItsAxes(t *testing.T) {
@@ -120,7 +168,21 @@ func segmentScreeningSummaryFixture(t *testing.T, attach bool) (*SegmentScreenin
 	if err != nil {
 		t.Fatal(err)
 	}
-	aggregate := screeningAggregateFixture(t, subject)
+	records := passingAxisEvidence(t, subject)
+	results := make([]SegmentScreeningResult, 0, len(records))
+	for _, recorded := range records {
+		results = append(results, recorded.Evidence.Result())
+		if attach {
+			if err := repository.PutSegmentScreeningAxisEvidence(t.Context(), recorded); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	aggregate, err := NewSegmentScreeningEvidence(subject, results, screeningAirworthinessDecision(t, subject, records),
+		time.Date(2026, time.September, 12, 4, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if attach {
 		if err := repository.PutSegmentScreeningSubject(t.Context(), subject); err != nil {
 			t.Fatal(err)

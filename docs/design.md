@@ -3617,6 +3617,16 @@ read. The server supplies the authenticated actor and recording instant; the req
 scope, closed decision, private evidence digest, effective/expiry/withdrawal times, and expected current
 grant digest. There is no update or delete endpoint.
 
+Incoming presents that write only in the exact rendered-child screening context. The authenticated summary
+projects the path-free source, acquisition, source-master, policy, and use scope reproduced from the current
+subject and rights-axis record, plus the current immutable grant when one exists; the operator never copies
+those identifiers into a generic form. The review basis is a local file chosen in the browser: the client
+computes its SHA-256 and sends only that digest, while the private file remains with the operator. A new
+authorization, prohibition, unknown decision, or withdrawal appends through the same compare-and-swap head;
+it cannot edit history. Saving rights does not mutate the already-settled screening result. Incoming explains
+that the clip remains held and offers a separate explicit screen-stage rewind so any provider work, cost, and
+new immutable evidence are visible rather than silently triggered by the rights write.
+
 Screening aggregates, provider-neutral axis records, operation identities, and opaque raw evidence live
 separately in a private content-addressed repository. The immutable screening-release authority is explicitly
 non-authorizing by default, names exactly one canonical profile per axis, and locks the aggregate contract.
@@ -8406,7 +8416,11 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
     independent rows with pass/reject/hold, safe reason codes, assessment time, and evidence
     identities. Closed Airworthiness flags and bounded trigger intervals may be shown; raw provider
     output, OCR/transcript text, restricted phrases, private paths, and private rights evidence may
-    not. Provider failures, budget ceilings, missing evidence, and stale authorities are operational
+    not. A rights hold exposes contextual review beside that exact child: the source/acquisition/master/
+    policy scope is server-owned, the browser hashes a locally selected review file without uploading it,
+    and an append or supersession uses the exact current grant digest. Recording the grant leaves the old
+    screen immutable and requires an explicit screen-stage rerun. Provider failures, budget ceilings,
+    missing evidence, and stale authorities are operational
     recovery states, never questions asking a person to guess whether the content is safe. The
     former `/filler/attention` path is a compatibility redirect to `/filler/incoming`.
   - **Library** — the clips themselves, in a grid or a dense list. Multi-select drives bulk retagging and removal; a card carries its thumbnail, duration, quality, tags, and **how often it has actually aired**. Legacy catalog filters on `/filler?...` redirect here without losing the filter.
