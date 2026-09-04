@@ -71,7 +71,7 @@ func TestBuildTemporalStructureWindowCorpusMediaPublishesExactBlindedSourcesAndT
 		}
 	}
 	for _, count := range patterns {
-		if count != TemporalStructureWindowCorpusCasesPerPattern {
+		if count != TemporalStructureWindowCorpusCasesPerPattern && count != TemporalStructureWindowCorpusEdgeCases {
 			t.Fatalf("pattern counts = %v", patterns)
 		}
 	}

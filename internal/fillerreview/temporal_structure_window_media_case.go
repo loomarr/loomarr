@@ -95,7 +95,9 @@ func temporalStructureWindowMediaAuthorityCase(item temporalStructureWindowPrepa
 		return TemporalStructureWindowMediaAuthorityCase{}, errors.New("window corpus final duration reconciliation erased its last part")
 	}
 	authority.Truth[last].EndMS = publicCase.Source.DurationMs
-	if item.planCase.Pattern != TemporalStructureWindowPatternCrossingSeam {
+	if item.planCase.Pattern == TemporalStructureWindowPatternSeamOverlap ||
+		item.planCase.Pattern == TemporalStructureWindowPatternSeamPrimaryLeft ||
+		item.planCase.Pattern == TemporalStructureWindowPatternSeamPrimaryRight {
 		authority.ObservedTargetBoundaryMS = authority.Truth[1].EndMS
 	}
 	if err := validateTemporalStructureWindowMediaCase(publicCase, authority, item.planCase); err != nil {

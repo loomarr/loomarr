@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	ShadowReportSchemaVersion   = 1
-	ShadowReportContractVersion = "filler-structure-short-long-shadow-v1"
-	ShadowRequiredCases         = 24
+	ShadowReportSchemaVersion   = 2
+	ShadowReportContractVersion = "filler-structure-short-long-shadow-v2"
+	ShadowRequiredCases         = 28
 )
 
 type ShadowCase struct {

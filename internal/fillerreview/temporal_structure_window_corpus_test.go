@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
@@ -52,6 +53,7 @@ func TestBuildTemporalStructureWindowCorpusPlanReproducesSeamConstructions(t *te
 	}
 	patterns := make(map[string]int)
 	roles := make(map[string]struct{})
+	edgeFamilies := make(map[string]map[string]struct{})
 	for _, item := range plan.Cases {
 		patterns[item.Pattern]++
 		if item.TargetSeamMS != fillerstructurewindow.PrimarySpanMS || item.DurationMS <= fillerstructurewindow.PrimarySpanMS {
@@ -85,8 +87,29 @@ func TestBuildTemporalStructureWindowCorpusPlanReproducesSeamConstructions(t *te
 				t.Fatalf("crossing case = %+v", item)
 			}
 			continue
+		case TemporalStructureWindowPatternDurationLowerEdge:
+			if item.DurationMS != TemporalStructureWindowLowerEdgeDurationMS || len(item.Truth) != 3 ||
+				item.TargetBoundaryMS != 0 || len(item.FillerFamilyIDs) != 1 {
+				t.Fatalf("lower duration-edge case = %+v", item)
+			}
+		case TemporalStructureWindowPatternDurationUpperEdge:
+			if item.DurationMS != TemporalStructureWindowUpperEdgeDurationMS || len(item.Truth) != 3 ||
+				item.TargetBoundaryMS != 0 || len(item.FillerFamilyIDs) != 1 {
+				t.Fatalf("upper duration-edge case = %+v", item)
+			}
 		default:
 			t.Fatalf("unknown pattern %q", item.Pattern)
+		}
+		if item.Pattern == TemporalStructureWindowPatternDurationLowerEdge || item.Pattern == TemporalStructureWindowPatternDurationUpperEdge {
+			if item.Truth[0].Role != fillerstructure.RoleProgrammeFragment || item.Truth[2].Role != fillerstructure.RoleProgrammeFragment ||
+				item.Truth[1].Role == fillerstructure.RoleProgrammeFragment {
+				t.Fatalf("duration edge is not programme/filler/programme: %+v", item)
+			}
+			if edgeFamilies[item.Pattern] == nil {
+				edgeFamilies[item.Pattern] = make(map[string]struct{})
+			}
+			edgeFamilies[item.Pattern][item.FillerFamilyIDs[0]] = struct{}{}
+			continue
 		}
 		if len(item.Truth) != 4 || item.Truth[1].EndMS != item.TargetBoundaryMS ||
 			item.Truth[1].Role != item.Truth[2].Role || len(item.FillerFamilyIDs) != 2 ||
@@ -95,12 +118,21 @@ func TestBuildTemporalStructureWindowCorpusPlanReproducesSeamConstructions(t *te
 		}
 		roles[string(item.Truth[1].Role)] = struct{}{}
 	}
-	if len(patterns) != 4 || len(roles) != len(temporalStructureHoldoutRoleQuotas) {
+	if len(patterns) != 6 || len(roles) != len(temporalStructureHoldoutRoleQuotas) {
 		t.Fatalf("patterns=%v roles=%v", patterns, roles)
 	}
 	for pattern, count := range patterns {
-		if count != TemporalStructureWindowCorpusCasesPerPattern {
+		want := TemporalStructureWindowCorpusCasesPerPattern
+		if pattern == TemporalStructureWindowPatternDurationLowerEdge || pattern == TemporalStructureWindowPatternDurationUpperEdge {
+			want = TemporalStructureWindowCorpusEdgeCases
+		}
+		if count != want {
 			t.Fatalf("pattern %q has %d cases", pattern, count)
+		}
+	}
+	for pattern, families := range edgeFamilies {
+		if len(families) != TemporalStructureWindowCorpusEdgeCases {
+			t.Fatalf("edge pattern %q families=%v", pattern, families)
 		}
 	}
 

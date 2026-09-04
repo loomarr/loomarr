@@ -84,6 +84,26 @@ func constructTemporalStructureWindowCorpusPlan(
 		parent := parents[index%len(parents)]
 		cases = append(cases, buildTemporalStructureWindowCrossingCase(seed, parent, anchor))
 	}
+	lower, err := selectTemporalStructureWindowEdgeAnchors(seed, TemporalStructureWindowPatternDurationLowerEdge, TemporalStructureWindowLowerEdgeDurationMS, anchors)
+	if err != nil {
+		return TemporalStructureWindowCorpusPlan{}, err
+	}
+	upper, err := selectTemporalStructureWindowEdgeAnchors(seed, TemporalStructureWindowPatternDurationUpperEdge, TemporalStructureWindowUpperEdgeDurationMS, anchors)
+	if err != nil {
+		return TemporalStructureWindowCorpusPlan{}, err
+	}
+	for index, anchor := range lower {
+		cases = append(cases, buildTemporalStructureWindowDurationEdgeCase(
+			seed, TemporalStructureWindowPatternDurationLowerEdge, TemporalStructureWindowLowerEdgeDurationMS,
+			parents[index], anchor,
+		))
+	}
+	for index, anchor := range upper {
+		cases = append(cases, buildTemporalStructureWindowDurationEdgeCase(
+			seed, TemporalStructureWindowPatternDurationUpperEdge, TemporalStructureWindowUpperEdgeDurationMS,
+			parents[index+TemporalStructureWindowCorpusEdgeCases], anchor,
+		))
+	}
 	sort.Slice(cases, func(i, j int) bool { return cases[i].ID < cases[j].ID })
 	plan := TemporalStructureWindowCorpusPlan{
 		SchemaVersion: TemporalStructureWindowCorpusSchemaVersion, ContractVersion: TemporalStructureWindowCorpusContractVersion,
@@ -92,6 +112,31 @@ func constructTemporalStructureWindowCorpusPlan(
 	}
 	plan.SHA256 = temporalStructureWindowCorpusPlanSHA256(plan)
 	return plan, nil
+}
+
+func selectTemporalStructureWindowEdgeAnchors(seed, pattern string, durationMS int64, anchors []temporalStructureWindowAnchor) ([]temporalStructureWindowAnchor, error) {
+	candidates := slices.Clone(anchors)
+	sort.Slice(candidates, func(i, j int) bool {
+		left := hashBytes([]byte(seed + "\x00window-edge\x00" + pattern + "\x00" + candidates[i].source.ID))
+		right := hashBytes([]byte(seed + "\x00window-edge\x00" + pattern + "\x00" + candidates[j].source.ID))
+		return left < right
+	})
+	selected := make([]temporalStructureWindowAnchor, 0, TemporalStructureWindowCorpusEdgeCases)
+	families := make(map[string]struct{}, TemporalStructureWindowCorpusEdgeCases)
+	for _, candidate := range candidates {
+		if candidate.source.DurationMS >= durationMS-20_000 {
+			continue
+		}
+		if _, duplicate := families[candidate.receipt.FamilyID]; duplicate {
+			continue
+		}
+		families[candidate.receipt.FamilyID] = struct{}{}
+		selected = append(selected, candidate)
+		if len(selected) == TemporalStructureWindowCorpusEdgeCases {
+			return selected, nil
+		}
+	}
+	return nil, fmt.Errorf("window corpus cannot construct two family-distinct %s cases at %dms", pattern, durationMS)
 }
 
 func selectTemporalStructureWindowPairs(seed, pattern string, boundaryMS int64, anchors []temporalStructureWindowAnchor) ([]temporalStructureWindowPair, error) {
@@ -191,6 +236,28 @@ func buildTemporalStructureWindowCrossingCase(seed string, parent TemporalStruct
 	identity := TemporalStructureWindowPatternCrossingSeam + "\x00" + parent.ID + "\x00" + anchor.source.ID
 	return TemporalStructureWindowCorpusCase{
 		ID: "window-" + hashBytes([]byte(seed + "\x00" + identity))[:24], Pattern: TemporalStructureWindowPatternCrossingSeam,
+		TargetSeamMS: fillerstructurewindow.PrimarySpanMS, DurationMS: truth[len(truth)-1].EndMS,
+		FillerFamilyIDs: []string{anchor.receipt.FamilyID}, Segments: segments, Truth: truth,
+	}
+}
+
+func buildTemporalStructureWindowDurationEdgeCase(seed, pattern string, durationMS int64, parent TemporalStructureChallengeSource, anchor temporalStructureWindowAnchor) TemporalStructureWindowCorpusCase {
+	programmeMS := durationMS - anchor.source.DurationMS
+	prefixMS := programmeMS / 2
+	suffixMS := programmeMS - prefixMS
+	prefixStartMS := temporalStructureWindowProgrammePrefixStart(parent)
+	endStartMS := parent.DurationMS - suffixMS - 10_000
+	segments := []TemporalStructureChallengeSegment{
+		{SourceID: parent.ID, StartMS: prefixStartMS, DurationMS: prefixMS},
+		{SourceID: anchor.source.ID, DurationMS: anchor.source.DurationMS},
+		{SourceID: parent.ID, StartMS: endStartMS, DurationMS: suffixMS},
+	}
+	truth := temporalStructureWindowTruth(segments, map[string]fillerstructure.Role{
+		parent.ID: fillerstructure.RoleProgrammeFragment, anchor.source.ID: fillerstructure.Role(anchor.receipt.Role),
+	})
+	identity := pattern + "\x00" + parent.ID + "\x00" + anchor.source.ID
+	return TemporalStructureWindowCorpusCase{
+		ID: "window-" + hashBytes([]byte(seed + "\x00" + identity))[:24], Pattern: pattern,
 		TargetSeamMS: fillerstructurewindow.PrimarySpanMS, DurationMS: truth[len(truth)-1].EndMS,
 		FillerFamilyIDs: []string{anchor.receipt.FamilyID}, Segments: segments, Truth: truth,
 	}

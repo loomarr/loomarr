@@ -28,8 +28,8 @@ func TestRunStopsPaidSequenceWhenEnvelopeIsNotRepresented(t *testing.T) {
 			t.Fatalf("config=%+v", config)
 		}
 		return fillerreview.TemporalStructureWindowPreflight{
-			Status: fillerreview.TemporalStructureWindowPreflightBlocked, Cases: 24,
-			WindowRequestsPerFamily: 56, CompleteVideoRequestsPerFamily: 24, TotalProviderRequests: 160,
+			Status: fillerreview.TemporalStructureWindowPreflightBlocked, Cases: 28,
+			WindowRequestsPerFamily: 66, CompleteVideoRequestsPerFamily: 28, TotalProviderRequests: 188,
 			MinimumObservedSourceDurationMS: 180_833, MaximumObservedSourceDurationMS: 301_020,
 			MinimumObservedWindowsPerSource: 2, MaximumObservedWindowsPerSource: 3,
 			MinimumObservedWindowBytes: 1_000, MaximumObservedWindowBytes: 30_000_000,
@@ -37,7 +37,7 @@ func TestRunStopsPaidSequenceWhenEnvelopeIsNotRepresented(t *testing.T) {
 		}, strings.Repeat("a", 64), nil
 	}})
 	if code != 1 || !called || stderr.Len() != 0 ||
-		!strings.Contains(stdout.String(), "56 windows/family + 24 complete videos/family = 160 serial provider requests") ||
+		!strings.Contains(stdout.String(), "66 windows/family + 28 complete videos/family = 188 serial provider requests") ||
 		!strings.Contains(stdout.String(), "next=extend_and_rerender_sealed_window_corpus") {
 		t.Fatalf("code=%d called=%v stdout=%q stderr=%q", code, called, stdout.String(), stderr.String())
 	}
@@ -51,7 +51,7 @@ func TestRunAllowsPaidSequenceOnlyForReadyEnvelope(t *testing.T) {
 	}, &stdout, &stderr, capabilities{publish: func(fillerreview.TemporalStructureWindowPreflightConfig) (fillerreview.TemporalStructureWindowPreflight, string, error) {
 		return fillerreview.TemporalStructureWindowPreflight{
 			Status: fillerreview.TemporalStructureWindowPreflightReady, ReadyForPaidCertification: true,
-			Cases: 24, WindowRequestsPerFamily: 56, CompleteVideoRequestsPerFamily: 24, TotalProviderRequests: 160,
+			Cases: 28, WindowRequestsPerFamily: 66, CompleteVideoRequestsPerFamily: 28, TotalProviderRequests: 188,
 			MinimumObservedSourceDurationMS: 120_001, MaximumObservedSourceDurationMS: 300_000,
 			MinimumObservedWindowsPerSource: 2, MaximumObservedWindowsPerSource: 3,
 			MinimumObservedWindowBytes: 1_000, MaximumObservedWindowBytes: 30_000_000,

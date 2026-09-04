@@ -227,10 +227,26 @@ func validateTemporalStructureWindowSeam(authority TemporalStructureWindowMediaA
 			authority.Truth[1].StartMS >= seam || authority.Truth[1].EndMS <= seam {
 			return errors.New("rendered window corpus crossing case no longer crosses the seam")
 		}
+	case TemporalStructureWindowPatternDurationLowerEdge:
+		if authority.ObservedTargetBoundaryMS != 0 || len(authority.Truth) != 3 ||
+			planCase.DurationMS != TemporalStructureWindowLowerEdgeDurationMS ||
+			publicDurationOutsideEdge(authority.Truth[len(authority.Truth)-1].EndMS, TemporalStructureWindowLowerEdgeDurationMS) {
+			return errors.New("rendered window corpus lower-duration case left its planned edge")
+		}
+	case TemporalStructureWindowPatternDurationUpperEdge:
+		if authority.ObservedTargetBoundaryMS != 0 || len(authority.Truth) != 3 ||
+			planCase.DurationMS != TemporalStructureWindowUpperEdgeDurationMS ||
+			publicDurationOutsideEdge(authority.Truth[len(authority.Truth)-1].EndMS, TemporalStructureWindowUpperEdgeDurationMS) {
+			return errors.New("rendered window corpus upper-duration case left its planned edge")
+		}
 	default:
 		return errors.New("rendered window corpus pattern is invalid")
 	}
 	return nil
+}
+
+func publicDurationOutsideEdge(observed, planned int64) bool {
+	return absoluteInt64(observed-planned) > fillerstructurewindowcert.BoundaryToleranceMS
 }
 
 func completeTemporalStructureWindowTruth(truth []fillerstructure.Segment, durationMS int64) bool {

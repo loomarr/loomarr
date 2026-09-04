@@ -14,15 +14,23 @@ import (
 )
 
 const (
-	TemporalStructureWindowCorpusSchemaVersion   = 2
-	TemporalStructureWindowCorpusContractVersion = "filler-temporal-structure-window-corpus-plan-v2"
-	TemporalStructureWindowCorpusCases           = 24
+	TemporalStructureWindowCorpusSchemaVersion   = 3
+	TemporalStructureWindowCorpusContractVersion = "filler-temporal-structure-window-corpus-plan-v3"
+	TemporalStructureWindowCorpusCases           = 28
 	TemporalStructureWindowCorpusCasesPerPattern = 6
+	TemporalStructureWindowCorpusEdgeCases       = 2
 
-	TemporalStructureWindowPatternSeamOverlap      = "seam_overlap"
-	TemporalStructureWindowPatternSeamPrimaryLeft  = "seam_primary_left"
-	TemporalStructureWindowPatternSeamPrimaryRight = "seam_primary_right"
-	TemporalStructureWindowPatternCrossingSeam     = "crossing_seam"
+	TemporalStructureWindowFirstShortSourceCeilingMS int64 = 120_000
+	TemporalStructureWindowFirstLongSourceCeilingMS  int64 = 302_000
+	TemporalStructureWindowLowerEdgeDurationMS       int64 = 121_000
+	TemporalStructureWindowUpperEdgeDurationMS       int64 = 301_000
+
+	TemporalStructureWindowPatternSeamOverlap       = "seam_overlap"
+	TemporalStructureWindowPatternSeamPrimaryLeft   = "seam_primary_left"
+	TemporalStructureWindowPatternSeamPrimaryRight  = "seam_primary_right"
+	TemporalStructureWindowPatternCrossingSeam      = "crossing_seam"
+	TemporalStructureWindowPatternDurationLowerEdge = "duration_lower_edge"
+	TemporalStructureWindowPatternDurationUpperEdge = "duration_upper_edge"
 )
 
 type TemporalStructureWindowCorpusConfig struct {

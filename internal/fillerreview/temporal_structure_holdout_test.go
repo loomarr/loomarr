@@ -378,7 +378,7 @@ func newTemporalStructureHoldoutFixtureWithEvidence(t *testing.T, mutate func(*T
 		}
 		inventory.Sources = append(inventory.Sources, TemporalStructureChallengeSource{
 			ID: "programme-" + string(rune('a'+index)), Path: filepath.ToSlash(path[len(base.root)+1:]),
-			SHA256: hashBytes(raw), DurationMS: 180_000 + int64(index)*10_000,
+			SHA256: hashBytes(raw), DurationMS: 700_000 + int64(index)*10_000,
 			Provenance: TemporalStructureSourceProvenance{
 				Kind: TemporalStructureSourceProgrammeParent, Authority: "test-programme-authority",
 				Reference: "test-programme-" + string(rune('a'+index)), MetadataSHA256: hashBytes([]byte("metadata-" + string(rune('a'+index)))),

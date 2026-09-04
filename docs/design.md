@@ -4835,7 +4835,7 @@ slice counts, errors, and reducer contract. It always sets training and automati
 permission false: a pass is evidence from which a separate window-specific materialization authority
 may later be issued after the locked short-versus-long shadow comparison.
 
-That shadow comparison is a provider-neutral replay over the complete 24-case long-reel corpus, not
+That shadow comparison is a provider-neutral replay over the complete 28-case long-reel corpus, not
 a second truth-scoring pass. For every opaque case it receives the two immutable reducer artifacts
 produced from the same exact source: one through `complete_video` and one through
 `window_media_set`. It revalidates both artifacts, requires the same reducer version, boundary
@@ -4856,7 +4856,7 @@ admission, nor automatic materialization authority.
 A separately reviewed long-reel authority may consume only a complete passing report together with
 the passing window certificate; the shadow report cannot activate production by itself.
 
-Each family run is a separate truth-blind artifact over the complete 24-case public window-set
+Each family run is a separate truth-blind artifact over the complete 28-case public window-set
 manifest. The runner receives only opaque aliases, exact public source and media-set authority, and
 machine-local window paths; it cannot open case identifiers, construction truth, measured slice
 labels, or another family's answers. It evaluates cases and windows serially through the same
@@ -4877,7 +4877,7 @@ settled content-addressed evidence consumes no request; a crash-open request con
 before transport rather than being retried speculatively.
 
 The complete-video half of the shadow uses the same truth-blind, one-family-at-a-time discipline over
-the public 24-case manifest. Its production preparer creates or revalidates one exact canonical
+the public 28-case manifest. Its production preparer creates or revalidates one exact canonical
 derivative per source before the family call. A completed-operation publication keyed by source,
 derivative, assessor profile, current prompt digest, and current schema digest points to the full
 settled call record only after response, structured output, and record bytes are durable. Restart
@@ -4890,7 +4890,7 @@ before the representation comparison begins.
 
 The first long-reel corpus plan reuses only the twelve family-distinct bounded anchors and six
 programme parents already locked by the 60-case holdout. One private deterministic planner binds
-that authoring and receipt and emits 24 programme-with-spots constructions: six place a same-role
+that authoring and receipt and emits 28 programme-with-spots constructions: six place a same-role
 filler join ten seconds inside shared seam context, six place it one second left of primary ownership,
 six place it one second right, and six place one complete filler unit across a primary seam. Programme
 material brackets every construction, filler sources are always used whole, same-role pairs never
@@ -4902,6 +4902,15 @@ start was not continuous evidence. The plan performs no rendering or model call.
 canonical encoded parts and may publish a certification suite only when wordless, motion, and largest-
 byte evidence also satisfy the fixed slice counts; insufficiency fails the corpus rather than causing
 model-outcome-guided case substitution.
+The remaining four constructions establish the first intended continuous production-duration
+slice without changing those seam cohorts after seeing model output. Two place one whole bounded
+filler between programme excerpts in a 121-second source, immediately above the 120-second short
+slice. Two use the same real programme/filler/programme shape at 301 seconds, within the fixed
+tolerance below the first 302-second windowed ceiling. The pairs use distinct filler families and
+programme parents. These edge cases participate in window certification and the locked
+complete-video comparison; later expansion beyond the complete-video transport envelope requires
+a separate window-only duration certificate rather than pretending this first slice proves the
+protocol's full 30-minute capacity.
 
 Rendering that plan is one atomic, non-authorizing operation. It reopens and hashes every declared
 source before any output is created, renders each construction through the canonical structure-media

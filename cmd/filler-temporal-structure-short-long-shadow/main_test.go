@@ -24,11 +24,11 @@ func TestRunPublishesShortLongShadowSummary(t *testing.T) {
 			t.Fatalf("config=%+v", config)
 		}
 		return fillerreview.TemporalStructureShortLongShadowArtifact{Report: fillerstructurewindowcert.ShadowReport{
-			Status: fillerstructurewindowcert.ShadowStatusPassed, PassedCases: 24,
-			ExpectedAliases: make([]string, 24), NextAction: "issue_separately_reviewed_long_reel_materialization_authority",
+			Status: fillerstructurewindowcert.ShadowStatusPassed, PassedCases: 28,
+			ExpectedAliases: make([]string, 28), NextAction: "issue_separately_reviewed_long_reel_materialization_authority",
 		}}, strings.Repeat("a", 64), nil
 	}})
-	if code != 0 || !called || stderr.Len() != 0 || !strings.Contains(stdout.String(), "passed; 24/24 cases agree") ||
+	if code != 0 || !called || stderr.Len() != 0 || !strings.Contains(stdout.String(), "passed; 28/28 cases agree") ||
 		!strings.Contains(stdout.String(), "training=false production=false materialization=false") {
 		t.Fatalf("code=%d called=%v stdout=%q stderr=%q", code, called, stdout.String(), stderr.String())
 	}

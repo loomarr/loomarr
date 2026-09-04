@@ -12,17 +12,18 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructurewindowcert"
 )
 
-func TestPublishTemporalStructureWindowPreflightReportsExactRunAndBlocksUnrepresentedEdges(t *testing.T) {
+func TestPublishTemporalStructureWindowPreflightReportsExactRunAndRequiresRepresentedEdges(t *testing.T) {
 	root := t.TempDir()
 	suiteConfig, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(root, "suite"))
 	if _, err := BuildTemporalStructureWindowCertificationSuite(t.Context(), suiteConfig); err != nil {
 		t.Fatal(err)
 	}
-	output := filepath.Join(root, "preflight.json")
+	output := filepath.Join(root, "ready-preflight.json")
 	report, fileSHA, err := PublishTemporalStructureWindowPreflight(TemporalStructureWindowPreflightConfig{
-		WindowSetManifestPath: suiteConfig.WindowSetManifestPath,
-		SuitePath:             filepath.Join(suiteConfig.OutputDir, "private", "suite.json"),
-		ShortSourceCeilingMS:  120_000, IntendedLongSourceCeilingMS: 300_000, OutputPath: output,
+		WindowSetManifestPath:       suiteConfig.WindowSetManifestPath,
+		SuitePath:                   filepath.Join(suiteConfig.OutputDir, "private", "suite.json"),
+		ShortSourceCeilingMS:        TemporalStructureWindowFirstShortSourceCeilingMS,
+		IntendedLongSourceCeilingMS: TemporalStructureWindowFirstLongSourceCeilingMS, OutputPath: output,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -35,26 +36,48 @@ func TestPublishTemporalStructureWindowPreflightReportsExactRunAndBlocksUnrepres
 	for _, item := range manifest.Cases {
 		windows += len(item.Windows)
 	}
-	if report.Status != TemporalStructureWindowPreflightBlocked || report.ReadyForPaidCertification ||
-		report.NextAction != "extend_and_rerender_sealed_window_corpus" || report.Cases != TemporalStructureWindowCorpusCases ||
+	if report.Status != TemporalStructureWindowPreflightReady || !report.ReadyForPaidCertification ||
+		report.NextAction != "run_two_truth_blind_window_families" || report.Cases != TemporalStructureWindowCorpusCases ||
 		report.WindowRequestsPerFamily != windows || report.CompleteVideoRequestsPerFamily != len(manifest.Cases) ||
-		report.TotalProviderRequests != 2*(windows+len(manifest.Cases)) || report.TrainingAllowed ||
-		report.ProductionAdmissionAllowed || report.AutomaticMaterializationAllowed || !reviewSHA256(fileSHA) {
+		report.TotalProviderRequests != 2*(windows+TemporalStructureWindowCorpusCases) ||
+		report.MinimumObservedSourceDurationMS != TemporalStructureWindowLowerEdgeDurationMS ||
+		report.MaximumObservedSourceDurationMS < TemporalStructureWindowUpperEdgeDurationMS ||
+		report.MaximumObservedSourceDurationMS > TemporalStructureWindowFirstLongSourceCeilingMS || report.TrainingAllowed ||
+		report.ProductionAdmissionAllowed || report.AutomaticMaterializationAllowed || report.LowerEnvelopeEdgeCases < 2 ||
+		report.UpperEnvelopeEdgeCases < 2 || !reviewSHA256(fileSHA) {
 		t.Fatalf("report=%+v fileSHA=%q", report, fileSHA)
 	}
 	if err := ValidateTemporalStructureWindowPreflight(report); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := LoadTemporalStructureWindowPreflight(output, report.WindowSetManifestSHA256); err == nil ||
-		!strings.Contains(err.Error(), "does not authorize") {
-		t.Fatalf("blocked preflight load error=%v", err)
+	if loaded, _, err := LoadTemporalStructureWindowPreflight(output, report.WindowSetManifestSHA256); err != nil || loaded.SHA256 != report.SHA256 {
+		t.Fatalf("ready preflight load=%+v error=%v", loaded, err)
 	}
 	if _, _, err := PublishTemporalStructureWindowPreflight(TemporalStructureWindowPreflightConfig{
-		WindowSetManifestPath: suiteConfig.WindowSetManifestPath,
-		SuitePath:             filepath.Join(suiteConfig.OutputDir, "private", "suite.json"),
-		ShortSourceCeilingMS:  120_000, IntendedLongSourceCeilingMS: 300_000, OutputPath: output,
+		WindowSetManifestPath:       suiteConfig.WindowSetManifestPath,
+		SuitePath:                   filepath.Join(suiteConfig.OutputDir, "private", "suite.json"),
+		ShortSourceCeilingMS:        TemporalStructureWindowFirstShortSourceCeilingMS,
+		IntendedLongSourceCeilingMS: TemporalStructureWindowFirstLongSourceCeilingMS, OutputPath: output,
 	}); err == nil {
 		t.Fatal("immutable preflight output was overwritten")
+	}
+	blockedPath := filepath.Join(root, "blocked-preflight.json")
+	blocked, _, err := PublishTemporalStructureWindowPreflight(TemporalStructureWindowPreflightConfig{
+		WindowSetManifestPath:       suiteConfig.WindowSetManifestPath,
+		SuitePath:                   filepath.Join(suiteConfig.OutputDir, "private", "suite.json"),
+		ShortSourceCeilingMS:        TemporalStructureWindowFirstShortSourceCeilingMS,
+		IntendedLongSourceCeilingMS: 300_000, OutputPath: blockedPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocked.Status != TemporalStructureWindowPreflightBlocked || blocked.ReadyForPaidCertification ||
+		blocked.NextAction != "extend_and_rerender_sealed_window_corpus" {
+		t.Fatalf("blocked report=%+v", blocked)
+	}
+	if _, _, err := LoadTemporalStructureWindowPreflight(blockedPath, blocked.WindowSetManifestSHA256); err == nil ||
+		!strings.Contains(err.Error(), "does not authorize") {
+		t.Fatalf("blocked preflight load error=%v", err)
 	}
 }
 

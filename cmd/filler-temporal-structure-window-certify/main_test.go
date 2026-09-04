@@ -25,11 +25,11 @@ func TestRunPublishesWindowCertificationSummary(t *testing.T) {
 		}
 		return fillerreview.TemporalStructureWindowCertificationArtifact{
 			Families: []fillerreview.TemporalStructureWindowCertificationFamilyEvidence{{}, {}},
-			Report:   fillerstructurewindowcert.Report{Status: fillerstructurewindowcert.StatusFailed, Cases: 24, DecidedCases: 20, WrongCases: 2, HeldCases: 4},
+			Report:   fillerstructurewindowcert.Report{Status: fillerstructurewindowcert.StatusFailed, Cases: 28, DecidedCases: 24, WrongCases: 2, HeldCases: 4},
 		}, strings.Repeat("a", 64), nil
 	}})
 	if code != 0 || !called || stderr.Len() != 0 ||
-		!strings.Contains(stdout.String(), "failed; 20/24 decided, 2 wrong, 4 held across 2 model families") ||
+		!strings.Contains(stdout.String(), "failed; 24/28 decided, 2 wrong, 4 held across 2 model families") ||
 		!strings.Contains(stdout.String(), "training=false automaticMaterialization=false") {
 		t.Fatalf("code=%d called=%v stdout=%q stderr=%q", code, called, stdout.String(), stderr.String())
 	}

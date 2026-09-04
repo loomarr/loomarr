@@ -42,7 +42,12 @@ func validateTemporalStructureWindowCorpusPlan(
 			return fmt.Errorf("window corpus pattern %q does not have six cases", pattern)
 		}
 	}
-	if len(patterns) != 4 {
+	for _, pattern := range []string{TemporalStructureWindowPatternDurationLowerEdge, TemporalStructureWindowPatternDurationUpperEdge} {
+		if patterns[pattern] != TemporalStructureWindowCorpusEdgeCases {
+			return fmt.Errorf("window corpus pattern %q does not have two cases", pattern)
+		}
+	}
+	if len(patterns) != 6 {
 		return fmt.Errorf("window corpus contains an unknown construction pattern")
 	}
 	want, err := constructTemporalStructureWindowCorpusPlan(
