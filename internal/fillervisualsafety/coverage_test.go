@@ -36,6 +36,29 @@ func TestPlanCoverageIncludesCompleteTimelineEdges(t *testing.T) {
 	}
 }
 
+func TestPlanCoverageUsesMeasuredFirstAndLastFrames(t *testing.T) {
+	authority := visualAuthority(t, 10_050)
+	authority.Video.FirstFrameMS = 17
+	authority.Video.LastFrameMS = 10_017
+	authority.SHA256 = fillervisualsafety.SourceAuthoritySHA256(authority)
+	plan, err := fillervisualsafety.PlanCoverage(authority, visualProfile(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Points[0].RequestedMS != 17 || plan.Points[len(plan.Points)-1].RequestedMS != 10_017 || len(plan.Points) != 11 {
+		t.Fatalf("plan did not retain measured frame edges: %#v", plan.Points)
+	}
+}
+
+func TestSourceAuthorityRejectsAnInventedTerminalFrame(t *testing.T) {
+	authority := visualAuthority(t, 10_050)
+	authority.Video.LastFrameMS = authority.DurationMS
+	authority.SHA256 = fillervisualsafety.SourceAuthoritySHA256(authority)
+	if err := fillervisualsafety.ValidateSourceAuthority(authority); err == nil {
+		t.Fatal("expected a frame timestamp at the half-open source end to fail")
+	}
+}
+
 func TestPrepareSnapshotsExactSourceBeforeAdaptersCanUseIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "source.mp4")
 	original := []byte("exact visual source bytes")
@@ -154,6 +177,7 @@ func visualAuthority(t *testing.T, durationMS int64) fillervisualsafety.SourceAu
 		DurationMS: durationMS, PolicySHA256: strings.Repeat("b", 64), Implementation: "source-probe-v1",
 		Video: fillervisualsafety.VideoStreamIdentity{
 			Index: 0, Codec: "h264", Width: 960, Height: 720,
+			FirstFrameMS: 0, LastFrameMS: durationMS - 1,
 			FrameRateNumerator: 30, FrameRateDenominator: 1,
 			TimeBaseNumerator: 1, TimeBaseDenominator: 90_000, DurationMS: durationMS,
 		},

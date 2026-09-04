@@ -111,7 +111,7 @@ func PlanCoverage(authority SourceAuthority, profile CoverageProfile) (CoverageP
 		authority.DurationMS > profile.MaximumSourceDurationMS {
 		return CoveragePlan{}, errors.New("visual-safety coverage input is invalid")
 	}
-	points, maximumGap, err := coveragePoints(authority.DurationMS, profile)
+	points, maximumGap, err := coveragePoints(authority.Video.FirstFrameMS, authority.Video.LastFrameMS, profile)
 	if err != nil {
 		return CoveragePlan{}, err
 	}
@@ -132,12 +132,14 @@ func ValidateCoveragePlan(plan CoveragePlan) error {
 	if plan.SchemaVersion != CoveragePlanSchemaVersion || plan.ContractVersion != CoveragePlanContractVersion ||
 		!validDigest(plan.SourceAuthoritySHA256) || !validDigest(plan.SourceSHA256) || plan.DurationMS <= 0 ||
 		plan.Video.DurationMS != plan.DurationMS || plan.Video.Index < 0 || !validIdentity(plan.Video.Codec) ||
-		plan.Video.Width <= 0 || plan.Video.Height <= 0 || plan.Video.FrameRateNumerator <= 0 ||
+		plan.Video.Width <= 0 || plan.Video.Height <= 0 || plan.Video.FirstFrameMS < 0 ||
+		plan.Video.LastFrameMS < plan.Video.FirstFrameMS || plan.Video.LastFrameMS >= plan.DurationMS ||
+		plan.Video.FrameRateNumerator <= 0 ||
 		plan.Video.FrameRateDenominator <= 0 || plan.Video.TimeBaseNumerator <= 0 || plan.Video.TimeBaseDenominator <= 0 ||
 		ValidateCoverageProfile(plan.Profile) != nil || plan.DurationMS > plan.Profile.MaximumSourceDurationMS {
 		return errors.New("visual-safety coverage plan identity is invalid")
 	}
-	want, maximumGap, err := coveragePoints(plan.DurationMS, plan.Profile)
+	want, maximumGap, err := coveragePoints(plan.Video.FirstFrameMS, plan.Video.LastFrameMS, plan.Profile)
 	if err != nil || !slices.Equal(want, plan.Points) || plan.MaximumPlannedGapMS != maximumGap ||
 		plan.MaximumPlannedGapMS >= plan.Profile.MinimumCoveredExposureMS || plan.SHA256 == "" ||
 		plan.SHA256 != CoveragePlanSHA256(plan) {
@@ -189,24 +191,24 @@ func CoverageEvidenceSHA256(evidence CoverageEvidence) string {
 	return digestJSON(evidence)
 }
 
-func coveragePoints(durationMS int64, profile CoverageProfile) ([]CoveragePoint, int64, error) {
-	if durationMS <= 0 || profile.ObservationIntervalMS <= 0 {
+func coveragePoints(firstFrameMS, lastFrameMS int64, profile CoverageProfile) ([]CoveragePoint, int64, error) {
+	if firstFrameMS < 0 || lastFrameMS < firstFrameMS || profile.ObservationIntervalMS <= 0 {
 		return nil, 0, errors.New("visual-safety coverage geometry is invalid")
 	}
-	last := durationMS - 1
-	count := int(last/profile.ObservationIntervalMS) + 1
-	if last%profile.ObservationIntervalMS != 0 {
+	span := lastFrameMS - firstFrameMS
+	count := int(span/profile.ObservationIntervalMS) + 1
+	if span%profile.ObservationIntervalMS != 0 {
 		count++
 	}
 	if count > profile.MaximumObservations || count > MaximumObservations {
 		return nil, 0, errors.New("visual-safety coverage exceeds its observation ceiling")
 	}
 	points := make([]CoveragePoint, 0, count)
-	for at := int64(0); at < last; at += profile.ObservationIntervalMS {
+	for at := firstFrameMS; at < lastFrameMS; at += profile.ObservationIntervalMS {
 		points = append(points, CoveragePoint{Ordinal: len(points), RequestedMS: at})
 	}
-	if len(points) == 0 || points[len(points)-1].RequestedMS != last {
-		points = append(points, CoveragePoint{Ordinal: len(points), RequestedMS: last})
+	if len(points) == 0 || points[len(points)-1].RequestedMS != lastFrameMS {
+		points = append(points, CoveragePoint{Ordinal: len(points), RequestedMS: lastFrameMS})
 	}
 	maximumGap := int64(0)
 	for index := 1; index < len(points); index++ {
@@ -238,8 +240,8 @@ func validateFrames(plan CoveragePlan, frames []FrameEvidence) (int64, error) {
 		previous = frame.ObservedMS
 	}
 	if len(frames) > 0 {
-		maximumGap = max(maximumGap, frames[0].ObservedMS)
-		maximumGap = max(maximumGap, plan.DurationMS-1-frames[len(frames)-1].ObservedMS)
+		maximumGap = max(maximumGap, frames[0].ObservedMS-plan.Video.FirstFrameMS)
+		maximumGap = max(maximumGap, plan.Video.LastFrameMS-frames[len(frames)-1].ObservedMS)
 	}
 	return maximumGap, nil
 }

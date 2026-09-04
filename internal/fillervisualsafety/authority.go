@@ -35,6 +35,8 @@ type VideoStreamIdentity struct {
 	Codec                string `json:"codec"`
 	Width                int    `json:"width"`
 	Height               int    `json:"height"`
+	FirstFrameMS         int64  `json:"firstFrameMs"`
+	LastFrameMS          int64  `json:"lastFrameMs"`
 	FrameRateNumerator   int64  `json:"frameRateNumerator"`
 	FrameRateDenominator int64  `json:"frameRateDenominator"`
 	TimeBaseNumerator    int64  `json:"timeBaseNumerator"`
@@ -81,6 +83,7 @@ func ValidateSourceAuthority(authority SourceAuthority) error {
 	}
 	video := authority.Video
 	if video.Index < 0 || !validIdentity(video.Codec) || video.Width <= 0 || video.Height <= 0 ||
+		video.FirstFrameMS < 0 || video.LastFrameMS < video.FirstFrameMS || video.LastFrameMS >= authority.DurationMS ||
 		video.FrameRateNumerator <= 0 || video.FrameRateDenominator <= 0 || video.TimeBaseNumerator <= 0 ||
 		video.TimeBaseDenominator <= 0 || video.DurationMS != authority.DurationMS {
 		return errors.New("visual-safety source authority video stream is invalid")
