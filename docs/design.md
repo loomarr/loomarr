@@ -177,10 +177,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 - **`reference`** · 3 importers
   Resolves bounded, read-only evidence from public web pages supplied in channel Intents.
 - **`releasenotes`**
-  Categorizes GitHub-generated release notes without allowing a language model to invent release content. Its
-  model-facing schema is one closed object keyed by the exact GitHub pull-request numbers for the release; each
-  required key accepts one category value, so missing, invented, or multiply assigned changes are structurally
-  impossible before deterministic validation and rendering.
+  Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`releaseverify`**
   Validates the repository's release publication policy.
 - **`secretprotection`** · 3 importers
