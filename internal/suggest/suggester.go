@@ -363,6 +363,11 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 			}
 			continue
 		}
+		// Retain the assistant's final turn before the caller decides whether it
+		// needs a schema or grounding repair. Both repair prompts refer to the
+		// previous reply, and a model cannot correct unsupported ids (or malformed
+		// JSON) if that reply is absent from the conversation it receives next.
+		*messages = append(*messages, llm.Message{Role: llm.Assistant, Content: resp.Content})
 		return resp.Content, nil
 	}
 	// Ran out of tool rounds without a final turn: expose the bounded terminal fact.
