@@ -2,7 +2,8 @@
 
 Issue: [#951](https://github.com/loomarr/loomarr/issues/951)  
 Date: 2026-09-04  
-Status: research decision only. This note grants no quarantine, ingestion, scheduling, training, or broadcast authority.
+Status: development implementation and measurements. This note grants no quarantine, ingestion,
+scheduling, training, or broadcast authority.
 
 ## Decision
 
@@ -147,6 +148,42 @@ and no clean false-positive or recall estimate follows from this one source. Its
 that the off-the-shelf portable model produces a strong, temporally distributed signal on relevant
 real media before we spend effort constructing the independent corpus.
 
+## Development threshold scorer and disagreement diagnostic
+
+The candidate can now be evaluated without allowing its output to create its own truth. One
+`EvaluatePortableDiagnostic` operation consumes an authority authored before execution, the exact
+capability and coverage profile, and one complete or explicitly failed run per case. The authority
+requires unique source content and source-family identities, locks rights and pre-existing truth
+authority digests, accepts unresolved cases only without a truth digest, and predeclares up to 32
+strictly ordered thresholds. Positive intervals must each meet the coverage profile's minimum exposure
+floor. Its slice vocabulary is closed over the positive and clean slices declared in V68.
+
+The report applies the candidate's declared softmax transformation to exact raw logits, scores every
+positive interval, reports source-family recall with a one-sided exact 95% lower bound, reports clean
+false positives overall and by slice, and retains incomplete executions as operational holds. It does
+not choose a threshold. Only an unresolved signal, a positive miss at the lowest tested threshold, a
+clean signal at the highest tested threshold, or an operational failure enters the targeted-review
+worklist. The report explicitly keeps blind audit, candidate-created truth, training, and production
+admission false. Reproduction validation recomputes the complete report rather than accepting a
+matching self-digest.
+
+The second rights-approved real source was the disputed Old Spice 1992 advertisement at exact source
+SHA-256 `026550f27351d832e997ea787d43b2a76b4b9f7970d6f923ddf89cbb85df02bf`.
+The real worker completed all 30 planned frames over 28,746 ms with a 1,001 ms maximum observed gap.
+Marqo's summary-only score ranged from 0.0400 to 0.8946, crossed 0.50 on three frames, crossed 0.85
+once, and never crossed 0.90. The strongest frame was at 13,013 ms rather than near the previously
+alleged 22-second interval. A targeted inspection of only the three model-selected frames did not
+establish that allegation and instead exposed a plausible archival color/skin/framing false-positive
+pattern. Because model-selected frame inspection cannot establish absence elsewhere, the case remains
+unresolved and contributes to neither the positive nor clean denominator.
+
+The exact private report has SHA-256
+`c6c66efa4541ceda8838cdc33f8f3ee5ddda83f7fd1bc8aedd5922df5bc68626`; its private summary has
+SHA-256 `d59ac2817fdd428c0d1abcb9383be4e95cc2b5d063ba76badf4b018a45936f24`.
+This is already useful: a threshold at 0.85 would surface this case while 0.90 would not, so neither
+value may be selected from the positive candidate alone. Independent labeled controls must decide the
+tradeoff.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:
@@ -190,9 +227,10 @@ problem.
    decoder are implemented without choosing a threshold or enabling production behavior.
 2. The primary Marqo ONNX export, exact worker process, decoder-to-logit transport, response identity,
    resource limits, and repeated generated-control execution are implemented and measured.
-3. Expand the first rights-cleared archival positive-candidate run into a small source-family-disjoint
-   diagnostic with independently labeled positives and difficult clean controls. Stop Marqo early on
-   obvious positive misses or clean false positives; do not derive truth from model agreement.
+3. The source-family-disjoint threshold scorer and a second rights-cleared disagreement run are
+   implemented. Expand them with independently labeled positives and difficult clean controls. Stop
+   Marqo early on obvious positive misses or clean false positives; do not derive truth from model
+   agreement or model-selected frame inspection.
 4. Export and measure Freepik only after the Marqo diagnostic establishes which independent evidence a
    second, much larger constituent must add.
 5. Only then construct and lock the independent certification authority. Keep the current
