@@ -1,5 +1,7 @@
+import type { PairingCredential } from "@loomarr/core/pairing";
 import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } from "expo-video";
 import { useSyncExternalStore } from "react";
+import { Image, type ImageProps } from "react-native";
 import type {
   LivePlaybackMode,
   LivePlaybackState,
@@ -21,6 +23,29 @@ interface NativePlayerViewProps {
   style?: VideoViewProps["style"];
   transport: NativePlayerTransport;
 }
+
+interface PairedNativeImageProps {
+  credential: Pick<PairingCredential, "serverUrl" | "token">;
+  resizeMode?: ImageProps["resizeMode"];
+  style?: ImageProps["style"];
+  uri: string;
+}
+
+const pairedNativeImageSource = (
+  credential: Pick<PairingCredential, "serverUrl" | "token">,
+  rawUrl: string,
+): { headers?: { Authorization: string }; uri: string } | undefined => {
+  try {
+    const uri = new URL(rawUrl, `${credential.serverUrl}/`);
+    if (uri.protocol !== "http:" && uri.protocol !== "https:") return undefined;
+    if (uri.origin === new URL(credential.serverUrl).origin) {
+      return { headers: { Authorization: `Bearer ${credential.token}` }, uri: uri.toString() };
+    }
+    return uri.protocol === "https:" ? { uri: uri.toString() } : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
 
@@ -239,5 +264,16 @@ const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => {
   ) : null;
 };
 
-export type { NativePlayerTransport, NativePlayerViewProps };
-export { createExpoVideoTransport, createNativePlayerTransport, NativePlayerView };
+const PairedNativeImage = ({ credential, resizeMode = "cover", style, uri }: PairedNativeImageProps) => {
+  const source = pairedNativeImageSource(credential, uri);
+  return source ? <Image resizeMode={resizeMode} source={source} style={style} /> : null;
+};
+
+export type { NativePlayerTransport, NativePlayerViewProps, PairedNativeImageProps };
+export {
+  createExpoVideoTransport,
+  createNativePlayerTransport,
+  NativePlayerView,
+  PairedNativeImage,
+  pairedNativeImageSource,
+};

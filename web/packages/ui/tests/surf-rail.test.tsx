@@ -44,8 +44,10 @@ describe("SurfRail", () => {
           density="tv"
           groups={surfGroups}
           onFocusSelection={vi.fn()}
+          onDisconnect={vi.fn()}
           onTune={vi.fn()}
           selection={{ channelId: "ch-springfield", group: "recent" }}
+          serverName="http://loomarr.test:8080"
         />
       </LoomarrProvider>,
     );
@@ -56,5 +58,6 @@ describe("SurfRail", () => {
     expect(output).toContain("Radioactive Man");
     expect(output).toContain("1 of 4 · ▲▼ browse");
     expect(output).toContain("OK tune · BACK cancel");
+    expect(output).toContain("Disconnect device");
   });
 });

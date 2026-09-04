@@ -31,10 +31,12 @@ const SurfRail = ({
   focusRegistry,
   groups,
   onFocusSelection,
+  onDisconnect,
   onTune,
   renderArtwork,
   renderChannelLogo,
   selection,
+  serverName,
   serverVersion,
 }: SurfRailProps) => {
   const viewportWidth = Reflect.get(globalThis, "innerWidth");
@@ -50,10 +52,12 @@ const SurfRail = ({
         focusRegistry={focusRegistry}
         groups={groups}
         onFocusSelection={onFocusSelection}
+        onDisconnect={onDisconnect}
         onTune={onTune}
         renderArtwork={renderArtwork}
         renderChannelLogo={renderChannelLogo}
         selection={selection}
+        serverName={serverName}
         serverVersion={serverVersion}
       />
     );

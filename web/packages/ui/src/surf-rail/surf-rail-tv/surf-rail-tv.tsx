@@ -1,6 +1,6 @@
 import { FocusSurface, ProgressTrack, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import { Pressable } from "react-native";
-
+import { DeviceDisconnectAction } from "../../device-disconnect";
 import type { FocusTargetRegistry } from "../../focus-target";
 import type { SurfChannelData, SurfGroupKind, SurfRailProps } from "../surf-rail.type";
 
@@ -92,8 +92,10 @@ const TvSurfRail = ({
   focusRegistry,
   groups,
   onFocusSelection,
+  onDisconnect,
   onTune,
   selection,
+  serverName,
   serverVersion,
 }: SurfRailProps) => {
   const selectable = groups.flatMap((group) =>
@@ -157,6 +159,9 @@ const TvSurfRail = ({
               )}
             </Surface>
           ))}
+          {onDisconnect ? (
+            <DeviceDisconnectAction density="tv" onDisconnect={onDisconnect} serverName={serverName} />
+          ) : null}
         </ScrollFrame>
         <Text density="tv" textRole="metadata" tone="muted">
           {`${selectedIndex + 1} of ${selectable.length} · ▲▼ browse`}

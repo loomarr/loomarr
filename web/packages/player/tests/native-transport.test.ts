@@ -7,7 +7,7 @@ vi.mock("expo-video", () => ({
   VideoView: vi.fn(),
 }));
 
-const { createNativePlayerTransport } = await import("@loomarr/player/native");
+const { createNativePlayerTransport, pairedNativeImageSource } = await import("@loomarr/player/native");
 
 type PlayerListener = (payload: never) => void;
 
@@ -287,5 +287,33 @@ describe("Expo video transport", () => {
       state: { lagSeconds: 0, mode: "live", noticeRevision: 0, viewerTimeMs: now.getTime() },
       type: "live-state",
     });
+  });
+});
+
+describe("paired native image source", () => {
+  const credential = { serverUrl: "http://loomarr.test:8080", token: "device-secret" };
+
+  it("authenticates only same-origin image service paths", () => {
+    expect(pairedNativeImageSource(credential, "/v1/images/poster.jpg")).toEqual({
+      headers: { Authorization: "Bearer device-secret" },
+      uri: "http://loomarr.test:8080/v1/images/poster.jpg",
+    });
+    expect(
+      pairedNativeImageSource(
+        { serverUrl: "http://loomarr.test:8080/", token: "device-secret" },
+        "/v1/images/banner.jpg",
+      ),
+    ).toEqual({
+      headers: { Authorization: "Bearer device-secret" },
+      uri: "http://loomarr.test:8080/v1/images/banner.jpg",
+    });
+  });
+
+  it("never sends the device token to an external image host", () => {
+    expect(pairedNativeImageSource(credential, "https://cdn.example/poster.jpg")).toEqual({
+      uri: "https://cdn.example/poster.jpg",
+    });
+    expect(pairedNativeImageSource(credential, "http://cdn.example/poster.jpg")).toBeUndefined();
+    expect(pairedNativeImageSource(credential, "javascript:alert(1)")).toBeUndefined();
   });
 });

@@ -1,6 +1,6 @@
 import { Surface } from "@loomarr/design-system";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-
+import { DeviceDisconnectAction } from "../../device-disconnect";
 import { StatePanel } from "../../state-panel";
 import { restoreSurfSelection, surfGroupsFromGuide } from "../surf-data";
 import { SurfRail } from "../surf-rail";
@@ -15,12 +15,14 @@ const SurfJourney = ({
   favoriteChannelIds,
   focusRegistry,
   now = Date.now,
+  onDisconnect,
   onTune,
   playableChannelIds,
   recentChannelIds,
   renderArtwork,
   renderChannelLogo,
   restoreSelection = restoreSurfSelection,
+  serverName,
   serverVersion,
 }: SurfJourneyProps) => {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -67,7 +69,15 @@ const SurfJourney = ({
           ? "empty"
           : "loading";
     return (
-      <Surface borderRadius={0} borderWidth={0} flex={1} justifyContent="center" level="canvas">
+      <Surface
+        alignItems="center"
+        borderRadius={0}
+        borderWidth={0}
+        flex={1}
+        gap="$control"
+        justifyContent="center"
+        level="canvas"
+      >
         <StatePanel
           action={
             kind === "error"
@@ -91,6 +101,14 @@ const SurfJourney = ({
                 : "Loading channels"
           }
         />
+        {onDisconnect ? (
+          <DeviceDisconnectAction
+            density={density}
+            onDisconnect={onDisconnect}
+            preferredFocus={density === "tv" && kind !== "error"}
+            serverName={serverName}
+          />
+        ) : null}
       </Surface>
     );
   }
@@ -103,10 +121,12 @@ const SurfJourney = ({
       focusRegistry={focusRegistry}
       groups={groups}
       onFocusSelection={setSelection}
+      onDisconnect={onDisconnect}
       onTune={onTune}
       renderArtwork={renderArtwork}
       renderChannelLogo={renderChannelLogo}
       selection={resolvedSelection}
+      serverName={serverName}
       serverVersion={serverVersion}
     />
   );

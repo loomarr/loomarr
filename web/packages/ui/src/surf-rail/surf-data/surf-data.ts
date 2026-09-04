@@ -28,6 +28,7 @@ const surfChannelData = (
   const next = channel.airings.find((airing) => airing.source.startMs >= (now?.source.stopMs ?? nowMs));
 
   return {
+    channelLogoUri: channel.source.logo,
     channelLogoState: channel.source.logo ? "ready" : "missing",
     channelName: channel.source.name,
     channelNumber: String(channel.source.number),
@@ -41,6 +42,7 @@ const surfChannelData = (
     now: now
       ? {
           artworkState: now.source.thumbImage || now.source.thumbUrl ? "ready" : "missing",
+          artworkUri: now.source.thumbImage?.src ?? now.source.thumbUrl,
           badge: { label: "On now", tone: "live" },
           description: now.source.description,
           episodeLabel: formatGuideEpisode(now.source.season, now.source.episode),

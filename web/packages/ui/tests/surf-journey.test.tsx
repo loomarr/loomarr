@@ -56,9 +56,11 @@ const renderJourney = (
         currentChannelId="seven"
         favoriteChannelIds={["seven"]}
         now={() => 2_000}
+        onDisconnect={vi.fn()}
         onTune={vi.fn()}
         playableChannelIds={playableChannelIds}
         recentChannelIds={["nine"]}
+        serverName="http://loomarr.test:8080"
         serverVersion="0.2.1"
       />
     </LoomarrProvider>,
@@ -92,6 +94,7 @@ describe("SurfJourney", () => {
     });
     await noPlayable.refresh();
     expect(renderJourney(noPlayable, [])).toContain("No channels on air");
+    expect(renderJourney(noPlayable, [])).toContain("Disconnect device");
 
     const failed = createGuideController({
       source: { load: vi.fn().mockRejectedValue(new Error("offline")) },
@@ -99,5 +102,6 @@ describe("SurfJourney", () => {
     await failed.refresh();
     expect(renderJourney(failed)).toContain("Surf unavailable");
     expect(renderJourney(failed)).toContain("Try again");
+    expect(renderJourney(failed)).toContain("Disconnect device");
   });
 });
