@@ -135,6 +135,29 @@ func TestManagerPublishesSessionLifecycleToGenerationMetrics(t *testing.T) {
 	assertMetricsContain(t, recorder, `loomarr_playout_sessions_active 0`)
 }
 
+func TestManagerPublishesViewerDemandChanges(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 4, time.Minute)
+	changes := make(chan struct{}, 8)
+	m.OnChange(func() { changes <- struct{}{} })
+
+	viewer, detach, err := m.Attach(t.Context(), "ch1", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warmSession(t, viewer, encoder("ch1"))
+	for len(changes) > 0 {
+		<-changes
+	}
+
+	detach()
+	select {
+	case <-changes:
+	case <-time.After(time.Second):
+		t.Fatal("last-viewer release did not publish the grace-idle telemetry transition")
+	}
+}
+
 func TestManagerPublishesParentProcessFailure(t *testing.T) {
 	recorder := metrics.New(metrics.Options{})
 	manager := NewManager(func(context.Context, string, EncodePlan) (*Process, error) {
@@ -461,10 +484,12 @@ func TestBroadcast_SlowViewerIsDroppedNotBlocking(t *testing.T) {
 	}
 }
 
-// And the stalled viewer is actually dropped, rather than left accumulating memory.
-func TestBroadcast_StalledViewerIsClosed(t *testing.T) {
+// And the stalled viewer is actually dropped, rather than left accumulating memory. When it was
+// the last viewer, the session must enter ordinary warm grace instead of leaking forever with an
+// empty viewer map.
+func TestBroadcast_StalledLastViewerIsClosedAndSessionEntersGrace(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
-	m := testManager(t, spawn, 4, time.Minute)
+	m := testManager(t, spawn, 4, 50*time.Millisecond)
 
 	stalled, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
@@ -488,11 +513,18 @@ func TestBroadcast_StalledViewerIsClosed(t *testing.T) {
 		select {
 		case _, ok := <-stalled:
 			if !ok {
-				return // closed, as intended
+				goto viewerClosed
 			}
 		case <-deadline:
 			t.Fatal("a viewer that stopped reading was never dropped")
 		}
+	}
+
+viewerClosed:
+	select {
+	case <-encoder("ch1").stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("session with only a dropped viewer never stopped after warm grace")
 	}
 }
 
@@ -503,11 +535,11 @@ func TestAttachSink_PreservesWarmStartupBurst(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, time.Minute)
 	relay := newHLSRelay()
-	detach, err := m.AttachSink(context.Background(), "ch1", PlanFull, relay)
+	lease, err := m.AttachSink(context.Background(), "ch1", PlanFull, relay)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer detach()
+	defer lease.Release()
 
 	const writes = viewerBuffer * 4
 	payload := make([]byte, 64*1024)
@@ -555,9 +587,9 @@ func TestAttachSink_PreservesWarmStartupBurst(t *testing.T) {
 	}
 }
 
-// The admission bound (§9.1 V49 — COST-AWARE). viewra EVICTED an existing session to make room
-// (prior-art viewra §1); for playout that means one person tuning in kills someone else's channel.
-// We refuse the newcomer instead and keep faith with whoever is already watching. ⚠ The bound counts
+// The admission bound (§9.1 V49 — COST-AWARE). viewra EVICTED an existing watched session to make
+// room (prior-art viewra §1); for playout that means one person tuning in kills someone else's
+// channel. We refuse the newcomer when every costly session has active demand. ⚠ The bound counts
 // concurrent TRANSCODES. Cold sessions reserve conservatively and copy sessions release below.
 func TestAttach_AtCapacityRefusesRatherThanEvicting(t *testing.T) {
 	spawn, _ := newFakeSpawner(t)
@@ -596,6 +628,47 @@ func TestAttach_AtCapacityRefusesRatherThanEvicting(t *testing.T) {
 	// not on people watching.
 	if _, _, err := m.Attach(context.Background(), "ch1", PlanBaseline); err != nil {
 		t.Errorf("a second viewer on an admitted channel was refused: %v", err)
+	}
+}
+
+// A grace-idle session is retained only to make a likely return tune cheap. It must not reserve
+// the final transcode slot against a foreground tune: when the budget is full, reclaim the oldest
+// zero-viewer session and preserve the newer warm candidate. Sessions with viewers remain protected
+// by TestAttach_AtCapacityRefusesRatherThanEvicting above.
+func TestAttach_AtCapacityReclaimsOldestIdleSession(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 2, time.Minute)
+
+	first, detachFirst, err := m.Attach(context.Background(), "ch1", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warmSession(t, first, encoder("ch1"))
+	detachFirst()
+
+	second, detachSecond, err := m.Attach(context.Background(), "ch2", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warmSession(t, second, encoder("ch2"))
+	detachSecond()
+
+	if _, _, err := m.Attach(context.Background(), "ch3", PlanFull); err != nil {
+		t.Fatalf("foreground tune was refused while reclaimable idle work held the budget: %v", err)
+	}
+
+	select {
+	case <-encoder("ch1").stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("oldest grace-idle encoder was not reclaimed")
+	}
+	select {
+	case <-encoder("ch2").stopped:
+		t.Fatal("newer grace-idle encoder was reclaimed before the oldest")
+	default:
+	}
+	if n := m.ActiveCount(); n != 2 {
+		t.Fatalf("ActiveCount = %d, want the newer idle session plus foreground session", n)
 	}
 }
 
@@ -862,6 +935,42 @@ func TestOnIdle_StaleTimerDoesNotKillALaterViewer(t *testing.T) {
 	case <-encoder("ch1").stopped:
 		t.Fatal("a stale grace timer stopped an encoder that has a viewer")
 	default:
+	}
+}
+
+// A stale timer must not shorten a LATER idle interval either. Checking only that the viewer map is
+// empty is insufficient: after leave → reattach → leave, the first timer sees zero viewers and can
+// close the session before the second idle interval has received its full grace period.
+func TestOnIdle_StaleTimerDoesNotShortenLaterIdleGrace(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 4, 400*time.Millisecond)
+
+	initial, detachInitial, err := m.Attach(context.Background(), "ch1", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warmSession(t, initial, encoder("ch1"))
+	detachInitial()
+
+	time.Sleep(250 * time.Millisecond)
+	_, detachAgain, err := m.Attach(context.Background(), "ch1", PlanFull)
+	if err != nil {
+		t.Fatalf("reattach inside first grace interval: %v", err)
+	}
+	detachAgain()
+
+	// The first timer has fired, but the second idle interval still has substantial grace left.
+	time.Sleep(220 * time.Millisecond)
+	select {
+	case <-encoder("ch1").stopped:
+		t.Fatal("the first idle timer shortened the later idle interval")
+	default:
+	}
+
+	select {
+	case <-encoder("ch1").stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the current idle generation never stopped after its own grace period")
 	}
 }
 

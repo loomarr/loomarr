@@ -20,9 +20,9 @@ import (
 // That inverts the usual VOD shape, where each viewer legitimately has their own position
 // and their own transcode. viewra is a VOD transcoder, and its session manager EVICTED
 // other sessions to make room when it hit its limit (prior-art, viewra §1) — behaviour
-// which for playout means one person tuning in kills someone else's channel. Here the
-// limit is an admission bound (`AtCapacity`) instead: we refuse the newcomer and keep
-// faith with the people already watching.
+// which for playout means one person tuning in kills someone else's channel. Here active
+// viewers are never eviction candidates: admission first retires the least-recently-viewed
+// grace-idle transcode, then returns `AtCapacity` if every costly session is still wanted.
 //
 // Three failure modes get explicit machinery below, because each is easy to write wrong
 // and none of them fails loudly:
@@ -84,6 +84,8 @@ type Session struct {
 	// stopped. Copied down for the same reason as `grace`: a parent pointer would mean
 	// reaching back through the manager's lock from inside the session's.
 	onClosed func()
+	// onDemandChange publishes active↔idle viewer transitions after the session lock is released.
+	onDemandChange func()
 
 	// startedAt is when the channel came on air — the dashboard's uptime, and the denominator
 	// for judging whether a low speed is a cold start or a sustained problem.
@@ -112,7 +114,14 @@ type Session struct {
 
 	mu      sync.Mutex
 	viewers map[int]sessionViewer
-	nextID  int
+	// inactiveViewers are internal sinks retained only to keep a delivery adapter warm. They still
+	// receive bytes, but do not represent current viewer demand and are eligible for idle eviction.
+	inactiveViewers map[int]bool
+	nextID          int
+	// idleSince is nonzero only while this proven-warm session has no viewers. Admission uses it to
+	// reclaim the least-recently-viewed idle transcode before refusing a foreground tune.
+	idleSince      time.Time
+	idleGeneration uint64
 	// last is the most recent progress sample from the CURRENT program's encoder (see
 	// `encoder` above for why it is not the session's own process). The parser has always run
 	// and every caller passed `nil` for its callback, so each sample was parsed and discarded —
@@ -308,18 +317,38 @@ func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan)
 // HLS remux, whose input must absorb ffmpeg's finite readrate startup burst without crossing the
 // eight-chunk mailbox intended for network viewers. The sink's offer is synchronous and must stay
 // non-blocking; returning false drops only that sink, preserving the channel for every other viewer.
-func (m *Manager) AttachSink(ctx context.Context, channelID string, plan EncodePlan, sink sessionSink) (func(), error) {
+func (m *Manager) AttachSink(ctx context.Context, channelID string, plan EncodePlan, sink sessionSink) (sinkLease, error) {
 	key := sessionKey{channel: channelID, plan: plan}
 	for {
 		s, err := m.acquire(ctx, key)
 		if err != nil {
-			return nil, err
+			return sinkLease{}, err
 		}
-		if detach, ok := s.addSink(sink); ok {
-			return detach, nil
+		if lease, ok := s.addSink(sink); ok {
+			return lease, nil
 		}
 		m.discardClosed(key, s)
 	}
+}
+
+// sinkLease lets an in-process delivery adapter distinguish retained warmth from current viewer
+// demand without exposing Session lifecycle machinery. A plain byte-stream viewer is always active.
+type sinkLease struct {
+	release   func()
+	setActive func(bool) bool
+}
+
+func (l sinkLease) Release() {
+	if l.release != nil {
+		l.release()
+	}
+}
+
+func (l sinkLease) SetActive(active bool) bool {
+	if l.setActive == nil {
+		return true
+	}
+	return l.setActive(active)
 }
 
 // acquire finds or starts the one session for a channel/plan. Viewer registration is deliberately
@@ -347,16 +376,26 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 		}
 		return s, nil
 	}
-	// Admission, not eviction (§9.1 V49 — COST-AWARE). The bound counts concurrent VIDEO TRANSCODES,
+	// Cost-aware admission with idle reclamation (§9.1 V49). The bound counts concurrent VIDEO TRANSCODES,
 	// not sessions: a `-c copy` session (an h264 channel, or HEVC to an HEVC-capable client) costs 0
 	// and is always admitted, so a channel watched at two plans (baseline + hevc8) costs ONE (the
 	// baseline transcode), not two — the plan-split no longer halves capacity. The incoming cost is
 	// conservatively estimated as one here and corrected to the real cost on the first
 	// program report. Checked under the lock against the live committedCost so parallel starts cannot
-	// overshoot the budget.
+	// overshoot the budget. A full budget may reclaim proven-warm work with zero viewer demand, but
+	// never an actively watched session.
 	newCost := key.plan.EstimatedCost()
 	if !Admit(m.budget(), m.committedCost, newCost) {
+		candidates := make([]idleCandidate, 0, len(m.sessions))
+		for candidateKey, candidateSession := range m.sessions {
+			if candidateSession.cost > 0 {
+				candidates = append(candidates, idleCandidate{key: candidateKey, session: candidateSession})
+			}
+		}
 		m.mu.Unlock()
+		if reclaimOldestIdle(candidates) {
+			return m.acquire(ctx, key)
+		}
 		if m.observer != nil {
 			m.observer.PlayoutSessionStarted("capacity")
 		}
@@ -400,6 +439,47 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 	return s, nil
 }
 
+type idleCandidate struct {
+	key     sessionKey
+	session *Session
+}
+
+// reclaimOldestIdle retires at most one proven-warm, zero-viewer transcode. Candidate sessions are
+// snapshotted under Manager.mu, then inspected and closed without it: Session.close calls back into
+// the manager to release cost, so holding the manager lock across close would deadlock.
+func reclaimOldestIdle(candidates []idleCandidate) bool {
+	var oldest idleCandidate
+	var oldestSince time.Time
+	var oldestGeneration uint64
+	for _, candidate := range candidates {
+		candidate.session.mu.Lock()
+		idleSince := candidate.session.idleSince
+		idleGeneration := candidate.session.idleGeneration
+		idle := !candidate.session.closed && candidate.session.activeViewerCountLocked() == 0 && !idleSince.IsZero()
+		candidate.session.mu.Unlock()
+		if !idle {
+			continue
+		}
+		if oldestSince.IsZero() || idleSince.Before(oldestSince) ||
+			(idleSince.Equal(oldestSince) && lessSessionKey(candidate.key, oldest.key)) {
+			oldest = candidate
+			oldestSince = idleSince
+			oldestGeneration = idleGeneration
+		}
+	}
+	if oldestSince.IsZero() {
+		return false
+	}
+	return oldest.session.closeIfIdle(oldestGeneration)
+}
+
+func lessSessionKey(left, right sessionKey) bool {
+	if left.channel != right.channel {
+		return left.channel < right.channel
+	}
+	return left.plan < right.plan
+}
+
 func (m *Manager) discardFailed(key sessionKey, s *Session) {
 	m.mu.Lock()
 	if m.sessions[key] == s {
@@ -432,10 +512,12 @@ func (m *Manager) newPlaceholder(channelID string, plan EncodePlan) *Session {
 		// On terminal close (grace teardown, encoder death, or Stop), the session must both leave the
 		// map AND release its admission cost (§9.1 V49), then notify. close() is single-fire (guarded
 		// by s.closed), so forget runs exactly once — no double-subtract. forget does the notify.
-		onClosed:  func() { m.forget(key) },
-		startedAt: time.Now(),
-		viewers:   map[int]sessionViewer{},
-		ready:     make(chan struct{}),
+		onClosed:        func() { m.forget(key) },
+		onDemandChange:  m.notifyChange,
+		startedAt:       time.Now(),
+		viewers:         map[int]sessionViewer{},
+		inactiveViewers: map[int]bool{},
+		ready:           make(chan struct{}),
 	}
 }
 
@@ -504,7 +586,7 @@ func (s *Session) pump() {
 				s.mu.Lock()
 				s.coldStartMs = time.Since(s.startedAt).Milliseconds()
 				s.hasTransport = true
-				vc := len(s.viewers)
+				vc := s.activeViewerCountLocked()
 				cold := s.coldStartMs
 				s.mu.Unlock()
 				if s.log != nil {
@@ -546,16 +628,35 @@ func (s *Session) pump() {
 // else notices.
 func (s *Session) broadcast(chunk []byte) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	droppedActive := false
 	for id, viewer := range s.viewers {
 		if !viewer.offer(chunk) {
 			if s.log != nil {
 				s.log.Debug("playout: dropping viewer that fell behind",
 					"channel", s.ChannelID, "viewer", id)
 			}
+			if !s.inactiveViewers[id] {
+				droppedActive = true
+			}
 			delete(s.viewers, id)
+			delete(s.inactiveViewers, id)
 			viewer.close()
 		}
+	}
+	becameIdle := droppedActive && s.activeViewerCountLocked() == 0 && !s.closed && s.hasTransport
+	idleGeneration := s.idleGeneration
+	if becameIdle {
+		s.idleSince = time.Now()
+		s.idleGeneration++
+		idleGeneration = s.idleGeneration
+	}
+	s.mu.Unlock()
+
+	if droppedActive && s.onDemandChange != nil {
+		s.onDemandChange()
+	}
+	if becameIdle {
+		s.onIdle(idleGeneration)
 	}
 }
 
@@ -587,47 +688,126 @@ type sessionSink interface {
 // addViewer registers a viewer. Reports false if the session is already tearing down.
 func (s *Session) addViewer() (<-chan []byte, func(), bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
+		s.mu.Unlock()
 		return nil, nil, false
 	}
 	id := s.nextID
 	s.nextID++
 	ch := make(chan []byte, viewerBuffer)
 	s.viewers[id] = &channelViewer{chunks: ch}
+	s.idleSince = time.Time{}
+	s.idleGeneration++
 
 	var once sync.Once
 	detach := func() { once.Do(func() { s.removeViewer(id) }) }
+	s.mu.Unlock()
+	if s.onDemandChange != nil {
+		s.onDemandChange()
+	}
 	return ch, detach, true
 }
 
-func (s *Session) addSink(sink sessionSink) (func(), bool) {
+func (s *Session) addSink(sink sessionSink) (sinkLease, bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
-		return nil, false
+		s.mu.Unlock()
+		return sinkLease{}, false
 	}
 	id := s.nextID
 	s.nextID++
 	s.viewers[id] = sink
+	s.idleSince = time.Time{}
+	s.idleGeneration++
 
 	var once sync.Once
 	detach := func() { once.Do(func() { s.removeViewer(id) }) }
-	return detach, true
+	lease := sinkLease{
+		release:   detach,
+		setActive: func(active bool) bool { return s.setViewerActive(id, active) },
+	}
+	s.mu.Unlock()
+	if s.onDemandChange != nil {
+		s.onDemandChange()
+	}
+	return lease, true
+}
+
+func (s *Session) activeViewerCountLocked() int {
+	return len(s.viewers) - len(s.inactiveViewers)
+}
+
+// setViewerActive changes only demand, not delivery. An idle HLS remux continues receiving bytes so
+// it stays warm, while admission and telemetry see that no person is currently watching it.
+func (s *Session) setViewerActive(id int, active bool) bool {
+	s.mu.Lock()
+	if s.closed || s.viewers[id] == nil {
+		s.mu.Unlock()
+		return false
+	}
+	wasActive := !s.inactiveViewers[id]
+	if wasActive == active {
+		s.mu.Unlock()
+		return true
+	}
+	if active {
+		delete(s.inactiveViewers, id)
+		s.idleSince = time.Time{}
+		s.idleGeneration++
+		s.mu.Unlock()
+		if s.onDemandChange != nil {
+			s.onDemandChange()
+		}
+		return true
+	}
+
+	s.inactiveViewers[id] = true
+	becameIdle := s.activeViewerCountLocked() == 0
+	warm := s.hasTransport
+	idleGeneration := s.idleGeneration
+	if becameIdle && warm {
+		s.idleSince = time.Now()
+		s.idleGeneration++
+		idleGeneration = s.idleGeneration
+	}
+	s.mu.Unlock()
+
+	if s.onDemandChange != nil {
+		s.onDemandChange()
+	}
+	if becameIdle {
+		if !warm {
+			s.close()
+			return false
+		}
+		s.onIdle(idleGeneration)
+	}
+	return true
 }
 
 // removeViewer drops a viewer and arms the grace timer if it was the last one.
 func (s *Session) removeViewer(id int) {
 	s.mu.Lock()
 	viewer, ok := s.viewers[id]
+	wasActive := ok && !s.inactiveViewers[id]
 	if ok {
 		delete(s.viewers, id)
+		delete(s.inactiveViewers, id)
 		viewer.close()
 	}
-	last := len(s.viewers) == 0 && !s.closed
+	last := wasActive && s.activeViewerCountLocked() == 0 && !s.closed
 	warm := s.hasTransport
+	idleGeneration := s.idleGeneration
+	if last && warm {
+		s.idleSince = time.Now()
+		s.idleGeneration++
+		idleGeneration = s.idleGeneration
+	}
 	s.mu.Unlock()
 
+	if wasActive && s.onDemandChange != nil {
+		s.onDemandChange()
+	}
 	if last {
 		if !warm {
 			// A process that never produced transport is not a warm channel. Retaining it would
@@ -640,8 +820,35 @@ func (s *Session) removeViewer(id int) {
 			s.close()
 			return
 		}
-		s.onIdle()
+		s.onIdle(idleGeneration)
 	}
+}
+
+// closeIfIdle closes only if the same idle interval selected by admission is still current. A
+// viewer can reattach between candidate selection and this method; in that case the foreground tune
+// must lose the race rather than disconnect the active viewer.
+func (s *Session) closeIfIdle(expectedGeneration uint64) bool {
+	s.mu.Lock()
+	if s.closed || s.activeViewerCountLocked() != 0 || s.idleSince.IsZero() || s.idleGeneration != expectedGeneration {
+		s.mu.Unlock()
+		return false
+	}
+	s.closed = true
+	for id, viewer := range s.viewers {
+		delete(s.viewers, id)
+		delete(s.inactiveViewers, id)
+		viewer.close()
+	}
+	cancel := s.cancel
+	s.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if s.onClosed != nil {
+		s.onClosed()
+	}
+	return true
 }
 
 // onIdle is called when the last viewer leaves. It does NOT tear down immediately — see
@@ -654,37 +861,22 @@ func (s *Session) removeViewer(id int) {
 //	t=2s  a viewer attaches       → the session is live again, 1 viewer
 //	t=30s the timer fires         → closes a session that someone is watching
 //
-// The fix is to make FIRING CONDITIONAL rather than to cancel the timer. Cancelling looks
-// tidier but is harder to be sure of: `timer.Stop()` returning false means the callback may
-// already be running, so a re-attach would still need this same idle check to be safe — the
-// cancellation would be an optimization layered on top of the real guard, not a replacement
-// for it. A stray wakeup every grace period on an idle channel costs nothing measurable, so
-// the simpler correct thing wins.
-//
-// Re-checking `len(s.viewers) == 0` at fire time also solves the ABA case for free: several
-// join/leave cycles arm several timers, and an early one firing while a LATER viewer is
-// watching sees a non-empty map and does nothing. No generation counter needed — the viewer
-// map is already the authoritative answer to "is anyone watching?", and a second source of
-// truth could only disagree with it.
-func (s *Session) onIdle() {
+// The fix is to make firing conditional on BOTH zero viewers and the idle generation this timer
+// belongs to. The viewer check protects an active reattach; the generation protects a later idle
+// interval after an attach/detach ABA cycle. Cancelling a timer is only an optimization because
+// `timer.Stop()` may race a callback already running, so the state check remains authoritative.
+func (s *Session) onIdle(idleGeneration uint64) {
 	time.AfterFunc(s.grace, func() {
-		// Read the state under the lock, then act OUTSIDE it: s.close() takes s.mu itself,
-		// and Go mutexes are not reentrant, so closing while holding it would deadlock the
-		// timer goroutine — and with it the channel's teardown, permanently.
-		s.mu.Lock()
-		idle := len(s.viewers) == 0 && !s.closed
-		s.mu.Unlock()
-
-		if !idle {
+		if !s.closeIfIdle(idleGeneration) {
 			// Someone is watching (or pump already tore the session down when the encoder
-			// died). Either way this timer has nothing to do.
+			// died), or this callback belongs to an older idle generation. Either way this
+			// timer has nothing to do.
 			return
 		}
 		if s.log != nil {
 			s.log.Debug("playout: stopping idle channel",
 				"channel", s.ChannelID, "grace", s.grace)
 		}
-		s.close()
 	})
 }
 
@@ -692,7 +884,7 @@ func (s *Session) onIdle() {
 func (s *Session) ViewerCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.viewers)
+	return s.activeViewerCountLocked()
 }
 
 // close tears the session down and disconnects every remaining viewer.
@@ -709,6 +901,7 @@ func (s *Session) close() {
 	s.closed = true
 	for id, viewer := range s.viewers {
 		delete(s.viewers, id)
+		delete(s.inactiveViewers, id)
 		viewer.close()
 	}
 	cancel := s.cancel
@@ -872,7 +1065,7 @@ func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
 	return SessionStat{
 		ChannelID:   s.ChannelID,
 		Target:      s.Plan.String(),
-		Viewers:     len(s.viewers),
+		Viewers:     s.activeViewerCountLocked(),
 		Encoder:     string(s.encoder),
 		Hardware:    s.encoder != "" && s.encoder != EncoderSoftware,
 		Speed:       s.last.Speed,

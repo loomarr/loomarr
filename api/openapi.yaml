@@ -5718,16 +5718,24 @@ components:
         capacity:
           format: int64
           type: integer
+        graceIdleSessions:
+          format: int64
+          type: integer
         running:
           type: boolean
         sessions:
           items:
             $ref: "#/components/schemas/SessionStat"
           type: array
+        viewerActiveSessions:
+          format: int64
+          type: integer
       required:
         - sessions
         - active
         - capacity
+        - viewerActiveSessions
+        - graceIdleSessions
         - running
       type: object
     PodEntryDTO:
