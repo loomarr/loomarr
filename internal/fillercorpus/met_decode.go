@@ -107,7 +107,7 @@ func metObjectPassesSubjectFilter(object metObject, required, excluded []string)
 
 func exactMetURL(raw, host, exactPath string) bool {
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Hostname() != host || parsed.Fragment != "" {
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Hostname() != host || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return false
 	}
 	return exactPath == "" || parsed.Path == exactPath
@@ -143,6 +143,6 @@ func metInventoryCase(object metObject, discoveryTerms []string, raw []byte, met
 		MetadataCache: sourceCacheKey(metadataURL) + ".json", MetadataRetrievedAt: retrievedAt.UTC(),
 		MetadataSHA256:    hex.EncodeToString(metadataHash[:]),
 		AllowedMediaHosts: []string{metImageHost},
-		Representation:    InventoryRepresentation{Transport: TransportHTTPS, Name: metRepresentationName(object.PrimaryImage), URL: object.PrimaryImage, MIMEType: mediaType, Bytes: bytes},
+		Representation:    InventoryRepresentation{Transport: TransportHTTPS, Name: metRepresentationName(object.PrimaryImage), URL: metOpenAccessDownloadURL(object.PrimaryImage, raw), MIMEType: mediaType, Bytes: bytes},
 	}
 }

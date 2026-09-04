@@ -19,6 +19,14 @@ The machine-checkable conjunction is:
    credit line, and source-work identity reproduce the frozen inventory; and
 5. the selected representation remains an HTTPS JPEG or PNG on the exact Met image host.
 
+The selected representation is the Met image URL with `download=1` and a cache-isolation key derived
+from the already frozen item-metadata SHA-256, and that exact URL is frozen before rights review. A
+real acquisition attempt found that the CDN could advertise the origin byte length to `HEAD` while
+returning a differently sized cached body to a bare `GET`; a shared `download=1` cache key could also
+retain that split across HTTP variants. The item-bound URL returned the same byte length to both
+methods. The adapter therefore probes and later materializes that exact download representation; it
+does not relax the downloader's exact-byte check.
+
 Any disagreement is a named hold for the independent reviewer. A passing row is a mechanically
 consistent nomination, not the rights decision consumed by the downloader.
 
@@ -88,25 +96,31 @@ with a held pre-screen case, changed artifact, mixed authority, stale review, wi
 attribution requirement, or restriction. The reviewer therefore inspects the policy and named
 anomalies rather than manually rechecking 120 hashes and duplicated fields.
 
-The current private 120-case corpus has 120 present `rightsAndReproduction` fields, all blank; 120
-`isPublicDomain: true` records; and 120 non-empty selected primary images. Those counts are
-development evidence only and are reproduced by the implementation rather than committed as source
-metadata.
+The successful private development cohort has 120 present `rightsAndReproduction` fields, all blank;
+120 `isPublicDomain: true` records; 120 non-empty selected primary images; and 120 distinct creator,
+source-work, source-family, and exact-content identities. Those counts are development evidence only
+and are reproduced by the implementation rather than committed as source metadata.
 
-The implemented offline pre-screen reproduced all 120 inventory-bound raw responses with 120
-`met_metadata_prescreen_pass` results and zero holds. Its complete mode-`0600`, path-free report is
-29,537 bytes at SHA-256 `736c569b2b9a441efcde95b013fd0e56db163306302b5d9934bbd1c8add292e7`.
-It binds inventory SHA-256 `ad27c9238fec2dfea0893d9b1391f1cc16ffd5d5c656c6e1bda65dfac57844f2`
-and policy-evidence SHA-256 `37703a3c91d5c60fc836f7807048c1872191e3f29e1159865adf6a49b3038c8d`.
-Rights approval and download, truth, training, production, ingestion, scheduling, and broadcast
-authority are all explicitly false.
+The final metadata inventory is SHA-256
+`3a663b77d675fa209cffb496a3f27505664989629b03f9f38cd8bf70fff49847`. Its item, work,
+creator, metadata, representation-name, media-type, and byte-size projection is identical to the
+original candidate pool; the selected URL now names the exact item-bound download representation.
+The offline pre-screen again reproduced all 120 inventory-bound raw responses with 120
+`met_metadata_prescreen_pass` results and zero holds. Its mode-`0600`, path-free report is SHA-256
+`d1e85d3e35ab6188200f4930b68f4740785f8b4cf041345072a0dc9d2b0e8896`.
 
-The real zero-hold inputs also reproduced through the batch aid. It prepared one 1,197-byte,
-mode-`0600` pending attestation at SHA-256
-`80e82efc3dbcf7fa3934f38f1e5edc7b602b48204d70bcad5ac57ef94c09cfd7`. That artifact binds the exact
-inventory, worksheet, pre-screen, and policy-evidence digests; records the four policy limitations;
-allows only private development copying/storage, technical transformation, and evidence extraction;
-and explicitly excludes truth, certification, provider transfer, training, production, ingestion,
-scheduling, and broadcast. Its reviewer, time, acceptance, and basis remain blank or `pending`. A
-real completion attempt refused it and wrote no CSV, proving that preparation alone cannot grant
-rights or download authority.
+The maintainer accepted the frozen development-only limitations in attestation SHA-256
+`848b8258c6f2606eb30221e6cd0f3cd6413697202c57b2f155b7db6bac57a039`; the ordinary
+item-level locker then produced 120 approvals at SHA-256
+`df84668b51afd7bdfa26237f688d8dc5e301b9b69cc84275244c6b1d27a5ce49`. The bounded,
+serial materializer downloaded and completely decoded all 120 JPEGs: exactly 292,769,745 bytes in
+120 requests, with no duplicate content. The schema-3 ledger is SHA-256
+`9bda3154575635af954058d3f86a40744ad3820d5e91a9e4989e6546025e0152`.
+
+The model-blind nomination preparation reopened every downloaded image and emitted 120 inert rows.
+Its worksheet file is SHA-256
+`04710cb604da6f28f4ff28b38ada65b95caa459bb1a79cf2b8fe9e3f8a70939c`; its four-field
+review CSV is SHA-256 `601889a02e80f4efa4fa34a91bb41159cd238a68ca2c2352683ca7d1f5285942`.
+No nomination, truth, training, certification, provider-transfer, production, ingestion, scheduling,
+or broadcast authority was created. Earlier future-dated and shared-CDN-key attempts are superseded;
+both failed closed before publishing a ledger.

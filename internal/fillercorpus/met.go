@@ -99,7 +99,8 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 		if _, duplicate := seenCreators[creatorKey]; duplicate {
 			continue
 		}
-		head, _, err := client.Head(ctx, object.PrimaryImage)
+		downloadURL := metOpenAccessDownloadURL(object.PrimaryImage, raw)
+		head, _, err := client.Head(ctx, downloadURL)
 		if err != nil {
 			return Inventory{}, fmt.Errorf("capture Met object %d image: %w", objectID, err)
 		}
@@ -233,6 +234,19 @@ func metSearchURL(term string) string {
 	query.Set("hasImages", "true")
 	query.Set("q", term)
 	return metAPIBase + "/search?" + query.Encode()
+}
+
+func metOpenAccessDownloadURL(primaryImage string, metadata []byte) string {
+	parsed, err := url.Parse(primaryImage)
+	if err != nil {
+		return ""
+	}
+	metadataHash := sha256.Sum256(metadata)
+	query := parsed.Query()
+	query.Set("download", "1")
+	query.Set("loomarr", hex.EncodeToString(metadataHash[:]))
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func metObjectRank(termDigest string, id int64) string {
