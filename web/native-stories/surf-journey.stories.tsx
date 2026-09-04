@@ -7,24 +7,30 @@ import { useEffect, useMemo } from "react";
 const SurfJourneyWorkshop = ({
   density = "touch",
   favorites = false,
+  scenario = "ready",
 }: {
   density?: "touch" | "tv";
   favorites?: boolean;
+  scenario?: "empty" | "error" | "loading" | "ready";
 }) => {
   const controller = useMemo(
     () =>
       createGuideController({
         now: () => guideNow,
         source: {
-          load: async () => ({
-            channels: guideChannels,
-            fromMs: guideFrom,
-            timezone: "America/New_York",
-            toMs: guideTo,
-          }),
+          load: async (_signal) => {
+            if (scenario === "error") throw new Error("The channels could not be loaded.");
+            if (scenario === "loading") return new Promise(() => undefined);
+            return {
+              channels: scenario === "empty" ? [] : guideChannels,
+              fromMs: guideFrom,
+              timezone: "America/New_York",
+              toMs: guideTo,
+            };
+          },
         },
       }),
-    [],
+    [scenario],
   );
   useEffect(() => () => controller.dispose(), [controller]);
 
@@ -52,8 +58,11 @@ const meta = {
 type Story = StoryObj<typeof meta>;
 const Touch: Story = {};
 const Tv: Story = { args: { density: "tv" } };
+const TvEmpty: Story = { args: { density: "tv", scenario: "empty" } };
+const TvError: Story = { args: { density: "tv", scenario: "error" } };
+const TvLoading: Story = { args: { density: "tv", scenario: "loading" } };
 const AuthoritativeFavorites: Story = { args: { favorites: true } };
 const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
-export { AuthoritativeFavorites, Light, Touch, Tv };
+export { AuthoritativeFavorites, Light, Touch, Tv, TvEmpty, TvError, TvLoading };

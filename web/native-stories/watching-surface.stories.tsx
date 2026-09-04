@@ -30,11 +30,13 @@ const schedule: WatchingScheduleData = {
 const Preview = ({
   loading,
   loadError,
+  numberEntry,
   scheduleData = schedule,
   state = snapshot,
 }: {
   loading?: boolean;
   loadError?: string;
+  numberEntry?: WatchingSurfaceProps["numberEntry"];
   scheduleData?: WatchingScheduleData;
   state?: WatchingSnapshot;
 }) => (
@@ -44,6 +46,7 @@ const Preview = ({
         density={process.env.EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY === "tv" ? "tv" : "touch"}
         loading={loading}
         loadError={loadError}
+        numberEntry={numberEntry}
         onChannelDown={() => undefined}
         onChannelUp={() => undefined}
         onDismissControls={() => undefined}
@@ -77,6 +80,9 @@ const Tuning: Story = { args: { state: { ...snapshot, status: "tuning" } } };
 const PlaybackError: Story = {
   args: { state: { ...snapshot, error: "The stream could not be decoded.", status: "failed" } },
 };
+const NumberEntry: Story = {
+  args: { numberEntry: { channelName: "Nature Documentaries", digits: "21" } },
+};
 const Paused: Story = {
   args: {
     state: {
@@ -100,4 +106,14 @@ const EmptyChannel: Story = {
 const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
-export { BehindLive, CurrentAndNext, EmptyChannel, Light, Loading, Paused, PlaybackError, Tuning };
+export {
+  BehindLive,
+  CurrentAndNext,
+  EmptyChannel,
+  Light,
+  Loading,
+  NumberEntry,
+  Paused,
+  PlaybackError,
+  Tuning,
+};
