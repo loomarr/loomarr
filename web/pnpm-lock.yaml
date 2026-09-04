@@ -551,6 +551,9 @@ importers:
       '@loomarr/design-system':
         specifier: workspace:*
         version: link:../design-system
+      '@loomarr/player':
+        specifier: workspace:*
+        version: link:../player
     devDependencies:
       '@loomarr/fixtures':
         specifier: workspace:*
