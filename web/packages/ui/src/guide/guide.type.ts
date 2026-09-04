@@ -2,7 +2,13 @@ import type { GuideAiringLayout, GuideLayout, GuideSelection } from "@loomarr/co
 import type { Density } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
+import type { FocusTargetRegistry } from "../focus-target";
+
 type GuideFilter = "all" | "favourites" | "recent";
+
+type GuideFocusTarget =
+  | { filter: GuideFilter; kind: "filter" }
+  | { kind: "airing"; selection: GuideSelection };
 
 type GuideFilterOption = {
   disabled?: boolean;
@@ -24,6 +30,7 @@ interface GuideSurfaceProps {
   channelWindow?: GuideChannelWindow;
   filter?: GuideFilter;
   filters?: readonly GuideFilterOption[];
+  focusRegistry?: FocusTargetRegistry<GuideFocusTarget>;
   layout: GuideLayout;
   onFilterChange?: (filter: GuideFilter) => void;
   onSelectionChange: (selection: GuideSelection) => void;
@@ -50,6 +57,7 @@ export type {
   GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,
+  GuideFocusTarget,
   GuideLogoRenderer,
   GuideSurfaceProps,
   GuideUnavailableState,

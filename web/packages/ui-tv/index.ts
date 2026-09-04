@@ -1,3 +1,8 @@
+export {
+  createTvGuideFocusRegistry,
+  createTvSurfFocusRegistry,
+  TvFocusRegistry,
+} from "./src/focus-registry";
 export type {
   TvGuideActivation,
   TvGuideFilterOption,
@@ -35,4 +40,5 @@ export {
   initialTvWatchingRemoteState,
   reduceTvWatchingRemote,
   tvNumberEntryPresentation,
+  tvWatchingRemoteEventFromNative,
 } from "./src/watching-navigation";

@@ -57,6 +57,7 @@ const GuideSurface = ({
   density = "pointer",
   filter = "all",
   filters = defaultFilters,
+  focusRegistry,
   layout,
   onFilterChange,
   onSelectionChange,
@@ -72,6 +73,7 @@ const GuideSurface = ({
         density={density}
         filter={filter}
         filters={filters}
+        focusRegistry={focusRegistry}
         layout={layout}
         onFilterChange={onFilterChange}
         onSelectionChange={onSelectionChange}

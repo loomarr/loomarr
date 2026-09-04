@@ -3,11 +3,14 @@ export { ClientNavigation, clientBackDestination, clientDestinationLabel } from 
 export { ClientPlatformProof } from "./src/client-platform-proof";
 export type { ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
+export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
 export type {
   GuideArtworkRenderer,
+  GuideChannelWindow,
   GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,
+  GuideFocusTarget,
   GuideJourneyProps,
   GuideLogoRenderer,
   GuideSurfaceProps,

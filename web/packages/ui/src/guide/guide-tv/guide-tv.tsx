@@ -16,6 +16,7 @@ const TvGuideSurface = ({
   channelWindow,
   filter = "all",
   filters,
+  focusRegistry,
   layout,
   onFilterChange,
   onSelectionChange,
@@ -71,8 +72,10 @@ const TvGuideSurface = ({
               accessibilityLabel={`${name} channels`}
               density="tv"
               disabled={option.disabled}
+              hasTVPreferredFocus={filter === option.value && layout.channels.length === 0}
               key={option.value}
               onPress={() => onFilterChange?.(option.value)}
+              ref={(handle) => focusRegistry?.register({ filter: option.value, kind: "filter" }, handle)}
               selected={filter === option.value}
               tone="secondary"
             >
@@ -148,6 +151,7 @@ const TvGuideSurface = ({
                       channelId: channel.source.channelId,
                       scheduleBlockId: airing.scheduleBlockId,
                     };
+                    const target = { kind: "airing" as const, selection: next };
                     return (
                       <Action
                         accessibilityLabel={`${channel.source.name}, ${label}, ${formatGuideTimeRange(
@@ -163,6 +167,7 @@ const TvGuideSurface = ({
                           onSelectionChange(next);
                           onTune?.(next);
                         }}
+                        ref={(handle) => focusRegistry?.register(target, handle)}
                         selected={selected}
                         style={{
                           height: rowHeight - 4,

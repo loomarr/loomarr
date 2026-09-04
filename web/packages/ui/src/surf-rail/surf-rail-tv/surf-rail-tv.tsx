@@ -1,11 +1,13 @@
 import { FocusSurface, ProgressTrack, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import { Pressable } from "react-native";
 
+import type { FocusTargetRegistry } from "../../focus-target";
 import type { SurfChannelData, SurfGroupKind, SurfRailProps } from "../surf-rail.type";
 
 const TvSurfChannel = ({
   channel,
   current,
+  focusRegistry,
   group,
   onFocus,
   onTune,
@@ -13,6 +15,7 @@ const TvSurfChannel = ({
 }: {
   channel: SurfChannelData;
   current: boolean;
+  focusRegistry?: FocusTargetRegistry<{ channelId: string; group: SurfGroupKind }>;
   group: SurfGroupKind;
   onFocus: () => void;
   onTune: () => void;
@@ -25,6 +28,7 @@ const TvSurfChannel = ({
     hasTVPreferredFocus={selected}
     onFocus={onFocus}
     onPress={onTune}
+    ref={(handle) => focusRegistry?.register({ channelId: channel.id, group }, handle)}
   >
     <FocusSurface focused={selected} gap="$inline" paddingHorizontal="$control" paddingVertical="$inline">
       <Surface
@@ -85,6 +89,7 @@ const TvSurfChannel = ({
 const TvSurfRail = ({
   clientVersion,
   currentChannelId,
+  focusRegistry,
   groups,
   onFocusSelection,
   onTune,
@@ -140,6 +145,7 @@ const TvSurfRail = ({
                     <TvSurfChannel
                       channel={channel}
                       current={channel.id === currentChannelId}
+                      focusRegistry={focusRegistry}
                       group={group.kind}
                       key={`${group.kind}-${channel.id}`}
                       onFocus={() => onFocusSelection({ channelId: channel.id, group: group.kind })}

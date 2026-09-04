@@ -13,12 +13,14 @@ const SurfJourney = ({
   currentChannelId,
   density = "pointer",
   favoriteChannelIds,
+  focusRegistry,
   now = Date.now,
   onTune,
   playableChannelIds,
   recentChannelIds,
   renderArtwork,
   renderChannelLogo,
+  restoreSelection = restoreSurfSelection,
   serverVersion,
 }: SurfJourneyProps) => {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -45,7 +47,17 @@ const SurfJourney = ({
   const preferredSelection = currentChannelId
     ? { channelId: currentChannelId, group: "recent" as const }
     : undefined;
-  const resolvedSelection = restoreSurfSelection(groups, selection ?? preferredSelection);
+  const resolvedSelection = selection
+    ? restoreSelection(groups, selection)
+    : preferredSelection
+      ? restoreSelection(groups, preferredSelection)
+      : restoreSurfSelection(groups);
+  const resolvedChannelId = resolvedSelection?.channelId;
+  const resolvedGroup = resolvedSelection?.group;
+  useEffect(() => {
+    if (!resolvedChannelId || !resolvedGroup) return;
+    focusRegistry?.request({ channelId: resolvedChannelId, group: resolvedGroup });
+  }, [focusRegistry, resolvedChannelId, resolvedGroup]);
 
   if (snapshot.status !== "ready" || !resolvedSelection) {
     const kind =
@@ -88,6 +100,7 @@ const SurfJourney = ({
       clientVersion={clientVersion}
       currentChannelId={currentChannelId}
       density={density}
+      focusRegistry={focusRegistry}
       groups={groups}
       onFocusSelection={setSelection}
       onTune={onTune}

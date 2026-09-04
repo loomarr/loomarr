@@ -9,6 +9,7 @@ const GuideJourney = ({
   channelWindow,
   controller,
   density = "pointer",
+  focusRegistry,
   onTune,
   preferredChannelId,
   renderArtwork,
@@ -19,6 +20,26 @@ const GuideJourney = ({
   useEffect(() => {
     void controller.refresh(preferredChannelId);
   }, [controller, preferredChannelId]);
+
+  const selectedAnchorMs = snapshot.selection?.anchorMs;
+  const selectedChannelId = snapshot.selection?.channelId;
+  const selectedScheduleBlockId = snapshot.selection?.scheduleBlockId;
+  useEffect(() => {
+    if (
+      selectedAnchorMs === undefined ||
+      selectedChannelId === undefined ||
+      selectedScheduleBlockId === undefined
+    )
+      return;
+    focusRegistry?.request({
+      kind: "airing",
+      selection: {
+        anchorMs: selectedAnchorMs,
+        channelId: selectedChannelId,
+        scheduleBlockId: selectedScheduleBlockId,
+      },
+    });
+  }, [focusRegistry, selectedAnchorMs, selectedChannelId, selectedScheduleBlockId]);
 
   let content: ReactNode;
   if (snapshot.status !== "ready" || !snapshot.layout || !snapshot.selection) {
@@ -34,6 +55,7 @@ const GuideJourney = ({
       <GuideExperience
         channelWindow={channelWindow?.(snapshot.layout, snapshot.selection)}
         density={density}
+        focusRegistry={focusRegistry}
         layout={snapshot.layout}
         onSelectionChange={controller.select}
         onTune={(selection) => onTune(selection.channelId)}

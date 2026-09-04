@@ -96,3 +96,24 @@ test("mounts authoritative grouped Surf data with previous-Channel history", asy
   assert.match(appSource, /recentChannelIds=\{snapshot\.recentChannelIds\}/);
   assert.match(appSource, /void controller\.tuneChannel\(channelId\)/);
 });
+
+test("routes the native remote through TV adapters and preserves platform-home Back", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /useTVEventHandler/);
+  assert.match(appSource, /tvWatchingRemoteEventFromNative\(eventType, Date\.now\(\)\)/);
+  assert.match(appSource, /reduceTvWatchingRemote\(remoteStateRef\.current, event\)/);
+  assert.match(appSource, /controller\.tuneNumber\(intent\.digits\)/);
+  assert.match(appSource, /numberEntry=\{tvNumberEntryPresentation\(remoteState, snapshot\.catalog\)\}/);
+  assert.match(appSource, /if \(!destination\) return false/);
+});
+
+test("restores Guide and Surf focus by identity through the TV registries", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /createTvGuideFocusRegistry/);
+  assert.match(appSource, /createTvSurfFocusRegistry/);
+  assert.match(appSource, /focusRegistry=\{guideFocusRegistry\}/);
+  assert.match(appSource, /focusRegistry=\{surfFocusRegistry\}/);
+  assert.match(appSource, /restoreSelection=\{restoreTvSurfSelection\}/);
+});
