@@ -28,10 +28,14 @@ dimensions.
 
 The committed Kotlin references are:
 
-- [Pairing](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.pairing%20with%20a%20real%20hostname%20stays%20on%20one%20line.png)
-- [Watching 1080p](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20watching.png) and [4K](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20watching%20at%204k%20density.png)
-- [Surf 1080p](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20surf.png) and [4K](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20surf%20at%204k%20density.png)
-- [Guide 1080p](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20guide.png) and [4K](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20guide%20at%204k%20density.png)
+- Pairing at 1080p
+- Watching at 1080p and 4K density
+- Surf at 1080p and 4K density
+- Guide at 1080p and 4K density
+
+P5c retired these local Roborazzi files after the React Native native-reference and physical-Shield
+gates replaced them. This note preserves the reviewed baseline names without leaving dead links to
+deleted artifacts.
 
 The review found that the replacement contract is complete, resolution-independent, and acceptable
 as 1:1 presentation parity with the Kotlin references. Fixture content and version identities were
