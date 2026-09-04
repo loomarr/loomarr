@@ -32,7 +32,7 @@ func TestRunPublishesPrivateNonAuthorizingReportAndRefusesOverwrite(t *testing.T
 			Collection: []string{"Metropolitan Museum of Art", "search-term:venus"}, Creator: []string{"Valid Creator"}, SubjectTerms: []string{"Female Nudes"}, SourceFamily: "met-object:195733", Date: "1900",
 			RightsAssertions: []string{"Met object record isPublicDomain=true.", "Met repository assertion: Metropolitan Museum of Art, New York, NY", "Met credit-line assertion: Gift, 1900"},
 			ItemURL:          "https://www.metmuseum.org/art/collection/search/195733", MetadataURL: metadataURL, MetadataCache: cacheName, MetadataRetrievedAt: snapshot.Add(-time.Minute), MetadataSHA256: hex.EncodeToString(metadataDigest[:]), AllowedMediaHosts: []string{"images.metmuseum.org"},
-			Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "valid.jpg", URL: "https://images.metmuseum.org/valid.jpg?download=1&loomarr=" + hex.EncodeToString(metadataDigest[:]), MIMEType: "image/jpeg", Bytes: 100},
+			Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "valid.jpg", URL: "https://images.metmuseum.org/valid.jpg?loomarr=" + hex.EncodeToString(metadataDigest[:]), MIMEType: "image/jpeg", Bytes: 100},
 		}},
 	}
 	policy := fillercorpus.MetOpenAccessPolicyEvidence{

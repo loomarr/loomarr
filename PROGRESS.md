@@ -68,6 +68,28 @@ Nomination preparation reopened every image and emitted 120 inert four-field row
 training, certification, provider transfer, production, ingestion, scheduling, or broadcast
 authority exists.
 
+A separate local model-assistance pass now covers all 120 exact Met images without editing that
+worksheet. Marqo and Freepik completed 120/120 network-disabled inferences; Gemma 4 12B and Llama
+3.2 Vision 11B completed two source-bound local VLM assessments per image. The conservative join
+produced 47 two-VLM adult-positive proposals, 16 safe age-risk exclusions, two agreed no-visible-nudity
+exclusions, and 55 targeted disagreements. Llama's single age-risk call versus Gemma's 15 establishes
+that its adult-only output is too optimistic to clear a Gemma hold. Three Llama free-text generations
+looped until the bound; a categorical-only recovery completed all three, so future assistance should
+return closed fields and Loomarr-owned reason codes. Private proposal manifest file
+`cc8d5fbde8d5d17222166e559abc49f32a8b06067d5f6ec8644dea8b87dda4e4`; internal digest
+`3a2457ff1d4ebd8c84fabb2894dd401b31cb6aa92d9ab6953c87516513f6fc7c`. The batch could not honestly
+supply 120 positives, so a stricter authorized 240-item Met refill was captured, rights-screened, and
+materialized as 240 distinct images and 541,961,618 exact bytes. A real CDN mismatch exposed an unstable
+`download=1` body; the downloader now selects the original-image route, assigns each Met GET a deterministic
+per-run/case/attempt cache identity, and retries only exact representation-identity mismatch three times inside
+the existing ceilings. Gemma covered all 240 refill images, Llama inspected its 93 clear candidates and
+confirmed 91, and a
+categorical Llama/Qwen 3.5 third-opinion pass examined only 20 high-signal unresolved cases. The refill yields
+75 creator-independent positive proposals, 39 age-risk exclusions, 23 cross-batch creator holds, and 103
+unresolved cases. Combined with the first 47 proposals, 122 independent candidates now exist—two reserves
+above the 120-positive target. No model output entered either worksheet, and all truth, training,
+provider-transfer, production, ingestion, scheduling, and broadcast authority remains false.
+
 Filler compilation certification now has an immutable provider-free run preflight. It reopens and
 hashes the complete public media set, binds the private suite, reports the exact four-run
 topology, and blocks both paid commands unless two sealed cases represent each edge of the intended

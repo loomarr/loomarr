@@ -243,7 +243,6 @@ func metOpenAccessDownloadURL(primaryImage string, metadata []byte) string {
 	}
 	metadataHash := sha256.Sum256(metadata)
 	query := parsed.Query()
-	query.Set("download", "1")
 	query.Set("loomarr", hex.EncodeToString(metadataHash[:]))
 	parsed.RawQuery = query.Encode()
 	return parsed.String()

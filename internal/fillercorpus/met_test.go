@@ -31,7 +31,7 @@ func TestCaptureMetInventoryFreezesOnlyObjectValidatedPublicDomainCandidate(t *t
 			if request.Header.Get("X-Test-Original-Host") != metImageHost {
 				t.Fatalf("image host = %q", request.Header.Get("X-Test-Original-Host"))
 			}
-			if request.URL.Query().Get("download") != "1" || request.URL.Query().Get("loomarr") == "" || len(request.URL.Query()) != 2 {
+			if request.URL.Query().Has("download") || request.URL.Query().Get("loomarr") == "" || len(request.URL.Query()) != 1 {
 				t.Fatalf("image query = %q", request.URL.RawQuery)
 			}
 			w.Header().Set("Content-Type", "image/jpeg")
@@ -62,7 +62,7 @@ func TestCaptureMetInventoryFreezesOnlyObjectValidatedPublicDomainCandidate(t *t
 		len(item.Collection) != 2 || item.Collection[1] != "search-term:venus" ||
 		len(item.SubjectTerms) != 2 || item.SubjectTerms[0] != "Female Nudes" || item.SubjectTerms[1] != "Sculpture" ||
 		item.Representation.MIMEType != "image/jpeg" || item.Representation.Bytes != 1156190 ||
-		item.Representation.URL != "https://images.metmuseum.org/CRDImages/es/original/DP-919-001.jpg?download=1&loomarr="+item.MetadataSHA256 {
+		item.Representation.URL != "https://images.metmuseum.org/CRDImages/es/original/DP-919-001.jpg?loomarr="+item.MetadataSHA256 {
 		t.Fatalf("case = %+v", item)
 	}
 }

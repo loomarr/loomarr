@@ -17,6 +17,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -26,12 +27,18 @@ import (
 	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
 
+const downloadRepresentationAttempts = 3
+
 type fileHashes struct{ sha256, sha1, md5 string }
 
 type verifiedRepresentation struct {
 	mediaType     string
 	width, height int
 }
+
+type representationIdentityMismatchError struct{ reason string }
+
+func (e *representationIdentityMismatchError) Error() string { return e.reason }
 
 func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDownload, opts options) (downloadLedger, error) {
 	if err := ensurePrivateDirectory(opts.outputDir); err != nil {
@@ -50,16 +57,22 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 		hashes, size, err := hashPrivateFile(item.path)
 		var representation verifiedRepresentation
 		if errors.Is(err, os.ErrNotExist) {
-			if ledger.RequestsUsed >= opts.maxRequests {
-				return downloadLedger{}, fmt.Errorf("request ceiling exhausted before %s", item.candidate.CaseID)
+			for attempt := 0; attempt < downloadRepresentationAttempts; attempt++ {
+				if ledger.RequestsUsed >= opts.maxRequests {
+					return downloadLedger{}, fmt.Errorf("request ceiling exhausted before %s", item.candidate.CaseID)
+				}
+				if err := waitForDownload(ctx, lastRequestAt, opts.delay); err != nil {
+					return downloadLedger{}, err
+				}
+				hashes, size, representation, err = download(ctx, client, item, opts.userAgent, opts.maxImagePixels, downloadFetchIdentity(opts, item, attempt))
+				ledger.RequestsUsed++
+				lastRequestAt = time.Now()
+				verifiedAt = lastRequestAt.UTC()
+				var mismatch *representationIdentityMismatchError
+				if err == nil || !errors.As(err, &mismatch) {
+					break
+				}
 			}
-			if err := waitForDownload(ctx, lastRequestAt, opts.delay); err != nil {
-				return downloadLedger{}, err
-			}
-			hashes, size, representation, err = download(ctx, client, item, opts.userAgent, opts.maxImagePixels)
-			ledger.RequestsUsed++
-			lastRequestAt = time.Now()
-			verifiedAt = lastRequestAt.UTC()
 		} else if err == nil {
 			representation, err = verifyDownloadedRepresentation(item.path, item.candidate.Representation, opts.maxImagePixels)
 		}
@@ -104,8 +117,25 @@ func waitForDownload(ctx context.Context, previous time.Time, delay time.Duratio
 	}
 }
 
-func download(ctx context.Context, client *http.Client, item plannedDownload, userAgent string, maxImagePixels int64) (fileHashes, int64, verifiedRepresentation, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.candidate.Representation.URL, nil)
+func downloadFetchIdentity(opts options, item plannedDownload, attempt int) string {
+	value := fmt.Sprintf("%s\n%s\n%s\n%d", opts.inventorySHA256, opts.generatedAt.UTC().Format(time.RFC3339Nano), item.candidate.CaseID, attempt)
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+func download(ctx context.Context, client *http.Client, item plannedDownload, userAgent string, maxImagePixels int64, fetchIdentity string) (fileHashes, int64, verifiedRepresentation, error) {
+	requestURL := item.candidate.Representation.URL
+	if item.candidate.Authority == fillercorpus.MetAuthority {
+		parsed, err := url.Parse(requestURL)
+		if err != nil || fetchIdentity == "" {
+			return fileHashes{}, 0, verifiedRepresentation{}, fmt.Errorf("prepare Met cache identity")
+		}
+		query := parsed.Query()
+		query.Set("loomarr-fetch", fetchIdentity)
+		parsed.RawQuery = query.Encode()
+		requestURL = parsed.String()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return fileHashes{}, 0, verifiedRepresentation{}, err
 	}
@@ -125,7 +155,7 @@ func download(ctx context.Context, client *http.Client, item plannedDownload, us
 		return fileHashes{}, 0, verifiedRepresentation{}, fmt.Errorf("response MIME type %q does not match inventory %q", responseType, item.candidate.Representation.MIMEType)
 	}
 	if resp.ContentLength > item.candidate.Representation.Bytes && resp.ContentLength >= 0 {
-		return fileHashes{}, 0, verifiedRepresentation{}, fmt.Errorf("Content-Length exceeds inventory size")
+		return fileHashes{}, 0, verifiedRepresentation{}, &representationIdentityMismatchError{reason: "Content-Length exceeds inventory size"}
 	}
 	temp, err := os.CreateTemp(filepath.Dir(item.path), ".filler-corpus-download-*")
 	if err != nil {
@@ -147,10 +177,10 @@ func download(ctx context.Context, client *http.Client, item plannedDownload, us
 		return fileHashes{}, 0, verifiedRepresentation{}, err
 	}
 	if size != item.candidate.Representation.Bytes {
-		return fileHashes{}, 0, verifiedRepresentation{}, fmt.Errorf("received %d bytes, want %d", size, item.candidate.Representation.Bytes)
+		return fileHashes{}, 0, verifiedRepresentation{}, &representationIdentityMismatchError{reason: fmt.Sprintf("received %d bytes, want %d", size, item.candidate.Representation.Bytes)}
 	}
 	if !matchesOptional(hashes.sha256, item.candidate.Representation.SHA256) || !matchesOptional(hashes.sha1, item.candidate.Representation.SHA1) || !matchesOptional(hashes.md5, item.candidate.Representation.MD5) {
-		return fileHashes{}, 0, verifiedRepresentation{}, fmt.Errorf("source checksums do not match inventory")
+		return fileHashes{}, 0, verifiedRepresentation{}, &representationIdentityMismatchError{reason: "source checksums do not match inventory"}
 	}
 	if err := temp.Sync(); err != nil {
 		return fileHashes{}, 0, verifiedRepresentation{}, err

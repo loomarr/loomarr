@@ -527,6 +527,20 @@ candidates, and its final validation/publication pass used six live requests, 1,
 2.988 seconds. These are still discovery nominations: creator display-name uniqueness does not establish
 identity, adult subject status, rights approval, policy truth, or suitability for air.
 
+The selected Met image URL must preserve the source object's original image path and add only Loomarr's
+metadata-identity query. Do not add Met's `download=1` query: a real object returned a 777,499-byte transformed
+JPEG for GET while HEAD and a one-byte range probe both incorrectly advertised the 798,099-byte original.
+Changing only that query parameter made full GET agree with HEAD at 798,099 bytes, with the same ETag and
+Last-Modified value. The downloader must keep its exact-byte equality check; inventory construction owns
+selecting the original representation. Subsequent probes also showed two different body lengths alternating
+across CDN edges for that original URL while HEAD continued to advertise only the larger length. A media GET
+whose bytes do not match the frozen representation is therefore retryable at most three times within the
+existing request and delay ceilings. Each rejected body is discarded and counted; only an exact match may be
+published. A Met GET additionally carries a deterministic per-run, per-case, per-attempt `loomarr-fetch`
+cache identity while preserving the approved HTTPS host and path. That transport-only query prevents a retry
+from being pinned to the already-proven bad CDN cache object; it does not change the frozen representation or
+relax URL validation. Exhausting the retry bound still fails the whole materialization and emits no ledger.
+
 The Met rights pre-screen now automates the repetitive part of the next gate without replacing it.
 One offline operation reopens every exact inventory-bound raw response beneath a private non-symlink
 cache root, verifies file identity and SHA-256, reconstructs the complete inventory projection, and
@@ -571,6 +585,104 @@ draft-compatible candidates. Rights evidence schema 2 now binds the exact invent
 case, and content SHA-256 identities; no hand-authored provenance re-entry is needed. Both worksheet and locked set
 state that candidate-model output, truth authority, training, and production use are false. This eliminates the
 large mechanical part of review while preserving the few decisions that genuinely require a maintainer.
+
+### Model-assisted Met nomination measurement
+
+The completed 120-image Met materialization now has a separate, private model-assistance pass. It does not
+write the locked nomination worksheet and cannot become truth. Marqo and Freepik each processed all 120 exact
+decoded images through their already frozen, network-disabled workers. Their JSONL evidence is SHA-256
+`c95f86e7dbc52ce081c128373a1e936a47943114621015e131f3f73337646637` and
+`f405fbf0d97a599dd31df1163d4a0c650da0493b302f2a606b81958d0148f6e5`. At the existing development-only
+signals, Freepik reached 0.30 on 31 images and Marqo reached 0.50 on 13. Only 31 images reached Freepik 0.30
+or Marqo 0.85. These classifiers are useful severity evidence but miss many small, stylized, sculptural, and
+decorative museum depictions; their absence of signal cannot reject a source-authored nude tag.
+
+Two local VLM families then inspected deterministic, source-bound review renditions. ImageMagick
+7.1.2-31 at executable SHA-256 `208f33e47292f22dc8f9dae22e927f13c787f24190a9861c453aec22c8a7cb49`
+created non-authoritative, auto-oriented PNGs bounded to 1024 pixels with metadata removed; every request
+retains both original and review-image SHA-256. Gemma 4 12B completed all 120 in 598.50 seconds, while Llama
+3.2 Vision 11B completed all 120 in two targeted partitions plus three categorical recoveries. Gemma called
+48 images visible adult-only positives, raised 15 minor-or-age-ambiguous observations, called six no visible
+nudity, and left the rest unclear. Llama called 116 adult-only, raised only one age-risk observation, and
+called four no visible nudity. That large asymmetry is evidence of Llama age optimism, not a reason to
+outvote Gemma. Any age-risk observation remains adverse.
+
+The VLM exercise also exposed an interface defect worth preserving. Both models repeatedly duplicated the
+same diagnostic-slice value despite a unique-items schema. Llama additionally looped a Unicode soft hyphen
+inside free-text reasons on three images until the output bound, twice on the first case. A categorical-only
+recovery schema completed all three in about four seconds each. Future unattended assistance should therefore
+request closed categorical fields and let Loomarr render stable reason codes; free-form rationale and open-ended
+taxonomy arrays do not belong on the authority path.
+
+The conservative join yields 47 two-VLM adult-positive proposals, 16 exclusions because either VLM observed
+minor or age ambiguity, two exclusions because both VLMs saw no visible nudity, and 55 targeted disagreements.
+The private proposal manifest is 175,938 bytes at file SHA-256
+`cc8d5fbde8d5d17222166e559abc49f32a8b06067d5f6ec8644dea8b87dda4e4` with internal digest
+`3a2457ff1d4ebd8c84fabb2894dd401b31cb6aa92d9ab6953c87516513f6fc7c`. The separate 55-row review CSV
+is SHA-256 `bd4b3845d1111faa18b52955db12bbffb2993bce1fa5c056a28d62bb0b53e92a`, and the private, non-blind
+gallery is SHA-256 `40c7c40bc7cb2f72dbe60857f81644fa42e121ae7ee8c90710f749e7a5f8db7e`.
+All proposal, truth, training, production, ingestion, scheduling, and broadcast authority flags remain false.
+
+This batch is therefore not honestly sufficient for the 120-positive target. The correct next acquisition is
+an over-sampled, metadata-only Met pool using medium-specific adult-nude searches plus child, infant, angel,
+Cupid, and putti exclusions, followed by the same local triage before any new image batch is authorized.
+Forcing unclear cases into the corpus would defeat the adult-only policy. Fine-tuning a vision model remains
+premature: the present evidence shows candidate-selection and governed-label scarcity, not a demonstrated
+capacity gap in the off-the-shelf local stack.
+
+### Model-assisted Met refill measurement
+
+The authorized refill completed that over-sampling step without broadening authority. Four medium-specific
+adult-nude searches, the two required Met nude tags, and thirteen child, youth, angel, Cupid, and putti
+exclusions produced a 240-case schema-4 inventory at SHA-256
+`44248c3f95ba0b7bd17569b6bde0355482e665af494e65b8d120e2f5b1b47c18`. It contains 240 distinct
+creator display identities, works, and source families and predicts 541,961,618 bytes. Seventeen works and
+52 creator display identities overlap the first inventory, leaving 188 new creator identities; later model
+selection treats every overlap as a hold rather than weakening corpus independence. The Met metadata
+pre-screen passed 240/240 records with zero holds. The separately accepted private-development attestation is
+SHA-256 `9278d2ce1c42559a6fa5293c402b2be5f40f219dd4c2a65e9f5330e8572548f0` and excludes truth,
+training, certification, provider transfer, production, ingestion, scheduling, and broadcast.
+
+Materialization then locked 240 distinct decoded images and 541,961,618 exact bytes in a schema-3 ledger at
+SHA-256 `356989de6108093eff2af211c6259a3181e0c62e94d558f38b33dc1ff6d806e8`. The run used 236 live
+GETs because four exact files from the fail-closed diagnostic run were safely reopened and reused. A real Met
+CDN defect interrupted the first attempt: one `download=1` URL returned a 777,499-byte transformed JPEG while
+HEAD advertised 798,099 bytes, and repeated GETs to one cache identity could remain pinned to the wrong body.
+Ten of ten one-time cache identities returned the frozen 798,099-byte original. The corrected downloader
+therefore removes `download=1`, gives each Met GET a deterministic per-run/case/attempt transport identity,
+and retries only an exact representation-identity mismatch at most three times. Rejected bytes are discarded
+and count against the request ceiling; persistent mismatch still emits no file or ledger. The downloader and
+Met regression suites exercise both recovery and exhaustion under `-race` without weakening exact equality.
+
+Both portable classifiers covered all 240 exact images. Marqo evidence is SHA-256
+`1c0a4c0bd128406d5c888bc4a8ccd2bc2c8723bd392de3aa21a83b183f61f0c2` and reached 0.50 on 18
+images. Freepik evidence is SHA-256 `3b55e57c4488c556ec0decd78a3369e38dd1f95922da64630b61b59d8934dcec`
+and reached 0.30 on 60 images. Gemma 4 12B covered all 240 images at evidence SHA-256
+`f1f3e4efdeabbd937d5cb9b26ab670a80b0ddf57ebee02faf71ed4a74e3b0491`: 93 were clear visible-adult
+historical-art candidates, 26 raised minor-or-age ambiguity, ten had no visible nudity, and the balance was
+unclear. Llama 3.2 Vision confirmed 91 of those 93 candidates and rejected two for no visible nudity. Its
+91-row main evidence is SHA-256 `c0a14704816d3d6e37826ee9bffb62ce2dd4dce6916341e9f88ba2e77f6e1260`; two bounded
+free-text loops were recovered through one-case categorical evidence at SHA-256
+`223463a00a18656391229a21139f289af9386fbcf9cd09adc7edc9340dbed7bc` and
+`19dd0ecf73924deb62fd372d795d510d9efa3b8c9b4e75b13912ac4be0c22285`.
+
+After cross-batch creator exclusion, those direct confirmations supplied 68 new proposals. A third-opinion
+pass then examined only the 20 highest-detector unresolved cases that had no Gemma age-risk observation and no
+first-batch creator. Local Qwen 3.8 27B vision failed before output because this host exhausted Metal memory;
+that capacity failure created no candidate result. Qwen 3.5 9B and categorical-only Llama both completed the
+same 20 cases at SHA-256 `d1fc0a6066f8be202de82beef558270cfb0f26232cd3218d420767a11ca336e1` and
+`d66aac3a2fff485eddc954ea07471773380ccb3c69e4e97e72cee74b4c478b06`. Seven gained two-family
+visible-adult agreement with no age-risk call from any of the three VLMs; thirteen were held because Qwen
+raised age ambiguity. This brings the refill to 75 independent positive proposals and the two batches to 122,
+leaving two reserves above the 120-positive target without forcing an uncertain case.
+
+The private refill proposal manifest is SHA-256
+`10da07c3a1f0719450170bbbe274200c90fe109fb1116b95fb522a4c2cde5b41` with internal digest
+`320ebec3f1bce26a8b127425849b124c2ad123941f6b69a14e56c0fabb5c36a9`. It contains 75 positive
+proposals, 39 age-risk exclusions, 23 cross-batch creator holds, and 103 targeted-review cases. The non-blind
+gallery is SHA-256 `1db29fa05d8f95cf70270baf38468dbbb9a746ab6353d9ba20a84f5a0d5d0c6c` and resolves all 240
+source-bound renditions. No model output entered the locked worksheet, and candidate-model output still grants
+no truth, training, certification, provider-transfer, production, ingestion, scheduling, or broadcast authority.
 
 ## Required development measurements
 

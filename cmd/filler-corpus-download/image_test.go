@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
@@ -35,7 +36,7 @@ func TestDownloadPublishesOnlyCompleteDecodedPrivateImage(t *testing.T) {
 		CaseID: "metmuseum.org/collection/1", AllowedMediaHosts: []string{"127.0.0.1"},
 		Representation: fillercorpus.InventoryRepresentation{URL: server.URL + "/case.png", MIMEType: "image/png", Bytes: int64(len(raw))},
 	}, path: target}
-	hashes, size, verified, err := download(context.Background(), server.Client(), item, "Loomarr test", 100)
+	hashes, size, verified, err := download(context.Background(), server.Client(), item, "Loomarr test", 100, strings.Repeat("b", 64))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +49,77 @@ func TestDownloadPublishesOnlyCompleteDecodedPrivateImage(t *testing.T) {
 	}
 	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
 		t.Fatalf("published mode = %v", info.Mode())
+	}
+}
+
+func TestExecuteDownloadsRetriesTransientRepresentationIdentityMismatch(t *testing.T) {
+	raw := testPNG(t, 3, 2)
+	requests := 0
+	requestIdentities := map[string]struct{}{}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requests++
+		identity := request.URL.Query().Get("loomarr-fetch")
+		if identity == "" {
+			t.Fatal("Met request omitted cache identity")
+		}
+		if _, duplicate := requestIdentities[identity]; duplicate {
+			t.Fatalf("reused cache identity %q", identity)
+		}
+		requestIdentities[identity] = struct{}{}
+		w.Header().Set("Content-Type", "image/png")
+		if requests == 1 {
+			_, _ = w.Write(raw[:len(raw)-1])
+			return
+		}
+		_, _ = w.Write(raw)
+	}))
+	defer server.Close()
+
+	output := filepath.Join(t.TempDir(), "media")
+	item := plannedDownload{candidate: fillercorpus.InventoryCase{
+		CaseID: "metmuseum.org/collection/1", Authority: fillercorpus.MetAuthority, AllowedMediaHosts: []string{"127.0.0.1"},
+		Representation: fillercorpus.InventoryRepresentation{URL: server.URL + "/case.png", MIMEType: "image/png", Bytes: int64(len(raw))},
+	}, path: filepath.Join(output, "case.png")}
+	ledger, err := executeDownloads(context.Background(), server.Client(), []plannedDownload{item}, options{
+		outputDir: output, userAgent: "Loomarr test", inventorySHA256: strings.Repeat("a", 64),
+		generatedAt: time.Now().UTC(), maxRequests: 3, maxItems: 1, maxBytes: int64(len(raw)), maxImagePixels: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 || ledger.RequestsUsed != 2 || len(ledger.Cases) != 1 {
+		t.Fatalf("requests=%d ledger=%+v", requests, ledger)
+	}
+}
+
+func TestExecuteDownloadsRejectsPersistentRepresentationIdentityMismatch(t *testing.T) {
+	raw := testPNG(t, 3, 2)
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(raw[:len(raw)-1])
+	}))
+	defer server.Close()
+
+	output := filepath.Join(t.TempDir(), "media")
+	target := filepath.Join(output, "case.png")
+	item := plannedDownload{candidate: fillercorpus.InventoryCase{
+		CaseID: "metmuseum.org/collection/1", Authority: fillercorpus.MetAuthority, AllowedMediaHosts: []string{"127.0.0.1"},
+		Representation: fillercorpus.InventoryRepresentation{URL: server.URL + "/case.png", MIMEType: "image/png", Bytes: int64(len(raw))},
+	}, path: target}
+	_, err := executeDownloads(context.Background(), server.Client(), []plannedDownload{item}, options{
+		outputDir: output, userAgent: "Loomarr test", inventorySHA256: strings.Repeat("a", 64),
+		generatedAt: time.Now().UTC(), maxRequests: 3, maxItems: 1, maxBytes: int64(len(raw)), maxImagePixels: 100,
+	})
+	if err == nil || !strings.Contains(err.Error(), "received 89 bytes, want 90") {
+		t.Fatalf("err = %v", err)
+	}
+	if requests != downloadRepresentationAttempts {
+		t.Fatalf("requests = %d", requests)
+	}
+	if _, statErr := os.Lstat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("target exists after retry exhaustion: %v", statErr)
 	}
 }
 
@@ -72,7 +144,7 @@ func TestDownloadRejectsResponseMIMEAndIncompleteImageBeforePublication(t *testi
 			}
 			target := filepath.Join(output, "case.png")
 			item := plannedDownload{candidate: fillercorpus.InventoryCase{Representation: fillercorpus.InventoryRepresentation{URL: server.URL, MIMEType: "image/png", Bytes: int64(len(testCase.body))}}, path: target}
-			if _, _, _, err := download(context.Background(), server.Client(), item, "Loomarr test", 100); err == nil {
+			if _, _, _, err := download(context.Background(), server.Client(), item, "Loomarr test", 100, ""); err == nil {
 				t.Fatal("invalid image published")
 			}
 			if _, err := os.Lstat(target); !os.IsNotExist(err) {
