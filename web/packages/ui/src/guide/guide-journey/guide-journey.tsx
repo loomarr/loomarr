@@ -6,6 +6,7 @@ import { GuideExperience } from "../guide";
 import type { GuideJourneyProps } from "./guide-journey.type";
 
 const GuideJourney = ({
+  channelWindow,
   controller,
   density = "pointer",
   onTune,
@@ -31,6 +32,7 @@ const GuideJourney = ({
   } else {
     content = (
       <GuideExperience
+        channelWindow={channelWindow?.(snapshot.layout, snapshot.selection)}
         density={density}
         layout={snapshot.layout}
         onSelectionChange={controller.select}

@@ -79,6 +79,49 @@ describe("GuideSurface", () => {
     expect(output.match(/aria-disabled="true"/g)).toHaveLength(2);
   });
 
+  it("bounds TV rows around focus while preserving detail and artwork fallback", () => {
+    const [baseChannel] = layout.channels;
+    if (!baseChannel) throw new Error("expected a Guide fixture Channel");
+    const newsChannel = {
+      ...baseChannel,
+      airings: baseChannel.airings.map((airing) => ({
+        ...airing,
+        channelId: "news",
+        scheduleBlockId: "headlines",
+        source: {
+          ...airing.source,
+          scheduleBlockId: "headlines",
+          series: "Evening News",
+          title: "Headlines",
+        },
+      })),
+      source: {
+        ...baseChannel.source,
+        channelId: "news",
+        name: "Loomarr News",
+        number: 2,
+      },
+    };
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideSurface
+          channelWindow={{ end: 2, positionLabel: "2 of 2", start: 1 }}
+          density="tv"
+          layout={{ ...layout, channels: [...layout.channels, newsChannel] }}
+          onSelectionChange={vi.fn()}
+          selection={{ anchorMs: 900_000, channelId: "news", scheduleBlockId: "headlines" }}
+        />
+      </LoomarrProvider>,
+    );
+
+    expect(output).not.toContain("Springfield Classics");
+    expect(output).toContain("Loomarr News");
+    expect(output).toContain("Evening News");
+    expect(output).toContain("All · 2");
+    expect(output).toContain("2 of 2");
+    expect(output).toContain("No artwork");
+  });
+
   it.each([
     ["loading", "Loading channels"],
     ["empty", "No channels on air"],

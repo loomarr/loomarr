@@ -51,6 +51,27 @@ describe("GuideJourney", () => {
     expect(output).toContain('accessibilityLabel="Programme guide"');
   });
 
+  it("lets a platform adapter bound the rendered Channel rows", async () => {
+    const controller = createGuideController({
+      now: () => 900_000,
+      source: { load: vi.fn().mockResolvedValue(sourceGuide) },
+    });
+    await controller.refresh("springfield");
+
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideJourney
+          channelWindow={() => ({ end: 0, positionLabel: "1 of 1", start: 0 })}
+          controller={controller}
+          onTune={vi.fn()}
+        />
+      </LoomarrProvider>,
+    );
+
+    expect(output).not.toContain("Springfield Classics, The Simpsons");
+    expect(output).toContain("1 channels · 1 of 1");
+  });
+
   it("maps loading, empty, and error controller states without platform input mechanics", async () => {
     const loading = createGuideController({ source: { load: vi.fn() } });
     expect(markup(loading)).toContain("Loading channels");

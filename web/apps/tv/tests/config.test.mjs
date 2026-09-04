@@ -74,3 +74,14 @@ test("drives every Watching state from the generated catalog and authoritative G
   assert.match(appSource, /loadError=\{loadError\}/);
   assert.match(appSource, /loadError \? refresh\(\) : controller\.retry\(\)/);
 });
+
+test("mounts the bounded authoritative Guide and returns tune intent to Watching", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /active === "guide"/);
+  assert.match(appSource, /<GuideJourney/);
+  assert.match(appSource, /tvGuideRowWindow\(/);
+  assert.match(appSource, /controller=\{guide\}/);
+  assert.match(appSource, /void controller\.tuneChannel\(channelId\)/);
+  assert.match(appSource, /setActive\("watching"\)/);
+});

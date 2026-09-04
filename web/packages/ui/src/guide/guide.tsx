@@ -19,13 +19,13 @@ import { ScrollView, View } from "react-native";
 import { ChannelIdentity } from "../identity";
 import { ProgrammeCard } from "../programme-card";
 import { StatePanel } from "../state-panel";
-
 import type {
   GuideExperienceProps,
   GuideFilterOption,
   GuideSurfaceProps,
   GuideUnavailableState,
 } from "./guide.type";
+import { TvGuideSurface } from "./guide-tv";
 
 const defaultFilters: readonly GuideFilterOption[] = [
   { label: "All", value: "all" },
@@ -53,6 +53,7 @@ const airingFacts = (airing: GuideSurfaceProps["layout"]["channels"][number]["ai
 };
 
 const GuideSurface = ({
+  channelWindow,
   density = "pointer",
   filter = "all",
   filters = defaultFilters,
@@ -64,9 +65,26 @@ const GuideSurface = ({
   renderChannelLogo,
   selection,
 }: GuideSurfaceProps) => {
+  if (density === "tv") {
+    return (
+      <TvGuideSurface
+        channelWindow={channelWindow}
+        density={density}
+        filter={filter}
+        filters={filters}
+        layout={layout}
+        onFilterChange={onFilterChange}
+        onSelectionChange={onSelectionChange}
+        onTune={onTune}
+        renderArtwork={renderArtwork}
+        renderChannelLogo={renderChannelLogo}
+        selection={selection}
+      />
+    );
+  }
   const rowHeight = guideRowHeight(density);
   const railWidth = guideRailWidth(density);
-  const minimumGridWidth = railWidth + (density === "tv" ? 900 : density === "touch" ? 560 : 640);
+  const minimumGridWidth = railWidth + (density === "touch" ? 560 : 640);
   const selectedChannel = layout.channels.find((channel) => channel.source.channelId === selection.channelId);
   const selectedAiring = selectedChannel?.airings.find(
     (airing) => airing.scheduleBlockId === selection.scheduleBlockId,
@@ -79,6 +97,9 @@ const GuideSurface = ({
     { length: tickCount },
     (_, index) => layout.fromMs + (span * index) / (tickCount - 1),
   );
+  const visibleChannels = channelWindow
+    ? layout.channels.slice(channelWindow.start, channelWindow.end)
+    : layout.channels;
 
   const grid = (
     <Surface gap="$inline" overflow="hidden" padding="$control" width="100%">
@@ -117,7 +138,7 @@ const GuideSurface = ({
           </View>
 
           <Surface aria-label="Channel schedule" borderRadius={0} gap={2} role="group">
-            {layout.channels.map((channel) => {
+            {visibleChannels.map((channel) => {
               const logo = renderChannelLogo?.(channel);
               return (
                 <View
@@ -144,7 +165,9 @@ const GuideSurface = ({
                   </View>
                   <View style={{ flex: 1, minWidth: 0, position: "relative" }}>
                     {channel.airings.map((airing) => {
-                      const selected = airing.scheduleBlockId === selection.scheduleBlockId;
+                      const selected =
+                        channel.source.channelId === selection.channelId &&
+                        airing.scheduleBlockId === selection.scheduleBlockId;
                       const label = guideAiringLabel(airing.source);
                       return (
                         <Action
@@ -179,14 +202,14 @@ const GuideSurface = ({
                             left: `${airing.startRatio * 100}%`,
                             minHeight: 0,
                             overflow: "hidden",
-                            paddingHorizontal: density === "tv" ? 12 : 8,
+                            paddingHorizontal: 8,
                             position: "absolute",
                             top: 2,
                             width: `${airing.widthRatio * 100}%`,
                           }}
                           tone={selected ? "primary" : "secondary"}
                         >
-                          {airing.widthRatio >= (density === "tv" ? 0.08 : 0.11) ? label : ""}
+                          {airing.widthRatio >= 0.11 ? label : ""}
                         </Action>
                       );
                     })}
@@ -199,7 +222,7 @@ const GuideSurface = ({
       </ScrollView>
 
       <Text density={density} textRole="metadata">
-        {`${layout.channels.length} channels · ${formatGuideTimeRange(
+        {`${layout.channels.length} channels${channelWindow ? ` · ${channelWindow.positionLabel}` : ""} · ${formatGuideTimeRange(
           layout.fromMs,
           layout.toMs,
           layout.timezone,
@@ -252,7 +275,7 @@ const GuideSurface = ({
       density={density}
       primary={grid}
       secondary={detail}
-      secondaryWidth={density === "tv" ? 520 : 360}
+      secondaryWidth={360}
     />
   );
 };
