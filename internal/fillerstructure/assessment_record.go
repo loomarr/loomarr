@@ -15,7 +15,8 @@ func NewAssessmentRecord(input AssessmentRecordInput) (RecordedAssessment, error
 	record := AssessmentRecord{
 		SchemaVersion: AssessmentRecordSchemaVersion, ContractVersion: AssessmentRecordContractVersion,
 		Source: input.Source, Media: input.Media, Assessor: input.Assessor,
-		PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
+		MetadataSnapshotSHA256: input.MetadataSnapshotSHA256,
+		PromptSHA256:           input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
 		RequestSHA256: input.RequestSHA256, ResponseSHA256: optionalAssessmentDigest(input.RawResponse),
 		StructuredOutputSHA256: optionalAssessmentDigest([]byte(input.StructuredOutput)),
 		ResolvedProvider:       strings.TrimSpace(input.ResolvedProvider), ResolvedModel: strings.TrimSpace(input.ResolvedModel),

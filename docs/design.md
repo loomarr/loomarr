@@ -4758,7 +4758,9 @@ and prices: those are capture facts, not a different model or route capability. 
 metadata snapshot SHA-256 remains separately bound to every certification family result and supplies
 freshness, current liveness, exact price, and historical audit evidence. A live or calibration runner
 must still validate a fresh under-24-hour snapshot and exact ZDR route before media is opened or spend
-is reserved. It may reproduce a certified profile from a later fresh snapshot only when both stable
+is reserved. Every provider reservation and settled call record also binds that complete snapshot
+digest, so a production decision artifact's retained evidence can replay which live metadata capture
+authorized its route and price. It may reproduce a certified profile from a later fresh snapshot only when both stable
 digests match; a capability or canonical-model change holds for recertification, while a price change
 changes the reservation evidence without pretending that the assessor itself changed.
 

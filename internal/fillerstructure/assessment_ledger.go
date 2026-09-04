@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	AssessmentReservationSchemaVersion   = 3
-	AssessmentReservationContractVersion = "filler-structure-assessment-reservation-v3"
+	AssessmentReservationSchemaVersion   = 4
+	AssessmentReservationContractVersion = "filler-structure-assessment-reservation-v4"
 )
 
 type AssessmentReservationState string
@@ -28,36 +28,38 @@ const (
 )
 
 type AssessmentReservation struct {
-	SchemaVersion         int             `json:"schemaVersion"`
-	ContractVersion       string          `json:"contractVersion"`
-	RequestSHA256         string          `json:"requestSha256"`
-	Source                Source          `json:"source"`
-	Media                 AssessmentMedia `json:"media"`
-	Assessor              AssessorProfile `json:"assessor"`
-	PromptSHA256          string          `json:"promptSha256"`
-	SchemaSHA256          string          `json:"schemaSha256"`
-	ExpectedResolvedModel string          `json:"expectedResolvedModel"`
-	UpstreamProvider      string          `json:"upstreamProvider"`
-	UpstreamProviderSlug  string          `json:"upstreamProviderSlug"`
-	RequestedNanoUSD      int64           `json:"requestedNanoUsd"`
-	MaximumChargeNanoUSD  int64           `json:"maximumChargeNanoUsd"`
-	RequestedAt           time.Time       `json:"requestedAt"`
-	SHA256                string          `json:"sha256"`
+	SchemaVersion          int             `json:"schemaVersion"`
+	ContractVersion        string          `json:"contractVersion"`
+	RequestSHA256          string          `json:"requestSha256"`
+	Source                 Source          `json:"source"`
+	Media                  AssessmentMedia `json:"media"`
+	Assessor               AssessorProfile `json:"assessor"`
+	MetadataSnapshotSHA256 string          `json:"metadataSnapshotSha256"`
+	PromptSHA256           string          `json:"promptSha256"`
+	SchemaSHA256           string          `json:"schemaSha256"`
+	ExpectedResolvedModel  string          `json:"expectedResolvedModel"`
+	UpstreamProvider       string          `json:"upstreamProvider"`
+	UpstreamProviderSlug   string          `json:"upstreamProviderSlug"`
+	RequestedNanoUSD       int64           `json:"requestedNanoUsd"`
+	MaximumChargeNanoUSD   int64           `json:"maximumChargeNanoUsd"`
+	RequestedAt            time.Time       `json:"requestedAt"`
+	SHA256                 string          `json:"sha256"`
 }
 
 type AssessmentReservationInput struct {
-	RequestSHA256         string
-	Source                Source
-	Media                 AssessmentMedia
-	Assessor              AssessorProfile
-	PromptSHA256          string
-	SchemaSHA256          string
-	ExpectedResolvedModel string
-	UpstreamProvider      string
-	UpstreamProviderSlug  string
-	RequestedNanoUSD      int64
-	MaximumChargeNanoUSD  int64
-	RequestedAt           time.Time
+	RequestSHA256          string
+	Source                 Source
+	Media                  AssessmentMedia
+	Assessor               AssessorProfile
+	MetadataSnapshotSHA256 string
+	PromptSHA256           string
+	SchemaSHA256           string
+	ExpectedResolvedModel  string
+	UpstreamProvider       string
+	UpstreamProviderSlug   string
+	RequestedNanoUSD       int64
+	MaximumChargeNanoUSD   int64
+	RequestedAt            time.Time
 }
 
 type AssessmentLedgerEntry struct {
@@ -70,7 +72,8 @@ func NewAssessmentReservation(input AssessmentReservationInput) (AssessmentReser
 	reservation := AssessmentReservation{
 		SchemaVersion: AssessmentReservationSchemaVersion, ContractVersion: AssessmentReservationContractVersion,
 		RequestSHA256: input.RequestSHA256, Source: input.Source, Media: input.Media,
-		Assessor: input.Assessor, PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
+		Assessor: input.Assessor, MetadataSnapshotSHA256: input.MetadataSnapshotSHA256,
+		PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
 		ExpectedResolvedModel: input.ExpectedResolvedModel,
 		UpstreamProvider:      input.UpstreamProvider, UpstreamProviderSlug: input.UpstreamProviderSlug,
 		RequestedNanoUSD: input.RequestedNanoUSD, MaximumChargeNanoUSD: input.MaximumChargeNanoUSD,

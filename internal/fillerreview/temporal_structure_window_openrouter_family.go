@@ -81,7 +81,8 @@ func NewTemporalStructureWindowOpenRouterFamily(config TemporalStructureWindowOp
 	}
 	model := openRouterTemporalModel(config.Snapshot, config.Model)
 	assessor, err := fillerstructurewindowopenrouter.New(fillerstructurewindowopenrouter.Config{
-		Profile: profile, APIKey: config.APIKey, BaseURL: baseURL, Model: config.Model,
+		Profile: profile, MetadataSnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(config.Snapshot),
+		APIKey: config.APIKey, BaseURL: baseURL, Model: config.Model,
 		ResolvedModel: model.CanonicalSlug, UpstreamProvider: config.UpstreamProvider,
 		UpstreamProviderSlug: config.UpstreamProviderSlug, ReservationNanoUSD: config.ReservationNanoUSD,
 		MaximumChargeNanoUSD: estimated, MaxTokens: temporalStructureOpenRouterMaxTokens,

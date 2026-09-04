@@ -14,9 +14,10 @@ func (a *Assessor) recordAssessment(media filler.StructureAssessmentMedia, asses
 	input := fillerstructure.AssessmentRecordInput{
 		Source: fillerstructure.Source{SHA256: media.Source.SHA256, Bytes: media.Source.Bytes, DurationMS: media.Source.DurationMs},
 		Media:  media.Assessment, Assessor: a.config.Profile,
-		PromptSHA256:  fillerstructure.DirectVideoPromptSHA256(media.Source.DurationMs),
-		SchemaSHA256:  fillerstructure.DirectVideoSchemaSHA256(media.Source.DurationMs),
-		RequestSHA256: result.RequestSHA256, RawResponse: result.RawResponse,
+		MetadataSnapshotSHA256: a.config.MetadataSnapshotSHA256,
+		PromptSHA256:           fillerstructure.DirectVideoPromptSHA256(media.Source.DurationMs),
+		SchemaSHA256:           fillerstructure.DirectVideoSchemaSHA256(media.Source.DurationMs),
+		RequestSHA256:          result.RequestSHA256, RawResponse: result.RawResponse,
 		StructuredOutput: result.StructuredOutput,
 		UpstreamProvider: a.config.UpstreamProvider, UpstreamProviderSlug: a.config.UpstreamProviderSlug,
 		GenerationID: result.GenerationID,

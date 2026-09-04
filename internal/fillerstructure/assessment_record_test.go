@@ -112,6 +112,7 @@ func TestAssessmentRecordRejectsOpenOrContradictorySettlement(t *testing.T) {
 		mutate func(*AssessmentRecordInput)
 	}{
 		{name: "accepted without response", mutate: func(input *AssessmentRecordInput) { input.RawResponse = nil }},
+		{name: "metadata snapshot missing", mutate: func(input *AssessmentRecordInput) { input.MetadataSnapshotSHA256 = "" }},
 		{name: "media profile missing", mutate: func(input *AssessmentRecordInput) { input.Media.ProfileSHA256 = "" }},
 		{name: "media lineage missing", mutate: func(input *AssessmentRecordInput) { input.Media.LineageSHA256 = "" }},
 		{name: "media duration drift", mutate: func(input *AssessmentRecordInput) { input.Media.DurationMS += 1_001 }},
@@ -158,7 +159,8 @@ func acceptedAssessmentInput() AssessmentRecordInput {
 			ModelDigest: strings.Repeat("b", 64), CapabilitySHA256: strings.Repeat("c", 64),
 			PromptVersion: DirectVideoPromptVersion, EvidenceContract: "assessment-v1",
 		},
-		PromptSHA256: strings.Repeat("d", 64), SchemaSHA256: strings.Repeat("e", 64),
+		MetadataSnapshotSHA256: strings.Repeat("f", 64),
+		PromptSHA256:           strings.Repeat("d", 64), SchemaSHA256: strings.Repeat("e", 64),
 		RequestSHA256: strings.Repeat("f", 64), RawResponse: []byte(`{"id":"generation"}`),
 		StructuredOutput: `{"segments":[{"endMs":5000,"role":"commercial","decisiveAtMs":[1000],"reason":"offer"},{"endMs":10000,"role":"promo","decisiveAtMs":[7000],"reason":"promotion"}]}`,
 		ResolvedProvider: "openrouter", ResolvedModel: "vendor/model-2026",

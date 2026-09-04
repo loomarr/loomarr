@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	CallRecordSchemaVersion   = 1
-	CallRecordContractVersion = "filler-structure-window-call-record-v1"
+	CallRecordSchemaVersion   = 2
+	CallRecordContractVersion = "filler-structure-window-call-record-v2"
 )
 
 // CallRecord is the path-free settlement authority for one provider call over one planned
@@ -19,6 +19,7 @@ type CallRecord struct {
 	MediaSet               MediaSet                              `json:"mediaSet"`
 	WindowOrdinal          int                                   `json:"windowOrdinal"`
 	Assessor               fillerstructure.AssessorProfile       `json:"assessor"`
+	MetadataSnapshotSHA256 string                                `json:"metadataSnapshotSha256"`
 	PromptSHA256           string                                `json:"promptSha256"`
 	SchemaSHA256           string                                `json:"schemaSha256"`
 	RequestSHA256          string                                `json:"requestSha256"`
@@ -53,27 +54,28 @@ type RecordedAssessment struct {
 }
 
 type CallRecordInput struct {
-	MediaSet             MediaSet
-	WindowOrdinal        int
-	Assessor             fillerstructure.AssessorProfile
-	PromptSHA256         string
-	SchemaSHA256         string
-	RequestSHA256        string
-	RawResponse          []byte
-	StructuredOutput     string
-	ResolvedProvider     string
-	ResolvedModel        string
-	UpstreamProvider     string
-	UpstreamProviderSlug string
-	GenerationID         string
-	Tokens               fillerstructure.AssessmentTokenUsage
-	RequestedNanoUSD     int64
-	ReservedNanoUSD      int64
-	ChargedAmountUSD     string
-	ChargedNanoUSD       int64
-	AccountedNanoUSD     int64
-	ChargeKnown          bool
-	State                fillerstructure.AssessmentRecordState
-	Failure              string
-	AssessedAt           time.Time
+	MediaSet               MediaSet
+	WindowOrdinal          int
+	Assessor               fillerstructure.AssessorProfile
+	MetadataSnapshotSHA256 string
+	PromptSHA256           string
+	SchemaSHA256           string
+	RequestSHA256          string
+	RawResponse            []byte
+	StructuredOutput       string
+	ResolvedProvider       string
+	ResolvedModel          string
+	UpstreamProvider       string
+	UpstreamProviderSlug   string
+	GenerationID           string
+	Tokens                 fillerstructure.AssessmentTokenUsage
+	RequestedNanoUSD       int64
+	ReservedNanoUSD        int64
+	ChargedAmountUSD       string
+	ChargedNanoUSD         int64
+	AccountedNanoUSD       int64
+	ChargeKnown            bool
+	State                  fillerstructure.AssessmentRecordState
+	Failure                string
+	AssessedAt             time.Time
 }

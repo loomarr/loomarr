@@ -12,7 +12,8 @@ func ValidateCallReservation(reservation CallReservation) error {
 		!contentHash(reservation.SHA256) || reservation.SHA256 != CallReservationSHA256(reservation) ||
 		!contentHash(reservation.RequestSHA256) || ValidateMediaSet(reservation.MediaSet) != nil ||
 		reservation.WindowOrdinal < 0 || reservation.WindowOrdinal >= len(reservation.MediaSet.Windows) ||
-		fillerstructure.ValidateAssessorProfile(reservation.Assessor) != nil || !contentHash(reservation.PromptSHA256) ||
+		fillerstructure.ValidateAssessorProfile(reservation.Assessor) != nil || !contentHash(reservation.MetadataSnapshotSHA256) ||
+		!contentHash(reservation.PromptSHA256) ||
 		!contentHash(reservation.SchemaSHA256) || !callIdentity(reservation.ExpectedResolvedModel) ||
 		!callIdentity(reservation.UpstreamProvider) || !callIdentity(reservation.UpstreamProviderSlug) ||
 		reservation.RequestedNanoUSD <= 0 || reservation.MaximumChargeNanoUSD <= 0 ||
@@ -46,6 +47,7 @@ func ValidateCallLedgerEntry(entry CallLedgerEntry) error {
 func callRecordMatchesReservation(record CallRecord, reservation CallReservation) bool {
 	if record.RequestSHA256 != reservation.RequestSHA256 || !reflect.DeepEqual(record.MediaSet, reservation.MediaSet) ||
 		record.WindowOrdinal != reservation.WindowOrdinal || !reflect.DeepEqual(record.Assessor, reservation.Assessor) ||
+		record.MetadataSnapshotSHA256 != reservation.MetadataSnapshotSHA256 ||
 		record.PromptSHA256 != reservation.PromptSHA256 || record.SchemaSHA256 != reservation.SchemaSHA256 ||
 		record.UpstreamProvider != reservation.UpstreamProvider || record.UpstreamProviderSlug != reservation.UpstreamProviderSlug ||
 		record.RequestedNanoUSD != reservation.RequestedNanoUSD || record.AssessedAt.Before(reservation.RequestedAt) {

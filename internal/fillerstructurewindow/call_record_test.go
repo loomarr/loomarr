@@ -93,6 +93,10 @@ func TestRecordedAssessmentRejectsTamperedBytesAssessmentAndAccounting(t *testin
 		mutate func(*RecordedAssessment)
 	}{
 		{name: "raw response", mutate: func(value *RecordedAssessment) { value.RawResponse = []byte("drift") }},
+		{name: "metadata snapshot", mutate: func(value *RecordedAssessment) {
+			value.Record.MetadataSnapshotSHA256 = ""
+			value.Record.SHA256 = CallRecordSHA256(value.Record)
+		}},
 		{name: "structured output", mutate: func(value *RecordedAssessment) { value.StructuredOutput += " " }},
 		{name: "semantic assessment", mutate: func(value *RecordedAssessment) { value.Assessment.Segments[0].EndMS++ }},
 		{name: "accounted charge", mutate: func(value *RecordedAssessment) {
@@ -128,7 +132,8 @@ func acceptedCallRecordInput(set MediaSet) CallRecordInput {
 	duration := window.MediaEndMS - window.MediaStartMS
 	return CallRecordInput{
 		MediaSet: set, WindowOrdinal: ordinal, Assessor: windowCallProfileFixture(),
-		PromptSHA256: DirectVideoPromptSHA256(duration), SchemaSHA256: DirectVideoSchemaSHA256(duration),
+		MetadataSnapshotSHA256: strings.Repeat("8", 64),
+		PromptSHA256:           DirectVideoPromptSHA256(duration), SchemaSHA256: DirectVideoSchemaSHA256(duration),
 		RequestSHA256: strings.Repeat("9", 64), RawResponse: []byte("provider response"),
 		StructuredOutput: `{"segments":[{"endMs":15000,"role":"commercial","decisiveAtMs":[1000],"reason":"offer"},{"endMs":` + integerString(duration) + `,"role":"promo","decisiveAtMs":[20000],"reason":"promotion"}]}`,
 		ResolvedProvider: "openrouter", ResolvedModel: "resolved-model", UpstreamProvider: "Provider",

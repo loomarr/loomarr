@@ -53,7 +53,8 @@ func (f *fakeTemporalStructureCompleteFamily) AssessWithEvidence(_ context.Conte
 	structured := fmt.Sprintf(`{"segments":[{"endMs":%d,"role":"commercial","decisiveAtMs":[1],"reason":"fixture"}]}`, duration)
 	return fillerstructure.NewAssessmentRecord(fillerstructure.AssessmentRecordInput{
 		Source: source, Media: media.Assessment, Assessor: f.profile,
-		PromptSHA256: fillerstructure.DirectVideoPromptSHA256(duration), SchemaSHA256: fillerstructure.DirectVideoSchemaSHA256(duration),
+		MetadataSnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		PromptSHA256:           fillerstructure.DirectVideoPromptSHA256(duration), SchemaSHA256: fillerstructure.DirectVideoSchemaSHA256(duration),
 		RequestSHA256: media.Source.SHA256, RawResponse: []byte(`{"id":"fixture"}`), StructuredOutput: structured,
 		ResolvedProvider: "openrouter", ResolvedModel: "provider/model-2026",
 		UpstreamProvider: "Provider", UpstreamProviderSlug: "provider", GenerationID: "fixture-generation",

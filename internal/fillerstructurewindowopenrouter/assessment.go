@@ -15,9 +15,10 @@ func (a *Assessor) recordAssessment(set fillerstructurewindow.MediaSet, ordinal 
 	durationMS := window.MediaEndMS - window.MediaStartMS
 	input := fillerstructurewindow.CallRecordInput{
 		MediaSet: set, WindowOrdinal: ordinal, Assessor: a.config.Profile,
-		PromptSHA256:  fillerstructurewindow.DirectVideoPromptSHA256(durationMS),
-		SchemaSHA256:  fillerstructurewindow.DirectVideoSchemaSHA256(durationMS),
-		RequestSHA256: result.RequestSHA256, RawResponse: result.RawResponse, StructuredOutput: result.StructuredOutput,
+		MetadataSnapshotSHA256: a.config.MetadataSnapshotSHA256,
+		PromptSHA256:           fillerstructurewindow.DirectVideoPromptSHA256(durationMS),
+		SchemaSHA256:           fillerstructurewindow.DirectVideoSchemaSHA256(durationMS),
+		RequestSHA256:          result.RequestSHA256, RawResponse: result.RawResponse, StructuredOutput: result.StructuredOutput,
 		UpstreamProvider: a.config.UpstreamProvider, UpstreamProviderSlug: a.config.UpstreamProviderSlug,
 		GenerationID:     result.GenerationID,
 		Tokens:           fillerstructure.AssessmentTokenUsage{Prompt: result.PromptTokens, Completion: result.CompletionTokens},

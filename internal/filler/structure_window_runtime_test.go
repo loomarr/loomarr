@@ -44,10 +44,11 @@ func (a *capturedWindowAssessor) AssessWindow(_ context.Context, set fillerstruc
 	duration := media.Window.MediaEndMS - media.Window.MediaStartMS
 	input := fillerstructurewindow.CallRecordInput{
 		MediaSet: set, WindowOrdinal: media.Window.Ordinal, Assessor: profile,
-		PromptSHA256:  fillerstructurewindow.DirectVideoPromptSHA256(duration),
-		SchemaSHA256:  fillerstructurewindow.DirectVideoSchemaSHA256(duration),
-		RequestSHA256: windowRequestDigest(profile.ID, media.Window.Ordinal),
-		RawResponse:   []byte("provider response"), StructuredOutput: windowStructuredOutput(timelineWithinWindow(a.timeline, media.Window), media.Window),
+		MetadataSnapshotSHA256: strings.Repeat("f", 64),
+		PromptSHA256:           fillerstructurewindow.DirectVideoPromptSHA256(duration),
+		SchemaSHA256:           fillerstructurewindow.DirectVideoSchemaSHA256(duration),
+		RequestSHA256:          windowRequestDigest(profile.ID, media.Window.Ordinal),
+		RawResponse:            []byte("provider response"), StructuredOutput: windowStructuredOutput(timelineWithinWindow(a.timeline, media.Window), media.Window),
 		ResolvedProvider: profile.Provider, ResolvedModel: "resolved-model", UpstreamProvider: "Provider",
 		UpstreamProviderSlug: "provider", GenerationID: "generation-1",
 		Tokens:           fillerstructure.AssessmentTokenUsage{Prompt: 100, Completion: 20, Video: 80},

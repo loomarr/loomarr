@@ -93,7 +93,7 @@ func structureWindowCallSettlement(record fillerstructurewindow.CallRecord, rese
 			Audio: record.Tokens.Audio, Video: record.Tokens.Video,
 		},
 		ChargedAmount: record.ChargedAmountUSD, ChargedCurrency: currency, ChargedNanoUSD: record.ChargedNanoUSD,
-		EstimatedNanoUSD: reservation.MaximumChargeNanoUSD, PriceSnapshot: reservation.SHA256,
+		EstimatedNanoUSD: reservation.MaximumChargeNanoUSD, PriceSnapshot: record.MetadataSnapshotSHA256,
 		Attempts: structureWindowCallAttempts(record), GenerationID: record.GenerationID, Outcome: outcome,
 		FailureReason: record.Failure, State: state, RetainReservation: record.State == fillerstructure.AssessmentRecordUnsettled,
 		UpdatedAt: record.AssessedAt,

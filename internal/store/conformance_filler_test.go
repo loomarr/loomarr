@@ -4061,7 +4061,8 @@ func structureAssessmentReservationFixture(t *testing.T, requestDigit, sourceDig
 			PromptVersion:    fillerstructure.DirectVideoPromptVersion,
 			EvidenceContract: fillerstructure.AssessmentRecordContractVersion,
 		},
-		PromptSHA256: strings.Repeat("c", 64), SchemaSHA256: strings.Repeat("d", 64),
+		MetadataSnapshotSHA256: strings.Repeat("6", 64),
+		PromptSHA256:           strings.Repeat("c", 64), SchemaSHA256: strings.Repeat("d", 64),
 		ExpectedResolvedModel: "resolved-model-" + requestDigit,
 		UpstreamProvider:      "Provider", UpstreamProviderSlug: "provider",
 		RequestedNanoUSD: 100, MaximumChargeNanoUSD: 80, RequestedAt: at,
@@ -4076,7 +4077,8 @@ func structureAssessmentRecordFixture(t *testing.T, reservation fillerstructure.
 	t.Helper()
 	input := fillerstructure.AssessmentRecordInput{
 		Source: reservation.Source, Media: reservation.Media, Assessor: reservation.Assessor,
-		PromptSHA256: reservation.PromptSHA256, SchemaSHA256: reservation.SchemaSHA256,
+		MetadataSnapshotSHA256: reservation.MetadataSnapshotSHA256,
+		PromptSHA256:           reservation.PromptSHA256, SchemaSHA256: reservation.SchemaSHA256,
 		RequestSHA256:    reservation.RequestSHA256,
 		UpstreamProvider: reservation.UpstreamProvider, UpstreamProviderSlug: reservation.UpstreamProviderSlug,
 		RequestedNanoUSD: reservation.RequestedNanoUSD, AssessedAt: reservation.RequestedAt.Add(time.Second),

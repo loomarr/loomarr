@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	CallReservationSchemaVersion   = 1
-	CallReservationContractVersion = "filler-structure-window-call-reservation-v1"
+	CallReservationSchemaVersion   = 2
+	CallReservationContractVersion = "filler-structure-window-call-reservation-v2"
 )
 
 type CallReservationState string
@@ -33,36 +33,38 @@ const (
 var ErrCallLedgerConflict = errors.New("structure window call ledger conflicts with existing authority")
 
 type CallReservation struct {
-	SchemaVersion         int                             `json:"schemaVersion"`
-	ContractVersion       string                          `json:"contractVersion"`
-	RequestSHA256         string                          `json:"requestSha256"`
-	MediaSet              MediaSet                        `json:"mediaSet"`
-	WindowOrdinal         int                             `json:"windowOrdinal"`
-	Assessor              fillerstructure.AssessorProfile `json:"assessor"`
-	PromptSHA256          string                          `json:"promptSha256"`
-	SchemaSHA256          string                          `json:"schemaSha256"`
-	ExpectedResolvedModel string                          `json:"expectedResolvedModel"`
-	UpstreamProvider      string                          `json:"upstreamProvider"`
-	UpstreamProviderSlug  string                          `json:"upstreamProviderSlug"`
-	RequestedNanoUSD      int64                           `json:"requestedNanoUsd"`
-	MaximumChargeNanoUSD  int64                           `json:"maximumChargeNanoUsd"`
-	RequestedAt           time.Time                       `json:"requestedAt"`
-	SHA256                string                          `json:"sha256"`
+	SchemaVersion          int                             `json:"schemaVersion"`
+	ContractVersion        string                          `json:"contractVersion"`
+	RequestSHA256          string                          `json:"requestSha256"`
+	MediaSet               MediaSet                        `json:"mediaSet"`
+	WindowOrdinal          int                             `json:"windowOrdinal"`
+	Assessor               fillerstructure.AssessorProfile `json:"assessor"`
+	MetadataSnapshotSHA256 string                          `json:"metadataSnapshotSha256"`
+	PromptSHA256           string                          `json:"promptSha256"`
+	SchemaSHA256           string                          `json:"schemaSha256"`
+	ExpectedResolvedModel  string                          `json:"expectedResolvedModel"`
+	UpstreamProvider       string                          `json:"upstreamProvider"`
+	UpstreamProviderSlug   string                          `json:"upstreamProviderSlug"`
+	RequestedNanoUSD       int64                           `json:"requestedNanoUsd"`
+	MaximumChargeNanoUSD   int64                           `json:"maximumChargeNanoUsd"`
+	RequestedAt            time.Time                       `json:"requestedAt"`
+	SHA256                 string                          `json:"sha256"`
 }
 
 type CallReservationInput struct {
-	RequestSHA256         string
-	MediaSet              MediaSet
-	WindowOrdinal         int
-	Assessor              fillerstructure.AssessorProfile
-	PromptSHA256          string
-	SchemaSHA256          string
-	ExpectedResolvedModel string
-	UpstreamProvider      string
-	UpstreamProviderSlug  string
-	RequestedNanoUSD      int64
-	MaximumChargeNanoUSD  int64
-	RequestedAt           time.Time
+	RequestSHA256          string
+	MediaSet               MediaSet
+	WindowOrdinal          int
+	Assessor               fillerstructure.AssessorProfile
+	MetadataSnapshotSHA256 string
+	PromptSHA256           string
+	SchemaSHA256           string
+	ExpectedResolvedModel  string
+	UpstreamProvider       string
+	UpstreamProviderSlug   string
+	RequestedNanoUSD       int64
+	MaximumChargeNanoUSD   int64
+	RequestedAt            time.Time
 }
 
 type CallLedgerEntry struct {
@@ -75,7 +77,8 @@ func NewCallReservation(input CallReservationInput) (CallReservation, error) {
 	reservation := CallReservation{
 		SchemaVersion: CallReservationSchemaVersion, ContractVersion: CallReservationContractVersion,
 		RequestSHA256: input.RequestSHA256, MediaSet: input.MediaSet, WindowOrdinal: input.WindowOrdinal,
-		Assessor: input.Assessor, PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
+		Assessor: input.Assessor, MetadataSnapshotSHA256: input.MetadataSnapshotSHA256,
+		PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
 		ExpectedResolvedModel: input.ExpectedResolvedModel, UpstreamProvider: input.UpstreamProvider,
 		UpstreamProviderSlug: input.UpstreamProviderSlug, RequestedNanoUSD: input.RequestedNanoUSD,
 		MaximumChargeNanoUSD: input.MaximumChargeNanoUSD, RequestedAt: input.RequestedAt.UTC().Round(0),

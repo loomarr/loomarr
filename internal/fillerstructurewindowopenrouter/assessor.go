@@ -62,9 +62,10 @@ func (a *Assessor) AssessWindow(ctx context.Context, set fillerstructurewindow.M
 		Reserve: func(requestSHA256 string) error {
 			reservation, reservationErr := fillerstructurewindow.NewCallReservation(fillerstructurewindow.CallReservationInput{
 				RequestSHA256: requestSHA256, MediaSet: set, WindowOrdinal: media.Window.Ordinal, Assessor: a.config.Profile,
-				PromptSHA256:          fillerstructurewindow.DirectVideoPromptSHA256(durationMS),
-				SchemaSHA256:          fillerstructurewindow.DirectVideoSchemaSHA256(durationMS),
-				ExpectedResolvedModel: a.config.ResolvedModel, UpstreamProvider: a.config.UpstreamProvider,
+				MetadataSnapshotSHA256: a.config.MetadataSnapshotSHA256,
+				PromptSHA256:           fillerstructurewindow.DirectVideoPromptSHA256(durationMS),
+				SchemaSHA256:           fillerstructurewindow.DirectVideoSchemaSHA256(durationMS),
+				ExpectedResolvedModel:  a.config.ResolvedModel, UpstreamProvider: a.config.UpstreamProvider,
 				UpstreamProviderSlug: a.config.UpstreamProviderSlug, RequestedNanoUSD: a.config.ReservationNanoUSD,
 				MaximumChargeNanoUSD: a.config.MaximumChargeNanoUSD, RequestedAt: requestedAt,
 			})
@@ -106,6 +107,7 @@ func validateConfig(config Config) error {
 	secure := err == nil && parsed.Scheme == "https" && parsed.Host != "" && parsed.RawQuery == "" && parsed.Fragment == ""
 	testOnly := config.AllowInsecureTestURL && err == nil && parsed.Scheme == "http" && parsed.Host != "" && parsed.RawQuery == "" && parsed.Fragment == ""
 	if fillerstructure.ValidateAssessorProfile(config.Profile) != nil || config.Profile.Provider != "openrouter" ||
+		!validMetadataSnapshotSHA256(config.MetadataSnapshotSHA256) ||
 		config.Profile.Model != config.Model || config.Profile.PromptVersion != fillerstructurewindow.DirectVideoPromptVersion ||
 		config.Profile.EvidenceContract != fillerstructurewindow.CallRecordContractVersion ||
 		strings.TrimSpace(config.APIKey) == "" || !secure && !testOnly || strings.TrimRight(config.BaseURL, "/") != config.BaseURL ||
@@ -118,6 +120,14 @@ func validateConfig(config Config) error {
 		return errors.New("filler structure window OpenRouter assessor configuration is invalid")
 	}
 	return nil
+}
+
+func validMetadataSnapshotSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil && strings.ToLower(value) == value
 }
 
 func readBoundWindowVideo(ctx context.Context, set fillerstructurewindow.MediaSet, media filler.StructureAssessmentWindowMedia) ([]byte, error) {

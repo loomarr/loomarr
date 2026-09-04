@@ -30,7 +30,8 @@ func NewRecordedAssessment(input CallRecordInput) (RecordedAssessment, error) {
 	record := CallRecord{
 		SchemaVersion: CallRecordSchemaVersion, ContractVersion: CallRecordContractVersion,
 		MediaSet: input.MediaSet, WindowOrdinal: input.WindowOrdinal, Assessor: input.Assessor,
-		PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
+		MetadataSnapshotSHA256: input.MetadataSnapshotSHA256,
+		PromptSHA256:           input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
 		RequestSHA256: input.RequestSHA256, ResponseSHA256: optionalCallDigest(input.RawResponse),
 		StructuredOutputSHA256: optionalCallDigest([]byte(input.StructuredOutput)), AssessmentSHA256: assessment.SHA256,
 		ResolvedProvider: strings.TrimSpace(input.ResolvedProvider), ResolvedModel: strings.TrimSpace(input.ResolvedModel),

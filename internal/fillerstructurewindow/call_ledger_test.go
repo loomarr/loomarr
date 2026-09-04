@@ -14,7 +14,8 @@ func TestCallReservationAndLedgerEntryBindExactWindowSettlement(t *testing.T) {
 	}
 	reservation, err := NewCallReservation(CallReservationInput{
 		RequestSHA256: callInput.RequestSHA256, MediaSet: set, WindowOrdinal: callInput.WindowOrdinal,
-		Assessor: callInput.Assessor, PromptSHA256: callInput.PromptSHA256, SchemaSHA256: callInput.SchemaSHA256,
+		Assessor: callInput.Assessor, MetadataSnapshotSHA256: callInput.MetadataSnapshotSHA256,
+		PromptSHA256: callInput.PromptSHA256, SchemaSHA256: callInput.SchemaSHA256,
 		ExpectedResolvedModel: "resolved-model", UpstreamProvider: callInput.UpstreamProvider,
 		UpstreamProviderSlug: callInput.UpstreamProviderSlug, RequestedNanoUSD: callInput.RequestedNanoUSD,
 		MaximumChargeNanoUSD: 1_500, RequestedAt: callInput.AssessedAt.Add(-time.Second),
@@ -25,6 +26,14 @@ func TestCallReservationAndLedgerEntryBindExactWindowSettlement(t *testing.T) {
 	entry := CallLedgerEntry{Reservation: reservation, State: CallLedgerSettled, Record: &recorded.Record}
 	if err := ValidateCallLedgerEntry(entry); err != nil {
 		t.Fatal(err)
+	}
+	drifted := entry
+	record := *entry.Record
+	drifted.Record = &record
+	drifted.Record.MetadataSnapshotSHA256 = "1111111111111111111111111111111111111111111111111111111111111111"
+	drifted.Record.SHA256 = CallRecordSHA256(*drifted.Record)
+	if err := ValidateCallLedgerEntry(drifted); err == nil {
+		t.Fatal("settlement from another metadata snapshot was accepted")
 	}
 	entry.Record.WindowOrdinal++
 	entry.Record.SHA256 = CallRecordSHA256(*entry.Record)
@@ -38,7 +47,8 @@ func TestCallReservationRejectsDriftedMediaSet(t *testing.T) {
 	input := acceptedCallRecordInput(set)
 	reservation, err := NewCallReservation(CallReservationInput{
 		RequestSHA256: input.RequestSHA256, MediaSet: set, WindowOrdinal: input.WindowOrdinal,
-		Assessor: input.Assessor, PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
+		Assessor: input.Assessor, MetadataSnapshotSHA256: input.MetadataSnapshotSHA256,
+		PromptSHA256: input.PromptSHA256, SchemaSHA256: input.SchemaSHA256,
 		ExpectedResolvedModel: "resolved-model", UpstreamProvider: input.UpstreamProvider,
 		UpstreamProviderSlug: input.UpstreamProviderSlug, RequestedNanoUSD: input.RequestedNanoUSD,
 		MaximumChargeNanoUSD: 1_500, RequestedAt: input.AssessedAt,

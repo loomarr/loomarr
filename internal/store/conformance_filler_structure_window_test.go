@@ -121,9 +121,10 @@ func structureWindowCallReservationFixture(t *testing.T, requestDigit, sourceDig
 	}
 	reservation, err := fillerstructurewindow.NewCallReservation(fillerstructurewindow.CallReservationInput{
 		RequestSHA256: strings.Repeat(requestDigit, 64), MediaSet: set, WindowOrdinal: 0, Assessor: profile,
-		PromptSHA256:          fillerstructurewindow.DirectVideoPromptSHA256(10_000),
-		SchemaSHA256:          fillerstructurewindow.DirectVideoSchemaSHA256(10_000),
-		ExpectedResolvedModel: "resolved-model-" + requestDigit, UpstreamProvider: "Provider",
+		MetadataSnapshotSHA256: strings.Repeat("6", 64),
+		PromptSHA256:           fillerstructurewindow.DirectVideoPromptSHA256(10_000),
+		SchemaSHA256:           fillerstructurewindow.DirectVideoSchemaSHA256(10_000),
+		ExpectedResolvedModel:  "resolved-model-" + requestDigit, UpstreamProvider: "Provider",
 		UpstreamProviderSlug: "provider", RequestedNanoUSD: 100, MaximumChargeNanoUSD: 80, RequestedAt: at,
 	})
 	if err != nil {
@@ -136,7 +137,8 @@ func structureWindowCallRecordFixture(t *testing.T, reservation fillerstructurew
 	t.Helper()
 	input := fillerstructurewindow.CallRecordInput{
 		MediaSet: reservation.MediaSet, WindowOrdinal: reservation.WindowOrdinal, Assessor: reservation.Assessor,
-		PromptSHA256: reservation.PromptSHA256, SchemaSHA256: reservation.SchemaSHA256,
+		MetadataSnapshotSHA256: reservation.MetadataSnapshotSHA256,
+		PromptSHA256:           reservation.PromptSHA256, SchemaSHA256: reservation.SchemaSHA256,
 		RequestSHA256: reservation.RequestSHA256, UpstreamProvider: reservation.UpstreamProvider,
 		UpstreamProviderSlug: reservation.UpstreamProviderSlug, RequestedNanoUSD: reservation.RequestedNanoUSD,
 		AssessedAt: reservation.RequestedAt.Add(time.Second), State: state,

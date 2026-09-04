@@ -17,20 +17,21 @@ type Ledger interface {
 }
 
 type Config struct {
-	Profile              fillerstructure.AssessorProfile
-	APIKey               string
-	BaseURL              string
-	Model                string
-	ResolvedModel        string
-	UpstreamProvider     string
-	UpstreamProviderSlug string
-	ReservationNanoUSD   int64
-	MaximumChargeNanoUSD int64
-	MaxTokens            int
-	DisableReasoning     bool
-	EnableReasoning      bool
-	AllowInsecureTestURL bool
-	Client               *http.Client
-	Ledger               Ledger
-	Now                  func() time.Time
+	Profile                fillerstructure.AssessorProfile
+	MetadataSnapshotSHA256 string
+	APIKey                 string
+	BaseURL                string
+	Model                  string
+	ResolvedModel          string
+	UpstreamProvider       string
+	UpstreamProviderSlug   string
+	ReservationNanoUSD     int64
+	MaximumChargeNanoUSD   int64
+	MaxTokens              int
+	DisableReasoning       bool
+	EnableReasoning        bool
+	AllowInsecureTestURL   bool
+	Client                 *http.Client
+	Ledger                 Ledger
+	Now                    func() time.Time
 }

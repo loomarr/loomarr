@@ -46,7 +46,8 @@ func ValidateRecordedAssessment(recorded RecordedAssessment) error {
 func ValidateCallRecord(record CallRecord) error {
 	if record.SchemaVersion != CallRecordSchemaVersion || record.ContractVersion != CallRecordContractVersion ||
 		ValidateMediaSet(record.MediaSet) != nil || record.WindowOrdinal < 0 || record.WindowOrdinal >= len(record.MediaSet.Windows) ||
-		fillerstructure.ValidateAssessorProfile(record.Assessor) != nil || !contentHash(record.PromptSHA256) ||
+		fillerstructure.ValidateAssessorProfile(record.Assessor) != nil || !contentHash(record.MetadataSnapshotSHA256) ||
+		!contentHash(record.PromptSHA256) ||
 		!contentHash(record.SchemaSHA256) || !contentHash(record.RequestSHA256) || !contentHash(record.AssessmentSHA256) ||
 		!callIdentity(record.UpstreamProvider) || !callIdentity(record.UpstreamProviderSlug) ||
 		record.RequestedNanoUSD <= 0 || record.ReservedNanoUSD < 0 || record.ChargedNanoUSD < 0 ||

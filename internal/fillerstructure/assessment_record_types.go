@@ -3,8 +3,8 @@ package fillerstructure
 import "time"
 
 const (
-	AssessmentRecordSchemaVersion   = 3
-	AssessmentRecordContractVersion = "filler-structure-assessment-record-v3"
+	AssessmentRecordSchemaVersion   = 4
+	AssessmentRecordContractVersion = "filler-structure-assessment-record-v4"
 	AssessmentMaximumResponseBytes  = 256 << 10
 )
 
@@ -53,6 +53,7 @@ type AssessmentRecord struct {
 	Source                 Source                `json:"source"`
 	Media                  AssessmentMedia       `json:"media"`
 	Assessor               AssessorProfile       `json:"assessor"`
+	MetadataSnapshotSHA256 string                `json:"metadataSnapshotSha256"`
 	PromptSHA256           string                `json:"promptSha256"`
 	SchemaSHA256           string                `json:"schemaSha256"`
 	RequestSHA256          string                `json:"requestSha256"`
@@ -85,27 +86,28 @@ type RecordedAssessment struct {
 }
 
 type AssessmentRecordInput struct {
-	Source               Source
-	Media                AssessmentMedia
-	Assessor             AssessorProfile
-	PromptSHA256         string
-	SchemaSHA256         string
-	RequestSHA256        string
-	RawResponse          []byte
-	StructuredOutput     string
-	ResolvedProvider     string
-	ResolvedModel        string
-	UpstreamProvider     string
-	UpstreamProviderSlug string
-	GenerationID         string
-	Tokens               AssessmentTokenUsage
-	RequestedNanoUSD     int64
-	ReservedNanoUSD      int64
-	ChargedAmountUSD     string
-	ChargedNanoUSD       int64
-	AccountedNanoUSD     int64
-	ChargeKnown          bool
-	State                AssessmentRecordState
-	Failure              string
-	AssessedAt           time.Time
+	Source                 Source
+	Media                  AssessmentMedia
+	Assessor               AssessorProfile
+	MetadataSnapshotSHA256 string
+	PromptSHA256           string
+	SchemaSHA256           string
+	RequestSHA256          string
+	RawResponse            []byte
+	StructuredOutput       string
+	ResolvedProvider       string
+	ResolvedModel          string
+	UpstreamProvider       string
+	UpstreamProviderSlug   string
+	GenerationID           string
+	Tokens                 AssessmentTokenUsage
+	RequestedNanoUSD       int64
+	ReservedNanoUSD        int64
+	ChargedAmountUSD       string
+	ChargedNanoUSD         int64
+	AccountedNanoUSD       int64
+	ChargeKnown            bool
+	State                  AssessmentRecordState
+	Failure                string
+	AssessedAt             time.Time
 }

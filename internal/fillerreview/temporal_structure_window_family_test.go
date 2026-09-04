@@ -44,10 +44,11 @@ func (f *fakeTemporalStructureWindowFamily) AssessWithEvidence(_ context.Context
 		structured := fmt.Sprintf(`{"segments":[{"endMs":%d,"role":"commercial","decisiveAtMs":[1000],"reason":"fixture offer"}]}`, durationMS)
 		item, err := fillerstructurewindow.NewRecordedAssessment(fillerstructurewindow.CallRecordInput{
 			MediaSet: prepared.Authority, WindowOrdinal: window.Window.Ordinal, Assessor: f.profile,
-			PromptSHA256:  fillerstructurewindow.DirectVideoPromptSHA256(durationMS),
-			SchemaSHA256:  fillerstructurewindow.DirectVideoSchemaSHA256(durationMS),
-			RequestSHA256: hashBytes([]byte(fmt.Sprintf("%s:%s:%d", prepared.Source.SHA256, f.profile.ID, window.Window.Ordinal))),
-			RawResponse:   []byte("fixture provider response"), StructuredOutput: structured,
+			MetadataSnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+			PromptSHA256:           fillerstructurewindow.DirectVideoPromptSHA256(durationMS),
+			SchemaSHA256:           fillerstructurewindow.DirectVideoSchemaSHA256(durationMS),
+			RequestSHA256:          hashBytes([]byte(fmt.Sprintf("%s:%s:%d", prepared.Source.SHA256, f.profile.ID, window.Window.Ordinal))),
+			RawResponse:            []byte("fixture provider response"), StructuredOutput: structured,
 			ResolvedProvider: "openrouter", ResolvedModel: "provider/model", UpstreamProvider: "Fixture Provider",
 			UpstreamProviderSlug: "fixture/provider", GenerationID: fmt.Sprintf("generation-%d", window.Window.Ordinal),
 			Tokens:           fillerstructure.AssessmentTokenUsage{Prompt: 100, Completion: 20, Video: 80},
