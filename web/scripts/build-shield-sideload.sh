@@ -67,6 +67,10 @@ export LOOMARR_SHIELD_SIDELOAD=1
 export LOOMARR_ANDROID_VERSION_NAME="${VERSION_NAME}"
 export LOOMARR_ANDROID_VERSION_CODE="${VERSION_CODE}"
 export LOOMARR_ANDROID_KEYSTORE_PATH="${KEYSTORE_PATH}"
+# The TV footer and diagnostic identity must describe the artifact actually installed, not the
+# isolated prototype version from app.json. Expo inlines EXPO_PUBLIC values into the production
+# JavaScript bundle, so derive this from the same validated name that owns Android versionName.
+export EXPO_PUBLIC_LOOMARR_CLIENT_VERSION="${VERSION_NAME}"
 
 (
   cd "${WEB_ROOT}"

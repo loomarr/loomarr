@@ -38,6 +38,15 @@ test("resolves only an explicit Shield sideload to the permanent Android identit
   assert.equal(config.android.versionCode, 1020003);
 });
 
+test("embeds the artifact version as the production TV client identity", async () => {
+  const buildSource = await readFile(
+    new URL("../../../scripts/build-shield-sideload.sh", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(buildSource, /export EXPO_PUBLIC_LOOMARR_CLIENT_VERSION="\$\{VERSION_NAME\}"/);
+});
+
 test("keeps the permanent identity unreachable outside the sideload build", async () => {
   const environment = { ...process.env };
   delete environment.LOOMARR_SHIELD_SIDELOAD;
