@@ -86,6 +86,7 @@ const SurfJourney = ({
   return (
     <SurfRail
       clientVersion={clientVersion}
+      currentChannelId={currentChannelId}
       density={density}
       groups={groups}
       onFocusSelection={setSelection}

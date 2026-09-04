@@ -11,8 +11,8 @@ import {
 
 import { ChannelIdentity, ProgrammeIdentity } from "../identity";
 import { StatePanel } from "../state-panel";
-
 import type { SurfChannelData, SurfGroupData, SurfRailProps, SurfSelection } from "./surf-rail.type";
+import { TvSurfRail } from "./surf-rail-tv";
 
 const surfRailWidth = (density: Density) => (density === "tv" ? 680 : density === "touch" ? "100%" : 480);
 
@@ -26,6 +26,7 @@ const findSurfChannel = (
 
 const SurfRail = ({
   clientVersion,
+  currentChannelId,
   density = "pointer",
   groups,
   onFocusSelection,
@@ -35,6 +36,22 @@ const SurfRail = ({
   selection,
   serverVersion,
 }: SurfRailProps) => {
+  if (density === "tv") {
+    return (
+      <TvSurfRail
+        clientVersion={clientVersion}
+        currentChannelId={currentChannelId}
+        density={density}
+        groups={groups}
+        onFocusSelection={onFocusSelection}
+        onTune={onTune}
+        renderArtwork={renderArtwork}
+        renderChannelLogo={renderChannelLogo}
+        selection={selection}
+        serverVersion={serverVersion}
+      />
+    );
+  }
   const selectedChannel = findSurfChannel(groups, selection);
   const selectedArtwork = selectedChannel ? renderArtwork?.(selectedChannel) : undefined;
   const selectedLogo = selectedChannel ? renderChannelLogo?.(selectedChannel) : undefined;
@@ -46,7 +63,7 @@ const SurfRail = ({
       level="overlay"
       maxHeight="100%"
       maxWidth="100%"
-      padding={density === "tv" ? "$section" : "$control"}
+      padding="$control"
       width={surfRailWidth(density)}
     >
       <Surface
@@ -93,7 +110,7 @@ const SurfRail = ({
                 <ProgrammeIdentity density={density} programme={selectedChannel.now} />
               </Surface>
             }
-            secondaryWidth={density === "tv" ? 360 : 250}
+            secondaryWidth={250}
           />
           {selectedChannel.now.progressPercent === undefined ? null : (
             <ProgressTrack percent={selectedChannel.now.progressPercent} tone="live" width="100%" />
@@ -113,7 +130,7 @@ const SurfRail = ({
         />
       ) : null}
 
-      <ScrollFrame density={density} style={{ maxHeight: density === "tv" ? 440 : 320 }}>
+      <ScrollFrame density={density} style={{ maxHeight: 320 }}>
         {groups.map((group) => (
           <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline" key={group.kind}>
             <Text density={density} textRole="metadata" tone="secondary">

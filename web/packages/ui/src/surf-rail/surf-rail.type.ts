@@ -8,6 +8,7 @@ type SurfGroupKind = "all" | "favourites" | "recent";
 interface SurfProgrammeData extends ProgrammeIdentityData {
   artworkState: ArtworkState;
   progressPercent?: number;
+  remainingLabel?: string;
 }
 
 interface SurfChannelData extends ChannelIdentityData {
@@ -29,6 +30,7 @@ interface SurfSelection {
 
 interface SurfRailProps {
   clientVersion: string;
+  currentChannelId?: string;
   density?: Density;
   groups: readonly SurfGroupData[];
   onFocusSelection: (selection: SurfSelection) => void;
