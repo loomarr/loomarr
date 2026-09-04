@@ -39,8 +39,8 @@ first aligned so the comparison exercises the same product state. The remediatio
 the Kotlin surface geometry and information placement through shared design-system and UI roles:
 
 - **Pairing:** the replacement reproduces the bare 320×24 dp brand strip, 760 dp card, equal columns,
-  210 dp divider, 150 dp unbranded QR, single-line server URL, pairing code, expiry, and refresh
-  action. Native TV focus remains visible on the preferred refresh action.
+  210 dp divider, 150 dp QR with the protected Loomarr centre mark, single-line server URL, pairing
+  code, expiry, and refresh action. Native TV focus remains visible on the preferred refresh action.
 - **Watching:** number entry and Channel identity occupy the same top corners. The full-width bottom
   bar reproduces the Kotlin title, episode facts, live-edge time, progress, next-programme line, and
   remote hints in the same order and at the same vertical boundaries.
@@ -57,6 +57,12 @@ glyph rasterization and metrics, which can move an ellipsis within the same boun
 encoders may select a different valid module mask for the same pairing payload; and native border
 edges have minor subpixel antialiasing differences. These do not alter the visible contract or
 interaction behavior.
+
+Maintainer screenshot review after the initial merge caught that the React Native TV composition
+explicitly disabled the QR centre mark. The earlier statement that an unbranded QR was parity was
+incorrect. Issue #1008 was reopened, a component regression test was added, and fresh native 1080p
+and 4K captures now retain the protected Loomarr centre mark. Only the two ready-pairing references
+changed; unrelated animation-frame drift from recapture was discarded.
 
 React Native 1080p and 4K captures do preserve the same logical composition; the only observed
 cross-density difference is the expected one-second expiry countdown movement. All loading, empty,

@@ -124,11 +124,7 @@ const pairingContent = (
             <Text density={density} textRole={density === "tv" ? "section" : "title"}>
               {density === "tv" ? "SCAN QR CODE" : "Scan QR Code"}
             </Text>
-            <QrCode
-              showBrandMark={density !== "tv"}
-              size={density === "tv" ? 150 : 180}
-              value={state.verificationUriComplete}
-            />
+            <QrCode showBrandMark size={density === "tv" ? 150 : 180} value={state.verificationUriComplete} />
           </Surface>
           <Surface
             alignSelf="stretch"
