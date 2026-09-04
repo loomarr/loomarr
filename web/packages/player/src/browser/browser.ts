@@ -1,4 +1,4 @@
-import type { ClientObservation as GeneratedClientObservation } from "@loomarr/api/models/clientObservation";
+import type { ClientObservation as BrowserClientObservation } from "@loomarr/core/client-diagnostics";
 import type Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LivePlaybackState } from "../player-controller";
@@ -23,10 +23,6 @@ import type { LivePlaybackState } from "../player-controller";
 
 type BrowserPlayerStatus = "idle" | "loading" | "playing" | "error";
 const LIVE_DVR_HORIZON_MS = 15 * 60_000;
-
-type BrowserClientObservation = Omit<GeneratedClientObservation, "occurredAt"> & {
-  occurredAt?: number;
-};
 
 type BrowserTunePhase = "first-frame" | "manifest";
 

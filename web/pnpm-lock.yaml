@@ -502,6 +502,9 @@ importers:
       '@loomarr/api':
         specifier: workspace:*
         version: link:../api
+      '@loomarr/core':
+        specifier: workspace:*
+        version: link:../core
       hls.js:
         specifier: 1.7.1
         version: 1.7.1
