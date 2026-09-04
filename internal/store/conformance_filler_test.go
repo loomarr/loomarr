@@ -427,8 +427,10 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	}
 	first := time.UnixMilli(1_800_000_000_123).UTC()
 	second := first.Add(2 * time.Second)
-	if _, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, first); err != nil {
+	if recorded, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, first); err != nil {
 		t.Fatal(err)
+	} else if !recorded {
+		t.Fatal("first scheduled start was not reported as a new airing")
 	}
 	// A resolver can ask about the active clip more than once. The scheduled start is stable,
 	// so a repeated write for that start is one airing, not another viewer or another play.
@@ -437,11 +439,15 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	} else if recorded {
 		t.Fatal("duplicate scheduled start was reported as another airing")
 	}
-	if _, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, second); err != nil {
+	if recorded, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, second); err != nil {
 		t.Fatal(err)
+	} else if !recorded {
+		t.Fatal("same clip on another channel was not reported as an independent airing")
 	}
-	if _, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, second); err != nil {
+	if recorded, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, second); err != nil {
 		t.Fatal(err)
+	} else if !recorded {
+		t.Fatal("later scheduled start was not reported as a new airing")
 	}
 
 	a, err := s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
@@ -457,6 +463,13 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got := b[clip.Hash]; got.PlayCount != 1 || !got.LastPlayedAt.Equal(second) {
 		t.Fatalf("channel-b exposure = %+v, want count 1 at %v", got, second)
+	}
+	storedClip, err := s.GetClip(ctx, clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storedClip.PlayCount != 3 {
+		t.Fatalf("global clip count = %d, want the three distinct channel/start airings", storedClip.PlayCount)
 	}
 
 	beforeBreak, err := s.FillerExposuresByChannel(ctx, "channel-a", second)
