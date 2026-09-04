@@ -72,7 +72,8 @@ test("drives every Watching state from the generated catalog and authoritative G
   assert.match(appSource, /watchingScheduleFromGuide\(/);
   assert.match(appSource, /loading=\{catalogLoading\}/);
   assert.match(appSource, /loadError=\{loadError\}/);
-  assert.match(appSource, /loadError \? refresh\(\) : controller\.retry\(\)/);
+  assert.match(appSource, /if \(loadError\) refreshSafely\(\)/);
+  assert.match(appSource, /else void controller\.retry\(\)/);
 });
 
 test("mounts the bounded authoritative Guide and returns tune intent to Watching", async () => {
@@ -125,10 +126,23 @@ test("wires authenticated artwork, channel invalidation, identity, versions, and
   assert.match(appSource, /openEventStream\(/);
   assert.match(appSource, /Authorization: `Bearer \$\{runtime\.credential\.token\}`/);
   assert.match(appSource, /onChannel:/);
-  assert.match(appSource, /void refresh\(\)/);
+  assert.match(appSource, /refreshSafely\(\)/);
   assert.match(appSource, /void guide\.refresh/);
   assert.match(appSource, /<PairedNativeImage/);
   assert.match(appSource, /onDisconnect=\{\(\) => runtime\.session\.disconnect\(\)\}/);
   assert.match(appSource, /appConfig\.expo\.version/);
   assert.match(appSource, /serverVersion=\{serverVersion\}/);
+});
+
+test("releases playback and invalidation resources in the background before authoritative retune", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /createNativePlayerLifecycle\(\{ controller, refresh, transport \}\)/);
+  assert.match(appSource, /AppState\.addEventListener\("change", \(state\) =>/);
+  assert.match(appSource, /refreshRequest\.current\?\.abort\(\);\s+lifecycle\.enterBackground\(\)/);
+  assert.match(appSource, /void lifecycle\.enterForeground\(\)\.catch/);
+  assert.match(appSource, /throw error/);
+  assert.match(appSource, /if \(closeStream\) return/);
+  assert.match(appSource, /else closeActiveStream\(\)/);
+  assert.match(appSource, /subscription\.remove\(\);\s+closeActiveStream\(\)/);
 });

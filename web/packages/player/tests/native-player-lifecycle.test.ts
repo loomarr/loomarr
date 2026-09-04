@@ -121,11 +121,12 @@ describe("native player application lifecycle", () => {
   it("ignores a stale refresh failure but reports the active foreground failure", async () => {
     let rejectRefresh!: (error: Error) => void;
     const failure = new Error("Channel refresh failed");
+    const retry = vi.fn();
     const lifecycle = createNativePlayerLifecycle({
       controller: {
         getSnapshot: pausedSnapshot,
         pause: vi.fn(),
-        retry: vi.fn(),
+        retry,
       },
       refresh: () =>
         new Promise<void>((_resolve, reject) => {
@@ -143,11 +144,12 @@ describe("native player application lifecycle", () => {
       controller: {
         getSnapshot: pausedSnapshot,
         pause: vi.fn(),
-        retry: vi.fn(),
+        retry,
       },
       refresh: () => Promise.reject(failure),
       transport: { resume: vi.fn(), suspend: vi.fn() },
     });
     await expect(activeLifecycle.enterForeground()).rejects.toThrow("Channel refresh failed");
+    expect(retry).not.toHaveBeenCalled();
   });
 });

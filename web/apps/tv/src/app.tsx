@@ -14,6 +14,7 @@ import { createPlayerController } from "@loomarr/player";
 import {
   createExpoVideoTransport,
   createNativeEventStreamFactory,
+  createNativePlayerLifecycle,
   NativePlayerView,
   PairedNativeImage,
 } from "@loomarr/player/native";
@@ -44,7 +45,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { BackHandler, useTVEventHandler, View } from "react-native";
+import { AppState, BackHandler, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../app.json";
 
@@ -111,6 +112,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
       if (!request.signal.aborted) {
         setLoadError(error instanceof Error ? error.message : "Couldn't load channels.");
       }
+      throw error;
     } finally {
       if (refreshRequest.current === request) {
         refreshRequest.current = undefined;
@@ -118,14 +120,31 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
       }
     }
   }, [catalog, controller, version]);
+  const refreshSafely = useCallback(() => {
+    void refresh().catch(() => undefined);
+  }, [refresh]);
+  const lifecycle = useMemo(
+    () => createNativePlayerLifecycle({ controller, refresh, transport }),
+    [controller, refresh, transport],
+  );
   useEffect(() => {
-    void refresh();
+    if (AppState.currentState === "active") refreshSafely();
+    else lifecycle.enterBackground();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void lifecycle.enterForeground().catch(() => undefined);
+      } else {
+        refreshRequest.current?.abort();
+        lifecycle.enterBackground();
+      }
+    });
     return () => {
       refreshRequest.current?.abort();
+      subscription.remove();
       guide.dispose();
       controller.dispose();
     };
-  }, [controller, guide, refresh]);
+  }, [controller, guide, lifecycle, refreshSafely]);
   useEffect(() => {
     const channelId = snapshot.channel?.id;
     if (channelId) void guide.refresh(channelId);
@@ -135,17 +154,34 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
       headers: { Authorization: `Bearer ${runtime.credential.token}` },
       onUnauthorized: () => runtime.session.revoked(),
     });
-    return openEventStream(
-      {
-        onChannel: () => {
-          void refresh();
-          void guide.refresh();
+    let closeStream: (() => void) | undefined;
+    const openStream = () => {
+      if (closeStream) return;
+      closeStream = openEventStream(
+        {
+          onChannel: () => {
+            refreshSafely();
+            void guide.refresh();
+          },
         },
-      },
-      new URL("/v1/events", runtime.credential.serverUrl).toString(),
-      createStream,
-    );
-  }, [guide, refresh, runtime.credential.serverUrl, runtime.credential.token, runtime.session]);
+        new URL("/v1/events", runtime.credential.serverUrl).toString(),
+        createStream,
+      );
+    };
+    const closeActiveStream = () => {
+      closeStream?.();
+      closeStream = undefined;
+    };
+    if (AppState.currentState === "active") openStream();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") openStream();
+      else closeActiveStream();
+    });
+    return () => {
+      subscription.remove();
+      closeActiveStream();
+    };
+  }, [guide, refreshSafely, runtime.credential.serverUrl, runtime.credential.token, runtime.session]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       const destination = clientBackDestination(active);
@@ -225,7 +261,10 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
         onPause={controller.pause}
         onPlay={() => void controller.play()}
         onPrevious={() => void controller.previous()}
-        onRetry={() => void (loadError ? refresh() : controller.retry())}
+        onRetry={() => {
+          if (loadError) refreshSafely();
+          else void controller.retry();
+        }}
         onShowControls={() => setControlsVisible(true)}
         numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
         player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
