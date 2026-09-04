@@ -185,8 +185,9 @@ type JobStore interface {
 	// ListProposalJobAttempts returns exact post-versioning execution history in
 	// attempt order. Legacy version-0 jobs legitimately have no rows.
 	ListProposalJobAttempts(ctx context.Context, jobID string) ([]ProposalJobAttempt, error)
-	// FindJobByIntentHash returns a recent job with the same intent hash (§8
-	// proposal cache), or ErrNotFound. `since` bounds the cache TTL.
+	// FindJobByIntentHash returns the most recent successful job with the same
+	// intent hash (§8 proposal cache), or ErrNotFound. `since` bounds the cache
+	// TTL; incomplete and failed attempts do not shadow a reusable success.
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (Job, error)
 	// CommitSuggestionSuccess atomically inserts the generated proposal and moves
 	// its existing job from running to done. A lost transition rolls both back.
