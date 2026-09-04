@@ -1,7 +1,7 @@
 # Shared client platform migration
 
-**Status:** P0a through P3.5 merged; Shield and Web parity migration authorized in #970
-**Date:** 2026-09-03
+**Status:** P5a accepted; P5b React Native Play beta and Web parity migration active in #970
+**Date:** 2026-09-04
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../frontend-design.md)
 **Current-state inventory:** [`docs/engineering/client-platform-inventory.md`](../client-platform-inventory.md)
@@ -21,9 +21,12 @@ and behavior, while Shield preserves the current approved Kotlin/Compose present
 The two clients are not made visually identical in this program. Refinements begin only after both
 legacy implementations have been retired.
 
-Shield is a single-device, sideload-only deployment during this migration. A clean uninstall,
-reinstall, and fresh pairing are accepted. Play distribution, installed credential migration,
-in-place update continuity, and a long-lived Kotlin rollback renderer are outside this program.
+Shield supports both a signed sideload and a Google Play internal beta during this migration. A
+clean uninstall, reinstall, and fresh pairing are accepted for the sideload cutover. The Play build
+uses Google-managed Play App Signing plus a separately protected, durable upload key; it does not
+need update continuity with the already accepted ephemeral-key sideload. Installed credential
+migration, public/open Play rollout, cross-channel update continuity, and a long-lived Kotlin
+rollback renderer remain outside this program.
 
 ## Why the current approach is being replaced
 
@@ -63,9 +66,10 @@ they are not bundled into the implementation replacement.
 - Loomarr starts in its dark presentation on every fresh web or native client. Light and
   system-following presentations remain supported user choices, but the host operating system does
   not silently replace the product default before the person chooses one.
-- Every migration PR leaves the currently selected production client shippable. The Compose package
-  `loomarr.media` is retired immediately after a React Native build under the same identity passes
-  the clean-sideload and fresh-pairing Shield acceptance journey.
+- Every migration PR leaves the currently selected production client shippable. The Compose source
+  for `loomarr.media` is retired after a React Native build under the same identity passes the
+  clean-sideload and fresh-pairing Shield acceptance journey and a React Native TV App Bundle passes
+  the Play beta release gate.
 
 ## Target modules and seams
 
@@ -291,20 +295,26 @@ the parity or retirement gates.
 | P3 | mobile/TV shells, pairing, confirmed self-disconnect, transport, and navigation adapters; shipping-screen parity inventory and dark-first pairing with canonical lockup and protected-centre branded QR | iPhone and Shield pair/self-disconnect/remote-revocation recovery evidence plus visual parity and QR-decode review |
 | P3.5 | complete the shared design-system, product-UI, and platform-adapter interfaces required by the known web, mobile, and TV surfaces | coverage ledger has no unexplained gaps; web/native Storybooks exercise every supported theme, density, state, interaction, and motion mode; interface, visual, interaction, accessibility, drift, and import-boundary gates pass; real iPhone and 1080p/4K TV workshop evidence recorded |
 | P4 | shared player interfaces plus complete React Native Shield parity | interface tests, emulator journey, current Kotlin references preserved |
-| P5 | physical Shield clean-sideload acceptance and Compose retirement | fresh pair, real playback, Watching/Guide/Surf remote traversal, background/foreground, maintainer visual acceptance |
+| P5a | physical Shield clean-sideload acceptance | fresh pair, real playback, Watching/Guide/Surf remote traversal, background/foreground, maintainer visual acceptance |
+| P5b | React Native Google Play internal-beta artifact and publication path | multi-ABI AAB, 16 KiB ELF alignment, deterministic version/package identity, protected durable upload signing, TV listing/manifest checks, internal-track-only publication |
+| P5c | Compose retirement | Kotlin application/build/tests and Kotlin-only token/screenshot/release gates are absent; distribution-neutral listing assets survive; sideload and Play artifacts verify from the Kotlin-free tree |
 | P6 | Web parity fixtures and browser-adapter foundation | route baselines, browser semantics, legacy-usage ledger never grows |
 | P7 | Web production routes migrated in dependency-ordered cohorts | authorization, forms, accessibility, responsive and visual parity per cohort |
 | P8 | retire Tailwind/shadcn/Base UI/CVA and transitional tokens | zero production legacy usage, clean retired identifiers, complete client and repository gates |
 
 ## Rollback and retirement
 
-Until P5 acceptance, the Kotlin application remains the Shield reference and reinstallable artifact.
-P5 may intentionally discard its installed pairing record: the accepted cutover is uninstall,
-install the React Native `loomarr.media` build, and pair again. Play state is not migration evidence.
+Until P5a acceptance, the Kotlin application remains the Shield reference and reinstallable
+artifact. P5a may intentionally discard its installed pairing record: the accepted cutover is
+uninstall, install the React Native `loomarr.media` build, and pair again. P5b then establishes a
+separate Google Play internal-beta channel from the accepted React Native source. Because the
+accepted sideload used an ephemeral key, its installed copy may be uninstalled once before the
+first Play install; cross-channel signature continuity is not a migration requirement. P5c deletes
+Kotlin only after both React Native artifact paths verify from the same ancestry.
 
 Web migration uses route/surface ownership rather than two implementations mounted for the same user
 journey. A surface switches only when its replacement passes its full contract. P6 and P7 may proceed
-while the maintainer performs P5 hardware acceptance, after P4 has stabilized the shared interfaces;
+while the maintainer performs P5a/P5b acceptance, after P4 has stabilized the shared interfaces;
 overlapping shared-package writers remain prohibited. The old implementation is deleted in the same
 PR or the next explicitly paired retirement PR. Retiring framework identifiers adds them to
 `scripts/check-retired.sh` as required by `AGENTS.md`.
@@ -318,7 +328,7 @@ config plugin does not support Expo Router. Both applications resolve the exact 
 `ClientPlatformProof` source through the Loomarr-owned `design-system` interface.
 
 The scaffold uses prototype-only bundle and package identifiers. It cannot overwrite the shipping
-Compose application or claim the permanent mobile identity before P5 adoption. Runtime Tamagui is
+Compose application or claim the permanent mobile identity before P5a adoption. Runtime Tamagui is
 proven through Android touch, iOS, Android TV, and Apple TV production JS bundles and a dedicated
 Vite browser entry. After web-adapter React deduplication, the browser proof produces one 277.41 kB JavaScript
 chunk (92.94 kB gzip) without mounting or changing a shipping route. No compiler or production

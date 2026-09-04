@@ -27,8 +27,10 @@ migration plan and these precedence rules:
    shared; navigation, focus, safe-area/overscan, DOM semantics, and player transport sit behind
    platform seams.
 4. Existing behavior, accessibility, authorization, pairing, and playout guarantees survive every
-   migration PR. Shield distribution is sideload-only for #970, so a clean reinstall and fresh
-   pairing replace installed-credential and Play-update compatibility.
+   migration PR. Shield supports the accepted signed sideload plus a Google Play Internal test from
+   the same React Native source. A clean reinstall and fresh pairing remain acceptable between the
+   ephemeral-key sideload and the separately signed Play installation; cross-channel update
+   continuity is not promised.
 5. P3.5 shared-interface publication is complete. The 2026-09-03 maintainer decision authorizes the
    full Shield and Web parity migrations; other production native clients remain later work.
 6. The current Web and Compose surfaces remain releasable until their individual parity gates pass,
