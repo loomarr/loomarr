@@ -102,13 +102,8 @@ const renderPage = (tab: "library" | "incoming" | "sources", initialPath = "/fil
   });
 
 describe("FillerPage shell", () => {
-  // ⚠ The Catalog badge follows the FILTERED query — the opposite rule from the header, on
-  // purpose: the badge says "how many match what I asked for", the header says "what does the install
-  // hold". Moving the clip query into a Catalog tab component would leave this badge empty.
-  //
-  // ⚠ Since §10 V51d it reads the response's `total`, NOT `clips.length` — those were the same
-  // number only while the listing was unbounded. On a paged catalog the page length would render
-  // "60" beside a filter matching 1,204, which is a worse lie than no badge at all.
+  // The Library badge is shell-owned and intentionally stable: it reports the server-owned watch
+  // count, while the extracted catalog module owns its filtered result count and paging details.
   it("keeps the Library badge stable from the server-owned catalog count", async () => {
     stubFillerPage();
     renderPage("library");
@@ -218,9 +213,8 @@ describe("FillerPage shell", () => {
   });
 });
 
-// Catalog paging (§10 V51d). ⚠ These live in the SHELL suite because paging is shell state —
-// the page number is in the URL, the count line and the pager bracket the grid, and the tab
-// badge reads the same total. The Catalog tab's per-clip behaviour stays in `test/filler.test.tsx`.
+// Route-level integration regressions for the extracted catalog: the module owns paging, while
+// these tests prove `/filler/library` still passes URL state through the page composition boundary.
 describe("FillerPage catalog paging", () => {
   const page = (n: number) => Array.from({ length: n }, (_, i) => clip(`hash-${i}`, `Clip ${i}`));
 
