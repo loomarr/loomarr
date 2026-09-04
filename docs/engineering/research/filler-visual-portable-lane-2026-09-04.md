@@ -444,6 +444,47 @@ This checkpoint uses generated test images only. It acquired no external media, 
 no provider call, selected no threshold, wrapped no video carrier, and granted no certification, training,
 ingestion, scheduling, or broadcast authority.
 
+### Institutional-source transport probe
+
+A bounded no-cost probe confirmed that the Met can supply the institutional still-art lane without adding a
+second acquisition framework. Met search does not reliably apply `isPublicDomain=true` as a server-side
+filter, so an adapter must use explicit search terms, retrieve candidate object records serially within a
+predeclared request ceiling, and admit only records whose object response says `isPublicDomain: true` and
+whose image URL uses the exact `images.metmuseum.org` host. It must freeze the original object response before
+rights review; the search result alone is not rights evidence.
+
+Object `195733`, _Venus_ by Massimiliano Soldani, proved the complete transport path. The object response is
+SHA-256 `8bffbf95ed2574d48322cb67c4ef27cd6d536b7c6e1e1b147a1eb91f1d00032c`; its declared primary image
+downloaded as a complete 2,989-by-4,000 JPEG of 1,156,190 bytes with SHA-256
+`87392d74fc09c959ba3a0adf9b53eb8b47e77114a103e7967997beb4ea523f3b`. Both artifacts remain in the
+private development area with mode `0600`. This proves transport and reproducibility only. It is not a rights
+approval, truth label, independent-family admission, model result, or broadcast authorization.
+
+The Art Institute API remains useful for metadata discovery: an exact public-domain/image-backed query found
+324 records, and three sampled object responses were preserved privately. However, the corresponding IIIF
+image requests currently receive a Cloudflare browser challenge (`403`), including with an identifying user
+agent. The institution's public repositories are tracking the same image-service failure
+([API data #9](https://github.com/art-institute-of-chicago/api-data/issues/9),
+[data aggregator #151](https://github.com/art-institute-of-chicago/data-aggregator/issues/151),
+[data aggregator #157](https://github.com/art-institute-of-chicago/data-aggregator/issues/157)). Loomarr must
+not bypass that challenge or pretend metadata-only records are acquired images. Keep this source disabled
+until the documented non-browser image route works again.
+
+The ownership boundary is therefore:
+
+- `fillercorpus` owns bounded discovery, raw metadata evidence, immutable source/work identity, representation
+  facts, inventory merge, and the human rights worksheet;
+- a later private materialization step downloads only rights-approved representations, verifies exact bytes
+  and decodability, and emits the already sealed inputs expected by `fillervisualsafety`;
+- `fillervisualsafety` owns opaque review, policy truth, family/creator/near-duplicate independence checks,
+  model-result separation, and certification measurements.
+
+The existing `fillercorpus.SourceClient` should be reused for public metadata requests. It should not cache
+sensitive image bytes under its metadata cache contract. Adding the Met requires an authority adapter and
+host rules in that package; downloading approved images requires a distinct bounded private materializer.
+Neither concern belongs inside `PrepareVisualCorpusDraft`, and neither changes the unresolved deterministic-
+carrier decision.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:
