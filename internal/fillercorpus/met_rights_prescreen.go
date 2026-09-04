@@ -14,6 +14,12 @@ const (
 	metRightsPrescreenHold = "hold"
 )
 
+var requiredMetRightsPrescreenInstructions = []string{
+	"This is a mechanical metadata pre-screen, not a rights approval or legal conclusion.",
+	"Inspect every held row; passing rows still require the existing independent item-level rights decision.",
+	"No result grants download, truth, training, production, scheduling, or broadcast authority.",
+}
+
 // MetRightsPrescreenOptions supplies the local evidence root and explicit
 // coverage/time bounds for one complete, non-authorizing pre-screen.
 type MetRightsPrescreenOptions struct {
@@ -89,11 +95,7 @@ func PrepareMetRightsPrescreen(inventoryRaw, policyEvidenceRaw []byte, opts MetR
 		PolicyEvidenceID: policy.EvidenceID, PolicyEvidenceSHA256: InventorySHA256(policyEvidenceRaw),
 		PolicySources: slices.Clone(policy.Sources), Limitations: slices.Clone(policy.Limitations),
 		PreparedAt: opts.PreparedAt, MinItems: opts.MinItems, MaxItems: opts.MaxItems,
-		Instructions: []string{
-			"This is a mechanical metadata pre-screen, not a rights approval or legal conclusion.",
-			"Inspect every held row; passing rows still require the existing independent item-level rights decision.",
-			"No result grants download, truth, training, production, scheduling, or broadcast authority.",
-		},
+		Instructions: slices.Clone(requiredMetRightsPrescreenInstructions),
 	}
 	for _, item := range inventory.Cases {
 		if item.Authority != MetAuthority {

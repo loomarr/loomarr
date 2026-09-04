@@ -123,19 +123,19 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `diagnostics` | 8 | — |
 | `filler` | 9 | `diagnostics`, `filleradmission`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
-| `fillerbakeoff` | 5 | `filleradmission`, `fillereval`, `httpx` |
-| `fillereval` | 5 | — |
+| `fillerbakeoff` | 7 | `filleradmission`, `fillereval`, `httpx` |
+| `fillereval` | 6 | — |
 | `fillersafety` | 5 | `mediatools`, `openroutermedia` |
 | `fillerstructure` | 8 | — |
 | `fillerstructurewindow` | 6 | `fillerstructure` |
-| `httpx` | 11 | `metrics` |
+| `httpx` | 12 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
 | `llm` | 6 | `httpx`, `metrics` |
-| `mediatools` | 7 | `diagnostics` |
+| `mediatools` | 8 | `diagnostics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
-| `openroutermedia` | 5 | `fillereval` |
+| `openroutermedia` | 6 | `fillereval` |
 | `provision` | 17 | — |
 | `recovery` | 5 | — |
 | `schedule` | 15 | `provision` |
@@ -162,9 +162,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 8 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillercorpus`** · 3 importers
+- **`fillercorpus`** · 4 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillereval`** · 5 importers
+- **`fillereval`** · 6 importers
   Owns the hermetic certification contract for filler admission.
 - **`fillerstructure`** · 8 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
@@ -209,21 +209,21 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`openroutermedia`** · 5 importers · → `fillereval`
+- **`openroutermedia`** · 6 importers · → `fillereval`
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`prepared`** · 3 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
 
 **Layer 2**
 
-- **`httpx`** · 11 importers · → `metrics`
+- **`httpx`** · 12 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`schedule`** · 15 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
 
-- **`fillerbakeoff`** · 5 importers · → `filleradmission`, `fillereval`, `httpx`
+- **`fillerbakeoff`** · 7 importers · → `filleradmission`, `fillereval`, `httpx`
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 6 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
@@ -238,7 +238,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`mediatools`** · 7 importers · → `diagnostics`, `playout`, `proctree`
+- **`mediatools`** · 8 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
@@ -251,6 +251,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the fail-closed spoken-safety cascade and its shadow evidence.
 - **`fillerstructuremedia`** · 4 importers · → `fillerstructure`, `mediatools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
+- **`fillervisualsafety`** · 4 importers · → `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`, `openroutermedia`
+  Owns complete-source visual-sensitive-content evidence.
 
 **Layer 6**
 
@@ -258,6 +260,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
 - **`fillerstructurewindow`** · 6 importers · → `fillerstructure`, `fillerstructuremedia`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
+- **`fillervisualsafety/cmd/corpusdraft`** · → `fillervisualsafety`
+  Command corpusdraft prepares one private, candidate-model-blind visual corpus review package.
+- **`fillervisualsafety/cmd/diagnostic`** · → `fillervisualsafety`
+  Command diagnostic runs one explicitly configured, development-only complete-source portable visual inference.
+- **`fillervisualsafety/cmd/openrouterreview`** · → `fillerbakeoff`, `fillervisualsafety`
+  Command openrouterreview performs one serial, candidate-blind visual-policy review over a previously verified bundle.
+- **`fillervisualsafety/cmd/reviewbundle`** · → `fillervisualsafety`
+  Command reviewbundle creates one private candidate-output-blind visual review bundle.
 
 **Layer 7**
 

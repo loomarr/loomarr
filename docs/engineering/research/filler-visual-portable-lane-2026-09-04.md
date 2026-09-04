@@ -540,6 +540,13 @@ rights prose becomes a named hold. The real 120-case run returned 120
 SHA-256 `736c569b2b9a441efcde95b013fd0e56db163306302b5d9934bbd1c8add292e7`. Every authority flag remains
 false; the independent item-level rights decision is still required before image download.
 
+The follow-on batch aid preserves that item-level ledger while removing repetitive entry. It accepts only
+the exact development inventory, inert worksheet, complete zero-hold pre-screen, and one digest-bound
+maintainer attestation with the frozen limitations and narrow private-development uses. An accepted
+attestation expands to 120 separate rows which the ordinary rights locker must still revalidate; any
+pre-screen hold or changed artifact disables the batch path. The current real template is still pending,
+so it grants no rights and no image has been downloaded.
+
 The existing rights-bound downloader is now the one shared materializer rather than a second visual-only
 implementation. Its shared schema-3 ledger supports MP4, JPEG, and PNG; derives the local extension from the admitted
 MIME type; enforces the response MIME type, exact byte count, optional source hashes, complete image decode,

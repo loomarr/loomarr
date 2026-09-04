@@ -129,6 +129,17 @@ status/reason codes, aggregate counts, and policy citations. Rights approval, do
 training, production, scheduling, and broadcast authority are always false; passing rows still need
 the existing independent item-level decision.
 
+`make filler-corpus-met-rights-attestation` turns a complete zero-hold pre-screen into one pending
+maintainer attestation bound to the exact inventory, inert worksheet, pre-screen, and pinned policy
+evidence digests. The maintainer reviews the recorded limitations once, names themself and the review
+time, changes `acceptance` from `pending` to `accepted`, and writes one versioned rationale. Then
+`make filler-corpus-met-rights-complete` expands that exact attestation into the ordinary completed
+CSV with a separate immutable identity and decision row for every item. Any held case, changed input,
+mixed authority, stale review, widened use, attribution requirement, or restriction rejects the whole
+batch. The CSV remains non-authorizing until `filler-corpus-rights-lock` independently revalidates all
+rows; certification, provider transfer, training, production, ingestion, scheduling, and broadcast
+remain excluded.
+
 `make filler-visual-corpus-nomination-prepare` is the narrow handoff for the institutional still-art lane.
 It strictly reopens the exact inventory, schema-3 materialization ledger, and every private image, then emits
 one inert JSON worksheet plus a spreadsheet-safe CSV. Immutable source, creator, family, rights-approval,

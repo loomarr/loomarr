@@ -59,8 +59,11 @@ The offline Met rights pre-screen now reopens every inventory-bound raw record, 
 projection, pins the official policy-source evidence, and emits only path-free case ids, metadata
 digests, statuses, and reason codes. The real 120-case report has 120 mechanical passes and zero
 holds at SHA-256 `736c569b2b9a441efcde95b013fd0e56db163306302b5d9934bbd1c8add292e7`;
-rights approval and every download, truth, training, production, ingestion, scheduling, and broadcast
-authority remain false pending the independent item-level decision.
+one digest-bound batch aid now lets the maintainer record that independent policy decision once and
+expands it into the unchanged 120-row locker contract only when every case passed. Its real 1,197-byte
+pending attestation is SHA-256 `80e82efc3dbcf7fa3934f38f1e5edc7b602b48204d70bcad5ac57ef94c09cfd7`.
+It remains unaccepted: rights approval and every download, truth, training, production, ingestion,
+scheduling, and broadcast authority are false.
 
 Filler compilation certification now has an immutable provider-free run preflight. It reopens and
 hashes the complete public media set, binds the private suite, reports the exact four-run

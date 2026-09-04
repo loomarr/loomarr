@@ -79,11 +79,14 @@ availability evidence, not a standalone licence.
 ## Human decision that remains
 
 One independent reviewer still decides whether the exact policy evidence is adequate for Loomarr's
-development use, copying, storage, transformations, derivatives, and retention; whether the live
-item page adds a caveat; whether non-copyright rights are absent or acceptably resolved; and what
-citation avoids implied Met endorsement. That decision remains item-bound in the existing rights
-ledger. The pre-screen's purpose is to make the reviewer inspect the policy once and then focus on
-named anomalies instead of manually rechecking 120 hashes and duplicated fields.
+private development use, copying, storage, transformations, evidence extraction, and retention;
+whether the recorded non-copyright limitations are acceptable for that use; and whether a caveat,
+attribution requirement, or restriction requires the ordinary exception path. The batch-completion
+aid records that policy decision once, but expands it into the unchanged item-bound rights worksheet
+and leaves the existing locker as the only producer of downloader authority. It refuses every batch
+with a held pre-screen case, changed artifact, mixed authority, stale review, widened use,
+attribution requirement, or restriction. The reviewer therefore inspects the policy and named
+anomalies rather than manually rechecking 120 hashes and duplicated fields.
 
 The current private 120-case corpus has 120 present `rightsAndReproduction` fields, all blank; 120
 `isPublicDomain: true` records; and 120 non-empty selected primary images. Those counts are
@@ -97,3 +100,13 @@ It binds inventory SHA-256 `ad27c9238fec2dfea0893d9b1391f1cc16ffd5d5c656c6e1bda6
 and policy-evidence SHA-256 `37703a3c91d5c60fc836f7807048c1872191e3f29e1159865adf6a49b3038c8d`.
 Rights approval and download, truth, training, production, ingestion, scheduling, and broadcast
 authority are all explicitly false.
+
+The real zero-hold inputs also reproduced through the batch aid. It prepared one 1,197-byte,
+mode-`0600` pending attestation at SHA-256
+`80e82efc3dbcf7fa3934f38f1e5edc7b602b48204d70bcad5ac57ef94c09cfd7`. That artifact binds the exact
+inventory, worksheet, pre-screen, and policy-evidence digests; records the four policy limitations;
+allows only private development copying/storage, technical transformation, and evidence extraction;
+and explicitly excludes truth, certification, provider transfer, training, production, ingestion,
+scheduling, and broadcast. Its reviewer, time, acceptance, and basis remain blank or `pending`. A
+real completion attempt refused it and wrote no CSV, proving that preparation alone cannot grant
+rights or download authority.
