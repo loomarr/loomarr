@@ -10,9 +10,10 @@ import (
 const (
 	VisualCorpusNominationWorksheetSchemaVersion   = 1
 	VisualCorpusNominationWorksheetContractVersion = "filler-visual-corpus-nomination-worksheet-v1"
-	VisualCorpusNominationSetSchemaVersion         = 1
-	VisualCorpusNominationSetContractVersion       = "filler-visual-corpus-nomination-set-v1"
+	VisualCorpusNominationSetSchemaVersion         = 2
+	VisualCorpusNominationSetContractVersion       = "filler-visual-corpus-nomination-set-v2"
 	VisualCorpusMetCC0ApprovalBasisPrefix          = fillercorpus.MetRightsApprovalBasisPrefix
+	VisualCorpusNominationExclude                  = "exclude"
 )
 
 // VisualCorpusNominationWorksheet freezes every mechanically derived field
@@ -88,10 +89,13 @@ type VisualCorpusNominationSet struct {
 	SchemaVersion         int                          `json:"schemaVersion"`
 	ContractVersion       string                       `json:"contractVersion"`
 	WorksheetSHA256       string                       `json:"worksheetSha256"`
+	ReviewDecisionsSHA256 string                       `json:"reviewDecisionsSha256"`
 	InventorySHA256       string                       `json:"inventorySha256"`
 	MaterializationSHA256 string                       `json:"materializationSha256"`
 	LockedAt              time.Time                    `json:"lockedAt"`
 	ReviewedBy            string                       `json:"reviewedBy"`
+	ReviewedCaseCount     int                          `json:"reviewedCaseCount"`
+	ExcludedCaseCount     int                          `json:"excludedCaseCount"`
 	Candidates            []VisualCorpusDraftCandidate `json:"candidates"`
 	CandidateModelOutput  bool                         `json:"candidateModelOutput"`
 	TruthAuthorityCreated bool                         `json:"truthAuthorityCreated"`
@@ -101,8 +105,10 @@ type VisualCorpusNominationSet struct {
 }
 
 type VisualCorpusNominationResult struct {
-	SetSHA256 string
-	CaseCount int
+	SetSHA256      string
+	ReviewedCount  int
+	CandidateCount int
+	ExcludedCount  int
 }
 
 func PrepareVisualCorpusNominationWorksheet(ctx context.Context, config VisualCorpusNominationPrepareConfig) (VisualCorpusNominationWorksheet, error) {

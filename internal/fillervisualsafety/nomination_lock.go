@@ -62,6 +62,7 @@ func lockVisualCorpusNominations(ctx context.Context, config VisualCorpusNominat
 		}
 	}
 	candidates := make([]VisualCorpusDraftCandidate, 0, len(config.Worksheet.Cases))
+	excluded := 0
 	seenWork := make(map[string]struct{}, len(config.Worksheet.Cases))
 	seenFamily := make(map[string]struct{}, len(config.Worksheet.Cases))
 	seenIndependence := make(map[string]struct{}, len(config.Worksheet.Cases))
@@ -69,6 +70,10 @@ func lockVisualCorpusNominations(ctx context.Context, config VisualCorpusNominat
 	for index, row := range config.Worksheet.Cases {
 		if err := ctx.Err(); err != nil {
 			return VisualCorpusNominationResult{}, fmt.Errorf("lock visual corpus nominations: %w", err)
+		}
+		if completed[index].nomination == VisualCorpusNominationExclude {
+			excluded++
+			continue
 		}
 		candidate, err := publishVisualCorpusNominationCandidate(config, assetsRoot, rightsRoot, row, completed[index])
 		if err != nil {
@@ -85,9 +90,11 @@ func lockVisualCorpusNominations(ctx context.Context, config VisualCorpusNominat
 	}
 	set := VisualCorpusNominationSet{
 		SchemaVersion: VisualCorpusNominationSetSchemaVersion, ContractVersion: VisualCorpusNominationSetContractVersion,
-		WorksheetSHA256: config.Worksheet.SHA256, InventorySHA256: config.Worksheet.InventorySHA256,
+		WorksheetSHA256: config.Worksheet.SHA256, ReviewDecisionsSHA256: digestJSON(config.CompletedCSV),
+		InventorySHA256:       config.Worksheet.InventorySHA256,
 		MaterializationSHA256: config.Worksheet.MaterializationSHA256, LockedAt: config.ReviewedAt,
-		ReviewedBy: config.ReviewedBy, Candidates: candidates, CandidateModelOutput: false,
+		ReviewedBy: config.ReviewedBy, ReviewedCaseCount: len(config.Worksheet.Cases), ExcludedCaseCount: excluded,
+		Candidates: candidates, CandidateModelOutput: false,
 		TruthAuthorityCreated: false, TrainingAllowed: false, ProductionUseAllowed: false,
 	}
 	set.SHA256 = VisualCorpusNominationSetSHA256(set)
@@ -115,7 +122,10 @@ func lockVisualCorpusNominations(ctx context.Context, config VisualCorpusNominat
 		return VisualCorpusNominationResult{}, err
 	}
 	published = true
-	return VisualCorpusNominationResult{SetSHA256: set.SHA256, CaseCount: len(set.Candidates)}, nil
+	return VisualCorpusNominationResult{
+		SetSHA256: set.SHA256, ReviewedCount: set.ReviewedCaseCount,
+		CandidateCount: len(set.Candidates), ExcludedCount: set.ExcludedCaseCount,
+	}, nil
 }
 
 func prospectiveVisualCorpusPathsOverlap(existingRoot, output string) bool {
@@ -140,8 +150,21 @@ func parseCompletedVisualCorpusNominations(worksheet VisualCorpusNominationWorks
 		if len(fields) != len(header) || !slices.Equal(fields[:immutableFields], ImmutableVisualCorpusNominationCSVRecord(worksheet, row)) {
 			return nil, fmt.Errorf("visual corpus nomination CSV row %d changed immutable evidence", index+1)
 		}
+		nomination := strings.TrimSpace(fields[immutableFields])
+		subjectStatus := strings.TrimSpace(fields[immutableFields+1])
+		generatedStatus := strings.TrimSpace(fields[immutableFields+2])
 		var diagnosticSlices []string
-		if err := json.Unmarshal([]byte(fields[immutableFields+3]), &diagnosticSlices); err != nil || len(diagnosticSlices) == 0 || len(diagnosticSlices) > 32 {
+		if err := json.Unmarshal([]byte(fields[immutableFields+3]), &diagnosticSlices); err != nil || diagnosticSlices == nil || len(diagnosticSlices) > 32 {
+			return nil, fmt.Errorf("visual corpus nomination CSV row %d has invalid slices_json", index+1)
+		}
+		if nomination == VisualCorpusNominationExclude {
+			if subjectStatus != "" || generatedStatus != "" || len(diagnosticSlices) != 0 {
+				return nil, fmt.Errorf("visual corpus nomination CSV row %d has incompatible exclusion judgments", index+1)
+			}
+			completed[index] = completedVisualCorpusNomination{nomination: nomination, slices: []string{}}
+			continue
+		}
+		if len(diagnosticSlices) == 0 {
 			return nil, fmt.Errorf("visual corpus nomination CSV row %d has invalid slices_json", index+1)
 		}
 		if !slices.IsSorted(diagnosticSlices) || len(slices.Compact(slices.Clone(diagnosticSlices))) != len(diagnosticSlices) {
@@ -153,9 +176,8 @@ func parseCompletedVisualCorpusNominations(worksheet VisualCorpusNominationWorks
 			}
 		}
 		value := completedVisualCorpusNomination{
-			nomination:      strings.TrimSpace(fields[immutableFields]),
-			subjectStatus:   strings.TrimSpace(fields[immutableFields+1]),
-			generatedStatus: strings.TrimSpace(fields[immutableFields+2]), slices: diagnosticSlices,
+			nomination: nomination, subjectStatus: subjectStatus,
+			generatedStatus: generatedStatus, slices: diagnosticSlices,
 		}
 		if value.generatedStatus != VisualCorpusGeneratedNo ||
 			(value.nomination == VisualCorpusNominationPositive && value.subjectStatus != VisualCorpusSubjectHistoricalAdult) ||

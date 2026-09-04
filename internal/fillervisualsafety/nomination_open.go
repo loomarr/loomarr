@@ -76,8 +76,11 @@ func openVisualCorpusNominationSet(root string, allowIncomplete bool) (VisualCor
 
 func validateVisualCorpusNominationSet(set VisualCorpusNominationSet) error {
 	if set.SchemaVersion != VisualCorpusNominationSetSchemaVersion || set.ContractVersion != VisualCorpusNominationSetContractVersion ||
-		!validDigest(set.WorksheetSHA256) || !validDigest(set.InventorySHA256) || !validDigest(set.MaterializationSHA256) ||
+		!validDigest(set.WorksheetSHA256) || !validDigest(set.ReviewDecisionsSHA256) ||
+		!validDigest(set.InventorySHA256) || !validDigest(set.MaterializationSHA256) ||
 		set.LockedAt.IsZero() || set.LockedAt.Location() != time.UTC || !validIdentity(set.ReviewedBy) ||
+		set.ReviewedCaseCount <= 0 || set.ReviewedCaseCount > MaximumVisualCorpusDraftCases || set.ExcludedCaseCount < 0 ||
+		set.ReviewedCaseCount != len(set.Candidates)+set.ExcludedCaseCount ||
 		len(set.Candidates) == 0 || len(set.Candidates) > MaximumVisualCorpusDraftCases || set.CandidateModelOutput ||
 		set.TruthAuthorityCreated || set.TrainingAllowed || set.ProductionUseAllowed ||
 		set.SHA256 == "" || set.SHA256 != VisualCorpusNominationSetSHA256(set) {

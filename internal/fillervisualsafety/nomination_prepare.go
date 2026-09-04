@@ -73,7 +73,7 @@ func prepareVisualCorpusNominationWorksheet(ctx context.Context, config VisualCo
 			"Do not edit immutable columns; locking compares every value with this exact worksheet and source ledger.",
 			"Complete only nomination, subject_status, generated_status, and slices_json in the CSV companion.",
 			"A positive candidate requires historical_art_adult_only; a clean candidate requires no_sensitive_subject_identified.",
-			"Use not_generated only after checking the work is not generated; uncertainty must remain outside the locked set.",
+			"Use not_generated only after checking the work is not generated; use an explicit exclude with blank subject/generated fields and [] slices for uncertainty or an unsuitable work.",
 			"This worksheet creates no truth, training, production, ingestion, scheduling, or broadcast authority.",
 		},
 		Cases: []VisualCorpusNominationRow{}, CandidateModelOutput: false, TruthAuthorityCreated: false,

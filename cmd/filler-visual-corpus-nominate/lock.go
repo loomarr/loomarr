@@ -67,6 +67,7 @@ func runLock(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(stdout, "filler-visual-corpus-nominate: locked %d nominations; set %s\n", result.CaseCount, result.SetSHA256)
+	_, _ = fmt.Fprintf(stdout, "filler-visual-corpus-nominate: reviewed %d rows; locked %d nominations; excluded %d; set %s\n",
+		result.ReviewedCount, result.CandidateCount, result.ExcludedCount, result.SetSHA256)
 	return nil
 }

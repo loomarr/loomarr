@@ -5995,6 +5995,15 @@ completion and returns the reviewer to the ordinary item-level exception path. T
 does not grant certification, provider transfer, training, production, ingestion, scheduling, or
 broadcast authority and is not a model decision or chain-of-title warranty.
 
+The visual-corpus nomination lock accepts an explicit `exclude` disposition so a completed review
+does not have to mislabel an unsuitable or uncertain downloaded work as positive or clean. An
+excluded row makes no subject, generation, or diagnostic-slice assertion and publishes no candidate
+or rights file. Blank and unknown dispositions still fail the complete review. The nomination set
+binds the exact canonical completed-review digest, total reviewed count, excluded count, and every
+published candidate; the locker reopens the original inventory, materialization ledger, worksheet,
+and media before publication. This is a workflow exclusion only: it creates no truth, training,
+provider-transfer, certification, ingestion, scheduling, production, or broadcast authority.
+
 The certification holdout uses a distinct schema-v4 rights contract; a schema-v3 approval remains
 readable development history but cannot authorize certification acquisition or preparation. The
 caller must name the `development` or `certification` profile before either locking rights decisions

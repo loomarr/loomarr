@@ -34,7 +34,7 @@ func TestVisualCorpusNominationWorkflowPublishesDraftCompatiblePrivateInputs(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CaseCount != 1 || !validDigest(result.SetSHA256) {
+	if result.ReviewedCount != 1 || result.CandidateCount != 1 || result.ExcludedCount != 0 || !validDigest(result.SetSHA256) {
 		t.Fatalf("result = %+v", result)
 	}
 	set, err := OpenVisualCorpusNominationSet(fixture.output)
@@ -43,6 +43,9 @@ func TestVisualCorpusNominationWorkflowPublishesDraftCompatiblePrivateInputs(t *
 	}
 	if set.SHA256 != result.SetSHA256 || set.TruthAuthorityCreated || set.CandidateModelOutput || set.TrainingAllowed || set.ProductionUseAllowed {
 		t.Fatalf("set = %+v", set)
+	}
+	if set.ReviewedCaseCount != 1 || set.ExcludedCaseCount != 0 || set.ReviewDecisionsSHA256 != digestJSON(records) {
+		t.Fatalf("set review binding = %+v", set)
 	}
 	candidate := set.Candidates[0]
 	if candidate.CandidateID != worksheet.Cases[0].CaseID || candidate.Nomination != VisualCorpusNominationPositive ||

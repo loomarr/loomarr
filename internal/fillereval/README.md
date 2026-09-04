@@ -150,13 +150,16 @@ whose independent rights rationale starts with the versioned
 new licence from tags or search results.
 
 `make filler-visual-corpus-nomination-lock` reconstructs that worksheet from the original bytes before
-accepting the completed CSV. It rejects changed cells, unresolved or contradictory judgments, changed or
-symlinked media, exact and normalized duplicates, repeated source-work/family identities, and repeated
-positive creators. A successful lock atomically publishes a private source root containing exact images,
-schema-2 rights evidence bound to inventory, materialization, approval, case, and content digests, and
-draft-compatible candidate records. Every output explicitly leaves model output, truth, training,
-production use, ingestion, scheduling, and broadcast authority false. Whole-corpus population, independence,
-model blindness, review, and certification remain owned by the visual corpus draft and V68 certificate.
+accepting the completed CSV. It rejects changed cells, blank or unknown dispositions, contradictory judgments,
+changed or symlinked media, exact and normalized duplicates, repeated published source-work/family identities,
+and repeated positive creators. An explicit `exclude` disposition requires the other three judgment cells to
+remain empty/`[]`; it publishes no candidate and cannot be confused with an unresolved blank row. The locked set
+binds the exact canonical decision digest and reviewed/excluded counts. A successful lock atomically publishes a
+private source root containing only accepted exact images, schema-2 rights evidence bound to inventory,
+materialization, approval, case, and content digests, and draft-compatible candidate records. Every output
+explicitly leaves model output, truth, training, production use, ingestion, scheduling, and broadcast authority
+false. Whole-corpus population, independence, model blindness, review, and certification remain owned by the
+visual corpus draft and V68 certificate.
 
 `make filler-corpus-rights-review` converts a frozen mixed-authority inventory into a deterministic worksheet
 bounded by explicit minimum and maximum item counts. It exposes the source assertions and selected
