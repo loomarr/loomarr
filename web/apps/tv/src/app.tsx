@@ -13,10 +13,10 @@ import { createExpoVideoTransport, NativePlayerView } from "@loomarr/player/nati
 import { createChannelCatalogPort, createPlayUrlSourcePort } from "@loomarr/player/server";
 import type { ClientDestination } from "@loomarr/ui";
 import {
-  ClientShell,
   clientBackDestination,
   GuideJourney,
   PairingShell,
+  SurfJourney,
   WatchingSurface,
   watchingScheduleFromGuide,
 } from "@loomarr/ui";
@@ -157,12 +157,17 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               preferredChannelId={snapshot.channel?.id}
             />
           ) : (
-            <ClientShell
-              active={active}
+            <SurfJourney
+              clientVersion="prototype"
+              controller={guide}
+              currentChannelId={snapshot.channel?.id}
               density="tv"
-              onDisconnect={() => runtime.session.disconnect()}
-              onNavigate={setActive}
-              serverName={runtime.credential.serverUrl}
+              onTune={(channelId) => {
+                void controller.tuneChannel(channelId);
+                setActive("watching");
+              }}
+              playableChannelIds={snapshot.catalog.map(({ id }) => id)}
+              recentChannelIds={snapshot.recentChannelIds}
             />
           )}
         </View>

@@ -85,3 +85,14 @@ test("mounts the bounded authoritative Guide and returns tune intent to Watching
   assert.match(appSource, /void controller\.tuneChannel\(channelId\)/);
   assert.match(appSource, /setActive\("watching"\)/);
 });
+
+test("mounts authoritative grouped Surf data with previous-Channel history", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /<SurfJourney/);
+  assert.match(appSource, /controller=\{guide\}/);
+  assert.match(appSource, /currentChannelId=\{snapshot\.channel\?\.id\}/);
+  assert.match(appSource, /playableChannelIds=\{snapshot\.catalog\.map/);
+  assert.match(appSource, /recentChannelIds=\{snapshot\.recentChannelIds\}/);
+  assert.match(appSource, /void controller\.tuneChannel\(channelId\)/);
+});
