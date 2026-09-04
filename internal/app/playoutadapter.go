@@ -56,9 +56,10 @@ type titleReader interface {
 
 // playoutResolver answers "what is airing now, and where does ffmpeg read it from".
 // clipPlayRecorder is the one-method slice of the store the resolver needs to count an
-// airing. Narrow deliberately — the resolver has no other business writing.
+// airing. `at` is the scheduled clip start, which makes repeated resolves of one airing
+// idempotent in the store. Narrow deliberately — the resolver has no other business writing.
 type clipPlayRecorder interface {
-	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) error
+	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) (bool, error)
 }
 
 // airingRecorder stamps that a PROGRAMME aired (§5, programming-design §3.1) — the recency
@@ -780,12 +781,12 @@ func (r *playoutResolver) airingFiller(
 			// tempting alternatives are both wrong:
 			//   - pod ASSEMBLY re-runs on every 10m reconcile sweep, so it counts what was
 			//     scheduled, over and over, not what aired;
-			//   - the /playout/program HANDLER would count per tune-in, so three viewers on
-			//     one break would be three plays.
-			// Here the resolver is answering one demuxer request for one item, and Attach
-			// starts at most one parent encoder per channel — so this fires once per clip
-			// actually encoded. `into == 0` restricts it to the item's START rather than every
-			// mid-clip re-resolve.
+			//   - counting every resolve as a new play would count viewer reconnects and child
+			//     retries rather than airings.
+			// Here the resolver passes the clip's SCHEDULED start on every resolve. The store
+			// makes that stable identity idempotent. Requiring `into == 0` instead lost every
+			// real transition: a finite encoder child asks for its successor milliseconds after
+			// the boundary, not at the exact nanosecond.
 			//
 			// ⚠ Internal playout only. A Tunarr-backed channel airs its filler through Tunarr,
 			// which never reports back, so those clips stay at zero — "not counted here", not
@@ -795,16 +796,15 @@ func (r *playoutResolver) airingFiller(
 			// `e.Path` from V38c until V41 and every counter stayed at zero. The error below is
 			// swallowed by design, so the miss was silent — the guard is `PodEntry.Hash` now
 			// existing at all, plus the store's ClipKeyIsHashNotPath conformance test.
-			if into == 0 && e.Hash != "" {
-				if r.metrics != nil {
+			if e.Hash != "" && r.clipPlays != nil {
+				startedAt := now.Add(-into)
+				recorded, err := r.clipPlays.RecordClipPlay(ctx, channelID, e.Hash, startedAt)
+				if err != nil {
+					// Telemetry, never correctness: a failed count must not stop a break from
+					// airing. Logged at debug because a pruned clip is an ordinary race.
+					_ = err
+				} else if recorded && r.metrics != nil {
 					r.metrics.FillerRotationAired(e.RecentRepeat, e.RecentRepeat && !e.RotationPinned, e.RotationPinned)
-				}
-				if r.clipPlays != nil {
-					if err := r.clipPlays.RecordClipPlay(ctx, channelID, e.Hash, now); err != nil {
-						// Telemetry, never correctness: a failed count must not stop a break from
-						// airing. Logged at debug because a pruned clip is an ordinary race.
-						_ = err
-					}
 				}
 			}
 			remaining := d - into
