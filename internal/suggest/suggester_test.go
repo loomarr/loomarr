@@ -53,6 +53,40 @@ type emptyThenGroundedLLM struct {
 	calls int
 }
 
+type retainedGroundingRetryLLM struct {
+	calls                int
+	sawRejectedAssistant bool
+}
+
+func (m *retainedGroundingRetryLLM) Name() string { return "retained-grounding-retry" }
+
+func (m *retainedGroundingRetryLLM) Chat(_ context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
+	m.calls++
+	switch m.calls {
+	case 1:
+		return testkit.FinalResponse(`{"channelName":"Friday Night","picks":[{"mediaType":"series","tmdbId":12345,"name":"Full House"}]}`), nil
+	case 2:
+		if len(opts.Tools) == 0 {
+			return llm.Response{}, errors.New("catalog tool unavailable during grounding recovery")
+		}
+		for _, message := range messages {
+			if message.Role == llm.Assistant && strings.Contains(message.Content, `"tmdbId":12345`) {
+				m.sawRejectedAssistant = true
+				break
+			}
+		}
+		if !m.sawRejectedAssistant {
+			return llm.Response{}, errors.New("rejected assistant turn missing from grounding recovery")
+		}
+		return testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Full House"}), nil
+	default:
+		if len(opts.Tools) != 0 {
+			return llm.Response{}, errors.New("catalog tool remained after grounded recovery search")
+		}
+		return testkit.FinalResponse(`{"channelName":"Friday Night","picks":[{"mediaType":"series","tvdbId":762,"name":"Full House"}]}`), nil
+	}
+}
+
 func (m *emptyThenGroundedLLM) Name() string { return "empty-then-grounded" }
 
 func (m *emptyThenGroundedLLM) Chat(_ context.Context, _ []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
@@ -857,6 +891,31 @@ func TestSuggest_RetriesOnceWhenModelNeverSearches(t *testing.T) {
 	}
 	if llmMock.Calls != 3 {
 		t.Fatalf("model calls = %d, want empty final + tool call + grounded final", llmMock.Calls)
+	}
+}
+
+func TestSuggest_GroundingRetryRetainsRejectedAssistantTurn(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"full house"}, LibraryItemID: "lib-full-house",
+		Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762,
+		Genres: []string{"Comedy", "Family"},
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model := &retainedGroundingRetryLLM{}
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !model.sawRejectedAssistant || model.calls != 3 {
+		t.Fatalf("grounding recovery retained=%t after %d calls, want retained rejected turn and three calls",
+			model.sawRejectedAssistant, model.calls)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TVDBID != 762 {
+		t.Fatalf("grounding recovery proposal = %+v, want grounded Full House", prop)
 	}
 }
 
