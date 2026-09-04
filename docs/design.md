@@ -2404,7 +2404,9 @@ operator does not type two independent identities that can drift.
 The sideload artifact is a signed APK containing the production React Native entry and only the
 `arm64-v8a` native libraries required by the Shield. The Play artifact is a signed Android App
 Bundle from the same React Native TV source and contains `armeabi-v7a`, `arm64-v8a`, `x86`, and
-`x86_64`; every packaged ELF LOAD segment is aligned for 16 KiB pages. Both builds require all four
+`x86_64`; every packaged 64-bit ELF LOAD segment is aligned for 16 KiB pages. Android's 16 KiB
+devices are 64-bit, so the required `arm64-v8a` and `x86_64` libraries carry that alignment while
+the separately required 32-bit TV ABIs retain their platform alignment. Both builds require all four
 keystore inputs, keep signing material outside the repository, and record machine-readable evidence
 for the artifact digest, package, name, code, upload-certificate digest, launcher activity, TV
 launcher metadata, icon, banner, embedded JavaScript bundle, and packaged ABI set. The local test
