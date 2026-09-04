@@ -371,7 +371,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 				return lufs
 			}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).WithDiagnostics(processDiagnostics),
 		// Rendered compilation children must not reach enrichment or the compatibility score gate
-		// until the four certified authorities are wired. The visible stage is deliberately
+		// until the five certified authorities are wired. The visible stage is deliberately
 		// registered with no runtime during qualification: top-level clips skip it, while a child
 		// resolves to review instead of silently inheriting its parent's suitability.
 		filler.NewSegmentScreeningStage(nil, nil, clipDir),

@@ -75,12 +75,12 @@ func (r *capturedSegmentScreeningRepository) PutSegmentScreeningEvidence(_ conte
 	return nil
 }
 
-func TestSegmentScreeningRuntimePersistsSubjectThenCallsFourAxesSerially(t *testing.T) {
+func TestSegmentScreeningRuntimePersistsSubjectThenCallsFiveAxesSerially(t *testing.T) {
 	order := []string{}
 	evaluators := segmentScreeningEvaluatorFixtures(&order)
 	repository := &capturedSegmentScreeningRepository{order: &order}
 	runtime, err := NewSegmentScreeningRuntime([]SegmentScreeningEvaluator{
-		evaluators[ScreenRights], evaluators[ScreenPlayback], evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety],
+		evaluators[ScreenRights], evaluators[ScreenPlayback], evaluators[ScreenWrittenSafety], evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety],
 	}, repository)
 	if err != nil {
 		t.Fatal(err)
@@ -94,14 +94,15 @@ func TestSegmentScreeningRuntimePersistsSubjectThenCallsFourAxesSerially(t *test
 		"persist:subject",
 		"evaluate:visual_safety", "persist:visual_safety",
 		"evaluate:spoken_safety", "persist:spoken_safety",
+		"evaluate:written_safety", "persist:written_safety",
 		"evaluate:rights", "persist:rights",
 		"evaluate:playback_integrity", "persist:playback_integrity",
 		"persist:aggregate",
 	}
-	if !slices.Equal(order, wantOrder) || len(repository.subjects) != 1 || len(repository.axis) != 4 || len(repository.aggregates) != 1 || !aggregate.Passes() {
+	if !slices.Equal(order, wantOrder) || len(repository.subjects) != 1 || len(repository.axis) != 5 || len(repository.aggregates) != 1 || !aggregate.Passes() {
 		t.Fatalf("order=%v subjects=%d axes=%d aggregates=%d aggregate=%+v", order, len(repository.subjects), len(repository.axis), len(repository.aggregates), aggregate)
 	}
-	if want := time.Date(2026, time.September, 12, 2, 3, 0, 0, time.UTC); aggregate.AssessedAt != want {
+	if want := time.Date(2026, time.September, 12, 2, 4, 0, 0, time.UTC); aggregate.AssessedAt != want {
 		t.Fatalf("aggregate assessedAt=%s, want latest immutable axis time %s", aggregate.AssessedAt, want)
 	}
 	for _, evaluator := range evaluators {
@@ -164,8 +165,8 @@ func TestSegmentScreeningRuntimeRejectsIncompleteOrDuplicateAxesBeforeCalls(t *t
 		name  string
 		items []SegmentScreeningEvaluator
 	}{
-		{name: "missing", items: []SegmentScreeningEvaluator{evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety], evaluators[ScreenRights]}},
-		{name: "duplicate", items: []SegmentScreeningEvaluator{evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety], evaluators[ScreenRights], evaluators[ScreenRights]}},
+		{name: "missing", items: []SegmentScreeningEvaluator{evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety], evaluators[ScreenWrittenSafety], evaluators[ScreenRights]}},
+		{name: "duplicate", items: []SegmentScreeningEvaluator{evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety], evaluators[ScreenWrittenSafety], evaluators[ScreenRights], evaluators[ScreenRights]}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -272,7 +273,7 @@ func TestSegmentScreeningRuntimeRequiresThreeDistinctAbsoluteArtifactPaths(t *te
 func mustSegmentScreeningRuntime(t *testing.T, items map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator, repository SegmentScreeningEvidenceRepository) *SegmentScreeningRuntime {
 	t.Helper()
 	runtime, err := NewSegmentScreeningRuntime([]SegmentScreeningEvaluator{
-		items[ScreenVisualSafety], items[ScreenSpokenSafety], items[ScreenRights], items[ScreenPlayback],
+		items[ScreenVisualSafety], items[ScreenSpokenSafety], items[ScreenWrittenSafety], items[ScreenRights], items[ScreenPlayback],
 	}, repository)
 	if err != nil {
 		t.Fatal(err)

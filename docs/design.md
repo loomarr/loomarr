@@ -3339,18 +3339,21 @@ source/signal slice inside the locked structure certificate. It does not claim t
 playable, enriched, or ready to air. An unresolved interval retains one concise structure review, and a human
 confirmation is still validated against complete coverage and exact source identity.
 
-The four content screens run on each materialized child only after its final playback derivative exists.
+The five content screens run on each materialized child only after its final playback derivative exists.
 This sequencing is mandatory: a playback-integrity result over the parent span, the stream-copy cut, or a
 throwaway preflight rendition cannot prove the bytes that will air. One content-addressed child-screening
 subject binds the immutable child lineage, source-master identity, evidence-derivative identity, final
 playback-derivative identity, derivative recipes and measurements, and the parent's exact half-open interval.
 The subject excludes relocatable filesystem paths: runtime paths only locate artifacts, and each evaluator
 must reopen the artifact it uses and reproduce the subject's byte identity before deciding. The aggregate
-contains exactly four independent
-closed outcomes: `visual_safety` (including explicit imagery), `spoken_safety` (including prohibited
-language), `rights`, and `playback_integrity`. Visual and spoken evaluators inspect the complete evidence
-derivative; rights replays acquisition and participation authority; playback integrity inspects the final
-playback derivative plus its conditioning evidence. Each outcome is `pass`, `reject`, or `hold`, names an
+contains exactly five independent
+closed outcomes: `visual_safety` (including explicit imagery), `spoken_safety` (including audibly
+prohibited language), `written_safety` (including visibly written prohibited language), `rights`, and
+`playback_integrity`. Visual, spoken, and written evaluators inspect the complete evidence derivative;
+rights replays acquisition and participation authority; playback integrity inspects the final playback
+derivative plus its conditioning evidence. A semantic tagger, a few representative frames, transcript
+absence, or visual-model prose cannot satisfy any of those complete-coverage safety axes. Each outcome is
+`pass`, `reject`, or `hold`, names an
 opaque reason code, and binds the SHA-256 of one immutable axis-evidence record. Raw restricted phrases and
 descriptions never enter proposal, catalog, or public admission records.
 
@@ -3359,10 +3362,10 @@ certification, implementation, and evidence-contract profile, plus the SHA-256 o
 ledger or measurement bytes. The axis record publishes only after those raw bytes are durable. A child
 screening coordinator requires exactly one named evaluator for each axis, makes the path-free subject durable
 before the first call, calls them serially without showing one evaluator another's answer, rejects subject or
-profile drift, and persists each axis before moving to the next and the validated four-axis aggregate before
+profile drift, and persists each axis before moving to the next and the validated five-axis aggregate before
 returning it. Each evaluator owns repeat-safe settlement of its exact operation;
 a retry after a later persistence failure replays the same closed authority-bound result instead of repeating
-a possibly billed call. The aggregate's `assessedAt` is the latest of those four immutable axis assessment
+a possibly billed call. The aggregate's `assessedAt` is the latest of those five immutable axis assessment
 times, not a fresh coordinator clock reading, so a crash after aggregate publication but before its caller
 records the digest reproduces the same aggregate identity on retry. An operational error means no trustworthy result exists and creates an operational
 hold. Reject and hold are durable domain answers, not retryable absence.
@@ -3413,7 +3416,7 @@ non-authorizing by default, names exactly one canonical profile per axis, and lo
 Terminal admission
 must re-read the aggregate, every axis record, its unique settled operation, and every raw-evidence identity;
 verify exact child lineage,
-all three media identities, parent span, outcomes, reasons, and profiles; and require all four passes plus
+all three media identities, parent span, outcomes, reasons, and profiles; and require all five passes plus
 explicit production permission. A boolean callback, aggregate-only replay, model self-assertion, pre-split
 screen, or structure certificate cannot release a child. Missing, stale, rejected, held, identity-drifted,
 profile-drifted, or unverifiable evidence keeps it held.

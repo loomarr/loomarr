@@ -203,7 +203,7 @@ type SidecarTags struct {
 	// MediaAssets binds the playable catalog rendition to the immutable source master and every
 	// reproducible derivative. It is portable authority beside the bytes, not a cache-only path hint.
 	MediaAssets *MediaAssetManifest `json:"mediaAssets,omitempty"`
-	// SegmentScreening points to the exact immutable subject and four-axis aggregate recorded for
+	// SegmentScreening points to the exact immutable subject and five-axis aggregate recorded for
 	// this rendered child. It is a portable locator, never release authority: terminal admission
 	// reprojects the current sidecar and replays every referenced evidence record.
 	SegmentScreening *SegmentScreeningReference `json:"segmentScreening,omitempty"`

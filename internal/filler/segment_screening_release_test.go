@@ -24,7 +24,7 @@ func TestSegmentScreeningCertificationReplaysEveryAxisAndRawEvidence(t *testing.
 	}
 	if currentRequest.SubjectSHA256 != subject.SHA256 || currentRequest.SourceMasterSHA256 != subject.SourceMasterSHA256 ||
 		currentRequest.SourceID != subject.SourceID || currentRequest.AcquisitionID != subject.AcquisitionID ||
-		currentRequest.PolicySHA256 != screeningProfileFixture(ScreenRights, "3").PolicySHA256 || currentRequest.Use != FillerBroadcastUse {
+		currentRequest.PolicySHA256 != screeningProfileFixture(ScreenRights, "4").PolicySHA256 || currentRequest.Use != FillerBroadcastUse {
 		t.Fatalf("current rights request = %+v", currentRequest)
 	}
 	for _, recorded := range records {

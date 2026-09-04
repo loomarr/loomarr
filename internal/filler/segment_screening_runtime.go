@@ -34,7 +34,7 @@ type SegmentScreeningRuntime struct {
 
 func NewSegmentScreeningRuntime(evaluators []SegmentScreeningEvaluator, evidence SegmentScreeningEvidenceRepository) (*SegmentScreeningRuntime, error) {
 	if len(evaluators) != len(segmentScreeningAxisOrder) || evidence == nil {
-		return nil, fmt.Errorf("segment screening runtime requires four evaluators and evidence repository")
+		return nil, fmt.Errorf("segment screening runtime requires five evaluators and evidence repository")
 	}
 	byAxis := make(map[SegmentScreeningAxis]SegmentScreeningEvaluator, len(evaluators))
 	for _, evaluator := range evaluators {

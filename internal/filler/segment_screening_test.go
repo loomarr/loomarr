@@ -11,8 +11,9 @@ func segmentScreeningFixture(t *testing.T) SegmentScreeningEvidence {
 	evidence, err := NewSegmentScreeningEvidence(screeningSubjectFixture(t), []SegmentScreeningResult{
 		{Axis: ScreenVisualSafety, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("1", 64), ReasonCode: "policy_clear"},
 		{Axis: ScreenSpokenSafety, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("2", 64), ReasonCode: "policy_clear"},
-		{Axis: ScreenRights, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("3", 64), ReasonCode: "rights_verified"},
-		{Axis: ScreenPlayback, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("4", 64), ReasonCode: "playback_verified"},
+		{Axis: ScreenWrittenSafety, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("3", 64), ReasonCode: "policy_clear"},
+		{Axis: ScreenRights, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("4", 64), ReasonCode: "rights_verified"},
+		{Axis: ScreenPlayback, Outcome: ScreenPass, AuthoritySHA256: strings.Repeat("5", 64), ReasonCode: "playback_verified"},
 	}, time.Date(2026, time.September, 5, 14, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
@@ -20,12 +21,12 @@ func segmentScreeningFixture(t *testing.T) SegmentScreeningEvidence {
 	return evidence
 }
 
-func TestSegmentScreeningRequiresAllFourIndependentPasses(t *testing.T) {
+func TestSegmentScreeningRequiresAllFiveIndependentPasses(t *testing.T) {
 	evidence := segmentScreeningFixture(t)
-	if !evidence.Passes() || len(evidence.Results) != 4 || evidence.Results[0].Axis != ScreenPlayback || evidence.Results[1].Axis != ScreenRights || evidence.Results[2].Axis != ScreenSpokenSafety || evidence.Results[3].Axis != ScreenVisualSafety {
+	if !evidence.Passes() || len(evidence.Results) != 5 || evidence.Results[0].Axis != ScreenPlayback || evidence.Results[1].Axis != ScreenRights || evidence.Results[2].Axis != ScreenSpokenSafety || evidence.Results[3].Axis != ScreenVisualSafety || evidence.Results[4].Axis != ScreenWrittenSafety {
 		t.Fatalf("screening = %+v", evidence)
 	}
-	for _, axis := range []SegmentScreeningAxis{ScreenVisualSafety, ScreenSpokenSafety, ScreenRights, ScreenPlayback} {
+	for _, axis := range []SegmentScreeningAxis{ScreenVisualSafety, ScreenSpokenSafety, ScreenWrittenSafety, ScreenRights, ScreenPlayback} {
 		t.Run(string(axis), func(t *testing.T) {
 			candidate := evidence
 			candidate.Results = append([]SegmentScreeningResult(nil), evidence.Results...)
@@ -47,7 +48,7 @@ func TestValidateSegmentScreeningRejectsCoverageAndIdentityDrift(t *testing.T) {
 		name   string
 		mutate func(*SegmentScreeningEvidence)
 	}{
-		{name: "missing axis", mutate: func(e *SegmentScreeningEvidence) { e.Results = e.Results[:3] }},
+		{name: "missing axis", mutate: func(e *SegmentScreeningEvidence) { e.Results = e.Results[:4] }},
 		{name: "duplicate axis", mutate: func(e *SegmentScreeningEvidence) { e.Results[1].Axis = e.Results[0].Axis }},
 		{name: "unknown outcome", mutate: func(e *SegmentScreeningEvidence) { e.Results[0].Outcome = "maybe" }},
 		{name: "missing authority", mutate: func(e *SegmentScreeningEvidence) { e.Results[0].AuthoritySHA256 = "" }},

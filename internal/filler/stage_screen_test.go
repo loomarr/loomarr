@@ -61,7 +61,7 @@ func TestSegmentScreeningStageRequiresTerminalCertificationBeforeContinuing(t *t
 	stage := NewSegmentScreeningStage(runtime, certification, root)
 	out, err := stage.Run(t.Context(), clip)
 	if err != nil || out.Verdict != VerdictContinue {
-		t.Fatalf("certified four-axis child did not continue: out=%+v err=%v", out, err)
+		t.Fatalf("certified five-axis child did not continue: out=%+v err=%v", out, err)
 	}
 }
 

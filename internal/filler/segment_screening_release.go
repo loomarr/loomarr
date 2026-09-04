@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	SegmentScreeningReleaseSchemaVersion   = 2
-	SegmentScreeningReleaseContractVersion = "filler-rendered-child-screening-release-v2"
+	SegmentScreeningReleaseSchemaVersion   = 3
+	SegmentScreeningReleaseContractVersion = "filler-rendered-child-screening-release-v3"
 )
 
 type SegmentScreeningReleaseAuthority struct {
