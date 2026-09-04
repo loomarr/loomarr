@@ -1046,7 +1046,7 @@ Two consequences worth stating, because both look like details and are not:
 ### 7.2 Search (federated, no index)
 **Decision: Loomarr builds no search index.** Every searchable corpus is already indexed by its owner: the media server exposes `SearchTerm` on the same `/Items` surface as §6 (with `IncludeItemTypes` + `Recursive=true`, flavor auth as usual); TMDB has `/search/multi`; the clip catalog is thousands of rows where a `name LIKE` filter in the store suffices. Dual-dialect full-text (SQLite FTS5 *and* Postgres tsvector, which diverge substantially) to re-index data we don't own is explicitly rejected — revisit only if enormous filler catalogs demand it (§20).
 
-`GET /v1/search?q=&scope=library|tmdb|all` fans out accordingly and returns unified `Candidate` results (external ids, library item id when present, `in_library` flag). **Clips are deliberately NOT a search scope (revised).** `Candidate` models a *provisionable title* — its `MediaType` admits only `movie|series`, and it flows through the same dedupe/identity machinery that grounds the LLM. A clip is not a title (§10: commercials "are not 'titles,' so the provisioning loop does not apply"), so representing one as a `Candidate` would push an unprovisionable row with an invalid media type through the grounding path — the exact filler-into-programming leak §10 is built to prevent. Clip search therefore lives where clips live: `GET /v1/filler?q=` applies the `name LIKE` filter this section prescribes and returns real `ClipDTO`s, so a result carries a Tunarr program id and can be deep-linked. *The `clips` scope was advertised in the enum but never implemented — the catalog was always constructed with a nil clip searcher, so it silently returned nothing. Removing it corrects the contract rather than shipping a leak to satisfy it.* Crucially, **this is the same implementation as the Catalog boundary (§8)** — the LLM's grounding tool and the human's search box share one code path, so humans and the model see identical results, and "why did the suggester pick/miss X" is debuggable by typing the query into the UI. Results feed the lineup editor: adding an `in_library` result places it; adding a missing one creates an acquisition — which flows through the existing approval gate, so search adds **no new privilege surface and no new config**.
+`GET /v1/search?q=&scope=library|tmdb|all` fans out accordingly and returns unified `Candidate` results (external ids, library item id when present, `in_library` flag). The same route also exposes the Catalog's structured discovery path when `q` is omitted: `media_type`, `genres`, `keywords`, `year_from`, `year_to`, `original_language`, `origin_country`, `runtime_min`, `runtime_max`, `vote_average_min`, `vote_count_min`, `network`, `cast`, and `creators` map directly to the provider-neutral `DiscoveryQuery`. Title text and discovery qualifiers are mutually exclusive. Structured discovery requires the TMDB or `all` scope because Library title search has no equivalent filter surface; the returned candidates still carry authoritative Library-presence evidence. **Clips are deliberately NOT a search scope (revised).** `Candidate` models a *provisionable title* — its `MediaType` admits only `movie|series`, and it flows through the same dedupe/identity machinery that grounds the LLM. A clip is not a title (§10: commercials "are not 'titles,' so the provisioning loop does not apply"), so representing one as a `Candidate` would push an unprovisionable row with an invalid media type through the grounding path — the exact filler-into-programming leak §10 is built to prevent. Clip search therefore lives where clips live: `GET /v1/filler?q=` applies the `name LIKE` filter this section prescribes and returns real `ClipDTO`s, so a result carries a Tunarr program id and can be deep-linked. *The `clips` scope was advertised in the enum but never implemented — the catalog was always constructed with a nil clip searcher, so it silently returned nothing. Removing it corrects the contract rather than shipping a leak to satisfy it.* Crucially, **this is the same implementation as the Catalog boundary (§8)** — title mode calls the same `Catalog.Search` path as the LLM's `query` tool mode, and structured mode calls the same `Catalog.Discover` path as its typed discovery mode. An operator can therefore reproduce "why did the suggester pick/miss X" through the public search contract instead of relying on a second retrieval implementation. Results feed the lineup editor: adding an `in_library` result places it; adding a missing one creates an acquisition — which flows through the existing approval gate, so search adds **no new privilege surface and no new config**.
 
 **A federated result is a bounded blend, not “Library until the page is full.”** After identity
 deduplication, an `all` search that has both owned and missing matches uses the Catalog's candidate
@@ -1087,9 +1087,24 @@ runtime and vote values, and ordered ranges before contacting TMDB, then maps th
 movie and TV discover parameters. A malformed qualifier returns a bounded tool error so it cannot be
 silently dropped into a broader search. Discovery-only qualifiers cannot be combined with title
 search; the model must choose the mode justified by the Intent. Omitted qualifiers contribute
-nothing, and missing candidate metadata remains unknown rather than a local false negative. Network
-and person names are not accepted as filters until Loomarr can resolve each name to an authoritative
-TMDB identity; neither is inferred from title, studio, overview, or model prose.
+nothing, and missing candidate metadata remains unknown rather than a local false negative.
+
+Person and network constraints deliberately follow the provider's asymmetric identity surfaces.
+Movie discovery accepts explicit `cast` and `creators` names only with `media_type=movie`. Loomarr
+resolves every trimmed name through TMDB's `/search/person`, requires one unique exact
+case-insensitive name match with a positive id, and passes the resulting ids to `with_cast` and
+`with_crew` respectively; multiple names within one role are AND constraints. TV discovery accepts
+one explicit `network` name only with `media_type=series`. TMDB has no network-name search endpoint,
+so Loomarr resolves it against TMDB's roughly daily `tv_network_ids_MM_DD_YYYY.json.gz` identity
+export, trying the current and two preceding UTC dates and caching the first valid snapshot for the
+client's lifetime. The export request is sent to `files.tmdb.org` without the TMDB bearer credential.
+An exact name that maps to multiple ids requires `origin_country`; Loomarr checks each candidate's
+`/network/{id}` details and keeps the sole matching country. Missing, malformed, duplicate-id,
+unresolved, or still-ambiguous identities fail the tool call before `/discover` rather than
+broadening it. Network constraints cannot be mixed with person constraints, and neither can be used
+with its unsupported media type. The canonical names proven by each applied filter ride on every
+returned candidate as grounded network/cast/creator evidence; no such evidence is inferred from a
+title, studio, overview, or model prose.
 
 **Scopes follow live configuration, not boot-time construction.** `library` requires a current,
 complete `library.flavor` + `library.url` + `library.token` connection; `tmdb` requires a current
@@ -1363,18 +1378,25 @@ The first executable holdout slice, retained as `planner-certification-v1`, has 
 The retained `planner-certification-v2` expands those 25 auditable semantic families with five explicit,
 frozen alternative phrasings apiece: exactly 150 unique Intents in
 the `certification` split, each bound to its family's case in the digest-pinned
-`planner-catalog-v1` fixture. Active `planner-certification-v3` digest-pins and layers its scoring
-answers over those unchanged v2 Intent bytes rather than rewriting the frozen holdout.
+`planner-catalog-v1` fixture. Retained v3-v5 contracts layer their scoring answers over those
+unchanged v2 Intent bytes rather than rewriting the frozen holdout. Active
+`planner-certification-v6` instead digest-pins a new immutable base and `planner-catalog-v2`
+fixture: it preserves all 25 families and adds separate network, cast, and creator routing
+families with five frozen phrasings apiece, for exactly 168 Intents. Their synthetic candidates
+carry the exact resolved network/person evidence that production returns. The structural observer
+records those three operations independently, so a generic genre call or a call that mixes cast
+and creator fields cannot receive correct-route credit.
 The manifest explicitly permits only `train` and `development` as training-source splits, so its
-certification cases cannot be repurposed as training examples. It covers named-title, genre, and
-keyword routing; include/exclude and refine constraints; season and audience limits; ambiguous,
+certification cases cannot be repurposed as training examples. It covers named-title, genre,
+keyword, network, cast, and creator routing; include/exclude and refine constraints; season and audience limits; ambiguous,
 conflicting, thin, empty, tool-error, repair, and fabrication attempts. Every case runs through the
 production Suggester and public evaluator `Runner`; the only live boundary is the candidate model.
 The fixture owns synthetic ids, ownership, genres, ratings, and injected empty/error responses, so
 models never gain an advantage from catalog drift. Each case hard-gates unsupported ids and the
-production call/candidate bounds. Grounded completion and the expected title/genre/keyword operation
-are quality measurements rather than safety failures. Of the 150 Intents, 132 expect at least one
-grounded pick; exactly 18 manifest-declared empty/conflicting phrasings permit an explicit
+production call/candidate bounds. Grounded completion and the expected
+title/genre/keyword/network/cast/creator operation are quality measurements rather than safety
+failures. Of the 150 v2 Intents, 132 expect at least one grounded pick; in v6, 150 of 168 expect
+one. Exactly 18 manifest-declared empty/conflicting phrasings permit an explicit
 no-grounded-title abstention. The model
 still has no acquisition, approval, or authorization capability: the evaluator observes a Proposal,
 not an effectful workflow.
@@ -1383,7 +1405,7 @@ not an effectful workflow.
 positive per-run and suite call/token/USD ceilings as other required semantic certification and
 local inference still requires `LOOMARR_EVAL_ALLOW_LOCAL=1`; it never starts or provisions a model.
 Before constructing the provider it verifies the embedded fixture digest and corpus references.
-Scorecard schema v10 records the corpus, fixture digest, prompt contract, catalog-tool schema, scorer,
+Scorecard schema v11 records the corpus, fixture digest, prompt contract, catalog-tool schema, scorer,
 and separate hard/quality metric lists, then writes both the JSON result manifest and a Markdown
 comparison summary. V2 pre-registers a 95% grounded-completion floor over the 132 completion cases,
 a 90% correct-operation floor, a 98% final-schema-validity floor, and a maximum of three tool calls at
