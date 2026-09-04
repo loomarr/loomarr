@@ -233,6 +233,75 @@ func TestRunnerExecutesCertificationCaseAgainstPinnedCatalogFixture(t *testing.T
 	}
 }
 
+func TestRunnerExecutesV6QualifierFamiliesThroughProductionSuggester(t *testing.T) {
+	allCases, err := CertificationCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := CertificationRunnerConfig(RunnerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		caseName  string
+		arguments map[string]any
+		response  string
+		calls     func(Observation) int
+	}{
+		{
+			name: "network", caseName: "network-discovery",
+			arguments: map[string]any{"media_type": "series", "network": "Synthetic Network"},
+			response:  `{"picks":[{"mediaType":"series","tmdbId":10026,"name":"Synthetic Network Drama"}]}`,
+			calls:     func(o Observation) int { return o.NetworkCalls },
+		},
+		{
+			name: "cast", caseName: "cast-discovery",
+			arguments: map[string]any{"media_type": "movie", "cast": []any{"Synthetic Performer"}},
+			response:  `{"picks":[{"mediaType":"movie","tmdbId":10027,"name":"Synthetic Performer Feature"}]}`,
+			calls:     func(o Observation) int { return o.CastCalls },
+		},
+		{
+			name: "creator", caseName: "creator-discovery",
+			arguments: map[string]any{"media_type": "movie", "creators": []any{"Synthetic Filmmaker"}},
+			response:  `{"picks":[{"mediaType":"movie","tmdbId":10028,"name":"Synthetic Filmmaker Feature"}]}`,
+			calls:     func(o Observation) int { return o.CreatorCalls },
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var selected Case
+			for _, c := range allCases {
+				if c.Name == tc.caseName {
+					selected = c
+					break
+				}
+			}
+			if selected.Name == "" {
+				t.Fatalf("certification case %q is missing", tc.caseName)
+			}
+			provider := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", tc.arguments),
+				testkit.FinalResponse(tc.response),
+			)
+			generator, observer, err := NewEmbeddedCertificationGenerator(provider)
+			if err != nil {
+				t.Fatal(err)
+			}
+			card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), []Case{selected})
+			if !card.Certified || len(card.Results) != 1 || !card.Results[0].Passed() ||
+				!card.Results[0].CorrectToolOperation || tc.calls(card.Results[0].Observation) != 1 {
+				t.Fatalf("v6 %s certification result = %+v", tc.name, card)
+			}
+			observation := card.Results[0].Observation
+			if observation.ToolCalls != 1 || observation.TitleCalls != 0 || observation.GenreCalls != 0 ||
+				observation.KeywordCalls != 0 || observation.PeopleCalls != 0 || observation.CandidatesSurfaced != 1 {
+				t.Fatalf("v6 %s structural observation = %+v", tc.name, observation)
+			}
+		})
+	}
+}
+
 func TestRunnerScoresWrongCertificationToolRouteAsQuality(t *testing.T) {
 	runner := NewRunner(scriptedGenerator{}, RunnerConfig{Contract: &CertificationContract{
 		Thresholds: CertificationThresholds{MinCorrectToolOperationRate: 1},
