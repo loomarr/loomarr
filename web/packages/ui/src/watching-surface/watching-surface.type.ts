@@ -24,6 +24,8 @@ interface WatchingSurfaceProps {
   /** Presentation-owned visibility; playback state deliberately does not own UI chrome. */
   controlsVisible?: boolean;
   density: Density;
+  /** True only while the authoritative Channel catalog request is unresolved. */
+  loading?: boolean;
   loadError?: string;
   numberEntry?: ChannelNumberEntry;
   onChannelDown: () => void;

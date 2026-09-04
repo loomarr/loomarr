@@ -62,3 +62,15 @@ test("keeps the native player and Watching mounted beneath Guide and Surf", asyn
   assert.match(appSource, /player=\{<NativePlayerView style=\{\{ flex: 1 \}\} transport=\{transport\} \/>\}/);
   assert.match(appSource, /position: "absolute"/);
 });
+
+test("drives every Watching state from the generated catalog and authoritative Guide", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /createChannelCatalogPort\(runtime\.request\)/);
+  assert.match(appSource, /createGuideSourcePort\(runtime\.request\)/);
+  assert.match(appSource, /await controller\.reconcile\(await catalog\.list\(request\.signal\)\)/);
+  assert.match(appSource, /watchingScheduleFromGuide\(/);
+  assert.match(appSource, /loading=\{catalogLoading\}/);
+  assert.match(appSource, /loadError=\{loadError\}/);
+  assert.match(appSource, /loadError \? refresh\(\) : controller\.retry\(\)/);
+});

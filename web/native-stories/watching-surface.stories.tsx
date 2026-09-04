@@ -28,10 +28,12 @@ const schedule: WatchingScheduleData = {
 };
 
 const Preview = ({
+  loading,
   loadError,
   scheduleData = schedule,
   state = snapshot,
 }: {
+  loading?: boolean;
   loadError?: string;
   scheduleData?: WatchingScheduleData;
   state?: WatchingSnapshot;
@@ -40,6 +42,7 @@ const Preview = ({
     <View style={{ height: "100%", width: "100%" }}>
       <WatchingSurface
         density={process.env.EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY === "tv" ? "tv" : "touch"}
+        loading={loading}
         loadError={loadError}
         onChannelDown={() => undefined}
         onChannelUp={() => undefined}
@@ -67,6 +70,9 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 const CurrentAndNext: Story = {};
+const Loading: Story = {
+  args: { loading: true, scheduleData: {}, state: { catalog: [], recentChannelIds: [], status: "empty" } },
+};
 const Tuning: Story = { args: { state: { ...snapshot, status: "tuning" } } };
 const PlaybackError: Story = {
   args: { state: { ...snapshot, error: "The stream could not be decoded.", status: "failed" } },
@@ -94,4 +100,4 @@ const EmptyChannel: Story = {
 const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
-export { BehindLive, CurrentAndNext, EmptyChannel, Light, Paused, PlaybackError, Tuning };
+export { BehindLive, CurrentAndNext, EmptyChannel, Light, Loading, Paused, PlaybackError, Tuning };

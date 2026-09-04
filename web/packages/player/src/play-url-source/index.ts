@@ -1,2 +1,2 @@
-export type { PlayUrlSourceOptions } from "./play-url-source";
-export { createPlayUrlSourcePort, resolveStreamUrl } from "./play-url-source";
+export type { ChannelCatalogPort, PlayUrlSourceOptions } from "./play-url-source";
+export { createChannelCatalogPort, createPlayUrlSourcePort, resolveStreamUrl } from "./play-url-source";

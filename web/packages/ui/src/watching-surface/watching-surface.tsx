@@ -48,6 +48,7 @@ const TouchWatchingSurface = ({
   chromeVisible = true,
   controlsVisible = true,
   density,
+  loading = false,
   loadError,
   numberEntry,
   onChannelDown,
@@ -66,27 +67,29 @@ const TouchWatchingSurface = ({
   snapshot,
 }: WatchingSurfaceProps) => {
   const recoverableFailure = Boolean(loadError) || snapshot.status === "failed";
-  const message = playbackMessage(snapshot, loadError);
+  const message = loading ? undefined : playbackMessage(snapshot, loadError);
   return (
     <View style={{ backgroundColor: "#000", flex: 1 }}>
       <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>{player}</View>
       {chromeVisible ? (
         <>
-          <Pressable
-            accessibilityLabel="Show playback controls"
-            accessibilityRole="button"
-            onPress={onShowControls}
-            pointerEvents="auto"
-            style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
-          />
-          {!snapshot.channel && !message ? <LoadingChannels density={density} /> : null}
+          {loading ? null : (
+            <Pressable
+              accessibilityLabel="Show playback controls"
+              accessibilityRole="button"
+              onPress={onShowControls}
+              pointerEvents="auto"
+              style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+            />
+          )}
+          {loading ? <LoadingChannels density={density} /> : null}
           <NumberEntry density={density} numberEntry={numberEntry} />
           <TransientOverlay
             autoDismissMs={message || snapshot.status === "tuning" ? undefined : 5_000}
             density={density}
             onDismiss={onDismissControls}
             title="Playback controls"
-            visible={controlsVisible || Boolean(message) || snapshot.status === "tuning"}
+            visible={!loading && (controlsVisible || Boolean(message) || snapshot.status === "tuning")}
           >
             {snapshot.channel ? (
               <ChannelIdentity
@@ -200,6 +203,7 @@ const TouchWatchingSurface = ({
 const TvWatchingSurface = ({
   chromeVisible = true,
   controlsVisible = true,
+  loading = false,
   loadError,
   numberEntry,
   onDismissControls,
@@ -211,9 +215,9 @@ const TvWatchingSurface = ({
   schedule,
   snapshot,
 }: WatchingSurfaceProps) => {
-  const message = playbackMessage(snapshot, loadError);
+  const message = loading ? undefined : playbackMessage(snapshot, loadError);
   const recoverableFailure = Boolean(loadError) || snapshot.status === "failed";
-  const overlayVisible = controlsVisible || Boolean(message) || snapshot.status === "tuning";
+  const overlayVisible = !loading && (controlsVisible || Boolean(message) || snapshot.status === "tuning");
 
   useEffect(() => {
     if (!overlayVisible || message || snapshot.status === "tuning") return undefined;
@@ -226,16 +230,18 @@ const TvWatchingSurface = ({
       <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>{player}</View>
       {chromeVisible ? (
         <>
-          <Pressable
-            accessibilityLabel="Open programme guide"
-            accessibilityRole="button"
-            focusable={snapshot.status !== "paused" && !recoverableFailure}
-            hasTVPreferredFocus={snapshot.status !== "paused" && !recoverableFailure}
-            onPress={onOpenGuide}
-            pointerEvents="auto"
-            style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
-          />
-          {!snapshot.channel && !message ? <LoadingChannels density="tv" /> : null}
+          {loading ? null : (
+            <Pressable
+              accessibilityLabel="Open programme guide"
+              accessibilityRole="button"
+              focusable={snapshot.status !== "paused" && !recoverableFailure}
+              hasTVPreferredFocus={snapshot.status !== "paused" && !recoverableFailure}
+              onPress={onOpenGuide}
+              pointerEvents="auto"
+              style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+            />
+          )}
+          {loading ? <LoadingChannels density="tv" /> : null}
           <NumberEntry density="tv" numberEntry={numberEntry} />
           {overlayVisible ? (
             <>
