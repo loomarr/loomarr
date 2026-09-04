@@ -21,7 +21,7 @@ describe("Loomarr QR code", () => {
     expect(markup).toContain("#8B93A3");
   });
 
-  it("can preserve the plain TV pairing treatment without a centre mark", () => {
+  it("can omit the centre mark when a product surface explicitly requests it", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
         <QrCode showBrandMark={false} value="https://loomarr.media/pair?code=LOOM-ARRR" />
