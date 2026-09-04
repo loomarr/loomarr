@@ -39,23 +39,24 @@ const ReviewCard = ({
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [previewOpened, setPreviewOpened] = useState(false);
+  const shadowReview = review.applicationMode === "shadow";
   const exactHash = /^[0-9a-f]{64}$/.test(review.clipHash);
   const screeningQuery = fillerApi.useGetFillerScreening(
     { hash: review.clipHash },
     { query: { enabled: exactHash && evidenceOpen } },
   );
   const screening = unwrap(screeningQuery.data, (body) => body);
-  const canConfirm = Boolean(
-    previewOpened &&
-      clip &&
-      screening?.clipHash === review.clipHash &&
-      screening.state === "available" &&
-      screening.outcome === "pass",
-  );
+  const canRecordPositiveAnswer = Boolean(shadowReview && previewOpened && clip);
   const action = fillerApi.useActOnFillerDecision({
     mutation: {
       onSuccess: (_result, variables) => {
-        toast.success(variables.data.kind === "abandon" ? "Saved for later" : "Decision recorded");
+        toast.success(
+          variables.data.kind === "abandon"
+            ? "Saved for later"
+            : shadowReview
+              ? "Shadow answer recorded"
+              : "Decision recorded",
+        );
         void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerDecisionReviewsQueryKey() });
         void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerDecisionOverviewQueryKey() });
         void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerDecisionActivityQueryKey() });
@@ -126,12 +127,28 @@ const ReviewCard = ({
         ) : null}
       </section>
 
+      <div className="mt-4 rounded-md border border-caution/35 bg-caution/5 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="caution">{shadowReview ? "Shadow review" : "Applied review unavailable"}</Badge>
+          <p className="font-medium text-sm">
+            {shadowReview
+              ? "This answer improves the audit; it does not change the clip."
+              : "Library filing is not available."}
+          </p>
+        </div>
+        <p className="mt-1 text-muted-foreground text-xs">
+          {shadowReview
+            ? "It neither files nor removes the clip. Only a future applied terminal-admission decision may publish verified playback to the library."
+            : "The server has not exposed a terminal catalog effect for this review, so positive confirmation stays closed."}
+        </p>
+      </div>
+
       <div className="mt-4 rounded-md border border-border">
         <div className="flex flex-wrap items-center gap-3 p-3">
           <div className="min-w-0 flex-1">
             <p className="font-medium text-sm">Exact clip and screening</p>
             <p className="text-muted-foreground text-xs">
-              Open the evidence and play this exact rendered clip before confirming it.
+              Open the evidence and play this exact rendered clip before answering it.
             </p>
           </div>
           <Button
@@ -187,7 +204,7 @@ const ReviewCard = ({
           className="mt-5 rounded-md border border-border bg-muted/20 p-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (answer.trim() && (verdict === "reject" || canConfirm)) submit("correct");
+            if (answer.trim() && (verdict === "reject" || canRecordPositiveAnswer)) submit("correct");
           }}
         >
           <fieldset>
@@ -229,7 +246,9 @@ const ReviewCard = ({
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               type="submit"
-              disabled={action.isPending || !answer.trim() || (verdict === "admit" && !canConfirm)}
+              disabled={
+                action.isPending || !answer.trim() || (verdict === "admit" && !canRecordPositiveAnswer)
+              }
             >
               Save correction
             </Button>
@@ -247,20 +266,22 @@ const ReviewCard = ({
         <div className="mt-5 flex flex-wrap gap-2">
           <Button
             onClick={() => submit("admit")}
-            disabled={action.isPending || !canConfirm}
+            disabled={action.isPending || !canRecordPositiveAnswer}
             title={
-              canConfirm
-                ? "Confirm this screened exact clip for the library"
-                : "Review the five screens and play the exact clip before confirming"
+              canRecordPositiveAnswer
+                ? "Record that this exact clip is filler; this does not file it"
+                : shadowReview
+                  ? "Play the exact clip before recording an answer"
+                  : "Applied terminal admission is not available"
             }
           >
-            Confirm for library
+            {shadowReview ? "Record as filler" : "Confirm for library"}
           </Button>
           <Button variant="outline" onClick={() => setCorrecting(true)} disabled={action.isPending}>
-            Correct
+            {shadowReview ? "Correct answer" : "Correct"}
           </Button>
           <Button variant="ghost" onClick={() => submit("reject")} disabled={action.isPending}>
-            Reject
+            {shadowReview ? "Record as not filler" : "Reject"}
           </Button>
           <Button variant="ghost" onClick={() => submit("abandon")} disabled={action.isPending}>
             Skip for now
@@ -301,7 +322,7 @@ const FillerReviewQueue = ({ hideEmpty = false }: { hideEmpty?: boolean }) => {
       return (
         <EmptyState
           title="Nothing needs your attention"
-          description="Loomarr is handling filler automatically. Automatic admits and rejects are recorded under Manage → Activity."
+          description="No semantic questions are waiting. Recorded decisions remain available under Manage → Activity."
         />
       );
     }

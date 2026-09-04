@@ -204,6 +204,7 @@ const stubReachable = () => {
         {
           id: "decision-review",
           clipHash: "held-hash",
+          applicationMode: "shadow",
           createdAt: "2026-08-25T12:00:00Z",
           question: "Is this a toy commercial?",
           reasonCodes: ["unidentified"],

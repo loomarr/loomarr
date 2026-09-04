@@ -21,6 +21,7 @@ const DIGEST = "1".repeat(64);
 const review = {
   id: "decision-1",
   clipHash: HASH,
+  applicationMode: "shadow" as const,
   createdAt: "2026-08-25T12:00:00Z",
   question: "Is this a soda commercial?",
   reasonCodes: ["brand_category_conflict"],
@@ -99,7 +100,7 @@ const prepareForPositiveDecision = async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Review evidence" }));
   await userEvent.click(await screen.findByRole("button", { name: "Play exact clip" }));
   await userEvent.click(await screen.findByRole("button", { name: "Close player" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Confirm for library" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Record as filler" })).toBeEnabled());
 };
 
 describe("FillerReviewQueue", () => {
@@ -112,9 +113,12 @@ describe("FillerReviewQueue", () => {
     expect(screen.getByText("2 evidence sources")).toBeInTheDocument();
     expect(screen.queryByText(/provider|budget|retry/i)).not.toBeInTheDocument();
     expect(await screen.findByText("Mountain Dew commercial · 30s")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirm for library" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Correct" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    expect(screen.getByText("Shadow review")).toBeInTheDocument();
+    expect(screen.getByText(/does not change the clip/i)).toBeInTheDocument();
+    expect(screen.getByText(/neither files nor removes the clip/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record as filler" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Correct answer" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record as not filler" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Skip for now" })).toBeInTheDocument();
   });
 
@@ -229,7 +233,7 @@ describe("FillerReviewQueue", () => {
     render(<FillerReviewQueue />, { wrapper });
 
     await prepareForPositiveDecision();
-    await userEvent.click(await screen.findByRole("button", { name: "Correct" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Correct answer" }));
     expect(screen.getByLabelText("Correction")).toHaveFocus();
     await userEvent.click(screen.getByLabelText("It is filler"));
     await userEvent.type(screen.getByLabelText("Correction"), "This is a soda commercial");
@@ -243,7 +247,7 @@ describe("FillerReviewQueue", () => {
     });
   });
 
-  it("records admission without inventing an answer to an open question", async () => {
+  it("records a shadow filler answer without claiming that it filed the clip", async () => {
     const bodies: Record<string, unknown>[] = [];
     server.use(
       getFillerDecisionReviewsMockHandler({
@@ -258,7 +262,8 @@ describe("FillerReviewQueue", () => {
     render(<FillerReviewQueue />, { wrapper });
 
     await prepareForPositiveDecision();
-    await userEvent.click(await screen.findByRole("button", { name: "Confirm for library" }));
+    expect(screen.queryByRole("button", { name: "Confirm for library" })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Record as filler" }));
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ actionId: expect.any(String), kind: "admit" });
@@ -288,6 +293,17 @@ describe("FillerReviewQueue", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Review evidence" }));
     expect(await screen.findByText("Screening evidence unavailable")).toBeInTheDocument();
     expect(screen.getByText(/screening evidence drift/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record as filler" })).toBeDisabled();
+  });
+
+  it("fails closed if an applied review arrives before terminal catalog effects exist", async () => {
+    server.use(
+      getFillerDecisionReviewsMockHandler({ rows: [{ ...review, applicationMode: "applied" }], total: 1 }),
+    );
+    render(<FillerReviewQueue />, { wrapper });
+
+    expect(await screen.findByText("Applied review unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/terminal catalog effect/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm for library" })).toBeDisabled();
   });
 });

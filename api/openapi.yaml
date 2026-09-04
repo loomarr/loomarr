@@ -3291,6 +3291,11 @@ components:
     FillerDecisionReviewDTO:
       additionalProperties: false
       properties:
+        applicationMode:
+          enum:
+            - shadow
+            - applied
+          type: string
         clipHash:
           type: string
         conflicts:
@@ -3316,6 +3321,7 @@ components:
         - id
         - clipHash
         - question
+        - applicationMode
         - reasonCodes
         - evidenceRefs
         - conflicts

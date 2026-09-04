@@ -10,6 +10,7 @@ import { FillerReviewQueue } from "./filler-review-queue";
 const row = (index: number) => ({
   id: `decision-${index}`,
   clipHash: `${"a".repeat(63)}${index % 10}`,
+  applicationMode: "shadow" as const,
   createdAt: new Date().toISOString(),
   question: index % 2 === 0 ? "Is this a soda commercial?" : "Is this a programme promo?",
   reasonCodes: ["brand_category_conflict"],
@@ -139,7 +140,7 @@ export const LargeQueue: Story = {
 export const Correction: Story = {
   decorators: [withReviews({ rows: [row(2)], total: 1 })],
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByRole("button", { name: "Correct" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Correct answer" }));
     await canvas.findByLabelText("Correction");
   },
 };
