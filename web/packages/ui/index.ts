@@ -8,11 +8,12 @@ export type {
   GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,
+  GuideJourneyProps,
   GuideLogoRenderer,
   GuideSurfaceProps,
   GuideUnavailableState,
 } from "./src/guide";
-export { GuideExperience, GuideSurface } from "./src/guide";
+export { GuideExperience, GuideJourney, GuideSurface } from "./src/guide";
 export type {
   ChannelIdentityData,
   ChannelIdentityProps,
@@ -37,3 +38,10 @@ export type {
   SurfSelection,
 } from "./src/surf-rail";
 export { SurfRail } from "./src/surf-rail";
+export type {
+  ChannelNumberEntry,
+  WatchingProgrammeData,
+  WatchingScheduleData,
+  WatchingSurfaceProps,
+} from "./src/watching-surface";
+export { WatchingSurface } from "./src/watching-surface";
