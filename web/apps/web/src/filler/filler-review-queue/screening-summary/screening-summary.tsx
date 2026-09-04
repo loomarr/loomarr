@@ -1,6 +1,7 @@
 import type { FillerScreeningDTO } from "@loomarr/api/models/fillerScreeningDTO";
 import { formatRelative } from "@loomarr/core/format";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { RightsReview } from "../rights-review";
 
 const AXIS_LABELS = {
   visual_safety: "Visual safety",
@@ -64,6 +65,14 @@ const ScreeningSummary = ({ summary }: { summary: FillerScreeningDTO }) => {
           </li>
         ))}
       </ul>
+
+      {summary.rightsReview ? (
+        <RightsReview
+          clipHash={summary.clipHash}
+          review={summary.rightsReview}
+          screeningAssessedAt={summary.assessedAt}
+        />
+      ) : null}
 
       {summary.airworthiness ? (
         <section aria-label="Audience airworthiness" className="rounded-md border border-border p-3">

@@ -39,6 +39,28 @@ const screeningFor = (clipHash: string): FillerScreeningDTO => ({
       evidenceSha256: String(index + 1).repeat(64),
     }),
   ),
+  rightsReview: {
+    sourceId: "archive:classic-commercials",
+    acquisitionId: "acq-mountain-dew-17",
+    sourceMasterSha256: "d".repeat(64),
+    policySha256: "4".repeat(64),
+    use: "filler_broadcast",
+    canRecord: true,
+    currentGrant: {
+      sha256: "e".repeat(64),
+      sourceId: "archive:classic-commercials",
+      acquisitionId: "acq-mountain-dew-17",
+      sourceMasterSha256: "d".repeat(64),
+      policySha256: "4".repeat(64),
+      use: "filler_broadcast",
+      status: "authorized",
+      withdrawal: "clear",
+      evidenceSha256: "f".repeat(64),
+      actorId: "admin-1",
+      effectiveAt: "2026-09-03T18:00:00Z",
+      recordedAt: "2026-09-03T18:00:00Z",
+    },
+  },
   airworthiness: {
     schemaVersion: 1,
     contractVersion: "filler-airworthiness-decision-v1",
@@ -147,6 +169,34 @@ export const EvidenceDrift: Story = {
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(await canvas.findByRole("button", { name: "Review evidence" }));
     await canvas.findByText("Screening evidence unavailable");
+  },
+};
+
+export const RightsRemediation: Story = {
+  decorators: [
+    withReviews(
+      { rows: [row(4)], total: 1 },
+      {
+        ...screeningFor(row(4).clipHash),
+        outcome: "hold",
+        axes: screeningFor(row(4).clipHash).axes.map((axis) =>
+          axis.axis === "rights" ? { ...axis, outcome: "hold", reasonCode: "rights_unknown" } : axis,
+        ),
+        rightsReview: {
+          sourceId: "archive:classic-commercials",
+          acquisitionId: "acq-mountain-dew-17",
+          sourceMasterSha256: "d".repeat(64),
+          policySha256: "4".repeat(64),
+          use: "filler_broadcast",
+          canRecord: true,
+        },
+      },
+    ),
+  ],
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByRole("button", { name: "Review evidence" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Review rights" }));
+    await canvas.findByLabelText("Private review file");
   },
 };
 
