@@ -61,7 +61,12 @@ func BlockMuxArgs() []string {
 	return []string{
 		"-hide_banner", "-loglevel", "error",
 		"-progress", progressPipeArg(), "-nostats",
+		// The children already guarantee the broadcast stream shape. FFmpeg's defaults may
+		// inspect several seconds of this live pipe before the copy mux emits anything; these
+		// measured bounds still discover its video and audio streams without adding that delay.
+		"-probesize", "256k", "-analyzeduration", "500000",
 		"-f", "mpegts", "-i", "pipe:0",
+		"-map", "0:v:0", "-map", "0:a:0",
 		"-c", "copy",
 		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1",
 	}
@@ -82,6 +87,7 @@ func pumpBlocks(
 		if previousFinishedCleanly && !waitForAiringBoundary(ctx, previous.EndsAt) {
 			return
 		}
+		openStarted := time.Now()
 		block, err := source(ctx, channelID, plan)
 		if err != nil {
 			if log != nil && ctx.Err() == nil {
@@ -110,7 +116,17 @@ func pumpBlocks(
 				"schedule_block_id", block.Identity.ScheduleBlockID,
 				"started_at", block.Identity.StartedAt)
 		}
-		n, copyErr := io.Copy(dst, block.Content)
+		content := &firstReadObserver{
+			reader: block.Content,
+			onFirst: func(n int) {
+				if log != nil {
+					log.Info("playout: block first bytes from child",
+						"channel", channelID, "plan", plan.String(), "n", n,
+						"child_first_byte_ms", time.Since(openStarted).Milliseconds())
+				}
+			},
+		}
+		n, copyErr := io.Copy(dst, content)
 		closeErr := block.Content.Close()
 		previous = block.Identity
 		previousFinishedCleanly = n > 0 && copyErr == nil && closeErr == nil
@@ -126,6 +142,21 @@ func pumpBlocks(
 			return
 		}
 	}
+}
+
+type firstReadObserver struct {
+	reader  io.Reader
+	onFirst func(int)
+	seen    bool
+}
+
+func (r *firstReadObserver) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 && !r.seen {
+		r.seen = true
+		r.onFirst(n)
+	}
+	return n, err
 }
 
 func (a AiringIdentity) sameAiring(other AiringIdentity) bool {
