@@ -72,6 +72,9 @@ func TestPortableDiagnosticAuthoritySeparatesLockedTruthFromUnresolvedCandidates
 		"threshold order drift": func(value *fillervisualsafety.PortableDiagnosticAuthority) {
 			value.Thresholds[0], value.Thresholds[1] = value.Thresholds[1], value.Thresholds[0]
 		},
+		"unknown score transform": func(value *fillervisualsafety.PortableDiagnosticAuthority) {
+			value.ScoreTransform = "model_owned_threshold"
+		},
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -87,6 +90,40 @@ func TestPortableDiagnosticAuthoritySeparatesLockedTruthFromUnresolvedCandidates
 				t.Fatal("authority validation accepted invalid candidate")
 			}
 		})
+	}
+}
+
+func TestEvaluatePortableDiagnosticSupportsOrderedCumulativeSoftmax(t *testing.T) {
+	base, capability, profile, _ := portableDiagnosticFixture(t)
+	base.ModelID = "freepik-nsfw"
+	base.PositiveOutputLabel = "medium"
+	base.ScoreTransform = fillervisualsafety.DiagnosticScoreCumulativeSoftmax
+	base.SHA256 = ""
+	authority, err := fillervisualsafety.SealPortableDiagnosticAuthority(base, capability, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := []fillervisualsafety.PortableDiagnosticRun{
+		diagnosticRun(t, authority.Cases[0], capability, profile, "freepik-nsfw", []float64{0.10, 0.20, 0.10, 0.10}),
+		diagnosticRun(t, authority.Cases[1], capability, profile, "freepik-nsfw", []float64{0.10, 0.90, 0.20, 0.10}),
+		diagnosticRun(t, authority.Cases[2], capability, profile, "freepik-nsfw", []float64{0.10, 0.80, 0.10, 0.10}),
+	}
+	report, err := fillervisualsafety.EvaluatePortableDiagnostic(
+		authority, capability, profile, runs, authority.AuthoredAt.Add(time.Minute),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ScoreTransform != fillervisualsafety.DiagnosticScoreCumulativeSoftmax ||
+		report.Thresholds[0].DetectedPositiveFamilies != 1 || report.Thresholds[1].UnresolvedSignaledFamilies != 0 {
+		t.Fatalf("cumulative threshold sweep = %#v", report.Thresholds)
+	}
+
+	invalid := authority
+	invalid.PositiveOutputLabel = "neutral"
+	invalid.SHA256 = fillervisualsafety.PortableDiagnosticAuthoritySHA256(invalid)
+	if err := fillervisualsafety.ValidatePortableDiagnosticAuthority(invalid, capability, profile); err == nil {
+		t.Fatal("cumulative scoring accepted a tautological first output label")
 	}
 }
 
@@ -134,9 +171,9 @@ func portableDiagnosticFixture(t *testing.T) (fillervisualsafety.PortableDiagnos
 		t.Fatal(err)
 	}
 	runs := []fillervisualsafety.PortableDiagnosticRun{
-		diagnosticRun(t, authority.Cases[0], capability, profile, []float64{0.10, 0.20, 0.10, 0.10}),
-		diagnosticRun(t, authority.Cases[1], capability, profile, []float64{0.10, 0.90, 0.20, 0.10}),
-		diagnosticRun(t, authority.Cases[2], capability, profile, []float64{0.10, 0.80, 0.10, 0.10}),
+		diagnosticRun(t, authority.Cases[0], capability, profile, "marqo-nsfw-384", []float64{0.10, 0.20, 0.10, 0.10}),
+		diagnosticRun(t, authority.Cases[1], capability, profile, "marqo-nsfw-384", []float64{0.10, 0.90, 0.20, 0.10}),
+		diagnosticRun(t, authority.Cases[2], capability, profile, "marqo-nsfw-384", []float64{0.10, 0.80, 0.10, 0.10}),
 	}
 	return authority, capability, profile, runs
 }
@@ -164,7 +201,7 @@ func diagnosticSlices(label fillervisualsafety.DiagnosticTruthLabel) []string {
 	return []string{fillervisualsafety.DiagnosticSliceAdvertising}
 }
 
-func diagnosticRun(t *testing.T, item fillervisualsafety.PortableDiagnosticCase, capability fillervisualsafety.PortableCapability, profile fillervisualsafety.CoverageProfile, probabilities []float64) fillervisualsafety.PortableDiagnosticRun {
+func diagnosticRun(t *testing.T, item fillervisualsafety.PortableDiagnosticCase, capability fillervisualsafety.PortableCapability, profile fillervisualsafety.CoverageProfile, modelID string, probabilities []float64) fillervisualsafety.PortableDiagnosticRun {
 	t.Helper()
 	plan, err := fillervisualsafety.PlanCoverage(item.SourceAuthority, profile)
 	if err != nil {
@@ -190,9 +227,19 @@ func diagnosticRun(t *testing.T, item fillervisualsafety.PortableDiagnosticCase,
 			t.Fatal(requestErr)
 		}
 		probability := probabilities[index]
+		freepikLogits := []float64{0, 0, 0, 0}
+		marqoLogits := []float64{0, 0}
+		switch modelID {
+		case "freepik-nsfw":
+			freepikLogits = []float64{math.Log1p(-probability), -1_000, math.Log(probability * 0.75), math.Log(probability * 0.25)}
+		case "marqo-nsfw-384":
+			marqoLogits = []float64{math.Log(probability), math.Log1p(-probability)}
+		default:
+			t.Fatalf("unknown diagnostic model %q", modelID)
+		}
 		responses[index], err = fillervisualsafety.SealPortableFrameResponse(capability, plan, request, 1, []fillervisualsafety.PortableModelScores{
-			{ModelID: "freepik-nsfw", Logits: []float64{0, 0, 0, 0}},
-			{ModelID: "marqo-nsfw-384", Logits: []float64{math.Log(probability), math.Log1p(-probability)}},
+			{ModelID: "freepik-nsfw", Logits: freepikLogits},
+			{ModelID: "marqo-nsfw-384", Logits: marqoLogits},
 		})
 		if err != nil {
 			t.Fatal(err)

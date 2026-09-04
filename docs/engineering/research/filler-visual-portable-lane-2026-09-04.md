@@ -26,8 +26,8 @@ general-purpose LLM or VLM:
 4. Treat the two models as candidate constituents of one portable lane. Any locked constituent's
    valid positive may produce a portable positive. A portable `no_signal` requires every locked
    constituent to finish on every planned frame. A conversion mismatch, missing output, NaN/Inf,
-   timeout, runtime error, or constituent disagreement below a positive threshold is a hold unless
-   the locked policy says otherwise. No majority vote clears a source.
+   timeout, runtime error, or unresolved disagreement without a positive is a hold. No majority vote
+   clears a source and no negative can override a valid positive.
 5. Do not select a production model, ship weights, add a runtime dependency, or train/fine-tune yet.
    First run the source-family-disjoint development matrix. The observed misses and false positives
    must justify the final constituent set and thresholds; upstream accuracy claims cannot do so.
@@ -100,6 +100,18 @@ conversion only. Generated tensors are neither positive controls nor clean contr
 evidence about Loomarr-policy recall, false positives, threshold choice, archival-video behavior, or
 broadcast suitability.
 
+The Freepik comparator now has the same conversion evidence. Its exact 172,725,672-byte safetensors
+object is SHA-256 `024a9d4818fae2656403bf626c9f8c9e7789c2da274749fbebb1060d8fdaa7ab`.
+The fixed 1×3×448×448 opset-17 graph is 358,173,524 bytes at SHA-256
+`264295c492943791338f3ef544e10bae1fe1da807c9ea899de59acc86d940121`.
+The EVA implementation's fused attention was not accepted through an exporter workaround: the
+export recipe first recorded native fused output, switched all twelve attention modules to the
+equivalent explicit-attention path for ONNX tracing, and compared fused PyTorch, explicit PyTorch,
+and ONNX Runtime on three deterministic tensors. All argmax decisions agreed; the largest fused-to-
+ONNX raw-logit delta was 0.000004291534423828125. Two clean container exports produced byte-identical
+graphs and parity reports. The parity report is SHA-256
+`0d3ba1dd0ba451d0c53cddf3c8202356ab161dfde44a4ee5067925bad087ef8f`.
+
 ## Real worker diagnostic
 
 The development worker now exercises the repository's exact decoder-to-logit path around that graph.
@@ -160,7 +172,10 @@ authority digests, accepts unresolved cases only without a truth digest, and pre
 strictly ordered thresholds. Positive intervals must each meet the coverage profile's minimum exposure
 floor. Its slice vocabulary is closed over the positive and clean slices declared in V68.
 
-The report applies the candidate's declared softmax transformation to exact raw logits, scores every
+The report applies either declared single-label softmax or ordered cumulative softmax to exact raw logits,
+rejecting a cumulative boundary at the first output because that would tautologically score every frame
+as one. This permits Freepik's `medium + high` interpretation without putting thresholds in the worker.
+It scores every
 positive interval, reports source-family recall with a one-sided exact 95% lower bound, reports clean
 false positives overall and by slice, and retains incomplete executions as operational holds. It does
 not choose a threshold. Only an unresolved signal, a positive miss at the lowest tested threshold, a
@@ -212,6 +227,102 @@ Selection and `showinfo` validation now share the same rounded-millisecond timel
 real-FFmpeg regressions reproduced both failures before their fixes, and the original Peanut Butter and
 Mary Hartline sources then passed end to end.
 
+## Candidate-blind review evidence and the first decisive weakness
+
+Independent truth review no longer requires handing a reviewer either a raw source path or the candidate's
+answer. One `BuildCandidateBlindReviewBundle` operation snapshots the exact source, performs the complete
+coverage decode, and atomically publishes a private bundle containing the exact complete source plus every
+planned full-resolution frame as a lossless PNG. The shareable reviewer directory contains only a fresh
+opaque alias, the exact validated development-only policy bytes, policy/profile identities, the complete
+plan and coverage evidence, and the media assets. It
+contains no provider metadata, source name, candidate identity, inference, score, threshold, or proposed
+verdict. The policy asset is a private bounded regular file whose digest must match the source authority;
+there is no out-of-band prompt paraphrase. A separate owner map restores the exact source authority, family,
+rights, and selection origin only
+after review. Reopening the bundle rejects extra files, symlinks, non-private permissions, byte or pixel
+drift, policy drift, incomplete topology, and owner-map drift. An incomplete marker makes a partially written or crashed
+bundle unreadable, while atomic directory creation prevents an existing output from being overwritten.
+
+Two real candidate-blind bundles now reproduce. The 128-frame positive-candidate package is 22 MiB with
+package SHA-256 `5d54967f716b64ea48261763f0a865e827b60aaba7ed5af8e2fd7f9d28278606`
+and owner-map identity SHA-256 `6941ebfc73fc9a4ea920f58e3480098b317dbecd22a3e3904fff4f959809e07b`.
+The 92-frame Mary Hartline package is 14 MiB with package SHA-256
+`355f425ebb54d8c7e1676602a1177264fa96746fc24c547ea1d4c1dca192d037` and owner-map
+identity SHA-256 `14a2daf4113d6059c57573bc09a9aff915fb26a58f74e17a845319cd7f88a53e`.
+Both are explicitly `targeted_diagnostic`, so even future agreeing reviews cannot silently count them as
+independently selected certification families.
+
+The earlier locked 300-case semantic corpus supplied candidate-preceding evidence for the trailer. Its two
+independent reviews disagreed in specificity: the first described the relevant scenes without an explicit
+nudity flag, while the second explicitly flagged prohibited visual content near 40 and 108 seconds; the
+independent adjudicator selected the second label set. A narrow source inspection at two frames per second,
+limited to those independently nominated windows, confirmed development intervals `[39,500, 41,500)` and
+`[107,500, 111,500)`. The private finding has SHA-256
+`dab97507ed713d5b5b719cb9f879107be2a19451aa3efae7bf1a93d7127efd05`. The reviewer had already seen the
+candidate diagnostic and the older reviews were not authored under the visual-safety truth contract, so
+this finding is deliberately barred from certification truth.
+
+It nevertheless exposes the exact weakness the next independent constituent must address. Marqo scored the
+two observations inside the first confirmed interval only 0.2299 and 0.2214, while observations in the
+second interval reached 0.9400. Any threshold above 0.2299 misses the first interval; at or below that value,
+four of the six unresolved clean candidates signal. Because those six are not yet clean truth, this is not a
+certified false-positive rate. It is sufficient to stop treating Marqo as a plausible solo lane and to make
+low-contrast and varied-skin-tone sensitivity, without archival advertising false positives, the explicit
+incremental requirement for the second portable constituent.
+
+## Hosted semantic review result
+
+The candidate-blind OpenRouter adapter makes at most one fallback-disabled request per invocation. It
+requires a fresh capability snapshot, exact canonical model revision, one exact ZDR provider route,
+strict structured output, and an already authorized per-request charge ceiling. Before network I/O it
+durably writes a reservation. It preserves the raw response and closes the attempt as accepted, failed,
+or unsettled; an ambiguous charged attempt is never retried. Its hosted input contains a complete H.264
+video carrier with audio removed plus chronological contact sheets covering every exact planned frame.
+Neither source identity nor candidate score is sent. Accepted results still keep truth creation, training,
+and production admission false.
+
+Qwen 3.8 27B on the pinned CoreWeave FP8 ZDR route supplied useful positive evidence only when reasoning
+was disabled. The reasoning-enabled attempt consumed all 2,048 completion tokens without returning the
+required structure, cost $0.0135004, and was retained as a failed non-result. The accepted positive review
+cost $0.008791 and nominated eight broad `explicit_nudity_v1` ranges, including both the low-Marqo first
+interval and the high-Marqo second interval. It marked coverage insufficient, so its positives are useful
+but it cannot establish absence. Its sealed result identity is
+`676a24a249065e2a106e74253666c72a788e0e559655beb833b5b8868c7bd574`.
+The Mary Hartline review cost $0.0037822, returned no match, and also marked coverage insufficient; it is
+therefore a hold, not clean evidence. Its sealed result identity is
+`dd0e41e83340daee5cfa3bd4a1bbabe7f773d3297dc461e00d75652650cbff9a`.
+
+Seed 2.1 Turbo reached the exact pinned Seed FP8 ZDR route but the provider returned `content_filter` with
+no assessment or usage record on the positive source. The attempt remains unsettled with unknown charge
+and was not retried. The Mary request was deliberately not sent: a reviewer unavailable on the known
+positive cannot be a qualifying panel member. Known accepted spend across these calls is $0.0260736, plus
+that one unsettled Seed attempt. This is decisive enough to retain Qwen as a semantic positive/escalation
+detector while rejecting both Qwen and Seed as negative-adjudication authorities in this slice.
+
+## Independent Freepik comparator result
+
+The comparator runs as a separate offline, network-disabled worker so its capability and failures remain
+independently attributable from Marqo. Its launcher pins the same read-only Linux-arm64 runtime image,
+verifies the mounted worker-script digest before startup, and exposes capability SHA-256
+`2ba07e792eda9b8a5bbc5f31aba5947b5488601b6ccc5c1f39daaf6875d95d82`. Loomarr retains all four raw
+logits and computes cumulative `medium + high` scores outside the worker.
+
+Eight rights-approved sources completed 518/518 planned frames without worker or coverage failure. The
+known positive source's two observations inside the Marqo-missed interval scored 0.3892 and 0.3510; its
+second confirmed interval also scored above the development sweep. A threshold through 0.35 detected both
+confirmed development intervals, while 0.40 and above missed the first. The six unresolved clean candidates
+had source maxima from 0.0149 through 0.1699, and none signaled at 0.20 through 0.90. The disputed Old Spice
+source reached 0.7832 and would be escalated, which is appropriate because it remains unresolved rather than
+clean truth. At the non-authorizing 0.30 corpus-expansion candidate, both confirmed intervals were detected,
+zero of six unresolved clean candidates signaled, and Old Spice signaled.
+
+This is a decisive improvement over Marqo alone: Freepik finds the exact weak interval without colliding
+with the current clean-candidate range. It is not a threshold-selection or false-positive result because
+there is only one targeted positive family and zero clean-truth families. The private complete summary is
+SHA-256 `fb0ebe8ad3f61080e45412a5332cea91819f0c2535ad5a6924d23b15384f401e`.
+CPU model time averaged roughly 2.04–2.10 seconds per frame, about twenty times Marqo's measured time, so
+the present worker is suitable for offline acquisition/admission screening rather than a playback hot path.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:
@@ -255,12 +366,13 @@ problem.
    decoder are implemented without choosing a threshold or enabling production behavior.
 2. The primary Marqo ONNX export, exact worker process, decoder-to-logit transport, response identity,
    resource limits, and repeated generated-control execution are implemented and measured.
-3. The source-family-disjoint threshold scorer, one disagreement run, and a six-source candidate-clean
-   expansion are implemented. Lock source-level truth for the top-ranked cases, then add independently
-   labeled positives and difficult clean controls. Stop Marqo early on obvious positive misses or clean
-   false positives; do not derive truth from model agreement or model-selected frame inspection.
-4. Export and measure Freepik only after the Marqo diagnostic establishes which independent evidence a
-   second, much larger constituent must add.
-5. Only then construct and lock the independent certification authority. Keep the current
+3. The source-family-disjoint scorer, exact-policy review bundles, one-request OpenRouter adapter, and first
+   candidate-blind Qwen/Seed checks are implemented. Qwen is retained for positive semantic escalation;
+   neither hosted model may establish a negative result from the observed evidence.
+4. Freepik is reproducibly exported and passes the exact incremental development requirement across 518
+   frames. Retain it as the second local constituent and predeclare the 0.20–0.35 threshold region before
+   expanding into independently selected truth families. Continue to treat any positive as a nomination and
+   every incomplete or no-signal disagreement as a hold; do not use majority voting.
+5. Construct and lock the source-family-disjoint certification authority before the larger run. Keep the current
    `visual_safety_not_certified` production hold until both certification and issue #947's separate
    release authority are complete.

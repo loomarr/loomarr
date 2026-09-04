@@ -75,7 +75,7 @@ func scorePortableDiagnostic(authority PortableDiagnosticAuthority, capability P
 		}
 		var scores []diagnosticFrameScore
 		if run.State == DiagnosticRunComplete {
-			scores = diagnosticScores(model.ID, positiveIndex, run)
+			scores = diagnosticScores(model.ID, positiveIndex, authority.ScoreTransform, run)
 			result.ScoreAvailable = true
 			result.FrameCount = len(scores)
 			result.MaximumScore, result.MaximumScoreAtMS = maximumDiagnosticScore(scores)
@@ -122,25 +122,32 @@ func scorePortableDiagnostic(authority PortableDiagnosticAuthority, capability P
 	return report
 }
 
-func diagnosticScores(modelID string, positiveIndex int, run PortableDiagnosticRun) []diagnosticFrameScore {
+func diagnosticScores(modelID string, positiveIndex int, transform string, run PortableDiagnosticRun) []diagnosticFrameScore {
 	scores := make([]diagnosticFrameScore, 0, len(run.Inference.Responses))
 	for index, response := range run.Inference.Responses {
 		modelIndex := slices.IndexFunc(response.Models, func(candidate PortableModelScores) bool { return candidate.ModelID == modelID })
 		scores = append(scores, diagnosticFrameScore{
 			atMS:  run.Coverage.Frames[index].ObservedMS,
-			score: diagnosticSoftmax(response.Models[modelIndex].Logits, positiveIndex),
+			score: diagnosticTransformedScore(response.Models[modelIndex].Logits, positiveIndex, transform),
 		})
 	}
 	return scores
 }
 
-func diagnosticSoftmax(logits []float64, selected int) float64 {
+func diagnosticTransformedScore(logits []float64, selected int, transform string) float64 {
 	maximum := slices.Max(logits)
 	denominator := 0.0
 	for _, logit := range logits {
 		denominator += math.Exp(logit - maximum)
 	}
-	return math.Exp(logits[selected]-maximum) / denominator
+	if transform == DiagnosticScoreSoftmax {
+		return math.Exp(logits[selected]-maximum) / denominator
+	}
+	numerator := 0.0
+	for _, logit := range logits[selected:] {
+		numerator += math.Exp(logit - maximum)
+	}
+	return numerator / denominator
 }
 
 func maximumDiagnosticScore(scores []diagnosticFrameScore) (float64, int64) {

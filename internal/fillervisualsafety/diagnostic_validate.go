@@ -35,7 +35,7 @@ func ValidatePortableDiagnosticAuthority(authority PortableDiagnosticAuthority, 
 		authority.AuthoredAt.Location() != time.UTC || !validDigest(authority.PolicySHA256) ||
 		authority.CapabilitySHA256 != capability.SHA256 || authority.CoverageProfileSHA256 != profile.SHA256 ||
 		!validIdentity(authority.ModelID) || !validIdentity(authority.PositiveOutputLabel) ||
-		authority.ScoreTransform != DiagnosticScoreSoftmax || !validIdentity(authority.Implementation) ||
+		!validDiagnosticScoreTransform(authority.ScoreTransform) || !validIdentity(authority.Implementation) ||
 		len(authority.Thresholds) == 0 || len(authority.Thresholds) > MaximumDiagnosticThresholds ||
 		math.IsNaN(authority.MaximumCleanFalsePositiveRate) || math.IsInf(authority.MaximumCleanFalsePositiveRate, 0) ||
 		authority.MaximumCleanFalsePositiveRate < 0 || authority.MaximumCleanFalsePositiveRate > 1 ||
@@ -44,7 +44,10 @@ func ValidatePortableDiagnosticAuthority(authority PortableDiagnosticAuthority, 
 		return errors.New("portable visual diagnostic authority identity is invalid")
 	}
 	model, ok := diagnosticModel(capability, authority.ModelID)
-	if !ok || !slices.Contains(model.OutputLabels, authority.PositiveOutputLabel) || !validDiagnosticThresholds(authority.Thresholds) {
+	positiveIndex := slices.Index(model.OutputLabels, authority.PositiveOutputLabel)
+	if !ok || positiveIndex < 0 ||
+		authority.ScoreTransform == DiagnosticScoreCumulativeSoftmax && positiveIndex == 0 ||
+		!validDiagnosticThresholds(authority.Thresholds) {
 		return errors.New("portable visual diagnostic scoring declaration is invalid")
 	}
 	aliases, sources, families := map[string]struct{}{}, map[string]struct{}{}, map[string]struct{}{}
@@ -73,6 +76,10 @@ func ValidatePortableDiagnosticAuthority(authority PortableDiagnosticAuthority, 
 		}
 	}
 	return nil
+}
+
+func validDiagnosticScoreTransform(transform string) bool {
+	return transform == DiagnosticScoreSoftmax || transform == DiagnosticScoreCumulativeSoftmax
 }
 
 func PortableDiagnosticAuthoritySHA256(authority PortableDiagnosticAuthority) string {

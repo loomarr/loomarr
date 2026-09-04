@@ -28,7 +28,10 @@ const (
 	DiagnosticRunWorkerFailed DiagnosticRunState = "worker_failed"
 )
 
-const DiagnosticScoreSoftmax = "softmax"
+const (
+	DiagnosticScoreSoftmax           = "softmax"
+	DiagnosticScoreCumulativeSoftmax = "cumulative_softmax"
+)
 
 const (
 	DiagnosticSliceShortExposure        = "short_exposure"
