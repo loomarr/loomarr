@@ -15,6 +15,7 @@ package suggest
 import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -49,6 +50,13 @@ type Intent struct {
 	// Empty on a fresh suggestion (no lineup to walk from) and on any install without a
 	// TMDB corpus wired.
 	Adjacent []AdjacentContext `json:"adjacent,omitempty"`
+	// ReferenceTitles are bounded, source-resolved title anchors for this one
+	// Suggest execution. They never enter the API or persisted Intent JSON.
+	ReferenceTitles     []string `json:"-"`
+	ReferenceResolved   bool     `json:"-"`
+	referenceEvidence   reference.Evidence
+	referenceKeys       map[provision.Key]bool
+	referenceCandidates []catalog.Candidate
 	// DiscoveryScopeID is internal execution context for channel-specific explicit
 	// feedback during re-curation. It never enters the API or persisted intent JSON.
 	DiscoveryScopeID string `json:"-"`

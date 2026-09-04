@@ -174,6 +174,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
 - **`recovery`** · 5 importers
   Owns local-password recovery records and their bearer grants (§11).
+- **`reference`** · 3 importers
+  Resolves bounded, read-only evidence from public web pages supplied in channel Intents.
 - **`releasenotes`**
   Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`releaseverify`**
@@ -267,7 +269,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
-- **`testkit`** · → `fillerbakeoff`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `quality`, `schedule`, `store`, `testkit/postgresimage`
+- **`testkit`** · → `fillerbakeoff`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/libraryfixture`** · → `library`, `schedule`
   No-network adapters for library-facing tests.
@@ -284,7 +286,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Provisioning backstop (design §4, §7, §18).
 - **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `recovery`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
-- **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `schedule`, `store`, `textmatch`
+- **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`testkit/catalogfixture`** · → `catalog`, `provision`
   Shared no-network adapters for catalog tests.
@@ -309,7 +311,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -883,6 +885,15 @@ For Loomarr's channels to appear in the family's TV guide, the media server cons
 ### Suggester / Catalog — LLM
 See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hosted); catalog tool grounds it against the real library + TMDB. In-app provider/model selection with live probe + hot-swap: §8.1.
 
+### Reference source — public web pages
+
+Reference-backed Intent (§8) treats every pasted public HTTP(S) page through the same read-only web
+adapter. There is no Wikipedia-only path and no site-specific identity authority. The adapter sends
+a descriptive Loomarr User-Agent, accepts bounded HTML/XHTML/plain text, extracts visible text and
+title-like elements locally, and has no credential or operator setting. All response bodies and
+prompt-visible output are bounded as specified in §8; non-2xx, malformed, over-bound, non-text,
+private-address, and cancellation outcomes fail the lookup without yielding evidence.
+
 ---
 
 ## 7. HTTP API
@@ -1118,6 +1129,49 @@ An AI that can trigger real downloads must never act on a hallucinated title.
 - Every proposal item resolves to a real id, tagged `in_library: true|false`; unresolvable items are dropped before display.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
+
+### Reference-backed Intent
+
+A person may express the same editorial idea as prose, a named cultural/programming concept, an
+example list, or a reference URL. Those are input forms for the same Intent; Loomarr must not require
+the operator to translate a useful source into genre keywords by hand. A reference is nevertheless
+evidence to resolve, not permission for the model to claim that any period-appropriate title belongs
+to the referenced set.
+
+Before inference, the Suggester detects one pasted public HTTP(S) URL through a narrow resolver port
+and retrieves that same URL regardless of site. The adapter accepts no credentials or non-standard
+port, rejects any initial or redirected host resolving to loopback, private, link-local, unspecified,
+or multicast space, and re-checks every redirect with a three-hop ceiling. Retrieval has a 10-second
+whole-request budget, the shared idempotent-GET retry policy, a 256 KiB response-body cap, and a
+16 KiB visible-text excerpt cap. It accepts HTML, XHTML, and plain text; it does not execute scripts,
+bypass authentication, or interpret binary documents. A page Loomarr cannot read safely fails closed.
+
+The resolver returns the page title, URL, bounded visible text, and a bounded set of title-like
+anchors extracted from links, headings, emphasis, lists, and table cells. All returned text is **untrusted
+reference data**: the prompt labels it as data, instructions within it are ignored, and it cannot
+change tools, quotas, policy, authorization, or identity. Only the submitted URL is sent to the
+referenced host—not the complete household Intent, Library, or Proposal. Raw reference content is
+not persisted in the Proposal trace, logs, diagnostics, evaluation artifacts, or training corpus.
+
+After reference resolution, Loomarr runs the existing federated `catalog_search` internally for at
+most eight extracted title anchors, keeps only normalized exact-title matches, deduplicates by
+canonical provisioning key, and appends those actual bounded tool results to the planner conversation.
+The model therefore finalizes in one turn from ids that genuinely passed the existing catalog contract;
+the public tool schema and sequential model tool-call budget do not change. An extracted title is
+evidence only when an exact catalog identity exists. Explicit titles/examples written directly by the
+operator may later use the same pre-grounding path without needing a URL.
+
+Identity grounding and editorial support are separate mandatory gates. A selected id must both have
+been surfaced by the Catalog and carry positive, source-backed evidence for the semantic request. The
+evidence vocabulary is normalized user terms plus resolved reference title anchors matched against
+Candidate title, overview, genres, source-backed keyword names, and structured year/decade facts;
+request scaffolding, URL transport tokens, and model-authored rationale are excluded. When an Intent
+contains meaningful request/reference terms, matching only its era is insufficient. A surfaced pick
+with no qualifying evidence is deterministically dropped with a closed trace reason, and a proposal
+with no surviving picks returns the existing no-grounded-title failure. Unsupported or unresolved
+references provide no evidence and therefore cannot silently fall back to a generic lineup. Theme-fit
+scoring uses the same source-backed fields and never the model's rationale, so prose cannot self-attest
+quality after the gate.
 
 ### Proposal decision trace v1 (#496)
 
@@ -6995,6 +7049,7 @@ surface without a wire-format migration. The opt-in profiler also exposes Go 1.2
 | Browser Web Push encryption and VAPID | **`github.com/SherClockHolmes/webpush-go` v1.4.0**, behind Loomarr's Web Push adapter | RFC 8291 payload encryption and RFC 8292 VAPID combine ECDH, HKDF, AES-GCM record framing, and signed authorization with browser-specific interoperability details; implementing that security protocol locally would create substantial unaudited crypto code. The library is pure Go, exposes context and HTTP-client seams for bounded hermetic tests, uses the required `aes128gcm` content coding, and reuses Loomarr's existing `x/crypto` graph. Subscription endpoints and keys remain inside Loomarr's encrypted destination boundary, and provider response bodies never escape the adapter. |
 | Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
+| Intent reference source | **Public HTTP(S) text/HTML via plain `net/http`** | One site-neutral, read-only adapter turns pasted public pages into bounded evidence without an SDK, credential, script execution, site-specific authority, or new dependency; DNS/address and redirect gates prevent a channel Intent from becoming an internal-network fetch primitive (§8). |
 | Release-note classification | **OpenRouter structured output via plain `net/http`**, defaulting to `openai/gpt-5-mini`; GitHub remains the source of PR titles, authors, links, contributors, and compare ranges | Release notes get useful, Uptime-Kuma-style sections for pennies per release without another application runtime or SDK. The model may assign only real PR numbers to a closed schema; deterministic Go rejects missing, duplicate, invented, extra, or malformed output and renders only GitHub-authored bullets. Publication fails closed when inference is unavailable. |
 | TMDB / Seerr / media server / Tunarr | **plain HTTP, hand-written thin clients** | Each uses a handful of endpoints; generating from Tunarr's full pre-1.0 spec couples us to its churn. Pin + record versions tested against |
 | Model discovery source | **Hugging Face model API** (`huggingface.co/api/models`), plain HTTP via the existing factory | The **only** live source of *downloadable* Ollama models — Ollama ships no such API (`/api/search` unshipped; ollama.com is HTML-only). Anonymous GET, **no new Go dependency** (one `net/http` call), and `ollama pull hf.co/<repo>` consumes its ids directly (§8.1). Best-effort: an outage degrades to a "browse on huggingface.co" link, never a page failure. A single read-only outbound endpoint, pinned via a captured fixture like the others |
@@ -8389,6 +8444,14 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 ---
 
 ## 19. Testing strategy
+- **Reference-backed Intent:** hermetic generic-web fixtures cover arbitrary public hosts, visible-text
+  and title-anchor extraction, bounded bodies/excerpts/anchors, malformed and missing pages,
+  cancellation, redirects, content types, and private-address/port/userinfo rejection. Suggester regressions
+  use fictional programming concepts and titles to prove exact-title grounding, reference-data
+  prompt isolation, zero-evidence rejection, request-scaffolding normalization, rationale-independent
+  scoring, and no generic fallback when reference resolution fails. Unit and CI tests never contact
+  the public web; an operator's household URL, prompt, Library, and resolved article bytes never enter a
+  tracked fixture or training corpus.
 - **Invitation and contact store conformance:** one shared suite runs unchanged over SQLite and
   Postgres. It covers normalized contact uniqueness, reserved local/Library identity collisions,
   lifecycle transitions, regeneration/revocation, expiry, verified-contact replacement, grant hashes
