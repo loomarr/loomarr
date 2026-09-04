@@ -138,9 +138,11 @@ terminal edge; the profile's existing `interval + 2 × drift` bound covers the r
 The corrected run completed 128 distinct frames with a maximum observed gap of 1,235 ms. Marqo's
 summary-only softmax NSFW score ranged from 0.0564 to 0.9415, with a median of 0.3458; 27 frames were
 at or above the illustrative 0.90 level and 54 were at or above 0.50. The strongest frame occurred at
-92,025 ms. Model time was 94–101 ms per frame. The complete private report has SHA-256
-`2f6e7fa1d5c3019e1685e1cc0aac5b9ca33f03c160e2454ceccca6aa0c484623`; its private summary has
-SHA-256 `ba62d10eb5cc6b2f7b387f761df9feb7f378070c78f94e15bc394af1e9f9caf1`.
+92,025 ms. Model time was 100–205 ms per frame. The decoder-corrected complete private report has
+SHA-256 `6b9917d2c3713a5a6599418a5ced0d5c77268b1302394e4aaa88efd936371dfb`; its private summary has
+SHA-256 `3e95b8ecb2b6621dcd89e5862e28321653ffc490447d2ad307091170376048f2`. The summary binds and
+supersedes the initial run; its scores reproduce the earlier result while two selected timestamps now
+match the canonical rounded-millisecond timeline exactly.
 
 This is encouraging sensitivity evidence, not truth or certification. The source's prior model flags
 and corpus policy metadata are not an independently locked visual label. No threshold was selected,
@@ -177,12 +179,38 @@ establish that allegation and instead exposed a plausible archival color/skin/fr
 pattern. Because model-selected frame inspection cannot establish absence elsewhere, the case remains
 unresolved and contributes to neither the positive nor clean denominator.
 
-The exact private report has SHA-256
-`c6c66efa4541ceda8838cdc33f8f3ee5ddda83f7fd1bc8aedd5922df5bc68626`; its private summary has
-SHA-256 `d59ac2817fdd428c0d1abcb9383be4e95cc2b5d063ba76badf4b018a45936f24`.
+The decoder-corrected private report has SHA-256
+`b0727bfe03d6e3c1486c28e800c93a331d38982101e5ecf1b57c2cbe9d5badb2`; its private summary has
+SHA-256 `30cec79a31d9e4edf9bc696b9a8543f685d33d583b706f00fd6d3c05fdcf5330`.
+The raw scores reproduced exactly; only measured execution-time evidence changed.
 This is already useful: a threshold at 0.85 would surface this case while 0.90 would not, so neither
 value may be selected from the positive candidate alone. Independent labeled controls must decide the
 tradeoff.
+
+The next six rights-approved candidates deliberately span distinct Archive items and source families:
+Peanut Butter, Mary Hartline Doll, Muppet games, AARP, animated skin protection, and Air Buddies.
+All six complete-source runs succeeded after the decoder corrections below, covering 360 exact frames
+with maximum observed gaps from 1,000 to 1,040 ms. No source crossed the illustrative 0.50 level. The
+highest source maximum was 0.3855; individual maxima ranged from 0.1241 to 0.3855. These are promising
+clean-control candidates, not clean truth. Five had a coverage hold from one earlier full-video VLM,
+while Mary Hartline was the only candidate with complete no-signal observations from both independent
+VLM reviews and Marqo. That makes Mary Hartline the first targeted clean-truth nominee; model agreement
+still cannot author its label.
+
+The private six-source summary is SHA-256
+`d4f633ddd2df2955ab595830130965cc898671355e630bb47fd35db197a42599`. It contains no machine-local
+paths, locks every source/capability/profile/evidence/report digest, marks all six truth labels unresolved,
+and grants no threshold, certification, training, or admission authority.
+
+Expanding beyond the irregular-PTS trailer found two decoder defects that the generated 10 fps control
+could not expose. First, a 25 fps source had distinct frames at 113,000 and 113,040 ms. The planner
+correctly omitted the overlapping 113,000 ms grid point, but FFmpeg independently regenerated it and
+emitted 115 frames for a 114-point plan. The filter now caps cadence selection at the exact count of
+planned non-terminal points. Second, a 29.97 fps source ended at 90.990991 seconds, which is the locked
+90,991 ms authority timestamp; comparing the unrounded seconds to `90.991` dropped the terminal frame.
+Selection and `showinfo` validation now share the same rounded-millisecond timeline. Separate hermetic
+real-FFmpeg regressions reproduced both failures before their fixes, and the original Peanut Butter and
+Mary Hartline sources then passed end to end.
 
 ## Required development measurements
 
@@ -227,10 +255,10 @@ problem.
    decoder are implemented without choosing a threshold or enabling production behavior.
 2. The primary Marqo ONNX export, exact worker process, decoder-to-logit transport, response identity,
    resource limits, and repeated generated-control execution are implemented and measured.
-3. The source-family-disjoint threshold scorer and a second rights-cleared disagreement run are
-   implemented. Expand them with independently labeled positives and difficult clean controls. Stop
-   Marqo early on obvious positive misses or clean false positives; do not derive truth from model
-   agreement or model-selected frame inspection.
+3. The source-family-disjoint threshold scorer, one disagreement run, and a six-source candidate-clean
+   expansion are implemented. Lock source-level truth for the top-ranked cases, then add independently
+   labeled positives and difficult clean controls. Stop Marqo early on obvious positive misses or clean
+   false positives; do not derive truth from model agreement or model-selected frame inspection.
 4. Export and measure Freepik only after the Marqo diagnostic establishes which independent evidence a
    second, much larger constituent must add.
 5. Only then construct and lock the independent certification authority. Keep the current
