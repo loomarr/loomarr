@@ -207,6 +207,96 @@ func TestSuggest_EmptyCatalogResultRetainsToolForAlternateSearch(t *testing.T) {
 	}
 }
 
+func TestSuggest_StopsAfterAlternateEmptyCatalogSearches(t *testing.T) {
+	tests := []struct {
+		name        string
+		description string
+		first       llm.Response
+		second      llm.Response
+	}{
+		{
+			name:        "season window title then genre",
+			description: "Classic seasons only: program the early 1990s run and avoid later seasons.",
+			first: testkit.ToolCallResponse("catalog_search", map[string]any{
+				"query": "classic early 1990s run",
+			}),
+			second: testkit.ToolCallResponse("catalog_search", map[string]any{
+				"genres": []any{"Classic"}, "era": "1990-1994", "media_type": "series",
+			}),
+		},
+		{
+			name:        "imaginary migration keyword then title",
+			description: "Movies about the quxzptl migration of nonexistent creatures.",
+			first: testkit.ToolCallResponse("catalog_search", map[string]any{
+				"keywords": []any{"quxzptl migration"}, "media_type": "movie",
+			}),
+			second: testkit.ToolCallResponse("catalog_search", map[string]any{
+				"query": "quxzptl migration", "media_type": "movie",
+			}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// The extra turns reproduce the live Qwen behavior: without an adapter
+			// terminal after the alternate empty search, the model keeps calling
+			// catalog_search until the structural budget is exhausted.
+			model := testkit.NewLLM(tt.first, tt.second, tt.first, tt.second, tt.first, tt.second)
+			s := suggest.New(model, catalog.New(nil, nil), nil, 10)
+			_, err := s.Suggest(context.Background(), suggest.Intent{Description: tt.description})
+			var failure *suggest.Failure
+			if !errors.As(err, &failure) {
+				t.Fatalf("alternate empty searches returned %v, want typed failure", err)
+			}
+			if failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.ReasonRetrievalEmpty {
+				t.Fatalf("alternate empty searches returned code/terminal %q/%q, want %q/%q",
+					failure.Code, failure.Trace.Terminal, suggest.FailureCodeNoGroundedTitles, suggest.ReasonRetrievalEmpty)
+			}
+			if model.Calls != 2 {
+				t.Fatalf("model calls = %d, want the initial and alternate searches only", model.Calls)
+			}
+		})
+	}
+}
+
+func TestSuggest_EmptyRetrievalLimitSurvivesGroundingRetry(t *testing.T) {
+	emptySearch := testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"})
+	model := testkit.NewLLM(
+		emptySearch,
+		testkit.FinalResponse(`{"picks":[]}`),
+		emptySearch,
+		emptySearch,
+	)
+	s := suggest.New(model, catalog.New(nil, nil), nil, 10)
+	_, err := s.Suggest(context.Background(), suggest.Intent{Description: "definitely absent"})
+	var failure *suggest.Failure
+	if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.ReasonRetrievalEmpty {
+		t.Fatalf("empty searches across grounding retry returned %v / %+v, want retrieval-empty typed failure", err, failure)
+	}
+	if model.Calls != 3 {
+		t.Fatalf("model calls = %d, want one empty search, one empty final, and one alternate search", model.Calls)
+	}
+}
+
+func TestSuggest_EmptyRetrievalLimitDoesNotDiscardAdjacentGrounding(t *testing.T) {
+	emptySearch := testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"})
+	model := testkit.NewLLM(
+		emptySearch,
+		emptySearch,
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	prop, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{
+		Description: "science fiction",
+		Adjacent:    []suggest.AdjacentContext{{Key: "movie:tmdb:603", Name: "The Matrix", Year: 1999, Votes: 3}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup)+len(prop.Acquisitions) != 1 || model.Calls != 3 {
+		t.Fatalf("adjacent-grounded proposal = %+v after %d calls, want one pick after final turn", prop, model.Calls)
+	}
+}
+
 func traceHas(trace suggest.DecisionTrace, key, disposition, reason string) bool {
 	for _, candidate := range trace.Candidates {
 		if candidate.Key == key && candidate.Disposition == disposition && candidate.Reason == reason {

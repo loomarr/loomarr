@@ -20,6 +20,13 @@ const catalogToolName = "catalog_search"
 // forever (defense-in-depth; JOB_TIMEOUT is the outer bound).
 const maxToolRounds = 6
 
+// maxEmptyRetrievals gives the model exactly the initial search plus the
+// alternate mode required by the prompt contract. A model that keeps searching
+// after both return no candidates cannot become grounded in that run; letting it
+// consume the remaining structural budget turns an honest empty retrieval into
+// a misleading budget failure.
+const maxEmptyRetrievals = 2
+
 // catalogSearchLimit is how many candidates the catalog tool returns per call.
 // Higher than the old hardcoded 12 so an abstract/themed intent surfaces enough
 // rows for the model to ground a real lineup before truncation, without flooding
@@ -254,8 +261,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	repairs := 0
 	groundingRetried := false
 	finalizationOnly := hasReference
+	emptyRetrievals := 0
 	for {
-		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, intent, feedback, &finalizationOnly)
+		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, intent, feedback, &finalizationOnly, &emptyRetrievals)
 		if err != nil {
 			return Proposal{}, err
 		}
@@ -296,7 +304,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 // turn, appending assistant/tool messages to *messages and recording surfaced
 // candidates for grounding. Returns the final content (possibly empty — the
 // caller's repair loop handles that).
-func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, temp float64, intent Intent, feedback []FeedbackSignal, finalizationOnly *bool) (string, error) {
+func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, temp float64, intent Intent, feedback []FeedbackSignal, finalizationOnly *bool, emptyRetrievals *int) (string, error) {
 	if *finalizationOnly {
 		tools = nil
 	}
@@ -345,6 +353,12 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				if len(cands) > 0 {
 					*finalizationOnly = true
 					tools = nil
+				} else if rankedTrace.Terminal == ReasonRetrievalEmpty {
+					*emptyRetrievals++
+					if *emptyRetrievals >= maxEmptyRetrievals && len(surfaced) == 0 {
+						trace.Terminal = ReasonRetrievalEmpty
+						return "", NewFailure(FailureCodeNoGroundedTitles, *trace, ErrNoGroundedTitles)
+					}
 				}
 			}
 			continue
