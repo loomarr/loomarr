@@ -9,7 +9,7 @@ import {
   validatePairingCredential,
 } from "@loomarr/core/pairing";
 import { createServerVersionSource } from "@loomarr/core/system-version";
-import { LoomarrProvider } from "@loomarr/design-system";
+import { BrandLaunch, LoomarrProvider } from "@loomarr/design-system";
 import { createPlayerController } from "@loomarr/player";
 import {
   createExpoVideoTransport,
@@ -43,11 +43,14 @@ import {
 } from "@loomarr/ui-tv";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, BackHandler, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../app.json";
+
+void SplashScreen.preventAutoHideAsync();
 
 const clientVersion = process.env.EXPO_PUBLIC_LOOMARR_CLIENT_VERSION ?? appConfig.expo.version;
 
@@ -376,6 +379,8 @@ const TvPairedRoot = ({
 const TvClient = () => {
   useKeepAwake();
   const insets = useSafeAreaInsets();
+  const [launchFinished, setLaunchFinished] = useState(false);
+  const nativeSplashHidden = useRef(false);
   const session = useMemo(
     () =>
       new PairingSession({
@@ -386,14 +391,26 @@ const TvClient = () => {
       }),
     [],
   );
+  const hideNativeSplash = useCallback(() => {
+    if (nativeSplashHidden.current) return;
+    nativeSplashHidden.current = true;
+    SplashScreen.hide();
+  }, []);
   return (
     <LoomarrProvider insets={insets} theme="dark">
-      <PairingShell
-        density="tv"
-        initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
-        renderPaired={(credential) => <TvPairedRoot credential={credential} session={session} />}
-        session={session}
-      />
+      <View onLayout={hideNativeSplash} style={{ flex: 1 }}>
+        <PairingShell
+          density="tv"
+          initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
+          renderPaired={(credential) => <TvPairedRoot credential={credential} session={session} />}
+          session={session}
+        />
+        {launchFinished ? null : (
+          <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
+            <BrandLaunch density="tv" onFinished={() => setLaunchFinished(true)} />
+          </View>
+        )}
+      </View>
       <StatusBar hidden />
     </LoomarrProvider>
   );

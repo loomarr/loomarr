@@ -2399,13 +2399,14 @@ traversed with its real remote keys while focus, overscan, clipping, and text ov
 That hands-on checkpoint is required evidence in the PR; an off-centre emulator or a stale installed
 APK does not satisfy it.
 
-### Android TV distribution is a permanent-identity sideload
+### Android TV distribution uses one permanent React Native identity
 
 `loomarr.media` is the permanent production application id for the accepted React Native Shield
 replacement. Ordinary development and Storybook builds retain the isolated prototype identity;
-only an explicit Shield-sideload configuration may select the production id, application name,
-launcher icon, and TV banner. That configuration fails closed unless it receives a supported SemVer
-name and a valid derived Android version code.
+only an explicit Shield release configuration may select the production id, application name,
+launcher icon, and TV banner. Both the sideload and Play configurations use that release identity
+and fail closed unless they receive a supported SemVer name and its valid derived Android version
+code.
 
 Shield client releases use SemVer names and a deterministic, increasing `versionCode`. The code
 allocates two decimal digits each to minor and patch and four release slots within a patch:
@@ -2414,21 +2415,34 @@ allocates two decimal digits each to minor and patch and four release slots with
 stays below Android's version-code ceiling. The build derives the code from the version name; an
 operator does not type two independent identities that can drift.
 
-The distribution artifact is a signed, sideloadable APK containing the production React Native
-entry and only the `arm64-v8a` native libraries required by the Shield. The build requires all four
-keystore inputs, keeps signing material outside the repository, and records machine-readable
-evidence for the artifact digest, package, name, code, signing-certificate digest, launcher activity,
-TV launcher metadata, icon, banner, embedded JavaScript bundle, and packaged ABI set. The local test
-path creates ephemeral signing material, performs the same inspection, cleanly uninstalls any prior
-`loomarr.media` package from a Loomarr-owned Android TV emulator, installs the APK, and cold-launches
-the Leanback activity.
+The sideload artifact is a signed APK containing the production React Native entry and only the
+`arm64-v8a` native libraries required by the Shield. The Play artifact is a signed Android App
+Bundle from the same React Native TV source and contains `armeabi-v7a`, `arm64-v8a`, `x86`, and
+`x86_64`; every packaged 64-bit ELF LOAD segment is aligned for 16 KiB pages. Android's 16 KiB
+devices are 64-bit, so the required `arm64-v8a` and `x86_64` libraries carry that alignment while
+the separately required 32-bit TV ABIs retain their platform alignment. Both builds require all four
+keystore inputs, keep signing material outside the repository, and record machine-readable evidence
+for the artifact digest, package, name, code, upload-certificate digest, launcher activity, TV
+launcher metadata, icon, banner, embedded JavaScript bundle, and packaged ABI set. The local test
+paths create ephemeral signing material and perform the same artifact inspections. The sideload test
+also cleanly uninstalls any prior `loomarr.media` package from a Loomarr-owned Android TV emulator,
+installs the APK, and cold-launches the Leanback activity.
 
 The accepted replacement is installed on the maintainer's Shield by removing the Kotlin application,
-sideloading the React Native APK, and pairing again. Preserving installed credentials, proving an
-in-place upgrade, publishing an AAB, managing Play upload keys or testing tracks, maintaining a Play
-listing, and providing rollback machinery are outside this program. Physical acceptance is a single
-real Shield journey plus side-by-side visual review, backed by the automated player, focus, remote,
-lifecycle, emulator, and artifact gates described above.
+sideloading the React Native APK, and pairing again. That physical journey has been accepted. The
+same permanent package now also has an Internal-testing-only Google Play path: Google manages the
+app-signing key, Loomarr protects a durable upload key in the reviewed GitHub environment, the first
+bundle may be uploaded manually for Console bootstrap, and later uploads use a package-scoped service
+account with no Production permission. The workflow has no open, closed, staged, or Production track
+choice. Because the accepted sideload used an intentionally ephemeral key, a Play install may require
+one more uninstall and fresh pairing; cross-channel signature continuity is not promised.
+
+Kotlin/Compose source, Gradle build files, generated Kotlin tokens, JVM screenshot references, and
+their dedicated CI lane are deleted only after the React Native sideload acceptance and React Native
+Play bundle verification exist in the same ancestry. Distribution-neutral store descriptions and
+artwork remain generated from the shared brand contract outside the retired Kotlin tree. Preserving
+installed credentials, public Play distribution, staged rollout, cross-channel in-place updates, and
+rollback machinery remain outside this program.
 
 V58 ships as three checkpoints: worktree runtime isolation plus this contract; the three-engine
 controller matrix; then the real composition-root/media gate and its documented soak procedure.
@@ -7050,8 +7064,11 @@ server, scheduler, authorization, playout, or domain logic. The P3.5 shared-inte
 complete. Issue #970 authorizes complete Shield and Web parity migration and legacy retirement under
 [`frontend-design.md`](frontend-design.md) and
 [`engineering/plans/shared-client-platform.md`](engineering/plans/shared-client-platform.md).
-Shield is sideload-only in this program: a clean reinstall and fresh pairing are accepted, while Play
-distribution, installed credential migration, and in-place update continuity are outside scope.
+Shield supports a signed sideload and Google Play Internal testing in this program. A clean reinstall
+and fresh pairing are accepted for the sideload cutover; Google-managed Play App Signing and a
+protected durable upload key own the separate Play channel. Public/open/Production Play distribution,
+installed credential migration, cross-channel update continuity, and rollback machinery remain
+outside scope.
 
 Every "pick one" in this doc is now picked. The agent builds with this stack; deviations require a doc update first.
 
@@ -7135,7 +7152,7 @@ surface without a wire-format migration. The opt-in profiler also exposes Go 1.2
   - **OpenRouter can replace the local inference paths, including timed transcription** (§8.1, §10). Text/tool calls and vision already use its OpenAI-compatible `/chat/completions`; audio-language questions use `input_audio`; transcription uses its dedicated `/audio/transcriptions` endpoint with `response_format: verbose_json` and segment timestamps. This is one credential and provider selection, but deliberately not one model: the text model, vision model, and STT model are separate capability choices. Long spans are chunked below the endpoint's processing timeout and timestamps are offset back onto the original span. This adds no dependency or service. It does add explicit egress and usage cost for clip audio/frames, so every hosted modality remains an operator choice and the local whisper/Ollama paths remain available.
   - **Vision-based filler tagging is a CAPABILITY, not a new binary** (§10 V44 — a maintainer-approved §14 addition, 2026-08-06). It adds no vendored artifact: keyframes come from the `ffmpeg` already bundled, and the model call reuses an existing provider. **Hosted** vision follows the `internal/llm/audio.go` precedent exactly — a separate `OpenAI.AskAboutImages` building `image_url` content parts with `data:image/jpeg;base64,…`, deliberately *not* widening `Message.Content` (that string is on the hot path of every text request, §8). **Local** vision wires Ollama's per-message `images` field; Ollama reports a `vision` capability (probed live 2026-08-03, images-only — §10 quality gate), so a fully-local install gets it without egress or per-clip cost. The two costs this introduces, stated plainly: (1) the local `images` wiring is the only V44 change to the shared `Chat` path, guarded by a test proving an image-free request is unchanged; (2) the hosted path spends multimodal tokens per clip and sends frames off the box, so it is off by default and gated the same way hosted audio is. No image variant, no new exec'd tool — this is why it is a capability line rather than a vendored-binary one.
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
-- **Android JVM screenshot tests use Roborazzi 1.60.0 + Robolectric 4.16.1 (test-only)** as the Compose parity reference until the accepted React Native Shield build replaces them. P5 then retires the Kotlin/Compose harness; React Native stories, emulator journeys, and physical Shield review become the replacement evidence.
+- **React Native stories, native reference captures, emulator journeys, artifact inspection, and physical Shield review** are the Android TV evidence. The accepted React Native Shield replacement retires the former Kotlin/Compose JVM screenshot harness rather than retaining two presentation authorities.
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
 - Docker edge: **Traefik v3.7.1**, pinned by multi-architecture manifest digest in the supported Compose path. It is the smallest cross-platform way to put one health-aware HTTP edge in front of the compiled application on Docker Engine and Docker Desktop, and it leaves an explicit load-balancer seam for the scale investigation. The Docker provider uses `exposedByDefault=false` plus a Loomarr-specific constraint label; its read-only socket mount is still control-plane access, so the stack belongs only on a trusted Docker host. Ping stays on an unexposed admin entrypoint. **One Loomarr replica remains the beta support boundary** until shared Postgres, jobs, recurring schedulers, auth, playout/ffmpeg ownership, file-backed state, and graceful shutdown pass a multi-replica test. A proxy distributing requests is not by itself proof that the application scales.
 

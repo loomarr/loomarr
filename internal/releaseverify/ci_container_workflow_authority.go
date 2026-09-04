@@ -126,7 +126,14 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						"LOOMARR_ANDROID_KEY_PASSWORD":       "${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}",
 						"LOOMARR_ANDROID_UPLOAD_CERT_SHA256": "${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}",
 					},
-					steps: map[string]workflowStepAuthority{},
+					steps: map[string]workflowStepAuthority{
+						"make fe-install": exactWorkflowStep(6, "Install the React Native workspace", workflowStepAuthority{
+							targets: []string{"fe-install"}, allowsAcquisition: true,
+						}),
+						"make fe-codegen": exactWorkflowStep(7, "Generate the React Native API client", workflowStepAuthority{
+							targets: []string{"fe-codegen"},
+						}),
+					},
 				},
 			},
 		},
@@ -180,8 +187,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make agent-harness-test": exactWorkflowStep(2, "Worktree isolation, claims, leases, and process ownership", workflowStepAuthority{targets: []string{"agent-harness-test"}}),
 		}),
 		"ci-android.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make android":              exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"android"}}),
-			"make android-release-test": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"android-release-test"}}),
+			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+			"make fe-codegen": exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),
+			"make android":    exactWorkflowStep(8, "", workflowStepAuthority{targets: []string{"android"}}),
 		}),
 		"ci-apple-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install":                exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),

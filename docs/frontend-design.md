@@ -18,8 +18,9 @@ remain binding for code that still uses Tailwind/shadcn or Compose and are parit
 migration plan and these precedence rules:
 
 1. Loomarr owns the semantic interfaces; application code does not depend directly on Tamagui.
-2. A migration is an implementation translation, not a refinement. Shield preserves the current
-   Kotlin/Compose presentation; Web preserves the current Web presentation. Before implementation,
+2. A migration is an implementation translation, not a refinement. Shield preserves the accepted
+   Kotlin/Compose presentation through its React Native replacement; Web preserves the current Web
+   presentation. Before implementation,
    every migrated surface records a parity inventory against that client's shipping references.
    Existing content, actions, states, and recovery paths remain present unless the maintainer
    explicitly approves an exception.
@@ -27,12 +28,15 @@ migration plan and these precedence rules:
    shared; navigation, focus, safe-area/overscan, DOM semantics, and player transport sit behind
    platform seams.
 4. Existing behavior, accessibility, authorization, pairing, and playout guarantees survive every
-   migration PR. Shield distribution is sideload-only for #970, so a clean reinstall and fresh
-   pairing replace installed-credential and Play-update compatibility.
+   migration PR. Shield supports the accepted signed sideload plus a Google Play Internal test from
+   the same React Native source. A clean reinstall and fresh pairing remain acceptable between the
+   ephemeral-key sideload and the separately signed Play installation; cross-channel update
+   continuity is not promised.
 5. P3.5 shared-interface publication is complete. The 2026-09-03 maintainer decision authorizes the
    full Shield and Web parity migrations; other production native clients remain later work.
-6. The current Web and Compose surfaces remain releasable until their individual parity gates pass,
-   then the corresponding legacy implementation is retired rather than maintained indefinitely.
+6. The accepted React Native Shield surface is releasable and the Compose implementation is
+   retired. The current Web surface remains releasable until its parity gates pass, then its legacy
+   implementation is retired rather than maintained indefinitely.
 
 Brand identity and product iconography follow the consolidation contract as well. The canonical
 Loomarr chroma bar, wordmark, lockups, favicon, launcher icons, TV banner, and store artwork are generated
@@ -147,7 +151,7 @@ For legacy consumers, `web/packages/tokens` holds the TS source of truth and gen
 artifacts in CI:
 1. `theme.css` — Tailwind v4 `@theme` variables for the web app,
 2. a **Tailwind preset** — consumed by the legacy web implementation during migration,
-3. `tokens.json` — consumed by the legacy Compose adapter and migration tooling.
+3. `tokens.json` — consumed by legacy Web migration tooling.
 
 CI fails if generated artifacts drift from source (`make fe-tokens` regenerates; diff must be empty). This is the same committed-artifact discipline as `api/openapi.yaml`.
 

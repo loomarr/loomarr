@@ -68,14 +68,17 @@ implementations, and their executable workshop contracts. It deliberately does *
 every production route uses them. The delivery sequence keeps that evidence staged:
 
 - **P4** owns shared player interfaces and complete React Native Shield parity;
-- **P5** owns the physical Shield clean-sideload journey and Compose retirement;
+- **P5a** owns the accepted physical Shield clean-sideload journey;
+- **P5b** owns the React Native Play Internal artifact and publication path;
+- **P5c** owns Compose retirement after those React Native proofs;
 - **P6** owns Web parity fixtures and browser-adapter foundations;
 - **P7** owns route-by-route Web migration and browser form/accessibility parity; and
 - **P8** owns retirement of Tailwind/shadcn/Base UI/CVA and transitional tokens after parity.
 
-P6/P7 may proceed while P5 awaits maintainer hardware time once P4 has stabilized shared interfaces.
-The earlier broad go/no-go evidence in #727 is superseded by #970's accepted single-device,
-sideload-only operating model; Play distribution and installed pairing migration are not gates.
+P6/P7 may proceed while Play Internal acceptance is underway because P4 has stabilized the shared
+interfaces and P5a has passed on the maintainer's Shield. The earlier broad go/no-go evidence in
+#727 is superseded by #970's accepted single-device model. P5b includes Play Internal distribution;
+installed-pairing migration and wider Play rollout are not gates.
 
 The exclusions below resolve the former contradiction in which this ledger called its interface
 implementation complete while leaving rows `partial`, `legacy`, or `claimed`. They narrow P3.5; they
@@ -104,7 +107,7 @@ do not pre-approve P4–P8 or turn their missing evidence green.
 | Surf rail | `ui` `SurfRail`; `ui-tv` Surf adapter | Shared rail now preserves the still-mounted playback composition, explicit empty Favourites/Recent/All grouping, authoritative focused now/next identity, artwork fallback, progress, tune intent, honest client/server identity, narrow viewport bounds, and pointer/touch/TV plus light/dark stories; TV logic owns ordered traversal, catalog-change restoration, activation, and valid previous-channel intent | excluded → P4/P7 | P4 connects Shield remote events and focus refs and proves tune/Back/previous-channel behavior; P7 owns current Web viewer parity. |
 | Browser application semantics | web adapters | P3.5 supplies browser adapters for the shared workshop and selection seams; the administrative app intentionally remains on its releasable legacy DOM presentation during migration | excluded → P7 | P7 migrates routes in cohorts and proves semantic HTML, forms, keyboard, screen-reader, reduced-motion, responsive, and visual parity before retiring the legacy stack. |
 | Touch mechanics | mobile adapters | Pairing shell and destination shell run on iPhone; provider-owned safe-area values feed the shared viewport contract; the P3.5 workshop now has physical iOS 27 portrait/landscape, Dynamic Island, touch, scroll, disclosure, and keyboard evidence | excluded → future | Production mobile journeys are intentionally outside #970; the P3.5 workshop evidence is retained for their later migration. |
-| TV mechanics | `ui-tv` root interfaces | P3.5 provides deterministic Guide/Surf navigation controllers, bounded row-window rules, overscan-aware viewport primitives, and remote workshop evidence | excluded → P4/P5 | P4 completes the production Shield journey; P5 proves it on the physical device and retires Compose. |
+| TV mechanics | `ui-tv` root interfaces | P3.5 provides deterministic Guide/Surf navigation controllers, bounded row-window rules, overscan-aware viewport primitives, and remote workshop evidence | excluded → P4/P5 | P4 completes the production Shield journey; P5a proves it on the physical device, P5b adds Play Internal, and P5c retires Compose. |
 
 ## Required workshop matrix
 

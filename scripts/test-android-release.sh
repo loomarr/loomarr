@@ -41,7 +41,9 @@ jq -e \
 	'.package == "loomarr.media" and .versionName == "0.1.0-beta.1" and
 	 .versionCode == $code and .nativeLibraries > 0 and
 	 .abis == ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"] and
-	 .elfLoadAlignmentBytes == 16384' \
+	 .elfLoadAlignmentBytes == 16384 and
+	 .elfLoadAlignmentAbis == ["arm64-v8a", "x86_64"] and
+	 .sourceEntry == "web/apps/tv/index.ts"' \
 	"$temp_dir/output/loomarr-tv-$version_name-$version_code.json" >/dev/null
 
-echo 'android release: ephemeral signed AAB passed identity, signature, ABI, and 16 KiB checks'
+echo 'android release: ephemeral signed React Native AAB passed identity, signature, ABI, and 16 KiB checks'

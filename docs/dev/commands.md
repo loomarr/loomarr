@@ -227,22 +227,16 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make smoke-livetv` |  | Live TV wiring vs a DISPOSABLE Jellyfin (destroyed after — never touches your media server) |
 | `make smoke-down` |  | tear down the smoke stack (container, volume, temp database) |
 
-## Android TV client
+## Android TV React Native release
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make android-tokens` |  | regenerate the Android design tokens from the shared tokens.json |
-| `make android-tokens-verify` |  | regenerated tokens must match committed (CI red on drift) <br>*runs:* `android-tokens` |
-| `make android-load` |  | report heavy local processes before starting a build |
-| `make android` | ✅ | Android TV client — tokens + ktlint + Android Lint + unit tests + screenshots + debug APK <br>*runs:* `android-tokens-verify` |
-| `make android-release-test` | ✅ | build an ephemeral signed AAB and verify release identity, ABIs, and 16 KiB alignment |
-| `make android-fmt` |  | Android TV client — apply ktlint formatting |
-| `make android-screenshots` |  | Android TV client — re-record screenshot baselines (review the diff!) |
-| `make android-stop` |  | stop the Gradle/Kotlin daemons this module started |
+| `make android` | ✅ | React Native Android TV — signed four-ABI Play bundle verification <br>*runs:* `android-release-test` |
+| `make android-release-test` |  | build an ephemeral signed React Native AAB and verify identity, ABIs, and 16 KiB alignment |
 
 ## What CI runs
 
-`agent-harness-test` · `android-release-test` · `android` · `arch-docs-verify` · `ci-lint` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android` · `arch-docs-verify` · `ci-lint` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

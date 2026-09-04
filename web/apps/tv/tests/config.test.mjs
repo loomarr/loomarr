@@ -19,23 +19,25 @@ test("keeps the TV proof isolated from the shipping application", async () => {
   assert.match(config.expo.android.package, /\.prototype$/);
 });
 
-test("resolves only an explicit Shield sideload to the permanent Android identity", async () => {
-  const { stdout } = await execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
-    cwd: new URL("..", import.meta.url),
-    env: {
-      ...process.env,
-      LOOMARR_SHIELD_SIDELOAD: "1",
-      LOOMARR_ANDROID_VERSION_CODE: "1020003",
-      LOOMARR_ANDROID_VERSION_NAME: "0.1.2-beta.3",
-    },
-  });
-  const config = JSON.parse(stdout);
+test("resolves each explicit Shield release channel to the permanent Android identity", async () => {
+  for (const channel of ["sideload", "play"]) {
+    const { stdout } = await execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
+      cwd: new URL("..", import.meta.url),
+      env: {
+        ...process.env,
+        LOOMARR_SHIELD_RELEASE_CHANNEL: channel,
+        LOOMARR_ANDROID_VERSION_CODE: "1020003",
+        LOOMARR_ANDROID_VERSION_NAME: "0.1.2-beta.3",
+      },
+    });
+    const config = JSON.parse(stdout);
 
-  assert.equal(config.name, "Loomarr");
-  assert.equal(config.slug, "loomarr-tv");
-  assert.equal(config.version, "0.1.2-beta.3");
-  assert.equal(config.android.package, "loomarr.media");
-  assert.equal(config.android.versionCode, 1020003);
+    assert.equal(config.name, "Loomarr");
+    assert.equal(config.slug, "loomarr-tv");
+    assert.equal(config.version, "0.1.2-beta.3");
+    assert.equal(config.android.package, "loomarr.media");
+    assert.equal(config.android.versionCode, 1020003);
+  }
 });
 
 test("embeds the artifact version as the production TV client identity", async () => {
@@ -49,7 +51,7 @@ test("embeds the artifact version as the production TV client identity", async (
 
 test("keeps the permanent identity unreachable outside the sideload build", async () => {
   const environment = { ...process.env };
-  delete environment.LOOMARR_SHIELD_SIDELOAD;
+  delete environment.LOOMARR_SHIELD_RELEASE_CHANNEL;
   delete environment.LOOMARR_ANDROID_VERSION_CODE;
   delete environment.LOOMARR_ANDROID_VERSION_NAME;
   const { stdout } = await execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
@@ -63,18 +65,19 @@ test("keeps the permanent identity unreachable outside the sideload build", asyn
   assert.match(config.android.package, /\.prototype$/);
 });
 
-test("fails closed when a Shield sideload has incomplete or invalid version metadata", async () => {
-  const runConfig = (versionCode) =>
+test("fails closed when a Shield release has an invalid channel or version metadata", async () => {
+  const runConfig = (versionCode, channel = "sideload") =>
     execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
       cwd: new URL("..", import.meta.url),
       env: {
         ...process.env,
-        LOOMARR_SHIELD_SIDELOAD: "1",
+        LOOMARR_SHIELD_RELEASE_CHANNEL: channel,
         LOOMARR_ANDROID_VERSION_CODE: versionCode,
         LOOMARR_ANDROID_VERSION_NAME: "0.1.2-beta.3",
       },
     });
 
+  await assert.rejects(runConfig("", "production"), /channel must be sideload or play/);
   await assert.rejects(runConfig(""), /requires Loomarr version name and code/);
   await assert.rejects(runConfig("0"), /version code must be between/);
   await assert.rejects(runConfig("2100000000"), /version code must be between/);
@@ -114,6 +117,27 @@ test("composes the production TV root around shared dark pairing and paired API 
   assert.match(appSource, /validatePairingCredential/);
   assert.match(appSource, /createAuthenticatedFetch\(credential, onRevoked\)/);
   assert.match(appSource, /<TvPairedRoot credential=\{credential\} session=\{session\} \/>/);
+});
+
+test("hands the native splash to the shared Loomarr launch identity", async () => {
+  const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+  const splashPlugin = config.expo.plugins.find(
+    (plugin) => Array.isArray(plugin) && plugin[0] === "expo-splash-screen",
+  );
+
+  assert.equal(manifest.dependencies["expo-splash-screen"], manifest.dependencies.expo);
+  assert.equal(splashPlugin?.[1].backgroundColor, "#0B0C0E");
+  assert.equal(splashPlugin?.[1].dark.backgroundColor, "#0B0C0E");
+  assert.match(appSource, /SplashScreen\.preventAutoHideAsync\(\)/);
+  assert.match(appSource, /<View onLayout=\{hideNativeSplash\} style=\{\{ flex: 1 \}\}>/);
+  assert.match(appSource, /SplashScreen\.hide\(\)/);
+  assert.match(appSource, /<BrandLaunch density="tv" onFinished=\{\(\) => setLaunchFinished\(true\)\} \/>/);
+  assert.ok(
+    appSource.indexOf("<PairingShell") < appSource.indexOf("<BrandLaunch"),
+    "pairing must initialize beneath the launch identity instead of waiting for its animation",
+  );
 });
 
 test("keeps the native player and Watching mounted beneath Guide and Surf", async () => {
