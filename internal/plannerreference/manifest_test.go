@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/quality"
 )
 
 func TestBuildManifestCanonicalizesAndBindsReferenceHostEvidence(t *testing.T) {
@@ -57,6 +59,37 @@ func TestBuildManifestCanonicalizesAndBindsReferenceHostEvidence(t *testing.T) {
 	if strings.Contains(text, "/Users/") || strings.Contains(text, "unrelated-resident-model") ||
 		strings.Contains(text, "raw capture") {
 		t.Fatal("manifest leaked raw capture content or local paths")
+	}
+}
+
+func TestBuildManifestAcceptsAndBindsScorecardV11RunSnapshot(t *testing.T) {
+	card, captured, evidence, generatedAt := validFixture(t)
+	var document map[string]any
+	if err := json.Unmarshal(card, &document); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := quality.RunSnapshot{
+		SchemaVersion:  quality.RunSnapshotSchemaVersion,
+		CorpusVersion:  "planner-certification-v3",
+		RequestedModel: captured.Model.Tag, ResolvedModel: captured.Model.Tag,
+		Provider: quality.ProviderOllama, BudgetProfile: captured.Protocol.Profile,
+		ApplicationVersion: "v0.1.0", AccountingAvailable: true,
+		CreatedAt: captured.StartedAt.Add(time.Minute),
+	}
+	snapshot.ID = quality.RunSnapshotID(snapshot)
+	document["schemaVersion"] = float64(11)
+	document["runSnapshot"] = snapshot
+	card, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	artifact, err := BuildManifest(rawInputs(t, card, captured, evidence, generatedAt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(artifact.JSON, []byte(`"schemaVersion": 11`)) {
+		t.Fatalf("reference manifest did not retain scorecard schema 11: %s", artifact.JSON)
 	}
 }
 
