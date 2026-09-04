@@ -104,6 +104,9 @@ func TestMetRightsBatchReviewRejectsAnythingOtherThanExactZeroAnomalyEvidence(t 
 		"basis lacks policy prefix": func(_ *testing.T, _ *metRightsBatchFixture, attestation *MetRightsBatchAttestation) {
 			attestation.Basis = "looks acceptable"
 		},
+		"basis omits required separator": func(_ *testing.T, _ *metRightsBatchFixture, attestation *MetRightsBatchAttestation) {
+			attestation.Basis = "met_cc0_open_access_object_reviewed_v1:reviewed."
+		},
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {

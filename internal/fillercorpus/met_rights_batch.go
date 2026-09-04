@@ -11,10 +11,10 @@ const (
 	MetRightsBatchAttestationSchemaVersion = 1
 	MetRightsBatchAcceptancePending        = "pending"
 	MetRightsBatchAcceptanceAccepted       = "accepted"
+	MetRightsApprovalBasisPrefix           = "met_cc0_open_access_object_reviewed_v1: "
 
 	metRightsBatchPurpose              = "private_development_corpus"
 	metRightsBatchChainOfTitleWarranty = "not_asserted"
-	metRightsBatchBasisPrefix          = "met_cc0_open_access_object_reviewed_v1:"
 )
 
 var requiredMetBatchAuthorizedUses = []string{
@@ -125,9 +125,9 @@ func CompleteMetRightsBatchReview(inventoryRaw, worksheetRaw, prescreenRaw, atte
 	if err != nil || attestation.ReviewedAt != reviewedAt.UTC().Format(time.RFC3339) || reviewedAt.Before(inputs.prescreen.PreparedAt) {
 		return MetRightsBatchCompletion{}, fmt.Errorf("met rights batch review time must be canonical UTC and no earlier than the pre-screen")
 	}
-	if strings.TrimSpace(attestation.Basis) != attestation.Basis || !strings.HasPrefix(attestation.Basis, metRightsBatchBasisPrefix) ||
-		len(attestation.Basis) <= len(metRightsBatchBasisPrefix) || len(attestation.Basis) > 2048 || strings.ContainsAny(attestation.Basis, "\r\n\x00") {
-		return MetRightsBatchCompletion{}, fmt.Errorf("met rights batch basis must be a bounded single-line rationale beginning with %q", metRightsBatchBasisPrefix)
+	if strings.TrimSpace(attestation.Basis) != attestation.Basis || !strings.HasPrefix(attestation.Basis, MetRightsApprovalBasisPrefix) ||
+		len(attestation.Basis) <= len(MetRightsApprovalBasisPrefix) || len(attestation.Basis) > 2048 || strings.ContainsAny(attestation.Basis, "\r\n\x00") {
+		return MetRightsBatchCompletion{}, fmt.Errorf("met rights batch basis must be a bounded single-line rationale beginning with %q", MetRightsApprovalBasisPrefix)
 	}
 	attestationSHA256 := InventorySHA256(attestationRaw)
 	completedCSV, err := metRightsBatchCSV(inputs.worksheet, attestation, attestationSHA256)

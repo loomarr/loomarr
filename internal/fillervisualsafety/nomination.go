@@ -3,6 +3,8 @@ package fillervisualsafety
 import (
 	"context"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
 
 const (
@@ -10,7 +12,7 @@ const (
 	VisualCorpusNominationWorksheetContractVersion = "filler-visual-corpus-nomination-worksheet-v1"
 	VisualCorpusNominationSetSchemaVersion         = 1
 	VisualCorpusNominationSetContractVersion       = "filler-visual-corpus-nomination-set-v1"
-	VisualCorpusMetCC0ApprovalBasisPrefix          = "met_cc0_open_access_object_reviewed_v1: "
+	VisualCorpusMetCC0ApprovalBasisPrefix          = fillercorpus.MetRightsApprovalBasisPrefix
 )
 
 // VisualCorpusNominationWorksheet freezes every mechanically derived field
