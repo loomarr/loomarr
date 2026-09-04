@@ -7,12 +7,6 @@ import { TransientOverlay } from "../overlay";
 import type { WatchingSurfaceProps } from "./watching-surface.type";
 import { behindLabel, playbackMessage } from "./watching-surface-state";
 
-const RemoteHint = ({ children }: { children: string }) => (
-  <Text density="tv" textRole="metadata" tone="muted">
-    {children}
-  </Text>
-);
-
 const LoadingChannels = ({ density }: Pick<WatchingSurfaceProps, "density">) => (
   <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
     <ActivityIndicator
@@ -22,17 +16,34 @@ const LoadingChannels = ({ density }: Pick<WatchingSurfaceProps, "density">) => 
   </View>
 );
 
-const NumberEntry = ({ density, numberEntry }: Pick<WatchingSurfaceProps, "density" | "numberEntry">) =>
-  numberEntry?.digits ? (
-    <Surface
-      gap={4}
-      left={density === "tv" ? 48 : 0}
-      level="overlay"
-      minWidth={density === "tv" ? 176 : undefined}
-      padding="$control"
-      position="absolute"
-      top={density === "tv" ? 48 : 0}
-    >
+const NumberEntry = ({ density, numberEntry }: Pick<WatchingSurfaceProps, "density" | "numberEntry">) => {
+  if (!numberEntry?.digits) return null;
+  if (density === "tv")
+    return (
+      <Surface
+        alignItems="center"
+        backgroundColor="$surfaceEntry"
+        borderRadius={8}
+        flexDirection="row"
+        gap={16}
+        left={48}
+        paddingHorizontal={20}
+        paddingVertical={12}
+        position="absolute"
+        top={48}
+      >
+        <Text density="tv" textRole="channelNumber">
+          {`${numberEntry.digits.split("").join(" ")} _`}
+        </Text>
+        {numberEntry.channelName ? (
+          <Text density="tv" numberOfLines={1} textRole="reading" tone="muted">
+            {numberEntry.channelName}
+          </Text>
+        ) : null}
+      </Surface>
+    );
+  return (
+    <Surface gap={4} left={0} level="overlay" padding="$control" position="absolute" top={0}>
       <Text density={density} textRole="title">
         {`${numberEntry.digits.split("").join(" ")} _`}
       </Text>
@@ -42,7 +53,8 @@ const NumberEntry = ({ density, numberEntry }: Pick<WatchingSurfaceProps, "densi
         </Text>
       ) : null}
     </Surface>
-  ) : null;
+  );
+};
 
 const TouchWatchingSurface = ({
   chromeVisible = true,
@@ -248,64 +260,90 @@ const TvWatchingSurface = ({
               {snapshot.channel ? (
                 <Surface
                   alignItems="center"
+                  backgroundColor="$surfaceIdentity"
+                  borderRadius={8}
+                  borderWidth={1}
                   flexDirection="row"
-                  gap="$inline"
-                  level="overlay"
-                  paddingHorizontal="$control"
-                  paddingVertical="$inline"
+                  gap={12}
+                  paddingHorizontal={16}
+                  paddingVertical={8}
                   position="absolute"
                   right={48}
                   top={48}
                 >
-                  <Text density="tv" textRole="channelNumber">
-                    {snapshot.channel.number}
+                  <Text density="tv" textRole="data" tone="signal">
+                    {String(snapshot.channel.number).padStart(2, "0")}
                   </Text>
-                  <Text density="tv" numberOfLines={1} textRole="label">
-                    {snapshot.channel.name}
+                  <Text density="tv" numberOfLines={1} textRole="compact">
+                    {snapshot.channel.name.toUpperCase()}
                   </Text>
+                  {snapshot.status === "playing" ? (
+                    <Surface
+                      backgroundColor="$stateSuccess"
+                      borderRadius="$round"
+                      borderWidth={0}
+                      height={8}
+                      width={8}
+                    />
+                  ) : null}
                 </Surface>
               ) : null}
               <Surface
-                backgroundColor="$surfaceOverlay"
+                backgroundColor="$surfaceChrome"
                 borderRadius={0}
                 borderWidth={0}
                 bottom={0}
-                gap="$control"
+                gap={0}
                 left={0}
-                paddingBottom={40}
-                paddingHorizontal={48}
-                paddingTop="$control"
+                paddingTop={24}
                 position="absolute"
                 right={0}
               >
                 {schedule?.now ? (
-                  <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+                  <Surface backgroundColor="$transparent" borderWidth={0} gap={0}>
                     <Surface
-                      alignItems="flex-end"
+                      alignItems="center"
                       backgroundColor="$transparent"
                       borderWidth={0}
                       flexDirection="row"
-                      gap="$control"
+                      gap={12}
+                      paddingHorizontal={64}
                     >
-                      <Text density="tv" flex={1} numberOfLines={1} textRole="title">
+                      <Text density="tv" flex={1} numberOfLines={1} textRole="headline">
                         {schedule.now.title}
                       </Text>
-                      <Text density="tv" textRole="time">
-                        {[schedule.now.timeLabel, schedule.now.episodeLabel].filter(Boolean).join(" · ")}
+                      {schedule.now.episodeLabel ? (
+                        <Text density="tv" textRole="data" tone="muted">
+                          {schedule.now.episodeLabel}
+                        </Text>
+                      ) : null}
+                      {schedule.now.facts?.[0] ? (
+                        <Text density="tv" textRole="time" tone="muted">
+                          {schedule.now.facts[0]}
+                        </Text>
+                      ) : null}
+                      <Text density="tv" textRole="time" tone="muted">
+                        {schedule.now.timeLabel}
                       </Text>
                     </Surface>
-                    {schedule.now.facts?.length ? (
-                      <Text density="tv" numberOfLines={1} textRole="metadata">
-                        {schedule.now.facts.join(" · ")}
-                      </Text>
-                    ) : null}
                     {schedule.now.progressPercent === undefined ? null : (
-                      <ProgressTrack percent={schedule.now.progressPercent} tone="live" width="100%" />
+                      <ProgressTrack
+                        height={5}
+                        marginTop={12}
+                        percent={schedule.now.progressPercent}
+                        width="100%"
+                      />
                     )}
                   </Surface>
                 ) : null}
                 {snapshot.status === "tuning" ? (
-                  <Text accessibilityLiveRegion="polite" density="tv" textRole="metadata">
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    density="tv"
+                    marginHorizontal={64}
+                    marginTop={12}
+                    textRole="metadata"
+                  >
                     Tuning…
                   </Text>
                 ) : null}
@@ -313,6 +351,8 @@ const TvWatchingSurface = ({
                   <Text
                     accessibilityLiveRegion="polite"
                     density="tv"
+                    marginHorizontal={64}
+                    marginTop={12}
                     textRole="body"
                     tone={recoverableFailure ? "danger" : "muted"}
                   >
@@ -320,7 +360,14 @@ const TvWatchingSurface = ({
                   </Text>
                 ) : null}
                 {snapshot.livePlayback?.noticeRevision ? (
-                  <Text accessibilityLiveRegion="polite" density="tv" textRole="body" tone="warning">
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    density="tv"
+                    marginHorizontal={64}
+                    marginTop={12}
+                    textRole="body"
+                    tone="warning"
+                  >
                     Paused position expired. Returned to live.
                   </Text>
                 ) : null}
@@ -329,27 +376,33 @@ const TvWatchingSurface = ({
                   backgroundColor="$transparent"
                   borderWidth={0}
                   flexDirection="row"
-                  gap="$control"
+                  paddingBottom={16}
+                  paddingHorizontal={64}
+                  paddingTop={12}
                 >
-                  <Text density="tv" flex={1} numberOfLines={1} textRole="metadata">
-                    {schedule?.next ? `Next ${schedule.next.timeLabel} · ${schedule.next.title}` : " "}
+                  <Text density="tv" flex={1} numberOfLines={1} textRole="reading" tone="muted">
+                    {schedule?.next
+                      ? `Up next · ${schedule.next.timeLabel} — ${schedule.next.title}`
+                      : "No later programme in this guide window"}
                   </Text>
-                  {snapshot.livePlayback?.mode === "live" ? (
-                    <Text density="tv" textRole="metadata" tone="live">
-                      Live
-                    </Text>
-                  ) : snapshot.livePlayback ? (
+                  {snapshot.livePlayback && snapshot.livePlayback.mode !== "live" ? (
                     <Text density="tv" textRole="metadata">
                       {`${snapshot.livePlayback.mode === "paused" ? "Paused · " : ""}${behindLabel(snapshot.livePlayback.lagSeconds)}`}
                     </Text>
                   ) : null}
-                  <RemoteHint>Up/Down tune</RemoteHint>
-                  <RemoteHint>Left Surf</RemoteHint>
-                  <RemoteHint>0–9 jump</RemoteHint>
-                  <RemoteHint>OK Guide</RemoteHint>
+                  <Text density="tv" marginLeft={24} textRole="metadata" tone="muted">
+                    ▲▼ tune · ◀ channels · 0–9 jump · OK guide
+                  </Text>
                 </Surface>
                 {snapshot.status === "paused" || recoverableFailure ? (
-                  <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$control">
+                  <Surface
+                    backgroundColor="$transparent"
+                    borderWidth={0}
+                    flexDirection="row"
+                    gap="$control"
+                    paddingBottom={16}
+                    paddingHorizontal={64}
+                  >
                     {snapshot.status === "paused" ? (
                       <Action density="tv" disabled={!snapshot.channel} onPress={onPlay} tone="primary">
                         Play

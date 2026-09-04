@@ -2,8 +2,8 @@
 
 ## Scope and method
 
-This review covers GitHub issue #970 item 34 at base commit
-`8eb769556b1e95c5b31facf037828ae46d08da88`. The embedded React Native Storybook ran as an Android
+This review covers GitHub issue #970 item 34 and the parity remediation tracked by #1008, based on
+`d9ecaf08dce0b2f2ffdda70bda83ba88d877c325`. The embedded React Native Storybook ran as an Android
 TV application on Android 36 Google TV emulator profiles with native framebuffers at:
 
 - 1920×1080, 320 dpi (`1080p`)
@@ -33,34 +33,53 @@ The committed Kotlin references are:
 - [Surf 1080p](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20surf.png) and [4K](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20surf%20at%204k%20density.png)
 - [Guide 1080p](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20guide.png) and [4K](../../../android/app/src/test/screenshots/loomarr.media.design.DesignScreenshotTest.android%20tv%20guide%20at%204k%20density.png)
 
-The review found that the replacement contract is complete and resolution-independent, but the
-current React Native ready/focused surfaces are **not yet acceptable as 1:1 Kotlin visual parity**.
-These are product-level geometry differences, not merely Compose-versus-React-Native rasterization:
+The review found that the replacement contract is complete, resolution-independent, and acceptable
+as 1:1 presentation parity with the Kotlin references. Fixture content and version identities were
+first aligned so the comparison exercises the same product state. The remediation then reproduced
+the Kotlin surface geometry and information placement through shared design-system and UI roles:
 
-- **Pairing:** both versions preserve QR and website paths, code, expiry, and focused refresh action.
-  React Native adds the Loomarr wordmark and uses a materially wider/taller card with different
-  column, divider, and action placement.
-- **Watching:** both preserve number entry, Channel identity, now/next information, progress, and
-  remote hints over a full-screen player. The replacement changes the scale and placement of both
-  top indicators and materially changes the height, inset, information order, and progress geometry
-  of the bottom programme bar.
-- **Surf:** both preserve the translucent left rail, Favorites/Recent/All grouping, current marker,
-  focus ring, progress, row position, version identity, and tune/cancel hint. The checked-in fixtures
-  differ in Channel count and scroll position, and the replacement row typography, vertical rhythm,
-  and rail content density do not yet reproduce the Kotlin reference closely enough for acceptance.
-- **Guide:** both preserve filters, two-hour grid, current-time rail, programme focus, position rail,
-  and bottom detail/artwork fallback. The replacement uses substantially taller Channel rows and a
-  larger header/detail composition, exposing far fewer rows than Kotlin on the same 960×540 dp
-  canvas. This is a direct geometry mismatch.
+- **Pairing:** the replacement reproduces the bare 320×24 dp brand strip, 760 dp card, equal columns,
+  210 dp divider, 150 dp unbranded QR, single-line server URL, pairing code, expiry, and refresh
+  action. Native TV focus remains visible on the preferred refresh action.
+- **Watching:** number entry and Channel identity occupy the same top corners. The full-width bottom
+  bar reproduces the Kotlin title, episode facts, live-edge time, progress, next-programme line, and
+  remote hints in the same order and at the same vertical boundaries.
+- **Surf:** the replacement reproduces the 420 dp translucent rail, Kotlin Channel grouping and
+  initial max-scroll viewport, selected programme identity, progress, row position, version
+  identity, and tune/cancel hint.
+- **Guide:** the replacement reproduces the 298 dp Channel rail, 12 dp position rail, 36 dp ruler,
+  48 dp rows, 124 dp detail region, hourly labels, current-airing tint, selected Channel emphasis,
+  programme focus, artwork fallback, and current-time rail.
+
+No product-level geometry or information-placement deviation remains in the reviewed states. The
+remaining pixel differences are renderer-level: Compose and React Native use slightly different
+glyph rasterization and metrics, which can move an ellipsis within the same bounded label; the QR
+encoders may select a different valid module mask for the same pairing payload; and native border
+edges have minor subpixel antialiasing differences. These do not alter the visible contract or
+interaction behavior.
 
 React Native 1080p and 4K captures do preserve the same logical composition; the only observed
 cross-density difference is the expected one-second expiry countdown movement. All loading, empty,
 error, and focused variants render the intended state without Storybook chrome or emulator scaling.
 
+## Browser TV-contract corroboration
+
+The same shared TV roles are rendered by the browser Storybook contract. The parity remediation
+intentionally changed 21 desktop/mobile baselines, all belonging to TV-density stories; no pointer
+or touch baseline changed. Each changed cohort was reviewed against the corresponding merge-group
+artifact before regeneration. The review also exposed two non-visual regressions that were fixed
+instead of being hidden by baseline updates: custom Guide filter buttons now retain the shared
+Action contract's `aria-pressed` state, and the compact light-theme artwork fallback now uses a
+contrast-safe semantic tone.
+
+The sanctioned pinned-Docker update completed with 1,200 passing tests and two intentional skips.
+A fresh immutable `make fe-visual` run then passed the same 1,200 tests with the same two skips,
+covering screenshot equality, serious/critical axe violations, and the TV Guide D-pad contract.
+
 ## Acceptance decision
 
-Item 34's capture and review evidence is complete. Visual parity is **not accepted** by this review.
-The Pairing, Watching, Surf, and Guide geometry gaps above must be remediated and recaptured before
-issue #970 item 36 can record maintainer acceptance or item 38 can delete the Kotlin reference
-implementation. Physical Shield behavior and real playback remain explicitly untested here and are
-owned by item 36.
+Item 34's capture and review evidence is complete, and the #1008 visual-parity remediation is
+**accepted by this review**. The checked-in 1080p and 4K references are the replacement visual
+contract for emulator states. Physical Shield behavior, installation, remote traversal, and real
+playback remain explicitly untested here and are owned by issue #970 item 36; Kotlin deletion remains
+gated on that maintainer acceptance.

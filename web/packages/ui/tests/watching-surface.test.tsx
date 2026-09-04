@@ -58,11 +58,11 @@ describe("WatchingSurface", () => {
   it("keeps one player mounted behind the TV presentation and quiet remote hints", () => {
     const output = renderSurface(playing);
     expect(output).toContain("one-native-player");
-    expect(output).toContain("Science Fiction");
-    expect(output).toContain("Up/Down tune");
-    expect(output).toContain("Left Surf");
+    expect(output).toContain("SCIENCE FICTION");
+    expect(output).toContain("▲▼ tune");
+    expect(output).toContain("◀ channels");
     expect(output).toContain("0–9 jump");
-    expect(output).toContain("OK Guide");
+    expect(output).toContain("OK guide");
     expect(output).toContain('aria-label="Open programme guide"');
     expect(output).not.toContain("Previous");
     expect(output).not.toContain("Channel −");
@@ -86,15 +86,16 @@ describe("WatchingSurface", () => {
 
     expect(output).toContain("The Current Frontier");
     expect(output).toContain("S1 E4");
-    expect(output).toContain("2026 · TV-14");
-    expect(output).toContain("Next 9:30 PM · The Next Frontier");
+    expect(output).toContain("2026");
+    expect(output).not.toContain("TV-14");
+    expect(output).toContain("Up next · 9:30 PM — The Next Frontier");
     expect(output).toContain("42%");
   });
 
   it("presents tuning and recoverable playback failures without replacing Channel identity", () => {
     expect(renderSurface({ ...playing, status: "tuning" })).toContain("Tuning…");
     const failed = renderSurface({ ...playing, error: "The stream could not be decoded.", status: "failed" });
-    expect(failed).toContain("Science Fiction");
+    expect(failed).toContain("SCIENCE FICTION");
     expect(failed).toContain("The stream could not be decoded.");
     expect(failed).toContain("Retry");
   });

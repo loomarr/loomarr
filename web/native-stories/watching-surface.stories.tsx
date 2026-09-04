@@ -3,7 +3,7 @@ import { type WatchingScheduleData, WatchingSurface, type WatchingSurfaceProps }
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { View } from "react-native";
 
-const channel = { id: "seven", inAppPlayable: true, name: "Science Fiction", number: 7 };
+const channel = { id: "nature", inAppPlayable: true, name: "Nature Documentaries", number: 21 };
 type WatchingSnapshot = WatchingSurfaceProps["snapshot"];
 
 const snapshot: WatchingSnapshot = {
@@ -11,19 +11,19 @@ const snapshot: WatchingSnapshot = {
   catalog: [channel],
   channel,
   livePlayback: { lagSeconds: 0, mode: "live", noticeRevision: 0, viewerTimeMs: 1_777_777_777_000 },
-  previousChannelId: "six",
-  recentChannelIds: ["six"],
+  previousChannelId: "games",
+  recentChannelIds: ["games"],
   status: "playing",
 };
 const schedule: WatchingScheduleData = {
-  next: { timeLabel: "9:30 PM", title: "The Next Frontier" },
+  next: { timeLabel: "2:30 AM", title: "Blue Planet — The Deep" },
   now: {
     badge: { label: "On now", tone: "live" },
-    episodeLabel: "S1 E4",
-    facts: ["2026", "TV-14", "Science fiction"],
-    progressPercent: 42,
-    timeLabel: "9:00 PM–9:30 PM",
-    title: "The Current Frontier",
+    episodeLabel: "S2E4",
+    facts: ["1996", "TV-PG", "Drama · Adventure"],
+    progressPercent: 83,
+    timeLabel: "2:00 AM–2:30 AM",
+    title: "Nature Documentaries — “Pilot episode”",
   },
 };
 
@@ -58,7 +58,7 @@ const Preview = ({
         onPrevious={() => undefined}
         onRetry={() => undefined}
         onShowControls={() => undefined}
-        player={<View style={{ backgroundColor: "#101316", flex: 1 }} />}
+        player={<View style={{ backgroundColor: "#1B1E24", flex: 1 }} />}
         schedule={scheduleData}
         snapshot={state}
       />

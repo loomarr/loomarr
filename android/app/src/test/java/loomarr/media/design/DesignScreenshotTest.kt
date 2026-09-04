@@ -235,6 +235,7 @@ class DesignScreenshotTest {
                             recentChannelIds = listOf(sampleChannels[1].id),
                         ),
                     guide = sampleGuide,
+                    versionIdentity = VersionIdentity("0.2.0", "0.2.1"),
                     onTune = {},
                     onCancel = {},
                 )
@@ -279,6 +280,7 @@ class DesignScreenshotTest {
                             recentChannelIds = listOf(sampleChannels[1].id),
                         ),
                     guide = sampleGuide,
+                    versionIdentity = VersionIdentity("0.2.0", "0.2.1"),
                     onTune = {},
                     onCancel = {},
                 )

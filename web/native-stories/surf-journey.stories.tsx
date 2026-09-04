@@ -4,6 +4,8 @@ import { SurfJourney } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useEffect, useMemo } from "react";
 
+import { tvGuideChannels, tvGuideFrom, tvGuideNow, tvGuideTo } from "./tv-parity-fixtures";
+
 const SurfJourneyWorkshop = ({
   density = "touch",
   favorites = false,
@@ -13,24 +15,29 @@ const SurfJourneyWorkshop = ({
   favorites?: boolean;
   scenario?: "empty" | "error" | "loading" | "ready";
 }) => {
+  const tv = density === "tv";
+  const channels = tv ? tvGuideChannels : guideChannels;
+  const fromMs = tv ? tvGuideFrom : guideFrom;
+  const nowMs = tv ? tvGuideNow : guideNow;
+  const toMs = tv ? tvGuideTo : guideTo;
   const controller = useMemo(
     () =>
       createGuideController({
-        now: () => guideNow,
+        now: () => nowMs,
         source: {
           load: async (_signal) => {
             if (scenario === "error") throw new Error("The channels could not be loaded.");
             if (scenario === "loading") return new Promise(() => undefined);
             return {
-              channels: scenario === "empty" ? [] : guideChannels,
-              fromMs: guideFrom,
+              channels: scenario === "empty" ? [] : channels,
+              fromMs,
               timezone: "America/New_York",
-              toMs: guideTo,
+              toMs,
             };
           },
         },
       }),
-    [scenario],
+    [channels, fromMs, nowMs, scenario, toMs],
   );
   useEffect(() => () => controller.dispose(), [controller]);
 
@@ -38,13 +45,13 @@ const SurfJourneyWorkshop = ({
     <SurfJourney
       clientVersion="0.2.0"
       controller={controller}
-      currentChannelId="ch-springfield"
+      currentChannelId={tv ? "nature" : "ch-springfield"}
       density={density}
       favoriteChannelIds={favorites ? ["ch-scifi"] : undefined}
-      now={() => guideNow}
+      now={() => nowMs}
       onTune={() => undefined}
-      playableChannelIds={["ch-springfield", "ch-scifi"]}
-      recentChannelIds={["ch-scifi"]}
+      playableChannelIds={channels.map((channel) => channel.channelId)}
+      recentChannelIds={[tv ? "games" : "ch-scifi"]}
       serverVersion="0.2.1"
     />
   );
