@@ -12,15 +12,6 @@ on:
         required: true
         default: false
         type: boolean
-      track:
-        description: Testing track; Production is deliberately unavailable
-        required: true
-        default: internal
-        type: choice
-        options:
-          - internal
-          - closed-beta
-
 concurrency:
   group: android-beta-release
   cancel-in-progress: false
@@ -55,13 +46,26 @@ jobs:
 
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm (pinned via web/package.json packageManager)
+        run: corepack enable
+
+      - name: Install the React Native workspace
+        run: make fe-install
+
+      - name: Generate the React Native API client
+        run: make fe-codegen
+
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: android-release-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: android-release-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.run_id }}
           restore-keys: android-release-${{ runner.os }}-
 
       - name: Derive the one release identity
@@ -98,7 +102,7 @@ jobs:
       - name: Publish to the protected Play testing track
         if: inputs.publish_to_play
         env:
-          ANDROID_RELEASE_TRACK: ${{ inputs.track }}
+          ANDROID_RELEASE_TRACK: internal
           GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
         run: |
           set -euo pipefail

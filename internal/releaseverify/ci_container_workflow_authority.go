@@ -126,7 +126,14 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						"LOOMARR_ANDROID_KEY_PASSWORD":       "${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}",
 						"LOOMARR_ANDROID_UPLOAD_CERT_SHA256": "${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}",
 					},
-					steps: map[string]workflowStepAuthority{},
+					steps: map[string]workflowStepAuthority{
+						"make fe-install": exactWorkflowStep(6, "Install the React Native workspace", workflowStepAuthority{
+							targets: []string{"fe-install"}, allowsAcquisition: true,
+						}),
+						"make fe-codegen": exactWorkflowStep(7, "Generate the React Native API client", workflowStepAuthority{
+							targets: []string{"fe-codegen"},
+						}),
+					},
 				},
 			},
 		},

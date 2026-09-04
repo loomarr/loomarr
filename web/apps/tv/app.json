@@ -18,7 +18,7 @@
     "plugins": [
       "../../scripts/with-memory-safe-android-build.cjs",
       "../../scripts/with-workspace-bundle-inputs.cjs",
-      "../../scripts/with-shield-sideload-signing.cjs",
+      "../../scripts/with-shield-release-signing.cjs",
       "../../scripts/with-loomarr-android-network.cjs",
       [
         "@react-native-tvos/config-tv",

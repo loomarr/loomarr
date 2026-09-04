@@ -26,7 +26,7 @@ func TestVerifyAndroidReleaseWorkflow(t *testing.T) {
 	}{
 		{name: "protected signed testing release", mutate: func(value string) string { return value }},
 		{name: "cannot run on pull requests", mutate: replaceOnce("workflow_dispatch:", "pull_request:", t), wantErr: true},
-		{name: "cannot expose production", mutate: replaceOnce("          - closed-beta", "          - closed-beta\n          - production", t), wantErr: true},
+		{name: "cannot expose production", mutate: replaceOnce("          ANDROID_RELEASE_TRACK: internal", "          ANDROID_RELEASE_TRACK: production", t), wantErr: true},
 		{name: "publication requires an explicit choice", mutate: replaceOnce("        default: false", "        default: true", t), wantErr: true},
 		{name: "protected environment is fixed", mutate: replaceOnce("    environment: android-beta", "    environment: unprotected", t), wantErr: true},
 		{name: "workflow permissions stay read only", mutate: replaceOnce("  contents: read", "  contents: write", t), wantErr: true},

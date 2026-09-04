@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",
-  "description": "Expo TV client with an isolated prototype identity and explicit permanent-identity Shield sideload build.",
+  "description": "Expo TV client with an isolated prototype identity and explicit permanent-identity Shield release builds.",
   "scripts": {
     "start": "EXPO_TV=1 expo start",
     "storybook": "EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY=tv EXPO_TV=1 STORYBOOK_ENABLED=true expo start",
