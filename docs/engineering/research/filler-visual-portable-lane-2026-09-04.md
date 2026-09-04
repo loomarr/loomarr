@@ -73,6 +73,32 @@ policy-match identifiers, observation sealing, reduction, and all source/derivat
 keeps model code and native libraries out of the server process, makes crashes fail closed, and lets
 the exact worker binary be hashed like `ffmpeg` and `whisper-cli`.
 
+## Reproducible primary-model export
+
+The first Marqo export is sealed outside the repository at
+`LoomarrData/filler-development-2026-09-04/visual-safety-portable-v1`. Its
+`artifact-manifest.json` has SHA-256
+`ba58cfc360efc83c8f5263e316b8c1cd5af1e2e3d83f55186537fe665a58a01c` and explicitly grants only
+development use. It does not grant production admission or training authority.
+
+The export used `python:3.12.11-slim-bookworm` at image digest
+`sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7` on Linux arm64. The
+exact upstream weights are 22,404,720 bytes at SHA-256
+`6bf2e0f64a1d20169736c2836e3a787b12379fdc08ba87f7d94a7a3d58eeefce`. The fixed-shape
+1×3×384×384 opset-17 graph is 22,489,943 bytes at SHA-256
+`c0d0078642236cf50a80bdbecbc296598d87bd7c6f2f976d383b516a6ae327f5`. The export script and full
+package freeze are separately hashed in the manifest. The environment pins PyTorch 2.14.0+cpu,
+torchvision 0.29.0+cpu, timm 1.0.29, ONNX 1.22.0, ONNX Runtime 1.29.0, and safetensors 0.8.0. The
+CPU-only PyTorch index is deliberate: the ordinary Linux arm64 wheel attempted to introduce CUDA 13
+packages and was rejected rather than accepted into the export environment.
+
+Two exports in fresh containers produced byte-identical ONNX graphs, parity reports, and dependency
+freezes. On three deterministic generated tensors, PyTorch and ONNX Runtime returned the same argmax
+and had a maximum absolute raw-logit delta of 0.000001430511474609375. This proves repeatable model
+conversion only. Generated tensors are neither positive controls nor clean controls and provide no
+evidence about Loomarr-policy recall, false positives, threshold choice, archival-video behavior, or
+broadcast suitability.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:
@@ -112,13 +138,14 @@ problem.
 
 ## Next implementation slice
 
-1. Add the generic portable-worker protocol and model/runtime capability authority without choosing a
-   threshold or enabling production behavior.
-2. Add a single-pass exact-frame decoder that proves every planned timestamp and complete source decode;
-   do not reuse the four-frame taxonomy extractor.
-3. Build reproducible Marqo and Freepik ONNX exports outside the application, then lock their hashes.
-4. Run conversion parity and a small rights-cleared development diagnostic. Stop a candidate early on
-   parity failure, unacceptable CPU throughput, or obvious positive misses/clean false positives.
+1. The generic portable-worker protocol, model/runtime capability authority, and single-pass exact-frame
+   decoder are implemented without choosing a threshold or enabling production behavior.
+2. The primary Marqo ONNX export is reproducible and conversion parity is measured. Build the worker
+   executable around that exact graph and run decoder-to-logit transport and resource-limit checks.
+3. Run a small rights-cleared, source-family-disjoint development diagnostic. Stop Marqo early on
+   unacceptable CPU throughput or obvious positive misses/clean false positives.
+4. Export and measure Freepik only after the Marqo diagnostic establishes which independent evidence a
+   second, much larger constituent must add.
 5. Only then construct and lock the independent certification authority. Keep the current
    `visual_safety_not_certified` production hold until both certification and issue #947's separate
    release authority are complete.
