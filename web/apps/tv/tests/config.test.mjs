@@ -119,6 +119,27 @@ test("composes the production TV root around shared dark pairing and paired API 
   assert.match(appSource, /<TvPairedRoot credential=\{credential\} session=\{session\} \/>/);
 });
 
+test("hands the native splash to the shared Loomarr launch identity", async () => {
+  const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+  const splashPlugin = config.expo.plugins.find(
+    (plugin) => Array.isArray(plugin) && plugin[0] === "expo-splash-screen",
+  );
+
+  assert.equal(manifest.dependencies["expo-splash-screen"], manifest.dependencies.expo);
+  assert.equal(splashPlugin?.[1].backgroundColor, "#0B0C0E");
+  assert.equal(splashPlugin?.[1].dark.backgroundColor, "#0B0C0E");
+  assert.match(appSource, /SplashScreen\.preventAutoHideAsync\(\)/);
+  assert.match(appSource, /<View onLayout=\{hideNativeSplash\} style=\{\{ flex: 1 \}\}>/);
+  assert.match(appSource, /SplashScreen\.hide\(\)/);
+  assert.match(appSource, /<BrandLaunch density="tv" onFinished=\{\(\) => setLaunchFinished\(true\)\} \/>/);
+  assert.ok(
+    appSource.indexOf("<PairingShell") < appSource.indexOf("<BrandLaunch"),
+    "pairing must initialize beneath the launch identity instead of waiting for its animation",
+  );
+});
+
 test("keeps the native player and Watching mounted beneath Guide and Surf", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
