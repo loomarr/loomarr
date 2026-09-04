@@ -50,6 +50,22 @@ func TestPlanCoverageUsesMeasuredFirstAndLastFrames(t *testing.T) {
 	}
 }
 
+func TestPlanCoverageCollapsesAnOverlappingTerminalDriftWindow(t *testing.T) {
+	authority := visualAuthority(t, 10_007)
+	profile := visualProfile(t)
+
+	plan, err := fillervisualsafety.PlanCoverage(authority, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Points) != 11 || plan.Points[9].RequestedMS != 9_000 || plan.Points[10].RequestedMS != 10_006 {
+		t.Fatalf("terminal drift window was not collapsed: %#v", plan.Points)
+	}
+	if plan.MaximumPlannedGapMS != 1_006 || plan.MaximumPlannedGapMS >= profile.MinimumCoveredExposureMS {
+		t.Fatalf("collapsed terminal gap is not covered by the profile: %#v", plan)
+	}
+}
+
 func TestSourceAuthorityRejectsAnInventedTerminalFrame(t *testing.T) {
 	authority := visualAuthority(t, 10_050)
 	authority.Video.LastFrameMS = authority.DurationMS

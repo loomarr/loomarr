@@ -205,6 +205,12 @@ func coveragePoints(firstFrameMS, lastFrameMS int64, profile CoverageProfile) ([
 	}
 	points := make([]CoveragePoint, 0, count)
 	for at := firstFrameMS; at < lastFrameMS; at += profile.ObservationIntervalMS {
+		// A terminal edge inside the grid point's two-sided drift window can
+		// legitimately resolve to the same physical frame. Keep the measured
+		// terminal edge and omit that overlapping grid point instead.
+		if at != firstFrameMS && lastFrameMS-at <= 2*profile.MaximumTimestampDriftMS {
+			break
+		}
 		points = append(points, CoveragePoint{Ordinal: len(points), RequestedMS: at})
 	}
 	if len(points) == 0 || points[len(points)-1].RequestedMS != lastFrameMS {
