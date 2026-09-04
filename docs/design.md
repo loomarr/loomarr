@@ -4747,6 +4747,21 @@ the runner also multiplies the pinned route's snapshot prompt/completion prices 
 worst-case input-token allowance and the fixed completion-token ceiling using exact decimal
 arithmetic; a reservation smaller than that bound is refused before HTTP.
 
+The production-domain hosted structure assessor profile separates durable semantic identity from one
+live metadata capture. `modelDigest` hashes the requested model id, its exact catalog canonical revision, and the
+provider creation identity. `capabilitySha256` hashes that model identity together with the selected
+upstream provider name and selector slug, input/output modalities, quantization, context and token
+limits, supported parameters, ZDR membership, implicit-cache behavior, and the selected reasoning
+mode. Both projections exclude
+the snapshot retrieval time, request/response accounting, endpoint liveness status, display names,
+and prices: those are capture facts, not a different model or route capability. The complete
+metadata snapshot SHA-256 remains separately bound to every certification family result and supplies
+freshness, current liveness, exact price, and historical audit evidence. A live or calibration runner
+must still validate a fresh under-24-hour snapshot and exact ZDR route before media is opened or spend
+is reserved. It may reproduce a certified profile from a later fresh snapshot only when both stable
+digests match; a capability or canonical-model change holds for recertification, while a price change
+changes the reservation evidence without pretending that the assessor itself changed.
+
 The immutable structure-certification report reproduces the comparison from at least two locked,
 distinct model-family assessment sets and binds its digest to the exact public manifest, private
 construction authority, holdout authoring, and source-family receipt. Certification requires all 60
@@ -4807,7 +4822,7 @@ production family runtime, returns no partial result after an error, and retains
 stitch per alias plus every ordered call record and completed-operation publication that produced
 it. The result reproduces provider-request count, known charge, conservative accounted spend, and
 unknown-charge reservations and binds them with the exact assessor profile, manifest digest,
-completion time, and self-digest.
+complete metadata-snapshot digest, completion time, and self-digest.
 Publication reopens the complete public manifest and creates the private result file immutably. The
 private certification join starts only after both complete family artifacts exist, attaches case
 identifiers by exact media-set identity from the suite, and binds its wrapper digest to the public

@@ -65,10 +65,15 @@ func NewTemporalStructureWindowOpenRouterFamily(config TemporalStructureWindowOp
 	if estimated > config.ReservationNanoUSD {
 		return TemporalStructureWindowOpenRouterFamily{}, fmt.Errorf("OpenRouter window accounting reservation %d nano-USD is below the snapshot price bound %d", config.ReservationNanoUSD, estimated)
 	}
-	capabilitySHA := fillerbakeoff.OpenRouterSnapshotSHA256(config.Snapshot)
+	modelDigest, capabilitySHA, err := fillerbakeoff.OpenRouterAssessorIdentity(
+		config.Snapshot, config.Model, config.UpstreamProvider, config.UpstreamProviderSlug, config.ReasoningMode,
+	)
+	if err != nil {
+		return TemporalStructureWindowOpenRouterFamily{}, err
+	}
 	profile := fillerstructure.AssessorProfile{
 		ID: config.AssessorID, Provider: "openrouter", Model: config.Model, ModelFamily: config.ModelFamily,
-		ModelDigest: capabilitySHA, CapabilitySHA256: capabilitySHA,
+		ModelDigest: modelDigest, CapabilitySHA256: capabilitySHA,
 		PromptVersion: fillerstructurewindow.DirectVideoPromptVersion, EvidenceContract: fillerstructurewindow.CallRecordContractVersion,
 	}
 	if err := fillerstructure.ValidateAssessorProfile(profile); err != nil {

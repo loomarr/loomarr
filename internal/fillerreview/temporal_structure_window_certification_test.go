@@ -71,8 +71,9 @@ func temporalStructureWindowFamilyArtifactFixture(t *testing.T, manifestPath, fa
 	t.Helper()
 	result, err := RunTemporalStructureWindowFamily(t.Context(), TemporalStructureWindowFamilyConfig{
 		WindowSetManifestPath: manifestPath, ExpectedCases: TemporalStructureWindowCorpusCases,
-		Family: &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile(family)},
-		Now:    func() time.Time { return completedAt },
+		CapabilitySnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		Family:                   &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile(family)},
+		Now:                      func() time.Time { return completedAt },
 	})
 	if err != nil {
 		t.Fatal(err)

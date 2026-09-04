@@ -172,7 +172,8 @@ func execute(ctx context.Context, config commandConfig) (commandResult, error) {
 	}
 	result, err := fillerreview.RunTemporalStructureWindowFamily(ctx, fillerreview.TemporalStructureWindowFamilyConfig{
 		WindowSetManifestPath: manifestPath, ExpectedCases: fillerreview.TemporalStructureWindowCorpusCases,
-		Family: family.Runtime, Now: time.Now,
+		CapabilitySnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(snapshot),
+		Family:                   family.Runtime, Now: time.Now,
 	})
 	if err != nil {
 		return commandResult{}, err

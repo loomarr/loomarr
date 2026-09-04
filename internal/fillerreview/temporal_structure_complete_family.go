@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	TemporalStructureCompleteFamilySchemaVersion   = 1
-	TemporalStructureCompleteFamilyContractVersion = "filler-temporal-structure-complete-family-result-v1"
+	TemporalStructureCompleteFamilySchemaVersion   = 2
+	TemporalStructureCompleteFamilyContractVersion = "filler-temporal-structure-complete-family-result-v2"
 )
 
 type TemporalStructureCompleteFamily interface {
@@ -22,17 +22,19 @@ type TemporalStructureCompleteFamily interface {
 }
 
 type TemporalStructureCompleteFamilyConfig struct {
-	WindowSetManifestPath string
-	ExpectedCases         int
-	Preparer              filler.StructureAssessmentMediaPreparer
-	Family                TemporalStructureCompleteFamily
-	Now                   func() time.Time
+	WindowSetManifestPath    string
+	ExpectedCases            int
+	CapabilitySnapshotSHA256 string
+	Preparer                 filler.StructureAssessmentMediaPreparer
+	Family                   TemporalStructureCompleteFamily
+	Now                      func() time.Time
 }
 
 type TemporalStructureCompleteFamilyResult struct {
 	SchemaVersion              int                                   `json:"schemaVersion"`
 	ContractVersion            string                                `json:"contractVersion"`
 	WindowSetManifestSHA256    string                                `json:"windowSetManifestSha256"`
+	CapabilitySnapshotSHA256   string                                `json:"capabilitySnapshotSha256"`
 	Assessor                   fillerstructure.AssessorProfile       `json:"assessor"`
 	CompletedAt                time.Time                             `json:"completedAt"`
 	Cases                      []TemporalStructureCompleteFamilyCase `json:"cases"`
@@ -54,7 +56,7 @@ type TemporalStructureCompleteFamilyCase struct {
 // RunTemporalStructureCompleteFamily prepares and assesses every public source in manifest order.
 // It returns no partial result; the supplied family runtime owns durable per-call recovery.
 func RunTemporalStructureCompleteFamily(ctx context.Context, config TemporalStructureCompleteFamilyConfig) (TemporalStructureCompleteFamilyResult, error) {
-	if config.ExpectedCases != TemporalStructureWindowCorpusCases || config.Preparer == nil || config.Family == nil || config.Now == nil {
+	if config.ExpectedCases != TemporalStructureWindowCorpusCases || !reviewSHA256(config.CapabilitySnapshotSHA256) || config.Preparer == nil || config.Family == nil || config.Now == nil {
 		return TemporalStructureCompleteFamilyResult{}, errors.New("complete family run requires the complete certification corpus, preparer, family, and clock")
 	}
 	profile := config.Family.Profile()
@@ -68,7 +70,7 @@ func RunTemporalStructureCompleteFamily(ctx context.Context, config TemporalStru
 	root := filepath.Dir(config.WindowSetManifestPath)
 	result := TemporalStructureCompleteFamilyResult{
 		SchemaVersion: TemporalStructureCompleteFamilySchemaVersion, ContractVersion: TemporalStructureCompleteFamilyContractVersion,
-		WindowSetManifestSHA256: manifestSHA, Assessor: profile,
+		WindowSetManifestSHA256: manifestSHA, CapabilitySnapshotSHA256: config.CapabilitySnapshotSHA256, Assessor: profile,
 		Cases: make([]TemporalStructureCompleteFamilyCase, 0, len(manifest.Cases)),
 	}
 	for index, item := range manifest.Cases {

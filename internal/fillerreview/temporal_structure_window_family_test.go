@@ -79,10 +79,11 @@ func TestRunTemporalStructureWindowFamilyUsesOnlyCompletePublicMediaSets(t *test
 	family := &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile("family-a")}
 	completedAt := time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC)
 	result, err := RunTemporalStructureWindowFamily(t.Context(), TemporalStructureWindowFamilyConfig{
-		WindowSetManifestPath: suiteConfig.WindowSetManifestPath,
-		ExpectedCases:         TemporalStructureWindowCorpusCases,
-		Family:                family,
-		Now:                   func() time.Time { return completedAt },
+		WindowSetManifestPath:    suiteConfig.WindowSetManifestPath,
+		ExpectedCases:            TemporalStructureWindowCorpusCases,
+		CapabilitySnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		Family:                   family,
+		Now:                      func() time.Time { return completedAt },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -91,6 +92,7 @@ func TestRunTemporalStructureWindowFamilyUsesOnlyCompletePublicMediaSets(t *test
 		t.Fatal(err)
 	}
 	if result.CompletedAt != completedAt || result.Assessor != family.profile ||
+		result.CapabilitySnapshotSHA256 != temporalStructureFamilySnapshotSHA256 ||
 		len(result.Cases) != TemporalStructureWindowCorpusCases || len(family.calls) != len(result.Cases) ||
 		result.CallRecords != windows || result.ProviderRequests != windows ||
 		result.ChargedNanoUSD != int64(windows*100) || result.AccountedNanoUSD != int64(windows*100) ||
@@ -116,10 +118,11 @@ func TestTemporalStructureWindowFamilyArtifactRoundTripsAgainstManifest(t *testi
 	suiteConfig, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	family := &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile("family-a")}
 	result, err := RunTemporalStructureWindowFamily(t.Context(), TemporalStructureWindowFamilyConfig{
-		WindowSetManifestPath: suiteConfig.WindowSetManifestPath,
-		ExpectedCases:         TemporalStructureWindowCorpusCases,
-		Family:                family,
-		Now:                   func() time.Time { return time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC) },
+		WindowSetManifestPath:    suiteConfig.WindowSetManifestPath,
+		ExpectedCases:            TemporalStructureWindowCorpusCases,
+		CapabilitySnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		Family:                   family,
+		Now:                      func() time.Time { return time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -152,10 +155,11 @@ func TestValidateTemporalStructureWindowFamilyResultRejectsDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := RunTemporalStructureWindowFamily(t.Context(), TemporalStructureWindowFamilyConfig{
-		WindowSetManifestPath: suiteConfig.WindowSetManifestPath,
-		ExpectedCases:         TemporalStructureWindowCorpusCases,
-		Family:                &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile("family-a")},
-		Now:                   func() time.Time { return time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC) },
+		WindowSetManifestPath:    suiteConfig.WindowSetManifestPath,
+		ExpectedCases:            TemporalStructureWindowCorpusCases,
+		CapabilitySnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		Family:                   &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile("family-a")},
+		Now:                      func() time.Time { return time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +168,8 @@ func TestValidateTemporalStructureWindowFamilyResultRejectsDrift(t *testing.T) {
 		"manifest": func(value *TemporalStructureWindowFamilyResult) {
 			value.WindowSetManifestSHA256 = strings.Repeat("f", 64)
 		},
-		"alias": func(value *TemporalStructureWindowFamilyResult) { value.Cases[0].Alias = value.Cases[1].Alias },
+		"snapshot": func(value *TemporalStructureWindowFamilyResult) { value.CapabilitySnapshotSHA256 = "" },
+		"alias":    func(value *TemporalStructureWindowFamilyResult) { value.Cases[0].Alias = value.Cases[1].Alias },
 		"assessor": func(value *TemporalStructureWindowFamilyResult) {
 			value.Cases[0].Evidence.Stitch.Assessor = temporalStructureWindowFamilyProfile("family-b")
 		},
@@ -190,10 +195,11 @@ func TestRunTemporalStructureWindowFamilyReturnsNoPartialResult(t *testing.T) {
 	suiteConfig, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	family := &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile("family-a"), failAt: 3}
 	result, err := RunTemporalStructureWindowFamily(t.Context(), TemporalStructureWindowFamilyConfig{
-		WindowSetManifestPath: suiteConfig.WindowSetManifestPath,
-		ExpectedCases:         TemporalStructureWindowCorpusCases,
-		Family:                family,
-		Now:                   func() time.Time { return time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC) },
+		WindowSetManifestPath:    suiteConfig.WindowSetManifestPath,
+		ExpectedCases:            TemporalStructureWindowCorpusCases,
+		CapabilitySnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		Family:                   family,
+		Now:                      func() time.Time { return time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC) },
 	})
 	if err == nil || !strings.Contains(err.Error(), "fixture family failure") ||
 		!reflect.DeepEqual(result, TemporalStructureWindowFamilyResult{}) || len(family.calls) != 3 {

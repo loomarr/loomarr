@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	TemporalStructureWindowFamilySchemaVersion   = 2
-	TemporalStructureWindowFamilyContractVersion = "filler-temporal-structure-window-family-result-v2"
+	TemporalStructureWindowFamilySchemaVersion   = 3
+	TemporalStructureWindowFamilyContractVersion = "filler-temporal-structure-window-family-result-v3"
 )
 
 // TemporalStructureWindowFamily is the deliberately small certification seam for one assessor
@@ -24,10 +24,11 @@ type TemporalStructureWindowFamily interface {
 }
 
 type TemporalStructureWindowFamilyConfig struct {
-	WindowSetManifestPath string
-	ExpectedCases         int
-	Family                TemporalStructureWindowFamily
-	Now                   func() time.Time
+	WindowSetManifestPath    string
+	ExpectedCases            int
+	CapabilitySnapshotSHA256 string
+	Family                   TemporalStructureWindowFamily
+	Now                      func() time.Time
 }
 
 // TemporalStructureWindowFamilyResult contains blinded answers from exactly one model family.
@@ -36,6 +37,7 @@ type TemporalStructureWindowFamilyResult struct {
 	SchemaVersion              int                                 `json:"schemaVersion"`
 	ContractVersion            string                              `json:"contractVersion"`
 	WindowSetManifestSHA256    string                              `json:"windowSetManifestSha256"`
+	CapabilitySnapshotSHA256   string                              `json:"capabilitySnapshotSha256"`
 	Assessor                   fillerstructure.AssessorProfile     `json:"assessor"`
 	CompletedAt                time.Time                           `json:"completedAt"`
 	Cases                      []TemporalStructureWindowFamilyCase `json:"cases"`
@@ -57,7 +59,7 @@ type TemporalStructureWindowFamilyCase struct {
 // RunTemporalStructureWindowFamily evaluates every case in manifest order. It returns no partial
 // result: durable per-window recovery belongs to the supplied family implementation.
 func RunTemporalStructureWindowFamily(ctx context.Context, config TemporalStructureWindowFamilyConfig) (TemporalStructureWindowFamilyResult, error) {
-	if config.ExpectedCases != TemporalStructureWindowCorpusCases || config.Family == nil || config.Now == nil {
+	if config.ExpectedCases != TemporalStructureWindowCorpusCases || !reviewSHA256(config.CapabilitySnapshotSHA256) || config.Family == nil || config.Now == nil {
 		return TemporalStructureWindowFamilyResult{}, errors.New("window family run requires the complete certification corpus, family, and clock")
 	}
 	profile := config.Family.Profile()
@@ -71,7 +73,7 @@ func RunTemporalStructureWindowFamily(ctx context.Context, config TemporalStruct
 	root := filepath.Dir(config.WindowSetManifestPath)
 	result := TemporalStructureWindowFamilyResult{
 		SchemaVersion: TemporalStructureWindowFamilySchemaVersion, ContractVersion: TemporalStructureWindowFamilyContractVersion,
-		WindowSetManifestSHA256: manifestSHA, Assessor: profile,
+		WindowSetManifestSHA256: manifestSHA, CapabilitySnapshotSHA256: config.CapabilitySnapshotSHA256, Assessor: profile,
 		Cases: make([]TemporalStructureWindowFamilyCase, 0, len(manifest.Cases)),
 	}
 	for index, item := range manifest.Cases {

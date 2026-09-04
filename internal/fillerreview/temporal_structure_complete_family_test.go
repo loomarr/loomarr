@@ -13,6 +13,8 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
+const temporalStructureFamilySnapshotSHA256 = "9999999999999999999999999999999999999999999999999999999999999999"
+
 type fakeTemporalStructureCompletePreparer struct {
 	root       string
 	profileSHA string
@@ -70,12 +72,14 @@ func TestRunTemporalStructureCompleteFamilyPublishesCompleteTruthBlindEvidence(t
 	completedAt := time.Date(2026, 9, 13, 5, 0, 0, 0, time.UTC)
 	result, err := RunTemporalStructureCompleteFamily(t.Context(), TemporalStructureCompleteFamilyConfig{
 		WindowSetManifestPath: config.WindowSetManifestPath, ExpectedCases: TemporalStructureWindowCorpusCases,
-		Preparer: preparer, Family: family, Now: func() time.Time { return completedAt },
+		CapabilitySnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		Preparer:                 preparer, Family: family, Now: func() time.Time { return completedAt },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(result.Cases) != TemporalStructureWindowCorpusCases || result.CallRecords != TemporalStructureWindowCorpusCases ||
+		result.CapabilitySnapshotSHA256 != temporalStructureFamilySnapshotSHA256 ||
 		result.ProviderRequests != TemporalStructureWindowCorpusCases || result.ChargedNanoUSD != 500*TemporalStructureWindowCorpusCases ||
 		result.AccountedNanoUSD != result.ChargedNanoUSD || result.UnknownChargeReservations != 0 ||
 		preparer.calls != TemporalStructureWindowCorpusCases || family.calls != TemporalStructureWindowCorpusCases ||
@@ -103,7 +107,8 @@ func TestRunTemporalStructureCompleteFamilyReturnsNoPartialResult(t *testing.T) 
 	family := &fakeTemporalStructureCompleteFamily{profile: temporalStructureCompleteFamilyProfile("family-a"), failAt: 3}
 	result, err := RunTemporalStructureCompleteFamily(t.Context(), TemporalStructureCompleteFamilyConfig{
 		WindowSetManifestPath: config.WindowSetManifestPath, ExpectedCases: TemporalStructureWindowCorpusCases,
-		Preparer: preparer, Family: family, Now: time.Now,
+		CapabilitySnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		Preparer:                 preparer, Family: family, Now: time.Now,
 	})
 	if err == nil || !strings.Contains(err.Error(), "fixture complete family failure") ||
 		!reflect.DeepEqual(result, TemporalStructureCompleteFamilyResult{}) || preparer.calls != 3 || family.calls != 3 {
@@ -116,9 +121,10 @@ func TestValidateTemporalStructureCompleteFamilyResultRejectsAccountingDrift(t *
 	manifest := readStrictTestJSON[TemporalStructureWindowSetManifest](t, config.WindowSetManifestPath)
 	result, err := RunTemporalStructureCompleteFamily(t.Context(), TemporalStructureCompleteFamilyConfig{
 		WindowSetManifestPath: config.WindowSetManifestPath, ExpectedCases: TemporalStructureWindowCorpusCases,
-		Preparer: &fakeTemporalStructureCompletePreparer{root: t.TempDir(), profileSHA: manifest.AssessmentMediaProfileSHA256},
-		Family:   &fakeTemporalStructureCompleteFamily{profile: temporalStructureCompleteFamilyProfile("family-a")},
-		Now:      func() time.Time { return time.Date(2026, 9, 13, 5, 0, 0, 0, time.UTC) },
+		CapabilitySnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		Preparer:                 &fakeTemporalStructureCompletePreparer{root: t.TempDir(), profileSHA: manifest.AssessmentMediaProfileSHA256},
+		Family:                   &fakeTemporalStructureCompleteFamily{profile: temporalStructureCompleteFamilyProfile("family-a")},
+		Now:                      func() time.Time { return time.Date(2026, 9, 13, 5, 0, 0, 0, time.UTC) },
 	})
 	if err != nil {
 		t.Fatal(err)

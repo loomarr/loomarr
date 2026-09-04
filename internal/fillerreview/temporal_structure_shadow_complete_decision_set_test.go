@@ -39,9 +39,10 @@ func temporalStructureCompleteFamilyArtifactFixture(t *testing.T, manifestPath, 
 	manifest := readStrictTestJSON[TemporalStructureWindowSetManifest](t, manifestPath)
 	result, err := RunTemporalStructureCompleteFamily(t.Context(), TemporalStructureCompleteFamilyConfig{
 		WindowSetManifestPath: manifestPath, ExpectedCases: TemporalStructureWindowCorpusCases,
-		Preparer: &fakeTemporalStructureCompletePreparer{root: t.TempDir(), profileSHA: manifest.AssessmentMediaProfileSHA256},
-		Family:   &fakeTemporalStructureCompleteFamily{profile: temporalStructureCompleteFamilyProfile(family)},
-		Now:      func() time.Time { return completedAt },
+		CapabilitySnapshotSHA256: temporalStructureFamilySnapshotSHA256,
+		Preparer:                 &fakeTemporalStructureCompletePreparer{root: t.TempDir(), profileSHA: manifest.AssessmentMediaProfileSHA256},
+		Family:                   &fakeTemporalStructureCompleteFamily{profile: temporalStructureCompleteFamilyProfile(family)},
+		Now:                      func() time.Time { return completedAt },
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -11,7 +11,8 @@ import (
 func ValidateTemporalStructureCompleteFamilyResult(result TemporalStructureCompleteFamilyResult) error {
 	if result.SchemaVersion != TemporalStructureCompleteFamilySchemaVersion ||
 		result.ContractVersion != TemporalStructureCompleteFamilyContractVersion ||
-		!reviewSHA256(result.WindowSetManifestSHA256) || fillerstructure.ValidateAssessorProfile(result.Assessor) != nil ||
+		!reviewSHA256(result.WindowSetManifestSHA256) || !reviewSHA256(result.CapabilitySnapshotSHA256) ||
+		fillerstructure.ValidateAssessorProfile(result.Assessor) != nil ||
 		result.CompletedAt.IsZero() || result.CompletedAt != result.CompletedAt.UTC() ||
 		len(result.Cases) != TemporalStructureWindowCorpusCases || result.CallRecords != len(result.Cases) ||
 		result.ProviderRequests < 0 || result.ProviderRequests > result.CallRecords || result.ChargedNanoUSD < 0 ||
