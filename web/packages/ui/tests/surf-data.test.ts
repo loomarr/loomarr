@@ -74,7 +74,7 @@ describe("Surf data", () => {
     expect(result[2]?.channels[0]).toMatchObject({
       channelName: "Science Fiction",
       next: { title: "Next" },
-      now: { episodeLabel: "S07E02", progressPercent: 50, title: "Now" },
+      now: { episodeLabel: "S07E02", progressPercent: 50, remainingLabel: "1m left", title: "Now" },
     });
   });
 
