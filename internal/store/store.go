@@ -612,9 +612,11 @@ type FillerSourceStore interface {
 // AiringStore records what actually went to air — written from playout only.
 type AiringStore interface {
 	// RecordClipPlay counts a filler clip having AIRED globally and on one channel (V58).
-	// Written from playout only; a missing catalog clip is not an error because the durable
-	// channel exposure intentionally survives catalog pruning and re-admission.
-	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) error
+	// `at` is its scheduled start: repeating that start is an idempotent no-op, while a later
+	// start counts as another airing. Written from playout only; a missing catalog clip is not
+	// an error because the durable channel exposure intentionally survives catalog pruning and
+	// re-admission.
+	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) (recorded bool, err error)
 	// FillerExposuresByChannel returns the aggregate history strictly before `before`.
 	// A zero cutoff returns all history. The strict boundary makes a break's exposure snapshot
 	// immutable while that break is going to air, so a reconcile cannot reshuffle its tail.

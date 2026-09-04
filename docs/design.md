@@ -6102,8 +6102,13 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   row retains one prior timestamp solely to reconstruct an active break's pre-start snapshot after
   its current clip writes the latest timestamp; no-repeat means one predecessor is sufficient.
   Preview and reconcile never write this table. Internal playout records the exposure, together
-  with the clip's existing aggregate counter, only when the parent channel encoder starts the
-  clip; viewer tune-ins and schedule rebuilds therefore cannot inflate it.
+  with the clip's existing aggregate counter, when the parent channel encoder resolves the clip,
+  keyed by the clip's scheduled start. A finite encoder child normally requests its successor
+  milliseconds after that boundary, so correctness must not depend on observing an exact
+  zero-offset instant. Re-resolving the same scheduled start is an idempotent no-op, while a later
+  scheduled start of the same clip is another airing. Viewer tune-ins and schedule rebuilds
+  therefore cannot inflate the counters, and ordinary transition latency cannot leave history
+  empty.
 
   Assembly takes an immutable exposure snapshot. For a specific break the snapshot is cut off
   strictly before that break's start, so recording the first clip cannot reshuffle the second
