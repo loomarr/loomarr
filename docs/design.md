@@ -3295,7 +3295,10 @@ indexes. Treating the private output root as the source root makes every catalog
 deriving either root from the other makes relocation part of semantic identity. Both roots are clean absolute
 runtime locators and remain excluded from the path-free evidence. The certification
 authority also names the tested source-duration and encoded-byte envelope, and runtime holds before spend
-when a source or derivative falls outside it. Qualification may not extrapolate from shorter cases, silently
+when a source or derivative falls outside it. The certified hosted runtime prepares and validates the complete
+media set before it refreshes provider-route metadata, constructs an assessor, reserves spend, or submits HTTP;
+an unreadable source, profile mismatch, incomplete decode, or over-ceiling derivative therefore makes no
+provider request. Qualification may not extrapolate from shorter cases, silently
 truncate a reel, or replace complete-timeline authority with independently judged chunks. If a truthful
 full-timeline derivative cannot fit the certified ceiling, long-reel handling requires a separate designed
 and certified protocol.

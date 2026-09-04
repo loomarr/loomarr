@@ -94,6 +94,21 @@ func (r *CertifiedRuntime) Assess(ctx context.Context, input filler.StructureAss
 		input.Source.DurationMs > r.config.Authority.MaximumSourceDurationMS {
 		return fillerstructure.Artifact{}, errors.New("structure window source is outside the reviewed duration envelope")
 	}
+	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
+	plan, err := fillerstructurewindow.NewPlan(source)
+	if err != nil {
+		return fillerstructure.Artifact{}, fmt.Errorf("plan structure windows: %w", err)
+	}
+	prepared, err := r.preparer.PrepareWindows(ctx, input, plan)
+	if err != nil {
+		return fillerstructure.Artifact{}, fmt.Errorf("preflight structure window media: %w", err)
+	}
+	if err := filler.ValidatePreparedStructureAssessmentWindows(input, prepared); err != nil {
+		return fillerstructure.Artifact{}, err
+	}
+	if err := validatePreparedMediaAuthority(prepared, r.config.Authority); err != nil {
+		return fillerstructure.Artifact{}, err
+	}
 	snapshot, err := r.freshSnapshot(ctx)
 	if err != nil {
 		return fillerstructure.Artifact{}, err
@@ -108,11 +123,27 @@ func (r *CertifiedRuntime) Assess(ctx context.Context, input filler.StructureAss
 	if err != nil {
 		return fillerstructure.Artifact{}, err
 	}
-	artifact, err := runtime.Assess(ctx, input)
+	artifact, err := runtime.AssessPrepared(ctx, input, prepared)
 	if err != nil {
 		return fillerstructure.Artifact{}, err
 	}
 	return artifact, nil
+}
+
+func validatePreparedMediaAuthority(prepared filler.StructureAssessmentWindowMediaSet, authority fillerstructurewindow.MaterializationAuthority) error {
+	if err := fillerstructurewindow.ValidateMediaSet(prepared.Authority); err != nil ||
+		prepared.Authority.Plan.Profile.SHA256 != authority.WindowProfileSHA256 ||
+		prepared.Authority.Plan.Profile.AssessmentMediaProfileSHA256 != authority.AssessmentMediaProfileSHA256 ||
+		len(prepared.Windows) == 0 || len(prepared.Windows) > authority.MaximumWindows ||
+		len(prepared.Windows) != len(prepared.Authority.Windows) {
+		return errors.New("prepared structure window media is outside the reviewed authority")
+	}
+	for ordinal, window := range prepared.Windows {
+		if window.Media != prepared.Authority.Windows[ordinal] || window.Media.Media.Bytes > authority.MaximumWindowBytes {
+			return errors.New("prepared structure window media is outside the reviewed byte envelope")
+		}
+	}
+	return nil
 }
 
 func (r *CertifiedRuntime) freshSnapshot(ctx context.Context) (fillerbakeoff.OpenRouterSnapshot, error) {

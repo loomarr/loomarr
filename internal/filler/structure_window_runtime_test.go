@@ -177,6 +177,26 @@ func TestStructureWindowRuntimePersistsFamilyMajorSerialEvidenceBeforeReduction(
 	}
 }
 
+func TestStructureWindowRuntimeAssessesPreflightedMediaWithoutPreparingAgain(t *testing.T) {
+	input, prepared := structureWindowRuntimeFixture(t)
+	events := []string{}
+	timeline := []fillerstructure.Segment{{StartMS: 0, EndMS: 300_000, Role: fillerstructure.RoleCommercial}}
+	runtime, err := NewStructureWindowAssessmentRuntime([]CompleteWindowStructureAssessor{
+		windowAssessorFixture("assessor-a", "family-a", "a", timeline, &events),
+		windowAssessorFixture("assessor-b", "family-b", "b", timeline, &events),
+	}, &capturedWindowPreparer{err: errors.New("preparer must not run")}, &capturedWindowEvidence{events: &events}, 2_000, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := runtime.AssessPrepared(t.Context(), input, prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact.Decision.Status != fillerstructure.StatusConfirmed || len(events) == 0 {
+		t.Fatalf("prepared assessment = %+v, events=%v", artifact, events)
+	}
+}
+
 func TestStructureWindowFamilyRuntimePersistsAndReturnsOneReplayableStitch(t *testing.T) {
 	_, prepared := structureWindowRuntimeFixture(t)
 	events := []string{}

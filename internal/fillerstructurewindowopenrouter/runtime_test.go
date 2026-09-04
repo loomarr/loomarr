@@ -2,6 +2,8 @@ package fillerstructurewindowopenrouter
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +81,109 @@ func TestCertifiedRuntimeRejectsOutOfEnvelopeSourceBeforeMetadata(t *testing.T) 
 	if err == nil || fetched {
 		t.Fatalf("error=%v fetched=%v", err, fetched)
 	}
+}
+
+type capturedRuntimePreparer struct {
+	calls    int
+	prepared filler.StructureAssessmentWindowMediaSet
+	err      error
+}
+
+func (p *capturedRuntimePreparer) PrepareWindows(context.Context, filler.StructureAssessmentSource, fillerstructurewindow.Plan) (filler.StructureAssessmentWindowMediaSet, error) {
+	p.calls++
+	return p.prepared, p.err
+}
+
+func TestCertifiedRuntimePreflightsMediaBeforeProviderMetadata(t *testing.T) {
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	_, authority, deployment := certifiedRuntimeFixture(t, now)
+	sourceRoot := t.TempDir()
+	fetched := false
+	runtime, err := NewCertifiedRuntime(CertifiedRuntimeConfig{
+		Authority: authority, Deployment: deployment, APIKey: "secret",
+		SourceRoot: sourceRoot, MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
+		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
+		FetchSnapshot: func(context.Context, fillerbakeoff.OpenRouterSnapshotConfig) (fillerbakeoff.OpenRouterSnapshot, error) {
+			fetched = true
+			return fillerbakeoff.OpenRouterSnapshot{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparer := &capturedRuntimePreparer{err: errors.New("media preflight failed")}
+	runtime.preparer = preparer
+	_, err = runtime.Assess(t.Context(), filler.StructureAssessmentSource{
+		Source: filler.SplitSourceAsset{
+			Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
+			Bytes: 1_000, DurationMs: authority.MaximumSourceDurationMS, Path: "source.mp4",
+		},
+		FullPath: filepath.Join(sourceRoot, "source.mp4"),
+	})
+	if err == nil || preparer.calls != 1 || fetched {
+		t.Fatalf("error=%v preparer calls=%d metadata fetched=%v", err, preparer.calls, fetched)
+	}
+}
+
+func TestCertifiedRuntimeChecksReviewedMediaEnvelopeBeforeProviderMetadata(t *testing.T) {
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	_, authority, deployment := certifiedRuntimeFixture(t, now)
+	authority.MaximumWindowBytes = 999
+	authority.SHA256 = fillerstructurewindow.MaterializationAuthoritySHA256(authority)
+	deployment.AuthoritySHA256 = authority.SHA256
+	deployment.SHA256 = DeploymentSHA256(deployment)
+	sourceRoot := t.TempDir()
+	input, prepared := certifiedRuntimePreparedFixture(t, sourceRoot, authority.MaximumSourceDurationMS)
+	fetched := false
+	runtime, err := NewCertifiedRuntime(CertifiedRuntimeConfig{
+		Authority: authority, Deployment: deployment, APIKey: "secret",
+		SourceRoot: sourceRoot, MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
+		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
+		FetchSnapshot: func(context.Context, fillerbakeoff.OpenRouterSnapshotConfig) (fillerbakeoff.OpenRouterSnapshot, error) {
+			fetched = true
+			return fillerbakeoff.OpenRouterSnapshot{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparer := &capturedRuntimePreparer{prepared: prepared}
+	runtime.preparer = preparer
+	if _, err := runtime.Assess(t.Context(), input); err == nil || preparer.calls != 1 || fetched {
+		t.Fatalf("error=%v preparer calls=%d metadata fetched=%v", err, preparer.calls, fetched)
+	}
+}
+
+func certifiedRuntimePreparedFixture(t *testing.T, sourceRoot string, durationMS int64) (filler.StructureAssessmentSource, filler.StructureAssessmentWindowMediaSet) {
+	t.Helper()
+	source := filler.SplitSourceAsset{
+		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
+		Bytes: 1_000, DurationMs: durationMS, Path: "source.mp4",
+	}
+	input := filler.StructureAssessmentSource{Source: source, FullPath: filepath.Join(sourceRoot, source.Path)}
+	plan, err := fillerstructurewindow.NewPlan(fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: durationMS})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identities := make([]fillerstructure.AssessmentMedia, len(plan.Windows))
+	for ordinal, window := range plan.Windows {
+		identities[ordinal] = fillerstructure.AssessmentMedia{
+			SHA256: strings.Repeat(string(rune('1'+ordinal)), 64), Bytes: 1_000,
+			DurationMS:    window.MediaEndMS - window.MediaStartMS,
+			ProfileSHA256: plan.Profile.AssessmentMediaProfileSHA256, LineageSHA256: strings.Repeat(string(rune('a'+ordinal)), 64),
+		}
+	}
+	set, err := fillerstructurewindow.NewMediaSet(plan, identities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared := filler.StructureAssessmentWindowMediaSet{Source: source, Authority: set}
+	for ordinal, window := range plan.Windows {
+		prepared.Windows = append(prepared.Windows, filler.StructureAssessmentWindowMedia{
+			Window: window, Media: set.Windows[ordinal], FullPath: filepath.Join(t.TempDir(), "window.mp4"),
+		})
+	}
+	return input, prepared
 }
 
 type runtimeNoopLedger struct{}

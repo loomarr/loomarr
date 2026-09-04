@@ -86,11 +86,21 @@ func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input Str
 	if err != nil {
 		return fillerstructure.Artifact{}, fmt.Errorf("prepare structure windows: %w", err)
 	}
-	if prepared.Source != input.Source || prepared.Authority.Plan.SHA256 != plan.SHA256 ||
-		!reflect.DeepEqual(prepared.Authority.Plan, plan) || validatePreparedStructureAssessmentWindows(prepared) != nil ||
-		structureWindowSetReusesSourcePath(prepared, input.FullPath) {
-		return fillerstructure.Artifact{}, errors.New("structure window preparer drifted source, plan, or media authority")
+	return r.AssessPrepared(ctx, input, prepared)
+}
+
+// AssessPrepared executes the independent families over one already verified media set. Hosted
+// adapters use this seam after local preparation succeeds, so capability refresh and paid calls
+// cannot happen before media preflight. The full source and plan are rederived here rather than
+// trusting the adapter that supplied prepared.
+func (r *StructureWindowAssessmentRuntime) AssessPrepared(ctx context.Context, input StructureAssessmentSource, prepared StructureAssessmentWindowMediaSet) (fillerstructure.Artifact, error) {
+	if r == nil || len(r.families) < 2 || len(r.profiles) != len(r.families) || r.evidence == nil || r.now == nil {
+		return fillerstructure.Artifact{}, errors.New("structure window runtime is unavailable")
 	}
+	if err := ValidatePreparedStructureAssessmentWindows(input, prepared); err != nil {
+		return fillerstructure.Artifact{}, err
+	}
+	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
 	requestInput, err := fillerstructurewindow.ReducerInput(prepared.Authority)
 	if err != nil {
 		return fillerstructure.Artifact{}, err
@@ -118,6 +128,25 @@ func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input Str
 		return fillerstructure.Artifact{}, fmt.Errorf("persist structure window decision: %w", err)
 	}
 	return artifact, nil
+}
+
+// ValidatePreparedStructureAssessmentWindows closes the local preflight boundary shared by
+// provider-neutral execution and hosted adapters. It performs no inference, persistence, or I/O.
+func ValidatePreparedStructureAssessmentWindows(input StructureAssessmentSource, prepared StructureAssessmentWindowMediaSet) error {
+	if err := input.Source.validate(); err != nil || !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath {
+		return errors.New("structure window runtime source is invalid")
+	}
+	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
+	plan, err := fillerstructurewindow.NewPlan(source)
+	if err != nil {
+		return fmt.Errorf("plan structure windows: %w", err)
+	}
+	if prepared.Source != input.Source || prepared.Authority.Plan.SHA256 != plan.SHA256 ||
+		!reflect.DeepEqual(prepared.Authority.Plan, plan) || validatePreparedStructureAssessmentWindows(prepared) != nil ||
+		structureWindowSetReusesSourcePath(prepared, input.FullPath) {
+		return errors.New("structure window preparer drifted source, plan, or media authority")
+	}
+	return nil
 }
 
 func validRecordedWindowAuthority(set fillerstructurewindow.MediaSet, window StructureAssessmentWindowMedia, profile fillerstructure.AssessorProfile, ordinal int, recorded fillerstructurewindow.RecordedAssessment) bool {
