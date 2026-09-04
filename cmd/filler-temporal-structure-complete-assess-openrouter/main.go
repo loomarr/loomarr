@@ -14,6 +14,7 @@ import (
 
 type commandConfig struct {
 	WindowSetManifestPath string
+	PreflightPath         string
 	SnapshotPath          string
 	Model                 string
 	ModelFamily           string
@@ -54,6 +55,7 @@ func run(args []string, stdout, stderr io.Writer, capability capabilities) int {
 	flags := flag.NewFlagSet("filler-temporal-structure-complete-assess-openrouter", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	manifest := flags.String("window-set", "", "complete public prepared-window manifest")
+	preflight := flags.String("preflight", "", "passing immutable provider-free certification preflight")
 	snapshot := flags.String("snapshot", "", "fresh immutable OpenRouter capability snapshot")
 	model := flags.String("model", "", "concrete video-capable OpenRouter model ID")
 	modelFamily := flags.String("model-family", "", "independent model-family identity")
@@ -75,20 +77,20 @@ func run(args []string, stdout, stderr io.Writer, capability capabilities) int {
 		return 2
 	}
 	config := commandConfig{
-		WindowSetManifestPath: *manifest, SnapshotPath: *snapshot, Model: *model, ModelFamily: *modelFamily,
+		WindowSetManifestPath: *manifest, PreflightPath: *preflight, SnapshotPath: *snapshot, Model: *model, ModelFamily: *modelFamily,
 		UpstreamProvider: *provider, UpstreamProviderSlug: *providerSlug, AssessorID: *assessorID,
 		ReasoningMode: *reasoningMode, MaximumInputTokens: *maximumInputTokens,
 		ReservationNanoUSD: *reservationNanoUSD, MaxRequests: *maxRequests, MaxSpendNanoUSD: *maxSpendNanoUSD,
 		LedgerPath: *ledger, EvidenceRoot: *evidence, MediaRoot: *mediaRoot, FFmpegPath: *ffmpeg,
 		OutputPath: *output, BaseURL: *baseURL, APIKey: os.Getenv("OPENROUTER_API_KEY"),
 	}
-	if config.APIKey == "" || config.WindowSetManifestPath == "" || config.SnapshotPath == "" ||
+	if config.APIKey == "" || config.WindowSetManifestPath == "" || config.PreflightPath == "" || config.SnapshotPath == "" ||
 		config.Model == "" || config.ModelFamily == "" || config.UpstreamProvider == "" ||
 		config.UpstreamProviderSlug == "" || config.AssessorID == "" || config.ReasoningMode == "" ||
 		config.MaximumInputTokens <= 0 || config.ReservationNanoUSD <= 0 || config.MaxRequests <= 0 ||
 		config.MaxSpendNanoUSD <= 0 || config.LedgerPath == "" || config.EvidenceRoot == "" ||
 		config.MediaRoot == "" || config.OutputPath == "" {
-		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-complete-assess-openrouter: credential, complete public window set, fresh snapshot, exact route/model identity, positive request/cost ceilings, durable ledger/evidence/media roots, and output are required")
+		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-complete-assess-openrouter: credential, complete public window set, passing preflight, fresh snapshot, exact route/model identity, positive request/cost ceilings, durable ledger/evidence/media roots, and output are required")
 		return 2
 	}
 	result, err := capability.execute(context.Background(), config)

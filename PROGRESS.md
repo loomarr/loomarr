@@ -47,6 +47,14 @@ than letting it describe something finished.
 | V60 · shared DVR time-shift | validated; PR pending | `playback-timeshift-final` | §9.1 one exported fifteen-minute horizon across the shared `(Channel, EncodePlan)` live HLS remux, prepared-origin history, prepared resolver, Watch timeline, and one-player Web transport. Exact pause-point resume, wall-clock lag, expiry notice, and Go Live compose with the bounded tuner-controller handoff; fragment callbacks cannot override an intentional pause. No per-viewer encoding and no 100-Channel background remux fleet. Evidence at the integrated head: `make check`; `make fe` (182 Web files / 1,505 tests plus type, lint, import, production-build, and Storybook gates); unchanged `make tuner-e2e` green in Chromium, Firefox, and WebKit (3 passed, 54.6s). |
 | Account invitations and notification delivery | account access shipped in #742; Notifications overhaul shipped in #744; global URL follow-up pending | `fix/global-recipient-url` ([#705](https://github.com/loomarr/loomarr/issues/705)) | PR #742 shipped revocable single-use invitation grants, independent email delivery, local/imported activation, and local recovery with the complete cross-slice certification recorded in `docs/engineering/account-access-certification-2026-08-31.md`. PR #744 shipped the Notifications readiness and SMTP overhaul plus the visible-supervision workflow. The pending follow-up gives global `access.public_url` a General editor under **Share invitation and recovery links**, labelled **Recipient-facing Loomarr address** and defaulted from the current browser origin when unset; Notifications only consumes its readiness state and links to General. Fresh follow-up evidence: focused race tests for settings and Invitation configuration; 25 focused web tests covering persisted, browser-defaulted, and env-managed URL states; `make agent-verify BASE=origin/main`; and `make fe` (215 files / 1,690 tests, production build, bundle budget, and Storybook build). Protected CI remains the merge gate. |
 
+Filler compilation certification now has an immutable provider-free run preflight. It reopens and
+hashes the complete public media set, binds the private suite, reports the exact four-family-run
+topology, and blocks both paid commands unless two sealed cases represent each edge of the intended
+continuous production-duration envelope. The last 24-case/56-window suite would require 160 serial
+calls for two window and two complete-video families; its retained artifacts predate this gate and
+are no longer available locally. Representative edge cases and a fresh render remain pending in
+#962 before further paid qualification or production activation.
+
 ## Phase table
 
 | Phase | Status | Gate evidence (commit SHA + proving command) | Notes / deviations |

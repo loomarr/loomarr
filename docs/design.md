@@ -4937,6 +4937,19 @@ windows from one construction from satisfying the slice by themselves. Both meas
 before inference, and insufficiency aborts suite publication rather than substituting cases after model
 outcomes are known.
 
+Before either paid representation run, one provider-free preflight reopens the complete public
+window set and private certification suite, rehashes every retained source and window, and proves
+that the suite contains exactly the same media sets. The operator must declare the already-certified
+short-source ceiling and the intended first long-source ceiling. The preflight reports the observed
+minimum and maximum source durations, window and byte envelope, exact per-family window and
+complete-video request counts, and the four-run total. It is ready only when at least two sealed
+cases occur within the fixed timeline tolerance above the short ceiling and at least two occur within
+that tolerance below the intended long ceiling; any case beyond the intended ceiling also fails
+readiness. The content-addressed report grants no authority and performs no provider or metadata
+request. A failed report's only next action is to extend and rerender the sealed corpus before paid
+assessment, preventing cost approval or a passing semantic score from silently standing in for an
+unrepresented production duration slice.
+
 The agreement policy itself is one provider-neutral production-domain module, not a scorer-owned
 copy: both the challenge adapter and the eventual production runtime supply source-bound immutable
 candidate assessments to the same pure reducer. Challenge aliases, private truth, provider clients,

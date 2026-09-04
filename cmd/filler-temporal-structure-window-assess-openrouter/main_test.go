@@ -41,7 +41,7 @@ func TestRunReportsCompleteSerialWindowFamily(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	called := false
 	args := []string{
-		"--window-set", "manifest.json", "--snapshot", "snapshot.json",
+		"--window-set", "manifest.json", "--preflight", "preflight.json", "--snapshot", "snapshot.json",
 		"--model", "vendor/model", "--model-family", "family-a",
 		"--provider", "Provider", "--provider-slug", "provider/route", "--assessor-id", "assessor-a",
 		"--reasoning-mode", "disabled", "--maximum-input-tokens", "20000",

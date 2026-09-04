@@ -14,7 +14,7 @@ func TestRunExecutesCompleteVideoFamilyWithExplicitAuthority(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	called := false
 	args := []string{
-		"--window-set", "manifest.json", "--snapshot", "snapshot.json", "--model", "vendor/model",
+		"--window-set", "manifest.json", "--preflight", "preflight.json", "--snapshot", "snapshot.json", "--model", "vendor/model",
 		"--model-family", "family-a", "--provider", "Provider", "--provider-slug", "provider",
 		"--assessor-id", "assessor-a", "--reasoning-mode", "disabled", "--maximum-input-tokens", "1000",
 		"--reservation-nanousd", "100000000", "--max-requests", "24", "--max-spend-nanousd", "2400000000",

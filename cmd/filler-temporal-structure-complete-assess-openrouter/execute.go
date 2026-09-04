@@ -44,12 +44,23 @@ func execute(ctx context.Context, config commandConfig) (commandResult, error) {
 	if _, err := os.Lstat(outputPath); err == nil || !errors.Is(err, os.ErrNotExist) {
 		return commandResult{}, errors.New("output path must not already exist")
 	}
-	manifest, _, err := fillerreview.LoadTemporalStructureWindowSetPublic(manifestPath, fillerreview.TemporalStructureWindowCorpusCases)
+	manifest, manifestSHA, err := fillerreview.LoadTemporalStructureWindowSetPublic(manifestPath, fillerreview.TemporalStructureWindowCorpusCases)
 	if err != nil {
 		return commandResult{}, err
 	}
 	if err := validateAuthorizedCompleteRun(manifest, config.MaxRequests, config.ReservationNanoUSD, config.MaxSpendNanoUSD); err != nil {
 		return commandResult{}, err
+	}
+	preflightPath, err := filepath.Abs(config.PreflightPath)
+	if err != nil {
+		return commandResult{}, err
+	}
+	preflight, _, err := fillerreview.LoadTemporalStructureWindowPreflight(preflightPath, manifestSHA)
+	if err != nil {
+		return commandResult{}, err
+	}
+	if preflight.CompleteVideoRequestsPerFamily != len(manifest.Cases) {
+		return commandResult{}, errors.New("window preflight complete-video request topology drifted")
 	}
 	snapshot, err := fillerbakeoffio.ReadStrictJSON[fillerbakeoff.OpenRouterSnapshot](snapshotPath)
 	if err != nil {
