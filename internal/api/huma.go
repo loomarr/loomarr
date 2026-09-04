@@ -674,6 +674,9 @@ type SearchCandidate struct {
 	VoteAverage      float64  `json:"voteAverage,omitempty"`
 	VoteCount        int      `json:"voteCount,omitempty"`
 	Keywords         []string `json:"keywords,omitempty"`
+	Networks         []string `json:"networks,omitempty"`
+	Cast             []string `json:"cast,omitempty"`
+	Creators         []string `json:"creators,omitempty"`
 	OfficialRating   string   `json:"officialRating,omitempty"`
 }
 

@@ -1076,9 +1076,24 @@ runtime and vote values, and ordered ranges before contacting TMDB, then maps th
 movie and TV discover parameters. A malformed qualifier returns a bounded tool error so it cannot be
 silently dropped into a broader search. Discovery-only qualifiers cannot be combined with title
 search; the model must choose the mode justified by the Intent. Omitted qualifiers contribute
-nothing, and missing candidate metadata remains unknown rather than a local false negative. Network
-and person names are not accepted as filters until Loomarr can resolve each name to an authoritative
-TMDB identity; neither is inferred from title, studio, overview, or model prose.
+nothing, and missing candidate metadata remains unknown rather than a local false negative.
+
+Person and network constraints deliberately follow the provider's asymmetric identity surfaces.
+Movie discovery accepts explicit `cast` and `creators` names only with `media_type=movie`. Loomarr
+resolves every trimmed name through TMDB's `/search/person`, requires one unique exact
+case-insensitive name match with a positive id, and passes the resulting ids to `with_cast` and
+`with_crew` respectively; multiple names within one role are AND constraints. TV discovery accepts
+one explicit `network` name only with `media_type=series`. TMDB has no network-name search endpoint,
+so Loomarr resolves it against TMDB's roughly daily `tv_network_ids_MM_DD_YYYY.json.gz` identity
+export, trying the current and two preceding UTC dates and caching the first valid snapshot for the
+client's lifetime. The export request is sent to `files.tmdb.org` without the TMDB bearer credential.
+An exact name that maps to multiple ids requires `origin_country`; Loomarr checks each candidate's
+`/network/{id}` details and keeps the sole matching country. Missing, malformed, duplicate-id,
+unresolved, or still-ambiguous identities fail the tool call before `/discover` rather than
+broadening it. Network constraints cannot be mixed with person constraints, and neither can be used
+with its unsupported media type. The canonical names proven by each applied filter ride on every
+returned candidate as grounded network/cast/creator evidence; no such evidence is inferred from a
+title, studio, overview, or model prose.
 
 **Scopes follow live configuration, not boot-time construction.** `library` requires a current,
 complete `library.flavor` + `library.url` + `library.token` connection; `tmdb` requires a current

@@ -52,6 +52,8 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 const (
 	maxDiscoveryRuntimeMinutes = 24 * 60
 	maxDiscoveryVoteCount      = 100_000_000
+	maxDiscoveryEntityTerms    = 4
+	maxDiscoveryEntityRunes    = 100
 )
 
 func parseDiscoveryQuery(args map[string]any) (catalog.DiscoveryQuery, bool, error) {
@@ -60,13 +62,36 @@ func parseDiscoveryQuery(args map[string]any) (catalog.DiscoveryQuery, bool, err
 		Keywords:  stringSlice(args["keywords"]),
 		Genres:    stringSlice(args["genres"]),
 	}
+	if raw, exists := args["network"]; exists {
+		value, ok := raw.(string)
+		query.Network = strings.TrimSpace(value)
+		if !ok || query.Network == "" || len([]rune(query.Network)) > maxDiscoveryEntityRunes {
+			return catalog.DiscoveryQuery{}, false, fmt.Errorf("network must be a non-empty string of at most %d characters", maxDiscoveryEntityRunes)
+		}
+	}
+	var err error
+	if query.Cast, err = boundedEntityTerms(args, "cast"); err != nil {
+		return catalog.DiscoveryQuery{}, false, err
+	}
+	if query.Creators, err = boundedEntityTerms(args, "creators"); err != nil {
+		return catalog.DiscoveryQuery{}, false, err
+	}
+	hasPeople := len(query.Cast) > 0 || len(query.Creators) > 0
+	if query.Network != "" && hasPeople {
+		return catalog.DiscoveryQuery{}, false, fmt.Errorf("network and person constraints cannot be combined")
+	}
+	if query.Network != "" && query.MediaType != provision.Series {
+		return catalog.DiscoveryQuery{}, false, fmt.Errorf("network requires media_type series")
+	}
+	if hasPeople && query.MediaType != provision.Movie {
+		return catalog.DiscoveryQuery{}, false, fmt.Errorf("cast and creators require media_type movie")
+	}
 	rawEra := strings.TrimSpace(stringArg(args["era"]))
 	query.YearFrom, query.YearTo = parseEra(rawEra)
 	if rawEra != "" && query.YearFrom == 0 {
 		return catalog.DiscoveryQuery{}, false, fmt.Errorf("era must be a year, decade, or year range")
 	}
 
-	var err error
 	if rawValue, ok := args["original_language"]; ok {
 		raw, stringOK := rawValue.(string)
 		if !stringOK || strings.TrimSpace(raw) == "" {
@@ -109,7 +134,7 @@ func parseDiscoveryQuery(args map[string]any) (catalog.DiscoveryQuery, bool, err
 
 	discoveryMode := len(query.Keywords) > 0 || len(query.Genres) > 0 || rawEra != "" ||
 		query.OriginalLanguage != "" || query.OriginCountry != "" || query.RuntimeMin > 0 ||
-		query.RuntimeMax > 0 || voteAverageSet || query.VoteCountMin > 0
+		query.RuntimeMax > 0 || voteAverageSet || query.VoteCountMin > 0 || query.Network != "" || hasPeople
 	if discoveryMode && strings.TrimSpace(stringArg(args["query"])) != "" {
 		return catalog.DiscoveryQuery{}, false, fmt.Errorf("query cannot be combined with discovery qualifiers")
 	}
@@ -117,6 +142,33 @@ func parseDiscoveryQuery(args map[string]any) (catalog.DiscoveryQuery, bool, err
 		return catalog.DiscoveryQuery{}, false, fmt.Errorf("provide query or a discovery qualifier")
 	}
 	return query, discoveryMode, nil
+}
+
+func boundedEntityTerms(args map[string]any, key string) ([]string, error) {
+	raw, exists := args[key]
+	if !exists {
+		return nil, nil
+	}
+	values, ok := raw.([]any)
+	if !ok || len(values) == 0 || len(values) > maxDiscoveryEntityTerms {
+		return nil, fmt.Errorf("%s must be an array of 1 to %d names", key, maxDiscoveryEntityTerms)
+	}
+	out := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, rawValue := range values {
+		value, ok := rawValue.(string)
+		value = strings.TrimSpace(value)
+		if !ok || value == "" || len([]rune(value)) > maxDiscoveryEntityRunes {
+			return nil, fmt.Errorf("%s must be an array of non-empty names of at most %d characters", key, maxDiscoveryEntityRunes)
+		}
+		normalized := strings.ToLower(value)
+		if seen[normalized] {
+			return nil, fmt.Errorf("%s contains duplicate name %q", key, value)
+		}
+		seen[normalized] = true
+		out = append(out, value)
+	}
+	return out, nil
 }
 
 func discoveryCode(value string, upper bool) (string, error) {
@@ -268,16 +320,17 @@ func filterByMediaType(cands []catalog.Candidate, mt string) []catalog.Candidate
 // catalogTool is the provider-neutral tool schema the model may call (§8). It does
 // three modes: `query` runs title search; `genres` (+ optional `era`) discovers
 // genre themes; `keywords` discovers holidays, motifs, franchises, and topics
-// whose terms need not occur in the title. Every mode returns real ids + genres +
-// overview + source-backed discovery evidence + an inLibrary flag; it is the
-// ONLY way to find titles. Omitted evidence is unknown, never a mismatch.
+// whose terms need not occur in the title. Structured discovery may add scalar,
+// movie-person, or TV-network qualifiers. Every mode returns real ids + genres +
+// overview + source-backed discovery evidence + an inLibrary flag; it is the ONLY
+// way to find titles. Omitted evidence is unknown, never a mismatch.
 func catalogTool() llm.ToolSchema {
 	return llm.ToolSchema{
 		Name: catalogToolName,
 		Description: "Find real titles from the library + TMDB. Provide `query` to search by title, `genres` " +
 			"to discover genre/era matches, or `keywords` to discover holidays, motifs, franchises, and topics. " +
-			"Discovery may also use explicitly requested country, original-language, runtime, and vote filters. " +
-			"Returns real external ids, genres, a short overview, available language/country/runtime/vote/keyword evidence, " +
+			"Discovery may also use explicitly requested country, original-language, runtime, vote, movie cast/creator, and TV network filters. " +
+			"Returns real external ids, genres, a short overview, available language/country/runtime/vote/keyword/network/person evidence, " +
 			"and an inLibrary flag. Missing fields mean unknown. This is the ONLY way to find titles.",
 		Parameters: map[string]any{
 			"type": "object",
@@ -293,6 +346,9 @@ func catalogTool() llm.ToolSchema {
 				"runtime_max":       map[string]any{"type": "integer", "minimum": 1, "maximum": maxDiscoveryRuntimeMinutes},
 				"vote_average_min":  map[string]any{"type": "number", "exclusiveMinimum": 0, "maximum": 10},
 				"vote_count_min":    map[string]any{"type": "integer", "minimum": 1, "maximum": maxDiscoveryVoteCount},
+				"network":           map[string]any{"type": "string", "maxLength": maxDiscoveryEntityRunes, "description": "exact TV network name; requires media_type=series"},
+				"cast":              map[string]any{"type": "array", "minItems": 1, "maxItems": maxDiscoveryEntityTerms, "items": map[string]any{"type": "string", "maxLength": maxDiscoveryEntityRunes}, "description": "exact cast names; requires media_type=movie"},
+				"creators":          map[string]any{"type": "array", "minItems": 1, "maxItems": maxDiscoveryEntityTerms, "items": map[string]any{"type": "string", "maxLength": maxDiscoveryEntityRunes}, "description": "exact director/writer/crew names; requires media_type=movie"},
 			},
 		},
 	}

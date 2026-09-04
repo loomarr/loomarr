@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1050,6 +1051,56 @@ func TestSuggest_DiscoveryAppliesExplicitScalarQualifiers(t *testing.T) {
 	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
 	if len(items) != 1 || items[0].TMDBID != 603 {
 		t.Fatalf("qualified discovery proposal = %+v, want only the grounded matching title", proposal)
+	}
+}
+
+func TestSuggest_DiscoveryGroundsExplicitMoviePeople(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	mt.AddPerson(31, "Tom Hanks")
+	mt.AddPerson(560, "Nora Ephron")
+	mt.SetMoviePeople(100, []int{31}, []int{560})
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"media_type": "movie", "cast": []any{"Tom Hanks"}, "creators": []any{"Nora Ephron"},
+		}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":100,"name":"Speed"}]}`),
+	)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
+
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "movies starring Tom Hanks from creator Nora Ephron"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	if len(items) != 1 || items[0].TMDBID != 100 || !slices.Equal(items[0].Cast, []string{"Tom Hanks"}) ||
+		!slices.Equal(items[0].Creators, []string{"Nora Ephron"}) {
+		t.Fatalf("person-grounded proposal = %+v", proposal)
+	}
+}
+
+func TestSuggest_DiscoveryGroundsExplicitTVNetwork(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	mt.AddNetwork(49, "HBO", "US")
+	mt.SetSeriesNetwork(1396, 49)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"media_type": "series", "network": "HBO"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}]}`),
+	)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
+
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "HBO series"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	if len(items) != 1 || items[0].TMDBID != 1396 || !slices.Equal(items[0].Networks, []string{"HBO"}) {
+		t.Fatalf("network-grounded proposal = %+v", proposal)
 	}
 }
 

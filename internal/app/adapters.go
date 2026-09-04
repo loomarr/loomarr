@@ -223,7 +223,8 @@ func (a searchAdapter) Search(ctx context.Context, q, scope string, limit int) (
 			Genres: c.Genres, Overview: c.Overview,
 			OriginalLanguage: c.OriginalLanguage, OriginCountries: c.OriginCountries,
 			RuntimeMinutes: c.RuntimeMinutes, VoteAverage: c.VoteAverage, VoteCount: c.VoteCount,
-			Keywords: c.Keywords, OfficialRating: c.OfficialRating,
+			Keywords: c.Keywords, Networks: c.Networks, Cast: c.Cast, Creators: c.Creators,
+			OfficialRating: c.OfficialRating,
 		})
 	}
 	return out, nil

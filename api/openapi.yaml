@@ -6352,9 +6352,17 @@ components:
         adjacentVotes:
           format: int64
           type: integer
+        cast:
+          items:
+            type: string
+          type: array
         confidence:
           format: double
           type: number
+        creators:
+          items:
+            type: string
+          type: array
         episodeSelection:
           $ref: "#/components/schemas/EpisodeSelection"
         genres:
@@ -6373,6 +6381,10 @@ components:
           type: string
         name:
           type: string
+        networks:
+          items:
+            type: string
+          type: array
         officialRating:
           type: string
         originCountries:
@@ -7287,6 +7299,14 @@ components:
     SearchCandidate:
       additionalProperties: false
       properties:
+        cast:
+          items:
+            type: string
+          type: array
+        creators:
+          items:
+            type: string
+          type: array
         genres:
           items:
             type: string
@@ -7303,6 +7323,10 @@ components:
           type: string
         name:
           type: string
+        networks:
+          items:
+            type: string
+          type: array
         officialRating:
           type: string
         originCountries:

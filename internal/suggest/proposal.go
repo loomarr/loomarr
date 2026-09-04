@@ -127,6 +127,9 @@ type ProposalItem struct {
 	VoteAverage      float64  `json:"voteAverage,omitempty"`
 	VoteCount        int      `json:"voteCount,omitempty"`
 	Keywords         []string `json:"keywords,omitempty"`
+	Networks         []string `json:"networks,omitempty"`
+	Cast             []string `json:"cast,omitempty"`
+	Creators         []string `json:"creators,omitempty"`
 	// OfficialRating carries from the grounded Candidate for ChannelPolicy audience
 	// enforcement (programming-design §4): it's stamped onto the channel's lineup
 	// entry at create time so enforcement filters without a library hit. Display/
@@ -157,6 +160,9 @@ func fromCandidate(c catalog.Candidate, rationale string, confidence float64) Pr
 		VoteAverage:      c.VoteAverage,
 		VoteCount:        c.VoteCount,
 		Keywords:         append([]string(nil), c.Keywords...),
+		Networks:         append([]string(nil), c.Networks...),
+		Cast:             append([]string(nil), c.Cast...),
+		Creators:         append([]string(nil), c.Creators...),
 	}
 }
 
