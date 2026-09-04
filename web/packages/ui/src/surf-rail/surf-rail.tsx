@@ -37,7 +37,11 @@ const SurfRail = ({
   selection,
   serverVersion,
 }: SurfRailProps) => {
-  if (density === "tv") {
+  const viewportWidth = Reflect.get(globalThis, "innerWidth");
+  // The dedicated ten-foot rail assumes the 1280px canvas used by supported TV hosts.
+  // Storybook and browser previews can render TV density in a phone-sized viewport; retain
+  // the adaptive rail there so channel identity and programme detail remain usable.
+  if (density === "tv" && (viewportWidth === undefined || viewportWidth >= 1280)) {
     return (
       <TvSurfRail
         clientVersion={clientVersion}
@@ -65,7 +69,7 @@ const SurfRail = ({
       level="overlay"
       maxHeight="100%"
       maxWidth="100%"
-      padding="$control"
+      padding={density === "tv" ? "$section" : "$control"}
       width={surfRailWidth(density)}
     >
       <Surface
@@ -112,7 +116,7 @@ const SurfRail = ({
                 <ProgrammeIdentity density={density} programme={selectedChannel.now} />
               </Surface>
             }
-            secondaryWidth={250}
+            secondaryWidth={density === "tv" ? 360 : 250}
           />
           {selectedChannel.now.progressPercent === undefined ? null : (
             <ProgressTrack percent={selectedChannel.now.progressPercent} tone="live" width="100%" />
@@ -132,7 +136,7 @@ const SurfRail = ({
         />
       ) : null}
 
-      <ScrollFrame density={density} style={{ maxHeight: 320 }}>
+      <ScrollFrame density={density} style={{ maxHeight: density === "tv" ? 440 : 320 }}>
         {groups.map((group) => (
           <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline" key={group.kind}>
             <Text density={density} textRole="metadata" tone="secondary">

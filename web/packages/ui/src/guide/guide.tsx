@@ -66,7 +66,11 @@ const GuideSurface = ({
   renderChannelLogo,
   selection,
 }: GuideSurfaceProps) => {
-  if (density === "tv") {
+  const viewportWidth = Reflect.get(globalThis, "innerWidth");
+  // The dedicated ten-foot guide assumes the 1280px canvas used by supported TV hosts.
+  // Storybook and browser previews can render TV density in a phone-sized viewport; retain
+  // the adaptive guide there so channel identity and programme detail remain usable.
+  if (density === "tv" && (viewportWidth === undefined || viewportWidth >= 1280)) {
     return (
       <TvGuideSurface
         channelWindow={channelWindow}
@@ -86,7 +90,7 @@ const GuideSurface = ({
   }
   const rowHeight = guideRowHeight(density);
   const railWidth = guideRailWidth(density);
-  const minimumGridWidth = railWidth + (density === "touch" ? 560 : 640);
+  const minimumGridWidth = railWidth + (density === "tv" ? 900 : density === "touch" ? 560 : 640);
   const selectedChannel = layout.channels.find((channel) => channel.source.channelId === selection.channelId);
   const selectedAiring = selectedChannel?.airings.find(
     (airing) => airing.scheduleBlockId === selection.scheduleBlockId,
