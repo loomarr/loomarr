@@ -1,0 +1,22 @@
+{
+  "name": "@loomarr/player",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Loomarr tuning and playback policy behind platform transport adapters.",
+  "exports": {
+    ".": "./index.ts",
+    "./server": "./server.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@loomarr/api": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}
