@@ -98,10 +98,13 @@ classify() {
       select_gate apple_tv
       select_gate expo_android_tv
       ;;
-    web/packages/design-system/*|web/packages/ui/*)
+    web/packages/design-system/*|web/packages/ui/*|web/packages/ui-tv/*)
       known=true
       select_gate clients
       select_all_native_clients
+      # Browser Storybook stories render these universal presentation packages
+      # directly. Their output is therefore part of the committed visual contract.
+      select_gate visual
       ;;
     web/packages/api/*|web/packages/core/*|web/packages/fixtures/*)
       known=true

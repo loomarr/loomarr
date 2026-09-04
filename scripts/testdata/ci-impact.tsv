@@ -19,7 +19,8 @@ web-story-only	web/apps/web/src/design/typography/typography.stories.tsx	web,vis
 web-runtime-tokens	web/packages/tokens/src/tokens/tokens.ts	web,visual,tuner,image
 mobile-client	web/apps/mobile/app/index.tsx	clients,apple_mobile,expo_android_mobile
 tv-client	web/apps/tv/src/app.tsx	clients,apple_tv,expo_android_tv
-shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv
+shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual
+shared-client-ui-tv	web/packages/ui-tv/src/watching-navigation/watching-navigation.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual
 shared-client-api	web/packages/api/src/unwrap/unwrap.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image
 shared-client-core	web/packages/core/src/guide/guide.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image
 shared-client-fixtures	web/packages/fixtures/src/index.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image
