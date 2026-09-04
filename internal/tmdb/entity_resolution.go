@@ -19,13 +19,13 @@ import (
 
 const maxNetworkExportBytes = 4 << 20
 
-type networkIdentity struct {
+type namedIdentity struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 }
 
 type personSearchResponse struct {
-	Results []networkIdentity `json:"results"`
+	Results []namedIdentity `json:"results"`
 }
 
 type resolvedDiscoveryEntities struct {
@@ -78,15 +78,21 @@ func (c *Client) resolveDiscoveryEntities(ctx context.Context, query catalog.Dis
 func (c *Client) resolvePeople(ctx context.Context, names []string) ([]int, []string, error) {
 	ids := make([]int, 0, len(names))
 	canonical := make([]string, 0, len(names))
-	seenNames := make(map[string]bool, len(names))
+	seenNames := make([]string, 0, len(names))
 	seenIDs := make(map[int]bool, len(names))
 	for _, requested := range names {
 		requested = strings.TrimSpace(requested)
-		normalized := normalizedEntityName(requested)
-		if normalized == "" || seenNames[normalized] {
+		duplicated := false
+		for _, seen := range seenNames {
+			if strings.EqualFold(seen, requested) {
+				duplicated = true
+				break
+			}
+		}
+		if requested == "" || duplicated {
 			return nil, nil, fmt.Errorf("person name %q is blank or duplicated", requested)
 		}
-		seenNames[normalized] = true
+		seenNames = append(seenNames, requested)
 		q := url.Values{"query": {requested}, "include_adult": {"false"}, "page": {"1"}}
 		var response personSearchResponse
 		if err := c.get(ctx, "/search/person?"+q.Encode(), &response); err != nil {
@@ -94,7 +100,7 @@ func (c *Client) resolvePeople(ctx context.Context, names []string) ([]int, []st
 		}
 		matches := make(map[int]string)
 		for _, candidate := range response.Results {
-			if candidate.ID > 0 && normalizedEntityName(candidate.Name) == normalized {
+			if candidate.ID > 0 && strings.EqualFold(strings.TrimSpace(candidate.Name), requested) {
 				matches[candidate.ID] = strings.TrimSpace(candidate.Name)
 			}
 		}
@@ -119,10 +125,9 @@ func (c *Client) resolveNetwork(ctx context.Context, requested, country string) 
 	if err != nil {
 		return 0, "", err
 	}
-	normalized := normalizedEntityName(requested)
-	matches := make([]networkIdentity, 0, 1)
+	matches := make([]namedIdentity, 0, 1)
 	for _, identity := range identities {
-		if normalizedEntityName(identity.Name) == normalized {
+		if strings.EqualFold(strings.TrimSpace(identity.Name), requested) {
 			matches = append(matches, identity)
 		}
 	}
@@ -136,7 +141,7 @@ func (c *Client) resolveNetwork(ctx context.Context, requested, country string) 
 	if country == "" {
 		return 0, "", fmt.Errorf("network name %q is ambiguous; include origin_country", requested)
 	}
-	filtered := make([]networkIdentity, 0, 1)
+	filtered := make([]namedIdentity, 0, 1)
 	for _, identity := range matches {
 		var detail struct {
 			ID            int    `json:"id"`
@@ -146,11 +151,11 @@ func (c *Client) resolveNetwork(ctx context.Context, requested, country string) 
 		if err := c.get(ctx, "/network/"+strconv.Itoa(identity.ID), &detail); err != nil {
 			return 0, "", err
 		}
-		if detail.ID != identity.ID || normalizedEntityName(detail.Name) != normalized {
+		if detail.ID != identity.ID || !strings.EqualFold(strings.TrimSpace(detail.Name), requested) {
 			return 0, "", fmt.Errorf("network identity %d details disagree with export", identity.ID)
 		}
 		if strings.EqualFold(strings.TrimSpace(detail.OriginCountry), country) {
-			filtered = append(filtered, networkIdentity{ID: detail.ID, Name: strings.TrimSpace(detail.Name)})
+			filtered = append(filtered, namedIdentity{ID: detail.ID, Name: strings.TrimSpace(detail.Name)})
 		}
 	}
 	if len(filtered) != 1 {
@@ -159,10 +164,10 @@ func (c *Client) resolveNetwork(ctx context.Context, requested, country string) 
 	return filtered[0].ID, filtered[0].Name, nil
 }
 
-func (c *Client) loadNetworkIdentities(ctx context.Context) ([]networkIdentity, error) {
+func (c *Client) loadNetworkIdentities(ctx context.Context) ([]namedIdentity, error) {
 	c.networkMu.Lock()
 	if len(c.networkIdentities) > 0 {
-		cached := append([]networkIdentity(nil), c.networkIdentities...)
+		cached := append([]namedIdentity(nil), c.networkIdentities...)
 		c.networkMu.Unlock()
 		return cached, nil
 	}
@@ -180,16 +185,16 @@ func (c *Client) loadNetworkIdentities(ctx context.Context) ([]networkIdentity, 
 		}
 		c.networkMu.Lock()
 		if len(c.networkIdentities) == 0 {
-			c.networkIdentities = append([]networkIdentity(nil), identities...)
+			c.networkIdentities = append([]namedIdentity(nil), identities...)
 		}
-		cached := append([]networkIdentity(nil), c.networkIdentities...)
+		cached := append([]namedIdentity(nil), c.networkIdentities...)
 		c.networkMu.Unlock()
 		return cached, nil
 	}
 	return nil, fmt.Errorf("load TMDB network identity export: %w", lastErr)
 }
 
-func (c *Client) fetchNetworkExport(ctx context.Context, filename string) ([]networkIdentity, error) {
+func (c *Client) fetchNetworkExport(ctx context.Context, filename string) ([]namedIdentity, error) {
 	requestURL := c.networkExportBaseURL + "/" + filename
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
@@ -217,13 +222,13 @@ func (c *Client) fetchNetworkExport(ctx context.Context, filename string) ([]net
 		return nil, fmt.Errorf("tmdb network export exceeds %d bytes", maxNetworkExportBytes)
 	}
 	seen := make(map[int]bool)
-	identities := make([]networkIdentity, 0)
+	identities := make([]namedIdentity, 0)
 	for lineNumber, line := range bytes.Split(blob, []byte{'\n'}) {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}
-		var identity networkIdentity
+		var identity namedIdentity
 		if err := json.Unmarshal(line, &identity); err != nil {
 			return nil, fmt.Errorf("tmdb network export line %d: %w", lineNumber+1, err)
 		}
@@ -248,10 +253,6 @@ func attachEntityEvidence(candidates []catalog.Candidate, entities resolvedDisco
 		candidates[i].Cast = append([]string(nil), entities.castNames...)
 		candidates[i].Creators = append([]string(nil), entities.creatorNames...)
 	}
-}
-
-func normalizedEntityName(value string) string {
-	return strings.ToLower(strings.Join(strings.Fields(value), " "))
 }
 
 func joinIDs(ids []int) string {

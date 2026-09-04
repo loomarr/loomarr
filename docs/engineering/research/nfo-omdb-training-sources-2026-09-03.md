@@ -1,7 +1,7 @@
 # NFO and OMDb as Planner Data Sources
 
-**Date:** 2026-09-03  
-**Scope:** Issue #966; runtime retrieval/personalization and model training/evaluation.  
+**Date:** 2026-09-03
+**Scope:** Issue #966; runtime retrieval/personalization and model training/evaluation.
 **Status:** Product and engineering policy recommendation, not legal advice.
 
 ## Executive decision

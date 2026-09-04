@@ -36,7 +36,7 @@ type Client struct {
 	apiKey               func() string
 	http                 *http.Client
 	networkMu            sync.Mutex
-	networkIdentities    []networkIdentity
+	networkIdentities    []namedIdentity
 }
 
 // ErrAPIKeyRequired reports that an operation could not start because TMDB is

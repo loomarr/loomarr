@@ -239,6 +239,12 @@ func TestDiscover_UnresolvedOrAmbiguousEntityFailsBeforeDiscovery(t *testing.T) 
 			want:  "2 exact identities",
 		},
 		{
+			name:  "person interior whitespace is not normalized",
+			setup: func(mock *testkit.TMDB) { mock.AddPerson(31, "Tom Hanks") },
+			query: catalog.DiscoveryQuery{MediaType: provision.Movie, Cast: []string{"Tom  Hanks"}},
+			want:  "0 exact identities",
+		},
+		{
 			name:  "unresolved network",
 			setup: func(mock *testkit.TMDB) { mock.AddNetwork(49, "HBO", "US") },
 			query: catalog.DiscoveryQuery{MediaType: provision.Series, Network: "Imaginary Network"},
