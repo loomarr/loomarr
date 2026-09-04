@@ -157,9 +157,15 @@ importers:
       '@loomarr/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
+      '@loomarr/player':
+        specifier: workspace:*
+        version: link:../../packages/player
       '@loomarr/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@loomarr/ui-tv':
+        specifier: workspace:*
+        version: link:../../packages/ui-tv
       '@react-native-tvos/config-tv':
         specifier: 0.1.6
         version: 0.1.6(expo@58.0.0-canary-20260812-27f94d4)
@@ -178,6 +184,9 @@ importers:
       expo-system-ui:
         specifier: 58.0.0-canary-20260812-27f94d4
         version: 58.0.0-canary-20260812-27f94d4(expo@58.0.0-canary-20260812-27f94d4)(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
+      expo-video:
+        specifier: 58.0.0-canary-20260812-27f94d4
+        version: 58.0.0-canary-20260812-27f94d4(expo@58.0.0-canary-20260812-27f94d4)(react-native-tvos@0.86.2-0)(react@19.2.3)
       react:
         specifier: 19.2.3
         version: 19.2.3
