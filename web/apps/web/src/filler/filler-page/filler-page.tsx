@@ -32,6 +32,7 @@ import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
 import { FillerReviewQueue } from "../filler-review-queue";
 import type { FillerSearch } from "../filler-search";
+import { IncomingTab } from "../incoming-tab";
 import { PinClipDialog } from "../pin-clip-dialog";
 import { SourcesTab } from "../sources-tab";
 import { TaxonomyTab } from "../taxonomy-tab";
@@ -155,9 +156,9 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
 // these columns, so a query per filter change is cheaper and always correct, versus
 // holding thousands of clips in memory to filter locally (§7.2 — no client index).
 // ⚠ `tab` is a PROP, not read from the URL here (V-nav-paths): which section shows is now
-// the PATH (`/filler`, `/filler/incoming`, `/filler/sources`), and three different route
-// files render this component — each hands over the section it owns. The catalog FILTERS
-// below stay URL-driven, and stay scoped to `/_authed/filler/` because only that route
+// the PATH (`/filler`, `/filler/sources`, `/filler/incoming`, `/filler/library`, `/filler/manage`),
+// and the route files hand over only the section they own.
+// The catalog FILTERS below stay URL-driven, and stay scoped to `/_authed/filler/` because only that route
 // validates them; Incoming and Sources carry none of them (see filler-page's own note on
 // `catalogSearch`).
 const FillerPage = ({ tab }: FillerPageProps) => {
@@ -329,10 +330,12 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const poolQuery = fillerApi.useFillerPool({ query: { enabled: tab === "library" } });
   const pool = unwrap(poolQuery.data, (b) => b);
 
-  // Needs attention counts the same server-owned semantic projection it renders. Pipeline work,
-  // retries and operational holds cannot leak into the badge (§10 V63).
-  const reviewsQuery = fillerApi.useFillerDecisionReviews({ limit: 1 }, { query: { enabled: isAdmin } });
+  // Incoming's badge counts the server-owned semantic questions that need a person. Machine work,
+  // retries, and operational holds remain visible inside Incoming without becoming human chores.
+  const reviewsQuery = fillerApi.useFillerDecisionReviews({ limit: 100 }, { query: { enabled: isAdmin } });
+  const reviewRows = unwrap(reviewsQuery.data, (b) => b.rows) ?? [];
   const reviewTotal = unwrap(reviewsQuery.data, (b) => b.total) ?? 0;
+  const reviewHashes = new Set(reviewRows.map((review) => review.clipHash));
 
   // ⚠ Proposing a pull DOWNLOADS NOTHING — it writes a proposal for the approval queue (§10).
   // The toast says so, because a button that appears to start a download and does not is worse
@@ -662,7 +665,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           </Card>
         ) : null}
 
-        {/* Three tabs, matching the redesigned mock: Catalog · Incoming · Sources.
+        {/* Five destinations follow the operator journey: Overview · Sources · Incoming · Library · Manage.
           ⚠ There is no Discover tab any more. Finding clips used to be its own destination; it
           is now something you do TO a source, which is the only place the answer differs. */}
         {/* ⚠ Real LINKS, not buttons calling `navigate()`. Each tab is its own PATH now
@@ -672,41 +675,50 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         <NavTabs
           label="Filler sections"
           linkComponent={Link}
-          // ⚠ Sources carries NO count. Catalog and Incoming are queues — "how many clips do I
+          // ⚠ Sources carries NO count. Library and Incoming are queues — "how many clips do I
           // have", "how many need me" — and the number is the reason to look. The Sources tab is a
           // destination: the count of configured sources is already the header pill's job ("4 of 5
           // sources on"), and a bare "5" beside the label answers a question nobody asked while
           // implying the tab is a backlog.
           tabs={[
-            // ⚠ `total`, not the page length (§10 V51d) — a tab badge reading "60" on a catalog of
-            // 1,204 is a worse lie than no badge, and `clipList.length` became exactly that the
-            // moment the listing started paging.
+            // ⚠ The server-owned watch count, not the route-local page or filtered total. The badge
+            // remains stable while navigating and cannot turn zero merely because Library is unmounted.
             {
               id: "overview",
               label: "Overview",
               to: "/filler",
             },
             ...(isAdmin
-              ? [{ id: "attention", label: "Needs attention", to: "/filler/attention", count: reviewTotal }]
+              ? [
+                  { id: "sources", label: "Sources", to: "/filler/sources" },
+                  { id: "incoming", label: "Incoming", to: "/filler/incoming", count: reviewTotal },
+                ]
               : []),
             {
               id: "library",
               label: "Library",
               to: "/filler/library",
               search: catalogSearch,
-              count: total,
+              count: watch?.clips ?? total,
             },
             { id: "manage", label: "Manage", to: "/filler/manage" },
           ]}
-          activeId={tab === "sources" || tab === "taxonomy" ? "manage" : tab}
+          activeId={tab === "taxonomy" ? "manage" : tab}
         />
 
         {tab === "overview" ? (
           <FillerOverview />
-        ) : tab === "attention" && isAdmin ? (
-          <FillerReviewQueue />
+        ) : tab === "incoming" && isAdmin ? (
+          <div className="flex flex-col gap-8">
+            <FillerReviewQueue hideEmpty />
+            <IncomingTab
+              onEditTags={setTagging}
+              excludedHashes={reviewHashes}
+              semanticReviewCount={reviewRows.length}
+            />
+          </div>
         ) : tab === "manage" ? (
-          <FillerManage onEditTags={setTagging} />
+          <FillerManage />
         ) : tab === "sources" ? (
           // ⚠ The tab owns its own query. The header does NOT read it — the status line comes
           // from `/v1/filler/watch`, counts and verdict both (see `statusLine`) — so moving it
@@ -1117,7 +1129,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   );
 };
 
-// Orients the two-surface filler model without making the default Overview sound like a catalog.
+// Orients the complete source-to-channel journey without making the default Overview sound like a catalog.
 const FillerDescription = () => (
   <>
     Loomarr continuously sources, prepares, and rotates commercials, bumpers, and station IDs. Each channel{" "}
