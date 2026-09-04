@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("keeps the TV proof isolated from the shipping application", async () => {
@@ -24,4 +24,17 @@ test("declares the shared TV journey and native playback boundaries", async () =
   assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.86.2-0");
   assert.match(manifest.scripts.bundle, /--platform android/);
   assert.match(manifest.scripts.bundle, /--platform ios/);
+});
+
+test("starts from SecureStore without the abandoned Compose credential bridge", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /createPairingCredentialStore/);
+  assert.doesNotMatch(appSource, /createMigratingPairingCredentialStore|legacyPairingSource/);
+  await assert.rejects(access(new URL("../src/legacy-pairing.ts", import.meta.url)), {
+    code: "ENOENT",
+  });
+  await assert.rejects(access(new URL("../modules/loomarr-legacy-pairing", import.meta.url)), {
+    code: "ENOENT",
+  });
 });
