@@ -1,5 +1,7 @@
 export { createPlayerController, playableCatalog } from "./player-controller";
 export type {
+  LivePlaybackMode,
+  LivePlaybackState,
   PlayerController,
   PlayerControllerOptions,
   PlayerSnapshot,

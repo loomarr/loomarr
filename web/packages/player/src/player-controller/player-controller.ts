@@ -59,6 +59,12 @@ const createPlayerController = ({
       attemptId,
       catalog: snapshot.catalog,
       channel,
+      livePlayback: {
+        lagSeconds: 0,
+        mode: "live",
+        noticeRevision: 0,
+        viewerTimeMs: Date.now(),
+      },
       previousChannelId: recentChannelIds[0],
       recentChannelIds,
       status: "tuning",
@@ -70,6 +76,7 @@ const createPlayerController = ({
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       await transport.replace(nextSource, { attemptId, signal: request.signal });
       if (!isCurrentAttempt(attemptId, request.signal)) return;
+      if (snapshot.status === "paused") return;
       await transport.play();
     } catch (error) {
       if (!isCurrentAttempt(attemptId, request.signal)) return;
@@ -91,10 +98,19 @@ const createPlayerController = ({
 
   const unsubscribeTransport = transport.subscribe((event) => {
     if (!isCurrentAttempt(event.attemptId) || event.attemptId !== snapshot.attemptId) return;
+    if (event.type === "live-state") {
+      publish({ ...snapshot, livePlayback: event.state });
+      return;
+    }
     if (event.type === "error") {
       publish({ ...snapshot, error: event.error, status: "failed" });
       return;
     }
+    if (event.type === "paused") {
+      publish({ ...snapshot, error: undefined, status: "paused" });
+      return;
+    }
+    if (event.type === "first-frame" && snapshot.status === "paused") return;
     publish({ ...snapshot, error: undefined, status: "playing" });
   });
 
@@ -109,6 +125,19 @@ const createPlayerController = ({
       listeners.clear();
     },
     getSnapshot: () => snapshot,
+    goLive: async () => {
+      if (disposed || !snapshot.channel) return;
+      await transport.goLive();
+    },
+    pause: () => {
+      if (disposed || !snapshot.channel) return;
+      transport.pause();
+      publish({ ...snapshot, error: undefined, status: "paused" });
+    },
+    play: async () => {
+      if (disposed || !snapshot.channel) return;
+      await transport.play();
+    },
     previous: async () => {
       const channel = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
       if (channel) await tune(channel, "previous");

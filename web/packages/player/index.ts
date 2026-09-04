@@ -1,4 +1,6 @@
 export type {
+  LivePlaybackMode,
+  LivePlaybackState,
   PlayerController,
   PlayerControllerOptions,
   PlayerSnapshot,
