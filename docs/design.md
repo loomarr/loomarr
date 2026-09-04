@@ -5971,6 +5971,20 @@ unattributed BY/BY-SA approval, or inconsistent redistribution claim, and only t
 the downloader's JSONL ledger. The completed ledger binds each row to both that inventory digest and
 the item's metadata digest; copying an approval between inventory snapshots fails closed.
 
+The development-only Met lane may reduce repetitive spreadsheet entry without reducing that item-level
+lock. Its batch-completion aid accepts only the exact current inventory and inert worksheet, a complete
+zero-hold Met metadata pre-screen bound to the pinned Open Access policy evidence, and one separately
+authored maintainer attestation bound to all three artifact digests. The attestation names the reviewer
+and review time, explicitly accepts the recorded non-copyright limitations, and authorizes only private
+development-corpus copying, technical transformation, and evidence extraction. The aid reconstructs
+every immutable worksheet row and fills the same decision columns for each independently identified
+item; the ordinary rights locker remains the sole producer of downloader authority and revalidates all
+rows. A held pre-screen case, mixed authority, incomplete coverage, stale time, changed artifact,
+unknown field, blank attestation, attribution requirement, or non-empty restriction refuses batch
+completion and returns the reviewer to the ordinary item-level exception path. The batch attestation
+does not grant certification, provider transfer, training, production, ingestion, scheduling, or
+broadcast authority and is not a model decision or chain-of-title warranty.
+
 The certification holdout uses a distinct schema-v4 rights contract; a schema-v3 approval remains
 readable development history but cannot authorize certification acquisition or preparation. The
 caller must name the `development` or `certification` profile before either locking rights decisions
