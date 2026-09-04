@@ -14,6 +14,7 @@ interface SurfJourneyProps {
   /** Authoritative preference IDs. Omit when no preference contract is available. */
   favoriteChannelIds?: readonly string[];
   now?: () => number;
+  onDisconnect?: () => Promise<void> | void;
   onTune: (channelId: string) => void;
   playableChannelIds: readonly string[];
   recentChannelIds: readonly string[];
@@ -23,6 +24,7 @@ interface SurfJourneyProps {
   ) => SurfSelection | undefined;
   renderArtwork?: (channel: SurfChannelData) => ReactNode;
   renderChannelLogo?: (channel: SurfChannelData) => ReactNode;
+  serverName?: string;
   serverVersion?: string;
 }
 

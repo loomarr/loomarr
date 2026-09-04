@@ -1,3 +1,4 @@
+import { openEventStream } from "@loomarr/core/events";
 import { createGuideController, createGuideSourcePort } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
@@ -7,9 +8,15 @@ import {
   PairingSession,
   validatePairingCredential,
 } from "@loomarr/core/pairing";
+import { createServerVersionSource } from "@loomarr/core/system-version";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { createPlayerController } from "@loomarr/player";
-import { createExpoVideoTransport, NativePlayerView } from "@loomarr/player/native";
+import {
+  createExpoVideoTransport,
+  createNativeEventStreamFactory,
+  NativePlayerView,
+  PairedNativeImage,
+} from "@loomarr/player/native";
 import { createChannelCatalogPort, createPlayUrlSourcePort } from "@loomarr/player/server";
 import type { ClientDestination } from "@loomarr/ui";
 import {
@@ -39,6 +46,9 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BackHandler, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import appConfig from "../app.json";
+
+const clientVersion = process.env.EXPO_PUBLIC_LOOMARR_CLIENT_VERSION ?? appConfig.expo.version;
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -57,6 +67,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [loadError, setLoadError] = useState<string>();
+  const [serverVersion, setServerVersion] = useState<string>();
   const refreshRequest = useRef<AbortController | undefined>(undefined);
   const transport = useMemo(createExpoVideoTransport, []);
   const controller = useMemo(
@@ -72,6 +83,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     [runtime.credential.serverUrl, runtime.request, transport],
   );
   const catalog = useMemo(() => createChannelCatalogPort(runtime.request), [runtime.request]);
+  const version = useMemo(() => createServerVersionSource(runtime.request), [runtime.request]);
   const guide = useMemo(
     () => createGuideController({ source: createGuideSourcePort(runtime.request) }),
     [runtime.request],
@@ -90,6 +102,11 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     setLoadError(undefined);
     try {
       await controller.reconcile(await catalog.list(request.signal));
+      try {
+        setServerVersion(await version.load(request.signal));
+      } catch {
+        if (!request.signal.aborted) setServerVersion(undefined);
+      }
     } catch (error) {
       if (!request.signal.aborted) {
         setLoadError(error instanceof Error ? error.message : "Couldn't load channels.");
@@ -100,7 +117,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
         if (!request.signal.aborted) setCatalogLoading(false);
       }
     }
-  }, [catalog, controller]);
+  }, [catalog, controller, version]);
   useEffect(() => {
     void refresh();
     return () => {
@@ -113,6 +130,22 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     const channelId = snapshot.channel?.id;
     if (channelId) void guide.refresh(channelId);
   }, [guide, snapshot.channel?.id]);
+  useEffect(() => {
+    const createStream = createNativeEventStreamFactory({
+      headers: { Authorization: `Bearer ${runtime.credential.token}` },
+      onUnauthorized: () => runtime.session.revoked(),
+    });
+    return openEventStream(
+      {
+        onChannel: () => {
+          void refresh();
+          void guide.refresh();
+        },
+      },
+      new URL("/v1/events", runtime.credential.serverUrl).toString(),
+      createStream,
+    );
+  }, [guide, refresh, runtime.credential.serverUrl, runtime.credential.token, runtime.session]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       const destination = clientBackDestination(active);
@@ -221,21 +254,63 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
                 setActive("watching");
               }}
               preferredChannelId={snapshot.channel?.id}
+              renderArtwork={(airing) => {
+                const uri = airing.source.thumbImage?.src ?? airing.source.thumbUrl;
+                return uri ? (
+                  <PairedNativeImage
+                    credential={runtime.credential}
+                    style={{ height: "100%", width: "100%" }}
+                    uri={uri}
+                  />
+                ) : undefined;
+              }}
+              renderChannelLogo={(channel) =>
+                channel.source.logo ? (
+                  <PairedNativeImage
+                    credential={runtime.credential}
+                    resizeMode="contain"
+                    style={{ height: "100%", width: "100%" }}
+                    uri={channel.source.logo}
+                  />
+                ) : undefined
+              }
             />
           ) : (
             <SurfJourney
-              clientVersion="prototype"
+              clientVersion={clientVersion}
               controller={guide}
               currentChannelId={snapshot.channel?.id}
               density="tv"
               focusRegistry={surfFocusRegistry}
+              onDisconnect={() => runtime.session.disconnect()}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
                 setActive("watching");
               }}
               playableChannelIds={snapshot.catalog.map(({ id }) => id)}
               recentChannelIds={snapshot.recentChannelIds}
+              renderArtwork={(channel) =>
+                channel.now?.artworkUri ? (
+                  <PairedNativeImage
+                    credential={runtime.credential}
+                    style={{ height: "100%", width: "100%" }}
+                    uri={channel.now.artworkUri}
+                  />
+                ) : undefined
+              }
+              renderChannelLogo={(channel) =>
+                channel.channelLogoUri ? (
+                  <PairedNativeImage
+                    credential={runtime.credential}
+                    resizeMode="contain"
+                    style={{ height: "100%", width: "100%" }}
+                    uri={channel.channelLogoUri}
+                  />
+                ) : undefined
+              }
               restoreSelection={restoreTvSurfSelection}
+              serverName={runtime.credential.serverUrl}
+              serverVersion={serverVersion}
             />
           )}
         </View>

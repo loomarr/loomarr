@@ -11,4 +11,5 @@ export * from "./guide";
 export * from "./pairing";
 export * from "./provision";
 export * from "./schemas";
+export * from "./system-version";
 export * from "./templates";

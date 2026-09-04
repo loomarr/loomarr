@@ -20,11 +20,13 @@ const layout = layoutGuide(
             season: 7,
             startMs: 1_000,
             stopMs: 3_000,
+            thumbUrl: "/v1/images/now.jpg",
             title: "Now",
           },
           { kind: "program", scheduleBlockId: "next", startMs: 3_000, stopMs: 5_000, title: "Next" },
         ],
         channelId: "seven",
+        logo: "/v1/images/seven-logo.png",
         name: "Science Fiction",
         number: 7,
         pendingCount: 0,
@@ -72,9 +74,16 @@ describe("Surf data", () => {
     expect(result[1]?.channels.map(({ id }) => id)).toEqual(["nine"]);
     expect(result[2]?.channels.map(({ id }) => id)).toEqual(["seven", "nine"]);
     expect(result[2]?.channels[0]).toMatchObject({
+      channelLogoUri: "/v1/images/seven-logo.png",
       channelName: "Science Fiction",
       next: { title: "Next" },
-      now: { episodeLabel: "S07E02", progressPercent: 50, remainingLabel: "1m left", title: "Now" },
+      now: {
+        artworkUri: "/v1/images/now.jpg",
+        episodeLabel: "S07E02",
+        progressPercent: 50,
+        remainingLabel: "1m left",
+        title: "Now",
+      },
     });
   });
 

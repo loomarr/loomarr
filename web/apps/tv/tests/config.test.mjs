@@ -117,3 +117,18 @@ test("restores Guide and Surf focus by identity through the TV registries", asyn
   assert.match(appSource, /focusRegistry=\{surfFocusRegistry\}/);
   assert.match(appSource, /restoreSelection=\{restoreTvSurfSelection\}/);
 });
+
+test("wires authenticated artwork, channel invalidation, identity, versions, and disconnect", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /createNativeEventStreamFactory/);
+  assert.match(appSource, /openEventStream\(/);
+  assert.match(appSource, /Authorization: `Bearer \$\{runtime\.credential\.token\}`/);
+  assert.match(appSource, /onChannel:/);
+  assert.match(appSource, /void refresh\(\)/);
+  assert.match(appSource, /void guide\.refresh/);
+  assert.match(appSource, /<PairedNativeImage/);
+  assert.match(appSource, /onDisconnect=\{\(\) => runtime\.session\.disconnect\(\)\}/);
+  assert.match(appSource, /appConfig\.expo\.version/);
+  assert.match(appSource, /serverVersion=\{serverVersion\}/);
+});
