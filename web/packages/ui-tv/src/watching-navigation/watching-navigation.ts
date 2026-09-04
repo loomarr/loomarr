@@ -13,7 +13,11 @@ const NUMBER_ENTRY_MS = 1_200;
 const tvWatchingRemoteEventFromNative = (
   eventType: string,
   atMs: number,
+  eventKeyAction?: number,
 ): TvWatchingRemoteEvent | undefined => {
+  // react-native-tvos emits Android key-down (0) and key-up (1) events. Normalizing
+  // only the release prevents one physical press from producing two product intents.
+  if (eventKeyAction === 0) return undefined;
   if (/^[0-9]$/.test(eventType)) {
     return { atMs, digit: eventType as TvRemoteDigit, key: "digit" };
   }

@@ -10,6 +10,7 @@
     "doctor": "EXPO_TV=1 expo-doctor",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
+    "test:emulator": "../../scripts/test-tv-emulator-journey.sh",
     "bundle": "EXPO_TV=1 expo export --platform android --output-dir dist/android-tv && EXPO_TV=1 expo export --platform ios --output-dir dist/apple-tv"
   },
   "dependencies": {

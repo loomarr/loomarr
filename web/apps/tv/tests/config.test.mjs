@@ -102,8 +102,10 @@ test("routes the native remote through TV adapters and preserves platform-home B
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
   assert.match(appSource, /useTVEventHandler/);
-  assert.match(appSource, /tvWatchingRemoteEventFromNative\(eventType, Date\.now\(\)\)/);
+  assert.match(appSource, /tvWatchingRemoteEventFromNative\(eventType, Date\.now\(\), eventKeyAction\)/);
+  assert.match(appSource, /event && event\.key !== "select"/);
   assert.match(appSource, /reduceTvWatchingRemote\(remoteStateRef\.current, event\)/);
+  assert.match(appSource, /onOpenGuide=\{\(\) => dispatchRemoteEvent\(\{ key: "select" \}\)\}/);
   assert.match(appSource, /controller\.tuneNumber\(intent\.digits\)/);
   assert.match(appSource, /numberEntry=\{tvNumberEntryPresentation\(remoteState, snapshot\.catalog\)\}/);
   assert.match(appSource, /if \(!destination\) return false/);
