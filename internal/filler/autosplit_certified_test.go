@@ -152,6 +152,25 @@ func TestCertifiedStructureMaterializableUsesDistinctWindowAuthority(t *testing.
 	}
 }
 
+func TestSplitStageAppliesCertifiedWindowPlanWithoutChangingLegacyShadowInput(t *testing.T) {
+	proposal := certifiedStructureProposal(t)
+	proposal.StructureDecision = passingWindowStructureDecision(t, *proposal.StructureDecision)
+	for index := range proposal.Segments {
+		proposal.Segments[index].Category = ""
+		proposal.Segments[index].Audience = ""
+	}
+	stage := NewSplitStage(nil, nil).
+		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second }).
+		WithStructureMaterialization(allowCertifiedWindowStructure(t, *proposal.StructureDecision))
+	legacy, applied := stage.splitPartitions(proposal)
+	if legacy.Verdict() != RejectUntagged || len(legacy.Confirm) != 0 {
+		t.Fatalf("legacy shadow input=%+v", legacy)
+	}
+	if applied.Verdict() != AutoSplitOK || len(applied.Confirm) != 2 || len(applied.Hold) != 0 {
+		t.Fatalf("certified application decision=%+v", applied)
+	}
+}
+
 func passingWindowStructureDecision(t *testing.T, complete fillerstructure.Artifact) *fillerstructure.Artifact {
 	t.Helper()
 	plan, err := fillerstructurewindow.NewPlan(complete.Decision.Source)

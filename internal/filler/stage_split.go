@@ -58,6 +58,9 @@ type SplitStage struct {
 	// structureDecisioner independently assesses the complete retained source once. nil leaves
 	// detector structure in place and makes no provider request.
 	structureDecisioner CompleteTimelineStructureDecisioner
+	// structureMaterialization switches an independently assessed proposal to the certified
+	// complete-plan gate. nil leaves the compatibility gate as application authority.
+	structureMaterialization *StructureMaterializationPolicy
 	// log reports what a grounding pass actually did (§10 V54b). nil is tolerated everywhere.
 	log *slog.Logger
 }
@@ -122,6 +125,13 @@ func (s *SplitStage) WithStructureShadow(observer StructureSplitShadowObserver) 
 // gate still requires an immutable structure authority.
 func (s *SplitStage) WithCompleteTimelineStructureAssessment(decisioner CompleteTimelineStructureDecisioner) *SplitStage {
 	s.structureDecisioner = decisioner
+	return s
+}
+
+// WithStructureMaterialization activates the certified complete-plan gate for proposals that
+// carry a complete-timeline decision. The policy itself still verifies explicit release authority.
+func (s *SplitStage) WithStructureMaterialization(policy *StructureMaterializationPolicy) *SplitStage {
+	s.structureMaterialization = policy
 	return s
 }
 
@@ -583,9 +593,9 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	//
 	// ⚠ **PER SEGMENT since V54.** This used to be one verdict for the reel, so one doubtful cut
 	// in 52 sent all 52 back and the operator's work never shrank.
-	part := AutoConfirmable(*p, s.autoConfirm, s.minClipFloor())
+	legacy, part := s.splitPartitions(*p)
 	if s.structureShadow != nil {
-		if err := s.structureShadow.ObserveStructureSplit(ctx, *p, part); err != nil {
+		if err := s.structureShadow.ObserveStructureSplit(ctx, *p, legacy); err != nil {
 			return StageResult{}, err
 		}
 	}
@@ -665,6 +675,14 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		}, nil
 	}
 	return StageResult{Verdict: VerdictContinue, Spawned: spawned, Note: note}, nil
+}
+
+func (s *SplitStage) splitPartitions(proposal SplitProposal) (SplitPartition, SplitPartition) {
+	legacy := AutoConfirmable(proposal, s.autoConfirm, s.minClipFloor())
+	if s.structureMaterialization == nil || proposal.StructureDecision == nil {
+		return legacy, legacy
+	}
+	return legacy, CertifiedStructureMaterializable(proposal, s.autoConfirm, s.structureMaterialization, s.minClipFloor())
 }
 
 // minClipFloor resolves the clip-duration floor, defaulting to zero (no floor check).

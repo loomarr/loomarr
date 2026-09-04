@@ -403,12 +403,21 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 			MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
 		}
 		minClipDuration := func() time.Duration { return set.dur("filler.min_duration") }
-		// No production slice is certified yet. The shadow still runs the complete-plan gate and
-		// records exactly where it stops, while the compatibility outcome remains application
-		// authority. A later locked certificate supplies one immutable authority for its slices.
-		structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, &filler.StructureMaterializationPolicy{
-			Authority: nil,
-		}, minClipDuration, "production-shadow-no-certified-slices-v1")
+		materialization := &filler.StructureMaterializationPolicy{}
+		policyVersion := "production-shadow-no-certified-slices-v1"
+		windowAuthority, authorityErr := loadWindowStructureAuthority(set.str("filler.structure_window_authority_path"))
+		if authorityErr != nil {
+			log.Error("long-reel materialization authority was not loaded; certified splitting remains disabled", "err", authorityErr)
+		} else if windowAuthority != nil {
+			materialization.WindowAuthority = windowAuthority
+			policyVersion = "production-window-authority-" + windowAuthority.SHA256[:16]
+			log.Info("long-reel materialization authority loaded", "sha256", windowAuthority.SHA256,
+				"minimum_source_ms", windowAuthority.MinimumSourceDurationMS, "maximum_source_ms", windowAuthority.MaximumSourceDurationMS)
+		}
+		// The observer always records compatibility beside the complete-plan answer. When a valid
+		// authority is loaded, the stage separately selects that complete-plan answer for assessed
+		// proposals; malformed or absent authority leaves compatibility as application authority.
+		structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, materialization, minClipDuration, policyVersion)
 		if shadowErr != nil {
 			log.Error("could not construct filler structure split shadow", "err", shadowErr)
 		}
@@ -438,6 +447,9 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 					return set.intv("filler.pipeline.max_split_vision")
 				},
 			})
+		if materialization.WindowAuthority != nil {
+			splitStage.WithStructureMaterialization(materialization)
+		}
 		// Attach even when construction returned a nil typed pointer. Its observer methods fail
 		// closed, preserving the rule that an internal wiring fault cannot silently restore
 		// unattended compatibility publication.

@@ -126,7 +126,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `fillereval` | 5 | — |
 | `fillersafety` | 5 | `mediatools`, `openroutermedia` |
 | `fillerstructure` | 8 | — |
-| `fillerstructurewindow` | 5 | `fillerstructure` |
+| `fillerstructurewindow` | 6 | `fillerstructure` |
 | `httpx` | 10 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
@@ -255,7 +255,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillersafetycert`** · 2 importers · → `fillersafety`
   Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
-- **`fillerstructurewindow`** · 5 importers · → `fillerstructure`, `fillerstructuremedia`
+- **`fillerstructurewindow`** · 6 importers · → `fillerstructure`, `fillerstructuremedia`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
 
 **Layer 7**
@@ -342,7 +342,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 13**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerstructurewindow`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -8905,6 +8905,7 @@ Notifications → Add provider**.
 | `FILLER_REJECT_UNIDENTIFIED` | **`true`** (§10 V51b). Set aside a clip when every signal tier ran and grounded nothing — no era, audience, tag, brand, speech or on-screen text. ⚠ **The only reject an operator can switch off**, because "we could not identify it" is not the claim "it is not a commercial", and a wordless station ident is exactly that case. ⚠ It is also why the rejected list is not optional: every refusal carries a stable reason code plus the measured detail and is reversible in one click. The guard that makes the default safe lives in the score rung — a clip is only unidentified if something actually LOOKED, so a clip the tagger never reached falls through to review, never to a reject |
 | `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every remaining segment must reach. Known duplicates and below-`FILLER_MIN_DURATION` fragments are discarded first; they are deterministic non-clips, not review decisions, and the preserved composite is the recovery path. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert. That risk has not changed; the evidence has. The gate remains strict (the remaining reel qualifies as a whole or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. ⚠ **A SEPARATE threshold from `FILLER_AUTOFILE_MIN_CONFIDENCE`, deliberately.** One dial would force the stricter of two different failure modes to govern both |
 | `FILLER_AUTOSPLIT_MAX_DURATION` | `120s` (§10 V43). The longest a segment may be and still count as advert-shaped. ⚠ Serves TWO jobs and that is why it is one key: it selects which catalog clips the split job even looks at (longer than this ⇒ a compilation worth detecting), and it is the ceiling every segment must clear for auto-confirm. A single number keeps those two answers from disagreeing — a clip the job considers too long to be an advert must not then auto-confirm as one |
+| `FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH` | **empty** (§10 V67). Optional absolute path to the separately reviewed long-reel materialization-authority JSON. Empty, missing, malformed, drifted, or non-authorizing evidence enables no certified slice. The file is loaded at generation start and therefore requires restart after replacement. A valid authority changes only independently assessed long-reel proposals from the compatibility gate to the certified complete-plan gate; it can create held children but grants no training or broadcast admission. |
 | `FILLER_FETCH_EVERY` | `6h` (§10 V38b). How often each registered source is polled for new items. ⚠ **`0` disables auto-fetch entirely** — the escape hatch for an operator who wants acquisition to stay manual, and the value to reach for before disabling sources one by one. ⚠ **V38c: this is now the DEFAULT, not the only value** — a source may override it, and `0` on one row means *that* source never auto-fetches. Inherit is NULL, never 0 |
 | `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |
 | `FILLER_FETCH_MAX_CATALOG_CLIPS` | `2000` (§10 V38b). Auto-fetch stops when the catalog reaches this. ⚠ Manual queueing and approved pulls still work at the limit: a ceiling on what happens UNATTENDED is not a ceiling on what an operator may deliberately do |
