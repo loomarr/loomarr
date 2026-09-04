@@ -3408,6 +3408,64 @@ enrichment or release while one of the three safety authorities is absent. An un
 rights repository, or runtime constructor leaves the existing missing-coordinator hold in place. The private
 content-addressed repository lives under the filler root's excluded `.loomarr/segment-screening` tree.
 
+#### Complete-source visual-sensitive-content authority (V68)
+
+The `visual_safety` axis is a complete-source safety question, not another use of the taxonomy vision
+rung. Four sampled frames, scene-selected OCR, logo classification, or confident multimodal prose cannot
+establish absence of restricted imagery between observations. One deep visual-safety module therefore owns
+source validation, the deterministic coverage plan, adapter observations, conservative reduction, and the
+canonical result. Its external interface accepts one path-free source authority plus a machine-local path
+and returns one content-addressed, non-admitting result. Callers never sequence detectors, interpret their
+confidence, or combine votes.
+
+The source authority binds an opaque source id, complete source SHA-256 and byte length, measured duration
+and video-stream identity, the private visual-policy SHA-256, measurement time, and the exact probing-tool
+identity. The local path is only a locator: the module snapshots a regular non-symlink file and reproduces
+the authority before extraction or spend. A source without a complete decodable video stream is a coverage
+hold. No filename, provider metadata, catalog tag, generated description, or parent classification enters
+the visual verdict.
+
+One versioned coverage profile declares the maximum source duration, target observation interval, maximum
+per-frame timestamp drift, maximum observation count, and the shortest restricted display duration it
+claims to cover. The deterministic planner always includes the first and last representable milliseconds,
+orders every requested timestamp, and rejects a profile whose claimed display floor is not strictly greater
+than its maximum planned or observed gap. Extraction evidence binds every requested and observed timestamp,
+decoded frame digest and dimensions, decoder identity, complete decode outcome, and the plan digest. A
+missing, duplicate, corrupt, out-of-order, excessively drifted, or unobserved frame makes coverage incomplete;
+it is never reconstructed as a negative. Certification locks the profile and display floor—production may
+use a denser compatible plan but may not claim a shorter floor without a new certificate.
+
+Visual observations use the closed states `prohibited`, `no_signal`, `incomplete`, and `failed`. Every
+observation binds the exact source authority, policy, producer family and implementation, certification or
+capability identity, immutable private evidence digest, assessment time, and zero or more source-relative
+intervals. Public evidence carries only opaque policy-match ids and reason codes; it never repeats a
+restricted description. A portable complete-coverage lane is mandatory. A bounded direct-video lane may
+run only for a declared escalation, and an optional Apple Sensitive Content Analysis lane may contribute a
+source-level observation only when its signed entitlement, enabled analysis policy, framework/OS identity,
+input digest, completion, and result are all bound. Apple supplies no timestamp and its negative is neither
+portable coverage nor a standalone clear. Unsupported platform, missing entitlement, disabled analysis,
+adapter error, stale capability, malformed timing, or identity drift is `incomplete` or `failed`, never
+`no_signal`.
+
+Reduction is asymmetric and contains no majority vote. Any valid prohibited observation quarantines the
+source and every mapped derivative, even when another lane reports no signal. With no prohibited
+observation, missing mandatory portable coverage, an incomplete or failed attempted lane, malformed
+evidence, or producer/certification drift holds. Only complete valid negative observations may produce
+`no_prohibited_visual_observed`, which remains evidence rather than ingestion, scheduling, training, or
+broadcast authority. Source projection is all-or-nothing: an incomplete mapping or a derivative that escapes
+one positive source verdict fails the operation closed.
+
+Certification uses rights-cleared, source-family-disjoint positive and clean controls and locks truth before
+candidate execution. Positive slices include short exposure, cuts, crop/letterbox, transcode, VFR/CFR,
+animation, monochrome, low light, multiple people, compilation placement, and damaged tails. Clean slices
+include programme, advertising, animation, historical graphics, and visually busy material. Every labeled
+positive at or above the locked display floor must quarantine; one miss fails. With zero misses, at least 59
+independent positive source families are required for a one-sided 95% exact lower recall bound of at least
+95%. Clean false positives must remain at or below the predeclared per-slice bound. Generated controls and
+transformed derivatives exercise implementation behavior but never inflate the independent-source
+denominator. Until that immutable certificate and a separate production release authority exist, the
+qualification evaluator continues to return `visual_safety_not_certified` and no catalog behavior changes.
+
 The file evidence adapter gives each subject/profile pair one deterministic operation identity pointing at
 its settled axis record. Once present, a different result cannot replace it; paid evaluators still own their
 pre-call reservation journals so a crash before publication cannot repeat an ambiguous charge. The
