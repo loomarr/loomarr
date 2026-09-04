@@ -80,22 +80,35 @@ func (r *FillerRightsRegistry) Record(ctx context.Context, grant FillerRightsGra
 	return r.repository.PutFillerRightsGrant(ctx, grant)
 }
 
+func (r *FillerRightsRegistry) CurrentGrant(ctx context.Context, scope FillerRightsScope) (FillerRightsGrant, bool, error) {
+	if r == nil || r.repository == nil {
+		return FillerRightsGrant{}, false, fmt.Errorf("filler rights registry is unavailable")
+	}
+	if err := ValidateFillerRightsScope(scope); err != nil {
+		return FillerRightsGrant{}, false, err
+	}
+	grant, found, err := r.repository.CurrentFillerRightsGrant(ctx, scope)
+	if err != nil || !found {
+		return grant, found, err
+	}
+	if err := ValidateFillerRightsGrant(grant); err != nil || grant.Scope != scope {
+		return FillerRightsGrant{}, false, fmt.Errorf("current filler rights grant is invalid or scope-drifted")
+	}
+	return grant, true, nil
+}
+
 func (r *FillerRightsRegistry) CurrentFillerRights(ctx context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
 	if r == nil || r.repository == nil || !validFillerRightsUseRequest(request) {
 		return FillerRightsUseDecision{}, false, fmt.Errorf("filler rights registry request is invalid")
 	}
 	scope := fillerRightsScopeForRequest(request)
-	grant, found, err := r.repository.CurrentFillerRightsGrant(ctx, scope)
+	grant, found, err := r.CurrentGrant(ctx, scope)
 	if err != nil {
 		return FillerRightsUseDecision{}, false, fmt.Errorf("read current filler rights grant: %w", err)
 	}
 	if !found {
 		return FillerRightsUseDecision{}, false, nil
 	}
-	if err := ValidateFillerRightsGrant(grant); err != nil || grant.Scope != scope {
-		return FillerRightsUseDecision{}, false, fmt.Errorf("current filler rights grant is invalid or scope-drifted")
-	}
-
 	status, withdrawal := grant.Status, grant.Withdrawal
 	validUntil, withdrawnAt := cloneUTCTime(grant.ValidUntil), cloneUTCTime(grant.WithdrawnAt)
 	if request.RequestedAt.Before(grant.EffectiveAt) || grant.ValidUntil != nil && !request.RequestedAt.Before(*grant.ValidUntil) {

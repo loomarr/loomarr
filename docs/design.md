@@ -3420,6 +3420,10 @@ identity, applies its effective/expiry/withdrawal state at the requested instant
 subject-specific decision consumed by both screening and terminal release. A future or expired grant yields
 an attributable unknown decision, never authorization. Recording a grant alone does not make a child
 airable; every other certified screening axis and the terminal admission decision still apply.
+Administrators record and inspect this history through an admin-only append endpoint and exact-scope current
+read. The server supplies the authenticated actor and recording instant; the request supplies the immutable
+scope, closed decision, private evidence digest, effective/expiry/withdrawal times, and expected current
+grant digest. There is no update or delete endpoint.
 
 Screening aggregates, provider-neutral axis records, operation identities, and opaque raw evidence live
 separately in a private content-addressed repository. The immutable screening-release authority is explicitly
