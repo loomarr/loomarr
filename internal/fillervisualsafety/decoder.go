@@ -150,10 +150,15 @@ func consumeDecodedFrames(ctx context.Context, stdout io.Reader, timestamps *dec
 
 func visualDecodeArgs(source *PreparedSource) []string {
 	video := source.Plan.Video
-	interval := mediatools.MsToFFmpegTime(source.Plan.Profile.ObservationIntervalMS)
-	first := mediatools.MsToFFmpegTime(video.FirstFrameMS)
-	last := mediatools.MsToFFmpegTime(video.LastFrameMS)
-	filter := fmt.Sprintf("select='isnan(prev_selected_t)+gte(t\\,%s+selected_n*%s)+gte(t\\,%s)',format=pix_fmts=rgb24,showinfo", first, interval, last)
+	// The plan may collapse a regular grid point whose drift window overlaps a
+	// distinct terminal frame. Stop the cadence term after the planned regular
+	// points so FFmpeg cannot recreate that deliberately omitted grid point.
+	// Selection uses the same rounded-millisecond timeline as showinfo parsing;
+	// comparing fractional seconds to a rounded authority timestamp can drop an
+	// exact terminal frame such as 90.990991s == 90,991ms.
+	regularPoints := len(source.Plan.Points) - 1
+	filter := fmt.Sprintf("select='isnan(prev_selected_t)+lt(selected_n\\,%d)*gte(round(t*1000)\\,%d+selected_n*%d)+gte(round(t*1000)\\,%d)',format=pix_fmts=rgb24,showinfo",
+		regularPoints, video.FirstFrameMS, source.Plan.Profile.ObservationIntervalMS, video.LastFrameMS)
 	return []string{
 		"-nostdin", "-hide_banner", "-loglevel", "info", "-xerror", "-err_detect", "explode",
 		"-max_error_rate", "0", "-copyts", "-noautorotate", "-threads:v", "1", "-i", source.SnapshotPath,
