@@ -38,3 +38,15 @@ test("starts from SecureStore without the abandoned Compose credential bridge", 
     code: "ENOENT",
   });
 });
+
+test("composes the production TV root around shared dark pairing and paired API transport", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /<SafeAreaProvider>/);
+  assert.match(appSource, /<LoomarrProvider insets=\{insets\} theme="dark">/);
+  assert.match(appSource, /<PairingShell/);
+  assert.match(appSource, /createPairingTransport/);
+  assert.match(appSource, /validatePairingCredential/);
+  assert.match(appSource, /createAuthenticatedFetch\(credential, onRevoked\)/);
+  assert.match(appSource, /<TvPairedRoot credential=\{credential\} session=\{session\} \/>/);
+});
