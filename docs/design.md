@@ -2385,49 +2385,36 @@ traversed with its real remote keys while focus, overscan, clipping, and text ov
 That hands-on checkpoint is required evidence in the PR; an off-centre emulator or a stale installed
 APK does not satisfy it.
 
-### Android TV distribution is Play-signed and track-gated
+### Android TV distribution is a permanent-identity sideload
 
-`loomarr.media` is the permanent production application id. It is reserved once in the Loomarr Play
-Console account and is never reused for a different product or signing identity. Local debug builds
-use `loomarr.media.debug`, so developer installs cannot overwrite, downgrade, or impersonate a
-Play-delivered build. The Kotlin namespace is also `loomarr.media`, so the current source and
-installation identities carry no legacy package name.
+`loomarr.media` is the permanent production application id for the accepted React Native Shield
+replacement. Ordinary development and Storybook builds retain the isolated prototype identity;
+only an explicit Shield-sideload configuration may select the production id, application name,
+launcher icon, and TV banner. That configuration fails closed unless it receives a supported SemVer
+name and a valid derived Android version code.
 
-Android client releases use SemVer names and a deterministic, increasing Play `versionCode`. The
-code allocates two decimal digits each to minor and patch and four release slots within a patch:
+Shield client releases use SemVer names and a deterministic, increasing `versionCode`. The code
+allocates two decimal digits each to minor and patch and four release slots within a patch:
 `major * 100000000 + minor * 1000000 + patch * 10000 + channel`, where `beta.N` occupies 1–7999,
 `rc.N` occupies 8001–8999, and the stable release is 9999. Major is bounded to 20 so every result
-stays below Play's 2,100,000,000 ceiling. A release workflow derives the code from the version name;
-an operator does not type two independent identities that can drift.
+stays below Android's version-code ceiling. The build derives the code from the version name; an
+operator does not type two independent identities that can drift.
 
-Every Play artifact is an Android App Bundle. Pull-request CI continues to build an unsigned debug
-APK and run lint, unit, screenshot, and assembly gates without release credentials. A separate,
-manually dispatched workflow runs only from `main` in the protected `android-beta` GitHub
-environment. It decodes the upload keystore only into the runner's temporary directory, disables
-Gradle's configuration cache for the credentialed build, requires all four signing inputs, verifies
-the resulting JAR signature and expected upload-certificate fingerprint, inspects every packaged
-native library for 32/64-bit ABI coverage and 16 KiB ELF load alignment, records the source commit,
-package, name, code, certificate fingerprint, and AAB digest, and retains the signed AAB plus that
-manifest as restricted workflow artifacts. Secrets, keystores, and service-account JSON are never
-repository files or pull-request inputs.
+The distribution artifact is a signed, sideloadable APK containing the production React Native
+entry and only the `arm64-v8a` native libraries required by the Shield. The build requires all four
+keystore inputs, keeps signing material outside the repository, and records machine-readable
+evidence for the artifact digest, package, name, code, signing-certificate digest, launcher activity,
+TV launcher metadata, icon, banner, embedded JavaScript bundle, and packaged ABI set. The local test
+path creates ephemeral signing material, performs the same inspection, cleanly uninstalls any prior
+`loomarr.media` package from a Loomarr-owned Android TV emulator, installs the APK, and cold-launches
+the Leanback activity.
 
-Google Play App Signing owns the certificate installed on televisions; Loomarr CI holds only the
-resettable upload key. The developer account owner records and backs up both certificate
-fingerprints. The first AAB and Play App Signing enrollment are bootstrapped manually because the
-Publishing API cannot create the app or accept its legal consents. After that first upload, a
-service account restricted to this application and testing-track releases may publish through one
-serialized Publishing API edit. The workflow never targets Production. Internal testing is the
-first distribution boundary; a named Closed track is opened only after installation and upgrade
-acceptance pass.
-
-The reference Shield's historical `tv.loomarr.tv` debug install has a different package and signing
-identity. The first Internal-test build installs alongside it as `loomarr.media`, is paired and
-validated independently, and only then replaces the historical app. Completion requires a second
-Play-delivered release with a higher code to update `loomarr.media` in place while preserving server
-address and pairing state. The release record
-also carries the Android TV listing/review evidence: TV form-factor opt-in, Tier 3 quality review,
-launcher banner, Play icon, feature graphic, 1280 × 720 TV banner, real TV screenshots, review access
-instructions, and tested rollback/track-halt procedure.
+The accepted replacement is installed on the maintainer's Shield by removing the Kotlin application,
+sideloading the React Native APK, and pairing again. Preserving installed credentials, proving an
+in-place upgrade, publishing an AAB, managing Play upload keys or testing tracks, maintaining a Play
+listing, and providing rollback machinery are outside this program. Physical acceptance is a single
+real Shield journey plus side-by-side visual review, backed by the automated player, focus, remote,
+lifecycle, emulator, and artifact gates described above.
 
 V58 ships as three checkpoints: worktree runtime isolation plus this contract; the three-engine
 controller matrix; then the real composition-root/media gate and its documented soak procedure.

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 test("keeps the TV proof isolated from the shipping application", async () => {
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
@@ -13,6 +17,58 @@ test("keeps the TV proof isolated from the shipping application", async () => {
   assert.equal(config.expo.slug, "loomarr-tv-prototype");
   assert.match(config.expo.ios.bundleIdentifier, /\.prototype$/);
   assert.match(config.expo.android.package, /\.prototype$/);
+});
+
+test("resolves only an explicit Shield sideload to the permanent Android identity", async () => {
+  const { stdout } = await execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
+    cwd: new URL("..", import.meta.url),
+    env: {
+      ...process.env,
+      LOOMARR_SHIELD_SIDELOAD: "1",
+      LOOMARR_ANDROID_VERSION_CODE: "1020003",
+      LOOMARR_ANDROID_VERSION_NAME: "0.1.2-beta.3",
+    },
+  });
+  const config = JSON.parse(stdout);
+
+  assert.equal(config.name, "Loomarr");
+  assert.equal(config.slug, "loomarr-tv");
+  assert.equal(config.version, "0.1.2-beta.3");
+  assert.equal(config.android.package, "loomarr.media");
+  assert.equal(config.android.versionCode, 1020003);
+});
+
+test("keeps the permanent identity unreachable outside the sideload build", async () => {
+  const environment = { ...process.env };
+  delete environment.LOOMARR_SHIELD_SIDELOAD;
+  delete environment.LOOMARR_ANDROID_VERSION_CODE;
+  delete environment.LOOMARR_ANDROID_VERSION_NAME;
+  const { stdout } = await execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
+    cwd: new URL("..", import.meta.url),
+    env: environment,
+  });
+  const config = JSON.parse(stdout);
+
+  assert.equal(config.name, "Loomarr TV Prototype");
+  assert.equal(config.slug, "loomarr-tv-prototype");
+  assert.match(config.android.package, /\.prototype$/);
+});
+
+test("fails closed when a Shield sideload has incomplete or invalid version metadata", async () => {
+  const runConfig = (versionCode) =>
+    execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
+      cwd: new URL("..", import.meta.url),
+      env: {
+        ...process.env,
+        LOOMARR_SHIELD_SIDELOAD: "1",
+        LOOMARR_ANDROID_VERSION_CODE: versionCode,
+        LOOMARR_ANDROID_VERSION_NAME: "0.1.2-beta.3",
+      },
+    });
+
+  await assert.rejects(runConfig(""), /requires Loomarr version name and code/);
+  await assert.rejects(runConfig("0"), /version code must be between/);
+  await assert.rejects(runConfig("2100000000"), /version code must be between/);
 });
 
 test("declares the shared TV journey and native playback boundaries", async () => {
