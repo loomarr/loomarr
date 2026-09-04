@@ -24,6 +24,8 @@ describe("TV Watching remote navigation", () => {
       key: "channel",
     });
     expect(tvWatchingRemoteEventFromNative("select", 100)).toEqual({ key: "select" });
+    expect(tvWatchingRemoteEventFromNative("select", 100, 0)).toBeUndefined();
+    expect(tvWatchingRemoteEventFromNative("select", 100, 1)).toEqual({ key: "select" });
     expect(tvWatchingRemoteEventFromNative("playPause", 100)).toBeUndefined();
   });
 

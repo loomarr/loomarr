@@ -220,10 +220,10 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     },
     [runRemoteIntent],
   );
-  useTVEventHandler(({ eventType }) => {
+  useTVEventHandler(({ eventKeyAction, eventType }) => {
     if (active !== "watching") return;
-    const event = tvWatchingRemoteEventFromNative(eventType, Date.now());
-    if (event) dispatchRemoteEvent(event);
+    const event = tvWatchingRemoteEventFromNative(eventType, Date.now(), eventKeyAction);
+    if (event && event.key !== "select") dispatchRemoteEvent(event);
   });
   useEffect(() => {
     const expiresAtMs = remoteState.numberEntry?.expiresAtMs;
@@ -256,7 +256,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
         onChannelUp={() => void controller.step(1)}
         onDismissControls={() => setControlsVisible(false)}
         onGoLive={() => void controller.goLive()}
-        onOpenGuide={() => setActive("guide")}
+        onOpenGuide={() => dispatchRemoteEvent({ key: "select" })}
         onOpenSurf={() => setActive("surf")}
         onPause={controller.pause}
         onPlay={() => void controller.play()}
