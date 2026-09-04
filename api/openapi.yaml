@@ -3659,6 +3659,31 @@ components:
         - withdrawal
         - evidenceSha256
       type: object
+    FillerRightsReviewDTO:
+      additionalProperties: false
+      properties:
+        acquisitionId:
+          type: string
+        canRecord:
+          type: boolean
+        currentGrant:
+          $ref: "#/components/schemas/FillerRightsGrantDTO"
+        policySha256:
+          type: string
+        sourceId:
+          type: string
+        sourceMasterSha256:
+          type: string
+        use:
+          type: string
+      required:
+        - sourceId
+        - acquisitionId
+        - sourceMasterSha256
+        - policySha256
+        - use
+        - canRecord
+      type: object
     FillerScreeningAxisDTO:
       additionalProperties: false
       properties:
@@ -3718,6 +3743,8 @@ components:
           type: string
         reasonCode:
           type: string
+        rightsReview:
+          $ref: "#/components/schemas/FillerRightsReviewDTO"
         state:
           enum:
             - not_screened
