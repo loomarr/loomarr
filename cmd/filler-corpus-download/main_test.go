@@ -90,6 +90,31 @@ func TestPlanDownloadsRejectsUnallowlistedMediaHost(t *testing.T) {
 	}
 }
 
+func TestPlanDownloadsAcceptsRightsApprovedMetImageWithCanonicalExtension(t *testing.T) {
+	retrieved := time.Date(2026, 9, 4, 8, 0, 0, 0, time.UTC)
+	authority := fillercorpus.MetAuthority
+	captureID := fillercorpus.NewCaptureID(authority, "terms-sha256:"+strings.Repeat("a", 64), "policy-positive-nomination")
+	inv := fillercorpus.Inventory{SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: retrieved, Captures: []fillercorpus.Capture{{
+		CaptureID: captureID, Transport: fillercorpus.TransportHTTPS, Authority: authority, Collection: "terms-sha256:" + strings.Repeat("a", 64), RoleHint: "policy-positive-nomination", SnapshotAt: retrieved,
+		MaxRequests: 3, RequestsUsed: 3, MaxResponseBytes: 4096, ResponseBytes: 100, MaxPredictedMediaBytes: 4096, PredictedMediaBytes: 1024, MaxWallTimeMS: 1000, WallTimeMS: 10,
+	}}, Cases: []fillercorpus.InventoryCase{{
+		CaseID: fillercorpus.CaseID(authority, "195733"), CaptureIDs: []string{captureID}, Authority: authority, ItemID: "195733", Title: "Venus",
+		RoleHints: []string{"policy-positive-nomination"}, Creator: []string{"Artist"}, SubjectTerms: []string{"Female Nudes"}, SourceFamily: "met-object:195733",
+		RightsAssertions: []string{"Met object record isPublicDomain=true."}, ItemURL: "https://www.metmuseum.org/art/collection/search/195733",
+		MetadataURL: "https://collectionapi.metmuseum.org/public/collection/v1/objects/195733", MetadataRetrievedAt: retrieved, MetadataSHA256: strings.Repeat("b", 64),
+		AllowedMediaHosts: []string{"images.metmuseum.org"}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "misleading.bin", URL: "https://images.metmuseum.org/object.jpg", MIMEType: "image/jpeg", Bytes: 1024},
+	}}}
+	approval := approvalFor(inv, retrieved)
+	opts := planOptions(retrieved)
+	plan, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan) != 1 || !strings.HasSuffix(plan[0].path, ".jpg") {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
 func TestPlanDownloadsCertificationRejectsLegacyAndProcessorDrift(t *testing.T) {
 	retrieved := time.Date(2026, 9, 2, 8, 0, 0, 0, time.UTC)
 	inv := downloadableInventory(retrieved, "holdout", "")

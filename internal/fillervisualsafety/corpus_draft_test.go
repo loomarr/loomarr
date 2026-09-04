@@ -226,6 +226,13 @@ func newVisualCorpusDraftFixture(t *testing.T) *visualCorpusDraftFixture {
 	return fixture
 }
 
+func TestInspectVisualCorpusImageRejectsBytesAfterCompleteImage(t *testing.T) {
+	raw := append(visualCorpusTestPNG(t, 7, 9, 8), []byte("trailing")...)
+	if _, _, _, _, err := inspectVisualCorpusImage(raw); err == nil {
+		t.Fatal("image with trailing bytes passed")
+	}
+}
+
 func (fixture *visualCorpusDraftFixture) reseal(t *testing.T) {
 	t.Helper()
 	fixture.authority.SchemaVersion = 0

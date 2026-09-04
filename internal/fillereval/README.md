@@ -103,8 +103,12 @@ rights rows tied to the exact inventory and metadata SHA-256 values, reviewer, r
 redistribution decision, attribution, and restrictions; `held` rows remain out of the plan. Before the first request
 it proves the approved count and predicted bytes fit explicit ceilings. Downloads remain serial and identified,
 redirects stay within each authority's frozen and built-in host policy, and bodies cannot exceed
-their recorded size. Source checksums are checked when present, and the external ledger adds a
-locally computed SHA-256. Already-local direct-cohort cases are not downloaded again. A
+their recorded size. MP4, JPEG, and PNG are the only admitted representation types. Image responses must
+match the declared MIME type and exact byte count, decode completely as that format, end at the terminal
+JPEG/PNG boundary, and stay within the 50-million-pixel ceiling. Source checksums are checked when present,
+and the schema-2 external ledger adds a locally computed SHA-256, verified media type, and image dimensions.
+Exact duplicate media is rejected. Downloaded files are published without overwrite at mode `0600` beneath
+a mode-`0700` directory. Already-local direct-cohort cases are not downloaded again. A
 failed or stale approval writes no ledger and cannot silently widen the selected corpus.
 The caller must choose `development` or `certification` through
 `LOOMARR_FILLER_CORPUS_RIGHTS_PROFILE`. Certification additionally pins

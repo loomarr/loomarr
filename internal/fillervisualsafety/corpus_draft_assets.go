@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -56,11 +57,38 @@ func inspectVisualCorpusImage(raw []byte) (string, int, int, string, error) {
 	}
 	reader := bytes.NewReader(raw)
 	decoded, decodedFormat, err := image.Decode(reader)
-	if err != nil || decodedFormat != format || reader.Len() != 0 || decoded.Bounds().Dx() != config.Width || decoded.Bounds().Dy() != config.Height {
+	if err != nil || decodedFormat != format || !completeVisualCorpusImage(raw, format) || decoded.Bounds().Dx() != config.Width || decoded.Bounds().Dy() != config.Height {
 		return "", 0, 0, "", errors.New("visual corpus image is not a complete supported image")
 	}
 	mediaType := "image/" + format
 	return mediaType, config.Width, config.Height, visualDifferenceHash(decoded), nil
+}
+
+func completeVisualCorpusImage(raw []byte, format string) bool {
+	switch format {
+	case "jpeg":
+		return len(raw) >= 4 && raw[0] == 0xff && raw[1] == 0xd8 && raw[len(raw)-2] == 0xff && raw[len(raw)-1] == 0xd9
+	case "png":
+		const signatureBytes = 8
+		if len(raw) < signatureBytes || !bytes.Equal(raw[:signatureBytes], []byte("\x89PNG\r\n\x1a\n")) {
+			return false
+		}
+		for offset := signatureBytes; offset <= len(raw)-12; {
+			length := int64(binary.BigEndian.Uint32(raw[offset : offset+4]))
+			end := int64(offset) + 12 + length
+			if end > int64(len(raw)) {
+				return false
+			}
+			chunkType := string(raw[offset+4 : offset+8])
+			offset = int(end)
+			if chunkType == "IEND" {
+				return length == 0 && offset == len(raw)
+			}
+		}
+		return false
+	default:
+		return false
+	}
 }
 
 func visualDifferenceHash(value image.Image) string {

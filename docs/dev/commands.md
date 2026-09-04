@@ -96,6 +96,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make filler-corpus-commons` |  | freeze bounded Commons pilot and full-inventory artifacts |
 | `make filler-corpus-cdc` |  | freeze bounded CDC pilot and full-inventory artifacts |
 | `make filler-corpus-loc` |  | freeze bounded LOC pilot and full-inventory artifacts |
+| `make filler-corpus-met` |  | freeze a bounded metadata-only Met Museum inventory |
 | `make filler-corpus-nasa` |  | freeze bounded NASA pilot and full-inventory artifacts |
 | `make filler-corpus-pilot` |  | lock the qualified metadata-only filler rights-yield pilot |
 | `make filler-corpus-pilot-rights-review` |  | prepare the inert five-lane pilot review packet |

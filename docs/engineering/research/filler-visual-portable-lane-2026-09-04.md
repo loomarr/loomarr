@@ -474,16 +474,48 @@ The ownership boundary is therefore:
 
 - `fillercorpus` owns bounded discovery, raw metadata evidence, immutable source/work identity, representation
   facts, inventory merge, and the human rights worksheet;
-- a later private materialization step downloads only rights-approved representations, verifies exact bytes
-  and decodability, and emits the already sealed inputs expected by `fillervisualsafety`;
+- the shared private materialization step downloads only rights-approved representations and verifies their
+  exact bytes, declared media type, decodability, and resource ceilings;
 - `fillervisualsafety` owns opaque review, policy truth, family/creator/near-duplicate independence checks,
   model-result separation, and certification measurements.
 
 The existing `fillercorpus.SourceClient` should be reused for public metadata requests. It should not cache
-sensitive image bytes under its metadata cache contract. Adding the Met requires an authority adapter and
-host rules in that package; downloading approved images requires a distinct bounded private materializer.
-Neither concern belongs inside `PrepareVisualCorpusDraft`, and neither changes the unresolved deterministic-
-carrier decision.
+sensitive image bytes under its metadata cache contract. Neither acquisition concern belongs inside
+`PrepareVisualCorpusDraft`, and neither changes the unresolved deterministic-carrier decision.
+
+That boundary is now executable. `CaptureMetInventory` consumes one canonical term set plus exact request,
+object-lookup, item, metadata-byte, predicted-media-byte, delay, and wall-time ceilings. It queries only the
+exact Met API and image hosts, freezes each raw object response in the existing source cache, and rejects a
+search hit unless the individual object record has `isPublicDomain: true`, a trusted original image, a stable
+object URL, a named creator, and one of the term set's required source-authored subject tags. The committed
+positive seed searches `adam and eve`, `aphrodite`, `bathers`, `nude`, and `venus`, but requires `Female Nudes`
+or `Male Nudes` and rejects the exact Met subject terms `Adolescents`, `Boys`, `Children`, `Girls`, and
+`Infants`. Both required and excluded sets are part of the capture identity. Search term, all returned subject
+terms, creator, source work, image facts, and raw-metadata identity survive into the source-neutral inventory
+and rights worksheet. They remain discovery evidence, not truth, an adult-status decision, or a reusable
+taxonomy assertion.
+
+A current-code real probe admitted three candidates from 22 serial requests in 4.730 seconds: _Naval Battle_,
+_Woman Sitting Half-Dressed beside a Stove_, and _Allegory of America_. All three carried a required Met nude
+subject tag, no excluded subject tag, three distinct creators, and three distinct source-work families. The
+response budget used 122,311 of 16,777,216 bytes and predicted 9,500,798 bytes of media without downloading
+it. The exact inventory is SHA-256 `17d8df0f2cf10f7540535d2b951e5e8c9c6bb0e17a910cd45c9ddb407e036f0a`;
+its directory, cache, and inventory are mode `0700`, `0700`, and `0600`, respectively. Preceding diagnostic
+probes admitted a decorative vase from the `adam and eve` search and a nude-tagged work whose Met terms also
+included `Infants`; the bound required/excluded subject rules removed both weak or unsafe nominations before
+any image request. The current inventory also produced a schema-4 inert rights worksheet and CSV at SHA-256
+`fd783f7f662fc123b3ef0c92bcab79f4ef1c2824af8b3f7e41ebad58a2b2731c` and
+`56d2d74b05eb41607108e9f1692a833f0cbb6cdea2de56410c41bbdc109add47`; every reviewer and decision field
+remains blank. No external image was fetched in these adapter probes.
+
+The existing rights-bound downloader is now the one shared materializer rather than a second visual-only
+implementation. Its schema-2 ledger supports MP4, JPEG, and PNG; derives the local extension from the admitted
+MIME type; enforces the response MIME type, exact byte count, optional source hashes, complete image decode,
+terminal JPEG/PNG boundary, dimensions, and a maximum 50-million-pixel image; rejects duplicate exact media;
+and publishes non-overwriting mode-`0600` files beneath a mode-`0700` directory. The visual draft independently
+repeats complete-image and pixel checks at its trust boundary. Materialization still requires an independently
+locked rights decision tied to the exact inventory and metadata. Creating visual-corpus subject status,
+generated status, policy nomination, diagnostic slices, or truth from source tags remains forbidden.
 
 ## Required development measurements
 

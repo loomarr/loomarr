@@ -112,7 +112,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-media-integrity-prepare/ ./cmd/filler-media-integrity-score/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-met/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-media-integrity-prepare/ ./cmd/filler-media-integrity-score/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/
 
 filler-temporal-truth-select: ## select the private 48-case truth-review sample from frozen history without inference
 	@for name in DRAFT SEED OUT A_PACKAGE A_MAP A_LABELS B_PACKAGE B_MAP B_LABELS C_PACKAGE C_MAP C_ADJUDICATIONS; do \
@@ -280,6 +280,26 @@ filler-corpus-loc: ## freeze bounded LOC pilot and full-inventory artifacts
 	    --delay "$${LOOMARR_FILLER_CORPUS_LOC_DELAY:-3100ms}" \
 	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_LOC_MAX_WALL_TIME:-3m}"
 
+filler-corpus-met: ## freeze a bounded metadata-only Met Museum inventory
+	@test -n "$$LOOMARR_FILLER_CORPUS_USER_AGENT" || { echo "filler-corpus-met: LOOMARR_FILLER_CORPUS_USER_AGENT is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_MET_SNAPSHOT_AT" || { echo "filler-corpus-met: LOOMARR_FILLER_CORPUS_MET_SNAPSHOT_AT is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  $(GO) run ./cmd/filler-corpus-met \
+	    --terms "$${LOOMARR_FILLER_CORPUS_MET_TERMS:-internal/fillercorpus/corpus/seeds/met-positive-v1.json}" \
+	    --role-hint "$${LOOMARR_FILLER_CORPUS_MET_ROLE_HINT:-policy-positive-nomination}" \
+	    --out "$${LOOMARR_FILLER_CORPUS_MET_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-inventory.json}" \
+	    --cache-dir "$${LOOMARR_FILLER_CORPUS_MET_CACHE:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-cache}" \
+	    --user-agent "$$LOOMARR_FILLER_CORPUS_USER_AGENT" \
+	    --snapshot-at "$$LOOMARR_FILLER_CORPUS_MET_SNAPSHOT_AT" \
+	    --max-requests "$${LOOMARR_FILLER_CORPUS_MET_MAX_REQUESTS:-650}" \
+	    --max-object-lookups "$${LOOMARR_FILLER_CORPUS_MET_MAX_OBJECT_LOOKUPS:-500}" \
+	    --max-items "$${LOOMARR_FILLER_CORPUS_MET_MAX_ITEMS:-120}" \
+	    --max-response-bytes "$${LOOMARR_FILLER_CORPUS_MET_MAX_RESPONSE_BYTES:-134217728}" \
+	    --max-item-bytes "$${LOOMARR_FILLER_CORPUS_MET_MAX_ITEM_BYTES:-134217728}" \
+	    --max-total-bytes "$${LOOMARR_FILLER_CORPUS_MET_MAX_TOTAL_BYTES:-17179869184}" \
+	    --delay "$${LOOMARR_FILLER_CORPUS_MET_DELAY:-250ms}" \
+	    --max-wall-time "$${LOOMARR_FILLER_CORPUS_MET_MAX_WALL_TIME:-1h}"
+
 filler-corpus-nasa: ## freeze bounded NASA pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-nasa \
@@ -425,6 +445,7 @@ filler-corpus-download: ## download only rights-approved corpus media under hard
 	    --max-requests "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_REQUESTS" \
 	    --max-items "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_ITEMS" \
 	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_BYTES" \
+	    --max-image-pixels "$${LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_IMAGE_PIXELS:-50000000}" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_DOWNLOAD_DELAY:-1s}"
 
 filler-corpus-rights-review: ## prepare an inert worksheet from a frozen filler inventory
