@@ -35,6 +35,17 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNotSurfaced})
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		}
+		if intent.ReferenceResolved && !intent.referenceKeys[provision.Key(key)] {
+			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
+			continue // a resolved reference cannot be padded with an unrelated grounded id
+		}
+		if requiresMembershipEvidence(intent) {
+			relevance, _ := relevanceForCandidate(decisionRankQuery(intent), cand)
+			if relevance == 0 && adjacentVotesOf(intent, provision.Key(key)) == 0 {
+				traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
+				continue // identity is real, but no source-backed fact connects it to the named set
+			}
+		}
 		item := fromCandidate(cand, p.Rationale, p.Confidence)
 		// Carry the adjacency consensus onto the pick so the approval surface can show WHY
 		// it was offered ("recommended by 5 of your films"). Zero for every other corpus.

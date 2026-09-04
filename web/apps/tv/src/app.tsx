@@ -1,18 +1,29 @@
+import { createGuideController, createGuideSourcePort } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
+  createAuthenticatedFetch,
   createPairingCredentialStore,
   createPairingTransport,
   PairingSession,
   validatePairingCredential,
 } from "@loomarr/core/pairing";
 import { LoomarrProvider } from "@loomarr/design-system";
+import { createPlayerController } from "@loomarr/player";
+import { createExpoVideoTransport, NativePlayerView } from "@loomarr/player/native";
+import { createChannelCatalogPort, createPlayUrlSourcePort } from "@loomarr/player/server";
 import type { ClientDestination } from "@loomarr/ui";
-import { ClientShell, clientBackDestination, PairingShell } from "@loomarr/ui";
+import {
+  ClientShell,
+  clientBackDestination,
+  PairingShell,
+  WatchingSurface,
+  watchingScheduleFromGuide,
+} from "@loomarr/ui";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
-import { BackHandler } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { BackHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const credentialStore = createPairingCredentialStore({
@@ -21,8 +32,69 @@ const credentialStore = createPairingCredentialStore({
   setItem: SecureStore.setItemAsync,
 });
 
-const TvShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
+type TvPairedRuntime = {
+  credential: PairingCredential;
+  request: typeof globalThis.fetch;
+  session: PairingSession;
+};
+
+const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [loadError, setLoadError] = useState<string>();
+  const refreshRequest = useRef<AbortController | undefined>(undefined);
+  const transport = useMemo(createExpoVideoTransport, []);
+  const controller = useMemo(
+    () =>
+      createPlayerController({
+        profile: {},
+        source: createPlayUrlSourcePort({
+          baseUrl: runtime.credential.serverUrl,
+          fetch: runtime.request,
+        }),
+        transport,
+      }),
+    [runtime.credential.serverUrl, runtime.request, transport],
+  );
+  const catalog = useMemo(() => createChannelCatalogPort(runtime.request), [runtime.request]);
+  const guide = useMemo(
+    () => createGuideController({ source: createGuideSourcePort(runtime.request) }),
+    [runtime.request],
+  );
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const guideSnapshot = useSyncExternalStore(guide.subscribe, guide.getSnapshot, guide.getSnapshot);
+  const refresh = useCallback(async () => {
+    refreshRequest.current?.abort();
+    const request = new AbortController();
+    refreshRequest.current = request;
+    setCatalogLoading(true);
+    setLoadError(undefined);
+    try {
+      await controller.reconcile(await catalog.list(request.signal));
+    } catch (error) {
+      if (!request.signal.aborted) {
+        setLoadError(error instanceof Error ? error.message : "Couldn't load channels.");
+      }
+    } finally {
+      if (refreshRequest.current === request) {
+        refreshRequest.current = undefined;
+        if (!request.signal.aborted) setCatalogLoading(false);
+      }
+    }
+  }, [catalog, controller]);
+  useEffect(() => {
+    void refresh();
+    return () => {
+      refreshRequest.current?.abort();
+      guide.dispose();
+      controller.dispose();
+    };
+  }, [controller, guide, refresh]);
+  useEffect(() => {
+    const channelId = snapshot.channel?.id;
+    if (channelId) void guide.refresh(channelId);
+  }, [guide, snapshot.channel?.id]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       const destination = clientBackDestination(active);
@@ -32,15 +104,62 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     });
     return () => subscription.remove();
   }, [active]);
-  return (
-    <ClientShell
-      active={active}
-      density="tv"
-      onDisconnect={() => session.disconnect()}
-      onNavigate={setActive}
-      serverName={credential.serverUrl}
-    />
+  const schedule = watchingScheduleFromGuide(
+    guideSnapshot.layout,
+    snapshot.channel?.id,
+    snapshot.livePlayback?.viewerTimeMs ?? Date.now(),
   );
+  return (
+    <View style={{ flex: 1 }}>
+      <WatchingSurface
+        chromeVisible={active === "watching"}
+        controlsVisible={controlsVisible}
+        density="tv"
+        loading={catalogLoading}
+        loadError={loadError}
+        onChannelDown={() => void controller.step(-1)}
+        onChannelUp={() => void controller.step(1)}
+        onDismissControls={() => setControlsVisible(false)}
+        onGoLive={() => void controller.goLive()}
+        onOpenGuide={() => setActive("guide")}
+        onOpenSurf={() => setActive("surf")}
+        onPause={controller.pause}
+        onPlay={() => void controller.play()}
+        onPrevious={() => void controller.previous()}
+        onRetry={() => void (loadError ? refresh() : controller.retry())}
+        onShowControls={() => setControlsVisible(true)}
+        player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
+        schedule={schedule}
+        snapshot={snapshot}
+      />
+      {active === "watching" ? null : (
+        <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
+          <ClientShell
+            active={active}
+            density="tv"
+            onDisconnect={() => runtime.session.disconnect()}
+            onNavigate={setActive}
+            serverName={runtime.credential.serverUrl}
+          />
+        </View>
+      )}
+    </View>
+  );
+};
+
+const TvPairedRoot = ({
+  credential,
+  session,
+}: {
+  credential: PairingCredential;
+  session: PairingSession;
+}) => {
+  const onRevoked = useCallback(() => session.revoked(), [session]);
+  const runtime = useMemo<TvPairedRuntime>(
+    () => ({ credential, request: createAuthenticatedFetch(credential, onRevoked), session }),
+    [credential, onRevoked, session],
+  );
+  return <TvShell key={credential.token} runtime={runtime} />;
 };
 
 const TvClient = () => {
@@ -57,11 +176,11 @@ const TvClient = () => {
     [],
   );
   return (
-    <LoomarrProvider insets={insets}>
+    <LoomarrProvider insets={insets} theme="dark">
       <PairingShell
         density="tv"
         initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
-        renderPaired={(credential) => <TvShell credential={credential} session={session} />}
+        renderPaired={(credential) => <TvPairedRoot credential={credential} session={session} />}
         session={session}
       />
       <StatusBar hidden />

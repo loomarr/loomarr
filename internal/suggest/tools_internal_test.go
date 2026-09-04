@@ -24,6 +24,31 @@ func TestParseDiscoveryQueryValidatesAndNormalizesScalarQualifiers(t *testing.T)
 	}
 }
 
+func TestParseDiscoveryQueryValidatesAndNormalizesGroundedEntityQualifiers(t *testing.T) {
+	movie, discovery, err := parseDiscoveryQuery(map[string]any{
+		"media_type": "movie",
+		"cast":       []any{" Tom Hanks ", "Meg Ryan"},
+		"creators":   []any{" Nora Ephron "},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discovery || movie.MediaType != "movie" || len(movie.Cast) != 2 || movie.Cast[0] != "Tom Hanks" ||
+		len(movie.Creators) != 1 || movie.Creators[0] != "Nora Ephron" {
+		t.Fatalf("movie entity query = %+v discovery=%v", movie, discovery)
+	}
+
+	series, discovery, err := parseDiscoveryQuery(map[string]any{
+		"media_type": "series", "network": " HBO ", "origin_country": "us",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discovery || series.MediaType != "series" || series.Network != "HBO" || series.OriginCountry != "US" {
+		t.Fatalf("series entity query = %+v discovery=%v", series, discovery)
+	}
+}
+
 func TestParseDiscoveryQueryRejectsMalformedOrBroadeningInputs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -38,6 +63,14 @@ func TestParseDiscoveryQueryRejectsMalformedOrBroadeningInputs(t *testing.T) {
 		{name: "vote average above scale", args: map[string]any{"genres": []any{"Drama"}, "vote_average_min": 10.1}, want: "at most 10"},
 		{name: "zero vote average", args: map[string]any{"genres": []any{"Drama"}, "vote_average_min": 0}, want: "greater than 0"},
 		{name: "mixed search modes", args: map[string]any{"query": "Alien", "origin_country": "US"}, want: "cannot be combined"},
+		{name: "network without series type", args: map[string]any{"network": "HBO"}, want: "requires media_type series"},
+		{name: "network on movie", args: map[string]any{"media_type": "movie", "network": "HBO"}, want: "requires media_type series"},
+		{name: "cast without movie type", args: map[string]any{"cast": []any{"Tom Hanks"}}, want: "require media_type movie"},
+		{name: "creator on series", args: map[string]any{"media_type": "series", "creators": []any{"David Simon"}}, want: "require media_type movie"},
+		{name: "network and people", args: map[string]any{"media_type": "series", "network": "HBO", "cast": []any{"Idris Elba"}}, want: "cannot be combined"},
+		{name: "malformed cast", args: map[string]any{"media_type": "movie", "cast": []any{"Tom Hanks", 31}}, want: "cast must be"},
+		{name: "duplicate creator", args: map[string]any{"media_type": "movie", "creators": []any{"Nora Ephron", " nora ephron "}}, want: "duplicate"},
+		{name: "blank network", args: map[string]any{"media_type": "series", "network": "  "}, want: "network must be"},
 		{name: "empty request", args: map[string]any{}, want: "provide query"},
 	}
 	for _, tt := range tests {

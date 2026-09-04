@@ -8,3 +8,5 @@ export type {
   GuideSurfaceProps,
   GuideUnavailableState,
 } from "./guide.type";
+export type { GuideJourneyProps } from "./guide-journey";
+export { GuideJourney } from "./guide-journey";

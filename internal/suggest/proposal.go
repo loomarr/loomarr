@@ -15,6 +15,7 @@ package suggest
 import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -49,6 +50,13 @@ type Intent struct {
 	// Empty on a fresh suggestion (no lineup to walk from) and on any install without a
 	// TMDB corpus wired.
 	Adjacent []AdjacentContext `json:"adjacent,omitempty"`
+	// ReferenceTitles are bounded, source-resolved title anchors for this one
+	// Suggest execution. They never enter the API or persisted Intent JSON.
+	ReferenceTitles     []string `json:"-"`
+	ReferenceResolved   bool     `json:"-"`
+	referenceEvidence   reference.Evidence
+	referenceKeys       map[provision.Key]bool
+	referenceCandidates []catalog.Candidate
 	// DiscoveryScopeID is internal execution context for channel-specific explicit
 	// feedback during re-curation. It never enters the API or persisted intent JSON.
 	DiscoveryScopeID string `json:"-"`
@@ -127,6 +135,9 @@ type ProposalItem struct {
 	VoteAverage      float64  `json:"voteAverage,omitempty"`
 	VoteCount        int      `json:"voteCount,omitempty"`
 	Keywords         []string `json:"keywords,omitempty"`
+	Networks         []string `json:"networks,omitempty"`
+	Cast             []string `json:"cast,omitempty"`
+	Creators         []string `json:"creators,omitempty"`
 	// OfficialRating carries from the grounded Candidate for ChannelPolicy audience
 	// enforcement (programming-design §4): it's stamped onto the channel's lineup
 	// entry at create time so enforcement filters without a library hit. Display/
@@ -157,6 +168,9 @@ func fromCandidate(c catalog.Candidate, rationale string, confidence float64) Pr
 		VoteAverage:      c.VoteAverage,
 		VoteCount:        c.VoteCount,
 		Keywords:         append([]string(nil), c.Keywords...),
+		Networks:         append([]string(nil), c.Networks...),
+		Cast:             append([]string(nil), c.Cast...),
+		Creators:         append([]string(nil), c.Creators...),
 	}
 }
 
