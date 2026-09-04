@@ -97,6 +97,7 @@ classify() {
       select_gate clients
       select_gate apple_tv
       select_gate expo_android_tv
+      select_gate android
       ;;
     web/packages/design-system/*|web/packages/ui/*|web/packages/ui-tv/*)
       known=true
@@ -105,6 +106,7 @@ classify() {
       # Browser Storybook stories render these universal presentation packages
       # directly. Their output is therefore part of the committed visual contract.
       select_gate visual
+      select_gate android
       ;;
     web/packages/api/*|web/packages/core/*|web/packages/fixtures/*)
       known=true
@@ -115,6 +117,7 @@ classify() {
       select_gate e2e
       select_gate tuner
       select_gate image
+      select_gate android
       ;;
     web/package.json|web/pnpm-lock.yaml|web/pnpm-workspace.yaml|web/.gitignore|web/biome.json|web/tsconfig.base.json)
       known=true
@@ -125,6 +128,7 @@ classify() {
       select_gate visual
       select_gate e2e
       select_gate tuner
+      select_gate android
       ;;
     web/.dependency-cruiser.cjs|web/turbo.json|web/.rnstorybook/*|web/apps/web/client-platform-proof.html|web/apps/web/src/client-platform-proof/*|web/apps/web/tests/client-platform-proof.*|web/apps/web/vite.client-platform.config.ts)
       known=true
@@ -141,6 +145,7 @@ classify() {
       select_gate contracts
       select_gate expo_android_mobile
       select_gate expo_android_tv
+      select_gate android
       ;;
     web/scripts/check-imports.mjs|web/scripts/check-imports.test.mjs)
       known=true
@@ -156,6 +161,7 @@ classify() {
       select_gate visual
       select_gate e2e
       select_gate tuner
+      select_gate android
       ;;
     web/*)
       known=true
@@ -235,6 +241,10 @@ classify() {
       select_gate go
       ;;
     android/*)
+      known=true
+      select_gate android
+      ;;
+    store-listing/android-tv/*)
       known=true
       select_gate android
       ;;
@@ -331,6 +341,7 @@ classify() {
     brand-assets.lock.json)
       known=true
       select_gate clients
+      select_gate android
       ;;
     scripts/*)
       known=true
@@ -342,7 +353,7 @@ classify() {
         scripts/ci-impact*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/testdata/ci-*) select_gate policy ;;
         scripts/dev-*) select_gate contracts; select_gate agent ;;
         scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/validate-android-release-source.sh) select_gate android ;;
-        scripts/generate-brand-assets.mjs|scripts/check-brand-assets.mjs) select_gate clients ;;
+        scripts/generate-brand-assets.mjs|scripts/check-brand-assets.mjs) select_gate clients; select_gate android ;;
         scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
         *) select_gate contracts ;;
       esac
@@ -405,6 +416,7 @@ classify() {
       select_gate e2e
       select_gate tuner
       select_gate image
+      select_gate android
       select_gate policy
       ;;
     mk/smoke.mk)

@@ -16,7 +16,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"apple-compilation-cache.yml": {jobs: map[string]int{"publish": 13}},
 		"cache-cleanup.yml":           {jobs: map[string]int{"cleanup": 1}},
 		"ci-agent.yml":                {jobs: map[string]int{"run": 3}},
-		"ci-android.yml":              {jobs: map[string]int{"run": 6}},
+		"ci-android.yml":              {jobs: map[string]int{"run": 9}},
 		"ci-apple-mobile.yml":         {jobs: map[string]int{"run": 9}},
 		"ci-apple-tv.yml":             {jobs: map[string]int{"run": 9}},
 
@@ -71,7 +71,7 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"tuner":      {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'"},
 		"image":      {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
 		"docs":       {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
-		"android":    {name: "Android TV — lint + unit + assemble", condition: "needs.changes.outputs.impact_android == 'true'"},
+		"android":    {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.impact_android == 'true'"},
 	}
 }
 

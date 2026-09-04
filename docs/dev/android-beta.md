@@ -1,7 +1,7 @@
 # Android TV beta releases
 
-Loomarr's Play identity and Kotlin namespace are both `loomarr.media`. Debug builds install as
-`loomarr.media.debug` and cannot replace a Play build.
+Loomarr's accepted React Native TV client owns the permanent Play identity `loomarr.media`.
+Prototype development builds use `media.loomarr.tv.prototype` and cannot replace a Play build.
 
 The full rationale and current Google requirements are in
 [`FINDINGS-android-tv-beta-distribution-2026-08-22.md`](../engineering/FINDINGS-android-tv-beta-distribution-2026-08-22.md).
@@ -65,14 +65,14 @@ Production access. Enable the Google Play Developer API in its Cloud project.
 Run **Android TV beta** from `main` with:
 
 - version `0.1.0-beta.1`;
-- **Publish to Play** disabled; and
-- track `internal`.
+- **Publish to Play** disabled.
 
 The workflow requires the exact `main` commit to have a successful CI run in which the Android job
-actually executed. It then builds with the protected upload key, verifies the signature and
-certificate, checks `loomarr.media`, inspects all packaged native libraries for 32/64-bit ABIs and
-16 KiB ELF alignment, and retains the AAB plus its JSON evidence for 30 days. Download that AAB and
-upload it manually while enrolling in Play App Signing.
+actually executed. It generates the Android project from `web/apps/tv`, builds with the protected
+upload key, verifies the signature and certificate, checks `loomarr.media`, requires all four
+Android ABIs, verifies 16 KiB ELF alignment for every packaged 64-bit native library, and retains
+the AAB plus its JSON evidence for 30 days. Download that AAB and upload it manually while enrolling
+in Play App Signing.
 
 Do not use Internal App Sharing for acceptance; it re-signs artifacts with a disposable identity and
 does not prove the beta update path.
@@ -81,8 +81,8 @@ does not prove the beta update path.
 
 After the manual bootstrap and service-account setup, dispatch the workflow with **Publish to Play**
 enabled. The publisher opens one Play edit, uploads the exact digest-verified AAB, replaces the
-selected Internal or `closed-beta` track release, and commits the edit. Global concurrency prevents
-two edits from racing. The workflow has no Production choice.
+Internal track release, and commits the edit. Global concurrency prevents two edits from racing.
+The workflow exposes no Closed, Open, or Production choice.
 
 If publication fails, inspect the Play edit error and dispatch a new version only after determining
 whether Play consumed the code. Never lower or reuse a code. Halt a bad rollout in Play Console;
@@ -90,20 +90,17 @@ Android cannot downgrade an installed app, so rollback is a new fixed version wi
 
 ## Shield acceptance
 
-The existing Shield build is `tv.loomarr.tv` with a debug certificate. The Play app is a separate
-`loomarr.media` installation, so migration is recoverable:
+The physical Shield acceptance journey already passed with the React Native `loomarr.media`
+sideload. That build used an ephemeral signing key, so Android may require it to be uninstalled
+before the separately signed Play build can be installed. Losing that local pairing is accepted:
 
-1. Opt the Shield account into the Internal test and install Loomarr from its Play link without
-   removing the historical app.
+1. Opt the Shield account into the Internal test. If Android rejects the Play install because the
+   signatures differ, uninstall the accepted sideload, then install Loomarr from its Play link.
 2. Confirm Settings reports package `loomarr.media`, the expected version code/name, and the Play
-   signing certificate. Pair it to the production Loomarr server.
+   signing certificate. Pair it afresh to the production Loomarr server when needed.
 3. Exercise playback, Guide, Surf, D-pad focus, Back-to-home, process restart, device restart, and
    both 1080p and 4K output. Record the installed version and evidence.
-4. Remove `tv.loomarr.tv` only after the Play build passes. Revoke its obsolete paired-device entry
-   if the server still lists it.
-5. Publish `0.1.0-beta.2`. Prove Play updates `loomarr.media` in place, version code increases,
-   pairing/server state survives, and the same acceptance path remains green.
+4. Revoke obsolete paired-device entries if the server still lists them.
 
-Only after that second update should the same workflow target the named Closed track. If the account
-is subject to Google's personal-account production rule, its separate tester-duration requirement
-applies later; it does not block Internal testing.
+An in-place second-version update proof and wider Play tracks are later release work, not acceptance
+criteria for this Internal beta.

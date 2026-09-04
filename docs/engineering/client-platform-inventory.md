@@ -4,28 +4,27 @@
 **Status:** parity baseline for #970
 **Plan:** [`plans/shared-client-platform.md`](plans/shared-client-platform.md)
 
-This inventory compares the supplied local design artifact with the current Web and Android TV
-implementations. For #970, the current shipping presentation is authoritative per client: Web stays
-visually Web, and Shield stays visually Kotlin/Compose. The supplied artifact informs later
-refinements but does not override either parity target during implementation replacement.
+This historical inventory compared the supplied local design artifact with the Web and former
+Kotlin/Compose Android TV implementations. For #970, each shipping presentation was authoritative:
+Web stays visually Web, and Shield's accepted React Native replacement preserves the former
+Kotlin/Compose presentation. The supplied artifact informs later refinements but did not override
+either parity target during implementation replacement.
 
 ## Evidence inspected
 
 - `/home/fictional/Downloads/Shared file archive(4).zip`, especially
   `Loomarr TV + iOS.dc.html`, rendered locally rather than inferred from the unavailable hosted
   artifact.
-- Current Android TV sources under `android/app/src/main/java/loomarr/media/{design,guide,navigation,pairing,playback}`.
-- Committed Android Roborazzi references for Watching, Surf, Guide, pairing, and their 4K-density
-  variants under `android/app/src/test/screenshots/`.
+- The former Android TV sources and committed Roborazzi references from the baseline revision,
+  before P5c retired the Kotlin application and its screenshot harness.
 - Current web Guide, Watch/player, artwork, channel-identity, token, Storybook, visual, and generated
   client modules.
 - Current product behavior in `docs/design.md`, especially auth, Guide, Watch, player, and TV
   navigation contracts.
 
-The current client surface is substantial: 213 production web TSX files, including 86 Loomarr
-product modules and 25 UI primitives; 114 web stories and 159 web component tests; and 26 Android
-production Kotlin files with 17 Kotlin test files. This is a staged migration of proven behavior,
-not a greenfield demo.
+At inventory time the client surface included 213 production web TSX files, 114 web stories, 159
+web component tests, 26 Android production Kotlin files, and 17 Kotlin test files. This was a staged
+migration of proven behavior, not a greenfield demo; P5c subsequently retired those Kotlin files.
 
 ## What the supplied artifact actually contains
 
@@ -95,8 +94,8 @@ automatically.
 | Roborazzi presentation baselines | replacement native visual and device gates are committed and capable of failing on a real regression |
 | legacy Android token generator | no Kotlin presentation consumer remains |
 
-Package identity and distribution-neutral brand assets survive Compose. Play publishing, signing
-continuity, listing review, and in-place update evidence are outside #970.
+Package identity and distribution-neutral brand assets survive Compose. Internal Play publication
+and protected upload signing are P5b; wider tracks and in-place update evidence are outside #970.
 
 ## First-slice module map
 
@@ -120,9 +119,8 @@ continuity, listing review, and in-place update evidence are outside #970.
 - The iPhone and iPad composites are not a complete mobile application specification. Setup,
   authentication, error recovery, accessibility, portrait/landscape, and safe-area behavior come
   from the product contract and platform evidence.
-- The current Compose player uses Media3 directly. The React Native native-player adapter is not yet
-  selected; P0b must compare maintained native HLS adapters against Loomarr's signed-URL, live-edge,
-  track, lifecycle, TV-key, and store-build requirements before adding one.
+- At inventory time the Compose player used Media3 directly and the React Native native-player
+  adapter had not yet been selected. P4 resolved that seam and P5a accepted it on the Shield.
 - Tamagui's compiler is not part of parity migration. Runtime-only Tamagui is the baseline; any
   compiler experiment is a later isolated performance change.
 

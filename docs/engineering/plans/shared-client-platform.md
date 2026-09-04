@@ -206,8 +206,8 @@ size.target.{pointer,touch,tv}
 
 Platform scales map these roles to concrete values. Raw palette values remain private
 implementation. The token generator continues to publish machine-readable artifacts while legacy
-consumers exist; Tamagui configuration becomes the target source and generated CSS, JSON, and Kotlin
-are adapters rather than competing sources.
+Web consumers exist; Tamagui configuration becomes the target source and generated CSS and JSON are
+adapters rather than competing sources.
 
 ## Parity journey
 
@@ -304,13 +304,14 @@ the parity or retirement gates.
 
 ## Rollback and retirement
 
-Until P5a acceptance, the Kotlin application remains the Shield reference and reinstallable
-artifact. P5a may intentionally discard its installed pairing record: the accepted cutover is
+P5a acceptance established the former Kotlin application as historical Shield parity evidence.
+P5a may intentionally discard its installed pairing record: the accepted cutover is
 uninstall, install the React Native `loomarr.media` build, and pair again. P5b then establishes a
 separate Google Play internal-beta channel from the accepted React Native source. Because the
 accepted sideload used an ephemeral key, its installed copy may be uninstalled once before the
-first Play install; cross-channel signature continuity is not a migration requirement. P5c deletes
-Kotlin only after both React Native artifact paths verify from the same ancestry.
+first Play install; cross-channel signature continuity is not a migration requirement. P5c removes
+the Kotlin application, build, tests, and Kotlin-only release gates after the React Native sideload
+acceptance and Play artifact verification.
 
 Web migration uses route/surface ownership rather than two implementations mounted for the same user
 journey. A surface switches only when its replacement passes its full contract. P6 and P7 may proceed
@@ -396,8 +397,8 @@ blank-but-successfully-bundled page.
 P1 replaces the provisional scaffold styling with Loomarr's original brand contract, refined as a
 cross-platform system. One checked-in JSON contract owns the seven-segment chroma order, calibrated
 colors, wordmark, and identity outline; a hash-bound deterministic generator owns the platform asset
-geometry and specifications. The generator produces 16 web,
-mobile, TV, Android launcher, and store-listing derivatives; `make brand-assets-verify` fails on a
+geometry and specifications. The generator produces web, mobile, TV, launcher, and store-listing
+derivatives; `make brand-assets-verify` fails on a
 hand-edited or stale derivative. Light and dark semantic themes, pointer/touch/TV density scales,
 reduced-motion behavior, contrast assertions, Geist wordmark treatment, Lucide-backed product icons,
 launch motion, inline activity, skeleton, progress, signal-acquisition loading, and the first shared
@@ -408,7 +409,8 @@ matrix, tokens, typography, spacing, iconography, launch sequence, loading vocab
 states. Native Storybook uses the same stories. On the physical Shield at 3840x2160, its TV-specific
 rail rendered the canonical lockup and visible focus treatment; D-pad Down moved focus between story
 cards and OK selected the focused story. This proof uses the prototype package
-`media.loomarr.tv.prototype`, leaving the shipping Compose package untouched.
+`media.loomarr.tv.prototype`, which remains distinct from the permanent `loomarr.media` release
+identity.
 
 The complete `make clients` gate passes package-boundary enforcement, native Storybook generation
 and typing, shared typechecks and tests, Expo Doctor (21/21 for both mobile and TV), production JS

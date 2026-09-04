@@ -38,9 +38,9 @@ jobs=$(
 		"/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100" \
 		--jq '.jobs[] | [.name, .conclusion] | @tsv'
 )
-if ! grep -Fqx $'Shared clients — lint + test + browser/iOS/Android/TV bundles\tsuccess' <<<"$jobs"; then
-	echo 'android release: successful CI run did not execute the shared React Native client gate' >&2
+if ! grep -Fqx $'Android TV — React Native Play bundle\tsuccess' <<<"$jobs"; then
+	echo 'android release: successful CI run did not execute the React Native Play bundle gate' >&2
 	exit 1
 fi
 
-echo "android release: source commit $GITHUB_SHA has a successful React Native client gate"
+echo "android release: source commit $GITHUB_SHA has a successful React Native Play bundle gate"
