@@ -99,6 +99,31 @@ conversion only. Generated tensors are neither positive controls nor clean contr
 evidence about Loomarr-policy recall, false positives, threshold choice, archival-video behavior, or
 broadcast suitability.
 
+## Real worker diagnostic
+
+The development worker now exercises the repository's exact decoder-to-logit path around that graph.
+The launcher is SHA-256 `fa92a8abbbce9aad706ff339dbf35fa966db07f6d9a772739b25a9e97d415215`
+and pins an offline, read-only Linux-arm64 container at image digest
+`sha256:aa26efeda8f4035dea9ffdd58c0dbe2d449ed22647478318dbe5983467944c76`.
+The worker derives and verifies its own model/runtime/preprocessor capability before reading requests;
+that capability is SHA-256 `f2246d86eb6761ae9c0131c212c233440cae9521c410dcc4ee6b48d9cc7dc8e7`.
+It uses the model card's exact `timm.data.create_transform` recipe and the pinned CPU execution
+provider. It returns ordered raw `NSFW` and `SFW` logits only.
+
+One generated 640×360, 10 fps, three-second FFV1 transport control exercised the real FFmpeg
+decoder, all four planned frames at 0, 1,000, 2,000, and 2,900 ms, the framed worker process, raw
+ONNX inference, response validation, complete-decode validation, and aggregate evidence sealing.
+Ten fresh worker-container runs all passed and returned byte-for-byte identical raw logits for every
+frame. Reported model time was 94–104 ms per frame; total process startup, decode, inference, and
+shutdown took 1.87–1.91 seconds per source. The private development report has SHA-256
+`21f5365eff7e19be37a44725457850e3a5114f4e79e6102c1972ed8ca3b979f0`.
+
+This generated pattern is deliberately called a transport control rather than a clean control. Its
+stronger `SFW` logits prove that values have the expected label order, but the pattern has no private
+policy label and contributes nothing to accuracy or certification. Likewise, stable logits on one
+generated video do not establish stability across architectures, codecs, archival material, or real
+sensitive content.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:
@@ -140,8 +165,8 @@ problem.
 
 1. The generic portable-worker protocol, model/runtime capability authority, and single-pass exact-frame
    decoder are implemented without choosing a threshold or enabling production behavior.
-2. The primary Marqo ONNX export is reproducible and conversion parity is measured. Build the worker
-   executable around that exact graph and run decoder-to-logit transport and resource-limit checks.
+2. The primary Marqo ONNX export, exact worker process, decoder-to-logit transport, response identity,
+   resource limits, and repeated generated-control execution are implemented and measured.
 3. Run a small rights-cleared, source-family-disjoint development diagnostic. Stop Marqo early on
    unacceptable CPU throughput or obvious positive misses/clean false positives.
 4. Export and measure Freepik only after the Marqo diagnostic establishes which independent evidence a
