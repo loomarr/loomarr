@@ -124,6 +124,29 @@ policy label and contributes nothing to accuracy or certification. Likewise, sta
 generated video do not establish stability across architectures, codecs, archival material, or real
 sensitive content.
 
+The first real archival positive candidate is the rights-approved development source
+`archive.org/movie_trailers_picfixer/OrgyOfTheDeadTrailer`. Its 127,454 ms Theora artifact was
+decoded completely at a one-second target interval. The first attempt held because an actual 167 ms
+early-stream timestamp gap exceeded the provisional 40 ms drift assumption. After measuring the
+source's irregular PTS, a 300 ms development drift ceiling and 1,700 ms claimed display floor were
+locked. A second attempt exposed a planner error: the final 127,060 ms frame was inside the preceding
+regular grid point's tolerance window, making two requested observations resolve to one physical
+frame. The planner now collapses only such overlapping terminal grid points and retains the measured
+terminal edge; the profile's existing `interval + 2 × drift` bound covers the resulting gap.
+
+The corrected run completed 128 distinct frames with a maximum observed gap of 1,235 ms. Marqo's
+summary-only softmax NSFW score ranged from 0.0564 to 0.9415, with a median of 0.3458; 27 frames were
+at or above the illustrative 0.90 level and 54 were at or above 0.50. The strongest frame occurred at
+92,025 ms. Model time was 94–101 ms per frame. The complete private report has SHA-256
+`2f6e7fa1d5c3019e1685e1cc0aac5b9ca33f03c160e2454ceccca6aa0c484623`; its private summary has
+SHA-256 `ba62d10eb5cc6b2f7b387f761df9feb7f378070c78f94e15bc394af1e9f9caf1`.
+
+This is encouraging sensitivity evidence, not truth or certification. The source's prior model flags
+and corpus policy metadata are not an independently locked visual label. No threshold was selected,
+and no clean false-positive or recall estimate follows from this one source. Its purpose is to show
+that the off-the-shelf portable model produces a strong, temporally distributed signal on relevant
+real media before we spend effort constructing the independent corpus.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:
@@ -167,8 +190,9 @@ problem.
    decoder are implemented without choosing a threshold or enabling production behavior.
 2. The primary Marqo ONNX export, exact worker process, decoder-to-logit transport, response identity,
    resource limits, and repeated generated-control execution are implemented and measured.
-3. Run a small rights-cleared, source-family-disjoint development diagnostic. Stop Marqo early on
-   unacceptable CPU throughput or obvious positive misses/clean false positives.
+3. Expand the first rights-cleared archival positive-candidate run into a small source-family-disjoint
+   diagnostic with independently labeled positives and difficult clean controls. Stop Marqo early on
+   obvious positive misses or clean false positives; do not derive truth from model agreement.
 4. Export and measure Freepik only after the Marqo diagnostic establishes which independent evidence a
    second, much larger constituent must add.
 5. Only then construct and lock the independent certification authority. Keep the current
