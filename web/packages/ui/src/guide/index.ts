@@ -1,6 +1,7 @@
 export { GuideExperience, GuideSurface } from "./guide";
 export type {
   GuideArtworkRenderer,
+  GuideChannelWindow,
   GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,

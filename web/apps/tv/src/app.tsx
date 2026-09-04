@@ -15,10 +15,12 @@ import type { ClientDestination } from "@loomarr/ui";
 import {
   ClientShell,
   clientBackDestination,
+  GuideJourney,
   PairingShell,
   WatchingSurface,
   watchingScheduleFromGuide,
 } from "@loomarr/ui";
+import { tvGuideRowWindow } from "@loomarr/ui-tv";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
@@ -134,13 +136,35 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
       />
       {active === "watching" ? null : (
         <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
-          <ClientShell
-            active={active}
-            density="tv"
-            onDisconnect={() => runtime.session.disconnect()}
-            onNavigate={setActive}
-            serverName={runtime.credential.serverUrl}
-          />
+          {active === "guide" ? (
+            <GuideJourney
+              channelWindow={(layout, selection) =>
+                tvGuideRowWindow(
+                  layout.channels.length,
+                  Math.max(
+                    0,
+                    layout.channels.findIndex((channel) => channel.source.channelId === selection.channelId),
+                  ),
+                  8,
+                )
+              }
+              controller={guide}
+              density="tv"
+              onTune={(channelId) => {
+                void controller.tuneChannel(channelId);
+                setActive("watching");
+              }}
+              preferredChannelId={snapshot.channel?.id}
+            />
+          ) : (
+            <ClientShell
+              active={active}
+              density="tv"
+              onDisconnect={() => runtime.session.disconnect()}
+              onNavigate={setActive}
+              serverName={runtime.credential.serverUrl}
+            />
+          )}
         </View>
       )}
     </View>
