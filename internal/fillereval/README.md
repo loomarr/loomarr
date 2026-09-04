@@ -118,6 +118,17 @@ The caller must choose `development` or `certification` through
 `LOOMARR_FILLER_CORPUS_PROCESSOR_ID` and `LOOMARR_FILLER_CORPUS_PROCESSOR_TERMS_SHA256`; a schema-v3
 development approval, changed processor, or changed terms snapshot fails before media access.
 
+`make filler-corpus-met-rights-propose` removes the repetitive mechanical portion of the Met review
+without bypassing it. The offline command reopens every exact raw object response, requires private
+regular cache files and complete declared coverage, reproduces the inventory projection, and holds
+missing or non-empty `rightsAndReproduction`, missing public-domain assertions, changed bytes, or
+source-field drift. Its policy-evidence input pins the official API documentation and the exact
+official Open Access repository commit while explicitly retaining the documented CC0/image and
+non-copyright limitations. The path-free output contains only case ids, metadata digests, closed
+status/reason codes, aggregate counts, and policy citations. Rights approval, download, truth,
+training, production, scheduling, and broadcast authority are always false; passing rows still need
+the existing independent item-level decision.
+
 `make filler-visual-corpus-nomination-prepare` is the narrow handoff for the institutional still-art lane.
 It strictly reopens the exact inventory, schema-3 materialization ledger, and every private image, then emits
 one inert JSON worksheet plus a spreadsheet-safe CSV. Immutable source, creator, family, rights-approval,

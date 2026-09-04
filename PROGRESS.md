@@ -55,6 +55,13 @@ predicts 292,769,745 media bytes and is SHA-256
 The adapter rejects stale object-detail 404s before image probing, retries only bounded transient
 HTTP statuses within its existing ceilings, and still aborts publication on persistent failures.
 
+The offline Met rights pre-screen now reopens every inventory-bound raw record, reproduces its exact
+projection, pins the official policy-source evidence, and emits only path-free case ids, metadata
+digests, statuses, and reason codes. The real 120-case report has 120 mechanical passes and zero
+holds at SHA-256 `736c569b2b9a441efcde95b013fd0e56db163306302b5d9934bbd1c8add292e7`;
+rights approval and every download, truth, training, production, ingestion, scheduling, and broadcast
+authority remain false pending the independent item-level decision.
+
 Filler compilation certification now has an immutable provider-free run preflight. It reopens and
 hashes the complete public media set, binds the private suite, reports the exact four-run
 topology, and blocks both paid commands unless two sealed cases represent each edge of the intended

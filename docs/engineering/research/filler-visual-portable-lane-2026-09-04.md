@@ -527,6 +527,19 @@ candidates, and its final validation/publication pass used six live requests, 1,
 2.988 seconds. These are still discovery nominations: creator display-name uniqueness does not establish
 identity, adult subject status, rights approval, policy truth, or suitability for air.
 
+The Met rights pre-screen now automates the repetitive part of the next gate without replacing it.
+One offline operation reopens every exact inventory-bound raw response beneath a private non-symlink
+cache root, verifies file identity and SHA-256, reconstructs the complete inventory projection, and
+requires both `isPublicDomain: true` and a present-but-blank `rightsAndReproduction`. Its evidence
+manifest pins the official API documentation plus the official Open Access repository README and
+CC0 file at commit `6fa206f0df6cf349d4fe558028d4c08e95f44eb6`, while retaining explicit limitations for
+image licensing, non-copyright rights, and independent policy review. Changed or missing metadata,
+non-private files, a source-field disagreement, a missing public-domain assertion, or missing/non-empty
+rights prose becomes a named hold. The real 120-case run returned 120
+`met_metadata_prescreen_pass` rows and zero holds in a 29,537-byte mode-`0600`, path-free report at
+SHA-256 `736c569b2b9a441efcde95b013fd0e56db163306302b5d9934bbd1c8add292e7`. Every authority flag remains
+false; the independent item-level rights decision is still required before image download.
+
 The existing rights-bound downloader is now the one shared materializer rather than a second visual-only
 implementation. Its shared schema-3 ledger supports MP4, JPEG, and PNG; derives the local extension from the admitted
 MIME type; enforces the response MIME type, exact byte count, optional source hashes, complete image decode,

@@ -19,16 +19,17 @@ type metSearchResponse struct {
 }
 
 type metObject struct {
-	ObjectID          int64  `json:"objectID"`
-	IsPublicDomain    bool   `json:"isPublicDomain"`
-	PrimaryImage      string `json:"primaryImage"`
-	Title             string `json:"title"`
-	ArtistDisplayName string `json:"artistDisplayName"`
-	ObjectDate        string `json:"objectDate"`
-	ObjectURL         string `json:"objectURL"`
-	Repository        string `json:"repository"`
-	CreditLine        string `json:"creditLine"`
-	Tags              []struct {
+	ObjectID              int64   `json:"objectID"`
+	IsPublicDomain        bool    `json:"isPublicDomain"`
+	PrimaryImage          string  `json:"primaryImage"`
+	Title                 string  `json:"title"`
+	ArtistDisplayName     string  `json:"artistDisplayName"`
+	ObjectDate            string  `json:"objectDate"`
+	ObjectURL             string  `json:"objectURL"`
+	Repository            string  `json:"repository"`
+	CreditLine            string  `json:"creditLine"`
+	RightsAndReproduction *string `json:"rightsAndReproduction"`
+	Tags                  []struct {
 		Term string `json:"term"`
 	} `json:"tags"`
 }
