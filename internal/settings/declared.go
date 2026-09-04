@@ -861,6 +861,12 @@ func declared() []Setting {
 			Doc:      "Optional absolute path to a separately reviewed long-reel materialization authority. Empty or invalid evidence enables no certified slice; a valid authority may create held children but cannot make them airable.",
 			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
 		},
+		{
+			Key: "filler.structure_window_deployment_path", Label: "Long-reel deployment file", EnvVar: "FILLER_STRUCTURE_WINDOW_DEPLOYMENT_PATH", Group: GroupFiller,
+			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, Default: "", Validate: storagePath(true), Advanced: true,
+			Doc:      "Optional absolute path to the reviewed authority's OpenRouter route and spend deployment. Empty, invalid, or mismatched evidence performs no structure inference and enables no certified slice.",
+			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
+		},
 		// The ingest pipeline's per-run budget (§10 V51b). Every one of these bounds ONE PASS, not
 		// the catalog: a backlog drains over cycles, which is the property the per-job batch
 		// constants they replace (LanguageBatch 25, TranscribeBatch 10, VisionBatch 5,

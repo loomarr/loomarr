@@ -78,7 +78,7 @@ func appWindowStructureAuthorityFixture() fillerstructurewindow.MaterializationA
 	}
 	for _, pair := range [][2]string{{"assessor-a", "family-a"}, {"assessor-b", "family-b"}} {
 		authority.Assessors = append(authority.Assessors, fillerstructure.AssessorProfile{
-			ID: pair[0], ModelFamily: pair[1], Provider: "openrouter", Model: "provider/model",
+			ID: pair[0], ModelFamily: pair[1], Provider: "openrouter", Model: "provider/model-" + pair[0],
 			ModelDigest: strings.Repeat("c", 64), CapabilitySHA256: strings.Repeat("d", 64),
 			PromptVersion:    fillerstructurewindow.DirectVideoPromptVersion,
 			EvidenceContract: fillerstructurewindow.CallRecordContractVersion,

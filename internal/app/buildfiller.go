@@ -408,11 +408,20 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		windowAuthority, authorityErr := loadWindowStructureAuthority(set.str("filler.structure_window_authority_path"))
 		if authorityErr != nil {
 			log.Error("long-reel materialization authority was not loaded; certified splitting remains disabled", "err", authorityErr)
-		} else if windowAuthority != nil {
+		}
+		windowDeployment, deploymentErr := loadWindowStructureDeployment(set.str("filler.structure_window_deployment_path"), windowAuthority)
+		if deploymentErr != nil {
+			log.Error("long-reel deployment was not loaded; structure inference and certified splitting remain disabled", "err", deploymentErr)
+		}
+		windowRuntime, runtimeErr := buildCertifiedWindowStructureRuntime(st, set, layout, windowAuthority, windowDeployment)
+		if runtimeErr != nil {
+			log.Error("long-reel runtime was not activated; structure inference and certified splitting remain disabled", "err", runtimeErr)
+		} else if windowRuntime != nil {
 			materialization.WindowAuthority = windowAuthority
-			policyVersion = "production-window-authority-" + windowAuthority.SHA256[:16]
-			log.Info("long-reel materialization authority loaded", "sha256", windowAuthority.SHA256,
-				"minimum_source_ms", windowAuthority.MinimumSourceDurationMS, "maximum_source_ms", windowAuthority.MaximumSourceDurationMS)
+			policyVersion = "production-window-authority-" + windowAuthority.SHA256[:12] + "-deployment-" + windowDeployment.SHA256[:12]
+			log.Info("certified long-reel runtime activated", "authority_sha256", windowAuthority.SHA256,
+				"deployment_sha256", windowDeployment.SHA256, "minimum_source_ms", windowAuthority.MinimumSourceDurationMS,
+				"maximum_source_ms", windowAuthority.MaximumSourceDurationMS)
 		}
 		// The observer always records compatibility beside the complete-plan answer. When a valid
 		// authority is loaded, the stage separately selects that complete-plan answer for assessed
@@ -447,8 +456,9 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 					return set.intv("filler.pipeline.max_split_vision")
 				},
 			})
-		if materialization.WindowAuthority != nil {
-			splitStage.WithStructureMaterialization(materialization)
+		if windowRuntime != nil {
+			splitStage.WithCompleteTimelineStructureAssessment(windowRuntime).
+				WithStructureMaterialization(materialization)
 		}
 		// Attach even when construction returned a nil typed pointer. Its observer methods fail
 		// closed, preserving the rule that an internal wiring fault cannot silently restore

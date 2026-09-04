@@ -123,11 +123,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `diagnostics` | 8 | — |
 | `filler` | 9 | `diagnostics`, `filleradmission`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
+| `fillerbakeoff` | 5 | `filleradmission`, `fillereval`, `httpx` |
 | `fillereval` | 5 | — |
 | `fillersafety` | 5 | `mediatools`, `openroutermedia` |
 | `fillerstructure` | 8 | — |
 | `fillerstructurewindow` | 6 | `fillerstructure` |
-| `httpx` | 10 | `metrics` |
+| `httpx` | 11 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
 | `llm` | 6 | `httpx`, `metrics` |
@@ -215,14 +216,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 2**
 
-- **`httpx`** · 10 importers · → `metrics`
+- **`httpx`** · 11 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`schedule`** · 15 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
 
-- **`fillerbakeoff`** · 4 importers · → `filleradmission`, `fillereval`, `httpx`
+- **`fillerbakeoff`** · 5 importers · → `filleradmission`, `fillereval`, `httpx`
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 6 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
@@ -275,7 +276,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.
 - **`fillerstructureopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructuremedia`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to the provider-neutral complete-timeline assessor port.
-- **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructurewindow`, `openroutermedia`
+- **`fillerstructurewindowopenrouter`** · 2 importers · → `filler`, `fillerbakeoff`, `fillerstructure`, `fillerstructurewindow`, `httpx`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
@@ -342,7 +343,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 13**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerstructurewindow`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `reconcile`, `recovery`, `recurate`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -4935,6 +4936,21 @@ requires an explicit materialization-permission flag. Verification reconstructs 
 from the artifact's source, matches its plan digest and complete ordered item count, and checks every
 window's measured duration, media profile, and byte ceiling. It can create held child work only;
 training and broadcast admission remain separate authorities.
+A second content-addressed deployment document turns that reviewed authority into an executable but
+still fail-closed production configuration. It binds the authority digest; explicit automatic-
+assessment permission; exactly the authority's ordered assessor ids, model families, and requested
+models; each exact upstream provider name and selector slug; reasoning mode; worst-case input-token
+allowance; per-request accounting reservation; and positive per-source and per-day spend ceilings.
+The per-source ceiling must reserve every certified window for both families before activation. The
+document contains no credential, filesystem path, current canonical model revision, mutable price, or
+metadata capture. Production reads the OpenRouter credential from its existing provider secret,
+fetches and caches a fresh canonical metadata snapshot for less than half its 24-hour validity,
+recomputes every stable assessor profile, and requires exact equality with the reviewed authority
+before preparing media. It then price-checks every route against the deployment reservation and uses
+the complete fresh snapshot digest in every durable call reservation and settlement. Missing or
+invalid authority, deployment, credential, route, snapshot, evidence store, media preparer, or budget
+leaves independent assessment and certified materialization disabled; it never restores the heuristic
+gate under a certified policy label.
 The runtime assessment coordinator calls each configured complete-timeline assessor serially with
 the same immutable conditioned-media identity and path. Its port exposes no prior answers. Each
 adapter must return either a complete source-bound candidate or an attributable operational-failure
@@ -8923,6 +8939,7 @@ Notifications → Add provider**.
 | `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every remaining segment must reach. Known duplicates and below-`FILLER_MIN_DURATION` fragments are discarded first; they are deterministic non-clips, not review decisions, and the preserved composite is the recovery path. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert. That risk has not changed; the evidence has. The gate remains strict (the remaining reel qualifies as a whole or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. ⚠ **A SEPARATE threshold from `FILLER_AUTOFILE_MIN_CONFIDENCE`, deliberately.** One dial would force the stricter of two different failure modes to govern both |
 | `FILLER_AUTOSPLIT_MAX_DURATION` | `120s` (§10 V43). The longest a segment may be and still count as advert-shaped. ⚠ Serves TWO jobs and that is why it is one key: it selects which catalog clips the split job even looks at (longer than this ⇒ a compilation worth detecting), and it is the ceiling every segment must clear for auto-confirm. A single number keeps those two answers from disagreeing — a clip the job considers too long to be an advert must not then auto-confirm as one |
 | `FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH` | **empty** (§10 V67). Optional absolute path to the separately reviewed long-reel materialization-authority JSON. Empty, missing, malformed, drifted, or non-authorizing evidence enables no certified slice. The file is loaded at generation start and therefore requires restart after replacement. A valid authority changes only independently assessed long-reel proposals from the compatibility gate to the certified complete-plan gate; it can create held children but grants no training or broadcast admission. |
+| `FILLER_STRUCTURE_WINDOW_DEPLOYMENT_PATH` | **empty** (§10 V67). Optional absolute path to the content-addressed long-reel deployment JSON that binds the reviewed authority to two exact OpenRouter routes, reasoning modes, token bounds, reservations, and aggregate spend ceilings. It contains no credential; production uses the existing OpenRouter provider secret. Authority and deployment must both validate at generation start, and replacement requires restart. Empty, malformed, drifted, under-budgeted, or non-authorizing configuration performs no structure inference and enables no certified materialization. |
 | `FILLER_FETCH_EVERY` | `6h` (§10 V38b). How often each registered source is polled for new items. ⚠ **`0` disables auto-fetch entirely** — the escape hatch for an operator who wants acquisition to stay manual, and the value to reach for before disabling sources one by one. ⚠ **V38c: this is now the DEFAULT, not the only value** — a source may override it, and `0` on one row means *that* source never auto-fetches. Inherit is NULL, never 0 |
 | `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |
 | `FILLER_FETCH_MAX_CATALOG_CLIPS` | `2000` (§10 V38b). Auto-fetch stops when the catalog reaches this. ⚠ Manual queueing and approved pulls still work at the limit: a ceiling on what happens UNATTENDED is not a ceiling on what an operator may deliberately do |
