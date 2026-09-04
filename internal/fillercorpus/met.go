@@ -70,7 +70,8 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 		return Inventory{}, err
 	}
 	captureID := NewCaptureID(MetAuthority, "selection-sha256:"+selectionDigest, config.RoleHint)
-	result := Inventory{SchemaVersion: InventorySchemaVersion, SnapshotAt: config.SnapshotAt.UTC()}
+	result := Inventory{SchemaVersion: InventorySchemaVersion}
+	latestObservedAt := searchRetrievedAt
 	var predictedBytes int64
 	lookups := 0
 	seenCreators := make(map[string]struct{}, config.MaxItems)
@@ -91,6 +92,9 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 			}
 			return Inventory{}, fmt.Errorf("capture Met object %d: %w", objectID, err)
 		}
+		if retrievedAt.After(latestObservedAt) {
+			latestObservedAt = retrievedAt
+		}
 		object, ok := decodeMetObject(raw, objectID, config.RequiredSubjectTerms, config.ExcludedSubjectTerms)
 		if !ok {
 			continue
@@ -100,9 +104,12 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 			continue
 		}
 		downloadURL := metOpenAccessDownloadURL(object.PrimaryImage, raw)
-		head, _, err := client.Head(ctx, downloadURL)
+		head, headRetrievedAt, err := client.Head(ctx, downloadURL)
 		if err != nil {
 			return Inventory{}, fmt.Errorf("capture Met object %d image: %w", objectID, err)
+		}
+		if headRetrievedAt.After(latestObservedAt) {
+			latestObservedAt = headRetrievedAt
 		}
 		mediaType, _, _ := mime.ParseMediaType(head.ContentType)
 		if !supportedMetImage(mediaType) || head.ContentLength > config.MaxItemBytes || head.ContentLength > config.MaxTotalBytes-predictedBytes {
@@ -116,14 +123,18 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 	if len(result.Cases) != config.MaxItems {
 		return Inventory{}, fmt.Errorf("capture Met inventory: admitted %d of %d candidates after %d of %d object lookups", len(result.Cases), config.MaxItems, lookups, config.MaxObjectLookups)
 	}
+	if latestObservedAt.IsZero() || latestObservedAt.After(config.SnapshotAt) {
+		return Inventory{}, fmt.Errorf("capture Met inventory: source observation exceeded snapshot ceiling")
+	}
+	result.SnapshotAt = latestObservedAt.UTC()
 	result.Captures = []Capture{{
 		CaptureID: captureID, Transport: TransportHTTPS, Authority: MetAuthority,
-		Collection: "selection-sha256:" + selectionDigest, RoleHint: config.RoleHint, SnapshotAt: config.SnapshotAt.UTC(),
+		Collection: "selection-sha256:" + selectionDigest, RoleHint: config.RoleHint, SnapshotAt: result.SnapshotAt,
 		MaxRequests: config.MaxRequests, RequestsUsed: client.RequestsUsed(),
 		MaxResponseBytes: config.MaxResponseBytes, ResponseBytes: client.ResponseBytes(),
 		MaxPredictedMediaBytes: config.MaxTotalBytes, PredictedMediaBytes: predictedBytes,
 		MaxWallTimeMS: config.MaxWallTime.Milliseconds(), WallTimeMS: time.Since(started).Milliseconds(),
-		SearchSHA256: searchDigest, SearchRetrievedAt: searchRetrievedAt,
+		SearchSHA256: searchDigest, SearchRetrievedAt: searchRetrievedAt, CacheHits: client.CacheHits(),
 	}}
 	if failures := ValidateInventory(result); len(failures) != 0 {
 		return Inventory{}, fmt.Errorf("capture Met inventory: %s", strings.Join(failures, "; "))

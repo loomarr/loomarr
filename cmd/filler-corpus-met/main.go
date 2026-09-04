@@ -45,7 +45,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	cacheDir := flags.String("cache-dir", "", "raw Met response and HEAD cache")
 	userAgent := flags.String("user-agent", "", "descriptive User-Agent with contact")
 	roleHint := flags.String("role-hint", "", "discovery-only role hint")
-	snapshotText := flags.String("snapshot-at", "", "snapshot ceiling in RFC3339 format")
+	snapshotText := flags.String("snapshot-at", "", "latest permitted source observation in RFC3339 format")
 	maxRequests := flags.Int("max-requests", 0, "hard HTTP request ceiling")
 	maxObjectLookups := flags.Int("max-object-lookups", 0, "hard object-record lookup ceiling")
 	maxItems := flags.Int("max-items", 0, "exact candidate target and hard item ceiling")

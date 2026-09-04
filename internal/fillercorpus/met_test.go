@@ -57,6 +57,10 @@ func TestCaptureMetInventoryFreezesOnlyObjectValidatedPublicDomainCandidate(t *t
 		t.Fatalf("selection identity = %q", inventory.Captures[0].Collection)
 	}
 	item := inventory.Cases[0]
+	if !inventory.Captures[0].SnapshotAt.Equal(inventory.SnapshotAt) ||
+		!inventory.SnapshotAt.Before(config.SnapshotAt) || inventory.SnapshotAt.Before(item.MetadataRetrievedAt) {
+		t.Fatalf("snapshot=%s ceiling=%s metadata=%s", inventory.SnapshotAt, config.SnapshotAt, item.MetadataRetrievedAt)
+	}
 	if item.CaseID != "metmuseum.org/collection/195733" || item.SourceFamily != "met-object:195733" ||
 		len(item.Creator) != 1 || item.Creator[0] != "Massimiliano Soldani" || item.MetadataCache == "" ||
 		len(item.Collection) != 2 || item.Collection[1] != "search-term:venus" ||
@@ -298,6 +302,57 @@ func TestMetSelectionIdentityChangesWithSubjectAdmissionRule(t *testing.T) {
 	if first == second || first == metSelectionDigest([]string{"nude"}, []string{"Female Nudes"}, []string{"Infants"}) ||
 		first == metSelectionDigest(terms, []string{"Female Nudes"}, []string{"Children"}) {
 		t.Fatal("selection identity omitted a search or subject-admission input")
+	}
+}
+
+func TestCaptureMetInventoryRejectsObservationBeyondSnapshotCeiling(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.Method + " " + request.URL.Path {
+		case "GET /public/collection/v1/search":
+			_, _ = w.Write([]byte(`{"total":1,"objectIDs":[195733]}`))
+		case "GET /public/collection/v1/objects/195733":
+			_, _ = w.Write([]byte(`{"objectID":195733,"isPublicDomain":true,"primaryImage":"https://images.metmuseum.org/object.jpg","title":"Valid work","artistDisplayName":"Valid Creator","objectURL":"https://www.metmuseum.org/art/collection/search/195733","tags":[{"term":"Female Nudes"}]}`))
+		case "HEAD /object.jpg":
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Content-Length", "100")
+		default:
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+	config := metTestConfig(t, server)
+	config.SnapshotAt = time.Now().Add(-time.Minute).UTC()
+	_, err := CaptureMetInventory(context.Background(), config)
+	if err == nil || !strings.Contains(err.Error(), "source observation exceeded snapshot ceiling") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCaptureMetInventoryReportsCacheHitsSeparately(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.Method + " " + request.URL.Path {
+		case "GET /public/collection/v1/search":
+			_, _ = w.Write([]byte(`{"total":1,"objectIDs":[195733]}`))
+		case "GET /public/collection/v1/objects/195733":
+			_, _ = w.Write([]byte(`{"objectID":195733,"isPublicDomain":true,"primaryImage":"https://images.metmuseum.org/object.jpg","title":"Valid work","artistDisplayName":"Valid Creator","objectURL":"https://www.metmuseum.org/art/collection/search/195733","tags":[{"term":"Female Nudes"}]}`))
+		case "HEAD /object.jpg":
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Content-Length", "100")
+		default:
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+	config := metTestConfig(t, server)
+	if _, err := CaptureMetInventory(context.Background(), config); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := CaptureMetInventory(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inventory.Captures[0].RequestsUsed != 0 || inventory.Captures[0].CacheHits != 3 {
+		t.Fatalf("capture = %+v", inventory.Captures[0])
 	}
 }
 

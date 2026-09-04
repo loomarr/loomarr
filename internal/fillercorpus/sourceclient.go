@@ -28,6 +28,7 @@ type SourceClient struct {
 	delay            time.Duration
 	allowedHosts     []string
 	requests         int
+	cacheHits        int
 	responseBytes    int64
 	lastRequest      time.Time
 }
@@ -111,6 +112,7 @@ func (c *SourceClient) Get(ctx context.Context, rawURL string) ([]byte, time.Tim
 			return nil, time.Time{}, err
 		}
 		c.responseBytes += int64(len(raw))
+		c.cacheHits++
 		return raw, info.ModTime().UTC(), nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, time.Time{}, fmt.Errorf("read source cache: %w", err)
@@ -157,6 +159,7 @@ func (c *SourceClient) Head(ctx context.Context, rawURL string) (SourceHead, tim
 			return SourceHead{}, time.Time{}, err
 		}
 		c.responseBytes += int64(len(raw))
+		c.cacheHits++
 		return head, info.ModTime().UTC(), nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return SourceHead{}, time.Time{}, fmt.Errorf("read source HEAD cache: %w", err)
@@ -238,6 +241,7 @@ func decodeSourceHead(raw []byte) (SourceHead, error) {
 }
 
 func (c *SourceClient) RequestsUsed() int    { return c.requests }
+func (c *SourceClient) CacheHits() int       { return c.cacheHits }
 func (c *SourceClient) ResponseBytes() int64 { return c.responseBytes }
 
 func sourceCacheKey(value string) string {

@@ -684,6 +684,36 @@ gallery is SHA-256 `1db29fa05d8f95cf70270baf38468dbbb9a746ab6353d9ba20a84f5a0d5d
 source-bound renditions. No model output entered the locked worksheet, and candidate-model output still grants
 no truth, training, certification, provider-transfer, production, ingestion, scheduling, or broadcast authority.
 
+### Met clean-candidate acquisition checkpoint
+
+Tracking issue [#1011](https://github.com/loomarr/loomarr/issues/1011) now owns the clean-control cohort.
+The maintainer authorized the same narrow Met Open Access private-development use for a separate frozen
+clean-candidate profile. Eleven broad object/artifact terms plus the existing minor and explicit-nudity tag
+exclusions yielded exactly 350 creator-, work-, and family-distinct JPEG candidates after 1,851 object
+records and 350 representation-header checks. Search terms are intentionally discovery predicates, not
+clean labels; retained subject tags still include people and portraits, which must be prioritized during
+visual review rather than silently cleared.
+
+The first two bounded network passes failed closed on isolated Met `403` responses. The third reached all
+350 cases but exposed that the adapter published its caller-supplied future snapshot ceiling as though it
+were the actual observation time; this made a launch-time ceiling reject every later response. The adapter
+now publishes the latest search, metadata, or representation-header observation it actually consumed,
+rejects observations beyond the configured ceiling, and reports cache hits separately from live requests.
+The corrected cache-backed inventory has latest observation `2026-09-04T16:40:48.07592822Z`, 10 live
+stale-record checks, 2,212 cache hits, 4,607,182 response bytes, 800,602,506 predicted media bytes, and
+SHA-256 `261a4111f2dd024affecafcf2bddc2fcc71e07475d4949ce3a93976d92e7112b`. The earlier ceiling-semantics
+artifact remains privately preserved under an explicit superseded name.
+
+The Met policy pre-screen reproduced all 350 exact records with 350 passes and zero holds at SHA-256
+`8dbc62babb01ac04320dc5eb34f76517a63db1971122e28f561f385c09ebfe6b`. The maintainer's bounded
+private-development attestation is SHA-256 `9c31bb636066977f2675d3e188802a28bb2e828e29c4a16292c63b94bea25a94`;
+the ordinary item-level rights lock is SHA-256 `5261eee30624590ab4904adf836dac1cc93cee2e41fc280e5f93cbf24b5a005e`.
+Materialization completely decoded 350 distinct JPEGs and exactly 800,602,506 bytes in 350 serial requests;
+the schema-3 ledger is SHA-256 `625d45f9912356db8113bf25307511037265f2b79a863138080b7fc830a7a850`.
+The inert, non-blind nomination worksheet now covers all 350 files at internal digest
+`98b38615ee4900b7bb60b7208c906946c8bb4339e342c44cdc724769eb3d2517`. No clean truth, model result,
+certification, provider transfer, training, production, ingestion, scheduling, or broadcast authority exists.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:

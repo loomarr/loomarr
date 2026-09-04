@@ -3473,7 +3473,12 @@ positive at or above the locked display floor must quarantine; one miss fails. W
 independent positive source families are required for a one-sided 95% exact lower recall bound of at least
 95%. Clean false positives must remain at or below the predeclared per-slice bound. Generated controls and
 transformed derivatives exercise implementation behavior but never inflate the independent-source
-denominator. Until that immutable certificate and a separate production release authority exist, the
+denominator. One independently acquired, rights-reviewed still work may be carried through the complete-
+source evaluator by one deterministic lossless audiovisual wrapper and count as exactly one source family;
+the wrapper is transport, not generated semantic content. Every alternate duration, crop, encode, or other
+carrier of that work shares the same family and adds no independent sample. Still-work families supplement
+rather than replace natural programme, advertising, and animation video in the declared clean slices. Until
+that immutable certificate and a separate production release authority exist, the
 qualification evaluator continues to return `visual_safety_not_certified` and no catalog behavior changes.
 
 The file evidence adapter gives each subject/profile pair one deterministic operation identity pointing at
@@ -5833,6 +5838,11 @@ authority, authority-qualified stable case ID, all capture IDs that discovered i
 representation, acquisition-time campaign and source-family identity when known, and the adapter's
 explicit media-host allowlist. Capture-level request,
 response-byte, predicted-media-byte, and wall-clock ceilings remain visible beside actual usage.
+An adapter's configured snapshot time is the latest permitted source observation, not the time it
+pretends the capture occurred. The published inventory and capture snapshot equal the latest search,
+metadata, or representation-header observation actually consumed; crossing the configured ceiling
+fails before publication. Live requests and cache hits are reported separately so a cache-backed
+replay does not masquerade as either a fresh network capture or an unexplained zero-request result.
 The combiner strictly decodes every capture artifact, sorts captures and cases by their stable IDs,
 rejects duplicate capture identity, and folds a repeated case only when its frozen metadata and
 representation are identical; the merged case retains the sorted union of capture IDs and discovery

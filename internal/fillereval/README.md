@@ -140,6 +140,13 @@ batch. The CSV remains non-authorizing until `filler-corpus-rights-lock` indepen
 rows; certification, provider transfer, training, production, ingestion, scheduling, and broadcast
 remain excluded.
 
+The Met adapter has separate frozen discovery profiles for policy-positive and clean-control
+candidates. `met-clean-v1.json` deliberately supplies only search and exclusion predicates: a matching
+record is still a rights-reviewable candidate, never clean truth. Clean retention requires opening the
+exact materialized image, recording the no-sensitive-subject judgment and diagnostic slices, and locking
+that review through the ordinary visual nomination path. One independently sourced still work may count
+once after deterministic lossless wrapping; alternate carriers and transforms remain in that same family.
+
 `make filler-visual-corpus-nomination-prepare` is the narrow handoff for the institutional still-art lane.
 It strictly reopens the exact inventory, schema-3 materialization ledger, and every private image, then emits
 one inert JSON worksheet plus a spreadsheet-safe CSV. Immutable source, creator, family, rights-approval,
