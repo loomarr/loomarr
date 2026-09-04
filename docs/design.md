@@ -3410,6 +3410,17 @@ is immutable historical evidence; terminal release must query the same current-u
 expiry or withdrawal cannot be hidden by replaying an earlier pass. No production implementation is implied
 by this port: until a source/acquisition rights registry can satisfy it, the rights axis remains held.
 
+The production rights registry is append-only and operator-reviewed. One content-addressed grant binds the
+source, acquisition, source-master bytes, policy, and use above to a closed authorization, prohibition, or
+unknown decision; it also binds the private review-evidence digest, recording actor, effective instant,
+optional expiry or withdrawal, and the exact prior grant it supersedes. A separate current-head row exists
+only to provide an atomic compare-and-swap over that immutable history: two reviewers cannot silently fork
+or overwrite the same scope. The current-use module opens the exact head, validates its complete content
+identity, applies its effective/expiry/withdrawal state at the requested instant, and derives the
+subject-specific decision consumed by both screening and terminal release. A future or expired grant yields
+an attributable unknown decision, never authorization. Recording a grant alone does not make a child
+airable; every other certified screening axis and the terminal admission decision still apply.
+
 Screening aggregates, provider-neutral axis records, operation identities, and opaque raw evidence live
 separately in a private content-addressed repository. The immutable screening-release authority is explicitly
 non-authorizing by default, names exactly one canonical profile per axis, and locks the aggregate contract.

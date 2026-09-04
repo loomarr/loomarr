@@ -602,6 +602,13 @@ type FillerSafetyStore interface {
 	RecoverInterruptedSpokenSafetyRuns(context.Context, time.Time) (int, error)
 }
 
+// FillerRightsStore is the append-only operator-reviewed rights authority used by both rendered-
+// child screening and terminal release. Current-time interpretation remains in filler.Registry;
+// the store owns only immutable history and the atomic current-head pointer.
+type FillerRightsStore interface {
+	filler.FillerRightsGrantRepository
+}
+
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
@@ -837,6 +844,7 @@ type Store interface {
 	FillerStructureAssessmentStore
 	FillerDecisionStore
 	FillerSafetyStore
+	FillerRightsStore
 	SplitProposalStore
 	AiringStore
 	ActivityStore
