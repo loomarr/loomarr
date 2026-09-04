@@ -365,8 +365,9 @@ func (s *Server) serveCard(
 		s.pipeChild(w, r, channelID, "offline card", c)
 		return true
 	}
-	if profile.Encoder != playout.EncoderSoftware {
-		if c := s.startChild(r.Context(), channelID, encPlan, playout.EncoderSoftware, true, card(playout.EncoderSoftware)); c != nil {
+	softwareEncoder := playout.SoftwareEncoderFor(profile.Encoder)
+	if profile.Encoder != softwareEncoder {
+		if c := s.startChild(r.Context(), channelID, encPlan, softwareEncoder, true, card(softwareEncoder)); c != nil {
 			s.pipeChild(w, r, channelID, "offline card", c)
 			return true
 		}
@@ -383,8 +384,9 @@ func (s *Server) serveCard(
 //  1. Try the spec as-is (hardware, if that is what the Profile resolved).
 //  2. Produced nothing AND this is a video transcode? Reclaim VRAM (evict the LLM) and retry the
 //     SAME encoder — the freed VRAM is often all it needed.
-//  3. Still nothing? Rebuild the spec with the software encoder (libx264) and run that — slower, but
-//     the channel PLAYS instead of going black. Software is the floor.
+//  3. Still nothing? Rebuild the spec with the codec-matching software encoder (libx264 or libx265)
+//     and run that — slower, but the channel PLAYS instead of going black. Software is the floor;
+//     the live session's pinned codec never changes.
 //
 // A `-c copy` program is NOT laddered: a copy that produces nothing is a bad source file, which no
 // encoder change fixes — so it runs once and fails through (attempt still surfaces the stderr).
@@ -396,7 +398,8 @@ func (s *Server) streamProgram(
 	w http.ResponseWriter, r *http.Request, channelID string, target playout.EncodePlan, what string, spec playout.ProgramSpec,
 ) {
 	transcoding := !spec.Plan.CopyVideo
-	wantsHardware := transcoding && spec.Profile.Encoder != playout.EncoderSoftware
+	softwareEncoder := playout.SoftwareEncoderFor(spec.Profile.Encoder)
+	wantsHardware := transcoding && !playout.IsSoftwareEncoder(spec.Profile.Encoder)
 
 	// ADMISSION, up front (§9.1 V47). A hardware transcode must hold a GPU slot; when the encoder is
 	// saturated we choose software NOW rather than piling on and stalling. A copy needs no slot (it
@@ -409,7 +412,7 @@ func (s *Server) streamProgram(
 		} else {
 			s.log.Info("playout: GPU encode slots full — using software for this program",
 				"channel", channelID, "program", what, "wanted", spec.Profile.Encoder)
-			spec.Profile.Encoder = playout.EncoderSoftware
+			spec.Profile.Encoder = softwareEncoder
 			wantsHardware = false
 		}
 	}
@@ -443,15 +446,15 @@ func (s *Server) streamProgram(
 		}
 	}
 
-	// Attempt 3: software fallback. The channel plays (slower) rather than going black. If the gate
-	// already chose software up front, attempt 1 WAS software — this simply retries it once more,
-	// which is harmless and covers a transient first-attempt failure.
-	if spec.Profile.Encoder != playout.EncoderSoftware {
+	// Attempt 3: codec-preserving software fallback. An HEVC session uses libx265 and an H.264
+	// session uses libx264; changing codec here would poison the pinned parent stream even if this
+	// individual child successfully produced bytes.
+	if spec.Profile.Encoder != softwareEncoder {
 		softSpec := spec
-		softSpec.Profile.Encoder = playout.EncoderSoftware
+		softSpec.Profile.Encoder = softwareEncoder
 		s.log.Warn("playout: falling back to software encoding for this program",
-			"channel", channelID, "program", what, "from", spec.Profile.Encoder)
-		if c := s.startChild(r.Context(), channelID, target, playout.EncoderSoftware, transcoding, playout.ProgramArgs(softSpec)); c != nil {
+			"channel", channelID, "program", what, "from", spec.Profile.Encoder, "to", softwareEncoder)
+		if c := s.startChild(r.Context(), channelID, target, softwareEncoder, transcoding, playout.ProgramArgs(softSpec)); c != nil {
 			s.pipeChild(w, r, channelID, what, c)
 			return
 		}

@@ -709,16 +709,55 @@ func TestManagerStop_TearsDownEveryEncoder(t *testing.T) {
 //
 // These four cover the behaviour onIdle owes. They fail until it is implemented.
 
+func warmSession(t *testing.T, viewer <-chan []byte, encoder *fakeEncoder) {
+	t.Helper()
+	if _, err := encoder.w.Write([]byte("warm")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case chunk, ok := <-viewer:
+		if !ok || string(chunk) != "warm" {
+			t.Fatalf("warming chunk = %q, open=%v", chunk, ok)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("session produced no warming transport")
+	}
+}
+
+// Grace retains a WARM channel, not a parent that has never emitted transport. Keeping a zero-byte
+// full session alive after the waiting tuner gives up would retain its conservative cost and make
+// the baseline recovery fail at capacity on a one-channel machine.
+func TestOnIdle_ZeroByteSessionStopsImmediatelyAndReleasesCapacity(t *testing.T) {
+	spawn, encoder := newFakeSpawnerByKey(t)
+	m := testManager(t, spawn, 1, time.Minute)
+
+	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detach()
+
+	select {
+	case <-encoder("ch1", PlanFull).stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("zero-byte full session remained in grace and retained its capacity slot")
+	}
+	if _, _, err := m.Attach(context.Background(), "ch1", PlanBaseline); err != nil {
+		t.Fatalf("baseline recovery after failed full session: %v", err)
+	}
+}
+
 // The last viewer leaving must NOT stop the encoder immediately — that is what makes
 // channel surfing cheap.
 func TestOnIdle_EncoderSurvivesBrieflyAfterTheLastViewerLeaves(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, 10*time.Second)
 
-	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
+	v, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
+	warmSession(t, v, encoder("ch1"))
 	detach()
 
 	select {
@@ -734,10 +773,11 @@ func TestOnIdle_EncoderStopsAfterTheGracePeriod(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, 50*time.Millisecond)
 
-	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
+	v, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
+	warmSession(t, v, encoder("ch1"))
 	detach()
 
 	select {
@@ -754,10 +794,11 @@ func TestOnIdle_ReconnectInsideGraceAbortsTeardown(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, 300*time.Millisecond)
 
-	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
+	initial, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
+	warmSession(t, initial, encoder("ch1"))
 	detach()
 
 	time.Sleep(50 * time.Millisecond) // still inside the grace window
@@ -791,10 +832,11 @@ func TestOnIdle_StaleTimerDoesNotKillALaterViewer(t *testing.T) {
 
 	// Three quick join/leave cycles, each arming a grace timer.
 	for i := 0; i < 3; i++ {
-		_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
+		viewer, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 		if err != nil {
 			t.Fatalf("cycle %d: %v", i, err)
 		}
+		warmSession(t, viewer, encoder("ch1"))
 		time.Sleep(30 * time.Millisecond)
 		detach()
 		time.Sleep(30 * time.Millisecond)
@@ -829,10 +871,11 @@ func TestOnIdle_TornDownSessionIsReplacedOnNextAttach(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, 50*time.Millisecond)
 
-	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
+	initial, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
+	warmSession(t, initial, encoder("ch1"))
 	detach()
 	select {
 	case <-encoder("ch1").stopped:
