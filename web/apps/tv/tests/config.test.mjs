@@ -50,3 +50,15 @@ test("composes the production TV root around shared dark pairing and paired API 
   assert.match(appSource, /createAuthenticatedFetch\(credential, onRevoked\)/);
   assert.match(appSource, /<TvPairedRoot credential=\{credential\} session=\{session\} \/>/);
 });
+
+test("keeps the native player and Watching mounted beneath Guide and Surf", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  const watching = appSource.indexOf("<WatchingSurface");
+  const overlay = appSource.indexOf('{active === "watching" ? null : (');
+  assert.ok(watching >= 0, "the paired root must render the shared Watching surface");
+  assert.ok(overlay > watching, "transient destinations must render after the mounted Watching surface");
+  assert.match(appSource, /chromeVisible=\{active === "watching"\}/);
+  assert.match(appSource, /player=\{<NativePlayerView style=\{\{ flex: 1 \}\} transport=\{transport\} \/>\}/);
+  assert.match(appSource, /position: "absolute"/);
+});
