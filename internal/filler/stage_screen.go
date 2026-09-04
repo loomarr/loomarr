@@ -84,7 +84,7 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip StoreClip) (StageR
 		return segmentScreeningReview(clip, "rendered-child screening requires review: "+strings.Join(axes, ", ")), nil
 	}
 	if !aggregate.Passes() {
-		return segmentScreeningReview(clip, "rendered-child screening did not produce four passes"), nil
+		return segmentScreeningReview(clip, "rendered-child screening did not produce five passes"), nil
 	}
 	if s.certification == nil {
 		return segmentScreeningReview(clip, "rendered-child screening passed but production release is not authorized"), nil

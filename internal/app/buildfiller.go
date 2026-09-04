@@ -341,6 +341,10 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	// and letting `Applies` answer is what makes the ladder explain an install rather than
 	// merely show gaps in it — the same visible-but-idle contract the Tasks page rows use.
 	clipDir := layout.ClipDir()
+	screeningRuntime, screeningErr := buildQualificationSegmentScreeningRuntime(st, layout)
+	if screeningErr != nil {
+		log.Error("rendered-child screening qualification runtime was not activated", "err", screeningErr)
+	}
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
 			filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
@@ -371,10 +375,10 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 				return lufs
 			}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).WithDiagnostics(processDiagnostics),
 		// Rendered compilation children must not reach enrichment or the compatibility score gate
-		// until the five certified authorities are wired. The visible stage is deliberately
-		// registered with no runtime during qualification: top-level clips skip it, while a child
-		// resolves to review instead of silently inheriting its parent's suitability.
-		filler.NewSegmentScreeningStage(nil, nil, clipDir),
+		// until the five certified authorities are wired. The qualification runtime records the
+		// exact rights and playback answers plus explicit holds for the three uncertified safety
+		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
+		filler.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
 			func() string { return set.str("filler.language") }, time.Now),
 		filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,

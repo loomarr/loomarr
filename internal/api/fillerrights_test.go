@@ -159,7 +159,7 @@ func fillerRightsCurrentPath(scope fillerRightsAPIScope) string {
 
 func decodeFillerRightsGrant(t *testing.T, res *http.Response) fillerRightsGrantWire {
 	t.Helper()
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatal(err)

@@ -3387,6 +3387,19 @@ settle a later human metadata decision only when the pipeline row proves that sc
 and advanced. A review-shaped screening result is recorded as done at its current rung but cannot
 be filed, because a person's generic catalog action is not a substitute for the release authority.
 
+Production starts this rung with a **qualification runtime**, rather than leaving the whole coordinator
+absent until every independent safety lane is certified. The runtime uses the production rights registry and
+deterministic playback verifier immediately, and installs one explicit non-authorizing evaluator for each
+of visual, spoken, and written safety. Each non-authorizing evaluator reopens the exact evidence derivative,
+records its measured artifact identity, and returns a durable `hold` naming the missing axis certification;
+it never emits `pass` or `reject` and performs no inference or provider call. Its profile hashes identify
+the built-in qualification policy, unavailable-certification marker, and implementation—not a safety
+certificate. Consequently the five-axis aggregate and per-axis evidence are exercised on real children,
+rights prohibitions and objective playback failures retain their closed outcomes, and no child can reach
+enrichment or release while one of the three safety authorities is absent. An unavailable evidence root,
+rights repository, or runtime constructor leaves the existing missing-coordinator hold in place. The private
+content-addressed repository lives under the filler root's excluded `.loomarr/segment-screening` tree.
+
 The file evidence adapter gives each subject/profile pair one deterministic operation identity pointing at
 its settled axis record. Once present, a different result cannot replace it; paid evaluators still own their
 pre-call reservation journals so a crash before publication cannot repeat an ambiguous charge. The
@@ -3407,8 +3420,8 @@ rejects; only an exact, unexpired, withdrawal-clear authorization passes. Malfor
 or self-inconsistent authority is an operational failure rather than a guessed semantic answer. The private
 raw axis evidence retains the path-free request and content-addressed decision. The settled screening result
 is immutable historical evidence; terminal release must query the same current-use boundary again so a later
-expiry or withdrawal cannot be hidden by replaying an earlier pass. No production implementation is implied
-by this port: until a source/acquisition rights registry can satisfy it, the rights axis remains held.
+expiry or withdrawal cannot be hidden by replaying an earlier pass. The production registry below satisfies
+this port; without a matching current grant, the rights axis remains held.
 
 The production rights registry is append-only and operator-reviewed. One content-addressed grant binds the
 source, acquisition, source-master bytes, policy, and use above to a closed authorization, prohibition, or
@@ -3452,7 +3465,7 @@ Structure-validated children reuse the V66 derivative publisher and are prepared
 Their playable and evidence derivatives are built from the exact reviewed source intervals, not from an
 older playback rendition. The parent, assessment, observations, and prior complete child generation remain
 intact until every replacement child and durable lineage record validates and the generation switch commits
-atomically. New children remain held through derivative production, the four screens, enrichment, and
+atomically. New children remain held through derivative production, the five screens, enrichment, and
 terminal admission; filesystem visibility is not broadcast permission. A crash, partial re-split,
 derivative failure, or screening failure cannot replace a complete generation with a partial airable one.
 
