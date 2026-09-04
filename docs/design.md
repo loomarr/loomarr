@@ -2621,8 +2621,28 @@ re-read on every admission, composed from three live sources:
    source the doctor's GPU header uses), never a fixed estimate.
 
 Refusing an over-budget transcode is deliberate — the operator gets an actionable "at capacity" 503,
-not universal stutter. The dashboard's `active / capacity` line shows the *live* budget, so its
-denominator shrinks when a model goes resident and grows when it unloads.
+not universal stutter. A proven-warm session with zero viewers is different from active work: it is
+retained only to make a likely bounce-back cheap. Before returning 503, admission reclaims the
+**least-recently-viewed grace-idle session whose nonzero cost can free the needed slot** and retries;
+sessions with viewers are never eviction candidates. Copy-only idle sessions do not consume the
+transcode budget and are therefore not evicted merely to satisfy that budget. An HLS remux's session
+lease marks its internal sink inactive when the last manifest request releases, so session admission
+and viewer telemetry see real demand while bytes continue feeding the warm remux. Evicting that idle
+session closes the sink and tears down its remux; an HLS remux with a live manifest request marks the
+lease active and remains protected.
+
+Grace begins only after the parent has emitted transport. The last viewer leaving records one idle
+generation and its timestamp; reattachment invalidates that generation, and a later detach creates a
+new one. Both the grace callback and capacity reclamation close a session only when that exact idle
+generation is still current. This prevents an older timer from shortening a newer grace period after
+an attach/detach ABA cycle. A zero-byte session is not warm and closes immediately, releasing its
+conservative reservation.
+
+The dashboard reports the complete live-session count (`active`) for compatibility and exposes
+viewer-active and grace-idle session counts separately; their sum is `active`. Its `capacity`
+denominator remains the live transcode budget, shrinking when a model goes resident and growing when
+it unloads. Viewer-demand transitions publish the same full `playout` snapshot over SSE, so the live
+panel does not wait for a later session start or stop to learn that a warm channel became idle.
 
 **Watching from Loomarr's own UI (V46).** The Web UI plays a channel in the browser directly — a
 **Watch** sub-section on the channel-detail page (§12), also reachable from the guide's per-row menu.

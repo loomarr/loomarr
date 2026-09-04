@@ -32,6 +32,10 @@ type PlayoutTelemetry struct {
 	// refused rather than someone else's channel being evicted (§9.1).
 	Active   int `json:"active"`
 	Capacity int `json:"capacity"`
+	// ViewerActiveSessions and GraceIdleSessions split Active by demand. A zero-viewer session is
+	// retained only inside its warm grace interval and may be reclaimed to admit foreground work.
+	ViewerActiveSessions int `json:"viewerActiveSessions"`
+	GraceIdleSessions    int `json:"graceIdleSessions"`
 	// Running reports whether internal playout is wired at all. False on a Tunarr-only
 	// install, where an empty session list means "not our job" rather than "nothing playing" —
 	// a distinction the panel has to draw or it reads as a fault.
@@ -80,10 +84,18 @@ func (s *Server) playoutTelemetry(now time.Time) PlayoutTelemetry {
 		// difference here is "no data" versus "no streams", which the panel renders differently.
 		stats = []playout.SessionStat{}
 	}
+	viewerActive := 0
+	for _, stat := range stats {
+		if stat.Viewers > 0 {
+			viewerActive++
+		}
+	}
 	return PlayoutTelemetry{
-		Sessions: stats,
-		Active:   len(stats),
-		Capacity: s.playoutObserver.Capacity(),
-		Running:  true,
+		Sessions:             stats,
+		Active:               len(stats),
+		Capacity:             s.playoutObserver.Capacity(),
+		ViewerActiveSessions: viewerActive,
+		GraceIdleSessions:    len(stats) - viewerActive,
+		Running:              true,
 	}
 }

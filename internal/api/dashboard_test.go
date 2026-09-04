@@ -69,6 +69,10 @@ func TestPlayoutTelemetry_ReportsSessionsAndLoad(t *testing.T) {
 	if got.Active != 2 || got.Capacity != 4 {
 		t.Errorf("load = %d/%d, want 2/4", got.Active, got.Capacity)
 	}
+	if got.ViewerActiveSessions != 2 || got.GraceIdleSessions != 0 {
+		t.Errorf("viewer-active/grace-idle = %d/%d, want 2/0",
+			got.ViewerActiveSessions, got.GraceIdleSessions)
+	}
 	if len(got.Sessions) != 2 {
 		t.Fatalf("got %d sessions, want 2", len(got.Sessions))
 	}
@@ -80,6 +84,28 @@ func TestPlayoutTelemetry_ReportsSessionsAndLoad(t *testing.T) {
 	}
 	if got.Sessions[1].Speed != 1.4 {
 		t.Errorf("speed = %v, want the measured 1.4", got.Sessions[1].Speed)
+	}
+}
+
+func TestPlayoutTelemetry_SeparatesViewerActiveAndGraceIdleSessions(t *testing.T) {
+	srv := newDashboardServer(t, &fakePlayoutSessions{
+		capacity: 4,
+		stats: []playout.SessionStat{
+			{ChannelID: "watched", Viewers: 1},
+			{ChannelID: "warm", Viewers: 0},
+		},
+	})
+
+	resp := do(t, srv, http.MethodGet, "/v1/playout/sessions", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	got := telemetry(t, resp)
+
+	if got.Active != 2 {
+		t.Fatalf("active = %d, want all 2 live sessions", got.Active)
+	}
+	if got.ViewerActiveSessions != 1 || got.GraceIdleSessions != 1 {
+		t.Fatalf("viewer-active/grace-idle = %d/%d, want 1/1",
+			got.ViewerActiveSessions, got.GraceIdleSessions)
 	}
 }
 
