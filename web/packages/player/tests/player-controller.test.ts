@@ -28,6 +28,7 @@ const harness = (source?: PlayerSourcePort) => {
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
   const transport: PlayerTransport = {
     dispose: vi.fn(),
+    goLive: vi.fn(),
     pause: vi.fn(),
     play: vi.fn(),
     replace: vi.fn().mockResolvedValue(undefined),
@@ -172,6 +173,38 @@ describe("player controller", () => {
 
     emit({ attemptId: firstAttempt, type: "first-frame" });
     expect(controller.getSnapshot().status).toBe("tuning");
+    emit({
+      attemptId: firstAttempt,
+      state: { lagSeconds: 20, mode: "behind", noticeRevision: 1, viewerTimeMs: 1_000 },
+      type: "live-state",
+    });
+    expect(controller.getSnapshot().livePlayback).toMatchObject({ mode: "live", noticeRevision: 0 });
+    emit({ attemptId: latestAttempt, type: "paused" });
+    expect(controller.getSnapshot().status).toBe("paused");
+    emit({
+      attemptId: latestAttempt,
+      state: { lagSeconds: 20, mode: "paused", noticeRevision: 0, viewerTimeMs: 1_000 },
+      type: "live-state",
+    });
+    expect(controller.getSnapshot().livePlayback).toEqual({
+      lagSeconds: 20,
+      mode: "paused",
+      noticeRevision: 0,
+      viewerTimeMs: 1_000,
+    });
+    emit({ attemptId: latestAttempt, type: "playing" });
+    expect(controller.getSnapshot().status).toBe("playing");
+    emit({
+      attemptId: latestAttempt,
+      state: { lagSeconds: 0, mode: "live", noticeRevision: 1, viewerTimeMs: 2_000 },
+      type: "live-state",
+    });
+    expect(controller.getSnapshot().livePlayback).toEqual({
+      lagSeconds: 0,
+      mode: "live",
+      noticeRevision: 1,
+      viewerTimeMs: 2_000,
+    });
     emit({ attemptId: latestAttempt, error: "decoder failed", type: "error" });
     expect(controller.getSnapshot()).toMatchObject({ error: "decoder failed", status: "failed" });
     expect(source.mint).toHaveBeenCalledTimes(2);
@@ -179,6 +212,84 @@ describe("player controller", () => {
     await controller.retry();
     expect(controller.getSnapshot()).toMatchObject({ status: "tuning", tuneReason: "retry" });
     expect(source.mint).toHaveBeenCalledTimes(3);
+  });
+
+  it("resets every Channel tune to live and delegates playback intents", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValueOnce(1_000).mockReturnValueOnce(2_000);
+    const { controller, emit, transport } = harness();
+
+    controller.pause();
+    await controller.play();
+    await controller.goLive();
+    expect(transport.pause).not.toHaveBeenCalled();
+    expect(transport.play).not.toHaveBeenCalled();
+    expect(transport.goLive).not.toHaveBeenCalled();
+
+    await controller.reconcile(channels);
+    const firstAttempt = controller.getSnapshot().attemptId!;
+    expect(controller.getSnapshot().livePlayback).toEqual({
+      lagSeconds: 0,
+      mode: "live",
+      noticeRevision: 0,
+      viewerTimeMs: 1_000,
+    });
+    emit({
+      attemptId: firstAttempt,
+      state: { lagSeconds: 30, mode: "behind", noticeRevision: 2, viewerTimeMs: 500 },
+      type: "live-state",
+    });
+
+    controller.pause();
+    expect(transport.pause).toHaveBeenCalledOnce();
+    expect(controller.getSnapshot()).toMatchObject({
+      error: undefined,
+      livePlayback: { mode: "behind" },
+      status: "paused",
+    });
+    await controller.play();
+    await controller.goLive();
+    expect(transport.play).toHaveBeenCalledTimes(2);
+    expect(transport.goLive).toHaveBeenCalledOnce();
+
+    await controller.tuneChannel("thirty");
+    expect(controller.getSnapshot().livePlayback).toEqual({
+      lagSeconds: 0,
+      mode: "live",
+      noticeRevision: 0,
+      viewerTimeMs: 2_000,
+    });
+
+    controller.dispose();
+    vi.mocked(transport.pause).mockClear();
+    vi.mocked(transport.play).mockClear();
+    vi.mocked(transport.goLive).mockClear();
+    controller.pause();
+    await controller.play();
+    await controller.goLive();
+    expect(transport.pause).not.toHaveBeenCalled();
+    expect(transport.play).not.toHaveBeenCalled();
+    expect(transport.goLive).not.toHaveBeenCalled();
+    now.mockRestore();
+  });
+
+  it("never lets a pending replacement or first-frame callback override an intentional pause", async () => {
+    const replacement = deferred<void>();
+    const { controller, emit, transport } = harness();
+    vi.mocked(transport.replace).mockReturnValue(replacement.promise);
+
+    const tuning = controller.reconcile(channels);
+    await vi.waitFor(() => expect(transport.replace).toHaveBeenCalledOnce());
+    const attemptId = controller.getSnapshot().attemptId!;
+    controller.pause();
+
+    replacement.resolve();
+    await tuning;
+    expect(transport.play).not.toHaveBeenCalled();
+    emit({ attemptId, type: "first-frame" });
+    expect(controller.getSnapshot().status).toBe("paused");
+
+    emit({ attemptId, type: "playing" });
+    expect(controller.getSnapshot().status).toBe("playing");
   });
 
   it("surfaces source failures without entering an automatic retry loop", async () => {
