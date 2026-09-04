@@ -13669,12 +13669,12 @@ paths:
     get:
       operationId: search
       parameters:
-        - description: Search terms
+        - description: Title search terms. Omit when using structured discovery qualifiers.
           explode: false
           in: query
           name: q
           schema:
-            description: Search terms
+            description: Title search terms. Omit when using structured discovery qualifiers.
             type: string
         - description: Corpus to search (default all). Clips are not searchable here — use /v1/filler?q=
           explode: false
@@ -13694,7 +13694,140 @@ paths:
           schema:
             description: Max results (default 20)
             format: int64
+            minimum: 1
             type: integer
+        - description: Optional title-result narrowing, or the media type for structured discovery
+          explode: false
+          in: query
+          name: media_type
+          schema:
+            description: Optional title-result narrowing, or the media type for structured discovery
+            enum:
+              - movie
+              - series
+            type: string
+        - description: Structured genre terms; repeat the parameter for multiple values
+          explode: true
+          in: query
+          name: genres
+          schema:
+            description: Structured genre terms; repeat the parameter for multiple values
+            items:
+              type: string
+            type: array
+        - description: Structured thematic keyword terms; repeat the parameter for multiple values
+          explode: true
+          in: query
+          name: keywords
+          schema:
+            description: Structured thematic keyword terms; repeat the parameter for multiple values
+            items:
+              type: string
+            type: array
+        - description: Earliest release or first-air year
+          explode: false
+          in: query
+          name: year_from
+          schema:
+            description: Earliest release or first-air year
+            format: int64
+            maximum: 9999
+            minimum: 1000
+            type: integer
+        - description: Latest release or first-air year
+          explode: false
+          in: query
+          name: year_to
+          schema:
+            description: Latest release or first-air year
+            format: int64
+            maximum: 9999
+            minimum: 1000
+            type: integer
+        - description: Two-letter original-language code
+          explode: false
+          in: query
+          name: original_language
+          schema:
+            description: Two-letter original-language code
+            maxLength: 2
+            type: string
+        - description: Two-letter origin-country code
+          explode: false
+          in: query
+          name: origin_country
+          schema:
+            description: Two-letter origin-country code
+            maxLength: 2
+            type: string
+        - description: Minimum runtime in minutes
+          explode: false
+          in: query
+          name: runtime_min
+          schema:
+            description: Minimum runtime in minutes
+            format: int64
+            maximum: 1440
+            minimum: 1
+            type: integer
+        - description: Maximum runtime in minutes
+          explode: false
+          in: query
+          name: runtime_max
+          schema:
+            description: Maximum runtime in minutes
+            format: int64
+            maximum: 1440
+            minimum: 1
+            type: integer
+        - description: Minimum TMDB vote average
+          explode: false
+          in: query
+          name: vote_average_min
+          schema:
+            description: Minimum TMDB vote average
+            exclusiveMinimum: 0
+            format: double
+            maximum: 10
+            type: number
+        - description: Minimum TMDB vote count
+          explode: false
+          in: query
+          name: vote_count_min
+          schema:
+            description: Minimum TMDB vote count
+            format: int64
+            maximum: 100000000
+            minimum: 1
+            type: integer
+        - description: Exact TV network name; requires media_type=series
+          explode: false
+          in: query
+          name: network
+          schema:
+            description: Exact TV network name; requires media_type=series
+            maxLength: 100
+            type: string
+        - description: Exact movie cast names; repeat the parameter for multiple values
+          explode: true
+          in: query
+          name: cast
+          schema:
+            description: Exact movie cast names; repeat the parameter for multiple values
+            items:
+              type: string
+            maxItems: 4
+            type: array
+        - description: Exact movie director, writer, or crew names; repeat the parameter for multiple values
+          explode: true
+          in: query
+          name: creators
+          schema:
+            description: Exact movie director, writer, or crew names; repeat the parameter for multiple values
+            items:
+              type: string
+            maxItems: 4
+            type: array
       responses:
         "200":
           content:
