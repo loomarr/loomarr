@@ -1844,14 +1844,28 @@ channel. So a transcode that produces **no output** does not give up — it clim
    signal — no polling, no guessing. Playout **evicts the local LLM** (§8.2 `Evictor`) to free its
    VRAM, then retries the same program on hardware. A live stream preempts a resident suggestion:
    the stream is latency-critical, the suggestion can afford a cold reload.
-3. **Still zero ⇒ software fallback.** If even the freed GPU will not encode it, the program re-runs
-   on **libx264 (software)** — slower, but the channel PLAYS rather than going black. Software is the
-   floor, never the silent failure.
+3. **Still zero ⇒ codec-matching software fallback.** If even the freed GPU will not encode it, the
+   program re-runs on **libx264 for an H.264 broadcast or libx265 for an HEVC broadcast**. That may be
+   slower, but it preserves the format pinned for the session instead of changing decoder state at
+   the next Airing boundary. Naming an encoder is not proof that the local ffmpeg can use it: the
+   child earns success only after it emits transport bytes. Software is the floor, never the silent
+   failure.
 
 This ladder only applies to a **transcode** — a `-c copy` that produces nothing is a bad source file,
-which no encoder change fixes, so a copy fails straight through. And it fires **only on the failure**:
-the common case (hardware works first try) pays nothing, and the eviction in step 2 happens only when
-an encode genuinely could not fit.
+which no encoder change fixes, so that child fails straight through. And it fires **only on the
+failure**: the common case (hardware works first try) pays nothing, and the eviction in step 2 happens
+only when an encode genuinely could not fit.
+
+The raw media-server tuner has one outer recovery because its broad `full` plan may fail before the
+first child proves whether it was copying or transcoding. The handler gives that preferred plan five
+seconds to emit a non-empty transport chunk. If it closes or stays silent, Loomarr releases the
+zero-byte session immediately — it has never been warm and receives no idle grace or retained
+admission cost — then retunes the same Channel as `baseline` (H.264/AAC). Baseline gets the ordinary
+15-second startup bound. The HTTP response becomes `200 video/mp2t` only after one of those attempts
+has produced transport; otherwise it fails before response commitment. Once any bytes are committed,
+the format never switches underneath that viewer. This is deliberately a tuner-boundary recovery,
+not another encoder rung: it can recover both an unusable HEVC software encoder and a silent direct
+copy while keeping the stable-format invariant above.
 
 Every finite live child is paced to the Channel wall clock. The ten-second read-rate burst is a
 **tune-in-only** optimization: it applies only when a new session joins at least ten seconds into an

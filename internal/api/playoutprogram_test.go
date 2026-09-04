@@ -41,6 +41,9 @@ type fakeResolver struct {
 	// it) — HDR is the first such thing.
 	sourceFormat playout.MediaFormat
 	profile      playout.Profile
+	// channelCodec is the persisted codec of the live Channel. Empty keeps the historical h264
+	// default used by the program-path tests; HEVC fallback tests set it explicitly.
+	channelCodec string
 	calls        int
 	mu           sync.Mutex
 	// airingEntered/airingRelease form a deterministic barrier for lifecycle races. When both
@@ -92,7 +95,12 @@ func (f *fakeResolver) PlanFor(context.Context, string, playout.EncodePlan) (pla
 	return f.plan, f.sourceFormat
 }
 
-func (f *fakeResolver) ChannelCodec(context.Context, string) string { return "h264" }
+func (f *fakeResolver) ChannelCodec(context.Context, string) string {
+	if f.channelCodec == "" {
+		return "h264"
+	}
+	return f.channelCodec
+}
 
 func (f *fakeResolver) callCount() int {
 	f.mu.Lock()
@@ -158,6 +166,7 @@ func (f *fakeEncoder) processSpec() diagnostics.ProcessSpec {
 type programOpts struct {
 	resolver api.PlayoutResolver
 	encoder  api.PlayoutEncoder
+	logger   *slog.Logger
 	font     string
 	playout  api.Playout
 	noToken  bool
@@ -185,10 +194,13 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 	if o.playout == nil {
 		o.playout = &testkit.Playout{}
 	}
+	if o.logger == nil {
+		o.logger = slog.New(slog.DiscardHandler)
+	}
 	opts := api.Options{
 		Store:           st,
 		Auth:            api.NewTokenAuthorizer(adminToken),
-		Log:             slog.New(slog.DiscardHandler),
+		Log:             o.logger,
 		PlayoutResolver: o.resolver,
 		PlayoutEncoder:  o.encoder,
 		PlayoutObserver: o.sessions,
@@ -200,7 +212,7 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 	if !o.noToken {
 		opts.PlayoutSecret = func() string { return playoutToken }
 	}
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
+	srv := httptest.NewServer(api.Router(o.logger, opts))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -705,7 +717,7 @@ type ladderEncoder struct {
 func (e *ladderEncoder) start(ctx context.Context, args []string, _ func(playout.Progress)) (*playout.Process, error) {
 	software, card := false, false
 	for _, a := range args {
-		if a == "libx264" {
+		if a == "libx264" || a == "libx265" {
 			software = true
 		}
 		if strings.Contains(a, "color=c=black") {
@@ -779,6 +791,42 @@ func TestPlayoutProgram_TranscodeFallsBackToSoftware(t *testing.T) {
 	// VRAM was reclaimed exactly once (before the hardware retry), not speculatively.
 	if evicted != 1 {
 		t.Errorf("reclaimVRAM called %d times, want 1 (once, before the hardware retry)", evicted)
+	}
+}
+
+func TestPlayoutProgram_FallbackLogNamesEncodersWithoutSourceCredentials(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	enc := &ladderEncoder{hwEnc: "hevc_videotoolbox", output: "software-bytes"}
+	srv := newProgramServer(t, programOpts{
+		logger: logger,
+		resolver: &fakeResolver{
+			airing: playableAiring(0, time.Hour),
+			url:    "http://library-user:do-not-log@emby.invalid/video?api_key=do-not-log",
+			profile: playout.Profile{
+				Width: 1280, Height: 720, Framerate: 30, Encoder: playout.EncoderVideoToolbox,
+				VideoBitrate: 4000, AudioBitrate: 128,
+			},
+			channelCodec: "hevc",
+		},
+		encoder:     enc.start,
+		reclaimVRAM: func(context.Context) {},
+	})
+
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken+"&plan=full")
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	got := logs.String()
+	for _, encoder := range []string{"hevc_videotoolbox", "libx265"} {
+		if !strings.Contains(got, encoder) {
+			t.Errorf("fallback log does not identify attempted encoder %q:\n%s", encoder, got)
+		}
+	}
+	for _, secret := range []string{"library-user", "do-not-log", "api_key"} {
+		if strings.Contains(got, secret) {
+			t.Errorf("fallback log exposed source credential fragment %q:\n%s", secret, got)
+		}
 	}
 }
 
