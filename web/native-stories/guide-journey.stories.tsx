@@ -4,6 +4,8 @@ import { GuideJourney } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useEffect, useMemo } from "react";
 
+import { tvGuideChannels, tvGuideFrom, tvGuideNow, tvGuideTo } from "./tv-parity-fixtures";
+
 type GuideScenario = "empty" | "error" | "loading" | "ready";
 
 const GuideJourneyWorkshop = ({
@@ -13,24 +15,29 @@ const GuideJourneyWorkshop = ({
   density?: "touch" | "tv";
   scenario?: GuideScenario;
 }) => {
+  const tv = density === "tv";
+  const channels = tv ? tvGuideChannels : guideChannels;
+  const fromMs = tv ? tvGuideFrom : guideFrom;
+  const nowMs = tv ? tvGuideNow : guideNow;
+  const toMs = tv ? tvGuideTo : guideTo;
   const controller = useMemo(
     () =>
       createGuideController({
-        now: () => guideNow,
+        now: () => nowMs,
         source: {
           load: async (_signal) => {
             if (scenario === "error") throw new Error("The guide could not be loaded.");
             if (scenario === "loading") return new Promise(() => undefined);
             return {
-              channels: scenario === "empty" ? [] : guideChannels,
-              fromMs: guideFrom,
+              channels: scenario === "empty" ? [] : channels,
+              fromMs,
               timezone: "America/New_York",
-              toMs: guideTo,
+              toMs,
             };
           },
         },
       }),
-    [scenario],
+    [channels, fromMs, nowMs, scenario, toMs],
   );
   useEffect(() => () => controller.dispose(), [controller]);
 
@@ -39,7 +46,7 @@ const GuideJourneyWorkshop = ({
       controller={controller}
       density={density}
       onTune={() => undefined}
-      preferredChannelId="ch-springfield"
+      preferredChannelId={tv ? "noir" : "ch-springfield"}
     />
   );
 };

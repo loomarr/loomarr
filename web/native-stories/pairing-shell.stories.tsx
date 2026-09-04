@@ -31,7 +31,7 @@ const PairingStory = ({
                 deviceCode: "storybook-device-code",
                 expiresAt: "2026-08-24T12:10:00Z",
                 interval: 5,
-                userCode: "LOOM-ARRR",
+                userCode: "WMQJ-QVFJ",
               },
               serverDate: "Sun, 24 Aug 2026 12:00:00 GMT",
             };
@@ -54,7 +54,7 @@ const PairingStory = ({
   return (
     <PairingShell
       density={density}
-      initialServerUrl="https://loomarr.media"
+      initialServerUrl="https://loomarr.projectguacamole.com"
       renderPaired={() => (
         <Surface>
           <Text textRole="title">Paired</Text>

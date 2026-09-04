@@ -1,4 +1,6 @@
-import { FocusSurface, ProgressTrack, ScrollFrame, Surface, Text } from "@loomarr/design-system";
+import { ProgressTrack, ScrollFrame, Surface, Text } from "@loomarr/design-system";
+import type { ComponentRef } from "react";
+import { useRef } from "react";
 import { Pressable } from "react-native";
 import { DeviceDisconnectAction } from "../../device-disconnect";
 import type { FocusTargetRegistry } from "../../focus-target";
@@ -30,18 +32,26 @@ const TvSurfChannel = ({
     onPress={onTune}
     ref={(handle) => focusRegistry?.register({ channelId: channel.id, group }, handle)}
   >
-    <FocusSurface focused={selected} gap="$inline" paddingHorizontal="$control" paddingVertical="$inline">
+    <Surface
+      backgroundColor={selected ? "$surfaceRaised" : "$surfaceCanvas"}
+      borderColor={selected ? "$actionFocus" : "$surfaceCanvas"}
+      borderRadius={12}
+      borderWidth={selected ? 3 : 1}
+      gap={4}
+      paddingHorizontal={16}
+      paddingVertical={12}
+    >
       <Surface
         alignItems="center"
         backgroundColor="$transparent"
         borderWidth={0}
         flexDirection="row"
-        gap="$control"
+        gap={12}
       >
-        <Text density="tv" textRole="channelNumber" tone={selected ? undefined : "muted"}>
+        <Text density="tv" textRole="data" tone={selected ? "signal" : "muted"}>
           {channel.channelNumber.padStart(2, "0")}
         </Text>
-        <Text density="tv" flex={1} numberOfLines={1} textRole="body">
+        <Text density="tv" flex={1} numberOfLines={1} textRole="compact">
           {channel.channelName}
         </Text>
         {current ? (
@@ -62,10 +72,12 @@ const TvSurfChannel = ({
             borderWidth={0}
             flexDirection="row"
             gap="$inline"
-            paddingLeft={64}
+            paddingLeft={32}
           >
-            <Text density="tv" flex={1} numberOfLines={1} textRole="metadata">
-              {channel.now?.title ?? "Nothing scheduled"}
+            <Text density="tv" flex={1} numberOfLines={1} textRole="caption" tone="muted">
+              {channel.now?.seriesTitle
+                ? channel.now.title.replace(`${channel.now.seriesTitle} · `, "")
+                : (channel.now?.title ?? "Nothing scheduled")}
             </Text>
             {channel.now?.remainingLabel ? (
               <Text density="tv" textRole="metadata" tone="muted">
@@ -73,7 +85,7 @@ const TvSurfChannel = ({
               </Text>
             ) : null}
           </Surface>
-          <Surface backgroundColor="$transparent" borderWidth={0} paddingLeft={64}>
+          <Surface backgroundColor="$transparent" borderWidth={0} paddingLeft={32} paddingTop={4}>
             <ProgressTrack
               accessibilityLabel={channel.now?.title ?? channel.channelName}
               percent={channel.now?.progressPercent ?? 0}
@@ -82,7 +94,7 @@ const TvSurfChannel = ({
           </Surface>
         </>
       ) : null}
-    </FocusSurface>
+    </Surface>
   </Pressable>
 );
 
@@ -98,6 +110,7 @@ const TvSurfRail = ({
   serverName,
   serverVersion,
 }: SurfRailProps) => {
+  const scrollFrame = useRef<ComponentRef<typeof ScrollFrame>>(null);
   const selectable = groups.flatMap((group) =>
     group.channels.map((channel) => ({ channel, group: group.kind })),
   );
@@ -117,7 +130,7 @@ const TvSurfRail = ({
       flex={1}
     >
       <Surface
-        backgroundColor="$surfaceOverlay"
+        backgroundColor="$surfaceChrome"
         borderRadius={0}
         borderWidth={0}
         bottom={0}
@@ -128,12 +141,18 @@ const TvSurfRail = ({
         paddingTop={48}
         position="absolute"
         top={0}
-        width="44%"
+        width={420}
       >
-        <ScrollFrame density="tv">
+        <ScrollFrame
+          density="tv"
+          onContentSizeChange={() => {
+            if (selection.group === "all") scrollFrame.current?.scrollToEnd({ animated: false });
+          }}
+          ref={scrollFrame}
+        >
           {groups.map((group) => (
-            <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline" key={group.kind}>
-              <Text density="tv" textRole="metadata" tone="muted">
+            <Surface backgroundColor="$transparent" borderWidth={0} gap={4} key={group.kind}>
+              <Text density="tv" paddingBottom={4} paddingTop={12} textRole="section" tone="muted">
                 {`${group.label.toUpperCase()} · ${group.channels.length}`}
               </Text>
               {group.channels.length === 0 ? (
@@ -170,7 +189,14 @@ const TvSurfRail = ({
           {`Loomarr TV ${clientVersion} · Server ${serverVersion ?? "unavailable"}`}
         </Text>
       </Surface>
-      <Surface bottom={48} level="overlay" padding="$control" position="absolute" right={48}>
+      <Surface
+        backgroundColor="$surfaceOverlay"
+        borderRadius={8}
+        bottom={48}
+        padding="$control"
+        position="absolute"
+        right={48}
+      >
         <Text density="tv" textRole="metadata" tone="muted">
           OK tune · BACK cancel
         </Text>

@@ -3,6 +3,7 @@ import {
   Action,
   ActivityIndicator,
   BrandLockup,
+  BrandMark,
   Field,
   QrCode,
   Screen,
@@ -40,12 +41,17 @@ const PairingShell = ({
   return (
     <Screen alignItems="center" density={density} gap="$section" justifyContent="center">
       {awaitingApproval ? (
-        <BrandLockup orientation="horizontal" size={density === "tv" ? "large" : "medium"} />
+        density === "tv" ? (
+          <BrandMark contained={false} decorative size={24} width={320} />
+        ) : (
+          <BrandLockup orientation="horizontal" size="medium" />
+        )
       ) : null}
       <Surface
-        gap="$section"
-        level="overlay"
-        maxWidth={density === "tv" ? 1040 : 620}
+        borderRadius={density === "tv" && awaitingApproval ? 8 : undefined}
+        gap={density === "tv" && awaitingApproval ? 0 : "$section"}
+        level={density === "tv" && awaitingApproval ? "raised" : "overlay"}
+        maxWidth={density === "tv" && awaitingApproval ? 760 : 620}
         padding="$section"
         width="100%"
       >
@@ -111,21 +117,25 @@ const pairingContent = (
           backgroundColor="$transparent"
           borderWidth={0}
           flexDirection={density === "tv" ? "row" : "column"}
-          gap="$section"
+          gap={density === "tv" ? 0 : "$section"}
           width="100%"
         >
           <Surface alignItems="center" backgroundColor="$transparent" borderWidth={0} flex={1} gap="$control">
-            <Text density={density} textRole="title">
-              Scan QR Code
+            <Text density={density} textRole={density === "tv" ? "section" : "title"}>
+              {density === "tv" ? "SCAN QR CODE" : "Scan QR Code"}
             </Text>
-            <QrCode size={density === "tv" ? 220 : 180} value={state.verificationUriComplete} />
+            <QrCode
+              showBrandMark={density !== "tv"}
+              size={density === "tv" ? 150 : 180}
+              value={state.verificationUriComplete}
+            />
           </Surface>
           <Surface
             alignSelf="stretch"
             backgroundColor="$borderDecorative"
             borderWidth={0}
             height={density === "tv" ? "auto" : 1}
-            minHeight={density === "tv" ? 220 : 1}
+            minHeight={density === "tv" ? 210 : 1}
             width={density === "tv" ? 1 : "100%"}
           />
           <Surface
@@ -136,29 +146,55 @@ const pairingContent = (
             gap="$control"
             justifyContent="flex-start"
           >
-            <Text density={density} textRole="title">
-              Visit Website
+            <Text density={density} textRole={density === "tv" ? "section" : "title"}>
+              {density === "tv" ? "VISIT WEBSITE" : "Visit Website"}
             </Text>
-            <Text density={density} numberOfLines={1} selectable textRole="time">
+            <Text
+              density={density}
+              numberOfLines={1}
+              selectable
+              textRole={density === "tv" ? "metadata" : "time"}
+              tone={density === "tv" ? "primary" : undefined}
+            >
               {state.verificationUri}
             </Text>
-            <Surface alignItems="center" gap="$inline" level="focus" padding="$control" width="100%">
-              <Text density={density} textRole="metadata">
-                PAIRING CODE
-              </Text>
+            <Surface
+              alignItems="center"
+              backgroundColor="$transparent"
+              borderWidth={0}
+              gap="$inline"
+              padding={density === "tv" ? 0 : "$control"}
+              width="100%"
+            >
+              {density === "tv" ? null : (
+                <Text density={density} textRole="metadata">
+                  PAIRING CODE
+                </Text>
+              )}
               <Text
                 accessibilityLabel={`Pairing code ${state.userCode}`}
                 density={density}
                 selectable
-                textRole="channelNumber"
+                textRole={density === "tv" ? "code" : "channelNumber"}
               >
                 {state.userCode}
               </Text>
             </Surface>
           </Surface>
         </Surface>
-        <Surface backgroundColor="$borderDecorative" borderWidth={0} height={1} width="100%" />
-        <Surface alignItems="center" backgroundColor="$transparent" borderWidth={0} gap="$control">
+        <Surface
+          backgroundColor="$borderDecorative"
+          borderWidth={0}
+          height={1}
+          marginVertical={density === "tv" ? 20 : 0}
+          width="100%"
+        />
+        <Surface
+          alignItems="center"
+          backgroundColor="$transparent"
+          borderWidth={0}
+          gap={density === "tv" ? 12 : "$control"}
+        >
           <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
             Expires in {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
           </Text>
