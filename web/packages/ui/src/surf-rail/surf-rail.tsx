@@ -28,6 +28,7 @@ const SurfRail = ({
   clientVersion,
   currentChannelId,
   density = "pointer",
+  focusRegistry,
   groups,
   onFocusSelection,
   onTune,
@@ -42,6 +43,7 @@ const SurfRail = ({
         clientVersion={clientVersion}
         currentChannelId={currentChannelId}
         density={density}
+        focusRegistry={focusRegistry}
         groups={groups}
         onFocusSelection={onFocusSelection}
         onTune={onTune}

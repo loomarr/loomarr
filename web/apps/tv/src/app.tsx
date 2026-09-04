@@ -20,12 +20,24 @@ import {
   WatchingSurface,
   watchingScheduleFromGuide,
 } from "@loomarr/ui";
-import { tvGuideRowWindow } from "@loomarr/ui-tv";
+import {
+  createTvGuideFocusRegistry,
+  createTvSurfFocusRegistry,
+  initialTvWatchingRemoteState,
+  reduceTvWatchingRemote,
+  restoreTvSurfSelection,
+  type TvWatchingRemoteEvent,
+  type TvWatchingRemoteIntent,
+  type TvWatchingRemoteState,
+  tvGuideRowWindow,
+  tvNumberEntryPresentation,
+  tvWatchingRemoteEventFromNative,
+} from "@loomarr/ui-tv";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { BackHandler, View } from "react-native";
+import { BackHandler, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const credentialStore = createPairingCredentialStore({
@@ -64,6 +76,10 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     () => createGuideController({ source: createGuideSourcePort(runtime.request) }),
     [runtime.request],
   );
+  const guideFocusRegistry = useMemo(createTvGuideFocusRegistry, []);
+  const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
+  const remoteStateRef = useRef<TvWatchingRemoteState>(initialTvWatchingRemoteState);
+  const [remoteState, setRemoteState] = useState<TvWatchingRemoteState>(initialTvWatchingRemoteState);
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const guideSnapshot = useSyncExternalStore(guide.subscribe, guide.getSnapshot, guide.getSnapshot);
   const refresh = useCallback(async () => {
@@ -106,6 +122,54 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     });
     return () => subscription.remove();
   }, [active]);
+  const runRemoteIntent = useCallback(
+    (intent: TvWatchingRemoteIntent | undefined) => {
+      switch (intent?.kind) {
+        case "step":
+          void controller.step(intent.direction);
+          break;
+        case "tune-number":
+          void controller.tuneNumber(intent.digits);
+          break;
+        case "open-guide":
+          setActive("guide");
+          break;
+        case "open-surf":
+          setActive("surf");
+          break;
+      }
+    },
+    [controller],
+  );
+  const dispatchRemoteEvent = useCallback(
+    (event: TvWatchingRemoteEvent) => {
+      const result = reduceTvWatchingRemote(remoteStateRef.current, event);
+      remoteStateRef.current = result.state;
+      setRemoteState(result.state);
+      if (result.handled) setControlsVisible(true);
+      runRemoteIntent(result.intent);
+    },
+    [runRemoteIntent],
+  );
+  useTVEventHandler(({ eventType }) => {
+    if (active !== "watching") return;
+    const event = tvWatchingRemoteEventFromNative(eventType, Date.now());
+    if (event) dispatchRemoteEvent(event);
+  });
+  useEffect(() => {
+    const expiresAtMs = remoteState.numberEntry?.expiresAtMs;
+    if (expiresAtMs === undefined || active !== "watching") return;
+    const timeout = setTimeout(
+      () => dispatchRemoteEvent({ atMs: expiresAtMs, key: "timeout" }),
+      Math.max(0, expiresAtMs - Date.now()),
+    );
+    return () => clearTimeout(timeout);
+  }, [active, dispatchRemoteEvent, remoteState.numberEntry?.expiresAtMs]);
+  useEffect(() => {
+    if (active === "watching" || !remoteStateRef.current.numberEntry) return;
+    remoteStateRef.current = initialTvWatchingRemoteState;
+    setRemoteState(initialTvWatchingRemoteState);
+  }, [active]);
   const schedule = watchingScheduleFromGuide(
     guideSnapshot.layout,
     snapshot.channel?.id,
@@ -130,6 +194,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
         onPrevious={() => void controller.previous()}
         onRetry={() => void (loadError ? refresh() : controller.retry())}
         onShowControls={() => setControlsVisible(true)}
+        numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
         player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
         schedule={schedule}
         snapshot={snapshot}
@@ -150,6 +215,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               }
               controller={guide}
               density="tv"
+              focusRegistry={guideFocusRegistry}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
                 setActive("watching");
@@ -162,12 +228,14 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               controller={guide}
               currentChannelId={snapshot.channel?.id}
               density="tv"
+              focusRegistry={surfFocusRegistry}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
                 setActive("watching");
               }}
               playableChannelIds={snapshot.catalog.map(({ id }) => id)}
               recentChannelIds={snapshot.recentChannelIds}
+              restoreSelection={restoreTvSurfSelection}
             />
           )}
         </View>

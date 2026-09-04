@@ -1,6 +1,7 @@
 import type {
   TvNumberEntryPresentation,
   TvNumberedChannel,
+  TvRemoteDigit,
   TvWatchingRemoteEvent,
   TvWatchingRemoteResult,
   TvWatchingRemoteState,
@@ -8,6 +9,31 @@ import type {
 
 const MAX_CHANNEL_DIGITS = 3;
 const NUMBER_ENTRY_MS = 1_200;
+
+const tvWatchingRemoteEventFromNative = (
+  eventType: string,
+  atMs: number,
+): TvWatchingRemoteEvent | undefined => {
+  if (/^[0-9]$/.test(eventType)) {
+    return { atMs, digit: eventType as TvRemoteDigit, key: "digit" };
+  }
+  switch (eventType) {
+    case "up":
+    case "down":
+    case "left":
+    case "right":
+    case "select":
+    case "menu":
+    case "back":
+      return { key: eventType };
+    case "channelUp":
+      return { direction: "up", key: "channel" };
+    case "channelDown":
+      return { direction: "down", key: "channel" };
+    default:
+      return undefined;
+  }
+};
 
 const initialTvWatchingRemoteState: TvWatchingRemoteState = {};
 
@@ -68,4 +94,9 @@ const tvNumberEntryPresentation = (
   return { channelName, digits: entry.digits, expiresAtMs: entry.expiresAtMs };
 };
 
-export { initialTvWatchingRemoteState, reduceTvWatchingRemote, tvNumberEntryPresentation };
+export {
+  initialTvWatchingRemoteState,
+  reduceTvWatchingRemote,
+  tvNumberEntryPresentation,
+  tvWatchingRemoteEventFromNative,
+};

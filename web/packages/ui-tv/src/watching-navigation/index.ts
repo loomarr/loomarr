@@ -2,6 +2,7 @@ export {
   initialTvWatchingRemoteState,
   reduceTvWatchingRemote,
   tvNumberEntryPresentation,
+  tvWatchingRemoteEventFromNative,
 } from "./watching-navigation";
 export type {
   TvNumberEntryPresentation,

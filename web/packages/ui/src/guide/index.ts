@@ -5,6 +5,7 @@ export type {
   GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,
+  GuideFocusTarget,
   GuideLogoRenderer,
   GuideSurfaceProps,
   GuideUnavailableState,

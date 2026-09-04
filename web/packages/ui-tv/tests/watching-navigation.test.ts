@@ -5,9 +5,28 @@ import {
   reduceTvWatchingRemote,
   type TvWatchingRemoteState,
   tvNumberEntryPresentation,
+  tvWatchingRemoteEventFromNative,
 } from "../index";
 
 describe("TV Watching remote navigation", () => {
+  it("translates native TV event names at the platform boundary", () => {
+    expect(tvWatchingRemoteEventFromNative("7", 100)).toEqual({
+      atMs: 100,
+      digit: "7",
+      key: "digit",
+    });
+    expect(tvWatchingRemoteEventFromNative("channelUp", 100)).toEqual({
+      direction: "up",
+      key: "channel",
+    });
+    expect(tvWatchingRemoteEventFromNative("channelDown", 100)).toEqual({
+      direction: "down",
+      key: "channel",
+    });
+    expect(tvWatchingRemoteEventFromNative("select", 100)).toEqual({ key: "select" });
+    expect(tvWatchingRemoteEventFromNative("playPause", 100)).toBeUndefined();
+  });
+
   it("maps the current Shield remote controls and leaves platform-owned keys unhandled", () => {
     expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "up" })).toMatchObject({
       handled: true,
