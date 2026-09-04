@@ -165,6 +165,38 @@ describe("Expo video transport", () => {
     expect(events).not.toHaveBeenCalled();
   });
 
+  it("releases on suspension and reattaches a fresh foreground player", async () => {
+    const first = nativePlayer();
+    const second = nativePlayer();
+    const transport = createNativePlayerTransport(first.player, () => second.player);
+    const playerChanges = vi.fn();
+    transport.subscribePlayer(playerChanges);
+
+    transport.suspend();
+
+    expect(first.raw.pause).toHaveBeenCalledOnce();
+    expect(first.raw.release).toHaveBeenCalledOnce();
+    expect(transport.getPlayer()).toBeUndefined();
+
+    transport.resume();
+    expect(transport.getPlayer()).toBe(second.player);
+    expect(second.raw).toMatchObject({
+      loop: false,
+      showNowPlayingNotification: false,
+      staysActiveInBackground: false,
+      timeUpdateEventInterval: 0.25,
+    });
+    expect(playerChanges).toHaveBeenCalledTimes(2);
+
+    await transport.replace(
+      { uri: "https://loomarr.test/resumed.m3u8" },
+      { attemptId: 9, signal: new AbortController().signal },
+    );
+    expect(second.raw.replaceAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ uri: "https://loomarr.test/resumed.m3u8" }),
+    );
+  });
+
   it("publishes a paused point, resumes behind live, and returns explicitly to live", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-08-26T20:00:00Z");

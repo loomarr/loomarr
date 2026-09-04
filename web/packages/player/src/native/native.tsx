@@ -12,7 +12,9 @@ interface NativePlayerTransport extends PlayerTransport {
   /** Signals the first frame rendered by the native VideoView for the active attempt. */
   firstFrame: () => void;
   getPlayer: () => VideoPlayer | undefined;
+  resume: () => void;
   subscribePlayer: (listener: () => void) => () => void;
+  suspend: () => void;
 }
 
 interface NativePlayerViewProps {
@@ -22,7 +24,10 @@ interface NativePlayerViewProps {
 
 const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
 
-const createNativePlayerTransport = (initialPlayer: VideoPlayer): NativePlayerTransport => {
+const createNativePlayerTransport = (
+  initialPlayer: VideoPlayer,
+  recreatePlayer?: () => VideoPlayer,
+): NativePlayerTransport => {
   let disposed = false;
   let activeAttemptId: number | undefined;
   let player: VideoPlayer | undefined;
@@ -193,6 +198,15 @@ const createNativePlayerTransport = (initialPlayer: VideoPlayer): NativePlayerTr
       replacement = queued;
       await queued;
     },
+    resume: () => {
+      if (disposed || player) return;
+      if (!recreatePlayer) throw new Error("Native player cannot resume without a player factory.");
+      attachPlayer(recreatePlayer());
+      liveMode = "live";
+      noticeRevision = 0;
+      viewerTimeMs = Date.now();
+      for (const listener of playerListeners) listener();
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -201,11 +215,12 @@ const createNativePlayerTransport = (initialPlayer: VideoPlayer): NativePlayerTr
       playerListeners.add(listener);
       return () => playerListeners.delete(listener);
     },
+    suspend: releasePlayer,
   };
 };
 
 const createExpoVideoTransport = (): NativePlayerTransport =>
-  createNativePlayerTransport(createVideoPlayer(null));
+  createNativePlayerTransport(createVideoPlayer(null), () => createVideoPlayer(null));
 
 const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => {
   const player = useSyncExternalStore(transport.subscribePlayer, transport.getPlayer, transport.getPlayer);
