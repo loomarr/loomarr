@@ -15,39 +15,10 @@ import (
 	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
 
-const maximumDownloadedImagePixels = int64(50_000_000)
+const maximumDownloadedImagePixels = fillercorpus.MaximumMaterializedImagePixels
 
-type downloadLedger struct {
-	SchemaVersion   int              `json:"schemaVersion"`
-	InventorySHA256 string           `json:"inventorySha256"`
-	GeneratedAt     time.Time        `json:"generatedAt"`
-	MaxRequests     int              `json:"maxRequests"`
-	RequestsUsed    int              `json:"requestsUsed"`
-	MaxItems        int              `json:"maxItems"`
-	MaxBytes        int64            `json:"maxBytes"`
-	Bytes           int64            `json:"bytes"`
-	MaxImagePixels  int64            `json:"maxImagePixels"`
-	Cases           []downloadedCase `json:"cases"`
-}
-
-type downloadedCase struct {
-	CaseID              string                               `json:"caseId"`
-	Authority           string                               `json:"authority"`
-	ItemID              string                               `json:"itemId"`
-	LicenseURL          string                               `json:"licenseUrl"`
-	ItemURL             string                               `json:"itemUrl"`
-	MetadataURL         string                               `json:"metadataUrl"`
-	MetadataRetrievedAt time.Time                            `json:"metadataRetrievedAt"`
-	MetadataSHA256      string                               `json:"metadataSha256"`
-	Representation      fillercorpus.InventoryRepresentation `json:"representation"`
-	LocalFile           string                               `json:"localFile"`
-	ContentSHA256       string                               `json:"contentSha256"`
-	VerifiedMediaType   string                               `json:"verifiedMediaType"`
-	Width               int                                  `json:"width,omitempty"`
-	Height              int                                  `json:"height,omitempty"`
-	Approval            fillercorpus.RightsDecision          `json:"approval"`
-	VerifiedAt          time.Time                            `json:"verifiedAt"`
-}
+type downloadLedger = fillercorpus.MaterializationLedger
+type downloadedCase = fillercorpus.MaterializedCase
 
 type plannedDownload struct {
 	candidate fillercorpus.InventoryCase
@@ -127,6 +98,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	ledger.InventorySHA256 = inventorySHA256
+	if err := fillercorpus.ValidateMaterializationLedger(ledger, inv, inventorySHA256); err != nil {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: validate ledger:", err)
+		return 1
+	}
 	if err := writeJSON(opts.ledgerPath, ledger); err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: write ledger:", err)
 		return 1

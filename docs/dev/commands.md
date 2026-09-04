@@ -106,6 +106,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make filler-corpus-direct` |  | freeze an authored local cohort with rights and provenance evidence |
 | `make filler-corpus-prepare` |  | build an unlabeled corpus draft and bounded evidence packets |
 | `make filler-corpus-download` |  | download only rights-approved corpus media under hard ceilings |
+| `make filler-visual-corpus-nomination-prepare` |  | prepare four-field visual nomination review from approved media |
+| `make filler-visual-corpus-nomination-lock` |  | lock reviewed visual nominations into a private corpus source root |
 | `make filler-corpus-rights-review` |  | prepare an inert worksheet from a frozen filler inventory |
 | `make filler-corpus-rights-lock` |  | validate completed rights review CSV into approval JSONL |
 | `make filler-corpus-lock` |  | lock two blind filler-label batches into a certification manifest |

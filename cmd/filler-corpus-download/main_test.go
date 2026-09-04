@@ -1,14 +1,53 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
+
+func TestExecuteDownloadsPublishesSharedProvenanceCompleteLedger(t *testing.T) {
+	t.Parallel()
+	retrieved := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	inventory := downloadableInventory(retrieved, "shared-ledger", "")
+	inventory.Cases[0].Creator = []string{"Example Creator"}
+	inventory.Cases[0].SubjectTerms = []string{"Advertising"}
+	inventory.Cases[0].Campaign = "Example Campaign"
+	inventory.Cases[0].SourceFamily = "example-family"
+	inventorySHA256 := strings.Repeat("f", 64)
+	approval := approvalFor(inventory, retrieved)
+	options := options{
+		profile: fillercorpus.RightsProfileDevelopment, inventorySHA256: inventorySHA256,
+		generatedAt: retrieved.Add(2 * time.Minute), maxRequests: 1, maxItems: 1, maxBytes: 1024,
+		maxImagePixels: fillercorpus.MaximumMaterializedImagePixels, outputDir: t.TempDir(), delay: 500 * time.Millisecond,
+	}
+	plan, err := planDownloads(inventory, []fillercorpus.RightsDecision{approval}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plan[0].path, bytes.Repeat([]byte{0x42}, 1024), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger, err := executeDownloads(context.Background(), nil, plan, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fillercorpus.ValidateMaterializationLedger(ledger, inventory, inventorySHA256); err != nil {
+		t.Fatal(err)
+	}
+	item := ledger.Cases[0]
+	if ledger.SchemaVersion != fillercorpus.MaterializationLedgerSchemaVersion || item.Creator[0] != "Example Creator" ||
+		item.SourceFamily != "example-family" || item.CaptureIDs[0] != inventory.Cases[0].CaptureIDs[0] {
+		t.Fatalf("ledger = %+v", ledger)
+	}
+}
 
 func downloadableInventory(retrieved time.Time, id, license string) fillercorpus.Inventory {
 	authority := "loc.gov/national-screening-room"

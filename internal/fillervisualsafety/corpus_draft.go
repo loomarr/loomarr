@@ -84,6 +84,11 @@ type VisualCorpusFileIdentity struct {
 type VisualCorpusRightsEvidence struct {
 	SchemaVersion              int       `json:"schemaVersion"`
 	Kind                       string    `json:"kind"`
+	InventorySHA256            string    `json:"inventorySha256"`
+	MaterializationSHA256      string    `json:"materializationSha256"`
+	RightsApprovalSHA256       string    `json:"rightsApprovalSha256"`
+	CaseID                     string    `json:"caseId"`
+	ContentSHA256              string    `json:"contentSha256"`
 	ReviewedAt                 time.Time `json:"reviewedAt"`
 	ReviewedBy                 string    `json:"reviewedBy"`
 	InstitutionID              string    `json:"institutionId"`

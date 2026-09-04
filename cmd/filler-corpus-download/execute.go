@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,7 +37,12 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 	if err := ensurePrivateDirectory(opts.outputDir); err != nil {
 		return downloadLedger{}, err
 	}
-	ledger := downloadLedger{SchemaVersion: 2, GeneratedAt: opts.generatedAt.UTC(), MaxRequests: opts.maxRequests, MaxItems: opts.maxItems, MaxBytes: opts.maxBytes, MaxImagePixels: opts.maxImagePixels}
+	ledger := downloadLedger{
+		SchemaVersion: fillercorpus.MaterializationLedgerSchemaVersion,
+		Profile:       opts.profile, ProcessorID: opts.processorID, ProcessorTermsSHA256: opts.processorTermsSHA256,
+		InventorySHA256: opts.inventorySHA256, GeneratedAt: opts.generatedAt.UTC(),
+		MaxRequests: opts.maxRequests, MaxItems: opts.maxItems, MaxBytes: opts.maxBytes, MaxImagePixels: opts.maxImagePixels,
+	}
 	lastRequestAt := time.Time{}
 	seenContent := map[string]string{}
 	for _, item := range plan {
@@ -69,8 +75,12 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 		seenContent[hashes.sha256] = item.candidate.CaseID
 		ledger.Bytes += size
 		ledger.Cases = append(ledger.Cases, downloadedCase{
-			CaseID: item.candidate.CaseID, Authority: item.candidate.Authority, ItemID: item.candidate.ItemID,
-			LicenseURL: item.candidate.LicenseURL, ItemURL: item.candidate.ItemURL, MetadataURL: item.candidate.MetadataURL,
+			CaseID: item.candidate.CaseID, CaptureIDs: slices.Clone(item.candidate.CaptureIDs),
+			Authority: item.candidate.Authority, ItemID: item.candidate.ItemID,
+			RoleHints: slices.Clone(item.candidate.RoleHints), Creator: slices.Clone(item.candidate.Creator),
+			SubjectTerms: slices.Clone(item.candidate.SubjectTerms), Campaign: item.candidate.Campaign,
+			SourceFamily: item.candidate.SourceFamily,
+			LicenseURL:   item.candidate.LicenseURL, ItemURL: item.candidate.ItemURL, MetadataURL: item.candidate.MetadataURL,
 			MetadataRetrievedAt: item.candidate.MetadataRetrievedAt, MetadataSHA256: item.candidate.MetadataSHA256,
 			Representation: item.candidate.Representation, LocalFile: filepath.Base(item.path), ContentSHA256: hashes.sha256,
 			VerifiedMediaType: representation.mediaType, Width: representation.width, Height: representation.height,

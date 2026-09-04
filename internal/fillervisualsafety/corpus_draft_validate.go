@@ -10,7 +10,10 @@ import (
 	"time"
 )
 
-const visualCorpusRightsEvidenceKind = "loomarr-visual-corpus-rights-review-v1"
+const (
+	visualCorpusRightsEvidenceSchemaVersion = 2
+	visualCorpusRightsEvidenceKind          = "loomarr-visual-corpus-rights-review-v2"
+)
 
 func sealVisualCorpusDraftAuthority(authority VisualCorpusDraftAuthority) (VisualCorpusDraftAuthority, error) {
 	authority.SchemaVersion = VisualCorpusDraftAuthoritySchemaVersion
@@ -125,7 +128,10 @@ func validateVisualCorpusDraftCandidate(candidate VisualCorpusDraftCandidate) er
 }
 
 func validateVisualCorpusRightsEvidence(candidate VisualCorpusDraftCandidate, evidence VisualCorpusRightsEvidence, authoredAt time.Time) error {
-	if evidence.SchemaVersion != 1 || evidence.Kind != visualCorpusRightsEvidenceKind ||
+	if evidence.SchemaVersion != visualCorpusRightsEvidenceSchemaVersion || evidence.Kind != visualCorpusRightsEvidenceKind ||
+		!validDigest(evidence.InventorySHA256) || !validDigest(evidence.MaterializationSHA256) ||
+		!validDigest(evidence.RightsApprovalSHA256) || evidence.CaseID != candidate.CandidateID ||
+		evidence.ContentSHA256 != candidate.Asset.SHA256 ||
 		evidence.ReviewedAt.IsZero() || evidence.ReviewedAt.Location() != time.UTC || evidence.ReviewedAt.After(authoredAt) ||
 		!validIdentity(evidence.ReviewedBy) || evidence.InstitutionID != candidate.InstitutionID ||
 		evidence.SourceWorkID != candidate.SourceWorkID || evidence.ObjectURL != candidate.ObjectURL ||

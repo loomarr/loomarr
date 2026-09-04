@@ -106,7 +106,10 @@ redirects stay within each authority's frozen and built-in host policy, and bodi
 their recorded size. MP4, JPEG, and PNG are the only admitted representation types. Image responses must
 match the declared MIME type and exact byte count, decode completely as that format, end at the terminal
 JPEG/PNG boundary, and stay within the 50-million-pixel ceiling. Source checksums are checked when present,
-and the schema-2 external ledger adds a locally computed SHA-256, verified media type, and image dimensions.
+and the schema-3 external ledger adds a locally computed SHA-256, verified media type, image dimensions,
+capture identities, role hints, creator, source-family, subject-term, and exact profile/processor provenance.
+The downloader validates that completed ledger through the same shared `fillercorpus` interface used by
+downstream consumers before it publishes anything; the old command-private schema is not accepted.
 Exact duplicate media is rejected. Downloaded files are published without overwrite at mode `0600` beneath
 a mode-`0700` directory. Already-local direct-cohort cases are not downloaded again. A
 failed or stale approval writes no ledger and cannot silently widen the selected corpus.
@@ -114,6 +117,24 @@ The caller must choose `development` or `certification` through
 `LOOMARR_FILLER_CORPUS_RIGHTS_PROFILE`. Certification additionally pins
 `LOOMARR_FILLER_CORPUS_PROCESSOR_ID` and `LOOMARR_FILLER_CORPUS_PROCESSOR_TERMS_SHA256`; a schema-v3
 development approval, changed processor, or changed terms snapshot fails before media access.
+
+`make filler-visual-corpus-nomination-prepare` is the narrow handoff for the institutional still-art lane.
+It strictly reopens the exact inventory, schema-3 materialization ledger, and every private image, then emits
+one inert JSON worksheet plus a spreadsheet-safe CSV. Immutable source, creator, family, rights-approval,
+file, media, and normalized-image identities are prefilled. The maintainer edits only `nomination`,
+`subject_status`, `generated_status`, and `slices_json`. The current closed projection accepts only Met JPEGs
+whose independent rights rationale starts with the versioned
+`met_cc0_open_access_object_reviewed_v1: ` basis and a non-empty explanation and carries no restriction; it does not infer a
+new licence from tags or search results.
+
+`make filler-visual-corpus-nomination-lock` reconstructs that worksheet from the original bytes before
+accepting the completed CSV. It rejects changed cells, unresolved or contradictory judgments, changed or
+symlinked media, exact and normalized duplicates, repeated source-work/family identities, and repeated
+positive creators. A successful lock atomically publishes a private source root containing exact images,
+schema-2 rights evidence bound to inventory, materialization, approval, case, and content digests, and
+draft-compatible candidate records. Every output explicitly leaves model output, truth, training,
+production use, ingestion, scheduling, and broadcast authority false. Whole-corpus population, independence,
+model blindness, review, and certification remain owned by the visual corpus draft and V68 certificate.
 
 `make filler-corpus-rights-review` converts a frozen mixed-authority inventory into a deterministic worksheet
 bounded by explicit minimum and maximum item counts. It exposes the source assertions and selected

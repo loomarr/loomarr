@@ -509,13 +509,29 @@ any image request. The current inventory also produced a schema-4 inert rights w
 remains blank. No external image was fetched in these adapter probes.
 
 The existing rights-bound downloader is now the one shared materializer rather than a second visual-only
-implementation. Its schema-2 ledger supports MP4, JPEG, and PNG; derives the local extension from the admitted
+implementation. Its shared schema-3 ledger supports MP4, JPEG, and PNG; derives the local extension from the admitted
 MIME type; enforces the response MIME type, exact byte count, optional source hashes, complete image decode,
 terminal JPEG/PNG boundary, dimensions, and a maximum 50-million-pixel image; rejects duplicate exact media;
-and publishes non-overwriting mode-`0600` files beneath a mode-`0700` directory. The visual draft independently
+retains capture, role, creator, subject-term, campaign, source-family, profile, and processor identity; and
+publishes non-overwriting mode-`0600` files beneath a mode-`0700` directory. The downloader and downstream
+consumers use one strict `fillercorpus` decoder and inventory-bound validator rather than reconstructing the
+command's former private ledger shape. The visual draft independently
 repeats complete-image and pixel checks at its trust boundary. Materialization still requires an independently
 locked rights decision tied to the exact inventory and metadata. Creating visual-corpus subject status,
 generated status, policy nomination, diagnostic slices, or truth from source tags remains forbidden.
+
+The next handoff is also executable without widening that authority. One deep visual nomination workflow
+reconstructs the exact inventory and materialization ledger, reopens every private image, and prepares an inert
+worksheet whose CSV has only four editable per-case fields: nomination, subject status, generated status, and
+diagnostic slices. Its current closed adapter accepts only Met JPEGs whose independent rights rationale starts
+with `met_cc0_open_access_object_reviewed_v1: ` plus a non-empty explanation and has no restriction. Every source, creator, family, object, approval, file, media, and perceptual
+identity is immutable. Locking re-runs preparation and rejects a changed cell, unresolved or contradictory
+judgment, symlink/path escape, changed bytes, duplicate exact or normalized image, repeated work/family, or repeated
+positive creator. It atomically publishes a mode-`0700` source root with mode-`0600` assets, rights evidence, and
+draft-compatible candidates. Rights evidence schema 2 now binds the exact inventory, materialization, approval,
+case, and content SHA-256 identities; no hand-authored provenance re-entry is needed. Both worksheet and locked set
+state that candidate-model output, truth authority, training, and production use are false. This eliminates the
+large mechanical part of review while preserving the few decisions that genuinely require a maintainer.
 
 ## Required development measurements
 

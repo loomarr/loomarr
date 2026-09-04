@@ -111,6 +111,9 @@ func TestPrepareVisualCorpusDraftRejectsFamilyRightsAndNormalizedImageCollisions
 		raw := visualCorpusTestPNG(t, 0, 18, 16)
 		writePrivateTestFile(t, filepath.Join(fixture.sourceRoot, candidate.AssetRelativePath), raw)
 		candidate.Asset = VisualCorpusFileIdentity{SHA256: digestBytes(raw), Bytes: int64(len(raw))}
+		rightsRaw := fixture.rightsEvidence(t, *candidate, false)
+		writePrivateTestFile(t, filepath.Join(fixture.sourceRoot, candidate.RightsRelativePath), rightsRaw)
+		candidate.RightsEvidence = VisualCorpusFileIdentity{SHA256: digestBytes(rightsRaw), Bytes: int64(len(rightsRaw))}
 		fixture.reseal(t)
 		output := fixture.output("image-collision")
 		if _, err := PrepareVisualCorpusDraft(context.Background(), fixture.config(output)); err == nil ||
@@ -248,7 +251,9 @@ func (fixture *visualCorpusDraftFixture) reseal(t *testing.T) {
 func (fixture *visualCorpusDraftFixture) rightsEvidence(t *testing.T, candidate VisualCorpusDraftCandidate, training bool) []byte {
 	t.Helper()
 	evidence := VisualCorpusRightsEvidence{
-		SchemaVersion: 1, Kind: visualCorpusRightsEvidenceKind,
+		SchemaVersion: visualCorpusRightsEvidenceSchemaVersion, Kind: visualCorpusRightsEvidenceKind,
+		InventorySHA256: strings.Repeat("a", 64), MaterializationSHA256: strings.Repeat("b", 64),
+		RightsApprovalSHA256: strings.Repeat("c", 64), CaseID: candidate.CandidateID, ContentSHA256: candidate.Asset.SHA256,
 		ReviewedAt: fixture.authority.AuthoredAt.Add(-time.Minute), ReviewedBy: "maintainer",
 		InstitutionID: candidate.InstitutionID, SourceWorkID: candidate.SourceWorkID,
 		ObjectURL: candidate.ObjectURL, RightsURL: candidate.RightsURL, RightsBasis: candidate.RightsBasis,

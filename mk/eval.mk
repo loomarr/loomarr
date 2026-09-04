@@ -112,7 +112,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-met/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-media-integrity-prepare/ ./cmd/filler-media-integrity-score/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-met/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-media-integrity-prepare/ ./cmd/filler-media-integrity-score/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/ ./cmd/filler-visual-corpus-nominate/
 
 filler-temporal-truth-select: ## select the private 48-case truth-review sample from frozen history without inference
 	@for name in DRAFT SEED OUT A_PACKAGE A_MAP A_LABELS B_PACKAGE B_MAP B_LABELS C_PACKAGE C_MAP C_ADJUDICATIONS; do \
@@ -447,6 +447,33 @@ filler-corpus-download: ## download only rights-approved corpus media under hard
 	    --max-bytes "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_BYTES" \
 	    --max-image-pixels "$${LOOMARR_FILLER_CORPUS_DOWNLOAD_MAX_IMAGE_PIXELS:-50000000}" \
 	    --delay "$${LOOMARR_FILLER_CORPUS_DOWNLOAD_DELAY:-1s}"
+
+filler-visual-corpus-nomination-prepare: ## prepare four-field visual nomination review from approved media
+	@for name in LOOMARR_FILLER_CORPUS_INVENTORY LOOMARR_FILLER_CORPUS_DOWNLOAD_LEDGER LOOMARR_FILLER_CORPUS_MEDIA_DIR LOOMARR_FILLER_VISUAL_NOMINATION_PREPARED_AT; do \
+	  test -n "$$(printenv "$$name" 2>/dev/null || true)" || { echo "filler-visual-corpus-nomination-prepare: $$name is required" >&2; exit 2; }; \
+	done; \
+	eval "$$(./scripts/dev-env.sh export)"; \
+	$(GO) run ./cmd/filler-visual-corpus-nominate prepare \
+	  --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	  --materialization-ledger "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_LEDGER" \
+	  --media-root "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
+	  --prepared-at "$$LOOMARR_FILLER_VISUAL_NOMINATION_PREPARED_AT" \
+	  --output "$${LOOMARR_FILLER_VISUAL_NOMINATION_REVIEW_DIR:-$$LOOMARR_ARTIFACT_DIR/filler-visual-nomination-review}"
+
+filler-visual-corpus-nomination-lock: ## lock reviewed visual nominations into a private corpus source root
+	@for name in LOOMARR_FILLER_CORPUS_INVENTORY LOOMARR_FILLER_CORPUS_DOWNLOAD_LEDGER LOOMARR_FILLER_CORPUS_MEDIA_DIR LOOMARR_FILLER_VISUAL_NOMINATION_WORKSHEET LOOMARR_FILLER_VISUAL_NOMINATION_CSV LOOMARR_FILLER_VISUAL_NOMINATION_REVIEWED_BY LOOMARR_FILLER_VISUAL_NOMINATION_REVIEWED_AT; do \
+	  test -n "$$(printenv "$$name" 2>/dev/null || true)" || { echo "filler-visual-corpus-nomination-lock: $$name is required" >&2; exit 2; }; \
+	done; \
+	eval "$$(./scripts/dev-env.sh export)"; \
+	$(GO) run ./cmd/filler-visual-corpus-nominate lock \
+	  --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	  --materialization-ledger "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_LEDGER" \
+	  --media-root "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
+	  --worksheet "$$LOOMARR_FILLER_VISUAL_NOMINATION_WORKSHEET" \
+	  --completed-csv "$$LOOMARR_FILLER_VISUAL_NOMINATION_CSV" \
+	  --reviewed-by "$$LOOMARR_FILLER_VISUAL_NOMINATION_REVIEWED_BY" \
+	  --reviewed-at "$$LOOMARR_FILLER_VISUAL_NOMINATION_REVIEWED_AT" \
+	  --output "$${LOOMARR_FILLER_VISUAL_NOMINATION_OUTPUT:-$$LOOMARR_ARTIFACT_DIR/filler-visual-nominations}"
 
 filler-corpus-rights-review: ## prepare an inert worksheet from a frozen filler inventory
 	@test -n "$$LOOMARR_FILLER_CORPUS_INVENTORY" || { echo "filler-corpus-rights-review: LOOMARR_FILLER_CORPUS_INVENTORY is required" >&2; exit 2; }; \
