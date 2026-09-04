@@ -25,6 +25,10 @@ type memoryExecutionRepository struct {
 	settlements  []HostedCallSettlement
 }
 
+func (r *memoryExecutionRepository) FindSpokenSafetyRun(context.Context, string) (LedgerRun, bool, error) {
+	return r.run, r.begun, nil
+}
+
 func (r *memoryExecutionRepository) PutSpokenSafetyRun(_ context.Context, run LedgerRun) error {
 	_, err := r.BeginSpokenSafetyRun(context.Background(), run)
 	return err
