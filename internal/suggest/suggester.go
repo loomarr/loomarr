@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/reference"
 )
 
 // catalogToolName is the single tool the model may call. The grounding guarantee
@@ -81,12 +82,13 @@ type FeedbackSource interface {
 // provider-neutral LLM, the catalog (grounding tool + search), and the validator
 // (TMDB exists-check).
 type Suggester struct {
-	llm       llm.Provider
-	catalog   *catalog.Catalog
-	validator Validator
-	ratings   RatingSource // optional acquisition-rating enrichment (§389)
-	feedback  FeedbackSource
-	maxAcq    int // default SUGGEST_MAX_ACQUISITIONS cap
+	llm        llm.Provider
+	catalog    *catalog.Catalog
+	validator  Validator
+	ratings    RatingSource // optional acquisition-rating enrichment (§389)
+	feedback   FeedbackSource
+	references reference.Resolver
+	maxAcq     int // default SUGGEST_MAX_ACQUISITIONS cap
 }
 
 func (s *Suggester) WithFeedback(source FeedbackSource) *Suggester {
@@ -98,6 +100,13 @@ func (s *Suggester) WithFeedback(source FeedbackSource) *Suggester {
 // suggester for chaining; keeps New's signature stable.
 func (s *Suggester) WithRatings(r RatingSource) *Suggester {
 	s.ratings = r
+	return s
+}
+
+// WithReferences enables bounded source resolution for pasted public pages. A
+// nil resolver makes a URL-backed Intent fail closed before model inference.
+func (s *Suggester) WithReferences(resolver reference.Resolver) *Suggester {
+	s.references = resolver
 	return s
 }
 
@@ -155,11 +164,26 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		}
 		intent.Adjacent = filterAdjacentFeedback(intent.Adjacent, feedback)
 	}
+	referenceSeed, hasReference, referenceErr := s.groundReference(ctx, &intent)
+	if referenceErr != nil {
+		trace := DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
+		cause := fmt.Errorf("%w: %v", ErrNoGroundedTitles, referenceErr)
+		return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, cause)
+	}
+	if hasReference && len(referenceSeed.candidates) == 0 {
+		trace := DecisionTrace{Version: DecisionTraceVersion, Terminal: ReasonRetrievalEmpty}
+		cause := fmt.Errorf("%w: reference titles were not found in the configured catalog", ErrNoGroundedTitles)
+		return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, cause)
+	}
 	messages := []llm.Message{
 		{Role: llm.System, Content: systemPrompt},
 		{Role: llm.User, Content: userPrompt(intent)},
 	}
 	tools := []llm.ToolSchema{catalogTool()}
+	if hasReference {
+		messages = append(messages, referenceSeed.messages...)
+		tools = nil
+	}
 
 	// Track every candidate the tool surfaced this run, keyed by provisioning key.
 	// A pick is grounded IFF it matches one of these — the model cannot smuggle in
@@ -167,7 +191,13 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// re-asks, so grounding holds even when the final JSON is retried.
 	surfaced := map[provision.Key]catalog.Candidate{}
 	trace := DecisionTrace{Version: DecisionTraceVersion}
+	mergeDecisionTrace(&trace, &referenceSeed.trace)
 	temp := groundedTemp
+	for _, candidate := range referenceSeed.candidates {
+		if key, err := candidate.Key(); err == nil {
+			surfaced[key] = candidate
+		}
+	}
 
 	// PRE-SEED the adjacency corpus (§8.3) before generation. These are real catalog
 	// candidates with real ids — the same shape a tool call produces — so seeding them here
@@ -223,7 +253,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// re-asks. JOB_TIMEOUT + httpx.TimeoutLLM are the hard ceilings.
 	repairs := 0
 	groundingRetried := false
-	finalizationOnly := false
+	finalizationOnly := hasReference
 	for {
 		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, intent, feedback, &finalizationOnly)
 		if err != nil {
