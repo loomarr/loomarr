@@ -2,9 +2,13 @@ package fillercorpus
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -105,6 +109,55 @@ func TestCaptureMetInventoryRejectsExcludedMinorSubjectBeforeImageProbe(t *testi
 	}
 	if headRequests != 0 {
 		t.Fatalf("minor-tagged candidate triggered %d image requests", headRequests)
+	}
+}
+
+func TestCaptureMetInventorySkipsRepeatedCreatorBeforeImageProbe(t *testing.T) {
+	selectionDigest := metSelectionDigest([]string{"venus"}, []string{"Female Nudes", "Male Nudes"}, []string{"Children", "Infants"})
+	ids := []int64{195733, 392067, 402849}
+	slices.SortFunc(ids, func(left, right int64) int {
+		return strings.Compare(metObjectRank(selectionDigest, left), metObjectRank(selectionDigest, right))
+	})
+	duplicateCreator := map[int64]bool{ids[0]: true, ids[1]: true}
+	headRequests := 0
+	objectRequests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/public/collection/v1/search":
+			_, _ = fmt.Fprintf(w, `{"total":3,"objectIDs":[%d,%d,%d]}`, ids[0], ids[1], ids[2])
+		case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/public/collection/v1/objects/"):
+			objectRequests++
+			idText := path.Base(request.URL.Path)
+			id, err := strconv.ParseInt(idText, 10, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			creator := "Distinct Creator"
+			if duplicateCreator[id] {
+				creator = "Repeated Creator"
+			}
+			_, _ = fmt.Fprintf(w, `{"objectID":%d,"isPublicDomain":true,"primaryImage":"https://images.metmuseum.org/%d.jpg","title":"Work %d","artistDisplayName":%q,"objectURL":"https://www.metmuseum.org/art/collection/search/%d","tags":[{"term":"Female Nudes"}]}`, id, id, id, creator, id)
+		case request.Method == http.MethodHead && strings.HasSuffix(request.URL.Path, ".jpg"):
+			headRequests++
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Content-Length", "100")
+		default:
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+	config := metTestConfig(t, server)
+	config.MaxItems = 2
+	config.MaxObjectLookups = 3
+	config.MaxRequests = 6
+	config.MaxItemBytes = 100
+	config.MaxTotalBytes = 200
+	inventory, err := CaptureMetInventory(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if objectRequests != 3 || headRequests != 2 || len(inventory.Cases) != 2 || inventory.Cases[0].Creator[0] == inventory.Cases[1].Creator[0] {
+		t.Fatalf("objects=%d heads=%d cases=%+v", objectRequests, headRequests, inventory.Cases)
 	}
 }
 

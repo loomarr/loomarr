@@ -488,7 +488,10 @@ object-lookup, item, metadata-byte, predicted-media-byte, delay, and wall-time c
 exact Met API and image hosts, freezes each raw object response in the existing source cache, and rejects a
 search hit unless the individual object record has `isPublicDomain: true`, a trusted original image, a stable
 object URL, a named creator, and one of the term set's required source-authored subject tags. The committed
-positive seed searches `adam and eve`, `aphrodite`, `bathers`, `nude`, and `venus`, but requires `Female Nudes`
+adapter also canonicalizes the Met creator display name and rejects a repeated creator before probing the
+candidate image. That is a useful within-source independence screen, not proof that differently spelled names
+or cross-institution records describe different people; the later locked-corpus checks remain authoritative.
+The positive seed searches `adam and eve`, `aphrodite`, `bathers`, `nude`, and `venus`, but requires `Female Nudes`
 or `Male Nudes` and rejects the exact Met subject terms `Adolescents`, `Boys`, `Children`, `Girls`, and
 `Infants`. Both required and excluded sets are part of the capture identity. Search term, all returned subject
 terms, creator, source work, image facts, and raw-metadata identity survive into the source-neutral inventory

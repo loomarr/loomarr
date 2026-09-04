@@ -72,6 +72,7 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 	result := Inventory{SchemaVersion: InventorySchemaVersion, SnapshotAt: config.SnapshotAt.UTC()}
 	var predictedBytes int64
 	lookups := 0
+	seenCreators := make(map[string]struct{}, config.MaxItems)
 	for _, discovery := range discovered {
 		if len(result.Cases) == config.MaxItems || lookups == config.MaxObjectLookups {
 			break
@@ -90,6 +91,10 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 		if !ok {
 			continue
 		}
+		creatorKey := strings.ToLower(strings.TrimSpace(object.ArtistDisplayName))
+		if _, duplicate := seenCreators[creatorKey]; duplicate {
+			continue
+		}
 		head, _, err := client.Head(ctx, object.PrimaryImage)
 		if err != nil {
 			return Inventory{}, fmt.Errorf("capture Met object %d image: %w", objectID, err)
@@ -100,6 +105,7 @@ func CaptureMetInventory(parent context.Context, config MetCaptureConfig) (Inven
 		}
 		item := metInventoryCase(object, discovery.terms, raw, metadataURL, retrievedAt, captureID, config.RoleHint, mediaType, head.ContentLength)
 		result.Cases = append(result.Cases, item)
+		seenCreators[creatorKey] = struct{}{}
 		predictedBytes += head.ContentLength
 	}
 	if len(result.Cases) != config.MaxItems {
