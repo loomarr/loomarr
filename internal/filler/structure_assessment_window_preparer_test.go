@@ -205,7 +205,7 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan fi
 	t.Helper()
 	calls := &structureAssessmentWindowCalls{}
 	preparer := &FFmpegStructureAssessmentMediaPreparer{
-		clipDir: root, ffmpegPath: "/fixture/ffmpeg", snapshot: snapshotOwnedFile,
+		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg", snapshot: snapshotOwnedFile,
 		identify: func(context.Context, string) (mediatools.MediaToolIdentity, error) {
 			return structureAssessmentToolFixture(), nil
 		},

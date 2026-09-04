@@ -18,7 +18,7 @@ func TestCertifiedRuntimeRefreshesMetadataAndRequiresReviewedProfiles(t *testing
 	fetches := 0
 	runtime, err := NewCertifiedRuntime(CertifiedRuntimeConfig{
 		Authority: authority, Deployment: deployment, APIKey: "secret",
-		MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
+		SourceRoot: t.TempDir(), MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
 		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
 		FetchSnapshot: func(_ context.Context, config fillerbakeoff.OpenRouterSnapshotConfig) (fillerbakeoff.OpenRouterSnapshot, error) {
 			fetches++
@@ -62,7 +62,7 @@ func TestCertifiedRuntimeRejectsOutOfEnvelopeSourceBeforeMetadata(t *testing.T) 
 	fetched := false
 	runtime, err := NewCertifiedRuntime(CertifiedRuntimeConfig{
 		Authority: authority, Deployment: deployment, APIKey: "secret",
-		MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
+		SourceRoot: t.TempDir(), MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
 		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
 		FetchSnapshot: func(context.Context, fillerbakeoff.OpenRouterSnapshotConfig) (fillerbakeoff.OpenRouterSnapshot, error) {
 			fetched = true

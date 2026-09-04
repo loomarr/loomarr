@@ -232,7 +232,7 @@ func TestFFmpegStructureAssessmentMediaPreparerEndToEnd(t *testing.T) {
 		},
 		FullPath: path,
 	}
-	preparer, err := NewFFmpegStructureAssessmentMediaPreparer(root, ffmpeg)
+	preparer, err := NewFFmpegStructureAssessmentMediaPreparer(root, root, ffmpeg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +246,40 @@ func TestFFmpegStructureAssessmentMediaPreparerEndToEnd(t *testing.T) {
 	}
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("real ffmpeg reuse drifted: first=%+v second=%+v", first, second)
+	}
+}
+
+func TestStructureAssessmentMediaPreparerSeparatesSourceAndPrivateMediaRoots(t *testing.T) {
+	sourceRoot, input := structureAssessmentPreparerSource(t)
+	mediaRoot := t.TempDir()
+	preparer, err := NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, "/fixture/ffmpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparer.probe = func(_ context.Context, path string) (Probed, error) {
+		if strings.Contains(filepath.Base(path), "structure-source-") {
+			return Probed{DurationMs: 10_000, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
+		}
+		return Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
+	}
+	preparer.identify = func(context.Context, string) (mediatools.MediaToolIdentity, error) {
+		return structureAssessmentToolFixture(), nil
+	}
+	preparer.run = func(_ context.Context, _ string, arguments []string) error {
+		return os.WriteFile(arguments[len(arguments)-1], []byte(strings.Repeat("normalized-media", 128)), 0o600)
+	}
+	preparer.decode = func(context.Context, string, string) error { return nil }
+	preparer.snapshot = snapshotOwnedFile
+
+	prepared, err := preparer.Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pathContains(mediaRoot, prepared.FullPath) || pathContains(sourceRoot, prepared.FullPath) {
+		t.Fatalf("assessment path %q is not isolated under private media root %q", prepared.FullPath, mediaRoot)
+	}
+	if prepared.Source != input.Source {
+		t.Fatalf("prepared source = %+v, want %+v", prepared.Source, input.Source)
 	}
 }
 
@@ -278,7 +312,7 @@ func structureAssessmentPreparerSource(t *testing.T) (string, StructureAssessmen
 
 func structureAssessmentPreparerFixture(root string, tool mediatools.MediaToolIdentity, run func(context.Context, string, []string) error) *FFmpegStructureAssessmentMediaPreparer {
 	return &FFmpegStructureAssessmentMediaPreparer{
-		clipDir: root, ffmpegPath: "/fixture/ffmpeg",
+		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg",
 		probe: func(_ context.Context, path string) (Probed, error) {
 			if strings.Contains(filepath.Base(path), "structure-source-") {
 				return Probed{DurationMs: 10_000, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil

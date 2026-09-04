@@ -41,7 +41,7 @@ func buildCertifiedWindowStructureRuntime(st store.Store, set resolved, layout f
 	root := filepath.Join(layout.ClipDir(), ".loomarr", "structure-window")
 	return fillerstructurewindowopenrouter.NewCertifiedRuntime(fillerstructurewindowopenrouter.CertifiedRuntimeConfig{
 		Authority: *authority, Deployment: *deployment, APIKey: apiKey,
-		MediaRoot: filepath.Join(root, "media"), EvidenceRoot: filepath.Join(root, "evidence"),
+		SourceRoot: layout.ClipDir(), MediaRoot: filepath.Join(root, "media"), EvidenceRoot: filepath.Join(root, "evidence"),
 		FFmpegPath: resolveTool(set.str("playout.ffmpeg_path"), "ffmpeg"),
 		Ledger: productionStructureWindowLedger{store: st, budget: store.InferenceBudget{
 			PerClipNanoUSD: deployment.PerSourceBudgetNanoUSD, PerDayNanoUSD: deployment.PerDayBudgetNanoUSD,

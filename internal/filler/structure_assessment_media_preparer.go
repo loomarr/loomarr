@@ -21,7 +21,8 @@ const structureAssessmentToolOutputMaximumBytes = 256 << 10
 // FFmpegStructureAssessmentMediaPreparer owns the one expensive rewrite before independent
 // assessors run. Its narrow result hides staging, reuse, tool identity, and lineage persistence.
 type FFmpegStructureAssessmentMediaPreparer struct {
-	clipDir    string
+	sourceRoot string
+	mediaRoot  string
 	ffmpegPath string
 	probe      Prober
 	identify   func(context.Context, string) (mediatools.MediaToolIdentity, error)
@@ -31,13 +32,14 @@ type FFmpegStructureAssessmentMediaPreparer struct {
 }
 
 // NewFFmpegStructureAssessmentMediaPreparer binds production media preparation to the configured
-// ffmpeg toolchain and one clean absolute filler root.
-func NewFFmpegStructureAssessmentMediaPreparer(clipDir, ffmpegPath string) (*FFmpegStructureAssessmentMediaPreparer, error) {
-	if clipDir == "" || !filepath.IsAbs(clipDir) || filepath.Clean(clipDir) != clipDir {
-		return nil, errors.New("structure assessment media preparer requires a clean absolute filler root")
+// ffmpeg toolchain, the retained-source root, and a separately owned private derivative root.
+func NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, ffmpegPath string) (*FFmpegStructureAssessmentMediaPreparer, error) {
+	if sourceRoot == "" || !filepath.IsAbs(sourceRoot) || filepath.Clean(sourceRoot) != sourceRoot ||
+		mediaRoot == "" || !filepath.IsAbs(mediaRoot) || filepath.Clean(mediaRoot) != mediaRoot {
+		return nil, errors.New("structure assessment media preparer requires clean absolute source and media roots")
 	}
 	return &FFmpegStructureAssessmentMediaPreparer{
-		clipDir: clipDir, ffmpegPath: ffmpegPath, probe: FFprobeNextTo(ffmpegPath),
+		sourceRoot: sourceRoot, mediaRoot: mediaRoot, ffmpegPath: ffmpegPath, probe: FFprobeNextTo(ffmpegPath),
 		identify: mediatools.IdentifyFFmpeg, run: runStructureAssessmentFFmpeg,
 		decode:   runStructureAssessmentDecode,
 		snapshot: snapshotOwnedFile,
@@ -53,13 +55,13 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 		return StructureAssessmentMedia{}, err
 	}
 	defer func() { _ = os.Remove(prepared.SnapshotPath) }()
-	stageDir := filepath.Join(p.clipDir, MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(p.mediaRoot, MediaAssetRootName, ".staging")
 	profile, tool, sourceIdentity := prepared.Profile, prepared.Tool, prepared.Identity
 	operation := structureAssessmentOperationSHA256(sourceIdentity, profile, tool)
 	if !isContentHash(operation) {
 		return StructureAssessmentMedia{}, errors.New("structure assessment media operation identity is invalid")
 	}
-	indexPath := structureAssessmentIndexPath(p.clipDir, operation)
+	indexPath := structureAssessmentIndexPath(p.mediaRoot, operation)
 	index, found, err := loadStructureAssessmentIndex(indexPath, operation)
 	if err != nil {
 		return StructureAssessmentMedia{}, err
@@ -106,7 +108,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 	if err := validateStructureAssessmentLineage(lineage); err != nil {
 		return StructureAssessmentMedia{}, err
 	}
-	mediaPath := structureAssessmentMediaPath(p.clipDir, mediaSHA)
+	mediaPath := structureAssessmentMediaPath(p.mediaRoot, mediaSHA)
 	if err := publishStructureAssessmentMedia(ctx, outputPath, mediaPath, mediaSHA, mediaBytes); err != nil {
 		return StructureAssessmentMedia{}, fmt.Errorf("publish structure assessment media: %w", err)
 	}
@@ -115,7 +117,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 		return StructureAssessmentMedia{}, err
 	}
 	defer func() { _ = os.Remove(lineageStage) }()
-	if err := publishStructureAssessmentArtifact(ctx, lineageStage, structureAssessmentLineagePath(p.clipDir, lineage.SHA256), lineageRaw); err != nil {
+	if err := publishStructureAssessmentArtifact(ctx, lineageStage, structureAssessmentLineagePath(p.mediaRoot, lineage.SHA256), lineageRaw); err != nil {
 		return StructureAssessmentMedia{}, fmt.Errorf("publish structure assessment lineage: %w", err)
 	}
 	index = structureAssessmentMediaIndex{
@@ -134,14 +136,14 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 }
 
 func (p *FFmpegStructureAssessmentMediaPreparer) reuse(ctx context.Context, source SplitSourceAsset, sourceIdentity StructureAssessmentMediaSourceIdentity, profile fillerstructuremedia.Profile, tool mediatools.MediaToolIdentity, operation string, index structureAssessmentMediaIndex) (StructureAssessmentMedia, error) {
-	lineage, err := loadStructureAssessmentLineage(structureAssessmentLineagePath(p.clipDir, index.LineageSHA256), index.LineageSHA256)
+	lineage, err := loadStructureAssessmentLineage(structureAssessmentLineagePath(p.mediaRoot, index.LineageSHA256), index.LineageSHA256)
 	if err != nil {
 		return StructureAssessmentMedia{}, err
 	}
 	if lineage.OperationSHA256 != operation || lineage.Source != sourceIdentity || lineage.Profile != profile || lineage.Tool != tool {
 		return StructureAssessmentMedia{}, errors.New("structure assessment media reuse authority drifted")
 	}
-	mediaPath := structureAssessmentMediaPath(p.clipDir, lineage.Media.SHA256)
+	mediaPath := structureAssessmentMediaPath(p.mediaRoot, lineage.Media.SHA256)
 	mediaSHA, mediaBytes, err := FileSHA256(mediaPath)
 	if err != nil || mediaSHA != lineage.Media.SHA256 || mediaBytes != lineage.Media.Bytes {
 		return StructureAssessmentMedia{}, errors.New("reused structure assessment media bytes do not match lineage")

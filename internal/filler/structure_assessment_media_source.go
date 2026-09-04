@@ -28,7 +28,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareSource(ctx context.Conte
 	if err := input.Source.validate(); err != nil {
 		return preparedStructureAssessmentSource{}, fmt.Errorf("structure assessment source: %w", err)
 	}
-	expectedSource := filepath.Join(p.clipDir, filepath.FromSlash(input.Source.Path))
+	expectedSource := filepath.Join(p.sourceRoot, filepath.FromSlash(input.Source.Path))
 	if !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath || input.FullPath != expectedSource {
 		return preparedStructureAssessmentSource{}, errors.New("structure assessment source path does not match its retained identity")
 	}
@@ -37,7 +37,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareSource(ctx context.Conte
 		return preparedStructureAssessmentSource{}, errors.New("structure assessment source is not the declared regular file")
 	}
 
-	stageDir := filepath.Join(p.clipDir, MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(p.mediaRoot, MediaAssetRootName, ".staging")
 	if err := os.MkdirAll(stageDir, 0o755); err != nil {
 		return preparedStructureAssessmentSource{}, fmt.Errorf("create structure assessment staging: %w", err)
 	}

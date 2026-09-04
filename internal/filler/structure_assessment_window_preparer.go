@@ -62,7 +62,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 	if !isContentHash(operation) {
 		return StructureAssessmentWindowMedia{}, errors.New("structure assessment window operation identity is invalid")
 	}
-	indexPath := structureAssessmentWindowIndexPath(p.clipDir, operation)
+	indexPath := structureAssessmentWindowIndexPath(p.mediaRoot, operation)
 	index, found, err := loadStructureAssessmentWindowIndex(indexPath, operation)
 	if err != nil {
 		return StructureAssessmentWindowMedia{}, err
@@ -71,7 +71,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 		return p.reuseWindow(ctx, plan, prepared, window, operation, index)
 	}
 
-	stageDir := filepath.Join(p.clipDir, MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(p.mediaRoot, MediaAssetRootName, ".staging")
 	output, err := os.CreateTemp(stageDir, "structure-window-*.mp4")
 	if err != nil {
 		return StructureAssessmentWindowMedia{}, err
@@ -113,7 +113,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 	if err := validateStructureAssessmentWindowLineage(plan, lineage); err != nil {
 		return StructureAssessmentWindowMedia{}, err
 	}
-	mediaPath := structureAssessmentMediaPath(p.clipDir, mediaSHA)
+	mediaPath := structureAssessmentMediaPath(p.mediaRoot, mediaSHA)
 	if err := publishStructureAssessmentMedia(ctx, outputPath, mediaPath, mediaSHA, mediaBytes); err != nil {
 		return StructureAssessmentWindowMedia{}, fmt.Errorf("publish media: %w", err)
 	}
@@ -129,7 +129,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) publishWindowArtifacts(ctx cont
 		return err
 	}
 	defer func() { _ = os.Remove(lineageStage) }()
-	if err := publishStructureAssessmentArtifact(ctx, lineageStage, structureAssessmentWindowLineagePath(p.clipDir, lineage.SHA256), lineageRaw); err != nil {
+	if err := publishStructureAssessmentArtifact(ctx, lineageStage, structureAssessmentWindowLineagePath(p.mediaRoot, lineage.SHA256), lineageRaw); err != nil {
 		return fmt.Errorf("publish lineage: %w", err)
 	}
 	index := structureAssessmentWindowIndex{
@@ -149,7 +149,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) publishWindowArtifacts(ctx cont
 }
 
 func (p *FFmpegStructureAssessmentMediaPreparer) reuseWindow(ctx context.Context, plan fillerstructurewindow.Plan, prepared preparedStructureAssessmentSource, window fillerstructurewindow.Window, operation string, index structureAssessmentWindowIndex) (StructureAssessmentWindowMedia, error) {
-	lineage, err := loadStructureAssessmentWindowLineage(structureAssessmentWindowLineagePath(p.clipDir, index.LineageSHA256), index.LineageSHA256, plan)
+	lineage, err := loadStructureAssessmentWindowLineage(structureAssessmentWindowLineagePath(p.mediaRoot, index.LineageSHA256), index.LineageSHA256, plan)
 	if err != nil {
 		return StructureAssessmentWindowMedia{}, err
 	}
@@ -157,7 +157,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) reuseWindow(ctx context.Context
 		lineage.Profile != prepared.Profile || lineage.Tool != prepared.Tool {
 		return StructureAssessmentWindowMedia{}, errors.New("structure assessment window reuse authority drifted")
 	}
-	mediaPath := structureAssessmentMediaPath(p.clipDir, lineage.Media.SHA256)
+	mediaPath := structureAssessmentMediaPath(p.mediaRoot, lineage.Media.SHA256)
 	mediaSHA, mediaBytes, err := FileSHA256(mediaPath)
 	if err != nil || mediaSHA != lineage.Media.SHA256 || mediaBytes != lineage.Media.Bytes {
 		return StructureAssessmentWindowMedia{}, errors.New("reused structure assessment window bytes do not match lineage")

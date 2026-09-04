@@ -76,7 +76,7 @@ func execute(ctx context.Context, config commandConfig) (commandResult, error) {
 	if err != nil {
 		return commandResult{}, err
 	}
-	preparer, err := filler.NewFFmpegStructureAssessmentMediaPreparer(mediaRoot, config.FFmpegPath)
+	preparer, err := filler.NewFFmpegStructureAssessmentMediaPreparer(filepath.Dir(manifestPath), mediaRoot, config.FFmpegPath)
 	if err != nil {
 		return commandResult{}, err
 	}

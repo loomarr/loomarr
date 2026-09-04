@@ -3288,7 +3288,12 @@ assessment binds both the immutable V66 source (complete SHA-256, byte length, a
 the exact submitted derivative (complete SHA-256, byte length, measured duration, and media-profile
 SHA-256). The source and derivative are distinct first-class identities in every candidate, reservation,
 settled assessment, reducer decision, and materialization-authority check; a transformed-media digest may
-never replace or masquerade as the parent source digest. The certification
+never replace or masquerade as the parent source digest. The production preparer likewise receives two
+distinct filesystem authorities: the applied filler root used to resolve the retained source path, and a
+private assessment-media root used only for snapshots, normalized derivatives, lineage, and operation
+indexes. Treating the private output root as the source root makes every catalog path fail before rendering;
+deriving either root from the other makes relocation part of semantic identity. Both roots are clean absolute
+runtime locators and remain excluded from the path-free evidence. The certification
 authority also names the tested source-duration and encoded-byte envelope, and runtime holds before spend
 when a source or derivative falls outside it. Qualification may not extrapolate from shorter cases, silently
 truncate a reel, or replace complete-timeline authority with independently judged chunks. If a truthful

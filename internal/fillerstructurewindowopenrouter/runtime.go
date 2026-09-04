@@ -29,6 +29,7 @@ type CertifiedRuntimeConfig struct {
 	Authority     fillerstructurewindow.MaterializationAuthority
 	Deployment    Deployment
 	APIKey        string
+	SourceRoot    string
 	MediaRoot     string
 	EvidenceRoot  string
 	FFmpegPath    string
@@ -54,7 +55,7 @@ func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, erro
 	if err := ValidateDeployment(config.Deployment, config.Authority); err != nil {
 		return nil, err
 	}
-	if config.APIKey == "" || config.Ledger == nil || !cleanAbsolutePath(config.MediaRoot) ||
+	if config.APIKey == "" || config.Ledger == nil || !cleanAbsolutePath(config.SourceRoot) || !cleanAbsolutePath(config.MediaRoot) ||
 		!cleanAbsolutePath(config.EvidenceRoot) || config.MediaRoot == config.EvidenceRoot || config.FFmpegPath == "" {
 		return nil, errors.New("structure window certified runtime requires credential, distinct storage roots, ffmpeg, and ledger")
 	}
@@ -74,7 +75,7 @@ func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, erro
 	if client == nil {
 		client = httpx.NewNamed("filler-structure-window-openrouter", httpx.TimeoutLLM)
 	}
-	preparer, err := filler.NewFFmpegStructureAssessmentMediaPreparer(config.MediaRoot, config.FFmpegPath)
+	preparer, err := filler.NewFFmpegStructureAssessmentMediaPreparer(config.SourceRoot, config.MediaRoot, config.FFmpegPath)
 	if err != nil {
 		return nil, err
 	}

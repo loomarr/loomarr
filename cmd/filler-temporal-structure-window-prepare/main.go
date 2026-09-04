@@ -35,7 +35,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	result, err := fillerreview.BuildTemporalStructureWindowSet(context.Background(), fillerreview.TemporalStructureWindowSetConfig{
 		CorpusManifestPath: *manifest, CorpusAuthorityPath: *authority, PreparedAt: preparedAt.UTC(), OutputDir: *output,
 		NewPreparer: func(root string) (filler.StructureAssessmentWindowMediaPreparer, error) {
-			return filler.NewFFmpegStructureAssessmentMediaPreparer(root, *ffmpeg)
+			return filler.NewFFmpegStructureAssessmentMediaPreparer(root, root, *ffmpeg)
 		},
 	})
 	if err != nil {
