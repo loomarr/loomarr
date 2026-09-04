@@ -323,6 +323,102 @@ SHA-256 `fb0ebe8ad3f61080e45412a5332cea91819f0c2535ad5a6924d23b15384f401e`.
 CPU model time averaged roughly 2.04–2.10 seconds per frame, about twenty times Marqo's measured time, so
 the present worker is suitable for offline acquisition/admission screening rather than a playback hot path.
 
+## Certification-corpus acquisition decision
+
+There is no trustworthy ready-made corpus that can be adopted as the V68 certificate. Existing sensitive-
+content datasets generally label the broader concepts `porn` or `NSFW`, do not provide policy-exact visible-
+anatomy intervals, were assembled from web media whose product-evaluation and redistribution rights are
+unclear, or use model-authored labels. Conversely, a missing annotation or a generic `safe` label does not
+prove complete absence. Open Images explicitly says its image-level labeling is non-exhaustive, so even its
+9-million-image scale cannot create clean truth. [Open Images evaluation protocol](https://storage.googleapis.com/openimages/web/evaluation.html),
+[Open Images V7 description](https://storage.googleapis.com/openimages/web/factsfigures_v7.html).
+
+The practical source pool is rights-reviewed cultural open access, not a pornography benchmark:
+
+- The Smithsonian exposes more than 5.1 million open-access assets and makes assets carrying its CC0
+  designation available for reuse, including commercial reuse. It also warns that CC0 addresses copyright,
+  not every possible privacy, publicity, trademark, or third-party right. This is the preferred reproducible
+  clean-candidate pool and a supplementary historical-art positive pool. [Open Access](https://www.si.edu/OpenAccess),
+  [FAQ](https://www.si.edu/openaccess/faq), [terms](https://www.si.edu/termsofuse).
+- The Met collection API exposes public-domain status and public high-resolution image URLs without an API
+  key. The Art Institute of Chicago API can filter `is_public_domain=true` and exposes IIIF image identities.
+  Both are preferred over an aggregator because the institution supplies the work identity and rights signal.
+  [Met API](https://metmuseum.github.io/), [Art Institute API](https://api.artic.edu/docs/).
+- The Rijksmuseum data service publishes item-level rights identifiers and says most digitised objects are in
+  the public domain. It is another institutionally identified source when an exact item carries PDM or CC0.
+  [Data service](https://data.rijksmuseum.nl/), [information and data policy](https://data.rijksmuseum.nl/policy/information-and-data-policy).
+- Wikimedia Commons has enough discovery breadth for positives: its `Nude women in art` category currently
+  contains 179 direct files and 58 subcategories, while its general `Nudity` category exposes only 11 direct
+  videos plus subcategories. Every file has its own licence, and Commons warns that depicted-person rights can
+  still restrict reuse. Use it only as an index to adult historical artworks with an exact acceptable file
+  licence; exclude contemporary people, minors, AI-generated work, and uncertain files.
+  [Art category](https://commons.wikimedia.org/wiki/Category:Nude_women_in_art),
+  [nudity category](https://commons.wikimedia.org/wiki/Category:Nudity),
+  [reuse guide](https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia/en).
+
+Public Domain Mark and CC0 must not be treated as interchangeable evidence. Creative Commons describes PDM
+as an informational mark for work believed already free of copyright restrictions, whereas CC0 is a legal
+waiver/dedication by a rights holder; neither silently clears privacy or publicity rights. The private rights
+authority must retain the exact item-level claim and the acquisition-time source record rather than reducing
+both to `public_domain`. [Creative Commons public-domain tools](https://creativecommons.org/public-domain/).
+
+The available direct-video pool cannot presently supply 59 defensible policy-positive families. Research
+datasets such as NPDI/Pornography-2k have ample video, but their broad pornography labels do not map to
+`explicit_nudity_v1`, their official distribution is restricted by request and responsibility agreement,
+and the underlying web-video copyright and consent posture is not suitable as Loomarr product truth.
+[Official RECOD dataset page](https://recodbr.wordpress.com/code-n-data/). Pexels is also excluded absent
+written permission because its current terms prohibit using API content to build or evaluate ML/AI systems.
+[Pexels API terms explanation](https://help.pexels.com/hc/en-us/articles/900005880463-What-are-the-Terms-and-Conditions).
+
+### One-maintainer protocol
+
+Use automation to remove blind viewing, not to manufacture the answer:
+
+1. Build a metadata-only candidate manifest of 120–150 adult historical-art positives and 300–350 clean
+   candidates. Bind institution, object/work id, creator, collection, source URL, item-level rights statement,
+   acquisition time, original byte hash, and a near-duplicate fingerprint before any candidate model runs.
+2. Group by the underlying source work. One work may contribute at most one independent family. Different
+   encodes, crops, pans, cuts, exposure lengths, or other derivatives of that work remain in the same family
+   and exercise slices without increasing the denominator.
+3. Let local classifiers and VLMs propose policy matches, deduplicate candidates, identify likely rights or
+   age hazards, and prioritize disagreements. Do not show those answers in the truth-authoring view.
+4. Present the maintainer one private keyboard-driven review board: the exact policy, the complete still or
+   complete deterministic contact sheet, item-level rights evidence, and `positive`, `clean`, `uncertain`, or
+   `exclude` actions. This is bounded adjudication of a frozen shortlist, not a blind real-time viewing pass.
+   Uncertain items become replacements and never enter either denominator.
+5. Lock at least 59 positive families and 100 clean families before opening model output. The 100-clean floor
+   only gives a one-sided 95% upper family false-positive bound of about 3% when zero fire. If Loomarr wants a
+   statistically supported 1% family-level upper bound, lock at least 299 clean families with zero fires;
+   per-slice confidence claims require their own predeclared populations. Preserve additional replacement and
+   development families outside the untouched certificate.
+6. After the truth lock, run Marqo and Freepik over every exact planned frame, use Qwen only for positive
+   escalation, and generate a short disagreement queue. Thresholds may be selected on a separate development
+   partition; the final certificate is opened once.
+
+The immediate transport plan needs one explicit design decision before it can certify. Each independently
+sourced museum work can be losslessly wrapped in a deterministic video carrier and retain one family root;
+transport variants would never create more families. That gives lawful, policy-exact visual material and
+complete known source timelines without generating new semantic content. V68 also says generated controls
+and transformed derivatives do not inflate the independent-source denominator and requires a decodable video
+source. Until the design states whether one lossless carrier per independent underlying work counts, this
+pool is authorized only for development and corpus-construction rehearsal—not the 59-family certificate.
+
+Natural archival video remains a separate domain challenge even if the carrier decision is accepted. Add
+rights-approved programme, advertising, animation, historical graphics, beach/swimwear, medical, low-light,
+and visually busy sources, using complete contact sheets plus only the model-proposed full-resolution windows
+for maintainer attention. A clean natural video still requires deterministic complete-source coverage; one
+thumbnail or one model's negative cannot establish it.
+
+This approach is consistent with NIST's recommendation to document test sets, metrics, measurement tools,
+processes, and materials so evaluation is repeatable. It deliberately separates discovery models from the
+locked evaluation population. [NIST AI RMF Measure 2.1](https://airc.nist.gov/airmf-resources/playbook/measure/).
+
+Do not train an LLM or vision model during this acquisition slice. The initial corpus is a certificate, not a
+training set. Training becomes rational only after production-like development data exposes a repeatable
+error cluster, rights-cleared training families exist outside the certificate, and a second untouched
+source-family-disjoint certificate remains available. A local Mac can later make discovery, dense rescoring,
+deduplication, and private taxonomy extraction cheap; it does not change this truth-separation requirement.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:
