@@ -45,6 +45,7 @@ export {
   SurfRail,
   surfGroupsFromGuide,
   surfPreviousChannel,
+  watchingScheduleFromGuide,
 } from "./src/surf-rail";
 export type {
   ChannelNumberEntry,

@@ -1,12 +1,17 @@
-import { getChannelPlayUrlUrl } from "@loomarr/api/endpoints/channels";
+import { getChannelPlayUrlUrl, getListChannelsUrl } from "@loomarr/api/endpoints/channels";
+import type { ListChannelsOutputBody } from "@loomarr/api/models/listChannelsOutputBody";
 import type { PlayURLOutputBody } from "@loomarr/api/models/playURLOutputBody";
-import type { PlayerSourcePort } from "../player-source";
+import type { PlayerChannel, PlayerSourcePort } from "../player-source";
 
 interface PlayUrlSourceOptions {
   /** Normalized URL of the paired Loomarr server. */
   baseUrl: string;
   /** Authenticated request function owned by the active client session. */
   fetch: typeof globalThis.fetch;
+}
+
+interface ChannelCatalogPort {
+  list: (signal: AbortSignal) => Promise<readonly PlayerChannel[]>;
 }
 
 const trimLeadingSlashes = (value: string) => {
@@ -51,5 +56,19 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
   },
 });
 
-export type { PlayUrlSourceOptions };
-export { createPlayUrlSourcePort, resolveStreamUrl };
+const createChannelCatalogPort = (request: typeof globalThis.fetch): ChannelCatalogPort => ({
+  list: async (signal) => {
+    const response = await request(getListChannelsUrl(), { method: "GET", signal });
+    if (!response.ok) throw new Error(`Couldn't load channels (${response.status}).`);
+    const body = (await response.json()) as ListChannelsOutputBody;
+    return body.channels.map(({ id, inAppPlayable, name, number }) => ({
+      id,
+      inAppPlayable,
+      name,
+      number,
+    }));
+  },
+});
+
+export type { ChannelCatalogPort, PlayUrlSourceOptions };
+export { createChannelCatalogPort, createPlayUrlSourcePort, resolveStreamUrl };

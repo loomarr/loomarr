@@ -23,6 +23,7 @@ const renderSurface = (
     chromeVisible?: boolean;
     controlsVisible?: boolean;
     density?: "touch" | "tv";
+    loading?: boolean;
     loadError?: string;
     schedule?: Parameters<typeof WatchingSurface>[0]["schedule"];
   } = {},
@@ -33,6 +34,7 @@ const renderSurface = (
         chromeVisible={options.chromeVisible}
         controlsVisible={options.controlsVisible}
         density={options.density ?? "tv"}
+        loading={options.loading}
         loadError={options.loadError}
         onChannelDown={vi.fn()}
         onChannelUp={vi.fn()}
@@ -121,6 +123,16 @@ describe("WatchingSurface", () => {
     const failedLoad = renderSurface(empty, { loadError: "Could not load channels." });
     expect(failedLoad).toContain("Could not load channels.");
     expect(failedLoad).toContain("Retry");
+  });
+
+  it("does not announce an empty catalog before the authoritative request resolves", () => {
+    const empty: PlayerSnapshot = { catalog: [], recentChannelIds: [], status: "empty" };
+    const output = renderSurface(empty, { loading: true });
+
+    expect(output).toContain("Loading channels");
+    expect(output).not.toContain("No playable channels");
+    expect(output).not.toContain("Open programme guide");
+    expect(output).not.toContain("Up/Down tune");
   });
 
   it("keeps playback mounted while transient journeys hide all Watching chrome", () => {

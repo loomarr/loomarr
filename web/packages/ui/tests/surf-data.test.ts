@@ -1,7 +1,12 @@
 import { layoutGuide } from "@loomarr/core/guide";
 import { describe, expect, it } from "vitest";
 
-import { restoreSurfSelection, surfGroupsFromGuide, surfPreviousChannel } from "../index";
+import {
+  restoreSurfSelection,
+  surfGroupsFromGuide,
+  surfPreviousChannel,
+  watchingScheduleFromGuide,
+} from "../index";
 
 const layout = layoutGuide(
   {
@@ -71,6 +76,14 @@ describe("Surf data", () => {
       next: { title: "Next" },
       now: { episodeLabel: "S07E02", progressPercent: 50, title: "Now" },
     });
+  });
+
+  it("maps the tuned Channel's authoritative Guide identity into Watching", () => {
+    expect(watchingScheduleFromGuide(layout, "seven", 2_000)).toMatchObject({
+      next: { title: "Next" },
+      now: { episodeLabel: "S07E02", progressPercent: 50, title: "Now" },
+    });
+    expect(watchingScheduleFromGuide(layout, "missing", 2_000)).toBeUndefined();
   });
 
   it("populates Favourites only from authoritative membership and preserves Channel order", () => {
