@@ -977,7 +977,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
 | GET | `/v1/filler/readiness` | Member-readable filler readiness: one server-ranked next action plus fetch ceilings, disjoint pipeline ownership counts, channel coverage with usable duration and grounded variety, and bounded recent acquisition runs. The browser renders this decision; it does not reproduce the priority rule. Acquisition runs preserve their source/pull attribution and terminal outcome across restart, while rejected/dismissed audit remains distinct from failures with an explicit retry or restore action. |
 | GET | `/v1/filler/decisions/overview` | Member-readable, server-owned admission health: semantic and operational counts plus at most one ranked next action. Clients never derive health or priority from the detail feeds (§10 V63). |
-| GET | `/v1/filler/decisions/reviews` | Admin-only bounded page of unresolved semantic exceptions. Every row has exactly one plain review question and only the decisive reason codes, evidence references, and conflicts (§10 V63). |
+| GET | `/v1/filler/decisions/reviews` | Admin-only bounded page of unresolved semantic exceptions. Every row has exactly one plain review question, its required `shadow | applied` application mode, and only the decisive reason codes, evidence references, and conflicts (§10 V63). A shadow row asks for calibration/audit evidence only: answering it never files, removes, schedules, or otherwise changes the clip. Clients must name that limitation and may reserve “Confirm for library” for a future applied terminal-admission action that returns a committed catalog effect. |
 | GET | `/v1/filler/decisions/activity` | Member-readable bounded audit of automatic decisions and human actions. Automatic admission, automatic rejection, correction, restore, and reversal remain distinct event kinds (§10 V63). |
 | GET | `/v1/filler/decisions/diagnostics` | Admin-only bounded operational holds. Returns stable recovery codes and redacted details; queued/running/retry/provider/budget state never appears in the human review feed (§10 V63). |
 | POST | `/v1/filler/decisions/{id}/actions` | Resolve, correct, restore, or reverse one durable decision (admin). The request names a closed action kind and records actor, reason, and optional corrected answer as an append-only event; it never rewrites evaluator evidence (§10 V63). |
@@ -4672,7 +4672,12 @@ wire field. An automatic shadow verdict is presented as `Would admit (shadow)` o
 `Would reject (shadow)` with caution styling; only an applied verdict may use the effect labels
 `Admitted automatically` or `Rejected automatically`. A client that receives an omitted or unknown mode
 presents `Decision mode unavailable` with caution styling and never infers an applied effect.
-Review requests and operator-action labels describe recorded events and do not change with mode.
+Operator-action entries in activity describe their recorded event and never infer a catalog effect.
+The unresolved-review projection carries the same required mode. In particular, an `admit` answer
+to a shadow review records the operator's semantic judgment but has no catalog effect; calling it
+“Confirm for library” would falsely turn an audit event into a publication claim. Applied-mode
+operator confirmation remains unavailable until the terminal-admission module can revalidate the
+exact current release evidence and commit the action plus catalog effect as one outcome.
 
 The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
 V38 `score` rung. Its first production evidence version records only facts whose provenance the
