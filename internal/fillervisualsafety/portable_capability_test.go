@@ -59,6 +59,9 @@ func TestPortableCapabilityRejectsAmbiguousOrIncompleteArtifacts(t *testing.T) {
 		"unbounded source frames": func(value *fillervisualsafety.PortableCapability) {
 			value.MaximumFramesPerSource = fillervisualsafety.MaximumObservations + 1
 		},
+		"unbounded frame latency": func(value *fillervisualsafety.PortableCapability) {
+			value.MaximumFrameLatencyMS = fillervisualsafety.MaximumPortableFrameLatencyMS + 1
+		},
 		"unbounded model input": func(value *fillervisualsafety.PortableCapability) {
 			value.Models[0].InputWidth = fillervisualsafety.MaximumPortableInputDimension + 1
 		},
@@ -113,6 +116,7 @@ func portableCapabilityInput() fillervisualsafety.PortableCapability {
 		EvidenceContract:       "portable-raw-logits-v1",
 		MaximumFrameBytes:      24 << 20,
 		MaximumFramesPerSource: 3_600,
+		MaximumFrameLatencyMS:  30_000,
 		Models: []fillervisualsafety.PortableModelArtifact{
 			{
 				ID: "marqo-nsfw-384", SourceRevision: "0c26ec22111b83f106d72a55f611ec35962bcb65",

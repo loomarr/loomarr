@@ -224,11 +224,7 @@ func validateFrames(plan CoveragePlan, frames []FrameEvidence) (int64, error) {
 	maximumGap := int64(0)
 	var previous int64
 	for index, frame := range frames {
-		point := plan.Points[index]
-		if frame.Ordinal != point.Ordinal || frame.RequestedMS != point.RequestedMS || frame.ObservedMS < 0 ||
-			frame.ObservedMS >= plan.DurationMS || absoluteDifference(frame.ObservedMS, frame.RequestedMS) > plan.Profile.MaximumTimestampDriftMS ||
-			!validDigest(frame.SHA256) || frame.Bytes <= 0 || frame.Bytes > MaximumFrameBytes ||
-			frame.Width != plan.Video.Width || frame.Height != plan.Video.Height {
+		if !validFrame(plan, index, frame) {
 			return 0, errors.New("visual-safety frame evidence is invalid")
 		}
 		if index > 0 {
@@ -245,6 +241,18 @@ func validateFrames(plan CoveragePlan, frames []FrameEvidence) (int64, error) {
 	}
 	return maximumGap, nil
 }
+
+func validFrame(plan CoveragePlan, index int, frame FrameEvidence) bool {
+	if index < 0 || index >= len(plan.Points) {
+		return false
+	}
+	point := plan.Points[index]
+	return frame.Ordinal == point.Ordinal && frame.RequestedMS == point.RequestedMS && frame.ObservedMS >= 0 &&
+		frame.ObservedMS < plan.DurationMS && absoluteDifference(frame.ObservedMS, frame.RequestedMS) <= plan.Profile.MaximumTimestampDriftMS &&
+		validDigest(frame.SHA256) && frame.Bytes > 0 && frame.Bytes <= MaximumFrameBytes &&
+		frame.Width == plan.Video.Width && frame.Height == plan.Video.Height
+}
+
 func absoluteDifference(left, right int64) int64 {
 	if left >= right {
 		return left - right

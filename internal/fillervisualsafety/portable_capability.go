@@ -12,6 +12,7 @@ const (
 	MaximumPortableModels             = 4
 	MaximumPortableOutputs            = 64
 	MaximumPortableInputDimension     = 4_096
+	MaximumPortableFrameLatencyMS     = int64(5 * 60 * 1_000)
 )
 
 // RuntimeIdentity binds the native inference artifact separately from the
@@ -51,6 +52,7 @@ type PortableCapability struct {
 	EvidenceContract       string                  `json:"evidenceContract"`
 	MaximumFrameBytes      int64                   `json:"maximumFrameBytes"`
 	MaximumFramesPerSource int                     `json:"maximumFramesPerSource"`
+	MaximumFrameLatencyMS  int64                   `json:"maximumFrameLatencyMs"`
 	Models                 []PortableModelArtifact `json:"models"`
 	SHA256                 string                  `json:"sha256"`
 }
@@ -77,7 +79,8 @@ func ValidatePortableCapability(capability PortableCapability) error {
 		!validDigest(capability.ProviderOptionsSHA256) || !validDigest(capability.PreprocessorSHA256) ||
 		!validIdentity(capability.EvidenceContract) || capability.MaximumFrameBytes <= 0 ||
 		capability.MaximumFrameBytes > MaximumFrameBytes || capability.MaximumFramesPerSource <= 0 ||
-		capability.MaximumFramesPerSource > MaximumObservations || len(capability.Models) == 0 ||
+		capability.MaximumFramesPerSource > MaximumObservations || capability.MaximumFrameLatencyMS <= 0 ||
+		capability.MaximumFrameLatencyMS > MaximumPortableFrameLatencyMS || len(capability.Models) == 0 ||
 		len(capability.Models) > MaximumPortableModels || capability.SHA256 == "" ||
 		capability.SHA256 != PortableCapabilitySHA256(capability) {
 		return errors.New("portable visual-safety capability is invalid")
