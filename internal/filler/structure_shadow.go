@@ -165,7 +165,7 @@ func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified S
 			observedAt = artifact.DecidedAt
 		}
 	}
-	structureAuthoritySHA := structureMaterializationAuthorityIdentity(materialization)
+	structureAuthoritySHA := structureMaterializationAuthorityIdentity(materialization, proposal.StructureDecision)
 	decision := StructureSplitShadowDecision{
 		SchemaVersion: StructureSplitShadowSchemaVersion, ContractVersion: StructureSplitShadowContractVersion,
 		ProposalID: proposal.ID, ClipHash: proposal.ClipHash, SourceSHA256: sourceSHA,

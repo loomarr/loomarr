@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
 func certifiedAutoPolicy() *AutoSplitPolicy {
@@ -136,6 +137,80 @@ func TestCertifiedStructureMaterializableRequiresCompleteCertifiedPlan(t *testin
 			}
 		})
 	}
+}
+
+func TestCertifiedStructureMaterializableUsesDistinctWindowAuthority(t *testing.T) {
+	proposal := certifiedStructureProposal(t)
+	proposal.StructureDecision = passingWindowStructureDecision(t, *proposal.StructureDecision)
+	withoutWindowAuthority := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(t), 10*time.Second)
+	if withoutWindowAuthority.Reject != RejectStructureUncertified || len(withoutWindowAuthority.Confirm) != 0 {
+		t.Fatalf("complete-video authority admitted window decision: %+v", withoutWindowAuthority)
+	}
+	withWindowAuthority := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedWindowStructure(t, *proposal.StructureDecision), 10*time.Second)
+	if withWindowAuthority.Reject != AutoSplitOK || len(withWindowAuthority.Confirm) != 2 || len(withWindowAuthority.Hold) != 0 {
+		t.Fatalf("window authority did not admit certified held children: %+v", withWindowAuthority)
+	}
+}
+
+func passingWindowStructureDecision(t *testing.T, complete fillerstructure.Artifact) *fillerstructure.Artifact {
+	t.Helper()
+	plan, err := fillerstructurewindow.NewPlan(complete.Decision.Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := make([]fillerstructure.AssessmentMedia, len(plan.Windows))
+	for index, window := range plan.Windows {
+		items[index] = fillerstructure.AssessmentMedia{
+			SHA256: strings.Repeat(string(rune('4'+index)), 64), Bytes: 1_024,
+			DurationMS:    window.MediaEndMS - window.MediaStartMS,
+			ProfileSHA256: plan.Profile.AssessmentMediaProfileSHA256,
+			LineageSHA256: strings.Repeat(string(rune('7'+index)), 64),
+		}
+	}
+	input, err := fillerstructure.NewWindowMediaSetInput(complete.Decision.Source, plan.SHA256, items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidates := append([]fillerstructure.Candidate(nil), complete.Decision.Candidates...)
+	for index := range candidates {
+		candidates[index].InputSHA256 = input.SHA256
+		candidates[index].Assessor.PromptVersion = fillerstructurewindow.DirectVideoPromptVersion
+		candidates[index].Assessor.EvidenceContract = fillerstructurewindow.CallRecordContractVersion
+	}
+	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
+		Source: complete.Decision.Source, Input: input, BoundaryToleranceMS: complete.BoundaryToleranceMS, Candidates: candidates,
+	}, complete.DecidedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &artifact
+}
+
+func allowCertifiedWindowStructure(t *testing.T, artifact fillerstructure.Artifact) *StructureMaterializationPolicy {
+	t.Helper()
+	maximumBytes := int64(0)
+	for _, item := range artifact.Decision.Input.Items {
+		maximumBytes = max(maximumBytes, item.Bytes)
+	}
+	authority := fillerstructurewindow.MaterializationAuthority{
+		SchemaVersion:             fillerstructurewindow.MaterializationAuthoritySchemaVersion,
+		ContractVersion:           fillerstructurewindow.MaterializationAuthorityContractVersion,
+		WindowCertificationSHA256: strings.Repeat("d", 64), ShortLongShadowSHA256: strings.Repeat("e", 64),
+		WindowProfileSHA256:          fillerstructurewindow.CanonicalProfile().SHA256,
+		AssessmentMediaProfileSHA256: artifact.Decision.Input.ProfileSHA256,
+		MinimumSourceDurationMS:      1, MaximumSourceDurationMS: artifact.Decision.Source.DurationMS,
+		MaximumWindowBytes: maximumBytes, MaximumWindows: len(artifact.Decision.Input.Items),
+		ReducerVersion: artifact.ReducerVersion, BoundaryToleranceMS: artifact.BoundaryToleranceMS,
+		AllowedUnits: []fillerstructure.Unit{artifact.Decision.Unit},
+		AllowedRoles: []fillerstructure.Role{fillerstructure.RoleCommercial, fillerstructure.RolePromo},
+		ReviewerID:   "fixture-reviewer", ReviewedAt: time.Date(2026, 9, 14, 2, 0, 0, 0, time.UTC),
+		AutomaticMaterializationAllowed: true,
+	}
+	for _, candidate := range artifact.Decision.Candidates {
+		authority.Assessors = append(authority.Assessors, fillerstructure.Profile(candidate.Assessor))
+	}
+	authority.SHA256 = fillerstructurewindow.MaterializationAuthoritySHA256(authority)
+	return &StructureMaterializationPolicy{WindowAuthority: &authority}
 }
 
 func TestCertifiedStructureMaterializableDoesNotRequirePreChildEnrichment(t *testing.T) {

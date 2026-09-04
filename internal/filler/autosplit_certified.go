@@ -5,12 +5,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
 // StructureMaterializationPolicy is the release boundary between a valid assessment and unattended
 // creation of held child work items. It cannot authorize broadcast admission.
 type StructureMaterializationPolicy struct {
-	Authority *fillerstructure.Authority
+	Authority       *fillerstructure.Authority
+	WindowAuthority *fillerstructurewindow.MaterializationAuthority
 }
 
 const (
@@ -50,7 +52,7 @@ func CertifiedStructureMaterializable(p SplitProposal, auto *AutoSplitPolicy, ce
 	if ValidateStructureDecisionProjection(assessment, *p.StructureDecision) != nil {
 		return SplitPartition{Reject: RejectStructureMismatch, Hold: keep, Discard: discard}
 	}
-	if certification == nil || certification.Authority == nil || fillerstructure.VerifyAuthority(*p.StructureDecision, *certification.Authority) != nil {
+	if verifyStructureMaterializationAuthority(*p.StructureDecision, certification) != nil {
 		return SplitPartition{Reject: RejectStructureUncertified, Hold: keep, Discard: discard}
 	}
 	certified := certifiedPlanMaterializable(keep, auto, minClipDuration)
@@ -63,6 +65,26 @@ func CertifiedStructureMaterializable(p SplitProposal, auto *AutoSplitPolicy, ce
 	}
 	certified.Discard = discard
 	return certified
+}
+
+func verifyStructureMaterializationAuthority(artifact fillerstructure.Artifact, policy *StructureMaterializationPolicy) error {
+	if policy == nil {
+		return fmt.Errorf("structure materialization policy is unavailable")
+	}
+	switch artifact.Decision.Input.Kind {
+	case fillerstructure.AssessmentInputCompleteVideo:
+		if policy.Authority == nil {
+			return fmt.Errorf("complete-video structure authority is unavailable")
+		}
+		return fillerstructure.VerifyAuthority(artifact, *policy.Authority)
+	case fillerstructure.AssessmentInputWindowMediaSet:
+		if policy.WindowAuthority == nil {
+			return fmt.Errorf("window structure authority is unavailable")
+		}
+		return fillerstructurewindow.VerifyMaterializationAuthority(artifact, *policy.WindowAuthority)
+	default:
+		return fmt.Errorf("structure assessment input kind is unsupported")
+	}
 }
 
 func projectCertifiedStructureSegments(existing []SplitSegment, plan []StructurePlanSegment) ([]SplitSegment, []SplitSegment, error) {

@@ -4910,6 +4910,14 @@ units, roles, held decisions, or an authority without explicit production permis
 The current short-source authority admits only the complete-video input kind. Window-set activation
 requires its separately measured certificate and receives a distinct authority contract; a short-
 source certificate cannot authorize a long reel merely because both use the same encode profile.
+That long-reel authority binds the passing window certificate and short-versus-long shadow digests,
+the canonical window-profile identity, the exact window assessor profiles, the observed source-
+duration and per-window byte envelope, and only the source units and segment roles present in every
+passing shadow case. Issuance records one bounded reviewer identity and canonical review time and
+requires an explicit materialization-permission flag. Verification reconstructs the canonical plan
+from the artifact's source, matches its plan digest and complete ordered item count, and checks every
+window's measured duration, media profile, and byte ceiling. It can create held child work only;
+training and broadcast admission remain separate authorities.
 The runtime assessment coordinator calls each configured complete-timeline assessor serially with
 the same immutable conditioned-media identity and path. Its port exposes no prior answers. Each
 adapter must return either a complete source-bound candidate or an attributable operational-failure
