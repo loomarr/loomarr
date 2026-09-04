@@ -1,1 +1,1 @@
-export * from "./src/native/native";
+export * from "./src/native";
