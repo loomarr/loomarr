@@ -6,6 +6,7 @@
   "description": "Shared Loomarr tuning and playback policy behind platform transport adapters.",
   "exports": {
     ".": "./index.ts",
+    "./browser": "./browser.ts",
     "./server": "./server.ts"
   },
   "scripts": {
@@ -13,10 +14,15 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@loomarr/api": "workspace:*"
+    "@loomarr/api": "workspace:*",
+    "hls.js": "1.7.1"
   },
   "devDependencies": {
+    "react": "19.2.3",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
+  },
+  "peerDependencies": {
+    "react": ">=19 <20"
   }
 }

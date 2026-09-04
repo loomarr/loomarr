@@ -83,6 +83,12 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // The shared browser-player adapter loads hls.js dynamically from its owning package. Alias the
+    // transport explicitly so production-wrapper tests exercise the public adapter with a bounded
+    // MediaSource controller even when pnpm resolves the dependency from that package.
+    alias: {
+      "hls.js": fileURLToPath(new URL("./src/test/hls.mock.ts", import.meta.url)),
+    },
     css: false,
     // jsdom units only — Playwright visual specs (tests/visual/*.spec.ts) run under
     // Playwright, not vitest, and Storybook stories are exercised by the visual suite.
