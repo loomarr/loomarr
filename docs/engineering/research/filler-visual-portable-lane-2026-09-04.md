@@ -419,6 +419,31 @@ error cluster, rights-cleared training families exist outside the certificate, a
 source-family-disjoint certificate remains available. A local Mac can later make discovery, dense rescoring,
 deduplication, and private taxonomy extraction cheap; it does not change this truth-separation requirement.
 
+### Corpus-draft implementation checkpoint
+
+The development-only preparation module now makes that acquisition protocol executable without resolving the
+carrier question by implication. `PrepareVisualCorpusDraft` accepts one already sealed, pre-model authority
+plus private source, policy, and alias-seed locations. Behind that single interface it reopens every source
+work and rights-review byte, accepts only complete PNG or JPEG images within fixed byte/pixel ceilings,
+requires at least the authority's 120-positive/300-clean candidate-pool targets, rejects source-work, family,
+independence-group, exact-byte, positive-creator, rights-evidence, and normalized difference-hash collisions,
+and verifies a work-specific acquisition review. The rights review permits private retention and model
+evaluation only; training and production broadcast must be false.
+
+The module publishes atomically into a mode-`0700` root with mode-`0600` files. Its shareable review directory
+uses keyed opaque aliases and contains the exact policy, source works, rights evidence, a path-free manifest,
+and a self-contained keyboard review board. The board offers positive, clean, uncertain, and exclude actions,
+restores local progress when the browser permits private-file storage, and downloads an alias-only decision
+document. It contains no candidate id, family, creator, nomination, model output, truth, or admission result.
+The separate owner map restores those identities after review. Reopening the draft reproduces the board and
+every image, rights, policy, manifest, and owner-map byte and rejects permissions drift, image/pixel drift,
+malformed rights, missing or extra files, and model-result sidecars. A command wrapper supplies the same deep
+interface to private request files.
+
+This checkpoint uses generated test images only. It acquired no external media, authored no real truth, made
+no provider call, selected no threshold, wrapped no video carrier, and granted no certification, training,
+ingestion, scheduling, or broadcast authority.
+
 ## Required development measurements
 
 Before either model may become a locked portable constituent, freeze and publish the hashes of:
