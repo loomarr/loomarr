@@ -5052,7 +5052,8 @@ before its first request, stays serial and identified, checks the initial URL an
 against both the case's frozen allowlist and the built-in policy for that authority, bounds each body
 by the inventoried size, verifies source checksums when present, and adds SHA-256. Query strings may
 remain when they are part of the exact frozen representation URL; credentials and fragments never
-may. Media and its download ledger remain external to Git.
+may. The request ceiling counts the initial request and every redirect hop before that hop is sent.
+Media and its download ledger remain external to Git.
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
 

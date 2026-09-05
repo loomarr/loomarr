@@ -217,12 +217,13 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 		return downloadLedger{}, err
 	}
 	ledger := downloadLedger{SchemaVersion: fillercorpus.DownloadLedgerSchemaVersion, Profile: opts.profile, GeneratedAt: opts.generatedAt.UTC(), MaxRequests: opts.maxRequests, MaxItems: opts.maxItems, MaxBytes: opts.maxBytes}
+	budget := requestBudget{max: opts.maxRequests}
 	lastRequestAt := time.Time{}
 	for _, item := range plan {
 		verifiedAt := opts.generatedAt.UTC()
 		hashes, size, err := hashFile(item.path)
 		if errors.Is(err, os.ErrNotExist) {
-			if ledger.RequestsUsed >= opts.maxRequests {
+			if budget.used >= budget.max {
 				return downloadLedger{}, fmt.Errorf("request ceiling exhausted before %s", item.candidate.CaseID)
 			}
 			if !lastRequestAt.IsZero() {
@@ -237,8 +238,7 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 					}
 				}
 			}
-			hashes, size, err = download(ctx, client, item, opts.userAgent)
-			ledger.RequestsUsed++
+			hashes, size, err = download(ctx, client, item, opts.userAgent, &budget)
 			lastRequestAt = time.Now()
 			verifiedAt = lastRequestAt.UTC()
 		}
@@ -257,19 +257,23 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 			Approval: item.approval, VerifiedAt: verifiedAt,
 		})
 	}
+	ledger.RequestsUsed = budget.used
 	return ledger, nil
 }
 
 type fileHashes struct{ sha256, sha1, md5 string }
 
-func download(ctx context.Context, client *http.Client, item plannedDownload, userAgent string) (fileHashes, int64, error) {
+func download(ctx context.Context, client *http.Client, item plannedDownload, userAgent string, budget *requestBudget) (fileHashes, int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.candidate.Representation.URL, nil)
 	if err != nil {
 		return fileHashes{}, 0, err
 	}
 	req.Header.Set("User-Agent", userAgent)
+	if err := budget.consume(); err != nil {
+		return fileHashes{}, 0, err
+	}
 	requestClient := *client
-	requestClient.CheckRedirect = redirectPolicy(item.candidate.AllowedMediaHosts)
+	requestClient.CheckRedirect = redirectPolicy(item.candidate.AllowedMediaHosts, budget)
 	resp, err := requestClient.Do(req)
 	if err != nil {
 		return fileHashes{}, 0, err
@@ -316,7 +320,7 @@ func download(ctx context.Context, client *http.Client, item plannedDownload, us
 	return hashes, n, nil
 }
 
-func redirectPolicy(allowedHosts []string) func(*http.Request, []*http.Request) error {
+func redirectPolicy(allowedHosts []string, budget *requestBudget) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if req.URL == nil {
 			return fmt.Errorf("refuse redirect without a destination URL")
@@ -327,8 +331,21 @@ func redirectPolicy(allowedHosts []string) func(*http.Request, []*http.Request) 
 		if len(via) >= 5 {
 			return fmt.Errorf("too many redirects")
 		}
-		return nil
+		return budget.consume()
 	}
+}
+
+type requestBudget struct {
+	used int
+	max  int
+}
+
+func (budget *requestBudget) consume() error {
+	if budget == nil || budget.max <= 0 || budget.used >= budget.max {
+		return fmt.Errorf("request ceiling exhausted")
+	}
+	budget.used++
+	return nil
 }
 
 func hashFile(path string) (fileHashes, int64, error) {

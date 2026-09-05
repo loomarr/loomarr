@@ -75,7 +75,7 @@ func ValidateQuarantineDownloadLedger(inventory Inventory, inventorySHA256 strin
 	if failures := ValidateInventory(inventory); len(failures) != 0 {
 		return fmt.Errorf("invalid inventory: %s", strings.Join(failures, "; "))
 	}
-	if ledger.SchemaVersion != DownloadLedgerSchemaVersion || ledger.Profile != RightsProfileQuarantine || ledger.InventorySHA256 != inventorySHA256 || !digest(inventorySHA256, 64) || ledger.GeneratedAt.IsZero() || ledger.MaxRequests <= 0 || ledger.RequestsUsed < 0 || ledger.RequestsUsed > ledger.MaxRequests || ledger.MaxItems <= 0 || ledger.MaxBytes <= 0 || ledger.Bytes <= 0 || ledger.Bytes > ledger.MaxBytes || len(ledger.Cases) == 0 || len(ledger.Cases) > ledger.MaxItems || ledger.RequestsUsed > len(ledger.Cases) {
+	if ledger.SchemaVersion != DownloadLedgerSchemaVersion || ledger.Profile != RightsProfileQuarantine || ledger.InventorySHA256 != inventorySHA256 || !digest(inventorySHA256, 64) || ledger.GeneratedAt.IsZero() || ledger.MaxRequests <= 0 || ledger.RequestsUsed < 0 || ledger.RequestsUsed > ledger.MaxRequests || ledger.MaxItems <= 0 || ledger.MaxBytes <= 0 || ledger.Bytes <= 0 || ledger.Bytes > ledger.MaxBytes || len(ledger.Cases) == 0 || len(ledger.Cases) > ledger.MaxItems {
 		return fmt.Errorf("quarantine download ledger has invalid identity, profile, or ceilings")
 	}
 	inventoryByID := make(map[string]InventoryCase, len(inventory.Cases))

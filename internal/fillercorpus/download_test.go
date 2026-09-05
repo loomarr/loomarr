@@ -11,9 +11,16 @@ func TestValidateQuarantineDownloadLedgerAcceptsOnlyExactLocalInspectionAuthorit
 	if err := ValidateQuarantineDownloadLedger(inventory, InventorySHA256(raw), ledger); err != nil {
 		t.Fatal(err)
 	}
+	redirected := ledger
+	redirected.MaxRequests = 2
+	redirected.RequestsUsed = 2
+	if err := ValidateQuarantineDownloadLedger(inventory, InventorySHA256(raw), redirected); err != nil {
+		t.Fatalf("ledger counting a redirect as a request was rejected: %v", err)
+	}
 
 	tests := map[string]func(*DownloadLedger){
 		"profile":            func(value *DownloadLedger) { value.Profile = RightsProfileDevelopment },
+		"request ceiling":    func(value *DownloadLedger) { value.RequestsUsed = value.MaxRequests + 1 },
 		"provider transfer":  func(value *DownloadLedger) { value.Cases[0].Approval.QuarantineContract.ProviderTransfer = true },
 		"inventory identity": func(value *DownloadLedger) { value.Cases[0].Approval.InventorySHA256 = strings.Repeat("f", 64) },
 		"unsafe path":        func(value *DownloadLedger) { value.Cases[0].LocalFile = "../escape.mp4" },

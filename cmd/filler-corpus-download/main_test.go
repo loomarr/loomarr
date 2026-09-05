@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -186,10 +187,14 @@ func downloadHoldoutContract() *fillercorpus.HoldoutRightsContract {
 }
 
 func TestRedirectPolicyRejectsBeforeFollowingUnallowlistedHost(t *testing.T) {
-	policy := redirectPolicy([]string{"archive.org", ".archive.org"})
+	budget := requestBudget{max: 2}
+	policy := redirectPolicy([]string{"archive.org", ".archive.org"}, &budget)
 	allowed, _ := url.Parse("https://ia801.example.archive.org/file.mp4")
 	if err := policy(&http.Request{URL: allowed}, nil); err != nil {
 		t.Fatalf("allowed redirect: %v", err)
+	}
+	if budget.used != 1 {
+		t.Fatalf("allowed redirect used %d requests; want 1", budget.used)
 	}
 	outside, _ := url.Parse("https://attacker.invalid/file.mp4")
 	if err := policy(&http.Request{URL: outside}, nil); err == nil {
@@ -199,4 +204,61 @@ func TestRedirectPolicyRejectsBeforeFollowingUnallowlistedHost(t *testing.T) {
 	if err := policy(&http.Request{URL: credentialed}, nil); err == nil {
 		t.Fatal("credentialed redirect accepted")
 	}
+	if budget.used != 1 {
+		t.Fatalf("rejected redirects changed request count to %d", budget.used)
+	}
+	if err := policy(&http.Request{URL: allowed}, nil); err != nil {
+		t.Fatalf("second allowed redirect: %v", err)
+	}
+	if err := policy(&http.Request{URL: allowed}, nil); err == nil {
+		t.Fatal("redirect beyond request ceiling accepted")
+	}
+}
+
+func TestDownloadCountsInitialRequestAndRedirect(t *testing.T) {
+	data := []byte("exact media")
+	item := downloadableInventory(time.Now().UTC(), "redirect", "").Cases[0]
+	item.Representation.Bytes = int64(len(data))
+	item.Representation.URL = "https://tile.loc.gov/start.mp4"
+	path := filepath.Join(t.TempDir(), "source.mp4")
+	calls := 0
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return &http.Response{
+				StatusCode: http.StatusFound, Status: "302 Found", Request: request,
+				Header: http.Header{"Location": []string{"https://tile.loc.gov/final.mp4"}}, Body: io.NopCloser(strings.NewReader("")),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK, Status: "200 OK", Request: request, ContentLength: int64(len(data)),
+			Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(data))),
+		}, nil
+	})}
+	budget := requestBudget{max: 2}
+	if _, size, err := download(t.Context(), client, plannedDownload{candidate: item, path: path}, "loomarr-test", &budget); err != nil || size != int64(len(data)) {
+		t.Fatalf("download size=%d budget=%+v calls=%d err=%v", size, budget, calls, err)
+	}
+	if budget.used != 2 || calls != 2 {
+		t.Fatalf("budget=%+v calls=%d; want two requests", budget, calls)
+	}
+
+	calls = 0
+	exhausted := requestBudget{max: 1}
+	blockedPath := filepath.Join(t.TempDir(), "blocked.mp4")
+	if _, _, err := download(t.Context(), client, plannedDownload{candidate: item, path: blockedPath}, "loomarr-test", &exhausted); err == nil || !strings.Contains(err.Error(), "request ceiling exhausted") {
+		t.Fatalf("redirect beyond ceiling error=%v", err)
+	}
+	if exhausted.used != 1 || calls != 1 {
+		t.Fatalf("exhausted budget=%+v calls=%d; redirected request was sent", exhausted, calls)
+	}
+	if _, err := os.Stat(blockedPath); !os.IsNotExist(err) {
+		t.Fatalf("blocked download published a file: %v", err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }
