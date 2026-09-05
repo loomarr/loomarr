@@ -15,7 +15,7 @@ import (
 
 const (
 	temporalStructureOpenRouterSchemaName = "filler_temporal_structure"
-	temporalStructureOpenRouterMaxTokens  = 1024
+	temporalStructureOpenRouterMaxTokens  = 4096
 	temporalStructureOpenRouterTitle      = "Loomarr temporal structure challenge"
 )
 

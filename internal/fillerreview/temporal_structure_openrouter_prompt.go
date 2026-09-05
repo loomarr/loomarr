@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v1"
+	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v2"
 	temporalStructureRoleNone                = "none"
 	temporalStructureReasonMaximumCharacters = 320
 )
