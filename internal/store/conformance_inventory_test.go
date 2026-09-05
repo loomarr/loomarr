@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -188,5 +190,49 @@ func testInventoryMalformedRejected(t *testing.T, newStore NewStoreFunc) {
 	snapshot.Sources[0].Locator.Path = "https://library.test/video?api_key=secret"
 	if _, err := st.ApplyInventorySnapshot(context.Background(), snapshot); !errors.Is(err, inventory.ErrInvalid) {
 		t.Fatalf("malformed inventory error = %v, want ErrInvalid", err)
+	}
+}
+
+func testInventoryBoundsRejected(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	for _, tc := range []struct {
+		name   string
+		mutate func(*inventory.Snapshot)
+	}{
+		{"sources", func(snapshot *inventory.Snapshot) {
+			snapshot.Sources = make([]inventory.SourceSnapshot, 129)
+			for i := range snapshot.Sources {
+				externalID := fmt.Sprintf("source-%d", i)
+				snapshot.Sources[i] = inventory.SourceSnapshot{
+					ExternalSourceID: externalID, Kind: inventory.SourceLibraryOriginal, Revision: "rev-1",
+					Locator: inventory.Locator{
+						Authority: snapshot.Origin.Authority, ExternalItemID: snapshot.Origin.ExternalItemID,
+						ExternalSourceID: externalID,
+					},
+					Observation: inventory.Observation[inventory.SourceFacts]{
+						SchemaVersion: 1, ObservedAt: snapshot.Observation.ObservedAt,
+					},
+				}
+			}
+		}},
+		{"streams", func(snapshot *inventory.Snapshot) {
+			streams := make([]inventory.Stream, 513)
+			for i := range streams {
+				streams[i] = inventory.Stream{Index: i, Kind: inventory.StreamAudio}
+			}
+			snapshot.Sources[0].Observation.Facts.Streams = streams
+		}},
+		{"extension bytes", func(snapshot *inventory.Snapshot) {
+			snapshot.Observation.Extension = json.RawMessage(`{"payload":"` + strings.Repeat("x", 1<<20) + `"}`)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newStore(t)
+			snapshot := inventorySnapshot("library-a", "item-1", "source-1", "rev-1", "Pilot", time.Now())
+			tc.mutate(&snapshot)
+			if _, err := st.ApplyInventorySnapshot(context.Background(), snapshot); !errors.Is(err, inventory.ErrInvalid) {
+				t.Fatalf("over-bound inventory error = %v, want ErrInvalid", err)
+			}
+		})
 	}
 }

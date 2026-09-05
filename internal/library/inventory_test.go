@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ const richInventoryItem = `{
   "ProductionYear":2024,"PremiereDate":"2024-01-02T00:00:00.0000000Z","OfficialRating":"TV-PG",
   "CommunityRating":8.4,"RunTimeTicks":18000000000,"DateLastSaved":"2026-09-01T12:00:00Z",
   "ProviderIds":{"Tmdb":"900","Tvdb":"901"},"ImageTags":{"Primary":"art-tag"},
+  "UserData":{"Played":true,"PlaybackPositionTicks":1234},
   "SeriesId":"series-1","SeasonId":"season-1","ParentIndexNumber":1,"IndexNumber":1,
   "FutureProviderFact":{"Nested":true},"ApiKey":"must-not-persist","Path":"/private/media/Pilot.mkv",
   "MediaSources":[{
@@ -64,6 +66,23 @@ func TestInventorySnapshotProjectsEmbyAndJellyfinToOneProviderNeutralModel(t *te
 			if !strings.Contains(string(snapshot.Observation.Extension), "FutureProviderFact") {
 				t.Fatalf("safe unknown field lost: %s", snapshot.Observation.Extension)
 			}
+			var extension map[string]any
+			if err := json.Unmarshal(snapshot.Observation.Extension, &extension); err != nil {
+				t.Fatal(err)
+			}
+			for _, subtree := range []string{"MediaSources", "MediaStreams", "UserData"} {
+				if _, exists := extension[subtree]; exists {
+					t.Fatalf("protected %s subtree survived sanitization: %s", subtree, snapshot.Observation.Extension)
+				}
+			}
+			requests := server.Requests()
+			if len(requests) != 1 {
+				t.Fatalf("inventory requests = %+v, want one", requests)
+			}
+			query, queryErr := url.ParseQuery(requests[0].RawQuery)
+			if queryErr != nil || query.Get("EnableUserData") != "false" {
+				t.Fatalf("inventory request did not disable user data: %+v", requests)
+			}
 			// Authority is adapter provenance, so compare the provider-neutral content separately.
 			snapshot.Origin.Authority = ""
 			for i := range snapshot.Sources {
@@ -71,6 +90,9 @@ func TestInventorySnapshotProjectsEmbyAndJellyfinToOneProviderNeutralModel(t *te
 			}
 			projected = append(projected, snapshot)
 		})
+	}
+	if len(projected) != 2 {
+		return
 	}
 	projected[0].Observation.ObservedAt = projected[1].Observation.ObservedAt
 	projected[0].Sources[0].Observation.ObservedAt = projected[1].Sources[0].Observation.ObservedAt
@@ -109,5 +131,24 @@ func TestInventorySnapshotRejectsAmbiguousStreamOrderingWithoutLosingItem(t *tes
 	}
 	if snapshot.Sources[0].Observation.Coverage["streams"] != "" || len(snapshot.Sources[0].Observation.Facts.Streams) != 0 {
 		t.Fatalf("ambiguous streams became authoritative: %+v", snapshot.Sources[0].Observation)
+	}
+}
+
+func TestInventorySnapshotDerivesPlayabilityFromSourceFactsNotItemKind(t *testing.T) {
+	server := testkit.NewMediaServer(t)
+	server.InventoryItems = map[string]json.RawMessage{"future-1": json.RawMessage(`{
+		"Id":"future-1","Type":"FuturePlayableKind","MediaStreams":[
+			{"Index":0,"Type":"Video","Codec":"h264"},
+			{"Index":1,"Type":"Audio","Language":"eng"}
+		]
+	}`)}
+	snapshot, ok, err := New(Emby, server.URL, server.AdminToken, "device").InventorySnapshot(
+		context.Background(), "future-1",
+	)
+	if err != nil || !ok {
+		t.Fatalf("InventorySnapshot = (%+v, %v, %v), want hit", snapshot, ok, err)
+	}
+	if snapshot.Kind != "futureplayablekind" || len(snapshot.Sources) != 1 {
+		t.Fatalf("future item = %+v, want source-derived playability", snapshot)
 	}
 }

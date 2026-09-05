@@ -190,7 +190,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// ffmpeg path — the two ship together, so an operator who moved one moved both.
 		audioLanguage:      func() string { return set.str("playout.audio_language") },
 		inventory:          inventory.New(st),
-		probeAudio:         playout.FFprobeAudioNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		probeSource:        playout.FFprobeSourceNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		probeTracks:        playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		probeFormat:        playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		processDiagnostics: deps.processDiagnostics,

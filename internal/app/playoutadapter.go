@@ -2,11 +2,14 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -140,10 +143,9 @@ type playoutResolver struct {
 	// read live like every other setting. Empty ⇒ the file's first track, which is what playout
 	// did before this existed — and is how a channel played a film in Russian.
 	audioLanguage func() string
-	// probeAudio lists a source's audio tracks so the preference can be resolved to a concrete
-	// index. Nil ⇒ track 0, the pre-existing behaviour: an install that cannot probe still
-	// plays, it just cannot honour the preference.
-	probeAudio playout.AudioProber
+	// probeSource returns the shared ffprobe superset so the audio choice and durable technical
+	// observation come from one process. Nil ⇒ track 0, preserving best-effort playout.
+	probeSource playout.SourceProber
 	// inventory is Loomarr's durable provider-neutral source observation (§5 V66). Audio selection
 	// reads it before Library or ffprobe I/O; nil preserves the safe direct-probe fallback.
 	inventory inventory.Service
@@ -879,13 +881,13 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 		// entirely rather than paying for an answer that cannot change the outcome.
 		return 0
 	}
-	if tracks, ok := r.inventoryAudioTracks(ctx, libraryItemID); ok {
+	if tracks, ok := r.inventoryAudioTracks(ctx, libraryItemID, streamURL); ok {
 		return playout.PickAudioTrack(tracks, prefer)
 	}
-	if r.probeAudio == nil {
+	if r.probeSource == nil {
 		return 0
 	}
-	tracks, err := r.probeAudio(ctx, streamURL)
+	observed, err := r.probeSource(ctx, streamURL)
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("playout: audio tracks not probed, using the first",
@@ -893,12 +895,31 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 		}
 		return 0
 	}
-	r.recordAudioMeasurement(ctx, libraryItemID, tracks)
+	tracks := observed.AudioTracks()
+	r.recordSourceMeasurement(ctx, libraryItemID, streamURL, observed)
 	return playout.PickAudioTrack(tracks, prefer)
 }
 
-func (r *playoutResolver) inventoryAudioTracks(ctx context.Context, libraryItemID string) ([]playout.AudioTrack, bool) {
-	if r.inventory == nil || r.lib == nil || strings.TrimSpace(libraryItemID) == "" {
+func (r *playoutResolver) inventoryAudioTracks(
+	ctx context.Context,
+	libraryItemID, streamURL string,
+) ([]playout.AudioTrack, bool) {
+	if r.inventory == nil {
+		return nil, false
+	}
+	if localOrigin, ok := r.ensureLocalInventorySource(ctx, streamURL); ok {
+		source, found, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
+			Item: inventory.ItemRef{Origin: &localOrigin}, Now: r.inventoryNow(),
+			Kinds: []inventory.SourceKind{inventory.SourceLocalFile}, RequiredCoverage: []string{"audioStreams"},
+		})
+		if err == nil && found {
+			return playoutAudioTracks(source.Observation.Facts.Streams), true
+		}
+		// A local file's stat revision is the authoritative freshness boundary. Library metadata
+		// cannot validate changed local bytes, so a miss falls directly through to one probe.
+		return nil, false
+	}
+	if r.lib == nil || strings.TrimSpace(libraryItemID) == "" {
 		return nil, false
 	}
 	origin, err := r.lib.InventoryOrigin(libraryItemID)
@@ -928,33 +949,139 @@ func (r *playoutResolver) inventoryAudioTracks(ctx context.Context, libraryItemI
 	return nil, false
 }
 
-func (r *playoutResolver) recordAudioMeasurement(ctx context.Context, libraryItemID string, tracks []playout.AudioTrack) {
-	if r.inventory == nil || r.lib == nil || len(tracks) == 0 || strings.TrimSpace(libraryItemID) == "" {
+func (r *playoutResolver) recordSourceMeasurement(
+	ctx context.Context,
+	libraryItemID, streamURL string,
+	observed playout.SourceObservation,
+) {
+	if r.inventory == nil {
 		return
 	}
-	origin, err := r.lib.InventoryOrigin(libraryItemID)
-	if err != nil {
-		return
+	var ref inventory.ItemRef
+	if localOrigin, ok := r.ensureLocalInventorySource(ctx, streamURL); ok {
+		ref = inventory.ItemRef{Origin: &localOrigin}
+	} else {
+		if r.lib == nil || strings.TrimSpace(libraryItemID) == "" {
+			return
+		}
+		origin, err := r.lib.InventoryOrigin(libraryItemID)
+		if err != nil {
+			return
+		}
+		ref = inventory.ItemRef{Origin: &origin}
+		if _, ok, itemErr := r.inventory.Item(ctx, ref); itemErr == nil && !ok {
+			_ = r.ensureRemoteInventorySource(ctx, origin)
+		}
 	}
-	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{Item: inventory.ItemRef{Origin: &origin}})
+	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{Item: ref})
 	if err != nil || !ok {
 		return
 	}
-	streams := make([]inventory.Stream, len(tracks))
-	for i, track := range tracks {
-		streams[i] = inventory.Stream{Index: track.SourceIndex, Kind: inventory.StreamAudio, Language: track.Language}
+	facts := inventoryFactsOf(observed)
+	audioCoverage := inventory.CoverageEmpty
+	for _, stream := range facts.Streams {
+		if stream.Kind == inventory.StreamAudio {
+			audioCoverage = inventory.CoveragePresent
+			break
+		}
 	}
 	measurement := inventory.Measurement{
 		SourceID: source.ID, Revision: source.Revision,
 		Observation: inventory.Observation[inventory.SourceFacts]{
 			SchemaVersion: 1, ObservedAt: r.inventoryNow(),
-			Coverage: map[string]inventory.Coverage{"audioStreams": inventory.CoveragePresent},
-			Facts:    inventory.SourceFacts{Streams: streams},
+			Coverage: map[string]inventory.Coverage{
+				"streams": inventory.CoveragePresent, "audioStreams": audioCoverage,
+			},
+			Facts: facts,
 		},
 	}
 	if err := r.inventory.RecordMeasurement(ctx, measurement); err != nil && r.log != nil {
 		r.log.Debug("playout: measured audio observation not persisted", "err", err)
 	}
+}
+
+func (r *playoutResolver) ensureLocalInventorySource(ctx context.Context, input string) (inventory.OriginKey, bool) {
+	info, err := os.Stat(input)
+	if err != nil || info.IsDir() || !info.Mode().IsRegular() {
+		return inventory.OriginKey{}, false
+	}
+	digest := sha256.Sum256([]byte(input))
+	origin := inventory.OriginKey{
+		Authority: "local-playout:v1", ExternalItemID: hex.EncodeToString(digest[:16]),
+	}
+	revision := fmt.Sprintf("stat:%d:%d", info.Size(), info.ModTime().UnixNano())
+	if item, ok, itemErr := r.inventory.Item(ctx, inventory.ItemRef{Origin: &origin}); itemErr == nil && ok {
+		for _, source := range item.Sources {
+			if source.Kind == inventory.SourceLocalFile && source.Revision == revision {
+				return origin, true
+			}
+		}
+	}
+	at := r.inventoryNow()
+	_, err = r.inventory.ApplySnapshot(ctx, inventory.Snapshot{
+		Origin: origin, Kind: "unknown",
+		Observation: inventory.Observation[inventory.ItemFacts]{
+			SchemaVersion: 1, ObservedAt: at,
+			Coverage: map[string]inventory.Coverage{"sources": inventory.CoveragePresent},
+		},
+		Sources: []inventory.SourceSnapshot{{
+			ExternalSourceID: "file", Kind: inventory.SourceLocalFile,
+			Revision: revision,
+			Locator:  inventory.Locator{Path: input},
+			Observation: inventory.Observation[inventory.SourceFacts]{
+				SchemaVersion: 1, ObservedAt: at,
+				Coverage: map[string]inventory.Coverage{"sourceStat": inventory.CoveragePresent},
+				Facts: inventory.SourceFacts{
+					SizeBytes: info.Size(), ModifiedUnixNano: info.ModTime().UnixNano(),
+				},
+			},
+		}},
+	})
+	return origin, err == nil
+}
+
+func (r *playoutResolver) ensureRemoteInventorySource(ctx context.Context, origin inventory.OriginKey) error {
+	at := r.inventoryNow()
+	_, err := r.inventory.ApplySnapshot(ctx, inventory.Snapshot{
+		Origin: origin, Kind: "unknown",
+		Observation: inventory.Observation[inventory.ItemFacts]{
+			SchemaVersion: 1, ObservedAt: at,
+			Coverage: map[string]inventory.Coverage{"sources": inventory.CoveragePresent},
+		},
+		Sources: []inventory.SourceSnapshot{{
+			ExternalSourceID: "default", Kind: inventory.SourceLibraryOriginal, Revision: "unversioned",
+			Locator: inventory.Locator{
+				Authority: origin.Authority, ExternalItemID: origin.ExternalItemID, ExternalSourceID: "default",
+			},
+			Observation: inventory.Observation[inventory.SourceFacts]{SchemaVersion: 1, ObservedAt: at},
+		}},
+	})
+	return err
+}
+
+func inventoryFactsOf(observed playout.SourceObservation) inventory.SourceFacts {
+	facts := inventory.SourceFacts{
+		Container: observed.Container, DurationMillis: observed.DurationMillis, Bitrate: observed.Bitrate,
+	}
+	for _, stream := range observed.Streams {
+		facts.Streams = append(facts.Streams, inventory.Stream{
+			Index: stream.Index, Kind: inventory.StreamKind(stream.Kind), Codec: stream.Codec,
+			Profile: stream.Profile, Level: stream.Level, Language: stream.Language, Title: stream.Title,
+			Disposition: inventory.Disposition{Default: stream.Default, Forced: stream.Forced},
+			Channels:    stream.Channels, ChannelLayout: stream.ChannelLayout, SampleRate: stream.SampleRate,
+			Width: stream.Width, Height: stream.Height, FrameRate: stream.FrameRate,
+			PixelFormat: stream.PixelFormat, ColorSpace: stream.ColorSpace,
+			ColorTransfer: stream.ColorTransfer, ColorPrimaries: stream.ColorPrimaries,
+			HDR: stream.HDR, Interlaced: stream.Interlaced,
+			SubtitleFormat: func() string {
+				if stream.Kind == string(inventory.StreamSubtitle) {
+					return stream.Codec
+				}
+				return ""
+			}(),
+		})
+	}
+	return facts
 }
 
 func (r *playoutResolver) inventoryNow() time.Time {

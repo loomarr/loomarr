@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -81,8 +82,10 @@ func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 func TestPlayoutResolver_AudioTrackHonoursChannelOverride(t *testing.T) {
 	r := &playoutResolver{
 		audioLanguage: func() string { return "eng" },
-		probeAudio: func(context.Context, string) ([]playout.AudioTrack, error) {
-			return []playout.AudioTrack{{Language: "eng"}, {Language: "jpn"}}, nil
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
+			return playout.SourceObservation{Streams: []playout.ObservedStream{
+				{Index: 1, Kind: "audio", Language: "eng"}, {Index: 2, Kind: "audio", Language: "jpn"},
+			}}, nil
 		},
 		channels: staticChannelReader{channel: store.Channel{Policy: schedule.ChannelPolicy{
 			OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{AudioLanguage: "jpn"}},
@@ -110,9 +113,9 @@ func TestPlayoutResolver_AudioTrackWarmsInventoryThenPerformsNoIO(t *testing.T) 
 	r := &playoutResolver{
 		lib: newTestLibraryClient(server), inventory: inventory.New(st), now: func() time.Time { return now },
 		audioLanguage: func() string { return "eng" },
-		probeAudio: func(context.Context, string) ([]playout.AudioTrack, error) {
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
 			probeCalls++
-			return nil, nil
+			return playout.SourceObservation{}, nil
 		},
 	}
 	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", "movie.mkv"); got != 1 {
@@ -146,9 +149,13 @@ func TestPlayoutResolver_AudioTrackPersistsProbeFallback(t *testing.T) {
 	r := &playoutResolver{
 		lib: newTestLibraryClient(server), inventory: inventory.New(st), now: func() time.Time { return now },
 		audioLanguage: func() string { return "eng" },
-		probeAudio: func(context.Context, string) ([]playout.AudioTrack, error) {
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
 			probeCalls++
-			return []playout.AudioTrack{{SourceIndex: 1, Language: "jpn"}, {SourceIndex: 3, Language: "eng"}}, nil
+			return playout.SourceObservation{Container: "matroska", Streams: []playout.ObservedStream{
+				{Index: 0, Kind: "video", Codec: "h264", Width: 1920, Height: 1080},
+				{Index: 1, Kind: "audio", Codec: "aac", Language: "jpn", Channels: 2},
+				{Index: 3, Kind: "audio", Codec: "aac", Language: "eng", Channels: 2},
+			}}, nil
 		},
 	}
 	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", "movie.mkv"); got != 1 {
@@ -164,14 +171,90 @@ func TestPlayoutResolver_AudioTrackPersistsProbeFallback(t *testing.T) {
 	}
 }
 
+func TestPlayoutResolver_AudioTrackPersistsFullProbeWhenLibraryUnavailable(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	server := testkit.NewMediaServer(t)
+	probeCalls := 0
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	r := &playoutResolver{
+		lib: newTestLibraryClient(server), inventory: inventory.New(st), now: func() time.Time { return now },
+		audioLanguage: func() string { return "eng" },
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
+			probeCalls++
+			return playout.SourceObservation{Container: "matroska", DurationMillis: 90_000, Bitrate: 4_000_000,
+				Streams: []playout.ObservedStream{
+					{Index: 0, Kind: "video", Codec: "h264", Width: 1920, Height: 1080},
+					{Index: 1, Kind: "audio", Codec: "aac", Language: "jpn", Channels: 2},
+					{Index: 2, Kind: "audio", Codec: "aac", Language: "eng", Channels: 2},
+				}}, nil
+		},
+	}
+	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", server.URL+"/video"); got != 1 {
+		t.Fatalf("cold fallback AudioTrackFor = %d, want ordinal 1", got)
+	}
+	firstRequests := len(server.Requests())
+	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", server.URL+"/video"); got != 1 {
+		t.Fatalf("warm fallback AudioTrackFor = %d, want ordinal 1", got)
+	}
+	if len(server.Requests()) != firstRequests || probeCalls != 1 {
+		t.Fatalf("warm fallback added I/O: library %d→%d, probes %d", firstRequests, len(server.Requests()), probeCalls)
+	}
+	origin, err := r.lib.InventoryOrigin("item-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, ok, err := r.inventory.Item(context.Background(), inventory.ItemRef{Origin: &origin})
+	if err != nil || !ok || len(item.Sources) != 1 || item.Sources[0].Measurement == nil {
+		t.Fatalf("persisted fallback = (%+v, %v, %v)", item, ok, err)
+	}
+	facts := item.Sources[0].Measurement.Observation.Facts
+	if facts.Container != "matroska" || facts.DurationMillis != 90_000 || len(facts.Streams) != 3 ||
+		facts.Streams[0].Width != 1920 {
+		t.Fatalf("persisted probe lost superset facts: %+v", facts)
+	}
+}
+
+func TestPlayoutResolver_LocalFileRevisionInvalidatesMeasuredAudio(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	path := t.TempDir() + "/movie.mkv"
+	if err := os.WriteFile(path, []byte("first revision"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	probeCalls := 0
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	r := &playoutResolver{
+		inventory: inventory.New(st), now: func() time.Time { return now },
+		audioLanguage: func() string { return "eng" },
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
+			probeCalls++
+			return playout.SourceObservation{Streams: []playout.ObservedStream{
+				{Index: 1, Kind: "audio", Language: "jpn"}, {Index: 2, Kind: "audio", Language: "eng"},
+			}}, nil
+		},
+	}
+	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", path); got != 1 {
+		t.Fatalf("cold local AudioTrackFor = %d, want ordinal 1", got)
+	}
+	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", path); got != 1 || probeCalls != 1 {
+		t.Fatalf("warm local = %d, probes %d; want 1, 1", got, probeCalls)
+	}
+	changed := now.Add(time.Hour)
+	if err := os.Chtimes(path, changed, changed); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", path); got != 1 || probeCalls != 2 {
+		t.Fatalf("changed local = %d, probes %d; want revision invalidation and second probe", got, probeCalls)
+	}
+}
+
 func TestPlayoutResolver_EmptyAudioPreferenceSkipsInventoryLibraryAndProbe(t *testing.T) {
 	server := testkit.NewMediaServer(t)
 	probeCalls := 0
 	r := &playoutResolver{
 		lib: newTestLibraryClient(server), audioLanguage: func() string { return "  " },
-		probeAudio: func(context.Context, string) ([]playout.AudioTrack, error) {
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
 			probeCalls++
-			return nil, nil
+			return playout.SourceObservation{}, nil
 		},
 	}
 	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", "movie.mkv"); got != 0 {

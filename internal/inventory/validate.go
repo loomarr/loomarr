@@ -360,7 +360,8 @@ func unsafeExtensionKey(key string) bool {
 	}, key)
 	for _, fragment := range []string{"apikey", "accesstoken", "authtoken", "password", "credential",
 		"playbacksession", "transcodesession", "sessionid", "userstate", "userdata", "imagebytes",
-		"path", "transcodingurl", "directstreamurl", "streamurl", "playbackinfo"} {
+		"path", "mediasources", "mediastreams", "liveprogram", "opentoken", "livestreamid",
+		"requiredhttpheaders", "transcodingurl", "directstreamurl", "streamurl", "playbackinfo"} {
 		if strings.Contains(normalized, fragment) {
 			return true
 		}

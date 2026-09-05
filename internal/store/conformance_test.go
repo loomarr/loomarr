@@ -38,6 +38,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("MeasurementRevision", func(t *testing.T) { testInventoryMeasurementRevision(t, newStore) })
 		t.Run("ExplicitMissing", func(t *testing.T) { testInventoryExplicitMissing(t, newStore) })
 		t.Run("MalformedRejected", func(t *testing.T) { testInventoryMalformedRejected(t, newStore) })
+		t.Run("BoundsRejected", func(t *testing.T) { testInventoryBoundsRejected(t, newStore) })
 	})
 
 	t.Run("Titles", func(t *testing.T) {

@@ -79,7 +79,7 @@ func (s *service) ResolveSource(ctx context.Context, request SourceRequest) (Res
 
 func observationCovers(coverage map[string]Coverage, required []string) bool {
 	for _, key := range required {
-		if coverage[key] != CoveragePresent {
+		if coverage[key] != CoveragePresent && coverage[key] != CoverageEmpty {
 			return false
 		}
 	}

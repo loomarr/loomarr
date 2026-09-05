@@ -130,6 +130,7 @@ func (c *Client) InventorySnapshot(ctx context.Context, itemID string) (inventor
 	q := url.Values{}
 	q.Set("Ids", itemID)
 	q.Set("Fields", inventoryFields)
+	q.Set("EnableUserData", "false")
 	q.Set("Limit", "1")
 	req, err := op.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
 	if err != nil {
@@ -173,7 +174,7 @@ func (c *Client) InventorySnapshot(ctx context.Context, itemID string) (inventor
 		}
 		snapshot.Sources = append(snapshot.Sources, sourceSnapshot(origin, item, source, at))
 	}
-	if len(snapshot.Sources) == 0 && playableInventoryKind(item.Type) {
+	if len(snapshot.Sources) == 0 && len(item.MediaStreams) > 0 {
 		snapshot.Sources = append(snapshot.Sources, sourceSnapshot(origin, item, inventoryWireSource{
 			ID: "default", RunTimeTicks: item.RunTimeTicks, DateLastSaved: item.DateLastSaved,
 			MediaStreams: item.MediaStreams,
@@ -270,6 +271,7 @@ func sourceSnapshot(
 	streams, reliable := inventoryStreams(source.MediaStreams)
 	coverage := make(map[string]inventory.Coverage)
 	if reliable {
+		coverage["audioStreams"] = inventory.CoverageEmpty
 		if len(streams) == 0 {
 			coverage["streams"] = inventory.CoverageEmpty
 		} else {
@@ -336,15 +338,6 @@ func inventorySourceRevision(item inventoryWireItem, source inventoryWireSource)
 	}, "\x00")
 	digest := sha256.Sum256([]byte(payload))
 	return "observed:" + hex.EncodeToString(digest[:16])
-}
-
-func playableInventoryKind(kind string) bool {
-	switch strings.ToLower(strings.TrimSpace(kind)) {
-	case "movie", "episode", "video", "trailer", "audio", "musicvideo":
-		return true
-	default:
-		return false
-	}
 }
 
 func jsonScalarString(raw json.RawMessage) string {

@@ -495,8 +495,8 @@ stale stream ordering cannot authorize an audio map that could dead-air playout.
 only when their source revision still matches; changed bytes reject the stale measurement.
 
 Inventory owns what a source is, not credentials for opening it. `ResolveSource` returns stable source
-identity/revision, safe observations, and a protected locator. A separate application adapter opens
-that result just in time:
+identity/revision, safe observations, and a protected locator. The prepared-output follow-up (#1031)
+introduces a separate application adapter that opens that result just in time:
 
 ```go
 type SourceAccess interface {
@@ -504,12 +504,14 @@ type SourceAccess interface {
 }
 ```
 
-A Library locator is the stable `{authority, external item, external source}` tuple; Source Access
-constructs a fresh authenticated original-stream request for each use. A local locator is a protected
-path plus revision facts. The resulting `media.Input` is transient and must never be serialized.
-Prepared readiness consequently stores only source id/revision, selected track, rendition, and
-publication identity. Tune-time lookup performs no Library request, source probe, hashing, or FFmpeg
-startup; a missing or stale inventory/prepared result remains an immediate live-playout fallback.
+A Library locator is the stable `{authority, external item, external source}` tuple; that Source Access
+adapter will construct a fresh authenticated original-stream request for each use. A local locator is a
+protected path plus revision facts. The resulting `media.Input` is transient and must never be
+serialized. Until #1031 lands, live playout retains the existing Library input resolver; #1030 may
+refresh missing/stale stream observations from the Library and then direct-probe the resolved input.
+Prepared readiness will store only source id/revision, selected track, rendition, and publication
+identity. Its tune-time lookup performs no Library request, source probe, hashing, or FFmpeg startup;
+a missing or stale inventory/prepared result remains an immediate live-playout fallback.
 
 ### Cached series episodes (§9 series expansion)
 
@@ -1907,10 +1909,11 @@ The mechanism, the way every mature media server (Plex/Emby/Jellyfin) does it:
    `(channel, encode-plan)`" below):
    `baseline` = h264+aac; `hevc8`/`hevc10` add HEVC (and, for `hevc10`, 10-bit + surround); a
    media-server tuner resolves to the broadest, `full`. Preferred-audio selection first reads a
-   fresh V66 source observation, refreshes the item through the Library importer on a miss, and
-   probes the actual input only when that metadata remains incomplete/unavailable. A successful
-   fallback measurement is persisted against the exact source revision. Every failure still maps
-   audio ordinal zero, so metadata can never dead-air a programme.
+   fresh V66 observation for the exact resolved input. A readable local file is keyed by its current
+   size + modification time and is probed immediately on a changed/missing revision; an HTTP input
+   refreshes through the Library importer before probing only when that metadata remains incomplete or
+   unavailable. One fallback probe persists the shared stream/format superset against the exact source
+   revision. Every failure still maps audio ordinal zero, so metadata can never dead-air a programme.
 3. **Direct-play (`-c copy`) when compatible — the common case, near-instant, no GPU. Transcode only
    when the codec genuinely is not playable by the plan** (e.g. HEVC to a `baseline` client, or
    10-bit to an 8-bit-only one).
