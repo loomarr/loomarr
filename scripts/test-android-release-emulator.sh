@@ -189,7 +189,54 @@ launch() {
 }
 
 open_launcher_surface() {
-	adb -s "${EMULATOR_SERIAL}" shell input keyevent KEYCODE_HOME
+	adb -s "${EMULATOR_SERIAL}" shell am start \
+		-a android.intent.action.ALL_APPS \
+		-p com.google.android.apps.tv.launcherx >/dev/null
+}
+
+wait_for_launcher_identity() {
+	for _ in {1..40}; do
+		dump_ui
+		launcher_node=$(grep -oE '<node[^>]*package="com.google.android.apps.tv.launcherx"[^>]*content-desc="Loomarr"[^>]*>' "${temp_dir}/window.xml" | head -1 || true)
+		if [[ -n "${launcher_node}" ]]; then
+			adb -s "${EMULATOR_SERIAL}" shell dumpsys activity activities |
+				awk '/mResumedActivity/{print; exit}' |
+				grep -Fq 'com.google.android.apps.tv.launcherx' || {
+					sleep 0.25
+					continue
+				}
+			printf 'android-emulator: observed exact Loomarr tile on launcher surface\n'
+			return 0
+		fi
+		sleep 0.25
+	done
+	printf 'emulator never showed the exact Loomarr tile on the Android TV apps launcher\n' >&2
+	cat "${temp_dir}/window.xml" >&2
+	return 1
+}
+
+measure_launcher_identity() {
+	local bounds x1 y1 x2 y2 width height
+	bounds=$(printf '%s\n' "${launcher_node}" |
+		sed -nE 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/p')
+	read -r x1 y1 x2 y2 <<<"${bounds}"
+	width=$((x2 - x1))
+	height=$((y2 - y1))
+	[[ "${width}" -gt 0 && "${height}" -gt 0 ]] || {
+		printf 'launcher Loomarr tile did not expose usable visible bounds\n' >&2
+		return 1
+	}
+	ffmpeg -hide_banner -loglevel error -i "${evidence_dir}/launcher-surface.png" \
+		-vf "crop=${width}:${height}:${x1}:${y1},signalstats,metadata=print:file=-" \
+		-frames:v 1 -f null - 2>/dev/null >"${temp_dir}/launcher-stats.txt"
+	launcher_min_luma=$(awk -F= '/lavfi.signalstats.YMIN=/{print $2 + 0; exit}' "${temp_dir}/launcher-stats.txt")
+	launcher_max_luma=$(awk -F= '/lavfi.signalstats.YMAX=/{print $2 + 0; exit}' "${temp_dir}/launcher-stats.txt")
+	launcher_saturation=$(awk -F= '/lavfi.signalstats.SATAVG=/{print $2 + 0; exit}' "${temp_dir}/launcher-stats.txt")
+	awk -v minimum="${launcher_min_luma}" -v maximum="${launcher_max_luma}" -v saturation="${launcher_saturation}" \
+		'BEGIN {exit !(minimum < 60 && maximum > 120 && saturation > 10)}' || {
+		printf 'launcher Loomarr tile lacked the visible contrast and colour expected from an app identity\n' >&2
+		return 1
+	}
 }
 
 key() {
@@ -203,8 +250,9 @@ dns-sd -R "${DISCOVERY_NAME}" _loomarr._tcp local "${JOURNEY_PORT}" \
 discovery_pid=$!
 adb -s "${EMULATOR_SERIAL}" shell pm clear "${PACKAGE_ID}" >/dev/null
 open_launcher_surface
-wait_for_ui "launcher surface identity" "Loomarr"
+wait_for_launcher_identity
 adb -s "${EMULATOR_SERIAL}" exec-out screencap -p >"${evidence_dir}/launcher-surface.png"
+measure_launcher_identity
 launch
 wait_for_ui "automatic LAN discovery" "Connect to ${DISCOVERY_NAME}"
 dump_ui
@@ -291,6 +339,9 @@ jq -n \
 	--arg aabSha256 "${actual_digest}" \
 	--arg avd "${avd_name}" \
 	--arg emulatorSerial "${EMULATOR_SERIAL}" \
+	--argjson launcherMaxLuma "${launcher_max_luma}" \
+	--argjson launcherMinLuma "${launcher_min_luma}" \
+	--argjson launcherSaturation "${launcher_saturation}" \
 	--arg producerCommit "$(jq -r '.commit // ""' "${PRODUCER_MANIFEST}")" \
 	--arg producerRunId "$(jq -r '.producerRunId // ""' "${PRODUCER_MANIFEST}")" \
 	--arg versionName "${version_name}" \
@@ -302,6 +353,8 @@ jq -n \
 	 versionCode: $versionCode, versionName: $versionName,
 	 automaticLanDiscovery: true, discoveredAddressPairing: true, manualAddressFallback: true,
 	 launcherSurfaceObserved: true, launcherSurfaceScreenshot: "launcher-surface.png",
+	 launcherTileAccessibleName: "Loomarr", launcherTileMaxLuma: $launcherMaxLuma,
+	 launcherTileMinLuma: $launcherMinLuma, launcherTileSaturation: $launcherSaturation,
 	 pairedColdLaunchMaxLuma: $pairedLaunchMaxLuma, pairedColdLaunchMinLuma: $pairedLaunchMinLuma,
 	 pairedColdLaunchRecording: "paired-launch.mp4", pairedColdLaunchVideoCovered: true,
 	 playbarAutoHide: true}' \

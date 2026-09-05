@@ -2491,9 +2491,13 @@ revocable device-code pairing. With one result the screen presents one primary C
 several it presents a choice. **Enter address manually** remains a secondary troubleshooting action
 for VLANs, guest networks, or routers that block multicast and uses the platform URL keyboard (which
 also accepts input from the Google TV phone remote). A release contains no household URL. Discovery
-timeout, permission failure, and zero results leave manual setup usable rather than presenting build
-instructions. Android's `NsdManager` owns platform discovery behind a small Java React Native adapter;
-this does not restore the retired Kotlin application or put discovery mechanics into pairing state.
+is bounded to a thirty-second foreground browse window. At its deadline the adapter stops native
+browsing and retains any resolved choices; if it found none, it explains that automatic discovery
+ended while leaving manual setup usable. Permission and startup failures follow the same manual
+fallback instead of presenting build instructions. Returning the unpaired screen to the foreground
+starts a fresh bounded window. Android's `NsdManager` owns platform discovery behind a small Java
+React Native adapter; this does not restore the retired Kotlin application or put discovery mechanics
+into pairing state.
 
 Watching, Surf, and Guide share one app-scoped **playable Channel catalog**; no surface snapshots
 its own lineup. The catalog treats authenticated `/v1/events` `channel` frames only as invalidation

@@ -169,6 +169,9 @@ test("ships LAN discovery through Android NSD without restoring Kotlin", async (
   assert.match(adapter, /NativeModules\.LoomarrLanDiscovery/);
   assert.match(nativeModule, /NsdManager/);
   assert.match(nativeModule, /_loomarr\._tcp\./);
+  assert.match(nativeModule, /address\.indexOf\('%'\)/);
+  assert.match(nativeModule, /address\.indexOf\(':'\) >= 0/);
+  assert.match(nativeModule, /"\[" \+ address \+ "\]"/);
   assert.doesNotMatch(nativeModule, /kotlin/i);
 });
 

@@ -82,6 +82,69 @@ describe("native LAN server discovery", () => {
     ]);
   });
 
+  it("de-duplicates updates, preserves IPv4 and IPv6 URLs, and removes lost services", () => {
+    const discovery = createNativeServerDiscovery();
+    const changes = vi.fn();
+    discovery.subscribe(changes);
+
+    discovery.start();
+    emit("loomarrDiscoveryFound", {
+      id: "ipv6",
+      name: "Upstairs",
+      protocol: "1",
+      url: "https://[fe80::1]:8443",
+    });
+    emit("loomarrDiscoveryFound", {
+      id: "ipv4",
+      name: "Downstairs",
+      protocol: "1",
+      url: "http://192.168.1.20:8080",
+    });
+    emit("loomarrDiscoveryFound", {
+      id: "ipv4",
+      name: "Downstairs",
+      protocol: "1",
+      url: "http://192.168.1.20:8080",
+    });
+    emit("loomarrDiscoveryFound", {
+      id: "ipv4",
+      name: "Den",
+      protocol: "1",
+      url: "http://192.168.1.21:8080",
+    });
+
+    expect(discovery.snapshot().servers).toEqual([
+      { id: "ipv4", name: "Den", url: "http://192.168.1.21:8080" },
+      { id: "ipv6", name: "Upstairs", url: "https://[fe80::1]:8443" },
+    ]);
+    expect(changes).toHaveBeenCalledTimes(4);
+
+    emit("loomarrDiscoveryLost", { id: "ipv6" });
+    expect(discovery.snapshot().servers).toEqual([
+      { id: "ipv4", name: "Den", url: "http://192.168.1.21:8080" },
+    ]);
+  });
+
+  it("stops native browsing and preserves resolved choices after a discovery error", () => {
+    const discovery = createNativeServerDiscovery();
+
+    discovery.start();
+    emit("loomarrDiscoveryFound", {
+      id: "server",
+      name: "Loomarr",
+      protocol: "1",
+      url: "http://loomarr.local",
+    });
+    emit("loomarrDiscoveryError", { code: 3 });
+
+    expect(native.stop).toHaveBeenCalledTimes(1);
+    expect(discovery.snapshot()).toMatchObject({
+      status: "unavailable",
+      servers: [{ id: "server", name: "Loomarr", url: "http://loomarr.local" }],
+    });
+    expect(discovery.snapshot().error).toContain("enter the address manually");
+  });
+
   it("cleans up listeners and prior timeouts across stop and restart", () => {
     vi.useFakeTimers();
     const discovery = createNativeServerDiscovery();
