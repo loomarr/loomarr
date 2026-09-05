@@ -6229,6 +6229,15 @@ Automatic admits/rejects belong to Activity; queued/running/retry/provider/budge
 Diagnostics. Overview answers whether filler is working and offers one ranked action only when one
 exists. Ordinary maintenance never asks a person to interpret confidence thresholds.
 
+Incoming consumes the bounded review cursor ten rows at a time and renders one focused evidence
+card, with a compact question navigator for the rest of that server page. It never materializes the
+100-row ceiling as 100 simultaneous full cards or reorders questions using browser-owned policy.
+Forward/back page controls preserve the server cursor history; selecting or paging is navigation,
+not a semantic action. Recording filler, not-filler, or a corrected verdict requires successful
+playback of the exact resolved clip in the current browser session. Only `Skip for now` remains
+available without playback, because it records no semantic answer. An unsupported applied-mode row
+therefore exposes no answer path even through rejection or correction.
+
 The rendered review prototype compares evidence-first and proposal-visible ordering. Production
 uses evidence-first: decisive conflicts and reasons appear before any operator action, and Loomarr
 does not invent a proposed answer for an evaluator that explicitly abstained. The proposal-visible
