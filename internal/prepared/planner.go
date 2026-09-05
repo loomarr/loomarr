@@ -19,9 +19,20 @@ const preparationLookahead = 6 * time.Hour
 // another operator tuning surface.
 const preparationDrainReserve = 10 * time.Minute
 
-// Candidate is one immutable source/rendition needed by the accepted schedule. NeededAt controls
-// priority only; Channel identity is deliberately absent because publications are shared.
+// CandidateClass orders the bounded readiness frontier. Zero is current so older callers and test
+// fixtures that omit the class remain maximally urgent.
+type CandidateClass uint8
+
+const (
+	CandidateCurrent CandidateClass = iota
+	CandidateNext
+	CandidateLookahead
+)
+
+// Candidate is one immutable source/rendition needed by the accepted schedule. Class then NeededAt
+// control priority; Channel identity is deliberately absent because publications are shared.
 type Candidate struct {
+	Class    CandidateClass
 	NeededAt time.Time
 	Request  Request
 }
@@ -72,6 +83,13 @@ type PlannerStatus struct {
 // Implemented at composition, where channels, source access, and audio selection meet.
 type CandidateResolver interface {
 	Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error)
+}
+
+// ReadinessObserver is the lookup-only post-work half implemented by the runtime resolver. Keeping
+// it optional preserves narrow test and embedded resolvers while production status reports the
+// state resulting from this pass rather than the state before it.
+type ReadinessObserver interface {
+	Observe(context.Context, time.Time, time.Time) (ReadinessPlan, error)
 }
 
 // Preparation publishes one request. Preparer implements it; the interface keeps Planner focused
@@ -181,6 +199,11 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if observer, ok := p.resolver.(ReadinessObserver); ok {
+			observed, observeErr := observer.Observe(ctx, now, now.Add(preparationLookahead))
+			plan = observed
+			errs = append(errs, observeErr)
+		}
 	}
 	if p.retainer != nil && p.budget != nil {
 		budget := p.budget()
@@ -263,7 +286,7 @@ func (p *Planner) prepare(ctx context.Context, candidates []Candidate) []error {
 
 func uniqueCandidates(candidates []Candidate) []Candidate {
 	candidates = append([]Candidate(nil), candidates...)
-	slices.SortStableFunc(candidates, func(a, b Candidate) int { return a.NeededAt.Compare(b.NeededAt) })
+	slices.SortStableFunc(candidates, compareCandidates)
 	seen := make(map[Request]struct{}, len(candidates))
 	unique := candidates[:0]
 	for _, candidate := range candidates {
@@ -274,6 +297,16 @@ func uniqueCandidates(candidates []Candidate) []Candidate {
 		unique = append(unique, candidate)
 	}
 	return unique
+}
+
+func compareCandidates(a, b Candidate) int {
+	if a.Class < b.Class {
+		return -1
+	}
+	if a.Class > b.Class {
+		return 1
+	}
+	return a.NeededAt.Compare(b.NeededAt)
 }
 
 func usefulPreparationTime(ctx context.Context) bool {
