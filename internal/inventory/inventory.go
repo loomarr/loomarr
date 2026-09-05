@@ -83,6 +83,9 @@ type ItemFacts struct {
 	Studios        []string       `json:"studios,omitempty"`
 	People         []Person       `json:"people,omitempty"`
 	ProductionYear int            `json:"productionYear,omitempty"`
+	SeasonNumber   int            `json:"seasonNumber,omitempty"`
+	EpisodeNumber  int            `json:"episodeNumber,omitempty"`
+	EpisodeEnd     int            `json:"episodeEnd,omitempty"`
 	PremiereDate   string         `json:"premiereDate,omitempty"`
 	OfficialRating string         `json:"officialRating,omitempty"`
 	CommunityScore float64        `json:"communityScore,omitempty"`
@@ -215,11 +218,11 @@ type ItemRef struct {
 }
 
 type SourceRequest struct {
-	Item           ItemRef       `json:"item"`
-	Kinds          []SourceKind  `json:"kinds,omitempty"`
-	Now            time.Time     `json:"now"`
-	MaxAge         time.Duration `json:"maxAge,omitempty"`
-	RequireStreams bool          `json:"requireStreams,omitempty"`
+	Item             ItemRef       `json:"item"`
+	Kinds            []SourceKind  `json:"kinds,omitempty"`
+	Now              time.Time     `json:"now"`
+	MaxAge           time.Duration `json:"maxAge,omitempty"`
+	RequiredCoverage []string      `json:"requiredCoverage,omitempty"`
 }
 
 type ResolvedSource struct {

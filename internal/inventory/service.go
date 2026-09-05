@@ -57,13 +57,15 @@ func (s *service) ResolveSource(ctx context.Context, request SourceRequest) (Res
 			observation := origin.Observation
 			measurement := source.Measurement
 			if measurement != nil && measurement.Revision == source.Revision &&
-				measurement.Observation.ObservedAt.After(observation.ObservedAt) {
+				observationCovers(measurement.Observation.Coverage, request.RequiredCoverage) &&
+				(!observationCovers(observation.Coverage, request.RequiredCoverage) ||
+					measurement.Observation.ObservedAt.After(observation.ObservedAt)) {
 				observation = measurement.Observation
 			}
 			if request.MaxAge > 0 && now.Sub(observation.ObservedAt) > request.MaxAge {
 				continue
 			}
-			if request.RequireStreams && observation.Coverage["streams"] != CoveragePresent {
+			if !observationCovers(observation.Coverage, request.RequiredCoverage) {
 				continue
 			}
 			return ResolvedSource{
@@ -73,6 +75,15 @@ func (s *service) ResolveSource(ctx context.Context, request SourceRequest) (Res
 		}
 	}
 	return ResolvedSource{}, false, nil
+}
+
+func observationCovers(coverage map[string]Coverage, required []string) bool {
+	for _, key := range required {
+		if coverage[key] != CoveragePresent {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *service) RecordMeasurement(ctx context.Context, measurement Measurement) error {

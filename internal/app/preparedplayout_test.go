@@ -43,7 +43,7 @@ func (f *preparedTimelineFake) ScheduledBroadcasts(
 	return f.broadcasts[channelID], nil
 }
 
-func (f *preparedTimelineFake) AudioTrackFor(_ context.Context, channelID, _ string) int {
+func (f *preparedTimelineFake) AudioTrackFor(_ context.Context, channelID, _, _ string) int {
 	f.audioCalls++
 	if track, ok := f.audioTrackByChannel[channelID]; ok {
 		return track

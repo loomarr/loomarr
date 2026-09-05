@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -143,6 +144,9 @@ type playoutResolver struct {
 	// index. Nil ⇒ track 0, the pre-existing behaviour: an install that cannot probe still
 	// plays, it just cannot honour the preference.
 	probeAudio playout.AudioProber
+	// inventory is Loomarr's durable provider-neutral source observation (§5 V66). Audio selection
+	// reads it before Library or ffprobe I/O; nil preserves the safe direct-probe fallback.
+	inventory inventory.Service
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
@@ -855,8 +859,10 @@ func (r *playoutResolver) airingFiller(
 // One probe per PROGRAMME, not per request: the block supervisor asks for a new program at each
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
-func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, streamURL string) int {
-	if r.audioLanguage == nil || r.probeAudio == nil || streamURL == "" {
+const inventoryAudioFreshness = 24 * time.Hour
+
+func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryItemID, streamURL string) int {
+	if r.audioLanguage == nil || streamURL == "" {
 		return 0
 	}
 	prefer := r.audioLanguage()
@@ -873,6 +879,12 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, streamUR
 		// entirely rather than paying for an answer that cannot change the outcome.
 		return 0
 	}
+	if tracks, ok := r.inventoryAudioTracks(ctx, libraryItemID); ok {
+		return playout.PickAudioTrack(tracks, prefer)
+	}
+	if r.probeAudio == nil {
+		return 0
+	}
 	tracks, err := r.probeAudio(ctx, streamURL)
 	if err != nil {
 		if r.log != nil {
@@ -881,7 +893,85 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, streamUR
 		}
 		return 0
 	}
+	r.recordAudioMeasurement(ctx, libraryItemID, tracks)
 	return playout.PickAudioTrack(tracks, prefer)
+}
+
+func (r *playoutResolver) inventoryAudioTracks(ctx context.Context, libraryItemID string) ([]playout.AudioTrack, bool) {
+	if r.inventory == nil || r.lib == nil || strings.TrimSpace(libraryItemID) == "" {
+		return nil, false
+	}
+	origin, err := r.lib.InventoryOrigin(libraryItemID)
+	if err != nil {
+		return nil, false
+	}
+	request := inventory.SourceRequest{
+		Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(), MaxAge: inventoryAudioFreshness,
+		RequiredCoverage: []string{"audioStreams"},
+	}
+	if source, ok, resolveErr := r.inventory.ResolveSource(ctx, request); resolveErr == nil && ok {
+		return playoutAudioTracks(source.Observation.Facts.Streams), true
+	}
+
+	snapshot, present, importErr := r.lib.InventorySnapshot(ctx, libraryItemID)
+	if importErr == nil && present {
+		if _, applyErr := r.inventory.ApplySnapshot(ctx, snapshot); applyErr == nil {
+			if source, ok, resolveErr := r.inventory.ResolveSource(ctx, request); resolveErr == nil && ok {
+				return playoutAudioTracks(source.Observation.Facts.Streams), true
+			}
+		} else if r.log != nil {
+			r.log.Debug("playout: library media observation not persisted", "err", applyErr)
+		}
+	} else if importErr != nil && r.log != nil {
+		r.log.Debug("playout: library media observation unavailable", "err", importErr)
+	}
+	return nil, false
+}
+
+func (r *playoutResolver) recordAudioMeasurement(ctx context.Context, libraryItemID string, tracks []playout.AudioTrack) {
+	if r.inventory == nil || r.lib == nil || len(tracks) == 0 || strings.TrimSpace(libraryItemID) == "" {
+		return
+	}
+	origin, err := r.lib.InventoryOrigin(libraryItemID)
+	if err != nil {
+		return
+	}
+	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{Item: inventory.ItemRef{Origin: &origin}})
+	if err != nil || !ok {
+		return
+	}
+	streams := make([]inventory.Stream, len(tracks))
+	for i, track := range tracks {
+		streams[i] = inventory.Stream{Index: track.SourceIndex, Kind: inventory.StreamAudio, Language: track.Language}
+	}
+	measurement := inventory.Measurement{
+		SourceID: source.ID, Revision: source.Revision,
+		Observation: inventory.Observation[inventory.SourceFacts]{
+			SchemaVersion: 1, ObservedAt: r.inventoryNow(),
+			Coverage: map[string]inventory.Coverage{"audioStreams": inventory.CoveragePresent},
+			Facts:    inventory.SourceFacts{Streams: streams},
+		},
+	}
+	if err := r.inventory.RecordMeasurement(ctx, measurement); err != nil && r.log != nil {
+		r.log.Debug("playout: measured audio observation not persisted", "err", err)
+	}
+}
+
+func (r *playoutResolver) inventoryNow() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
+}
+
+func playoutAudioTracks(streams []inventory.Stream) []playout.AudioTrack {
+	tracks := make([]playout.AudioTrack, 0)
+	for _, stream := range streams {
+		if stream.Kind == inventory.StreamAudio {
+			tracks = append(tracks, playout.AudioTrack{SourceIndex: stream.Index, Language: stream.Language})
+		}
+	}
+	return tracks
 }
 
 // Tracks probes the audio + subtitle tracks of what's airing on a channel right now (§9.1 Watch,

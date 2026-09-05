@@ -178,7 +178,7 @@ func audioTracksOf(streams []probedStream) []AudioTrack {
 	var out []AudioTrack
 	for _, s := range streams {
 		if s.CodecType == "audio" {
-			out = append(out, AudioTrack{Language: s.Tags.Language})
+			out = append(out, AudioTrack{SourceIndex: s.Index, Language: s.Tags.Language})
 		}
 	}
 	return out

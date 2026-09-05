@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media"
@@ -188,6 +189,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// next programme rather than the next restart. The prober derives ffprobe from the
 		// ffmpeg path — the two ship together, so an operator who moved one moved both.
 		audioLanguage:      func() string { return set.str("playout.audio_language") },
+		inventory:          inventory.New(st),
 		probeAudio:         playout.FFprobeAudioNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		probeTracks:        playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		probeFormat:        playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),

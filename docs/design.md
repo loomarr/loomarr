@@ -164,6 +164,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the hermetic certification contract for filler admission.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
+- **`inventory`** · 3 importers
+  Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
 - **`plannerreference`**
@@ -250,9 +252,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`
   Materializes identity-blind evidence for independent semantic review.
-- **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
+- **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 7**
@@ -313,7 +315,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -1899,11 +1901,16 @@ The mechanism, the way every mature media server (Plex/Emby/Jellyfin) does it:
    (`/data/tv/…`) to the local mount (`/cifs/fictionalserver/tv/…`). If the mapped file is readable,
    that is the ffmpeg input. **HTTP is the fallback** only when no mapping resolves a local file (a
    media server on another host, no shared mount) — so a zero-config install still works.
-2. **ffprobe decides, not the media server's metadata.** The resolved input is probed for its real
-   video/audio codec. `playout.PlanCopy` answers "can this be copied as-is?" against the resolved
-   **EncodePlan**'s copy sets (see "A session's identity is `(channel, encode-plan)`" below):
+2. **Measured source facts decide copy/transcode; durable Inventory decides audio when fresh.** The
+   resolved input is probed for its real video/audio codec. `playout.PlanCopy` answers "can this be
+   copied as-is?" against the resolved **EncodePlan**'s copy sets (see "A session's identity is
+   `(channel, encode-plan)`" below):
    `baseline` = h264+aac; `hevc8`/`hevc10` add HEVC (and, for `hevc10`, 10-bit + surround); a
-   media-server tuner resolves to the broadest, `full`.
+   media-server tuner resolves to the broadest, `full`. Preferred-audio selection first reads a
+   fresh V66 source observation, refreshes the item through the Library importer on a miss, and
+   probes the actual input only when that metadata remains incomplete/unavailable. A successful
+   fallback measurement is persisted against the exact source revision. Every failure still maps
+   audio ordinal zero, so metadata can never dead-air a programme.
 3. **Direct-play (`-c copy`) when compatible — the common case, near-instant, no GPU. Transcode only
    when the codec genuinely is not playable by the plan** (e.g. HEVC to a `baseline` client, or
    10-bit to an 8-bit-only one).

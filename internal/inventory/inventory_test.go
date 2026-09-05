@@ -118,7 +118,7 @@ func TestResolveSourceUsesFreshExactRevisionMeasurement(t *testing.T) {
 		}},
 	}}
 	resolved, ok, err := New(repository).ResolveSource(context.Background(), SourceRequest{
-		Item: ItemRef{ID: "item-1"}, Now: now, MaxAge: time.Minute, RequireStreams: true,
+		Item: ItemRef{ID: "item-1"}, Now: now, MaxAge: time.Minute, RequiredCoverage: []string{"streams"},
 	})
 	if err != nil || !ok {
 		t.Fatalf("ResolveSource = (%+v, %v, %v), want hit", resolved, ok, err)
@@ -128,7 +128,7 @@ func TestResolveSourceUsesFreshExactRevisionMeasurement(t *testing.T) {
 	}
 	repository.item.Sources[0].Measurement.Revision = "rev-1"
 	if _, ok, err := New(repository).ResolveSource(context.Background(), SourceRequest{
-		Item: ItemRef{ID: "item-1"}, Now: now, MaxAge: time.Minute, RequireStreams: true,
+		Item: ItemRef{ID: "item-1"}, Now: now, MaxAge: time.Minute, RequiredCoverage: []string{"streams"},
 	}); err != nil || ok {
 		t.Fatalf("stale imported observation plus old measurement = hit %v, err %v; want miss", ok, err)
 	}

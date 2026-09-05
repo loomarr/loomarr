@@ -18,7 +18,7 @@ import (
 
 const inventoryFields = "ProviderIds,OriginalTitle,SortName,Overview,Genres,Tags,Studios,People," +
 	"ProductionYear,PremiereDate,OfficialRating,CommunityRating,RunTimeTicks,ImageTags," +
-	"ParentId,SeriesId,SeasonId,IndexNumber,ParentIndexNumber,DateLastSaved,MediaSources,MediaStreams"
+	"ParentId,SeriesId,SeasonId,IndexNumber,IndexNumberEnd,ParentIndexNumber,DateLastSaved,MediaSources,MediaStreams"
 
 type inventoryItemResponse struct {
 	Items []json.RawMessage `json:"Items"`
@@ -53,22 +53,22 @@ type inventoryWireItem struct {
 	SeriesID          string                `json:"SeriesId"`
 	SeasonID          string                `json:"SeasonId"`
 	IndexNumber       int                   `json:"IndexNumber"`
+	IndexNumberEnd    int                   `json:"IndexNumberEnd"`
 	ParentIndexNumber int                   `json:"ParentIndexNumber"`
 	MediaSources      []inventoryWireSource `json:"MediaSources"`
 	MediaStreams      []inventoryWireStream `json:"MediaStreams"`
 }
 
 type inventoryWireSource struct {
-	ID              string                `json:"Id"`
-	Protocol        string                `json:"Protocol"`
-	Container       string                `json:"Container"`
-	Size            int64                 `json:"Size"`
-	Bitrate         int64                 `json:"Bitrate"`
-	RunTimeTicks    int64                 `json:"RunTimeTicks"`
-	ETag            string                `json:"ETag"`
-	DateLastSaved   string                `json:"DateLastSaved"`
-	MediaStreams    []inventoryWireStream `json:"MediaStreams"`
-	MediaStreamsRaw json.RawMessage       `json:"-"`
+	ID            string                `json:"Id"`
+	Protocol      string                `json:"Protocol"`
+	Container     string                `json:"Container"`
+	Size          int64                 `json:"Size"`
+	Bitrate       int64                 `json:"Bitrate"`
+	RunTimeTicks  int64                 `json:"RunTimeTicks"`
+	ETag          string                `json:"ETag"`
+	DateLastSaved string                `json:"DateLastSaved"`
+	MediaStreams  []inventoryWireStream `json:"MediaStreams"`
 }
 
 type inventoryWireStream struct {
@@ -195,7 +195,8 @@ func itemFacts(item inventoryWireItem) inventory.ItemFacts {
 	facts := inventory.ItemFacts{
 		Name: item.Name, OriginalTitle: item.OriginalTitle, SortTitle: item.SortName,
 		Overview: item.Overview, Genres: item.Genres, Tags: item.Tags,
-		ProductionYear: item.ProductionYear, PremiereDate: item.PremiereDate,
+		ProductionYear: item.ProductionYear, SeasonNumber: item.ParentIndexNumber,
+		EpisodeNumber: item.IndexNumber, EpisodeEnd: item.IndexNumberEnd, PremiereDate: item.PremiereDate,
 		OfficialRating: item.OfficialRating, CommunityScore: item.CommunityRating,
 		RuntimeMillis: item.RunTimeTicks / 10_000,
 	}
@@ -230,6 +231,8 @@ func itemCoverage(fields map[string]json.RawMessage) map[string]inventory.Covera
 		"Name": "name", "OriginalTitle": "originalTitle", "SortName": "sortTitle",
 		"Overview": "overview", "Genres": "genres", "Tags": "tags", "Studios": "studios",
 		"People": "people", "ProductionYear": "productionYear", "PremiereDate": "premiereDate",
+		"ParentIndexNumber": "seasonNumber", "IndexNumber": "episodeNumber",
+		"IndexNumberEnd": "episodeEnd",
 		"OfficialRating": "officialRating", "CommunityRating": "communityScore",
 		"RunTimeTicks": "runtime", "ImageTags": "artwork", "ProviderIds": "externalIds",
 	} {
@@ -271,6 +274,12 @@ func sourceSnapshot(
 			coverage["streams"] = inventory.CoverageEmpty
 		} else {
 			coverage["streams"] = inventory.CoveragePresent
+		}
+		for _, stream := range streams {
+			if stream.Kind == inventory.StreamAudio {
+				coverage["audioStreams"] = inventory.CoveragePresent
+				break
+			}
 		}
 	}
 	facts := inventory.SourceFacts{

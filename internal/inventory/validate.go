@@ -191,7 +191,8 @@ func validateItemFacts(facts *ItemFacts) error {
 			return ErrInvalid
 		}
 	}
-	if facts.ProductionYear < 0 || facts.RuntimeMillis < 0 || facts.CommunityScore < 0 ||
+	if facts.ProductionYear < 0 || facts.SeasonNumber < 0 || facts.EpisodeNumber < 0 || facts.EpisodeEnd < 0 ||
+		facts.RuntimeMillis < 0 || facts.CommunityScore < 0 ||
 		facts.CommunityScore > 10 || len(facts.Genres) > maxCollection || len(facts.Tags) > maxCollection ||
 		len(facts.Studios) > maxCollection || len(facts.People) > maxCollection ||
 		len(facts.Artwork) > maxCollection || len(facts.Relationships) > maxCollection {
