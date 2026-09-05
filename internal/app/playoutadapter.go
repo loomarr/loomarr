@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1227,6 +1228,51 @@ func inventoryFactsOf(observed playout.SourceObservation) inventory.SourceFacts 
 	return facts
 }
 
+func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
+	format := playout.MediaFormat{
+		Container:    strings.ToLower(strings.TrimSpace(facts.Container)),
+		Duration:     float64(facts.DurationMillis) / float64(time.Second/time.Millisecond),
+		Bitrate:      facts.Bitrate,
+		VideoPreroll: facts.UnsafePreroll,
+	}
+	for _, stream := range facts.Streams {
+		switch stream.Kind {
+		case inventory.StreamVideo:
+			if format.VideoCodec != "" {
+				continue
+			}
+			format.VideoCodec = strings.ToLower(strings.TrimSpace(stream.Codec))
+			format.Width = stream.Width
+			format.Height = stream.Height
+			format.FrameRate = parseInventoryRational(stream.FrameRate)
+			format.PixelFormat = strings.ToLower(strings.TrimSpace(stream.PixelFormat))
+			format.ColorTransfer = strings.ToLower(strings.TrimSpace(stream.ColorTransfer))
+		case inventory.StreamAudio:
+			if format.AudioCodec != "" {
+				continue
+			}
+			format.AudioCodec = strings.ToLower(strings.TrimSpace(stream.Codec))
+			format.AudioChannels = stream.Channels
+			format.AudioSampleRate = stream.SampleRate
+		}
+	}
+	return format
+}
+
+func parseInventoryRational(value string) float64 {
+	numerator, denominator, found := strings.Cut(strings.TrimSpace(value), "/")
+	if !found {
+		parsed, _ := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		return parsed
+	}
+	n, numeratorErr := strconv.ParseFloat(strings.TrimSpace(numerator), 64)
+	d, denominatorErr := strconv.ParseFloat(strings.TrimSpace(denominator), 64)
+	if numeratorErr != nil || denominatorErr != nil || d == 0 {
+		return 0
+	}
+	return n / d
+}
+
 func (r *playoutResolver) inventoryNow() time.Time {
 	if r.now != nil {
 		return r.now()
@@ -1289,7 +1335,22 @@ func (r *playoutResolver) Tracks(ctx context.Context, channelID string) (playout
 func (r *playoutResolver) PlanFor(
 	ctx context.Context, input string, target playout.EncodePlan,
 ) (playout.CopyPlan, playout.MediaFormat) {
-	if r.probeFormat == nil || input == "" {
+	if input == "" {
+		return playout.CopyPlan{}, playout.MediaFormat{} // transcode both
+	}
+	if r.inventory != nil {
+		if origin, ok := r.ensureLocalInventorySource(ctx, input); ok {
+			source, found, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
+				Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(),
+				Kinds: []inventory.SourceKind{inventory.SourceLocalFile}, RequiredCoverage: []string{"streams"},
+			})
+			if err == nil && found {
+				format := playoutFormatOf(source.Observation.Facts)
+				return playout.PlanCopy(format, target), format
+			}
+		}
+	}
+	if r.probeFormat == nil {
 		return playout.CopyPlan{}, playout.MediaFormat{} // transcode both
 	}
 	f, err := r.probeFormat(ctx, input)
