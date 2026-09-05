@@ -59,6 +59,9 @@ func TestValidateTemporalStructureAnchorAdjudicationRequiresExactCompleteReview(
 			value.Cases[1].Alias += "-extra"
 		}, want: "exact canonical"},
 		{name: "incomplete coverage", mutate: func(value *TemporalStructureAnchorAdjudicationSubmission) { value.Cases[0].Coverage = "contact_sheet" }, want: "complete audiovisual"},
+		{name: "missing observations", mutate: func(value *TemporalStructureAnchorAdjudicationSubmission) {
+			value.Cases[0].Observations = TemporalStructureAnchorObservations{}
+		}, want: "opening"},
 		{name: "unknown disposition", mutate: func(value *TemporalStructureAnchorAdjudicationSubmission) {
 			value.Cases[0].Disposition = "model_majority"
 		}, want: "closed value"},
@@ -190,6 +193,10 @@ func newTemporalStructureAnchorAdjudicationFixture(t *testing.T) temporalStructu
 		ReviewerID: "targeted-reviewer", ReviewedAt: reviewedAt,
 		Cases: []TemporalStructureAnchorAdjudicationSubmissionCase{{
 			Alias: target.Alias, Coverage: TemporalStructureAnchorReviewComplete,
+			Observations: TemporalStructureAnchorObservations{
+				Opening: "The item begins at its own presentation boundary.", InternalJoins: []TemporalStructureAnchorJoinObservation{},
+				Closing: "The item reaches its own closing boundary before the file ends.",
+			},
 			Disposition: TemporalStructureAnchorConfirmed, Unit: target.Unit, Role: target.Role,
 			DecisiveAtMS: []int64{100}, Rationale: "Complete playback confirms one independently bounded item and its original role.",
 		}},

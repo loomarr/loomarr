@@ -10,7 +10,10 @@ import (
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
 
-const temporalStructureAnchorRationaleMaximumBytes = 1_000
+const (
+	temporalStructureAnchorRationaleMaximumBytes   = 1_000
+	temporalStructureAnchorObservationMaximumBytes = 500
+)
 
 func validateTemporalStructureAnchorAdjudicationSubmission(
 	submission TemporalStructureAnchorAdjudicationSubmission,
@@ -109,6 +112,9 @@ func validateTemporalStructureAnchorAdjudicationCase(
 	if answer.Coverage != TemporalStructureAnchorReviewComplete {
 		return TemporalStructureAnchorAdjudicationCase{}, fmt.Errorf("review coverage must be complete audiovisual playback")
 	}
+	if err := validateTemporalStructureAnchorObservations(answer.Observations, durationMS); err != nil {
+		return TemporalStructureAnchorAdjudicationCase{}, err
+	}
 	if answer.Rationale != strings.TrimSpace(answer.Rationale) || answer.Rationale == "" || len(answer.Rationale) > temporalStructureAnchorRationaleMaximumBytes {
 		return TemporalStructureAnchorAdjudicationCase{}, fmt.Errorf("rationale must be trimmed and contain 1-%d bytes", temporalStructureAnchorRationaleMaximumBytes)
 	}
@@ -139,8 +145,32 @@ func validateTemporalStructureAnchorAdjudicationCase(
 		Alias: answer.Alias, EvidenceAlias: anchor.EvidenceAlias, CaseID: anchor.CaseID,
 		SourceID: segment.SourceID, SourceSHA256: segment.SourceSHA256, FamilyID: anchor.FamilyID,
 		DurationMS: durationMS, Coverage: answer.Coverage, Disposition: answer.Disposition,
-		Original: original, Adjudicated: adjudicated, DecisiveAtMS: slices.Clone(answer.DecisiveAtMS), Rationale: answer.Rationale,
+		Observations: cloneTemporalStructureAnchorObservations(answer.Observations),
+		Original:     original, Adjudicated: adjudicated, DecisiveAtMS: slices.Clone(answer.DecisiveAtMS), Rationale: answer.Rationale,
 	}, nil
+}
+
+func validateTemporalStructureAnchorObservations(value TemporalStructureAnchorObservations, durationMS int64) error {
+	if !boundedTemporalStructureAnchorObservation(value.Opening) || !boundedTemporalStructureAnchorObservation(value.Closing) || value.InternalJoins == nil {
+		return fmt.Errorf("opening, explicit internal-join list, and closing observations are required")
+	}
+	previous := int64(-1)
+	for _, join := range value.InternalJoins {
+		if join.AtMS <= 0 || join.AtMS >= durationMS || join.AtMS <= previous || !boundedTemporalStructureAnchorObservation(join.Observation) {
+			return fmt.Errorf("internal-join observations must be unique, sorted, bounded, and described")
+		}
+		previous = join.AtMS
+	}
+	return nil
+}
+
+func boundedTemporalStructureAnchorObservation(value string) bool {
+	return value == strings.TrimSpace(value) && value != "" && len(value) <= temporalStructureAnchorObservationMaximumBytes
+}
+
+func cloneTemporalStructureAnchorObservations(value TemporalStructureAnchorObservations) TemporalStructureAnchorObservations {
+	value.InternalJoins = slices.Clone(value.InternalJoins)
+	return value
 }
 
 func adjacentDuplicate(values []string) bool {

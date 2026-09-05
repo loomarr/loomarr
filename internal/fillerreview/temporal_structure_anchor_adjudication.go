@@ -51,13 +51,25 @@ type TemporalStructureAnchorAdjudicationSubmission struct {
 }
 
 type TemporalStructureAnchorAdjudicationSubmissionCase struct {
-	Alias        string                  `json:"alias"`
-	Coverage     string                  `json:"coverage"`
-	Disposition  string                  `json:"disposition"`
-	Unit         fillereval.UnitKind     `json:"unit"`
-	Role         fillereval.TemporalRole `json:"role,omitempty"`
-	DecisiveAtMS []int64                 `json:"decisiveAtMs,omitempty"`
-	Rationale    string                  `json:"rationale"`
+	Alias        string                              `json:"alias"`
+	Coverage     string                              `json:"coverage"`
+	Observations TemporalStructureAnchorObservations `json:"observations"`
+	Disposition  string                              `json:"disposition"`
+	Unit         fillereval.UnitKind                 `json:"unit"`
+	Role         fillereval.TemporalRole             `json:"role,omitempty"`
+	DecisiveAtMS []int64                             `json:"decisiveAtMs,omitempty"`
+	Rationale    string                              `json:"rationale"`
+}
+
+type TemporalStructureAnchorObservations struct {
+	Opening       string                                   `json:"opening"`
+	InternalJoins []TemporalStructureAnchorJoinObservation `json:"internalJoins"`
+	Closing       string                                   `json:"closing"`
+}
+
+type TemporalStructureAnchorJoinObservation struct {
+	AtMS        int64  `json:"atMs"`
+	Observation string `json:"observation"`
 }
 
 type TemporalStructureAnchorAdjudicationAuthority struct {
@@ -81,19 +93,20 @@ type TemporalStructureAnchorAdjudicationAuthority struct {
 }
 
 type TemporalStructureAnchorAdjudicationCase struct {
-	Alias         string                      `json:"alias"`
-	EvidenceAlias string                      `json:"evidenceAlias"`
-	CaseID        string                      `json:"caseId"`
-	SourceID      string                      `json:"sourceId"`
-	SourceSHA256  string                      `json:"sourceSha256"`
-	FamilyID      string                      `json:"familyId"`
-	DurationMS    int64                       `json:"durationMs"`
-	Coverage      string                      `json:"coverage"`
-	Disposition   string                      `json:"disposition"`
-	Original      TemporalStructureTruthLabel `json:"original"`
-	Adjudicated   TemporalStructureTruthLabel `json:"adjudicated"`
-	DecisiveAtMS  []int64                     `json:"decisiveAtMs,omitempty"`
-	Rationale     string                      `json:"rationale"`
+	Alias         string                              `json:"alias"`
+	EvidenceAlias string                              `json:"evidenceAlias"`
+	CaseID        string                              `json:"caseId"`
+	SourceID      string                              `json:"sourceId"`
+	SourceSHA256  string                              `json:"sourceSha256"`
+	FamilyID      string                              `json:"familyId"`
+	DurationMS    int64                               `json:"durationMs"`
+	Coverage      string                              `json:"coverage"`
+	Observations  TemporalStructureAnchorObservations `json:"observations"`
+	Disposition   string                              `json:"disposition"`
+	Original      TemporalStructureTruthLabel         `json:"original"`
+	Adjudicated   TemporalStructureTruthLabel         `json:"adjudicated"`
+	DecisiveAtMS  []int64                             `json:"decisiveAtMs,omitempty"`
+	Rationale     string                              `json:"rationale"`
 }
 
 type TemporalStructureAnchorAdjudicationResult struct {
@@ -192,6 +205,9 @@ func buildTemporalStructureAnchorAdjudication(config TemporalStructureAnchorAdju
 		{Name: "private_authority", SHA256: challengeSHA},
 		{Name: "public_manifest", SHA256: publicSHA},
 		{Name: "submission", SHA256: hashBytes(submissionRaw)},
+	}
+	for _, input := range receipt.Inputs {
+		inputs = append(inputs, TemporalStructureHoldoutInput{Name: "plan_input:" + input.Name, SHA256: input.SHA256})
 	}
 	for _, path := range config.AssessmentPaths {
 		set, err := readStrictJSON[TemporalStructureAssessmentSet](path)
