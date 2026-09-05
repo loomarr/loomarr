@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v3"
+	TemporalStructureOpenRouterPromptVersion = "filler-temporal-structure-direct-video-v4"
 	temporalStructureRoleNone                = "none"
 	temporalStructureReasonMaximumCharacters = 320
 )
@@ -52,7 +52,11 @@ func temporalStructureOpenRouterSchema(durationMS int64) map[string]any {
 		string(fillereval.TemporalRoleBumper), string(fillereval.TemporalRolePSA), string(fillereval.TemporalRoleStationID),
 		string(fillereval.TemporalRoleTrailer), string(fillereval.TemporalRoleInterstitial), string(fillereval.TemporalRoleUnclear),
 	}
-	times := map[string]any{"type": "array", "maxItems": temporalStructureMaximumDecisiveTimes, "uniqueItems": true, "items": map[string]any{"type": "integer", "minimum": 0, "maximum": durationMS}}
+	// Keep the provider-facing grammar to the portable structured-output subset.
+	// CoreWeave's Qwen grammar compiler rejects JSON Schema's uniqueItems
+	// keyword. Timestamps are set-like, so normalizeTemporalStructureOpenRouterWire
+	// sorts and deduplicates them before the closed validator checks the claim.
+	times := map[string]any{"type": "array", "maxItems": temporalStructureMaximumDecisiveTimes, "items": map[string]any{"type": "integer", "minimum": 0, "maximum": durationMS}}
 	return map[string]any{
 		"type": "object", "additionalProperties": false,
 		"required": []string{"unit", "unitDecisiveAtMs", "unitReason", "role", "roleDecisiveAtMs", "roleReason"},

@@ -38,7 +38,7 @@ func TestRunOpenRouterTemporalStructureBindsOneAtomicVideoAssessment(t *testing.
 	if len(parts) != 2 || parts[1].Type != "video_url" || parts[1].VideoURL == nil || !strings.HasPrefix(parts[1].VideoURL.URL, "data:video/mp4;base64,") {
 		t.Fatalf("structure request parts = %+v", parts)
 	}
-	if request.MaxTokens != 4_096 || result.Assessor.PromptVersion != "filler-temporal-structure-direct-video-v3" {
+	if request.MaxTokens != 4_096 || result.Assessor.PromptVersion != TemporalStructureOpenRouterPromptVersion {
 		t.Fatalf("request max tokens=%d prompt version=%q", request.MaxTokens, result.Assessor.PromptVersion)
 	}
 	attempt := result.Attempts[0]
