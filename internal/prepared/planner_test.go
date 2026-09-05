@@ -3,6 +3,7 @@ package prepared
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -245,6 +246,76 @@ func TestPlannerTreatsForegroundPreemptionAsAYield(t *testing.T) {
 	}
 }
 
+func TestPlannerForegroundPreemptionStopsRefillAcrossMeasuredCapacity(t *testing.T) {
+	const capacity = 4
+	now := time.Unix(1_000, 0)
+	items := make([]Candidate, 10)
+	for i := range items {
+		items[i] = Candidate{
+			NeededAt: now.Add(time.Duration(i) * time.Minute),
+			Request:  Request{Source: testSource(fmt.Sprintf("%02d", i)), Rendition: baselineRendition()},
+		}
+	}
+	started := make(chan struct{}, capacity-1)
+	finish := make(chan struct{})
+	var calls atomic.Int64
+	work := &recordingPreparation{run: func(ctx context.Context, _ Request) error {
+		calls.Add(1)
+		started <- struct{}{}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-finish:
+			return nil
+		}
+	}}
+	pool := media.NewEncodePool(func() int { return capacity })
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{items: items}, Preparation: work, Pool: pool,
+		Now: func() time.Time { return now },
+	})
+	done := make(chan error, 1)
+	go func() { done <- p.Run(t.Context()) }()
+	for range capacity - 1 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("planner did not fill the background pool")
+		}
+	}
+	reserveRelease, ok := pool.AcquireForeground(t.Context())
+	if !ok {
+		t.Fatal("live request could not take the reserved slot")
+	}
+	second := make(chan func(), 1)
+	go func() {
+		release, admitted := pool.AcquireForeground(t.Context())
+		if !admitted {
+			second <- nil
+			return
+		}
+		second <- release
+	}()
+	var preemptedRelease func()
+	select {
+	case preemptedRelease = <-second:
+		if preemptedRelease == nil {
+			t.Fatal("live request was not admitted after preparation preemption")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("live request did not promptly preempt preparation")
+	}
+	reserveRelease()
+	preemptedRelease()
+	close(finish)
+	if err := <-done; err != nil {
+		t.Fatalf("preempted planner returned an operator-visible failure: %v", err)
+	}
+	if got := calls.Load(); got != capacity-1 {
+		t.Fatalf("preparation calls after live preemption = %d, want initial wave %d with no refill", got, capacity-1)
+	}
+}
+
 func TestPlannerContinuesPastOneBadSource(t *testing.T) {
 	now := time.Unix(1_000, 0)
 	bad := Request{Source: testSource("bad"), Rendition: baselineRendition()}
@@ -371,6 +442,40 @@ func TestPlannerStatusObservesResultingReadinessAfterWork(t *testing.T) {
 	}
 	if got := resolver.calls.Load(); got != 2 {
 		t.Fatalf("resolver calls = %d, want plan plus lookup-only observation", got)
+	}
+}
+
+func TestPlannerDeadlineReserveDrainsIntoObservationAndRetention(t *testing.T) {
+	now := time.Unix(21_500, 0)
+	request := Request{Source: testSource("deferred"), Rendition: baselineRendition()}
+	beforeProtected := Specification{SourceFingerprint: "before", Rendition: baselineRendition()}
+	afterProtected := Specification{SourceFingerprint: "after", Rendition: baselineRendition()}
+	resolver := &observingCandidates{
+		before: ReadinessPlan{
+			Candidates: []Candidate{{Request: request}}, Protected: []Specification{beforeProtected},
+		},
+		after: ReadinessPlan{Protected: []Specification{afterProtected}},
+	}
+	work := &recordingPreparation{}
+	retainer := &recordingRetainer{}
+	p := NewPlanner(PlannerDependencies{
+		Resolver: resolver, Preparation: work, Pool: media.NewEncodePool(func() int { return 2 }),
+		Retainer: retainer, BudgetBytes: func() int64 { return 512 }, Now: func() time.Time { return now },
+	})
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(preparationDrainReserve-time.Minute))
+	defer cancel()
+
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(work.requests) != 0 {
+		t.Fatal("planner started preparation inside its drain reserve")
+	}
+	if got := resolver.calls.Load(); got != 2 {
+		t.Fatalf("resolver calls = %d, want plan plus post-drain observation", got)
+	}
+	if retainer.calls != 1 || len(retainer.protected) != 1 || retainer.protected[0] != afterProtected {
+		t.Fatalf("retention protected = %+v, want post-observation hot set", retainer.protected)
 	}
 }
 

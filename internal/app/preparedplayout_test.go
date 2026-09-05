@@ -358,6 +358,60 @@ func TestPreparedRuntimeInventoryBackedHotFrontierBypassesExternalRefreshLimit(t
 	}
 }
 
+func TestPreparedRuntimeScalesCurrentAndNextProtectionAtFiftyAndOneHundredChannels(t *testing.T) {
+	t.Parallel()
+	for _, channelCount := range []int{50, 100} {
+		channelCount := channelCount
+		t.Run(fmt.Sprintf("%d_channels", channelCount), func(t *testing.T) {
+			t.Parallel()
+			now := time.Unix(17_300, 0)
+			channels := make([]store.Channel, channelCount)
+			broadcasts := make(map[string][]playout.Broadcast, channelCount)
+			inventorySources := make(map[string]library.InputSource, channelCount*3)
+			hits := make(map[prepared.Request]prepared.Specification, channelCount*3)
+			rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
+			for i := range channels {
+				channelID := fmt.Sprintf("ch-%03d", i)
+				channels[i] = store.Channel{Channel: schedule.Channel{ID: channelID}}
+				for offset, class := range []string{"current", "next", "later"} {
+					itemID := fmt.Sprintf("%s-%03d", class, i)
+					start := now.Add(time.Duration(offset)*time.Hour - 30*time.Minute)
+					broadcasts[channelID] = append(broadcasts[channelID], playout.Broadcast{
+						Kind: schedule.SlotProgram, LibraryItemID: itemID,
+						Start: start, Stop: start.Add(time.Hour),
+					})
+					inventorySources[itemID] = library.InputSource{
+						URL: "http://media/" + itemID, Kind: library.InputHTTP,
+					}
+					request := prepared.Request{Source: preparedSource(itemID, 2), Rendition: rendition}
+					hits[request] = prepared.Specification{SourceFingerprint: itemID, Rendition: rendition}
+				}
+			}
+			timeline := &preparedTimelineFake{broadcasts: broadcasts, inventoryAudio: true}
+			inputs := &preparedInputsFake{inventorySources: inventorySources}
+			r := newPreparedRuntimeForTest(
+				t, preparedChannels{channels: channels}, timeline, inputs, preparedLookupFake{hits: hits},
+				func() time.Time { return now }, nil, func() string { return "policy" },
+				func() string { return "internal" }, func() prepared.RenditionContract { return rendition },
+			)
+
+			plan, err := r.Plan(t.Context(), now, now.Add(6*time.Hour))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Protected) != channelCount*2 {
+				t.Fatalf("protected publications = %d, want current+next %d", len(plan.Protected), channelCount*2)
+			}
+			if plan.Summary.ReadyChannels != channelCount || plan.Summary.ReadyBindings != channelCount*3 {
+				t.Fatalf("readiness = %+v, want every current, next, and visible later binding ready", plan.Summary)
+			}
+			if inputs.calls != 0 || timeline.audioCalls != 0 {
+				t.Fatalf("durable scale plan performed external source/audio work: %d/%d", inputs.calls, timeline.audioCalls)
+			}
+		})
+	}
+}
+
 func TestPreparedRuntimeObservationDoesNotResolveAbsentBindings(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(17_375, 0)
