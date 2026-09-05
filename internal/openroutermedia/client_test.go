@@ -68,6 +68,36 @@ func TestCallRejectsInvalidAudioBeforeReservation(t *testing.T) {
 	}
 }
 
+func TestCallRejectsContradictoryReasoningBeforeReservation(t *testing.T) {
+	t.Parallel()
+	reserved := false
+	_, err := Call(t.Context(), http.DefaultClient, "https://openrouter.ai/api/v1", Config{
+		DisableReasoning: true,
+		EnableReasoning:  true,
+		Reserve:          func(string) error { reserved = true; return nil },
+	})
+	if err == nil || !strings.Contains(err.Error(), "enable and disable reasoning") || reserved {
+		t.Fatalf("err=%v reserved=%t", err, reserved)
+	}
+}
+
+func TestBuildRequestCanExplicitlyEnableReasoning(t *testing.T) {
+	t.Parallel()
+	config := validConfig(func(string) error { return nil })
+	config.EnableReasoning = true
+	body, err := buildRequest(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request structuredRequest
+	if err := json.Unmarshal(body, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Reasoning == nil || !request.Reasoning.Enabled {
+		t.Fatalf("reasoning = %+v", request.Reasoning)
+	}
+}
+
 func TestCallRequiresReservationBeforeHTTP(t *testing.T) {
 	t.Parallel()
 	called := false
@@ -116,8 +146,8 @@ func TestCallFailsClosedAfterSettlement(t *testing.T) {
 		body string
 		want string
 	}{
-		{name: "missing cost", body: `{"id":"generation","model":"vendor/model","choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1},"openrouter_metadata":{"attempt":1,"endpoints":{"available":[{"provider":"Pinned Provider","model":"vendor/model-2026","selected":true}]}}}`, want: "missing or out-of-reservation cost"},
-		{name: "over ceiling", body: `{"id":"generation","model":"vendor/model","choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"cost":1},"openrouter_metadata":{"attempt":1,"endpoints":{"available":[{"provider":"Pinned Provider","model":"vendor/model-2026","selected":true}]}}}`, want: "missing or out-of-reservation cost"},
+		{name: "missing cost", body: `{"id":"generation","model":"vendor/model","choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1},"openrouter_metadata":{"attempt":1,"endpoints":{"available":[{"provider":"Pinned Provider","model":"vendor/model-2026","selected":true}]}}}`, want: "missing or malformed cost"},
+		{name: "over reservation", body: `{"id":"generation","model":"vendor/model","choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"cost":1},"openrouter_metadata":{"attempt":1,"endpoints":{"available":[{"provider":"Pinned Provider","model":"vendor/model-2026","selected":true}]}}}`, want: "exceeds accounting reservation"},
 		{name: "requested model drift", body: `{"id":"generation","model":"other/model","choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"cost":0.001},"openrouter_metadata":{"attempt":1,"endpoints":{"available":[{"provider":"Pinned Provider","model":"vendor/model-2026","selected":true}]}}}`, want: "does not bind"},
 		{name: "selected route drift", body: `{"id":"generation","model":"vendor/model","choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"cost":0.001},"openrouter_metadata":{"attempt":1,"endpoints":{"available":[{"provider":"Other Provider","model":"vendor/model-2026","selected":true}]}}}`, want: "does not bind"},
 		{name: "multiple attempts", body: `{"id":"generation","model":"vendor/model","choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"cost":0.001},"openrouter_metadata":{"attempt":1,"attempts":[{"provider":"Pinned Provider","model":"vendor/model-2026","status":200},{"provider":"Pinned Provider","model":"vendor/model-2026","status":200}],"endpoints":{"available":[{"provider":"Pinned Provider","model":"vendor/model-2026","selected":true}]}}}`, want: "does not bind"},
@@ -135,6 +165,45 @@ func TestCallFailsClosedAfterSettlement(t *testing.T) {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		})
+	}
+}
+
+func TestCallRetainsKnownChargeAboveAccountingReservation(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id":"generation","model":"vendor/model","choices":[{"message":{"content":"{\"ok\":true}"}}],"usage":{"prompt_tokens":42781,"completion_tokens":283,"cost":0.132588},"openrouter_metadata":{"attempt":1,"endpoints":{"available":[{"provider":"Pinned Provider","model":"vendor/model-2026","selected":true}]}}}`)
+	}))
+	defer server.Close()
+	config := validConfig(func(string) error { return nil })
+	config.ReservationNanoUSD = 100_000_000
+	result, err := Call(t.Context(), server.Client(), server.URL, config)
+	if !errors.Is(err, ErrChargeExceedsReservation) || !result.ChargeKnown || result.ChargedAmountUSD != "0.132588" || result.ChargedNanoUSD != 132_588_000 || result.OverReservationNanoUSD != 32_588_000 || result.StructuredOutput != "" || result.ResponseSHA256 == "" {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestCallRetainsKnownChargeFromProviderErrorEnvelope(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id":"generation","model":"vendor/model","usage":{"prompt_tokens":10,"completion_tokens":0,"cost":0.003},"error":{"message":"upstream stopped"}}`)
+	}))
+	defer server.Close()
+	result, err := Call(t.Context(), server.Client(), server.URL, validConfig(func(string) error { return nil }))
+	if err == nil || !strings.Contains(err.Error(), "upstream stopped") || !errors.Is(err, ErrChargeExceedsReservation) || !result.ChargeKnown || result.ChargedNanoUSD != 3_000_000 || result.OverReservationNanoUSD != 1_000_000 || result.StructuredOutput != "" {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestCallReportsProviderErrorWhenErrorEnvelopeOmitsCost(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id":"generation","error":{"message":"Request contains an invalid argument.","code":400}}`)
+	}))
+	defer server.Close()
+
+	result, err := Call(t.Context(), server.Client(), server.URL, validConfig(func(string) error { return nil }))
+	if err == nil || !strings.Contains(err.Error(), "error 400: Request contains an invalid argument.") || result.ChargeKnown || result.GenerationID != "generation" {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
 
@@ -181,7 +250,7 @@ func validConfig(reserve func(string) error) Config {
 		UpstreamProvider: "Pinned Provider", ProviderSlug: "pinned/provider",
 		SchemaName: "contract", Schema: map[string]any{"type": "object"},
 		SystemPrompt: "system", Content: "content", MaxTokens: 32,
-		MaxChargeNanoUSD: 2_000_000, Title: "contract test", Reserve: reserve,
+		ReservationNanoUSD: 2_000_000, Title: "contract test", Reserve: reserve,
 	}
 }
 

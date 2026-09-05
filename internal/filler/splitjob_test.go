@@ -42,6 +42,24 @@ type fakeTools struct {
 	cutFn            func(string, int64, int64, string) error
 }
 
+type splitShadowCapture struct {
+	calls    int
+	proposal filler.SplitProposal
+	legacy   filler.SplitPartition
+	pending  bool
+	err      error
+}
+
+func (s *splitShadowCapture) NeedsStructureSplitObservation(_ context.Context, _ filler.SplitProposal) (bool, error) {
+	return s.pending, s.err
+}
+
+func (s *splitShadowCapture) ObserveStructureSplit(_ context.Context, proposal filler.SplitProposal, legacy filler.SplitPartition) error {
+	s.calls++
+	s.proposal, s.legacy = proposal, legacy
+	return s.err
+}
+
 func key3(path string, start, end int64) string { return fmt.Sprintf("%s|%d|%d", path, start, end) }
 
 func (f *fakeTools) Chapters(context.Context, string) ([]filler.Chapter, error) {
@@ -907,6 +925,9 @@ func TestPropose_CoarseSplit(t *testing.T) {
 	if p.Segments[0].StartMs != 1000 || p.Segments[2].EndMs != 90_000 {
 		t.Errorf("cut positions wrong: %+v", p.Segments)
 	}
+	if p.Structure == nil || p.Structure.Kind != filler.StructureAmbiguous || p.Structure.Source != p.Source || p.Structure.Plan[0].StartMs != 0 || p.Structure.Plan[len(p.Structure.Plan)-1].EndMs != p.Source.DurationMs {
+		t.Fatalf("proposal did not retain an exact-source complete shadow assessment: %+v", p.Structure)
+	}
 }
 
 // ⚠ The rescue's reason to exist: a 149s block with NO A/V boundaries, holding
@@ -943,6 +964,9 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 	}
 	if len(p.Segments) != 3 {
 		t.Fatalf("rescue produced %+v, want 3 segments", p.Segments)
+	}
+	if p.Structure == nil || len(p.Structure.Boundaries) != 2 || p.Structure.Boundaries[0].Status != filler.BoundaryUnresolved || p.Structure.Kind != filler.StructureAmbiguous {
+		t.Fatalf("transcript rescue was treated as certifying structure: %+v", p.Structure)
 	}
 	if p.Segments[1].Name != "Aqua Globes" || p.Segments[1].StartMs != 27_000 {
 		t.Errorf("rescued boundary wrong: %+v", p.Segments[1])
@@ -1326,6 +1350,39 @@ func TestSplitStage_PersistsWhyEverySegmentNeedsReview(t *testing.T) {
 	persisted := st.proposals[p.ID]
 	if got := persisted.Segments[0].HoldReason; got != string(filler.RejectUntagged) {
 		t.Fatalf("persisted hold reason = %q, want %q", got, filler.RejectUntagged)
+	}
+}
+
+func TestSplitStageRecordsStructureShadowBeforeCompatibilityPublication(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/shadow.mp4", 30_000)
+	p := filler.SplitProposal{
+		ID: "sp_shadow", ClipHash: hash, CreatedAt: time.Now(),
+		Segments: []filler.SplitSegment{{
+			Index: 0, StartMs: 0, EndMs: 30_000, Name: "grounded", Looked: true,
+			Category: "toys", BoundaryConfidence: 100, StartEvidence: "reel edge", EndEvidence: "reel edge",
+		}},
+	}
+	if err := st.UpsertSplitProposal(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	observer := &splitShadowCapture{err: errors.New("shadow store unavailable")}
+	stage := filler.NewSplitStage(newSplitter(st, &fakeTools{}, nil, t.TempDir()), st).
+		WithAutoConfirm(filler.AutoSplitPolicy{
+			Enabled: func() bool { return true }, MinConfidence: func() int { return 85 },
+			MaxDuration: func() time.Duration { return 2 * time.Minute },
+		}, func() time.Duration { return 10 * time.Second }).
+		WithStructureShadow(observer)
+
+	out, err := stage.Run(context.Background(), st.clips[hash])
+	if err == nil || !strings.Contains(err.Error(), "shadow store unavailable") || len(out.Spawned) != 0 {
+		t.Fatalf("result = %+v, error = %v", out, err)
+	}
+	if observer.calls != 1 || observer.proposal.ID != p.ID || len(observer.legacy.Confirm) != 1 {
+		t.Fatalf("shadow calls=%d proposal=%+v legacy=%+v", observer.calls, observer.proposal, observer.legacy)
+	}
+	if len(st.proposals) != 1 {
+		t.Fatal("proposal was consumed after its shadow decision failed to persist")
 	}
 }
 

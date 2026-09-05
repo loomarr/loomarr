@@ -17,6 +17,11 @@ import (
 // requested model, upstream provider, selected endpoint, and one-attempt route.
 var ErrRouteMismatch = errors.New("OpenRouter structured response route mismatch")
 
+// ErrChargeExceedsReservation reports a known provider charge that exceeded
+// the caller's accounting reservation. The response remains billed evidence,
+// but its structured output is not usable.
+var ErrChargeExceedsReservation = errors.New("OpenRouter structured response charge exceeds accounting reservation")
+
 type structuredResponse struct {
 	ID      string `json:"id"`
 	Model   string `json:"model"`
@@ -48,6 +53,7 @@ type structuredResponse struct {
 	} `json:"openrouter_metadata"`
 	Error *struct {
 		Message string `json:"message"`
+		Code    int    `json:"code"`
 	} `json:"error"`
 }
 
@@ -70,16 +76,39 @@ func settleResponse(result Result, raw []byte, config Config) (Result, error) {
 	result.PromptTokens = wire.Usage.PromptTokens
 	result.CompletionTokens = wire.Usage.CompletionTokens
 	result.ChargedAmountUSD = wire.Usage.Cost.String()
+	if result.ChargedAmountUSD != "" {
+		charged, err := fillereval.USDToNanoCeil(result.ChargedAmountUSD)
+		if err != nil || charged < 0 {
+			if wire.Error == nil {
+				return result, fmt.Errorf("OpenRouter structured call returned missing or malformed cost")
+			}
+		} else {
+			result.ChargedNanoUSD, result.ChargeKnown = charged, true
+			if charged > config.ReservationNanoUSD {
+				result.OverReservationNanoUSD = charged - config.ReservationNanoUSD
+			}
+		}
+	} else if wire.Error == nil {
+		return result, fmt.Errorf("OpenRouter structured call returned missing or malformed cost")
+	}
 	if wire.Error != nil {
-		return result, fmt.Errorf("OpenRouter structured call error: %s", strings.TrimSpace(wire.Error.Message))
+		message := strings.TrimSpace(wire.Error.Message)
+		var providerErr error
+		if wire.Error.Code != 0 {
+			providerErr = fmt.Errorf("OpenRouter structured call error %d: %s", wire.Error.Code, message)
+		} else {
+			providerErr = fmt.Errorf("OpenRouter structured call error: %s", message)
+		}
+		if result.OverReservationNanoUSD > 0 {
+			return result, errors.Join(providerErr, ErrChargeExceedsReservation)
+		}
+		return result, providerErr
 	}
-	charged, err := fillereval.USDToNanoCeil(result.ChargedAmountUSD)
-	if err != nil || charged < 0 || charged > config.MaxChargeNanoUSD {
-		return result, fmt.Errorf("OpenRouter structured call returned missing or out-of-reservation cost")
-	}
-	result.ChargedNanoUSD, result.ChargeKnown = charged, true
 	if wire.ID == "" || wire.Model != config.Model || len(wire.Choices) != 1 || wire.Metadata.Attempt != 1 || !validAttemptLedger(wire, config) || !selectedEndpoint(wire, config) {
 		return result, fmt.Errorf("%w: does not bind the requested one-attempt route (generation=%t model=%q choices=%d attempt=%d attempts=%s selected=%s)", ErrRouteMismatch, wire.ID != "", wire.Model, len(wire.Choices), wire.Metadata.Attempt, attemptSummary(wire), endpointSummary(wire))
+	}
+	if result.OverReservationNanoUSD > 0 {
+		return result, fmt.Errorf("%w: charged %d nano-USD against %d reserved", ErrChargeExceedsReservation, result.ChargedNanoUSD, config.ReservationNanoUSD)
 	}
 	result.StructuredOutput = wire.Choices[0].Message.Content
 	result.ReasoningBytes = len(wire.Choices[0].Message.Reasoning)
