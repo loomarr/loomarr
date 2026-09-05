@@ -3,6 +3,8 @@
 **Tracking:** [#1089](https://github.com/loomarr/loomarr/issues/1089)  
 **Scope:** primary-source catalogue/rights research only. No media was downloaded, no byte, perceptual, family, or programme-parent comparison was performed, and this is not legal advice.
 
+**Approval artifact:** [four-item LOC pre-download manifest](../evidence/filler-replacement-source-search-2026-09-05.json). It binds catalogue projections, rights-statement digests, direct-media URLs, expected sizes, and unresolved checks while keeping download, provider-processing, training, selection, and production authority false.
+
 ## Decision
 
 Acquire first from the Library of Congress (LOC) early-film items that carry an item-specific public-domain statement, then inspect its no-known-restrictions candidates, the three unresolved NARA federal-record leads, and the federal PSA leads. This can yield replacement *programme parents* with strong catalogue provenance, but it does **not** clear any candidate for provider processing. The direct creator/broadcaster agreement lane remains the only credible way to close modern bumper, PSA, and trailer diversity with the required transferable rights.
