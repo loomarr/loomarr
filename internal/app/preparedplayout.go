@@ -343,6 +343,10 @@ func (r *preparedRuntimeResolver) preparedAiring(
 	}
 	return playout.PreparedAiring{
 		Specification: specification, StartedAt: broadcast.Start, Offset: offset,
+		Identity: playout.AiringIdentity{
+			StartedAt: broadcast.Start, EndsAt: broadcast.Stop, Kind: broadcast.Kind,
+			ContentID: broadcast.ContentIdentity(), ScheduleBlockID: broadcast.ScheduleBlockID(channelID),
+		},
 	}, true, nil
 }
 

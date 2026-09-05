@@ -2061,8 +2061,20 @@ a private schedule. A tune resolves in this order:
    version)`. Tune-time lookup may use only a fingerprint warmed by the readiness control plane; it
    must never hash source media or start preparation on demand. A publication is visible only after
    all of its immutable fragments and metadata have validated and been atomically committed.
-3. On a hit, render the short wall-clock manifest over those shared fragments. Starting an encoder or
-   per-Channel packager on this path is a contract violation.
+3. On a hit, adapt the shared publication to the requested Delivery. HLS renders the short
+   wall-clock manifest over immutable fMP4 fragments. MPEG-TS opens the current publication at the
+   authoritative Airing offset through a copy-only fMP4-to-TS remux child and feeds that finite
+   block into the existing long-lived Channel mux. This child decodes and encodes nothing, owns no
+   publication bytes, and is shared by every viewer of the Manager's `(Channel, EncodePlan)`
+   session; starting an encoder or a second per-Channel packager remains a contract violation. The
+   prepared copy remux omits the live-source tune-in burst, and the long-lived Channel mux paces its
+   pipe input at wall-clock rate. That outer pacing also bounds any whole-segment demux burst from
+   fMP4/HLS before it reaches the raw viewer's finite queue; a copy must not disconnect a healthy
+   television before its first frame merely because it can read immutable bytes faster than live.
+   The first prepared block pins the session to the publication's codec, dimensions, frame rate,
+   and bitrates. Every later prepared block must match that format, while a prepared miss opens the
+   ordinary live child constrained to the same format, so an Airing boundary cannot change decoder
+   state inside the continuous transport stream.
 4. On a miss, use the bounded live implementation as an internal fallback. A miss never changes the
    accepted Lineup, `AiringAt`, or guide.
 
@@ -2105,10 +2117,33 @@ maintenance work. Unknown, software-only, or one-slot capacity disables hardware
 does not guess and it does not consume the only live slot. This priority contract is shared code;
 adding a second semaphore around ffmpeg is forbidden.
 
-The host capability benchmark is control-plane warming, never tune-time work. With no explicit
-encoder override, the first demand starts one process-lifetime probe in the background and plays
-immediately with the software fallback while it runs; later programme boundaries use the cached
-measured encoder and capacity. A viewer may not inherit the multi-second trial-encode benchmark.
+A session whose current block is prepared or direct-copy holds zero transcode capacity, but that is
+not a promise about its next Airing. Immediately before any later live child starts a video
+transcode, the Manager atomically raises that session's cost under the same measured admission gate
+used at tune-in; if no slot can be reclaimed, the child does not start and the block retry waits for
+capacity. Returning to a prepared/copy block releases the cost. Thus many prepared sessions may be
+served concurrently without reserving imaginary encoders, while simultaneous prepared misses can
+never convert them into unbounded live transcodes.
+
+The full host capability benchmark is control-plane warming, never tune-time work. With no explicit
+encoder override, the first actual media demand checks the persisted evidence against the current
+FFmpeg/GPU/profile fingerprint. Both external identity commands have short bounded deadlines and a
+timeout is a miss, so this check cannot recreate the old one-second tune floor. A fresh exact match
+makes that previously verified encoder available to the first live child immediately, while its
+bounded real validation runs in the background. An
+absent, expired, mismatched, or malformed record starts the full benchmark in the background and
+playback proceeds with the software fallback until a safe result is ready. Failed revalidation also
+runs the full benchmark; any meanwhile-failed hardware child uses the existing software fallback
+ladder. Merely configuring Channels starts no media processes. A successful hardware result and
+measured capacity are written as versioned, bounded evidence beneath the persistent prepared root;
+the record includes an FFmpeg-build fingerprint, GPU identity, profile identity, and observation time.
+On restart Loomarr may publish that result only after the fingerprints match and the evidence is
+still within its bounded freshness window, then a short real keyframe-bearing MPEG-TS trial revalidates
+the chosen encoder asynchronously. A mismatch, expiry, malformed record, or failed validation falls
+back to the full benchmark and replaces the evidence atomically on success. Software-only and explicit
+operator choices are not reused as hardware evidence. This turns a normal restart into one bounded
+validation rather than re-running every multi-second candidate and warm-capacity trial, without
+trusting an encoder merely because FFmpeg lists it. A viewer may not inherit either benchmark.
 
 Prepared bytes live under `playout.prepared_dir` (default `/data/prepared`), a persistent root that
 is intentionally separate from `playout.hls_dir` scratch. The `playout-prepare` scheduler job runs
@@ -2133,8 +2168,10 @@ FFmpeg. Each pass writes one atomic, versioned readiness index under the persist
 The index binds a Channel, library item, active source policy, stable source id/revision, selected
 audio track, and rendition; startup loads it into memory before the minute scheduler runs. Tune reads
 that memory index and `Preparer.Lookup` only. An absent entry, changed tier, audio preference, path
-map, source revision, or publication is an immediate prepared miss. Tune never opens a source,
-contacts the media server, probes audio, hashes bytes, starts FFmpeg, or waits for the scheduler.
+map, source revision, or publication is an immediate prepared miss. Tune never opens the original
+source, contacts the media server, probes audio, hashes bytes, encodes, or waits for the scheduler.
+An MPEG-TS prepared hit may start only the copy-only transport remux described above; an HLS
+prepared-only probe remains process-free.
 
 The accelerated packaging driver reuses the live playout encoder's device setup, hardware decode and
 upload, filter, preset, rate-control, and GOP builders. Its driver contract separates pre-input
