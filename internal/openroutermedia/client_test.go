@@ -194,6 +194,19 @@ func TestCallRetainsKnownChargeFromProviderErrorEnvelope(t *testing.T) {
 	}
 }
 
+func TestCallReportsProviderErrorWhenErrorEnvelopeOmitsCost(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id":"generation","error":{"message":"Request contains an invalid argument.","code":400}}`)
+	}))
+	defer server.Close()
+
+	result, err := Call(t.Context(), server.Client(), server.URL, validConfig(func(string) error { return nil }))
+	if err == nil || !strings.Contains(err.Error(), "error 400: Request contains an invalid argument.") || result.ChargeKnown || result.GenerationID != "generation" {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
 func TestCallRejectsOversizedResponseAfterReservation(t *testing.T) {
 	t.Parallel()
 	reserved := false

@@ -29,7 +29,7 @@ func TestNewTemporalStructureWindowOpenRouterFamilyPinsSnapshotPriceAndProductio
 	if family.Runtime == nil || family.Profile != family.Runtime.Profile() ||
 		family.Profile.PromptVersion != fillerstructurewindow.DirectVideoPromptVersion ||
 		family.Profile.EvidenceContract != fillerstructurewindow.CallRecordContractVersion ||
-		family.EstimatedMaximumChargeNanoUSD != 2_024_000 {
+		family.EstimatedMaximumChargeNanoUSD != 3_048_000 {
 		t.Fatalf("family=%+v", family)
 	}
 }
@@ -42,7 +42,7 @@ func TestNewTemporalStructureWindowOpenRouterFamilyRejectsStaleOrUnderReservedRo
 		t.Fatalf("stale error=%v", err)
 	}
 	under := temporalStructureWindowOpenRouterFamilyTestConfig(t, now)
-	under.ReservationNanoUSD = 2_023_999
+	under.ReservationNanoUSD = 3_047_999
 	if _, err := NewTemporalStructureWindowOpenRouterFamily(under); err == nil || !strings.Contains(err.Error(), "below the snapshot price bound") {
 		t.Fatalf("reservation error=%v", err)
 	}

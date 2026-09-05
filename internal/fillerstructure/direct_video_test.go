@@ -58,3 +58,17 @@ func TestParseDirectVideoResponseRejectsIncompleteOrUnresolvedEvidence(t *testin
 		}
 	}
 }
+
+func TestAssessDirectVideoResponseEnforcesLocalSegmentCeiling(t *testing.T) {
+	t.Parallel()
+	response := DirectVideoResponse{Segments: make([]DirectVideoResponseSegment, DirectVideoMaximumSegments+1)}
+	for index := range response.Segments {
+		response.Segments[index] = DirectVideoResponseSegment{
+			EndMS: int64(index + 1), Role: string(RoleCommercial),
+			DecisiveAtMS: []int64{int64(index)}, Reason: "bounded item",
+		}
+	}
+	if _, err := AssessDirectVideoResponse(response, int64(len(response.Segments))); err == nil {
+		t.Fatal("assessment accepted more than the local segment ceiling")
+	}
+}

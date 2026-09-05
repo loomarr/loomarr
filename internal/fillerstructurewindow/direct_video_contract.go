@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
-const DirectVideoPromptVersion = "filler-temporal-structure-window-direct-video-v1"
+const DirectVideoPromptVersion = "filler-temporal-structure-window-direct-video-v2"
 
 const DirectVideoSystemPrompt = `Segment one complete identity-blind video window. Judge the supplied window's actual item boundaries, not whether its topic resembles an advertisement.
 

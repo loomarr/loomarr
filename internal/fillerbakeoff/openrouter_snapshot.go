@@ -19,9 +19,11 @@ import (
 )
 
 const (
-	OpenRouterSnapshotSchemaVersion = 2
+	OpenRouterSnapshotSchemaVersion = 3
+	legacyOpenRouterSnapshotSchema  = 2
 	maxSnapshotModels               = 16
 	maxSnapshotEndpoints            = 256
+	maxSnapshotPricingOverrides     = 4
 	maxSnapshotResponseBytes        = 8 << 20
 	maxSnapshotTotalBytes           = 32 << 20
 	maxSnapshotAge                  = 24 * time.Hour
@@ -49,19 +51,28 @@ type OpenRouterModelSnapshot struct {
 }
 
 type OpenRouterEndpointSnapshot struct {
-	Name                  string            `json:"name"`
-	ModelID               string            `json:"modelId"`
-	ProviderName          string            `json:"providerName"`
-	ProviderSlug          string            `json:"providerSlug"`
-	Quantization          string            `json:"quantization"`
-	ContextLength         int64             `json:"contextLength"`
-	MaxCompletionTokens   int64             `json:"maxCompletionTokens,omitempty"`
-	MaxPromptTokens       int64             `json:"maxPromptTokens,omitempty"`
-	SupportedParameters   []string          `json:"supportedParameters"`
-	Pricing               map[string]string `json:"pricing"`
-	Status                int               `json:"status"`
-	ZDR                   bool              `json:"zdr"`
-	SupportsImplicitCache bool              `json:"supportsImplicitCaching"`
+	Name                  string                      `json:"name"`
+	ModelID               string                      `json:"modelId"`
+	ProviderName          string                      `json:"providerName"`
+	ProviderSlug          string                      `json:"providerSlug"`
+	Quantization          string                      `json:"quantization"`
+	ContextLength         int64                       `json:"contextLength"`
+	MaxCompletionTokens   int64                       `json:"maxCompletionTokens,omitempty"`
+	MaxPromptTokens       int64                       `json:"maxPromptTokens,omitempty"`
+	SupportedParameters   []string                    `json:"supportedParameters"`
+	Pricing               map[string]string           `json:"pricing"`
+	PricingOverrides      []OpenRouterPricingOverride `json:"pricingOverrides,omitempty"`
+	Status                int                         `json:"status"`
+	ZDR                   bool                        `json:"zdr"`
+	SupportsImplicitCache bool                        `json:"supportsImplicitCaching"`
+}
+
+// OpenRouterPricingOverride records a prompt-token pricing tier. Pricing only
+// contains the fields changed by the tier; omitted fields inherit the endpoint's
+// base pricing.
+type OpenRouterPricingOverride struct {
+	MinimumPromptTokens int64             `json:"minimumPromptTokens"`
+	Pricing             map[string]string `json:"pricing"`
 }
 
 type OpenRouterSnapshotConfig struct {
@@ -201,7 +212,7 @@ func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfi
 			return OpenRouterSnapshot{}, fmt.Errorf("OpenRouter model %q returned an invalid endpoint count", modelID)
 		}
 		for _, wire := range response.Data.Endpoints {
-			pricing, err := normalizeOpenRouterPricing(wire.Pricing)
+			pricing, pricingOverrides, err := normalizeOpenRouterEndpointPricing(wire.Pricing)
 			if err != nil {
 				return OpenRouterSnapshot{}, fmt.Errorf("OpenRouter model %q endpoint %q pricing: %w", modelID, wire.Tag, err)
 			}
@@ -210,7 +221,7 @@ func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfi
 				Name: wire.Name, ModelID: wire.ModelID, ProviderName: wire.ProviderName, ProviderSlug: wire.Tag,
 				Quantization: wire.Quantization, ContextLength: wire.ContextLength,
 				MaxCompletionTokens: wire.MaxCompletionTokens, MaxPromptTokens: wire.MaxPromptTokens,
-				SupportedParameters: sortedUnique(wire.SupportedParameters), Pricing: pricing,
+				SupportedParameters: sortedUnique(wire.SupportedParameters), Pricing: pricing, PricingOverrides: pricingOverrides,
 				Status: wire.Status, ZDR: isZDR, SupportsImplicitCache: wire.SupportsImplicitCaching,
 			})
 		}
@@ -320,6 +331,9 @@ func openRouterEndpointKey(endpoint openRouterEndpointWire) string {
 func normalizeOpenRouterPricing(raw map[string]json.RawMessage) (map[string]string, error) {
 	pricing := make(map[string]string, len(raw))
 	for name, value := range raw {
+		if name == "overrides" {
+			continue
+		}
 		if len(name) > maxFieldBytes {
 			return nil, fmt.Errorf("price key is too long")
 		}
@@ -342,6 +356,66 @@ func normalizeOpenRouterPricing(raw map[string]json.RawMessage) (map[string]stri
 	return pricing, nil
 }
 
+func normalizeOpenRouterEndpointPricing(raw map[string]json.RawMessage) (map[string]string, []OpenRouterPricingOverride, error) {
+	pricing, err := normalizeOpenRouterPricing(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	rawOverrides, ok := raw["overrides"]
+	if !ok || bytes.Equal(bytes.TrimSpace(rawOverrides), []byte("null")) {
+		return pricing, nil, nil
+	}
+	var wireOverrides []map[string]json.RawMessage
+	if err := json.Unmarshal(rawOverrides, &wireOverrides); err != nil {
+		return nil, nil, fmt.Errorf("price overrides are not an array: %w", err)
+	}
+	if len(wireOverrides) == 0 || len(wireOverrides) > maxSnapshotPricingOverrides {
+		return nil, nil, fmt.Errorf("price overrides require between one and %d tiers", maxSnapshotPricingOverrides)
+	}
+	overrides := make([]OpenRouterPricingOverride, 0, len(wireOverrides))
+	for _, wire := range wireOverrides {
+		rawThreshold, ok := wire["min_prompt_tokens"]
+		if !ok {
+			return nil, nil, fmt.Errorf("price override lacks min_prompt_tokens")
+		}
+		delete(wire, "min_prompt_tokens")
+		var threshold json.Number
+		decoder := json.NewDecoder(bytes.NewReader(rawThreshold))
+		decoder.UseNumber()
+		if err := decoder.Decode(&threshold); err != nil {
+			return nil, nil, fmt.Errorf("price override min_prompt_tokens is not an exact integer")
+		}
+		minimumPromptTokens, err := threshold.Int64()
+		if err != nil || minimumPromptTokens <= 0 {
+			return nil, nil, fmt.Errorf("price override min_prompt_tokens must be a positive integer")
+		}
+		tierPricing, err := normalizeOpenRouterPricing(wire)
+		if err != nil {
+			return nil, nil, fmt.Errorf("price override at %d prompt tokens: %w", minimumPromptTokens, err)
+		}
+		if len(tierPricing) == 0 {
+			return nil, nil, fmt.Errorf("price override at %d prompt tokens is empty", minimumPromptTokens)
+		}
+		overrides = append(overrides, OpenRouterPricingOverride{MinimumPromptTokens: minimumPromptTokens, Pricing: tierPricing})
+	}
+	slices.SortFunc(overrides, func(left, right OpenRouterPricingOverride) int {
+		switch {
+		case left.MinimumPromptTokens < right.MinimumPromptTokens:
+			return -1
+		case left.MinimumPromptTokens > right.MinimumPromptTokens:
+			return 1
+		default:
+			return 0
+		}
+	})
+	for index := 1; index < len(overrides); index++ {
+		if overrides[index-1].MinimumPromptTokens == overrides[index].MinimumPromptTokens {
+			return nil, nil, fmt.Errorf("price overrides repeat min_prompt_tokens %d", overrides[index].MinimumPromptTokens)
+		}
+	}
+	return pricing, overrides, nil
+}
+
 func sortedUnique(values []string) []string {
 	result := append([]string(nil), values...)
 	slices.Sort(result)
@@ -359,8 +433,8 @@ func OpenRouterSnapshotSHA256(snapshot OpenRouterSnapshot) string {
 
 func ValidateOpenRouterSnapshot(snapshot OpenRouterSnapshot) error {
 	parsedSource, sourceErr := url.Parse(snapshot.SourceBaseURL)
-	if snapshot.SchemaVersion != OpenRouterSnapshotSchemaVersion || sourceErr != nil || parsedSource.Host == "" || snapshot.RetrievedAt.IsZero() || snapshot.RetrievedAt.Location() != time.UTC {
-		return fmt.Errorf("OpenRouter snapshot requires schema %d and a UTC retrieval time", OpenRouterSnapshotSchemaVersion)
+	if (snapshot.SchemaVersion != legacyOpenRouterSnapshotSchema && snapshot.SchemaVersion != OpenRouterSnapshotSchemaVersion) || sourceErr != nil || parsedSource.Host == "" || snapshot.RetrievedAt.IsZero() || snapshot.RetrievedAt.Location() != time.UTC {
+		return fmt.Errorf("OpenRouter snapshot requires supported schema %d or %d and a UTC retrieval time", legacyOpenRouterSnapshotSchema, OpenRouterSnapshotSchemaVersion)
 	}
 	if len(snapshot.Models) == 0 || len(snapshot.Models) > maxSnapshotModels || snapshot.Requests != len(snapshot.Models)+2 || snapshot.ResponseBytes <= 0 || snapshot.ResponseBytes > maxSnapshotTotalBytes {
 		return fmt.Errorf("OpenRouter snapshot has invalid bounded request, response, or model counts")
@@ -385,21 +459,44 @@ func ValidateOpenRouterSnapshot(snapshot OpenRouterSnapshot) error {
 				return fmt.Errorf("OpenRouter snapshot model %q repeats endpoint %q", model.ID, endpoint.ProviderSlug)
 			}
 			seenEndpoints[key] = struct{}{}
-			if endpoint.Name == "" || endpoint.ModelID != model.ID || endpoint.ProviderName == "" || endpoint.ProviderSlug == "" || requiresContext && endpoint.ContextLength <= 0 || !requiresContext && endpoint.ContextLength < 0 || endpoint.MaxCompletionTokens < 0 || endpoint.MaxPromptTokens < 0 || !canonicalStrings(endpoint.SupportedParameters) || len(endpoint.Pricing) == 0 || len(endpoint.Pricing) > 32 {
+			if snapshot.SchemaVersion == legacyOpenRouterSnapshotSchema && len(endpoint.PricingOverrides) > 0 {
+				return fmt.Errorf("OpenRouter snapshot schema %d cannot contain pricing overrides", legacyOpenRouterSnapshotSchema)
+			}
+			if endpoint.Name == "" || endpoint.ModelID != model.ID || endpoint.ProviderName == "" || endpoint.ProviderSlug == "" || requiresContext && endpoint.ContextLength <= 0 || !requiresContext && endpoint.ContextLength < 0 || endpoint.MaxCompletionTokens < 0 || endpoint.MaxPromptTokens < 0 || !canonicalStrings(endpoint.SupportedParameters) || len(endpoint.PricingOverrides) > maxSnapshotPricingOverrides {
 				return fmt.Errorf("OpenRouter snapshot model %q has an invalid endpoint", model.ID)
 			}
-			for name, price := range endpoint.Pricing {
-				if name == "" || len(name) > maxFieldBytes || price == "" || len(price) > 128 {
-					return fmt.Errorf("OpenRouter snapshot endpoint %q has invalid bounded pricing", endpoint.ProviderSlug)
+			if err := validateOpenRouterPricing(endpoint.ProviderSlug, endpoint.Pricing); err != nil {
+				return err
+			}
+			previousThreshold := int64(0)
+			for _, override := range endpoint.PricingOverrides {
+				if override.MinimumPromptTokens <= previousThreshold {
+					return fmt.Errorf("OpenRouter snapshot endpoint %q pricing overrides are not canonical", endpoint.ProviderSlug)
 				}
-				if _, err := fillereval.USDToNanoCeil(price); err != nil {
-					return fmt.Errorf("OpenRouter snapshot endpoint %q price %q: %w", endpoint.ProviderSlug, name, err)
+				previousThreshold = override.MinimumPromptTokens
+				if err := validateOpenRouterPricing(endpoint.ProviderSlug, override.Pricing); err != nil {
+					return err
 				}
 			}
 		}
 	}
 	if !canonicalStrings(modelIDs) {
 		return fmt.Errorf("OpenRouter snapshot models are not canonical")
+	}
+	return nil
+}
+
+func validateOpenRouterPricing(providerSlug string, pricing map[string]string) error {
+	if len(pricing) == 0 || len(pricing) > 32 {
+		return fmt.Errorf("OpenRouter snapshot endpoint %q has invalid bounded pricing", providerSlug)
+	}
+	for name, price := range pricing {
+		if name == "" || len(name) > maxFieldBytes || price == "" || len(price) > 128 {
+			return fmt.Errorf("OpenRouter snapshot endpoint %q has invalid bounded pricing", providerSlug)
+		}
+		if _, err := fillereval.USDToNanoCeil(price); err != nil {
+			return fmt.Errorf("OpenRouter snapshot endpoint %q price %q: %w", providerSlug, name, err)
+		}
 	}
 	return nil
 }

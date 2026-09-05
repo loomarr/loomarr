@@ -38,3 +38,52 @@ func TestValidateOpenRouterVideoRouteAndExactPriceBound(t *testing.T) {
 		t.Fatalf("privacy error=%v", err)
 	}
 }
+
+func TestEstimateOpenRouterTokenChargeNanoUSDHonorsPricingTiers(t *testing.T) {
+	t.Parallel()
+	endpoint := validOpenRouterSnapshot().Models[0].Endpoints[0]
+	endpoint.ContextLength = 500_000
+	endpoint.MaxPromptTokens = 400_000
+	endpoint.PricingOverrides = []OpenRouterPricingOverride{{
+		MinimumPromptTokens: 200_000,
+		Pricing:             map[string]string{"prompt": "0.000002", "completion": "0.000009"},
+	}}
+
+	below, err := EstimateOpenRouterTokenChargeNanoUSD(endpoint, 100_000, 1_000)
+	if err != nil || below != 102_000_000 {
+		t.Fatalf("below-tier charge=%d error=%v", below, err)
+	}
+	above, err := EstimateOpenRouterTokenChargeNanoUSD(endpoint, 300_000, 1_000)
+	if err != nil || above != 609_000_000 {
+		t.Fatalf("above-tier charge=%d error=%v", above, err)
+	}
+}
+
+func TestEstimateOpenRouterTokenChargeNanoUSDKeepsWorstEarlierTier(t *testing.T) {
+	t.Parallel()
+	endpoint := validOpenRouterSnapshot().Models[0].Endpoints[0]
+	endpoint.ContextLength = 500_000
+	endpoint.MaxPromptTokens = 400_000
+	endpoint.Pricing = map[string]string{"prompt": "0.000010", "completion": "0"}
+	endpoint.PricingOverrides = []OpenRouterPricingOverride{{
+		MinimumPromptTokens: 200_000,
+		Pricing:             map[string]string{"prompt": "0.000001"},
+	}}
+
+	charge, err := EstimateOpenRouterTokenChargeNanoUSD(endpoint, 300_000, 1_000)
+	if err != nil || charge != 1_999_990_000 {
+		t.Fatalf("worst-tier charge=%d error=%v", charge, err)
+	}
+}
+
+func TestValidateOpenRouterSnapshotRejectsNonCanonicalPricingTiers(t *testing.T) {
+	t.Parallel()
+	snapshot := validOpenRouterSnapshot()
+	snapshot.Models[0].Endpoints[0].PricingOverrides = []OpenRouterPricingOverride{
+		{MinimumPromptTokens: 200_000, Pricing: map[string]string{"prompt": "0.000002"}},
+		{MinimumPromptTokens: 200_000, Pricing: map[string]string{"prompt": "0.000003"}},
+	}
+	if err := ValidateOpenRouterSnapshot(snapshot); err == nil || !strings.Contains(err.Error(), "not canonical") {
+		t.Fatalf("tier validation error=%v", err)
+	}
+}

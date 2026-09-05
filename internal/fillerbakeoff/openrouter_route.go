@@ -36,7 +36,9 @@ func ValidateOpenRouterVideoRoute(snapshot OpenRouterSnapshot, modelID, upstream
 	return model, endpoint, nil
 }
 
-// EstimateOpenRouterTokenChargeNanoUSD returns a ceiling from exact decimal snapshot prices.
+// EstimateOpenRouterTokenChargeNanoUSD returns the greatest possible charge up
+// to the supplied token ceilings, using exact decimal snapshot prices across
+// every applicable prompt-token pricing tier.
 func EstimateOpenRouterTokenChargeNanoUSD(endpoint OpenRouterEndpointSnapshot, maximumInputTokens, maximumCompletionTokens int64) (int64, error) {
 	if maximumInputTokens <= 0 || maximumCompletionTokens <= 0 || endpoint.ContextLength <= 0 ||
 		maximumInputTokens > endpoint.ContextLength-maximumCompletionTokens {
@@ -45,16 +47,59 @@ func EstimateOpenRouterTokenChargeNanoUSD(endpoint OpenRouterEndpointSnapshot, m
 	if endpoint.MaxPromptTokens > 0 && maximumInputTokens > endpoint.MaxPromptTokens {
 		return 0, fmt.Errorf("OpenRouter maximum input-token allowance exceeds the route limit")
 	}
-	prompt, ok := new(big.Rat).SetString(strings.TrimSpace(endpoint.Pricing["prompt"]))
+	previousThreshold := int64(0)
+	candidates := []int64{maximumInputTokens}
+	for _, override := range endpoint.PricingOverrides {
+		if override.MinimumPromptTokens <= previousThreshold {
+			return 0, fmt.Errorf("OpenRouter route has non-canonical pricing overrides")
+		}
+		previousThreshold = override.MinimumPromptTokens
+		if override.MinimumPromptTokens > 1 && override.MinimumPromptTokens <= maximumInputTokens {
+			candidates = append(candidates, override.MinimumPromptTokens-1)
+		}
+	}
+	maximumCharge := int64(0)
+	for _, inputTokens := range candidates {
+		pricing := endpoint.Pricing
+		for _, override := range endpoint.PricingOverrides {
+			if override.MinimumPromptTokens > inputTokens {
+				break
+			}
+			pricing = overlayOpenRouterPricing(pricing, override.Pricing)
+		}
+		charge, err := openRouterTokenChargeNanoUSD(pricing, inputTokens, maximumCompletionTokens)
+		if err != nil {
+			return 0, err
+		}
+		if charge > maximumCharge {
+			maximumCharge = charge
+		}
+	}
+	return maximumCharge, nil
+}
+
+func overlayOpenRouterPricing(base, override map[string]string) map[string]string {
+	pricing := make(map[string]string, len(base)+len(override))
+	for name, price := range base {
+		pricing[name] = price
+	}
+	for name, price := range override {
+		pricing[name] = price
+	}
+	return pricing
+}
+
+func openRouterTokenChargeNanoUSD(pricing map[string]string, inputTokens, completionTokens int64) (int64, error) {
+	prompt, ok := new(big.Rat).SetString(strings.TrimSpace(pricing["prompt"]))
 	if !ok || prompt.Sign() < 0 {
 		return 0, fmt.Errorf("OpenRouter route has invalid prompt pricing")
 	}
-	completion, ok := new(big.Rat).SetString(strings.TrimSpace(endpoint.Pricing["completion"]))
+	completion, ok := new(big.Rat).SetString(strings.TrimSpace(pricing["completion"]))
 	if !ok || completion.Sign() < 0 {
 		return 0, fmt.Errorf("OpenRouter route has invalid completion pricing")
 	}
-	total := new(big.Rat).Mul(prompt, big.NewRat(maximumInputTokens, 1))
-	total.Add(total, new(big.Rat).Mul(completion, big.NewRat(maximumCompletionTokens, 1)))
+	total := new(big.Rat).Mul(prompt, big.NewRat(inputTokens, 1))
+	total.Add(total, new(big.Rat).Mul(completion, big.NewRat(completionTokens, 1)))
 	total.Mul(total, big.NewRat(1_000_000_000, 1))
 	quotient, remainder := new(big.Int), new(big.Int)
 	quotient.QuoRem(total.Num(), total.Denom(), remainder)

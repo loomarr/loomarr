@@ -3,7 +3,7 @@ package fillerstructure
 import "fmt"
 
 const (
-	DirectVideoPromptVersion       = "filler-temporal-structure-direct-video-v8"
+	DirectVideoPromptVersion       = "filler-temporal-structure-direct-video-v9"
 	DirectVideoMaximumSegments     = 128
 	DirectVideoMaximumDecisiveTime = 8
 	DirectVideoMaximumReasonRunes  = 512
@@ -45,8 +45,10 @@ func DirectVideoSchema(durationMS int64) map[string]any {
 	return map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"segments"},
 		"properties": map[string]any{
+			// The local validator enforces DirectVideoMaximumSegments. Do not emit that
+			// large maxItems bound here: otherwise-compatible strict video routes reject it.
 			"segments": map[string]any{
-				"type": "array", "minItems": 1, "maxItems": DirectVideoMaximumSegments, "items": segment,
+				"type": "array", "minItems": 1, "items": segment,
 			},
 		},
 	}
