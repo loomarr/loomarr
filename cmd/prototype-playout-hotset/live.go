@@ -134,6 +134,8 @@ func runLive(channelCount int, ffmpeg string) error {
 	fmt.Printf("%sWarm HLS retune:%s p50 %s / p95 %s / max %s\n", bold, reset,
 		percentile(warm, 0.50), percentile(warm, 0.95), percentile(warm, 1))
 	fmt.Printf("%sSteady ffmpeg processes after superseded viewers release:%s %d\n", bold, reset, steady.processes)
+	fmt.Printf("%sSteady aggregate RSS / CPU / file descriptors / HLS scratch:%s %s / %.1f%% / %d / %s\n",
+		bold, reset, bytesIEC(steady.rssKiB<<10), steady.cpuPercent, steady.fileDescriptors, bytesIEC(steady.hlsBytes))
 	fmt.Printf("%sPeak ffmpeg processes during %d deliberately concurrent starts:%s %d\n",
 		bold, channelCount, reset, peak.processes)
 	fmt.Printf("%sPeak aggregate RSS:%s %s\n", bold, reset, bytesIEC(peak.rssKiB<<10))
