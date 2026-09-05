@@ -38,7 +38,8 @@ func validateTemporalStructureHoldoutReceipt(receipt TemporalStructureHoldoutRec
 func validateTemporalStructureHoldoutInputs(inputs []TemporalStructureHoldoutInput) error {
 	want := map[string]struct{}{
 		"evidence_manifest": {}, "evidence_private_map": {}, "family_audit": {}, "human_assessment": {},
-		"human_attestation": {}, "media_quality": {}, "programme_inventory": {}, "selection": {}, "suitability": {},
+		"human_attestation": {}, "media_quality": {}, "programme_inventory": {}, "reference_audit": {},
+		"selection": {}, "suitability": {},
 	}
 	if len(inputs) != len(want) || !sort.SliceIsSorted(inputs, func(i, j int) bool { return inputs[i].Name < inputs[j].Name }) {
 		return fmt.Errorf("temporal structure holdout receipt input authority is incomplete or unordered")
@@ -132,6 +133,7 @@ func validateTemporalStructureHoldoutStandaloneCases(cases map[string]TemporalSt
 
 func validateTemporalStructureHoldoutCompilations(items []TemporalStructureHoldoutCompilation, cases map[string]TemporalStructureChallengeCase, anchors map[string]TemporalStructureHoldoutAnchor) error {
 	bands, seenCases, seenPairs := map[string]int{}, map[string]struct{}{}, map[string]struct{}{}
+	sameRoleByBand := map[string]int{}
 	usedByBand := map[string]map[string]struct{}{"early": {}, "middle": {}, "late": {}}
 	for _, item := range items {
 		challenge, exists := cases[item.CaseID]
@@ -160,9 +162,15 @@ func validateTemporalStructureHoldoutCompilations(items []TemporalStructureHoldo
 		usedSources[item.FirstSourceID], usedSources[item.SecondSourceID] = struct{}{}, struct{}{}
 		seenCases[item.CaseID], seenPairs[pairID] = struct{}{}, struct{}{}
 		bands[item.JoinBand]++
+		if first.Role == second.Role {
+			sameRoleByBand[item.JoinBand]++
+		}
 	}
 	if bands["early"] != 4 || bands["middle"] != 4 || bands["late"] != 4 || len(bands) != 3 {
 		return fmt.Errorf("temporal structure holdout compilation join bands are unbalanced")
+	}
+	if sameRoleByBand["early"] != 2 || sameRoleByBand["middle"] != 2 || sameRoleByBand["late"] != 2 {
+		return fmt.Errorf("temporal structure holdout compilation roles are unbalanced")
 	}
 	return nil
 }

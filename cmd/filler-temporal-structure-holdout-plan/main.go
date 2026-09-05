@@ -24,6 +24,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	humanAttestation := flags.String("human-attestation", "", "locked human attestation JSON")
 	quality := flags.String("media-quality", "", "full-decode media-quality report JSON")
 	suitability := flags.String("suitability", "", "two-family suitability comparison JSON")
+	referenceAudit := flags.String("reference-audit", "", "reference audit bound by the duplicate-family authority")
 	families := flags.String("families", "", "duplicate-family audit JSON")
 	programmes := flags.String("programmes", "", "programme-parent inventory JSON")
 	sourceRoot := flags.String("source-root", "", "common root containing bounded and programme source media")
@@ -34,14 +35,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	plannedAt, err := time.Parse(time.RFC3339, *plannedText)
-	if err != nil || *selection == "" || *evidence == "" || *evidenceMap == "" || *human == "" || *humanAttestation == "" || *quality == "" || *suitability == "" || *families == "" || *programmes == "" || *sourceRoot == "" || *seed == "" || *output == "" {
-		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-holdout-plan: selection, evidence, evidence map, human assessment, human attestation, media quality, suitability, families, programmes, source root, private seed, fixed planning time, and output are required")
+	if err != nil || *selection == "" || *evidence == "" || *evidenceMap == "" || *human == "" || *humanAttestation == "" || *quality == "" || *suitability == "" || *referenceAudit == "" || *families == "" || *programmes == "" || *sourceRoot == "" || *seed == "" || *output == "" {
+		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-holdout-plan: selection, evidence, evidence map, human assessment, human attestation, media quality, suitability, reference audit, families, programmes, source root, private seed, fixed planning time, and output are required")
 		return 2
 	}
 	result, err := fillerreview.BuildTemporalStructureHoldoutPlan(fillerreview.TemporalStructureHoldoutConfig{
 		SelectionPath: *selection, EvidenceManifestPath: *evidence, EvidencePrivateMapPath: *evidenceMap,
 		HumanAssessmentPath: *human, HumanAttestationPath: *humanAttestation, MediaQualityPath: *quality,
-		SuitabilityPath: *suitability, FamilyAuditPath: *families, ProgrammeInventoryPath: *programmes,
+		SuitabilityPath: *suitability, ReferenceAuditPath: *referenceAudit,
+		FamilyAuditPath: *families, ProgrammeInventoryPath: *programmes,
 		SourceRoot: *sourceRoot, Seed: *seed, PlannedAt: plannedAt.UTC(), OutputDir: *output,
 	})
 	if err != nil {

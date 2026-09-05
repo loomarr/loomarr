@@ -67,7 +67,11 @@ func loadTemporalStructureHoldout(config TemporalStructureHoldoutConfig) (tempor
 	if err != nil {
 		return temporalStructureHoldoutLoaded{}, err
 	}
-	family, familySHA, err := loadTemporalStructureHoldoutFamily(config.FamilyAuditPath, selection)
+	referenceAudit, referenceAuditSHA, err := loadTemporalStructureHoldoutReferenceAudit(config.ReferenceAuditPath, config.PlannedAt)
+	if err != nil {
+		return temporalStructureHoldoutLoaded{}, err
+	}
+	family, familySHA, err := loadTemporalStructureHoldoutFamily(config.FamilyAuditPath, selection, referenceAudit, referenceAuditSHA, config.PlannedAt)
 	if err != nil {
 		return temporalStructureHoldoutLoaded{}, err
 	}
@@ -83,6 +87,7 @@ func loadTemporalStructureHoldout(config TemporalStructureHoldoutConfig) (tempor
 		{Name: "human_attestation", SHA256: attestationFileSHA},
 		{Name: "media_quality", SHA256: qualitySHA},
 		{Name: "programme_inventory", SHA256: inventorySHA},
+		{Name: "reference_audit", SHA256: referenceAuditSHA},
 		{Name: "selection", SHA256: hashBytes(selectionRaw)},
 		{Name: "suitability", SHA256: suitabilitySHA},
 	}

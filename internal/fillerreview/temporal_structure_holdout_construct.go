@@ -11,6 +11,9 @@ func constructTemporalStructureHoldout(config TemporalStructureHoldoutConfig, lo
 	if len(anchors) != temporalStructureHoldoutClassCases || len(parents) != temporalStructureHoldoutParentSources {
 		return TemporalStructureChallengeAuthoring{}, TemporalStructureHoldoutReceipt{}, fmt.Errorf("temporal structure holdout selection counts are invalid")
 	}
+	if err := validateTemporalStructureHoldoutSourceSeparation(anchors, parents); err != nil {
+		return TemporalStructureChallengeAuthoring{}, TemporalStructureHoldoutReceipt{}, err
+	}
 	authoring := TemporalStructureChallengeAuthoring{
 		SchemaVersion: TemporalStructureChallengeSchemaVersion, ContractVersion: TemporalStructureChallengeContractVersion,
 	}
@@ -94,10 +97,11 @@ func constructTemporalStructureHoldoutCompilations(seed string, selected []tempo
 }
 
 type temporalStructureHoldoutCompilationPair struct {
-	first  int
-	second int
-	band   string
-	rank   string
+	first    int
+	second   int
+	band     string
+	sameRole bool
+	rank     string
 }
 
 func selectTemporalStructureHoldoutCompilationPairs(seed string, anchors []temporalStructureHoldoutSelectedAnchor) ([]temporalStructureHoldoutCompilationPair, error) {
@@ -112,23 +116,27 @@ func selectTemporalStructureHoldoutCompilationPairs(seed string, anchors []tempo
 				identity := anchors[first].source.ID + "\x00" + anchors[second].source.ID
 				candidates = append(candidates, temporalStructureHoldoutCompilationPair{
 					first: first, second: second, band: band,
-					rank: hashBytes([]byte(seed + "\x00compilation-pair\x00" + band + "\x00" + identity)),
+					sameRole: anchors[first].receipt.Role == anchors[second].receipt.Role,
+					rank:     hashBytes([]byte(seed + "\x00compilation-pair\x00" + band + "\x00" + identity)),
 				})
 			}
 		}
 		sort.Slice(candidates, func(i, j int) bool { return candidates[i].rank < candidates[j].rank })
-		chosen, ok := chooseDisjointTemporalStructureHoldoutPairs(candidates, anchors, nil, map[string]struct{}{}, 4)
+		chosen, ok := chooseBalancedTemporalStructureHoldoutPairs(candidates, anchors, nil, map[string]struct{}{}, 0, 4, 2)
 		if !ok {
-			return nil, fmt.Errorf("temporal structure holdout anchor durations cannot supply four source-disjoint %s joins", band)
+			return nil, fmt.Errorf("temporal structure holdout anchor durations cannot supply four source-disjoint %s joins balanced across same-role and cross-role pairs", band)
 		}
 		result = append(result, chosen...)
 	}
 	return result, nil
 }
 
-func chooseDisjointTemporalStructureHoldoutPairs(candidates []temporalStructureHoldoutCompilationPair, anchors []temporalStructureHoldoutSelectedAnchor, chosen []temporalStructureHoldoutCompilationPair, used map[string]struct{}, want int) ([]temporalStructureHoldoutCompilationPair, bool) {
+func chooseBalancedTemporalStructureHoldoutPairs(candidates []temporalStructureHoldoutCompilationPair, anchors []temporalStructureHoldoutSelectedAnchor, chosen []temporalStructureHoldoutCompilationPair, used map[string]struct{}, sameRoles, want, wantSameRoles int) ([]temporalStructureHoldoutCompilationPair, bool) {
 	if len(chosen) == want {
-		return chosen, true
+		return chosen, sameRoles == wantSameRoles
+	}
+	if sameRoles > wantSameRoles || sameRoles+(want-len(chosen)) < wantSameRoles {
+		return nil, false
 	}
 	for index, candidate := range candidates {
 		firstID, secondID := anchors[candidate.first].source.ID, anchors[candidate.second].source.ID
@@ -139,13 +147,35 @@ func chooseDisjointTemporalStructureHoldoutPairs(candidates []temporalStructureH
 			continue
 		}
 		used[firstID], used[secondID] = struct{}{}, struct{}{}
-		if result, ok := chooseDisjointTemporalStructureHoldoutPairs(candidates[index+1:], anchors, append(chosen, candidate), used, want); ok {
+		nextSameRoles := sameRoles
+		if candidate.sameRole {
+			nextSameRoles++
+		}
+		if result, ok := chooseBalancedTemporalStructureHoldoutPairs(candidates[index+1:], anchors, append(chosen, candidate), used, nextSameRoles, want, wantSameRoles); ok {
 			return result, true
 		}
 		delete(used, firstID)
 		delete(used, secondID)
 	}
 	return nil, false
+}
+
+func validateTemporalStructureHoldoutSourceSeparation(anchors []temporalStructureHoldoutSelectedAnchor, parents []TemporalStructureChallengeSource) error {
+	anchorSHA := make(map[string]struct{}, len(anchors))
+	anchorProvenance := make(map[string]struct{}, len(anchors))
+	for _, anchor := range anchors {
+		anchorSHA[anchor.source.SHA256] = struct{}{}
+		anchorProvenance[anchor.source.Provenance.Authority+"\x00"+anchor.source.Provenance.Reference] = struct{}{}
+	}
+	for _, parent := range parents {
+		if _, exists := anchorSHA[parent.SHA256]; exists {
+			return fmt.Errorf("temporal structure holdout programme parent repeats bounded filler bytes")
+		}
+		if _, exists := anchorProvenance[parent.Provenance.Authority+"\x00"+parent.Provenance.Reference]; exists {
+			return fmt.Errorf("temporal structure holdout programme parent repeats bounded filler provenance")
+		}
+	}
+	return nil
 }
 
 func temporalStructureHoldoutJoinBand(joinAtMS, durationMS int64) string {

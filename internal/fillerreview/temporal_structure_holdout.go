@@ -12,7 +12,7 @@ import (
 
 const (
 	TemporalStructureHoldoutSchemaVersion   = 1
-	TemporalStructureHoldoutContractVersion = "filler-temporal-structure-holdout-plan-v1"
+	TemporalStructureHoldoutContractVersion = "filler-temporal-structure-holdout-plan-v2"
 	TemporalStructureHoldoutCases           = 36
 	temporalStructureHoldoutClassCases      = 12
 	temporalStructureHoldoutParentSources   = 6
@@ -26,6 +26,7 @@ type TemporalStructureHoldoutConfig struct {
 	HumanAttestationPath   string
 	MediaQualityPath       string
 	SuitabilityPath        string
+	ReferenceAuditPath     string
 	FamilyAuditPath        string
 	ProgrammeInventoryPath string
 	SourceRoot             string
@@ -160,7 +161,7 @@ func validateTemporalStructureHoldoutConfig(config TemporalStructureHoldoutConfi
 	paths := []string{
 		config.SelectionPath, config.EvidenceManifestPath, config.EvidencePrivateMapPath,
 		config.HumanAssessmentPath, config.HumanAttestationPath, config.MediaQualityPath,
-		config.SuitabilityPath, config.FamilyAuditPath, config.ProgrammeInventoryPath,
+		config.SuitabilityPath, config.ReferenceAuditPath, config.FamilyAuditPath, config.ProgrammeInventoryPath,
 		config.SourceRoot, config.OutputDir,
 	}
 	for _, path := range paths {

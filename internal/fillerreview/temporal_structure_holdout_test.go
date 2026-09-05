@@ -1,7 +1,9 @@
 package fillerreview
 
 import (
-	"encoding/json"
+	"bytes"
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -10,7 +12,48 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/fillerreference"
 )
+
+func TestTemporalStructureHoldoutPlanReproducesCompleteBlindedChallenge(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	planRoot := filepath.Join(t.TempDir(), "plan")
+	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(planRoot)); err != nil {
+		t.Fatal(err)
+	}
+	authoringPath := filepath.Join(planRoot, "authoring.json")
+	authoring := readStrictTestJSON[TemporalStructureChallengeAuthoring](t, authoringPath)
+	media := &fakeTemporalStructureMedia{durationByPath: make(map[string]int64, len(authoring.Sources))}
+	for _, source := range authoring.Sources {
+		media.durationByPath[filepath.Join(fixture.root, filepath.FromSlash(source.Path))] = source.DurationMS
+	}
+	build := func(output string) TemporalStructureChallengeResult {
+		t.Helper()
+		result, err := BuildTemporalStructureChallenge(context.Background(), TemporalStructureChallengeConfig{
+			AuthoringPath: authoringPath,
+			SourceRoot:    fixture.root,
+			OutputDir:     output,
+			ChallengeID:   "complete-holdout-reproduction",
+			Seed:          "complete-holdout-blinding-seed",
+			GeneratedAt:   fixture.plannedAt.Add(time.Hour),
+			Media:         media,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	firstRoot := filepath.Join(t.TempDir(), "first")
+	secondRoot := filepath.Join(t.TempDir(), "second")
+	first := build(firstRoot)
+	second := build(secondRoot)
+	if first.Cases != TemporalStructureHoldoutCases || first != second {
+		t.Fatalf("complete holdout results differ: first=%+v second=%+v", first, second)
+	}
+	if !bytes.Equal(readTree(t, firstRoot), readTree(t, secondRoot)) {
+		t.Fatal("complete 36-case plan did not reproduce byte-identical public and private trees")
+	}
+}
 
 func TestBuildTemporalStructureHoldoutPlanBindsAuthoritiesAndBuildsBalancedConstructions(t *testing.T) {
 	fixture := newTemporalStructureHoldoutFixture(t)
@@ -42,9 +85,13 @@ func TestBuildTemporalStructureHoldoutPlanBindsAuthoritiesAndBuildsBalancedConst
 		t.Fatalf("authoring counts=%v sources=%d receipt=%+v", unitCounts, len(authoring.Sources), receipt)
 	}
 	bands := map[string]int{}
+	sameRoleByBand := map[string]int{}
 	usedByBand := map[string]map[string]struct{}{"early": {}, "middle": {}, "late": {}}
 	for _, item := range receipt.CompilationConstructions {
 		bands[item.JoinBand]++
+		if item.Roles[0] == item.Roles[1] {
+			sameRoleByBand[item.JoinBand]++
+		}
 		for _, sourceID := range []string{item.FirstSourceID, item.SecondSourceID} {
 			if _, duplicate := usedByBand[item.JoinBand][sourceID]; duplicate {
 				t.Fatalf("join band %q reused source %q", item.JoinBand, sourceID)
@@ -59,11 +106,54 @@ func TestBuildTemporalStructureHoldoutPlanBindsAuthoritiesAndBuildsBalancedConst
 			t.Fatalf("programme cut lacks parent margins: %+v", item)
 		}
 	}
-	if bands["early"] != 4 || bands["middle"] != 4 || bands["late"] != 4 || patterns["near_parent_start"] != 6 || patterns["near_parent_end"] != 6 {
-		t.Fatalf("bands=%v patterns=%v", bands, patterns)
+	if bands["early"] != 4 || bands["middle"] != 4 || bands["late"] != 4 || sameRoleByBand["early"] != 2 || sameRoleByBand["middle"] != 2 || sameRoleByBand["late"] != 2 || patterns["near_parent_start"] != 6 || patterns["near_parent_end"] != 6 {
+		t.Fatalf("bands=%v same-role=%v patterns=%v", bands, sameRoleByBand, patterns)
 	}
 	if _, err := BuildTemporalStructureHoldoutPlan(firstConfig); err == nil {
 		t.Fatal("immutable holdout output was overwritten")
+	}
+}
+
+func TestBuildTemporalStructureHoldoutPlanRejectsRepeatedProgrammeProvenanceParent(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	inventory := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory)
+	inventory.Sources[1].Provenance.Authority = inventory.Sources[0].Provenance.Authority
+	inventory.Sources[1].Provenance.Reference = inventory.Sources[0].Provenance.Reference
+	fixture.inventory = writeTemporalHumanJSON(t, t.TempDir(), "programme-inventory.json", inventory)
+	_, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output")))
+	if err == nil || !strings.Contains(err.Error(), "repeats a provenance parent") {
+		t.Fatalf("repeated programme provenance error = %v", err)
+	}
+}
+
+func TestBuildTemporalStructureHoldoutPlanRejectsProgrammeParentDerivedFromFiller(t *testing.T) {
+	tests := map[string]func(*testing.T, *temporalStructureHoldoutFixture, *TemporalStructureHoldoutProgrammeInventory){
+		"same bytes": func(t *testing.T, fixture *temporalStructureHoldoutFixture, inventory *TemporalStructureHoldoutProgrammeInventory) {
+			manifest := readStrictTestJSON[TemporalTruthEvidenceManifest](t, fixture.manifest)
+			path, err := filepath.Rel(fixture.root, filepath.Join(filepath.Dir(fixture.manifest), manifest.Cases[0].Video.Path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			inventory.Sources[0].Path = filepath.ToSlash(path)
+			inventory.Sources[0].SHA256 = manifest.Cases[0].Video.SHA256
+		},
+		"same provenance": func(t *testing.T, fixture *temporalStructureHoldoutFixture, inventory *TemporalStructureHoldoutProgrammeInventory) {
+			privateMap := readStrictTestJSON[TemporalTruthEvidencePrivateMap](t, fixture.privateMap)
+			inventory.Sources[0].Provenance.Authority = "locked-temporal-human-review"
+			inventory.Sources[0].Provenance.Reference = privateMap.Entries[0].CaseID
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			fixture := newTemporalStructureHoldoutFixture(t)
+			inventory := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory)
+			mutate(t, &fixture, &inventory)
+			fixture.inventory = writeTemporalHumanJSON(t, t.TempDir(), "programme-inventory.json", inventory)
+			_, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output")))
+			if err == nil || !strings.Contains(err.Error(), "repeats bounded filler") {
+				t.Fatalf("programme parent derived from filler error = %v", err)
+			}
+		})
 	}
 }
 
@@ -87,45 +177,115 @@ func TestBuildTemporalStructureHoldoutPlanRejectsDuplicateFamilyCoverage(t *test
 	fixture := newTemporalStructureHoldoutFixture(t)
 	privateMap := readStrictTestJSON[TemporalTruthEvidencePrivateMap](t, fixture.privateMap)
 	audit := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
-	audit.Families = []temporalStructureHoldoutDuplicateFamily{{
-		FamilyID: "same-bumper-family", Members: []string{privateMap.Entries[0].CaseID, privateMap.Entries[1].CaseID}, CompleteClique: true,
-	}}
-	audit.Summary.DuplicateFamilies = 1
-	fixture.family = writeTemporalHumanJSON(t, t.TempDir(), "family.json", audit)
+	for index := range audit.Fingerprints {
+		if audit.Fingerprints[index].CaseID == privateMap.Entries[0].CaseID || audit.Fingerprints[index].CaseID == privateMap.Entries[1].CaseID {
+			audit.Fingerprints[index].FrameHashes = []uint64{
+				0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f,
+				0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f,
+				0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f,
+			}
+			audit.Fingerprints[index].AudioRMS = make([]uint32, 50)
+		}
+	}
+	fixture.family = rebuildTemporalStructureHoldoutFamily(t, fixture.referenceAudit, audit)
 	_, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output")))
 	if err == nil || !strings.Contains(err.Error(), "insufficient eligible bumper") {
 		t.Fatalf("duplicate-family coverage error = %v", err)
 	}
 }
 
-func TestBuildTemporalStructureHoldoutPlanRejectsFamilyAuthorityCaseSetDrift(t *testing.T) {
-	tests := map[string]func(*temporalStructureHoldoutFamilyAudit){
-		"missing selected case": func(audit *temporalStructureHoldoutFamilyAudit) {
-			audit.Fingerprints = audit.Fingerprints[:len(audit.Fingerprints)-1]
-			audit.Summary.Cases--
-		},
-		"unselected extra case": func(audit *temporalStructureHoldoutFamilyAudit) {
-			audit.Fingerprints = append(audit.Fingerprints, temporalStructureHoldoutFingerprint{
-				CaseID:        "case-outside-locked-selection",
-				ContentSHA256: strings.Repeat("f", 64),
-				LocalFile:     "outside.mp4",
-				FrameHashes:   []uint64{1},
-				AudioRMS:      []uint32{1},
-			})
-			audit.Summary.Cases++
-		},
+func TestBuildTemporalStructureHoldoutPlanRejectsInventedFamilyGraph(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	audit := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
+	audit.Families = []temporalStructureHoldoutDuplicateFamily{{
+		FamilyID: "invented-family", Members: []string{audit.Fingerprints[0].CaseID, audit.Fingerprints[1].CaseID},
+		CompleteClique: false,
+	}}
+	audit.Summary.DuplicateFamilies = 1
+	audit.Summary.NonCliqueFamilies = 1
+	fixture.family = writeTemporalHumanJSON(t, t.TempDir(), "family.json", audit)
+	_, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output")))
+	if err == nil || !strings.Contains(err.Error(), "canonical duplicate graph") {
+		t.Fatalf("invented family graph error = %v", err)
 	}
-	for name, mutate := range tests {
-		t.Run(name, func(t *testing.T) {
-			fixture := newTemporalStructureHoldoutFixture(t)
-			audit := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
-			mutate(&audit)
-			fixture.family = writeTemporalHumanJSON(t, t.TempDir(), "family.json", audit)
-			_, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output")))
-			if err == nil || !strings.Contains(err.Error(), "family authority case set does not match selection") {
-				t.Fatalf("family authority case-set error = %v", err)
-			}
-		})
+}
+
+func TestBuildTemporalStructureHoldoutPlanRejectsMissingReferenceFamilyFingerprint(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	audit := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
+	audit.Fingerprints = audit.Fingerprints[:len(audit.Fingerprints)-1]
+	audit.Summary.Cases--
+	fixture.family = writeTemporalHumanJSON(t, t.TempDir(), "family.json", audit)
+	_, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output")))
+	if err == nil || !strings.Contains(err.Error(), "does not cover the reference audit") {
+		t.Fatalf("missing family fingerprint error = %v", err)
+	}
+}
+
+func TestBuildTemporalStructureHoldoutPlanAllowsFamilyAuthoritySupersetOfSelection(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output"))); err != nil {
+		t.Fatalf("reference family superset was rejected: %v", err)
+	}
+}
+
+func TestTemporalStructureHoldoutAcceptsBoundLegacyReferenceAudit(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	reference := readStrictTestJSON[fillerreference.Audit](t, fixture.referenceAudit)
+	reference.SchemaVersion = 2
+	reference.Contract = temporalStructureHoldoutLegacyReferenceContract
+	reference.Summary.Contract = temporalStructureHoldoutLegacyReferenceContract
+	reference.Inputs.ContentReviewSHA256 = ""
+	path := writeTemporalHumanJSON(t, t.TempDir(), "legacy-reference-audit.json", reference)
+	if _, _, err := loadTemporalStructureHoldoutReferenceAudit(path, fixture.plannedAt); err != nil {
+		t.Fatalf("bound legacy reference audit was rejected: %v", err)
+	}
+}
+
+func TestTemporalStructureHoldoutRejectsIncompleteReferenceAudit(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	reference := readStrictTestJSON[fillerreference.Audit](t, fixture.referenceAudit)
+	reference.Cases = reference.Cases[:len(reference.Cases)-1]
+	reference.Summary.Cases--
+	reference.Summary.Candidates--
+	path := writeTemporalHumanJSON(t, t.TempDir(), "incomplete-reference-audit.json", reference)
+	if _, _, err := loadTemporalStructureHoldoutReferenceAudit(path, fixture.plannedAt); err == nil || !strings.Contains(err.Error(), "reference audit is invalid") {
+		t.Fatalf("incomplete reference audit error = %v", err)
+	}
+}
+
+func TestTemporalStructureHoldoutAllowsSelectedReferenceExclusionWithoutFingerprint(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	reference := readStrictTestJSON[fillerreference.Audit](t, fixture.referenceAudit)
+	excludedID := reference.Cases[len(reference.Cases)-1].CaseID
+	reference.Cases[len(reference.Cases)-1].Disposition = fillerreference.DispositionExclude
+	reference.Summary.Candidates--
+	reference.Summary.Excluded++
+	referencePath := writeTemporalHumanJSON(t, t.TempDir(), "reference-audit.json", reference)
+	reference, referenceSHA, err := loadTemporalStructureHoldoutReferenceAudit(referencePath, fixture.plannedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	family := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
+	family.SourceAudit = referenceSHA
+	filtered := family.Fingerprints[:0]
+	for _, fingerprint := range family.Fingerprints {
+		if fingerprint.CaseID != excludedID {
+			filtered = append(filtered, fingerprint)
+		}
+	}
+	family.Fingerprints = filtered
+	familyPath := rebuildTemporalStructureHoldoutFamily(t, referencePath, family)
+	selectionRaw, err := os.ReadFile(fixture.selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := fillereval.DecodeTemporalTruthSelection(selectionRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := loadTemporalStructureHoldoutFamily(familyPath, selection, reference, referenceSHA, fixture.plannedAt); err != nil {
+		t.Fatalf("selected reference exclusion was not kept ineligible: %v", err)
 	}
 }
 
@@ -146,6 +306,7 @@ type temporalStructureHoldoutFixture struct {
 	humanAttestation string
 	quality          string
 	suitability      string
+	referenceAudit   string
 	family           string
 	inventory        string
 	plannedAt        time.Time
@@ -261,17 +422,56 @@ func newTemporalStructureHoldoutFixture(t *testing.T) temporalStructureHoldoutFi
 		})
 	}
 	suitabilityPath := writeTemporalHumanJSON(t, base.root, "suitability.json", suitability)
-	family := temporalStructureHoldoutFamilyAudit{
-		SchemaVersion: temporalStructureHoldoutFamilyAuditSchemaVersion, Algorithm: "test-family-v1",
-		GeneratedAt: suitability.ComparedAt.Add(time.Hour), SourceAudit: strings.Repeat("a", 64),
-		Summary: temporalStructureHoldoutFamilySummary{Cases: len(privateMap.Entries)},
-		Pairs:   []json.RawMessage{}, ClosestPairs: []json.RawMessage{}, Families: []temporalStructureHoldoutDuplicateFamily{},
+	reference := fillerreference.Audit{
+		SchemaVersion: fillerreference.AuditSchemaVersion, Contract: fillerreference.ContractVersion,
+		GeneratedAt: suitability.ComparedAt.Add(30 * time.Minute),
+		Inputs: fillerreference.InputIdentity{
+			ManifestSHA256: strings.Repeat("1", 64), PacketsSHA256: strings.Repeat("2", 64),
+			MappingSHA256: strings.Repeat("3", 64), DownloadLedgerSHA256: strings.Repeat("4", 64),
+			ContentReviewSHA256: strings.Repeat("5", 64),
+		},
+		Summary: fillerreference.Summary{
+			Cases: len(privateMap.Entries), Candidates: len(privateMap.Entries),
+			Mapping: "fixture-mapping-v1", Contract: fillerreference.ContractVersion,
+		},
 	}
 	for _, item := range privateMap.Entries {
-		family.Fingerprints = append(family.Fingerprints, temporalStructureHoldoutFingerprint{
+		reference.Cases = append(reference.Cases, fillerreference.Case{
+			CaseID: item.CaseID, ContentSHA256: item.ContentSHA256, SourceLocalFile: item.SourceLocalFile,
+			Disposition: fillerreference.DispositionCandidate,
+		})
+	}
+	for index := len(reference.Cases); index < 300; index++ {
+		caseID := fmt.Sprintf("reference-only-%03d", index)
+		reference.Cases = append(reference.Cases, fillerreference.Case{
+			CaseID: caseID, ContentSHA256: hashBytes([]byte(caseID)), SourceLocalFile: caseID + ".mp4",
+			Disposition: fillerreference.DispositionCandidate,
+		})
+	}
+	reference.Summary.Cases = len(reference.Cases)
+	reference.Summary.Candidates = len(reference.Cases)
+	referencePath := writeTemporalHumanJSON(t, base.root, "reference-audit.json", reference)
+	referenceRaw, err := os.ReadFile(referencePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	referenceSHA, err := hashFile(referencePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprints := make([]fillerreference.FamilyFingerprint, 0, len(reference.Cases))
+	for _, item := range reference.Cases {
+		fingerprints = append(fingerprints, fillerreference.FamilyFingerprint{
 			CaseID: item.CaseID, ContentSHA256: item.ContentSHA256, LocalFile: item.SourceLocalFile,
 			FrameHashes: []uint64{1}, AudioRMS: []uint32{1},
 		})
+	}
+	family, err := fillerreference.BuildFamilyAudit(referenceRaw, fingerprints, suitability.ComparedAt.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if family.SourceAudit != referenceSHA {
+		t.Fatal("family fixture did not bind reference audit bytes")
 	}
 	familyPath := writeTemporalHumanJSON(t, base.root, "family.json", family)
 	programmeRoot := filepath.Join(base.root, "programmes")
@@ -301,7 +501,7 @@ func newTemporalStructureHoldoutFixture(t *testing.T) temporalStructureHoldoutFi
 	inventoryPath := writeTemporalHumanJSON(t, base.root, "programme-inventory.json", inventory)
 	return temporalStructureHoldoutFixture{
 		temporalHumanReviewFixture: base, humanAssessment: humanAssessment, humanAttestation: humanAttestation,
-		quality: qualityPath, suitability: suitabilityPath, family: familyPath, inventory: inventoryPath,
+		quality: qualityPath, suitability: suitabilityPath, referenceAudit: referencePath, family: familyPath, inventory: inventoryPath,
 		plannedAt: inventory.GeneratedAt.Add(time.Hour),
 	}
 }
@@ -311,7 +511,21 @@ func (fixture temporalStructureHoldoutFixture) config(output string) TemporalStr
 		SelectionPath: fixture.selection, EvidenceManifestPath: fixture.manifest, EvidencePrivateMapPath: fixture.privateMap,
 		HumanAssessmentPath: fixture.humanAssessment, HumanAttestationPath: fixture.humanAttestation,
 		MediaQualityPath: fixture.quality, SuitabilityPath: fixture.suitability, FamilyAuditPath: fixture.family,
+		ReferenceAuditPath:     fixture.referenceAudit,
 		ProgrammeInventoryPath: fixture.inventory, SourceRoot: fixture.root, Seed: "holdout-seed",
 		PlannedAt: fixture.plannedAt, OutputDir: output,
 	}
+}
+
+func rebuildTemporalStructureHoldoutFamily(t *testing.T, referencePath string, audit temporalStructureHoldoutFamilyAudit) string {
+	t.Helper()
+	referenceRaw, err := os.ReadFile(referencePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, err := fillerreference.BuildFamilyAudit(referenceRaw, audit.Fingerprints, audit.GeneratedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return writeTemporalHumanJSON(t, t.TempDir(), "family.json", rebuilt)
 }
