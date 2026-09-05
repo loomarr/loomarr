@@ -27,8 +27,8 @@ type preparedTimeline interface {
 	AudioTrackFor(context.Context, string, string, string) int
 }
 
-type preparedInputResolver interface {
-	ResolveInput(context.Context, string, library.PathMap, func(string) bool) library.InputSource
+type preparedSourceResolver interface {
+	ResolvePreparedSource(context.Context, string, library.PathMap) (prepared.Source, string, bool)
 }
 
 type preparedLookup interface {
@@ -42,7 +42,7 @@ type preparedLookup interface {
 type preparedRuntimeResolver struct {
 	channels                preparedChannelReader
 	timeline                preparedTimeline
-	inputs                  preparedInputResolver
+	sources                 preparedSourceResolver
 	lookup                  preparedLookup
 	now                     func() time.Time
 	pathMap                 func() library.PathMap
@@ -58,7 +58,7 @@ type preparedRuntimeResolver struct {
 type preparedRuntimeDependencies struct {
 	Channels             preparedChannelReader
 	Timeline             preparedTimeline
-	Inputs               preparedInputResolver
+	Sources              preparedSourceResolver
 	Lookup               preparedLookup
 	Now                  func() time.Time
 	PathMap              func() library.PathMap
@@ -76,7 +76,7 @@ type preparedRuntimeDependencies struct {
 
 func newPreparedRuntimeResolver(deps preparedRuntimeDependencies) *preparedRuntimeResolver {
 	return &preparedRuntimeResolver{
-		channels: deps.Channels, timeline: deps.Timeline, inputs: deps.Inputs, lookup: deps.Lookup,
+		channels: deps.Channels, timeline: deps.Timeline, sources: deps.Sources, lookup: deps.Lookup,
 		now: deps.Now, pathMap: deps.PathMap, policy: deps.Policy,
 		globalBackend: deps.GlobalBackend, transportBackend: deps.TransportBackend,
 		globalBackendContext: deps.GlobalBackendContext, transportBackendContext: deps.TransportBackendContext,
@@ -91,7 +91,7 @@ func (r *preparedRuntimeResolver) Plan(
 	ctx context.Context, from, to time.Time,
 ) (prepared.ReadinessPlan, error) {
 	var plan prepared.ReadinessPlan
-	if r == nil || r.channels == nil || r.timeline == nil || r.inputs == nil || r.lookup == nil ||
+	if r == nil || r.channels == nil || r.timeline == nil || r.sources == nil || r.lookup == nil ||
 		r.readiness == nil || !to.After(from) {
 		return plan, nil
 	}
@@ -221,13 +221,13 @@ func (r *preparedRuntimeResolver) resolveSource(
 	if r.pathMap != nil {
 		pathMap = r.pathMap()
 	}
-	input := r.inputs.ResolveInput(ctx, key.LibraryItemID, pathMap, library.StatReadableFile)
-	if input.URL == "" || input.Kind != library.InputFile {
+	source, input, ok := r.sources.ResolvePreparedSource(ctx, key.LibraryItemID, pathMap)
+	if !ok || input == "" {
 		return prepared.Request{}, false
 	}
-	audioTrack := r.timeline.AudioTrackFor(ctx, key.ChannelID, key.LibraryItemID, input.URL)
+	source.AudioTrack = r.timeline.AudioTrackFor(ctx, key.ChannelID, key.LibraryItemID, input)
 	request := prepared.Request{
-		Source:    prepared.Source{Path: input.URL, AudioTrack: audioTrack},
+		Source:    source,
 		Rendition: r.rendition(),
 	}
 	return request, true
@@ -347,8 +347,8 @@ func (r *preparedRuntimeResolver) sourcePolicy() string {
 	return r.policy()
 }
 
-func preparedSourcePolicy(tier, audioLanguage, pathMap string) string {
-	return strings.Join([]string{tier, audioLanguage, pathMap}, "\x00")
+func preparedSourcePolicy(tier, audioLanguage, pathMap, authority string) string {
+	return strings.Join([]string{tier, audioLanguage, pathMap, authority}, "\x00")
 }
 
 func preparedBudgetBytes(gib int) int64 {

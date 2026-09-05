@@ -10,6 +10,14 @@ import (
 	"github.com/loomarr/loomarr/internal/media"
 )
 
+func testSource(id string, audioTrack ...int) Source {
+	track := 0
+	if len(audioTrack) > 0 {
+		track = audioTrack[0]
+	}
+	return Source{ItemID: "item-" + id, SourceID: "source-" + id, Revision: "revision-" + id, AudioTrack: track}
+}
+
 type fixedCandidates struct {
 	items     []Candidate
 	protected []Specification
@@ -39,8 +47,8 @@ func (p *recordingPreparation) Prepare(ctx context.Context, request Request) (Pu
 
 func TestPlannerPreparesUniqueCandidatesInNeedOrder(t *testing.T) {
 	now := time.Unix(1_000, 0)
-	a := Request{Source: Source{Path: "/a", AudioTrack: 0}, Rendition: baselineRendition()}
-	b := Request{Source: Source{Path: "/b", AudioTrack: 1}, Rendition: baselineRendition()}
+	a := Request{Source: testSource("a"), Rendition: baselineRendition()}
+	b := Request{Source: testSource("b", 1), Rendition: baselineRendition()}
 	work := &recordingPreparation{}
 	p := NewPlanner(PlannerDependencies{
 		Resolver: fixedCandidates{items: []Candidate{
@@ -69,7 +77,7 @@ func TestPlannerYieldsWhenLiveOwnsTheSpareCapacity(t *testing.T) {
 	work := &recordingPreparation{}
 	p := NewPlanner(PlannerDependencies{
 		Resolver: fixedCandidates{items: []Candidate{
-			{Request: Request{Source: Source{Path: "/a"}, Rendition: baselineRendition()}},
+			{Request: Request{Source: testSource("a"), Rendition: baselineRendition()}},
 		}},
 		Preparation: work, Pool: pool, Now: time.Now,
 	})
@@ -92,7 +100,7 @@ func TestPlannerTreatsForegroundPreemptionAsAYield(t *testing.T) {
 	}}
 	p := NewPlanner(PlannerDependencies{
 		Resolver: fixedCandidates{items: []Candidate{
-			{Request: Request{Source: Source{Path: "/a"}, Rendition: baselineRendition()}},
+			{Request: Request{Source: testSource("a"), Rendition: baselineRendition()}},
 		}},
 		Preparation: work, Pool: pool, Now: time.Now,
 	})
@@ -117,8 +125,8 @@ func TestPlannerTreatsForegroundPreemptionAsAYield(t *testing.T) {
 
 func TestPlannerContinuesPastOneBadSource(t *testing.T) {
 	now := time.Unix(1_000, 0)
-	bad := Request{Source: Source{Path: "/bad"}, Rendition: baselineRendition()}
-	good := Request{Source: Source{Path: "/good"}, Rendition: baselineRendition()}
+	bad := Request{Source: testSource("bad"), Rendition: baselineRendition()}
+	good := Request{Source: testSource("good"), Rendition: baselineRendition()}
 	work := &recordingPreparation{run: func(_ context.Context, request Request) error {
 		if request == bad {
 			return errors.New("broken source")
@@ -161,7 +169,7 @@ func TestPlannerRunsRetentionAfterYieldingPreparation(t *testing.T) {
 	protected := Specification{SourceFingerprint: "scheduled", Rendition: baselineRendition()}
 	p := NewPlanner(PlannerDependencies{
 		Resolver: fixedCandidates{protected: []Specification{protected}, items: []Candidate{
-			{Request: Request{Source: Source{Path: "/a"}, Rendition: baselineRendition()}},
+			{Request: Request{Source: testSource("a"), Rendition: baselineRendition()}},
 		}},
 		Preparation: &recordingPreparation{}, Pool: pool, Retainer: retainer,
 		BudgetBytes: func() int64 { return 512 }, Now: time.Now,
@@ -188,7 +196,7 @@ func TestPlannerStatusReportsResolvedReadinessAndRetentionAfterYield(t *testing.
 	}
 	p := NewPlanner(PlannerDependencies{
 		Resolver: fixedCandidates{summary: wantReadiness, items: []Candidate{{
-			Request: Request{Source: Source{Path: "/warming"}, Rendition: baselineRendition()},
+			Request: Request{Source: testSource("warming"), Rendition: baselineRendition()},
 		}}},
 		Preparation: &recordingPreparation{},
 		Pool:        media.NewEncodePool(func() int { return 1 }), // no background slot: a normal yield
@@ -220,7 +228,7 @@ func TestPlannerStatusReportsPassInProgress(t *testing.T) {
 	finish := make(chan struct{})
 	p := NewPlanner(PlannerDependencies{
 		Resolver: fixedCandidates{items: []Candidate{{
-			Request: Request{Source: Source{Path: "/warming"}, Rendition: baselineRendition()},
+			Request: Request{Source: testSource("warming"), Rendition: baselineRendition()},
 		}}},
 		Preparation: &recordingPreparation{run: func(context.Context, Request) error {
 			close(started)

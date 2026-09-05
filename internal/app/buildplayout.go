@@ -319,17 +319,22 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			},
 		).WithDiagnostics(deps.processDiagnostics)
 		preparer := prepared.NewPreparer(prepared.PreparerDependencies{
-			Library: preparedLibrary, Packager: packager, Readiness: readiness,
+			Library: preparedLibrary, Packager: packager, Access: playoutRes,
 		})
 		preparedRuntime := newPreparedRuntimeResolver(preparedRuntimeDependencies{
-			Channels: st, Timeline: playoutRes, Inputs: lib, Lookup: preparer,
+			Channels: st, Timeline: playoutRes, Sources: playoutRes, Lookup: preparer,
 			Now: time.Now, Readiness: readiness,
 			PathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
 			Policy: func() string {
+				authority := ""
+				if origin, err := lib.InventoryOrigin("prepared-policy"); err == nil {
+					authority = string(origin.Authority)
+				}
 				return preparedSourcePolicy(
 					set.str("playout.quality_tier"),
 					set.str("playout.audio_language"),
 					set.str("library.path_map"),
+					authority,
 				)
 			},
 			GlobalBackendContext:    appliedBackendContext,

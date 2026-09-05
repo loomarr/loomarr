@@ -178,7 +178,7 @@ func TestPruneOwnsReadinessControlFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := Request{Source: Source{Path: filepath.Join(t.TempDir(), "source.mkv")}, Rendition: baselineRendition()}
+	request := Request{Source: testSource("retained"), Rendition: baselineRendition()}
 	if err := readiness.RememberBinding(
 		BindingKey{ChannelID: "ch", LibraryItemID: "item"}, Binding{Policy: "policy", Request: request},
 	); err != nil {

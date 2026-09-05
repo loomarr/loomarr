@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/prepared"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -1000,6 +1001,104 @@ func (r *playoutResolver) recordSourceMeasurement(
 	}
 }
 
+// ResolvePreparedSource performs the bounded control-plane half of prepared playout. It keeps
+// direct disk first, imports the exact source into Loomarr's Inventory, and returns only durable
+// identity plus a transient input hint for preferred-audio selection.
+func (r *playoutResolver) ResolvePreparedSource(
+	ctx context.Context, libraryItemID string, pathMap library.PathMap,
+) (prepared.Source, string, bool) {
+	if r == nil || r.lib == nil || r.inventory == nil || strings.TrimSpace(libraryItemID) == "" {
+		return prepared.Source{}, "", false
+	}
+	lib := r.lib.Snapshot()
+	input := lib.ResolveInput(ctx, libraryItemID, pathMap, library.StatReadableFile)
+	if input.URL == "" {
+		return prepared.Source{}, "", false
+	}
+	request := inventory.SourceRequest{Now: r.inventoryNow()}
+	if input.Kind == library.InputFile {
+		origin, ok := r.ensureLocalInventorySource(ctx, input.URL)
+		if !ok {
+			return prepared.Source{}, "", false
+		}
+		request.Item = inventory.ItemRef{Origin: &origin}
+		request.Kinds = []inventory.SourceKind{inventory.SourceLocalFile}
+	} else {
+		origin, err := lib.InventoryOrigin(libraryItemID)
+		if err != nil {
+			return prepared.Source{}, "", false
+		}
+		if snapshot, present, snapshotErr := lib.InventorySnapshot(ctx, libraryItemID); snapshotErr == nil && present {
+			if _, applyErr := r.inventory.ApplySnapshot(ctx, snapshot); applyErr != nil {
+				return prepared.Source{}, "", false
+			}
+		}
+		request.Item = inventory.ItemRef{Origin: &origin}
+		request.Kinds = []inventory.SourceKind{inventory.SourceLibraryOriginal}
+	}
+	resolved, ok, err := r.inventory.ResolveSource(ctx, request)
+	if err != nil || !ok {
+		return prepared.Source{}, "", false
+	}
+	if input.Kind == library.InputHTTP && resolved.Locator.ExternalSourceID != "" {
+		input.URL = lib.StreamURLForSource(resolved.Locator.ExternalItemID, resolved.Locator.ExternalSourceID)
+	}
+	if input.URL == "" {
+		return prepared.Source{}, "", false
+	}
+	return prepared.Source{
+		ItemID: string(resolved.ItemID), SourceID: string(resolved.ID), Revision: resolved.Revision,
+	}, input.URL, true
+}
+
+// OpenInput is Source Access for background preparation. It verifies the exact Inventory revision,
+// then exposes a protected local path or freshly minted authenticated original-file URL only to
+// FFmpeg. Tune never calls this method.
+func (r *playoutResolver) OpenInput(ctx context.Context, selected prepared.Source) (prepared.Input, error) {
+	if r == nil || r.inventory == nil || strings.TrimSpace(selected.ItemID) == "" ||
+		strings.TrimSpace(selected.SourceID) == "" || strings.TrimSpace(selected.Revision) == "" {
+		return prepared.Input{}, prepared.ErrInvalidSource
+	}
+	item, ok, err := r.inventory.Item(ctx, inventory.ItemRef{ID: inventory.ItemID(selected.ItemID)})
+	if err != nil || !ok {
+		return prepared.Input{}, prepared.ErrSourceChanged
+	}
+	for _, source := range item.Sources {
+		if string(source.ID) != selected.SourceID || source.Revision != selected.Revision {
+			continue
+		}
+		for _, origin := range source.Origins {
+			if !origin.MissingAt.IsZero() {
+				continue
+			}
+			switch source.Kind {
+			case inventory.SourceLocalFile:
+				info, statErr := os.Stat(origin.Locator.Path)
+				if statErr != nil || !info.Mode().IsRegular() || localInventoryRevision(info) != selected.Revision ||
+					!library.StatReadableFile(origin.Locator.Path) {
+					return prepared.Input{}, prepared.ErrSourceChanged
+				}
+				return prepared.LocalInput(origin.Locator.Path), nil
+			case inventory.SourceLibraryOriginal:
+				if r.lib == nil {
+					return prepared.Input{}, prepared.ErrSourceChanged
+				}
+				lib := r.lib.Snapshot()
+				current, originErr := lib.InventoryOrigin(origin.Locator.ExternalItemID)
+				if originErr != nil || current.Authority != origin.Locator.Authority {
+					continue
+				}
+				input := lib.StreamURLForSource(origin.Locator.ExternalItemID, origin.Locator.ExternalSourceID)
+				if input == "" {
+					return prepared.Input{}, prepared.ErrSourceChanged
+				}
+				return prepared.HTTPInput(input), nil
+			}
+		}
+	}
+	return prepared.Input{}, prepared.ErrSourceChanged
+}
+
 func (r *playoutResolver) ensureLocalInventorySource(ctx context.Context, input string) (inventory.OriginKey, bool) {
 	info, err := os.Stat(input)
 	if err != nil || info.IsDir() || !info.Mode().IsRegular() {
@@ -1009,7 +1108,7 @@ func (r *playoutResolver) ensureLocalInventorySource(ctx context.Context, input 
 	origin := inventory.OriginKey{
 		Authority: "local-playout:v1", ExternalItemID: hex.EncodeToString(digest[:16]),
 	}
-	revision := fmt.Sprintf("stat:%d:%d", info.Size(), info.ModTime().UnixNano())
+	revision := localInventoryRevision(info)
 	if item, ok, itemErr := r.inventory.Item(ctx, inventory.ItemRef{Origin: &origin}); itemErr == nil && ok {
 		for _, source := range item.Sources {
 			if source.Kind == inventory.SourceLocalFile && source.Revision == revision {
@@ -1038,6 +1137,10 @@ func (r *playoutResolver) ensureLocalInventorySource(ctx context.Context, input 
 		}},
 	})
 	return origin, err == nil
+}
+
+func localInventoryRevision(info os.FileInfo) string {
+	return fmt.Sprintf("stat:%d:%d", info.Size(), info.ModTime().UnixNano())
 }
 
 func (r *playoutResolver) ensureRemoteInventorySource(ctx context.Context, origin inventory.OriginKey) error {

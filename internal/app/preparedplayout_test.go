@@ -56,11 +56,22 @@ type preparedInputsFake struct {
 	calls   int
 }
 
-func (f *preparedInputsFake) ResolveInput(
-	_ context.Context, itemID string, _ library.PathMap, _ func(string) bool,
-) library.InputSource {
+func (f *preparedInputsFake) ResolvePreparedSource(
+	_ context.Context, itemID string, _ library.PathMap,
+) (prepared.Source, string, bool) {
 	f.calls++
-	return f.sources[itemID]
+	input, ok := f.sources[itemID]
+	if !ok || input.URL == "" {
+		return prepared.Source{}, "", false
+	}
+	return preparedSource(itemID, 0), input.URL, true
+}
+
+func preparedSource(itemID string, audioTrack int) prepared.Source {
+	return prepared.Source{
+		ItemID: "inventory-item-" + itemID, SourceID: "inventory-source-" + itemID,
+		Revision: "revision-" + itemID, AudioTrack: audioTrack,
+	}
 }
 
 type preparedLookupFake struct {
@@ -76,7 +87,7 @@ func newPreparedRuntimeForTest(
 	t *testing.T,
 	channels preparedChannelReader,
 	timeline preparedTimeline,
-	inputs preparedInputResolver,
+	inputs preparedSourceResolver,
 	lookup preparedLookup,
 	now func() time.Time,
 	pathMap func() library.PathMap,
@@ -94,13 +105,13 @@ func newPreparedRuntimeForTest(
 		t.Fatal(err)
 	}
 	return newPreparedRuntimeResolver(preparedRuntimeDependencies{
-		Channels: channels, Timeline: timeline, Inputs: inputs, Lookup: lookup, Now: now,
+		Channels: channels, Timeline: timeline, Sources: inputs, Lookup: lookup, Now: now,
 		PathMap: pathMap, Policy: policy, GlobalBackend: globalBackend,
 		Rendition: rendition, Readiness: readiness,
 	})
 }
 
-func TestPreparedRuntimeCandidatesUseOnlyInternalLocalSchedule(t *testing.T) {
+func TestPreparedRuntimeCandidatesUseOnlyInternalSchedule(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(10_000, 0)
 	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{
@@ -124,7 +135,7 @@ func TestPreparedRuntimeCandidatesUseOnlyInternalLocalSchedule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Candidates) != 1 || plan.Candidates[0].Request.Source.Path != "/media/shared.mkv" ||
+	if len(plan.Candidates) != 1 || plan.Candidates[0].Request.Source.SourceID != "inventory-source-shared" ||
 		plan.Candidates[0].Request.Source.AudioTrack != 2 || !plan.Candidates[0].NeededAt.Equal(now) {
 		t.Fatalf("candidates = %+v", plan.Candidates)
 	}
@@ -138,6 +149,31 @@ func TestPreparedRuntimeCandidatesUseOnlyInternalLocalSchedule(t *testing.T) {
 	}
 	if inputs.calls != 1 || timeline.audioCalls != 1 {
 		t.Fatal("unchanged source policy re-resolved or re-probed the library item")
+	}
+}
+
+func TestPreparedRuntimeAcceptsInternalHTTPSourceForBackgroundFFmpeg(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(12_000, 0)
+	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{
+		"internal": {{Kind: schedule.SlotProgram, LibraryItemID: "remote", Start: now, Stop: now.Add(time.Hour)}},
+	}}
+	inputs := &preparedInputsFake{sources: map[string]library.InputSource{
+		"remote": {URL: "http://media/Videos/remote/stream?static=true&api_key=secret", Kind: library.InputHTTP},
+	}}
+	r := newPreparedRuntimeForTest(t,
+		preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "internal"}}}},
+		timeline, inputs, preparedLookupFake{}, func() time.Time { return now }, nil,
+		func() string { return "policy" }, func() string { return "internal" },
+		func() prepared.RenditionContract { return playout.CanonicalPreparedRendition(playout.TierBalanced) },
+	)
+
+	plan, err := r.Plan(t.Context(), now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Candidates) != 1 {
+		t.Fatalf("HTTP-backed prepared candidates = %d, want one background FFmpeg package", len(plan.Candidates))
 	}
 }
 
@@ -202,7 +238,7 @@ func TestPreparedRuntimePlanBoundsColdResolutionButStillProtectsDurableSchedule(
 		func() prepared.RenditionContract { return playout.CanonicalPreparedRendition(playout.TierBalanced) },
 	)
 	lastRequest := prepared.Request{
-		Source:    prepared.Source{Path: "/media/item-099.mkv", AudioTrack: 2},
+		Source:    preparedSource("item-099", 2),
 		Rendition: playout.CanonicalPreparedRendition(playout.TierBalanced),
 	}
 	if err := r.readiness.RememberBinding(
@@ -219,7 +255,7 @@ func TestPreparedRuntimePlanBoundsColdResolutionButStillProtectsDurableSchedule(
 	if err != nil {
 		t.Fatal(err)
 	}
-	inputs := r.inputs.(*preparedInputsFake)
+	inputs := r.sources.(*preparedInputsFake)
 	if inputs.calls != preparedCandidateBatch || len(plan.Candidates) != preparedCandidateBatch {
 		t.Fatalf("cold work = %d resolutions, %d candidates; want bounded %d", inputs.calls, len(plan.Candidates), preparedCandidateBatch)
 	}
@@ -247,8 +283,8 @@ func TestPreparedRuntimeTuneIsLookupOnlyAndCarriesPreviousAiring(t *testing.T) {
 		"current":  {URL: "/media/current.mkv", Kind: library.InputFile},
 	}}
 	rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
-	previousRequest := prepared.Request{Source: prepared.Source{Path: "/media/previous.mkv", AudioTrack: 2}, Rendition: rendition}
-	currentRequest := prepared.Request{Source: prepared.Source{Path: "/media/current.mkv", AudioTrack: 2}, Rendition: rendition}
+	previousRequest := prepared.Request{Source: preparedSource("previous", 2), Rendition: rendition}
+	currentRequest := prepared.Request{Source: preparedSource("current", 2), Rendition: rendition}
 	lookup := preparedLookupFake{hits: map[prepared.Request]prepared.Specification{
 		previousRequest: {SourceFingerprint: "previous", Rendition: rendition},
 		currentRequest:  {SourceFingerprint: "current", Rendition: rendition},
@@ -319,7 +355,7 @@ func TestPreparedRuntimePolicyChangeMakesTuneMissUntilPlannerRewarms(t *testing.
 		"item": {URL: "/media/item.mkv", Kind: library.InputFile},
 	}}
 	rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
-	request := prepared.Request{Source: prepared.Source{Path: "/media/item.mkv", AudioTrack: 2}, Rendition: rendition}
+	request := prepared.Request{Source: preparedSource("item", 2), Rendition: rendition}
 	r := newPreparedRuntimeForTest(t,
 		preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}}, timeline, inputs,
 		preparedLookupFake{hits: map[prepared.Request]prepared.Specification{request: {SourceFingerprint: "hit", Rendition: rendition}}},
@@ -351,7 +387,7 @@ func TestPreparedRuntimeTuneUsesDurableReadinessBeforeTheFirstPlannerPass(t *tes
 	}
 	rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
 	request := prepared.Request{
-		Source: prepared.Source{Path: "/media/item.mkv", AudioTrack: 2}, Rendition: rendition,
+		Source: preparedSource("item", 2), Rendition: rendition,
 	}
 	key := prepared.BindingKey{ChannelID: "ch", LibraryItemID: "item"}
 	if err := readiness.RememberBinding(key, prepared.Binding{Policy: "policy", Request: request}); err != nil {
@@ -367,7 +403,7 @@ func TestPreparedRuntimeTuneUsesDurableReadinessBeforeTheFirstPlannerPass(t *tes
 	inputs := &preparedInputsFake{}
 	r := newPreparedRuntimeResolver(preparedRuntimeDependencies{
 		Channels: preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}},
-		Timeline: timeline, Inputs: inputs,
+		Timeline: timeline, Sources: inputs,
 		Lookup: preparedLookupFake{hits: map[prepared.Request]prepared.Specification{
 			request: {SourceFingerprint: "ready", Rendition: rendition},
 		}},
@@ -397,7 +433,7 @@ func TestPreparedRuntimePublishedInternalCanServeWarmedMediaBeforeCutover(t *tes
 		t.Fatal(err)
 	}
 	render := playout.CanonicalPreparedRendition(playout.TierBalanced)
-	request := prepared.Request{Source: prepared.Source{Path: "/media/item.mkv"}, Rendition: render}
+	request := prepared.Request{Source: preparedSource("item", 0), Rendition: render}
 	if err := readiness.RememberBinding(
 		prepared.BindingKey{ChannelID: "ch", LibraryItemID: "item"},
 		prepared.Binding{Policy: "policy", Request: request},
@@ -447,7 +483,7 @@ func TestPreparedRuntimeChannelAudioPolicyChangeMakesTuneMissImmediately(t *test
 		"item": {URL: "/media/item.mkv", Kind: library.InputFile},
 	}}
 	rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
-	request := prepared.Request{Source: prepared.Source{Path: "/media/item.mkv", AudioTrack: 2}, Rendition: rendition}
+	request := prepared.Request{Source: preparedSource("item", 2), Rendition: rendition}
 	r := newPreparedRuntimeForTest(
 		t, channels, timeline, inputs,
 		preparedLookupFake{hits: map[prepared.Request]prepared.Specification{

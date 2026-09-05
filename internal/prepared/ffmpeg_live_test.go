@@ -14,6 +14,10 @@ import (
 	"time"
 )
 
+type liveSourceAccess struct{ input Input }
+
+func (a liveSourceAccess) OpenInput(context.Context, Source) (Input, error) { return a.input, nil }
+
 func TestLiveFFmpegPackagerPublishesPlayableHLS(t *testing.T) {
 	bin, err := exec.LookPath("ffmpeg")
 	if configured := os.Getenv("FFMPEG_PATH"); configured != "" {
@@ -49,18 +53,15 @@ func TestLiveFFmpegPackagerPublishesPlayableHLS(t *testing.T) {
 		AudioCodec: "aac", AudioLayout: "stereo", Width: 320, Height: 180, FrameRate: 25,
 		VideoBitrateKbps: 500, AudioBitrateKbps: 96, SegmentDurationMS: 1000, PackagingVersion: 1,
 	}
-	readiness, err := OpenReadiness(library)
-	if err != nil {
-		t.Fatal(err)
-	}
 	preparer := NewPreparer(PreparerDependencies{
-		Library: library, Packager: NewFFmpegPackager(bin), Readiness: readiness,
+		Library: library, Packager: NewFFmpegPackager(bin), Access: liveSourceAccess{input: LocalInput(source)},
 	})
-	pub, err := preparer.Prepare(ctx, Request{Source: Source{Path: source}, Rendition: r})
+	request := Request{Source: testSource("live"), Rendition: r}
+	pub, err := preparer.Prepare(ctx, request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := preparer.Lookup(Request{Source: Source{Path: source}, Rendition: r}); err != nil || !ok {
+	if _, ok, err := preparer.Lookup(request); err != nil || !ok {
 		t.Fatalf("prepared publication lookup = (_, %v, %v), want hit", ok, err)
 	}
 
