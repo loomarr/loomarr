@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -238,6 +239,28 @@ func TestSuggest_EmptyCatalogResultRetainsToolForAlternateSearch(t *testing.T) {
 	}
 	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != 603 || model.calls != 3 {
 		t.Fatalf("empty-result recovery proposal = %+v after %d calls, want The Matrix after three", prop, model.calls)
+	}
+}
+
+func TestSuggest_RecoversCoherentNetworkRouteFromProviderPopulatedOptionalFields(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"query": "TGIF", "media_type": "series", "genres": []any{"Comedy", "Family"},
+			"cast": []any{"Tiffani Thiessen"}, "creators": []any{"Jeff Franklin"},
+			"network": "ABC", "era": "1990s", "runtime_min": float64(20), "runtime_max": float64(60),
+		}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":760,"name":"Step by Step"}]}`),
+	)
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
+		MediaType: provision.Series, TVDBID: 760, Name: "Step by Step", Year: 1991, InLibrary: true,
+	}}}
+	s := suggest.New(llmMock, catalog.New(nil, corpus), nil, 10)
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "A 1990s ABC comedy block like TGIF with Step by Step"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TVDBID != 760 {
+		t.Fatalf("provider-populated call did not recover through the grounded network route: %+v", prop)
 	}
 }
 
