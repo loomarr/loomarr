@@ -70,7 +70,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	if err := st.UpsertClip(ctx, store.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Kind: filler.Commercial, DurationMs: parentProbe.DurationMs}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SetClipsHeld(ctx, []string{parentRel}, true, false, time.Now().UTC()); err != nil {
+	if _, err := st.HoldClips(ctx, []string{parentRel}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{ClipHash: parentHash, Stage: filler.StageSplit, Status: filler.StatusQueued, Disposition: filler.DispositionReview, EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
@@ -106,9 +106,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	pipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, []filler.Stage{
 		filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, dir, nil,
 			func() time.Duration { return 45 * time.Second }, time.Now), stage,
-		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, &filler.AutoFilePolicy{
-			Enabled: func() bool { return true }, MinConfidence: func() int { return 50 },
-		}, func() bool { return false }, time.Now),
+		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, func() bool { return false }, time.Now),
 	}, filler.Budget{}, nil, time.Now, nil)
 	var passes []filler.PipelineResult
 	for i := 0; i < 3; i++ {
@@ -139,11 +137,12 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 		}
 	}
 	if conditioned.Hash == "" {
-		t.Fatalf("conditioning pipeline did not publish a child: %+v", clips)
+		t.Fatalf("conditioning pipeline did not prepare a child: %+v", clips)
 	}
 	pipelineRow, found, err := st.GetClipPipeline(ctx, conditioned.Hash)
-	if err != nil || !found || pipelineRow.Status != filler.StatusDone || pipelineRow.Disposition != filler.DispositionFiled {
-		t.Fatalf("durable conditioned pipeline result = %+v, found=%v, err=%v", pipelineRow, found, err)
+	if err != nil || !found || pipelineRow.Status != filler.StatusDone ||
+		pipelineRow.Disposition != filler.DispositionReview || !conditioned.Held {
+		t.Fatalf("durable conditioned review = %+v, held=%v found=%v err=%v", pipelineRow, conditioned.Held, found, err)
 	}
 	if conditioned.Kind != filler.Commercial {
 		t.Fatalf("reviewed child kind = %q, want inherited commercial", conditioned.Kind)
@@ -182,38 +181,17 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 		t.Fatalf("real conditioning sidecar = %+v, ok=%v", tags, ok)
 	}
 
-	// Resolve an eight-second scheduled break at +5s through the same deterministic pod and
-	// Airing seam production uses. The remaining three seconds must return to scheduled program;
-	// the test never authors its own trim or concatenation graph.
-	channel := store.Channel{Channel: schedule.Channel{
-		ID: "conditioning-channel", Name: "Conditioning", Number: 634, Status: schedule.StatusLive,
-	}}
-	if _, err := st.SaveChannel(ctx, channel); err != nil {
-		t.Fatal(err)
-	}
-	pods := filler.NewPodAdapter(clipCatalogAdapter{st}, nil, func() filler.Policy {
-		return filler.Policy{PodMax: 1, BreakDurationMs: 30_000}
-	}, nil)
-	previewer := podPreviewAdapter{store: st, pods: pods}
-	resolver := &playoutResolver{pods: previewer, fillerDir: dir}
+	// Exercise the conditioned bytes through the production encoder/mux boundary without
+	// publishing the held row. Terminal admission is independently covered by its transaction
+	// suite; this test owns media compatibility, not release authority.
 	epoch := time.Unix(1_900_000_000, 0).UTC()
-	slots := []schedule.Slot{
-		{Kind: schedule.SlotProgram, LibraryItemID: "program-before", DurationMs: 2_000},
-		{Kind: schedule.SlotFiller, DurationMs: 8_000},
-		{Kind: schedule.SlotProgram, LibraryItemID: "program-after", DurationMs: 2_000},
+	first := playout.Airing{StartedAt: epoch, Kind: schedule.SlotProgram, Remaining: 2 * time.Second}
+	fillerAiring := playout.Airing{
+		StartedAt: epoch.Add(2 * time.Second), Kind: schedule.SlotFiller,
+		Identity: conditioned.Hash, Offset: 5 * time.Second, Remaining: 3 * time.Second,
 	}
-	first := playout.AiringAt(slots, epoch, epoch)
-	gap := playout.AiringAt(slots, epoch, epoch.Add(7*time.Second))
-	fillerAiring, fillerSource, err := resolver.airingFiller(ctx, "conditioning-channel", gap, epoch.Add(7*time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	last := playout.AiringAt(slots, epoch, epoch.Add(10*time.Second))
-	if first.Kind != schedule.SlotProgram || fillerAiring.Kind != schedule.SlotFiller ||
-		fillerAiring.Identity != conditioned.Hash || fillerAiring.Offset != 5*time.Second ||
-		fillerAiring.Remaining != 3*time.Second || last.Kind != schedule.SlotProgram {
-		t.Fatalf("production Airings = first %+v, filler %+v, last %+v", first, fillerAiring, last)
-	}
+	last := playout.Airing{StartedAt: epoch.Add(5 * time.Second), Kind: schedule.SlotProgram, Remaining: 2 * time.Second}
+	fillerSource := mezzanine
 
 	profile := playout.DefaultProfile()
 	profile.Width, profile.Height, profile.Framerate = 320, 180, 30

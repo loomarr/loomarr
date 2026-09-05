@@ -365,7 +365,7 @@ type ClipDTO struct {
 	// honest case, never a gap to fill in with a guess.
 	Brand string `json:"brand,omitempty" doc:"The advertiser, when it appears literally in a text or visual signal (§10 V44). Absent means no GROUNDED brand — never inferred."`
 	// Confidence is the grounding-capped tagging score (§10 V38), 0-100. 0 means never scored,
-	// which is not the same as scored-low: it can never clear an auto-file threshold.
+	// which is not the same as scored-low.
 	Confidence int `json:"confidence,omitempty" doc:"Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score"`
 	// Held marks a clip recorded but NOT yet in the playable catalog (§10 V38).
 	//

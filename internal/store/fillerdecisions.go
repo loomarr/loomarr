@@ -337,8 +337,8 @@ func (s *sqlStore) commitFillerDecisionAction(
 func (s *sqlStore) applyFillerDecisionCatalogEffect(ctx context.Context, tx *sql.Tx, clipHash string, action fillerdecision.Action) error {
 	timestamp := fillerDecisionEpoch(action.CreatedAt)
 	clipQuery := ""
-	clipArgs := []any{}
-	pipelineFrom := []filler.Disposition{}
+	var clipArgs []any
+	var pipelineFrom []filler.Disposition
 	pipelineTo := filler.Disposition("")
 	switch {
 	case action.Kind == fillerdecision.ActionAdmit ||

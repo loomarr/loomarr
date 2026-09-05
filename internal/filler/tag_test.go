@@ -23,10 +23,6 @@ var errTagClipNotFound = errors.New("clip not found")
 type tagMemStore struct {
 	clips   map[string]filler.StoreClip
 	updates map[string]filler.StoreClip
-	// filed records the paths SetClipsHeld filed, in call order — the auto-file assertions
-	// read this rather than inspecting clips, so a test says "this was filed" rather than
-	// "this ended up not-held", which a bug could also produce.
-	filed []string
 	// brands records SetClipBrand writes keyed by PATH (the key the real store uses), so a test can
 	// assert a GROUNDED brand was written — and, by its absence, that an ungrounded one never was.
 	brands map[string]string
@@ -71,31 +67,7 @@ func (m *tagMemStore) ListUntaggedCommercials(_ context.Context) ([]filler.Store
 	return out, nil
 }
 
-// ⚠ SetClipsHeld is keyed by PATH and UpdateClipClassification by HASH, mirroring the real store exactly
-// (`WHERE path IN (…)` vs `WHERE hash = ?`). A mock that accepted either — which this one did
-// until V41, because every fixture set hash == path — cannot catch a caller passing the wrong
-// key, and that is precisely the bug that shipped. Both methods now MISS loudly on a wrong key
-// rather than quietly succeeding.
-func (m *tagMemStore) SetClipsHeld(_ context.Context, paths []string, held, autoFiled bool, _ time.Time) (int, error) {
-	n := 0
-	for _, p := range paths {
-		hash, ok := m.hashByPath(p)
-		if !ok {
-			continue // the real store's `WHERE path IN (…)` matches no row either
-		}
-		c := m.clips[hash]
-		c.Held = held
-		c.AutoFiled = autoFiled
-		m.clips[hash] = c
-		n++
-		if !held {
-			m.filed = append(m.filed, p)
-		}
-	}
-	return n, nil
-}
-
-// SetClipBrand is keyed by PATH (the real store is `WHERE path = ?`), like SetClipsHeld and unlike
+// SetClipBrand is keyed by PATH (the real store is `WHERE path = ?`), unlike
 // the hash-keyed classification update — so it MISSES on a wrong key rather than quietly succeeding, which
 // is what would let a caller passing the hash slip through. It writes only `brand`, never
 // `VisionTagged`: a text-grounded brand is not a vision-read one.
@@ -549,7 +521,7 @@ func TestClassify_FoldingStillDropsAbsentBrand(t *testing.T) {
 
 // ⚠ Brand must NOT raise the grounded confidence ceiling (§10 V44). A clip with a grounded brand but
 // a dropped audience is still PARTIAL, and its score is the partial ceiling — a brand riding along
-// cannot buy a clip past the auto-file gate. (Belt-and-braces to the Score asymmetry: brand isn't in
+// cannot inflate the diagnostic used to prioritize review. (Belt-and-braces to the Score asymmetry: brand isn't in
 // Score at all, so a grounded brand and no brand must score identically for the same other fields.)
 func TestClassify_BrandDoesNotRaiseConfidence(t *testing.T) {
 	withBrand := filler.TagSuggestion{Era: 1985, Audience: "kids", Category: "toys", Brand: "Lego"}
@@ -560,8 +532,8 @@ func TestClassify_BrandDoesNotRaiseConfidence(t *testing.T) {
 	}
 	// A partial clip stays partial even with a grounded brand.
 	partial := filler.TagSuggestion{Era: 1985, Audience: "", Category: "", Brand: "Lego"}
-	if partial.Score(0) >= filler.MaxAutoFileConfidence {
-		t.Errorf("a grounded brand lifted a PARTIAL clip's score to %d — it must not clear the gate", partial.Score(0))
+	if partial.Score(0) != 50 {
+		t.Errorf("a grounded brand changed a PARTIAL clip's score to %d, want 50", partial.Score(0))
 	}
 }
 
@@ -812,29 +784,16 @@ func TestTagger_MalformedSidecarDegradesToFilename(t *testing.T) {
 
 // --- V38: the grounding-capped confidence score ---
 
-// ⚠ THE safety property of V38, stated as a test: a model that is CERTAIN about an era it
-// invented must not be able to talk its way past the auto-file gate.
-//
-// This is the same failure §10's grounding rule and migration 00024 exist for — the tagger
-// inferred a decade from tone on 2 of 10 real clips — one level up: the model that fabricates
-// the era also grades how sure it is about the era. If the score were self-reported, a confident
-// fabrication would be auto-filed into the catalog and onto a channel with nobody looking.
-func TestScore_UngroundedEraIsCappedBelowEveryReachableThreshold(t *testing.T) {
+// A model cannot self-report its way around missing grounding. This remains valuable diagnostic
+// truth even though confidence no longer controls publication.
+func TestScore_UngroundedEraIsCappedByGrounding(t *testing.T) {
 	// The model claims total certainty about an era that is NOT in the clip's text.
 	ungrounded := filler.TagSuggestion{SuggestedEra: 1985, Audience: "kids", Category: "toys"}
 
 	got := ungrounded.Score(100)
-	if got >= filler.MaxAutoFileConfidence {
-		t.Fatalf("Score = %d with a model claiming 100 — an ungrounded era reached %d, the highest "+
-			"threshold an operator can set. A fabricated era would be auto-filed.", got, filler.MaxAutoFileConfidence)
+	if got != 40 {
+		t.Fatalf("Score = %d with a model claiming 100, want grounding cap 40", got)
 	}
-	// Belt and braces: no threshold in the settable range may admit it.
-	for threshold := 0; threshold <= filler.MaxAutoFileConfidence; threshold++ {
-		if threshold > got && threshold <= filler.MaxAutoFileConfidence {
-			return // there exists a reachable threshold that excludes it — the gate can work
-		}
-	}
-	t.Fatalf("no reachable threshold excludes an ungrounded era scoring %d", got)
 }
 
 // The model may LOWER the grounded ceiling but never lift it. A model unsure about a
@@ -868,136 +827,20 @@ func TestClassify_ClampsAnOutOfRangeModelConfidence(t *testing.T) {
 	}
 }
 
-// --- V38: the filing decision ---
-
-// heldClip is an INGESTED clip waiting to be tagged and filed. The drop-folder path never
-// produces one of these — a file an operator hand-copies is filed on sight (§10).
+// heldClip is an ingested clip waiting for certified terminal admission.
 func heldClip(id, name string) filler.StoreClip {
 	c := untaggedClip(id, name)
 	c.Held = true
 	return c
 }
 
-func autoFileAt(min int) filler.AutoFilePolicy {
-	return filler.AutoFilePolicy{
-		Enabled:       func() bool { return true },
-		MinConfidence: func() int { return min },
-	}
-}
-
-// A fully-grounded classification scores 100 and files without a human.
-func TestTagger_FilesAHeldClipWhoseTagsAllVerify(t *testing.T) {
-	st := newTagMemStore()
-	st.clips["c1"] = heldClip("c1", "Toy ad 1985")
-
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","tags":["toys"],"confidence":90}`))
-	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
-		WithAutoFile(autoFileAt(85))
-
-	res, err := tagger.Run(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.AutoFiled != 1 {
-		t.Fatalf("AutoFiled = %d, want 1 (era 1985 is literally in the name)", res.AutoFiled)
-	}
-	// ⚠ Filing is keyed by PATH (`SetClipsHeld` is `WHERE path IN (…)`), unlike the tag write
-	// two calls earlier, which is keyed by hash. The same loop legitimately uses both keys, and
-	// this assertion names the one filing actually takes.
-	if len(st.filed) != 1 || st.filed[0] != st.clips["c1"].Path {
-		t.Fatalf("filed = %v, want [%s]", st.filed, st.clips["c1"].Path)
-	}
-	if !st.clips["c1"].AutoFiled {
-		t.Error("auto_filed not recorded — the operator cannot find what was filed without them")
-	}
-}
-
-// ⚠ THE end-to-end safety property, at the level a user experiences it. A model that is CERTAIN
-// about an era found nowhere in the clip's text must leave that clip HELD, whatever it claims and
-// whatever the threshold is set to.
-//
-// The unit test on Score pins the arithmetic; this pins that the arithmetic is actually wired to
-// the filing decision. Both are needed: a correct cap that nothing consults protects nothing.
-func TestTagger_NeverAutoFilesAnUngroundedEra(t *testing.T) {
-	for _, threshold := range []int{50, 85, 95} {
-		st := newTagMemStore()
-		// No year anywhere in the name — so era 1985 can only have been inferred from tone.
-		st.clips["c1"] = heldClip("c1", "Retro toy commercial")
-
-		llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","tags":["toys"],"confidence":100}`))
-		tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
-			WithAutoFile(autoFileAt(threshold))
-
-		if _, err := tagger.Run(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		if len(st.filed) != 0 {
-			t.Errorf("threshold %d: an UNGROUNDED era was auto-filed — a fabricated tag reached "+
-				"a live channel with nobody looking", threshold)
-		}
-		if !st.clips["c1"].Held {
-			t.Errorf("threshold %d: the clip is no longer held", threshold)
-		}
-		// The guess is still recorded as a question for the operator, not discarded.
-		// ⚠ Read from `updates`, which is where this fake records a tag write (`clips` holds
-		// the seeded state plus what SetClipsHeld changed). Asserting on the wrong map here
-		// looked like a lost suggestion and was purely the fake's shape.
-		if st.updates["c1"].SuggestedEra != 1985 {
-			t.Errorf("threshold %d: the suggestion was lost (%d) — holding must not throw the "+
-				"model's guess away, it is what makes the review one click",
-				threshold, st.updates["c1"].SuggestedEra)
-		}
-	}
-}
-
-// Auto-filing off ⇒ everything waits for a human, however confident.
-func TestTagger_FilesNothingWhenAutoFilingIsOff(t *testing.T) {
-	st := newTagMemStore()
-	st.clips["c1"] = heldClip("c1", "Toy ad 1985")
-
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","tags":["toys"],"confidence":100}`))
-	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
-		WithAutoFile(filler.AutoFilePolicy{
-			Enabled:       func() bool { return false },
-			MinConfidence: func() int { return 85 },
-		})
-
-	if _, err := tagger.Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(st.filed) != 0 {
-		t.Errorf("filed %v with auto-filing switched off", st.filed)
-	}
-}
-
-// ⚠ An ALREADY-FILED clip is never re-filed. Re-filing would set `auto_filed` on a clip a human
-// had filed by hand, rewriting the answer to "did anyone look at this?" — and that flag is the
-// only thing that can answer it.
-func TestTagger_DoesNotRefileAClipAHumanAlreadyFiled(t *testing.T) {
-	st := newTagMemStore()
-	st.clips["c1"] = untaggedClip("c1", "Toy ad 1985") // not held: already in the catalog
-
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","tags":["toys"],"confidence":100}`))
-	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
-		WithAutoFile(autoFileAt(85))
-
-	res, err := tagger.Run(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.AutoFiled != 0 || len(st.filed) != 0 {
-		t.Errorf("re-filed an already-filed clip (%v) — that would stamp auto_filed on a human's "+
-			"own decision", st.filed)
-	}
-}
-
 // ⚠ **The score has to be PERSISTED, not just computed — the gap V51a closed.**
 //
-// `TagSuggestion.Score` was correct and unit-tested for two phases, and `Run` consulted it for the
-// auto-file decision, but nothing ever wrote it to the clip. `UpsertClip` inserts a literal 0 and
+// `TagSuggestion.Score` was correct and unit-tested for two phases, and the retired publisher
+// consulted it, but nothing ever wrote it to the clip. `UpsertClip` inserts a literal 0 and
 // deliberately omits the column from its DO UPDATE, so `confidence` was 0 for every clip in every
 // catalog — and the Incoming meter renders nothing at 0 (correctly: 0 means "never scored"), so
-// the number an operator uses to decide whether to trust an auto-filed clip was permanently absent.
+// the diagnostic an operator uses to prioritize review was permanently absent.
 //
 // The store's own conformance case passed throughout, because it wrote a value by hand and
 // asserted the round trip. A column can round-trip perfectly and still have no producer, which is
@@ -1021,8 +864,7 @@ func TestTagger_PersistsTheGroundedScore(t *testing.T) {
 			path := st.clips["c1"].Path
 
 			llmMock := testkit.NewLLM(testkit.FinalResponse(tc.reply))
-			tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
-				WithAutoFile(autoFileAt(85))
+			tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
 			if _, err := tagger.Run(context.Background()); err != nil {
 				t.Fatal(err)
 			}

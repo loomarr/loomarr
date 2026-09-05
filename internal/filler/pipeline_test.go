@@ -28,7 +28,7 @@ type pipeMemStore struct {
 	holdErr   error
 }
 
-func (m *pipeMemStore) SetClipsHeld(_ context.Context, paths []string, held, autoFiled bool, _ time.Time) (int, error) {
+func (m *pipeMemStore) HoldClips(_ context.Context, paths []string, _ time.Time) (int, error) {
 	if m.holdErr != nil {
 		return 0, m.holdErr
 	}
@@ -36,13 +36,27 @@ func (m *pipeMemStore) SetClipsHeld(_ context.Context, paths []string, held, aut
 	for _, p := range paths {
 		for hash, c := range m.clips {
 			if c.Path == p {
-				c.Held, c.AutoFiled = held, autoFiled
+				c.Held = true
 				m.clips[hash] = c
 				n++
 			}
 		}
 	}
 	m.held = append(m.held, paths...)
+	return n, nil
+}
+
+func (m *pipeMemStore) ReleaseCompositeHolds(_ context.Context, paths []string, _ time.Time) (int, error) {
+	n := 0
+	for _, p := range paths {
+		for hash, c := range m.clips {
+			if c.Path == p && c.IsComposite {
+				c.Held = false
+				m.clips[hash] = c
+				n++
+			}
+		}
+	}
 	return n, nil
 }
 
@@ -170,7 +184,7 @@ func (m *pipeMemStore) RetryClipPipeline(ctx context.Context, _ filler.ClipPipel
 	m.rows[p.ClipHash] = p
 	if restore {
 		c := m.clips[p.ClipHash]
-		c.RemovedAt, c.Held, c.AutoFiled = time.Time{}, true, false
+		c.RemovedAt, c.Held = time.Time{}, true
 		m.clips[p.ClipHash] = c
 	}
 	return nil
@@ -398,7 +412,7 @@ func TestPipeline_RetryFailureRestoresTerminalExecutionFailureHeld(t *testing.T)
 	st := newPipeMemStore()
 	seedEnrolled(st, "broken-encode")
 	c := st.clips["broken-encode"]
-	c.RemovedAt, c.Held, c.AutoFiled = time.Now().UTC(), false, true
+	c.RemovedAt, c.Held = time.Now().UTC(), false
 	st.clips[c.Hash] = c
 	row := st.rows[c.Hash]
 	row.Stage, row.Status = filler.StageTranscode, filler.StatusFailed
@@ -423,8 +437,8 @@ func TestPipeline_RetryFailureRestoresTerminalExecutionFailureHeld(t *testing.T)
 		t.Fatalf("retry discarded completed upstream work: %+v", got.Stages)
 	}
 	clip := st.clips[c.Hash]
-	if !clip.RemovedAt.IsZero() || !clip.Held || clip.AutoFiled {
-		t.Fatalf("restored clip = removed:%v held:%v auto:%v, want present and held", clip.RemovedAt, clip.Held, clip.AutoFiled)
+	if !clip.RemovedAt.IsZero() || !clip.Held {
+		t.Fatalf("restored clip = removed:%v held:%v, want present and held", clip.RemovedAt, clip.Held)
 	}
 }
 

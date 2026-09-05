@@ -224,7 +224,7 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	ctx := context.Background()
 	a, st := newSplitAdapter(t, events.NewBus(), true)
 	a.pipeline = filler.NewPipeline(st, fillerPipelineClipAdapter{st}, nil, filler.Budget{}, nil, time.Now, nil)
-	if _, err := st.SetClipsHeld(ctx, []string{compPath}, true, false, time.Now().UTC()); err != nil {
+	if _, err := st.HoldClips(ctx, []string{compPath}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -278,7 +278,7 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) {
 	ctx := context.Background()
 	a, st := newSplitAdapter(t, events.NewBus(), true)
-	if _, err := st.SetClipsHeld(ctx, []string{compPath}, true, false, time.Now().UTC()); err != nil {
+	if _, err := st.HoldClips(ctx, []string{compPath}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	proposal, err := a.splitter.Propose(ctx, compHash)
@@ -455,7 +455,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 	if prop.ClipHash != compHash {
 		t.Fatalf("proposal.ClipHash = %q, want the compilation's hash %q", prop.ClipHash, compHash)
 	}
-	if _, err := st.SetClipsHeld(ctx, []string{compPath}, true, false, time.Now().UTC()); err != nil {
+	if _, err := st.HoldClips(ctx, []string{compPath}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 

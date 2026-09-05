@@ -56,42 +56,33 @@ func sidecarPathFor(mediaPath string) string {
 // collide with anything yt-dlp writes now or adds later.
 const (
 	loomarrKey = "loomarr"
-	// fetchedByKey marks a clip Loomarr DOWNLOADED, as opposed to one an operator dropped in.
-	//
-	// ⚠ This replaces "the sidecar exists" as the held/filed signal (V38b → V38c). That worked
-	// only while Loomarr never wrote sidecars; now that it writes tags for hand-dropped clips
-	// too, existence says nothing. An explicit field is also the better signal — an operator who
-	// copies a clip WITH its sidecar gets the honest answer, and one who tidies sidecars away no
-	// longer flips a clip's lifecycle by accident.
+	// fetchedByKey records that Loomarr downloaded the clip rather than an operator dropping it in.
+	// This is acquisition provenance only; all new clips start held regardless of origin.
 	fetchedByKey = "fetchedBy"
 	fetchedByUs  = "loomarr"
 )
 
-// SidecarFetchedMark is the `loomarr` block a DOWNLOADER writes into the info-JSON beside a clip
-// it just fetched, so the sync holds it for review instead of filing it on sight (§10 V38c).
+// SidecarFetchedMark is the `loomarr` block a downloader writes into the info-JSON beside a clip.
 //
 // ⚠ **Exported because the mark has to be written by whoever DOWNLOADED the file**, and that is
 // `clipfetch`, which must not import this package's internals. Both sides reading one definition
-// is the point: the sync's `wasFetchedByUs` looks for exactly this shape, and a second hand-rolled
+// is the point: recovery and provenance checks read exactly this shape, and a second hand-rolled
 // copy in the downloader is how the two silently stop agreeing.
 //
-// ⚠ **Nothing wrote it until V38c.8, so the approval gate never engaged for auto-fetched clips.**
-// The `fetched=true` branch of `TakeIn` had no caller: both call sites pass false, correctly, since
-// the sync cannot know who put a file in the watch folder. Only the downloader knows. Found by
-// running auto-fetch against real archive.org collections and seeing every clip land `held=false`.
+// The marker remains required for exact acquisition recovery even though it no longer decides
+// catalog eligibility.
 func SidecarFetchedMark() map[string]any {
 	return SidecarFetchedMarkFor("")
 }
 
-// SidecarFetchedMarkFor also carries the exact registered source policy responsible for the
-// acquisition (§10 V57). The empty-id form preserves the historical manual-ingest marker.
+// SidecarFetchedMarkFor also carries the exact registered source responsible for the acquisition.
 func SidecarFetchedMarkFor(sourceID string) map[string]any {
 	return SidecarFetchedMarkForAcquisition(sourceID, "")
 }
 
 // SidecarFetchedMarkForAcquisition also records the durable acquisition run responsible for the
-// fetched bytes. It is intentionally separate from SourceID: the source owns admission policy,
-// while the acquisition identifies one observable attempt that may be retried or inspected.
+// fetched bytes. It is intentionally separate from SourceID: the source identifies acquisition
+// provenance, while the acquisition identifies one observable attempt that may be retried.
 func SidecarFetchedMarkForAcquisition(sourceID, acquisitionID string) map[string]any {
 	mark := map[string]any{fetchedByKey: fetchedByUs}
 	if sourceID != "" {
@@ -490,8 +481,7 @@ func ReadSidecarTagsFS(fsys fs.FS, mediaPath string) (SidecarTags, bool) {
 	return tags, state == SidecarValid && present
 }
 
-// SidecarFetchedByUs reports whether Loomarr downloaded this clip (§10 V38c) — the held/filed
-// fork's signal.
+// SidecarFetchedByUs reports whether Loomarr downloaded this clip (§10 V38c).
 //
 // ⚠ Reads the FIELD, not the file's existence. See fetchedByKey.
 func SidecarFetchedByUs(mediaPath string) bool {

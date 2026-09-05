@@ -188,7 +188,6 @@ const stubFiller = ({
     getFillerIncomingMockHandler({
       clips: [],
       reels: [],
-      recentlyFiled: [],
       rejected: [],
       stageOrder: [],
       total: 0,
@@ -207,7 +206,6 @@ const stubFiller = ({
       decisionsTotal:
         incoming?.decisionsTotal ?? incoming?.clips?.filter((clip) => clip.needsDecision).length ?? 0,
       reelsTotal: incoming?.reelsTotal ?? incoming?.reels?.length ?? 0,
-      recentlyFiledTotal: incoming?.recentlyFiledTotal ?? incoming?.recentlyFiled?.length ?? 0,
       rejectedTotal: incoming?.rejectedTotal ?? incoming?.rejected?.length ?? 0,
     }),
     // The header pill's live status (§10 V38c). ⚠ Served here because the header reads it from

@@ -96,15 +96,9 @@ type TagStore interface {
 	// hash-keyed. Only a brand `Classify` already grounded reaches here — the store call writes
 	// what it is given, the grounding lives in validateTags.
 	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error
-	// SetClipConfidence persists the grounding-capped score (§10 V38) — PATH-keyed, beside
-	// SetClipBrand. ⚠ Added in V51a because the score had NO writer: it was computed here, used
-	// once for the auto-file comparison, and dropped, so `confidence` was 0 for every clip in
-	// every catalog and the Incoming meter never rendered.
+	// SetClipConfidence persists the grounding-capped diagnostic score — PATH-keyed, beside
+	// SetClipBrand. It helps explain classification evidence but grants no admission authority.
 	SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error
-	// SetClipsHeld files a clip into the catalog (§10 V38). The tagger calls it only to FILE
-	// (held=false, autoFiled=true) — sending a clip back for review is a human's decision,
-	// made from Incoming, never the job's.
-	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
 }
 
 // Tagger runs AI classification over untagged clips.
@@ -118,10 +112,6 @@ type Tagger struct {
 	// filename-only, which is what a drop-folder clip (hand-copied, no sidecar) gets
 	// anyway — so a missing or unreadable folder degrades the tag, never fails it.
 	drop fs.FS
-	// autoFile decides whether a freshly-tagged HELD clip is filed without a human (§10 V38).
-	// nil ⇒ the tagger tags but never files, which is the safe default for a caller that has
-	// not opted in: every held clip waits for a person.
-	autoFile *AutoFilePolicy
 }
 
 // NewTagger builds the tagging job. `drop` is the drop-folder FS for sidecar reads;
@@ -133,88 +123,12 @@ func NewTagger(store TagStore, provider llm.Provider, drop fs.FS, now func() tim
 	return &Tagger{store: store, provider: provider, drop: drop, log: log, now: now}
 }
 
-// AutoFilePolicy decides whether a freshly-tagged HELD clip is filed without a human (§10 V38).
-//
-// ⚠ A closure read at RUN time, not a value captured at construction, so changing the threshold
-// in Settings takes effect on the next run rather than at the next restart — the same hot-apply
-// contract `WithEnabled` uses for the source switch.
-type AutoFilePolicy struct {
-	// Enabled reports whether auto-filing is on at all.
-	//
-	// ⚠ Must be backed by a FAIL-CLOSED read (`boolv`, not `boolOn`). When the settings service
-	// cannot answer, the safe answer here is "don't file" — failing open would publish unreviewed
-	// clips to live channels precisely when the install is degraded, which is the worst moment to
-	// be making unattended decisions. This is the opposite polarity from the folder-scan switch,
-	// where failing open merely keeps scanning.
-	Enabled func() bool
-	// MinConfidence is the score a clip must reach. Bounded 50-95 by the registry; see
-	// MaxAutoFileConfidence for why the ceiling is load-bearing.
-	MinConfidence func() int
-	// SourceAllowed is the source-specific catalog-admission decision (§10 V57). nil preserves
-	// the historical globally-grounded policy for callers that do not have a source registry.
-	// Errors fail closed: degraded policy storage cannot publish an unattended clip.
-	SourceAllowed func(context.Context, string) (bool, error)
-}
-
-// WithAutoFile attaches the auto-filing policy. Absent, the tagger tags but never files —
-// every held clip waits for a human, which is the safe default for a caller that has not
-// opted in.
-func (t *Tagger) WithAutoFile(p AutoFilePolicy) *Tagger {
-	t.autoFile = &p
-	return t
-}
-
-// AllowsSource reports whether a clip from `source` scoring `score` may be filed unattended.
-//
-// ⚠ The threshold is clamped to MaxAutoFileConfidence here as well as in the registry. The
-// registry validates what an operator TYPES; this guards what the code READS — an env pin, a
-// migration, or a hand-edited database row can all put an out-of-range value in front of this,
-// and a threshold of 0 would file everything including ungrounded eras.
-//
-// ⚠ **On the policy, not on the Tagger**, so the pipeline's score stage and the tagger apply the
-// SAME clamp rather than each carrying a copy. Two implementations of a safety ceiling is how one
-// of them ends up missing the guard — and the guard is the only thing keeping a fabricated era out
-// of a live channel.
-func (p *AutoFilePolicy) AllowsSource(ctx context.Context, source string, score int) bool {
-	if !p.allowsConfidence(score) {
-		return false
-	}
-	if p.SourceAllowed == nil {
-		return true
-	}
-	allowed, err := p.SourceAllowed(ctx, source)
-	return err == nil && allowed
-}
-
-func (p *AutoFilePolicy) allowsConfidence(score int) bool {
-	if p == nil || p.Enabled == nil || !p.Enabled() {
-		return false
-	}
-	min := MaxAutoFileConfidence
-	if p.MinConfidence != nil {
-		min = p.MinConfidence()
-	}
-	if min <= 0 || min > MaxAutoFileConfidence {
-		min = MaxAutoFileConfidence
-	}
-	return score >= min
-}
-
-// shouldAutoFile defers to the policy so there is one clamp.
-func (t *Tagger) shouldAutoFile(ctx context.Context, source string, score int) bool {
-	return t.autoFile.AllowsSource(ctx, source, score)
-}
-
 // TagResult reports what a tagging run did.
 type TagResult struct {
 	Considered int // untagged commercials examined
 	Tagged     int // clips that got a complete classification and were written
 	Partial    int // clips the model tagged partially (some field dropped) — still written
 	Skipped    int // clips the model couldn't classify at all
-	// AutoFiled counts HELD clips this run filed into the catalog without a human (§10 V38).
-	// Reported so the operator can see what happened unattended — an unattended decision that
-	// leaves no trace is not one an appliance gets to make.
-	AutoFiled int
 }
 
 // Run classifies every untagged commercial and writes the validated tags (§10).
@@ -263,24 +177,6 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		if out.Clip.Hash == "" {
 			res.Skipped++
 			continue // the rung found nothing usable and wrote nothing
-		}
-		// The filing decision (§10 V38). Only HELD clips are candidates: a clip already in the
-		// catalog was filed by a human or by an earlier run, and re-filing it would flip its
-		// `auto_filed` attribution — rewriting the answer to "did anyone look at this?".
-		//
-		// ⚠ The score is the rung's grounding-CAPPED confidence, not the model's self-report. An
-		// ungrounded era cannot reach any settable threshold, so the fabrication class this guards
-		// stays with a person however this install is configured.
-		//
-		// ⚠ It lives here rather than in the rung because the two drivers file at different
-		// moments: the pipeline files at the SCORE rung, after vision has had its turn, while this
-		// sweep has no later rung to defer to. Filing inside the tag rung would file a clip before
-		// the tier that exists for wordless spots had run.
-		if clip.Held && t.shouldAutoFile(ctx, clip.Source, out.Clip.Confidence) {
-			if _, err := t.store.SetClipsHeld(ctx, []string{clip.Path}, false, true, t.now()); err != nil {
-				return res, err
-			}
-			res.AutoFiled++
 		}
 		if out.Clip.Tagged() {
 			res.Tagged++

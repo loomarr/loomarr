@@ -62,8 +62,8 @@ type TagSuggestion struct {
 	// suggestion for the operator to confirm (PATCH /v1/filler/{id} setting era
 	// confirms and clears it). 0 = no suggestion.
 	SuggestedEra int
-	// Confidence (0-100) is the grounding-CAPPED score that decides auto-filing vs a human
-	// (§10 V38). Computed by Score() — never taken from the model directly.
+	// Confidence (0-100) is the grounding-CAPPED diagnostic score (§10 V38). Computed by
+	// Score() — never taken from the model directly and never publication authority.
 	Confidence int
 }
 
@@ -78,12 +78,11 @@ func (t TagSuggestion) Complete() bool {
 // its score — a clip cannot average its way past a fabricated era.
 const (
 	// Everything verified: the era's year appears literally in the text, and both audience and
-	// category matched a known enum. This is the only state that may be auto-filed.
+	// category matched a known enum.
 	confGrounded = 100
 	// ⚠ THE load-bearing one. The model proposed an era that is NOT in the clip's text — the
 	// exact failure 00024 and §10's grounding rule exist for. Capped BELOW any threshold an
-	// operator can set, so an inferred era can never be filed without a human, whatever the
-	// model reports and whatever the threshold is set to.
+	// fully grounded result, so the diagnostic cannot hide the fabrication risk.
 	confUngroundedEra = 40
 	// Tags resolved but there was no era at all (the model returned 0). Honest, incomplete, and
 	// not a fabrication — worth a human's glance, not an alarm.
@@ -93,14 +92,8 @@ const (
 	confPartial = 50
 )
 
-// MaxAutoFileConfidence is the highest threshold an operator may set. ⚠ It exists so that
-// `confUngroundedEra` stays strictly below EVERY reachable threshold: a settings value above
-// this would let an operator configure their way into auto-filing inferred eras, which is the
-// one thing §10 says the cap must prevent. Enforced by the settings registry's range.
-const MaxAutoFileConfidence = 95
-
-// Score returns this suggestion's confidence (0-100) — the number that decides whether a clip is
-// filed automatically or surfaced to a human (§10 V38).
+// Score returns diagnostic classification confidence (0-100). It helps prioritize and review
+// tags; it is not publication authority and no admission path consumes it.
 //
 // ⚠ **Two layers, and only the grounding layer can RAISE it.** The ceiling below comes entirely
 // from what `validateTags` could verify against the clip's own text. `modelConfidence` (0-100,

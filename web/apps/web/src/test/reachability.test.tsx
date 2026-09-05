@@ -126,8 +126,6 @@ const stubReachable = () => {
         {
           id: "archive:classic_tv_commercials",
           enabled: true,
-          autoAdmit: true,
-          admissionControllable: true,
           switchable: true,
           removable: true,
           kind: "archive",
@@ -180,20 +178,6 @@ const stubReachable = () => {
       decisionsTotal: 1,
       reels: [],
       reelsTotal: 0,
-      // V38's audit half — what was filed with nobody looking.
-      recentlyFiled: [
-        {
-          hash: "auto-hash",
-          path: "auto.mp4",
-          name: "Hot Wheels spot",
-          durationMs: 30000,
-          kind: "commercial",
-          reason: "Loomarr was confident enough about these tags to file it without asking.",
-          confidence: 88,
-          autoFiled: true,
-        },
-      ],
-      recentlyFiledTotal: 1,
       rejected: [],
       rejectedTotal: 0,
       stageOrder: [],

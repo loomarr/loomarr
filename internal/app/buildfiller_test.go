@@ -199,7 +199,7 @@ func TestFillerTagger_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 		"llm.model":              "openai/gpt-4o-mini",
 		"llm.api_key.openrouter": "provider-secret",
 	})
-	provider, _ := buildTagger(nil, set, filler.Layout{}, nil, nil, nil)
+	provider, _ := buildTagger(nil, set, filler.Layout{}, nil, nil)
 	if provider == nil {
 		t.Fatal("tagger provider is nil for configured OpenRouter")
 	}

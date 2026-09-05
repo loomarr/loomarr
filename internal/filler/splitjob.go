@@ -64,9 +64,8 @@ type SplitStore interface {
 	// SetClipComposite marks the parent as a composite on confirm (§10 V45) — the parent is KEPT,
 	// not deleted, so its segments can point back at it and a re-split stays possible.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
-	// SetClipsHeld files the fully resolved composite parent so the catalog can render it as the
-	// non-airable container for its children. A partially resolved proposal remains held.
-	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
+	// ReleaseCompositeHolds exposes the fully resolved parent as a non-airable lineage container.
+	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// MarkPipelineFiled makes full confirmation the terminal owner of the parent pipeline row.
 	// It belongs inside the confirmation saga so the application cannot fail after commit.
 	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
@@ -521,7 +520,7 @@ func (sp *Splitter) resolveEmpty(ctx context.Context, proposalID string) error {
 	// Deterministically discarding every candidate is also a terminal resolution. The parent is
 	// still the useful catalog record of the reel, so expose it as a non-airable composite instead
 	// of leaving it hidden behind a hold for a proposal that no longer exists.
-	if _, err := sp.store.SetClipsHeld(ctx, []string{clip.Path}, false, false, now); err != nil {
+	if _, err := sp.store.ReleaseCompositeHolds(ctx, []string{clip.Path}, now); err != nil {
 		return err
 	}
 	return sp.store.DeleteSplitProposal(ctx, proposalID)

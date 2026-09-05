@@ -20,10 +20,7 @@ const meta = {
   component: FillerSources,
   // ⚠ No `total`. This header reads "N of M on"; the catalog size belongs to the page header's
   // `watchLine` pill, not here — two components reporting it is how they start disagreeing.
-  // Admission is a separate source policy from acquisition, so the baseline must render both
-  // controls. Omitting this callback makes Storybook hide the auto-file switch even though the
-  // real Sources panel always wires it for controllable sources.
-  args: { sources: SOURCES, onFetch: noop, onToggleAutoAdmit: noop },
+  args: { sources: SOURCES, onFetch: noop },
   decorators: [widthFrame(760)],
 } satisfies Meta<typeof FillerSources>;
 

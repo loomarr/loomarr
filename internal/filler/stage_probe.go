@@ -30,7 +30,7 @@ type ProbeStage struct {
 	store   ProbeClipStore
 	clipDir string
 	// minDurationMs is the floor below which a file is not a usable clip. A closure so a settings
-	// change hot-applies, matching AutoFilePolicy's contract.
+	// change hot-applies.
 	minDurationMs func() int64
 	// compositeOver is `filler.autosplit.max_duration`: longer than one advert, so worth asking
 	// whether it is many. Probe owns only this cheap duration decision; the split stage owns the

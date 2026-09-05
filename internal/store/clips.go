@@ -86,13 +86,6 @@ type ClipFilter struct {
 	// /v1/search because a clip is not a provisionable title (§10), so it cannot be a
 	// federated Candidate without leaking a non-title into the LLM grounding path.
 	Query string
-	// AutoFiledOnly restricts to clips filed into the catalog WITHOUT a human (§10 V38) — the
-	// Incoming tab's audit list, "what happened while nobody was looking".
-	//
-	// ⚠ Opt-in like every other narrowing flag here, so the zero filter keeps meaning "the whole
-	// catalog". Added because the audit list was loading every clip in the install and dropping
-	// all but the auto-filed ones in Go; the predicate belongs beside the column it reads.
-	AutoFiledOnly bool
 	// IncludeComposites lifts the default exclusion of COMPOSITE clips (§10 V45).
 	//
 	// ⚠ Same polarity and same reason as IncludeHeld. A composite is a recorded break, NOT airable —
@@ -227,11 +220,11 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// be reset to the scan's zero and the clip would silently reappear. SetClipsRemoved is
 		// its only writer, exactly like RecordClipPlay is the counters'.
 		//
-		// ⚠ `held` and `auto_filed` are omitted for the SAME reason, and the failure is worse
+		// ⚠ `held` is omitted for the SAME reason, and the failure is worse
 		// (V38). The folder scan re-upserts every file it finds with `held = false`; if that rode
 		// along in the update list, one scan pass would file every held clip — clearing the
 		// review queue and putting untagged, unreviewed clips straight into channels, with no
-		// operator action and nothing in the logs. SetClipHeld is their only writer.
+		// operator action and nothing in the logs. HoldClips and terminal admission own changes.
 		//
 		// `confidence` is omitted too. A scan knows nothing about tagging, and the Clip it builds
 		// carries a zero score — so leaving it in the update list would blank a tagged clip's
@@ -273,8 +266,8 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, geographic_scope, country, market, network, station, air_date, geo_evidence, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, geographic_scope, country, market, network, station, air_date, geo_evidence, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
@@ -303,7 +296,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		c.Transcript, c.Brand, c.VisibleText, c.VisionTagged,
 		c.IsComposite, c.ParentHash,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
-		c.Held, c.Confidence, c.AutoFiled, epoch(c.UpdatedAt), epoch(clipCreatedAt(c)))
+		c.Held, c.Confidence, epoch(c.UpdatedAt), epoch(clipCreatedAt(c)))
 	if err != nil {
 		return fmt.Errorf("upsert clip %s: %w", c.Hash, err)
 	}
@@ -633,7 +626,7 @@ const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audie
 	rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
 	is_composite, parent_hash,
 	play_count, last_played_at, suggested_era,
-	removed_at, held, confidence, auto_filed, updated_at, created_at FROM clips`
+		removed_at, held, confidence, updated_at, created_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 	c, err := scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE hash = ?`), id))
@@ -904,12 +897,6 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 		// tags for pod matching.
 		where = append(where, "kind = 'commercial' AND (era = 0 OR audience = '' OR category = '')")
 	}
-	if f.AutoFiledOnly {
-		// ⚠ Bound, not a literal: `auto_filed` is INTEGER on sqlite and BOOLEAN on Postgres,
-		// the same dialect trap the `held` comparison above documents.
-		where = append(where, "auto_filed = ?")
-		args = append(args, true)
-	}
 	return where, args
 }
 
@@ -917,10 +904,8 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 // commercial-scoped UntaggedOnly filter.
 //
 // ⚠ **IncludeHeld is required, not optional** (§10 V38). Held clips are exactly the ones most in
-// need of tagging — a held clip is waiting to be tagged and then filed — and the default catalog
-// filter excludes them. Without this the tagger would silently skip every clip Loomarr had just
-// downloaded, tag only what was already filed, and nothing would ever leave the review queue by
-// itself. The auto-file threshold would appear to do nothing.
+// need of tagging — a held clip is waiting for enrichment and terminal admission — and the default
+// catalog filter excludes them. Without this the tagger would silently skip every new arrival.
 func (s *sqlStore) ListUntaggedCommercials(ctx context.Context) ([]Clip, error) {
 	return s.ListClips(ctx, ClipFilter{UntaggedOnly: true, IncludeHeld: true})
 }
@@ -1131,13 +1116,12 @@ func scanClip(sc scannable) (Clip, error) {
 		tunarrID     sql.NullString
 		lastPlayedAt int64
 		removedAt    int64
-		// ⚠ All three are real bools since 00033 rebuilt the table. `aiTagged` was an INTEGER
+		// ⚠ Both are real bools since 00033 rebuilt the table. `aiTagged` was an INTEGER
 		// scanned into an int until V38c — the rebuild made it BOOLEAN on Postgres like its two
 		// neighbours, so the old int would now fail to scan. The dialect split is per COLUMN, and
 		// a rebuild is exactly when a column can change sides.
-		aiTagged  bool
-		held      bool
-		autoFiled bool
+		aiTagged bool
+		held     bool
 		// vision_tagged is BOOLEAN (00038), the same side of the dialect split as its three
 		// neighbours above — scanned into a bool, never an int.
 		visionTagged bool
@@ -1154,7 +1138,7 @@ func scanClip(sc scannable) (Clip, error) {
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
 		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
 		&isComposite, &c.ParentHash,
-		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &autoFiled, &updatedAt, &createdAt)
+		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &updatedAt, &createdAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
 	}
@@ -1172,7 +1156,6 @@ func scanClip(sc scannable) (Clip, error) {
 		c.RemovedAt = fromEpoch(removedAt)
 	}
 	c.Held = held
-	c.AutoFiled = autoFiled
 	c.UpdatedAt = fromEpoch(updatedAt)
 	c.CreatedAt = fromEpoch(createdAt)
 	return c, nil
@@ -1262,43 +1245,57 @@ func escapeLike(term string) string {
 	return r.Replace(term)
 }
 
-// SetClipsHeld files clips into the catalog (held=false) or sends them back to the review queue
-// (held=true) — the Incoming tab's decisions (§10 V38).
-//
-// ⚠ **This, RetryClipPipeline, and the applied-admission transaction are the ONLY writers of
-// `held` and `auto_filed`**. The latter two are narrow exceptions because recovery and terminal
-// publication must change the clip and their durable pipeline/audit state atomically.
-// `UpsertClip` deliberately omits both from its DO UPDATE list, so the folder
-// scan cannot file a held clip by finding its file still on disk. Route the write anywhere else
-// and one scan pass empties the review queue into live channels.
-//
-// `autoFiled` records that no human looked at these before they became playable. It is set when
-// the threshold files them and cleared whenever a person decides — because the flag's whole job
-// is to answer "which of these did I never see?", and a human decision makes that answer no.
-//
-// Returns rows affected; unknown paths are skipped for the same reason as SetClipsRemoved — a
-// bulk action races a re-scan, and failing the batch for one stale row is worse than doing the
-// rest.
-func (s *sqlStore) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+// HoldClips sends clips to review. Ordinary callers deliberately receive no boolean that could
+// spell `held=false`; only the applied-admission transaction may release a playable clip. The
+// physical legacy auto_filed column is cleared defensively until a future table rebuild removes it.
+func (s *sqlStore) HoldClips(ctx context.Context, paths []string, at time.Time) (int, error) {
 	if len(paths) == 0 {
 		return 0, nil
 	}
 	placeholders := make([]string, len(paths))
-	args := make([]any, 0, len(paths)+3)
-	args = append(args, held, autoFiled, epoch(at))
+	args := make([]any, 0, len(paths)+1)
+	args = append(args, epoch(at))
 	for i, p := range paths {
 		placeholders[i] = "?"
 		args = append(args, p)
 	}
-	q := `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ? WHERE path IN (` +
+	q := `UPDATE clips SET held = TRUE, auto_filed = FALSE, updated_at = ? WHERE path IN (` +
 		strings.Join(placeholders, ",") + `)`
 	res, err := s.db.ExecContext(ctx, s.ph(q), args...)
 	if err != nil {
-		return 0, fmt.Errorf("set clips held: %w", err)
+		return 0, fmt.Errorf("hold clips: %w", err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("set clips held: %w", err)
+		return 0, fmt.Errorf("count held clips: %w", err)
+	}
+	return int(n), nil
+}
+
+// ReleaseCompositeHolds exposes confirmed compilation lineage without creating a publication
+// capability. The `is_composite = TRUE` predicate is load-bearing: composite rows are excluded
+// from pod selection independently of `held`, while a non-composite must use applied admission.
+func (s *sqlStore) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
+	if len(paths) == 0 {
+		return 0, nil
+	}
+	placeholders := make([]string, len(paths))
+	args := make([]any, 0, len(paths)+2)
+	args = append(args, epoch(at))
+	for i, p := range paths {
+		placeholders[i] = "?"
+		args = append(args, p)
+	}
+	args = append(args, true)
+	q := `UPDATE clips SET held = FALSE, auto_filed = FALSE, updated_at = ? WHERE path IN (` +
+		strings.Join(placeholders, ",") + `) AND is_composite = ?`
+	res, err := s.db.ExecContext(ctx, s.ph(q), args...)
+	if err != nil {
+		return 0, fmt.Errorf("release composite holds: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count released composite holds: %w", err)
 	}
 	return int(n), nil
 }
@@ -1476,8 +1473,8 @@ func (s *sqlStore) SetClipLanguage(ctx context.Context, path, language string, a
 // SetClipConfidence records the tagger's grounding-capped score (§10 V38, migration 00030).
 //
 // ⚠ **The ONLY writer of `confidence`, and until V51a there was NO writer at all.**
-// `TagSuggestion.Score` computed the number, `Tagger.Run` compared it against the auto-file
-// threshold, and then threw it away. `UpsertClip` inserts a literal 0 and correctly omits the
+// `TagSuggestion.Score` computed the number and the historical tagger then threw it away after its
+// one comparison. `UpsertClip` inserts a literal 0 and correctly omits the
 // column from its DO UPDATE, so nothing ever put a score in the database: `confidence` was 0 for
 // every clip that had ever existed, the Incoming tab's meter never rendered, and the field's own
 // doc string ("0 = never scored") was true of the entire catalog. The store's conformance case
@@ -1486,8 +1483,7 @@ func (s *sqlStore) SetClipLanguage(ctx context.Context, path, language string, a
 //
 // ⚠ The value must come from `TagSuggestion.Score`, never from the model directly. The score is a
 // ceiling set by what could be verified in the clip's own text, which the model may only lower; a
-// caller passing the model's self-assessment would defeat the grounding cap that stops a
-// fabricated era being auto-filed.
+// caller passing the model's self-assessment would defeat the grounding signal.
 //
 // Keyed by PATH, like SetClipLanguage and SetClipTranscript beside it — that is what the job
 // carries.

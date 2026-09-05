@@ -121,7 +121,7 @@ func buildFillerSubsystem(
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)
-	taggerProvider, tagger := buildTagger(st, set, layout, log, wake, metricRecorder)
+	taggerProvider, tagger := buildTagger(st, set, layout, log, metricRecorder)
 	fetcher := buildFetcher(set, layout, log, st)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder)
 	adapter := fillerServiceAdapter{

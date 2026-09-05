@@ -415,14 +415,10 @@ type ClipStore interface {
 	// TaxonomyUsage is the library-accounting read model: playable overall/per-axis coverage plus
 	// direct and descendant counts for every taxon. It is computed over the whole catalog, never a UI page.
 	TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error)
-	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
-	//
-	// ⚠ The ordinary writer of `held`/`auto_filed`; the applied-admission transaction is the
-	// cross-table exception that commits its audit and catalog effect together. For the same reason:
-	// UpsertClip omits both, which is what stops the folder scan filing a held clip by finding
-	// its file still on disk. `autoFiled` marks that no human looked before it became playable,
-	// and is cleared whenever a person decides.
-	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
+	// HoldClips can only remove content from rotation. Releasing playable content belongs to the
+	// applied-admission transaction; confirmed non-airable parents use ReleaseCompositeHolds.
+	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
+	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// UpdateClipClassification edits the non-taxonomy classifier facts (+ ai flag) — the tag
 	// editor (§10) and AI job. Taxonomy writes exclusively own category. suggestedEra records an UNGROUNDED
 	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
@@ -544,7 +540,7 @@ type FillerAcquisitionStore interface {
 	// UpsertAcquisitionArtifacts atomically records the exact downloaded-byte manifest before
 	// publication makes any artifact eligible for intake.
 	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []filler.AcquisitionArtifact) error
-	// AcquisitionArtifactForClip is the held/filed authority for a newly discovered clip.
+	// AcquisitionArtifactForClip resolves provenance and recovery state for a discovered clip.
 	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (filler.AcquisitionArtifact, bool, error)
 	// ListRecoverableAcquisitionArtifacts exposes bounded staged/published/repair work.
 	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]filler.AcquisitionArtifact, error)
@@ -640,9 +636,6 @@ type FillerSourceStore interface {
 	// the row keeps its licence and fetch history, and clips it already brought in stay in the
 	// catalog. It only withdraws the source from future searching and downloading.
 	SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error
-	// SetFillerSourceAutoAdmit changes only catalog admission (§10 V57). It does not authorize
-	// acquisition and cannot bypass grounding, matching, or per-channel exclusions.
-	SetFillerSourceAutoAdmit(ctx context.Context, id string, autoAdmit bool) error
 }
 
 // AiringStore records what actually went to air — written from playout only.
