@@ -1,8 +1,10 @@
 package releaseverify
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -87,5 +89,18 @@ func TestAndroidReleaseSourceEvidence(t *testing.T) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Android release source evidence contract: %v\n%s", err, output)
+	}
+}
+
+func TestLegacyAndroidImpactIncludesEvidenceAuthorities(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	workflow, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(workflow), "ci-impact|validate-android-release-source") {
+		t.Fatal("legacy Android impact filter must invalidate evidence when its classifier or source validator changes")
 	}
 }
