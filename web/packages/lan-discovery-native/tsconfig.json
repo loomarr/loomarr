@@ -4,5 +4,5 @@
     "lib": ["ES2023"],
     "types": ["react", "react-native"]
   },
-  "include": ["index.ts"]
+  "include": ["index.ts", "src/**/*.ts"]
 }
