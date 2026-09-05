@@ -3,7 +3,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -48,5 +50,46 @@ func TestQuarantineInspectorWithRealMedia(t *testing.T) {
 	}
 	if !reflect.DeepEqual(timedOut, fillerquarantine.Report{}) {
 		t.Fatalf("timeout returned partial report: %+v", timedOut)
+	}
+}
+
+func TestQuarantineInspectorCommandPublishesRealMediaReport(t *testing.T) {
+	fixture := newQuarantineInspectionFixture(t)
+	output := filepath.Join(t.TempDir(), "inspection.json")
+	args := []string{
+		"-inventory", fixture.inventoryPath,
+		"-ledger", fixture.ledgerPath,
+		"-download-root", fixture.mediaRoot,
+		"-prior-public", fixture.priorManifestPath,
+		"-prior-authority", fixture.priorAuthorityPath,
+		"-prior-source-root", fixture.mediaRoot,
+		"-prior-cases", "1",
+		"-max-media-wall-time", "1m",
+		"-ffmpeg", "ffmpeg",
+		"-output", output,
+		"-generated-at", fixture.generatedAt.Format(time.RFC3339),
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run(args, &stdout, &stderr); code != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	raw, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report fillerquarantine.Report
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatal(err)
+	}
+	if err := fillerquarantine.Validate(report); err != nil || report.Summary.EligibleForRightsReview != 1 {
+		t.Fatalf("summary=%+v validation=%v", report.Summary, err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(args, &stdout, &stderr); code != 1 {
+		t.Fatalf("immutable rerun code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if changed, err := os.ReadFile(output); err != nil || !bytes.Equal(changed, raw) {
+		t.Fatalf("immutable output changed: err=%v", err)
 	}
 }
