@@ -52,8 +52,10 @@ type Config struct {
 	RequestTimeout     time.Duration
 	CleanupTimeout     time.Duration
 	CleanupPoll        time.Duration
+	WarmGrace          time.Duration
 	RawCaptureBytes    int
 	PreparedP95        time.Duration
+	PreparedRawP95     time.Duration
 	Client             *http.Client
 	Validator          Validator
 	Decoder            Decoder
@@ -170,6 +172,9 @@ func (c Config) normalized() Config {
 	if c.CleanupPoll <= 0 {
 		c.CleanupPoll = 250 * time.Millisecond
 	}
+	if c.WarmGrace <= 0 {
+		c.WarmGrace = 30 * time.Second
+	}
 	if c.RawCaptureBytes <= 0 {
 		c.RawCaptureBytes = 2 << 20
 	}
@@ -181,6 +186,9 @@ func (c Config) normalized() Config {
 	}
 	if c.PreparedP95 <= 0 {
 		c.PreparedP95 = 100 * time.Millisecond
+	}
+	if c.PreparedRawP95 <= 0 {
+		c.PreparedRawP95 = 500 * time.Millisecond
 	}
 	if c.Client == nil {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -227,18 +235,25 @@ type Phase struct {
 }
 
 type ResourceSample struct {
-	Point          string  `json:"point"`
-	RSSBytes       float64 `json:"rssBytes"`
-	CPUSeconds     float64 `json:"cpuSeconds"`
-	OpenFDs        float64 `json:"openFds"`
-	Goroutines     float64 `json:"goroutines"`
-	HTTPInFlight   float64 `json:"httpInFlight"`
-	SessionsActive int     `json:"sessionsActive"`
-	ViewerActive   int     `json:"viewerActive"`
-	GraceIdle      int     `json:"graceIdle"`
-	TranscodeCost  int     `json:"transcodeCost"`
-	Capacity       int     `json:"capacity"`
-	FFmpegRunning  int     `json:"ffmpegRunning"`
+	Point            string  `json:"point"`
+	RSSBytes         float64 `json:"rssBytes"`
+	CPUSeconds       float64 `json:"cpuSeconds"`
+	OpenFDs          float64 `json:"openFds"`
+	Goroutines       float64 `json:"goroutines"`
+	HTTPInFlight     float64 `json:"httpInFlight"`
+	SessionsActive   int     `json:"sessionsActive"`
+	ViewerActive     int     `json:"viewerActive"`
+	GraceIdle        int     `json:"graceIdle"`
+	TranscodeCost    int     `json:"transcodeCost"`
+	Capacity         int     `json:"capacity"`
+	FFmpegRunning    int     `json:"ffmpegRunning"`
+	PreparedChannels int     `json:"preparedChannels"`
+	ReadyChannels    int     `json:"readyChannels"`
+	ChannelHealth    int     `json:"channelHealth"`
+	StalledChannels  int     `json:"stalledChannels"`
+	GPUVRAMGiB       float64 `json:"gpuVramGiB"`
+	LLMVRAMGiB       float64 `json:"llmVramGiB"`
+	GPUContended     bool    `json:"gpuContended"`
 }
 
 type Report struct {

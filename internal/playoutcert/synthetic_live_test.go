@@ -39,6 +39,7 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
 		Channels: channels, Certify: true, Concurrency: 12, SurfRounds: 1, FanInViewers: 4,
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
+		WarmGrace:       time.Second,
 		RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
 		Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{},
 	}
@@ -51,6 +52,9 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	}
 	if report.PhaseMust("configured").PreparedHits != 100 {
 		t.Fatalf("prepared hits = %d", report.PhaseMust("configured").PreparedHits)
+	}
+	if preparedRaw := report.PhaseMust("prepared_raw"); preparedRaw.Attempts != 4 || preparedRaw.Failures != 0 || preparedRaw.P95MS > 500 {
+		t.Fatalf("prepared raw phase = %+v", preparedRaw)
 	}
 	if report.PhaseMust("overload").HTTPClasses["http_503"] == 0 {
 		t.Fatalf("overload was not bounded: %+v", report.PhaseMust("overload"))

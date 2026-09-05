@@ -146,9 +146,31 @@ type sessionSnapshot struct {
 	Sessions      []json.RawMessage `json:"sessions"`
 }
 
+type playoutStatusSnapshot struct {
+	Running bool `json:"running"`
+	GPU     struct {
+		VRAMGiB    float64 `json:"vramGiB"`
+		LLMVRAMGiB float64 `json:"llmVramGiB"`
+		Contended  bool    `json:"contended"`
+	} `json:"gpu"`
+	Channels []struct {
+		Health string `json:"health"`
+	} `json:"channels"`
+	Prepared struct {
+		Channels      int `json:"channels"`
+		ReadyChannels int `json:"readyChannels"`
+	} `json:"prepared"`
+}
+
 func (e *endpoint) sessions(ctx context.Context) (sessionSnapshot, error) {
 	var snapshot sessionSnapshot
 	err := e.getJSON(ctx, "/v1/playout/sessions", true, &snapshot)
+	return snapshot, err
+}
+
+func (e *endpoint) playoutStatus(ctx context.Context) (playoutStatusSnapshot, error) {
+	var snapshot playoutStatusSnapshot
+	err := e.getJSON(ctx, "/v1/playout/status", true, &snapshot)
 	return snapshot, err
 }
 
@@ -328,10 +350,23 @@ func (e *endpoint) sample(ctx context.Context, point string) (ResourceSample, er
 	if err != nil {
 		return ResourceSample{}, err
 	}
+	status, err := e.playoutStatus(ctx)
+	if err != nil {
+		return ResourceSample{}, err
+	}
+	stalled := 0
+	for _, channel := range status.Channels {
+		if channel.Health == "stalled" {
+			stalled++
+		}
+	}
 	return ResourceSample{
 		Point: point, RSSBytes: metrics["process_resident_memory_bytes"], CPUSeconds: metrics["process_cpu_seconds_total"],
 		OpenFDs: metrics["process_open_fds"], Goroutines: metrics["go_goroutines"], HTTPInFlight: metrics["loomarr_http_requests_in_flight"],
 		SessionsActive: sessions.Active, ViewerActive: sessions.ViewerActive, GraceIdle: sessions.GraceIdle,
 		TranscodeCost: sessions.TranscodeCost, Capacity: sessions.Capacity, FFmpegRunning: ffmpeg,
+		PreparedChannels: status.Prepared.Channels, ReadyChannels: status.Prepared.ReadyChannels,
+		ChannelHealth: len(status.Channels), StalledChannels: stalled,
+		GPUVRAMGiB: status.GPU.VRAMGiB, LLMVRAMGiB: status.GPU.LLMVRAMGiB, GPUContended: status.GPU.Contended,
 	}, nil
 }

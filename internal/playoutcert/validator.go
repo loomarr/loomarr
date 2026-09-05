@@ -26,9 +26,26 @@ func (d FFmpegDecoder) FirstFrame(ctx context.Context, input io.Reader, maxBytes
 	}
 	var capture bytes.Buffer
 	limited := io.LimitReader(input, int64(maxBytes))
-	cmd := exec.CommandContext(ctx, path, "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-map", "0:v:0", "-frames:v", "1", "-f", "null", "-")
-	cmd.Stdin = io.TeeReader(limited, &capture)
-	if err := cmd.Run(); err != nil {
+	cmd := exec.CommandContext(ctx, path,
+		"-hide_banner", "-loglevel", "error",
+		"-probesize", "256k", "-analyzeduration", "500000",
+		"-i", "pipe:0", "-map", "0:v:0", "-frames:v", "1", "-f", "null", "-")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, errors.New("ffmpeg decoder stdin unavailable")
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, errors.New("ffmpeg decoder did not start")
+	}
+	copyDone := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(stdin, io.TeeReader(limited, &capture))
+		_ = stdin.Close()
+		close(copyDone)
+	}()
+	waitErr := cmd.Wait()
+	<-copyDone
+	if waitErr != nil {
 		return capture.Bytes(), errors.New("ffmpeg did not decode a first video frame")
 	}
 	if capture.Len() == 0 {

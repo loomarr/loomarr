@@ -2,6 +2,7 @@ package playoutcert
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -19,6 +20,17 @@ func HumanSummary(report Report) string {
 			phase.Name, phase.Attempts, phase.Failures, phase.P50MS, phase.P95MS, phase.P99MS)
 		if phase.PreparedHits > 0 {
 			_, _ = fmt.Fprintf(&out, " prepared=%d", phase.PreparedHits)
+		}
+		if phase.FirstByte.Attempts > 0 {
+			_, _ = fmt.Fprintf(&out, " first-byte-p95=%.1fms", phase.FirstByte.P95MS)
+		}
+		if len(phase.HTTPClasses) > 1 || phase.Failures > 0 {
+			classes := make([]string, 0, len(phase.HTTPClasses))
+			for class, count := range phase.HTTPClasses {
+				classes = append(classes, fmt.Sprintf("%s:%d", class, count))
+			}
+			sort.Strings(classes)
+			_, _ = fmt.Fprintf(&out, " classes=%s", strings.Join(classes, ","))
 		}
 		out.WriteByte('\n')
 	}

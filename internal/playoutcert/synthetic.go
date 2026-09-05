@@ -156,6 +156,8 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	target.diagnostics = processManager
 	processLog := diagnostics.NewProcessLog(st, diagnostics.ProcessReadOptions{OutputDir: filepath.Join(root, "diagnostics")})
 	preparedResolver := syntheticPreparedResolver{specs: preparedSpecs, started: time.Now().Add(-2 * time.Second)}
+	preparedCount := len(preparedIndexes)
+	preparedStatus := syntheticPreparedStatus{count: preparedCount}
 	preparedOrigin := playout.NewPreparedOrigin(library, preparedResolver)
 	preparedBlock := preparedOrigin.MPEGTSBlockSource(ffmpeg, logger, processManager)
 	liveResolver := syntheticLiveResolver{source: source}
@@ -180,7 +182,8 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	handler := api.Router(logger, api.Options{
 		Store: st, Auth: api.NewTokenAuthorizer(admin), Log: logger, Metrics: recorder,
 		PlayoutSecret: func() string { return device }, Playout: origin, PlayoutObserver: manager,
-		PlayoutResolver: liveResolver,
+		PreparedObserver: preparedStatus,
+		PlayoutResolver:  liveResolver,
 		PlayoutEncoder: func(encodeCtx context.Context, args []string, progress func(playout.Progress)) (*playout.Process, error) {
 			spec, _ := diagnostics.ProcessSpecFromContext(encodeCtx)
 			return playout.StartObserved(encodeCtx, ffmpeg, args, logger, progress, processManager, spec)
@@ -248,6 +251,18 @@ func (t *SyntheticTarget) Close(ctx context.Context) error {
 type syntheticPreparedResolver struct {
 	specs   map[string]prepared.Specification
 	started time.Time
+}
+
+type syntheticPreparedStatus struct{ count int }
+
+func (s syntheticPreparedStatus) Status() prepared.PlannerStatus {
+	return prepared.PlannerStatus{
+		Available: true, LastRunAt: time.Now(),
+		Readiness: prepared.ReadinessSummary{
+			Channels: s.count, ReadyChannels: s.count,
+			ScheduledBindings: s.count, ReadyBindings: s.count,
+		},
+	}
 }
 
 func (r syntheticPreparedResolver) ResolvePrepared(_ context.Context, request playout.TuneRequest) (playout.PreparedWindow, bool, error) {

@@ -66,6 +66,7 @@ type Process struct {
 
 	finishOnce sync.Once
 	ioWG       sync.WaitGroup
+	done       chan struct{}
 
 	log *slog.Logger
 
@@ -145,7 +146,7 @@ func startProcess(
 		}
 	}
 
-	p := &Process{Stdout: stdout, Stdin: stdin, log: log}
+	p := &Process{Stdout: stdout, Stdin: stdin, log: log, done: make(chan struct{})}
 	supervised, err := proctree.Start(ctx, cmd)
 	if err != nil {
 		progress.closeFailure()
@@ -159,6 +160,17 @@ func startProcess(
 		return nil, fmt.Errorf("start ffmpeg: %w", err)
 	}
 	p.proc = supervised
+	// proctree owns the OS tree, while Process owns pipe draining and retained
+	// diagnostics. Bind cancellation at this outer lifecycle too: otherwise the
+	// tree exits but a caller blocked above the process wrapper can leave its
+	// diagnostic run permanently marked running.
+	go func() {
+		select {
+		case <-ctx.Done():
+			p.Stop()
+		case <-p.done:
+		}
+	}()
 	if manager != nil {
 		if spec.Executable == "" {
 			spec.Executable = bin
@@ -417,6 +429,9 @@ func (p *Process) ProcessRunID() string {
 
 func (p *Process) finish(err error) {
 	p.finishOnce.Do(func() {
+		if p.done != nil {
+			close(p.done)
+		}
 		if p.run == nil {
 			return
 		}

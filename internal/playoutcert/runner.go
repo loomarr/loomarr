@@ -83,11 +83,22 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		return observation{duration: elapsed, hit: hit, class: class}
 	})
 	report.Phases = append(report.Phases, phaseFrom("fan_in", fanObs))
+	preparedRaw, preparedRawSample := rawBurst(ctx, endpoint, config, selectBurstIndexes(preparedIndexes, target.Capacity))
+	preparedRawPhase := phaseFrom("prepared_raw", preparedRaw)
+	report.Phases = append(report.Phases, preparedRawPhase)
+	if preparedRawSample.Capacity > 0 {
+		report.Resources = append(report.Resources, preparedRawSample)
+	}
 
 	raw, rawSample := rawBurst(ctx, endpoint, config, selectBurstIndexes(transcodeIndexes, target.Capacity))
 	report.Phases = append(report.Phases, phaseFrom("raw_capacity", raw))
 	if rawSample.Capacity > 0 {
 		report.Resources = append(report.Resources, rawSample)
+	}
+	recoveryObs, recoverySample := waitForConvergence(ctx, endpoint, config, baseline, min(config.CleanupTimeout, config.WarmGrace+10*time.Second))
+	report.Phases = append(report.Phases, phaseFrom("capacity_recovery", []observation{recoveryObs}))
+	if recoverySample.Capacity > 0 {
+		report.Resources = append(report.Resources, recoverySample)
 	}
 	overload, overloadSample := rawBurst(ctx, endpoint, config, selectBurstIndexes(transcodeIndexes, target.Capacity+1))
 	overloadPhase := phaseFrom("overload", overload)
@@ -100,33 +111,8 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		report.Resources = append(report.Resources, overloadSample)
 	}
 
-	cleanupStarted := time.Now()
-	cleanupClass := "cleanup_timeout"
-	var finalSample ResourceSample
-	for time.Since(cleanupStarted) <= config.CleanupTimeout {
-		// The harness itself fans out HTTP connections during the bursts. Retire
-		// idle client sockets before judging the server's post-load fd/goroutine
-		// baseline, otherwise the measurement counts its own keep-alive pool as a
-		// Loomarr leak.
-		config.Client.CloseIdleConnections()
-		sample, sampleErr := endpoint.sample(ctx, "final")
-		if sampleErr == nil && resourceConverged(sample, baseline) {
-			finalSample = sample
-			cleanupClass = "ok"
-			break
-		}
-		select {
-		case <-ctx.Done():
-			cleanupClass = "cancelled"
-			break
-		case <-time.After(config.CleanupPoll):
-		}
-		if cleanupClass == "cancelled" {
-			break
-		}
-	}
-	cleanupObs := []observation{{duration: time.Since(cleanupStarted), class: cleanupClass}}
-	report.Phases = append(report.Phases, phaseFrom("cleanup", cleanupObs))
+	cleanupObs, finalSample := waitForConvergence(ctx, endpoint, config, baseline, config.CleanupTimeout)
+	report.Phases = append(report.Phases, phaseFrom("cleanup", []observation{cleanupObs}))
 	if finalSample.Capacity == 0 {
 		sample, sampleErr := endpoint.sample(ctx, "final")
 		if sampleErr == nil {
@@ -150,6 +136,9 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	if time.Duration(configured.P95MS*float64(time.Millisecond)) > config.PreparedP95 {
 		report.Failures = append(report.Failures, "prepared_p95_exceeded")
 	}
+	if time.Duration(preparedRawPhase.P95MS*float64(time.Millisecond)) > config.PreparedRawP95 {
+		report.Failures = append(report.Failures, "prepared_raw_p95_exceeded")
+	}
 	for _, sample := range report.Resources {
 		if sample.Capacity > 0 && sample.TranscodeCost > sample.Capacity {
 			report.Failures = append(report.Failures, "capacity_oversubscribed")
@@ -165,6 +154,35 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	report.CompletedAt = config.Now()
 	report.Certified = config.Certify && len(report.Failures) == 0
 	return report, nil
+}
+
+func waitForConvergence(ctx context.Context, endpoint *endpoint, config Config, baseline ResourceSample, timeout time.Duration) (observation, ResourceSample) {
+	started := time.Now()
+	class := "cleanup_timeout"
+	var converged ResourceSample
+	for time.Since(started) <= timeout {
+		// The harness itself fans out HTTP connections during the bursts. Retire
+		// idle client sockets before judging the server's post-load fd/goroutine
+		// baseline, otherwise the measurement counts its own keep-alive pool as a
+		// Loomarr leak.
+		config.Client.CloseIdleConnections()
+		sample, sampleErr := endpoint.sample(ctx, "converged")
+		if sampleErr == nil && resourceConverged(sample, baseline) {
+			sample.Point = "converged"
+			converged = sample
+			class = "ok"
+			break
+		}
+		select {
+		case <-ctx.Done():
+			class = "cancelled"
+		case <-time.After(config.CleanupPoll):
+		}
+		if class == "cancelled" {
+			break
+		}
+	}
+	return observation{duration: time.Since(started), class: class}, converged
 }
 
 func resourceConverged(current, baseline ResourceSample) bool {
@@ -276,10 +294,17 @@ func rawBurst(ctx context.Context, endpoint *endpoint, config Config, indexes []
 			}
 			firstByte := time.Since(started)
 			capture, decodeErr := config.Decoder.FirstFrame(ctx, io.MultiReader(bytes.NewReader(first[:]), resp.Body), config.RawCaptureBytes)
+			decoded := time.Since(started)
 			shape := MediaShape{}
 			class := "ok"
 			if decodeErr != nil {
 				class = "decode_failed"
+			}
+			if class == "ok" {
+				capture, err = completeValidationCapture(resp.Body, capture, config.RawCaptureBytes)
+				if err != nil {
+					class = "body_failed"
+				}
 			}
 			if class == "ok" && config.Validator != nil {
 				shape, err = config.Validator.Validate(ctx, capture)
@@ -287,7 +312,7 @@ func rawBurst(ctx context.Context, endpoint *endpoint, config Config, indexes []
 					class = "invalid_media"
 				}
 			}
-			results[position] = observation{duration: time.Since(started), firstByte: firstByte, class: class, media: shape}
+			results[position] = observation{duration: decoded, firstByte: firstByte, class: class, media: shape}
 			ready <- struct{}{}
 			select {
 			case <-release:
@@ -306,4 +331,18 @@ func rawBurst(ctx context.Context, endpoint *endpoint, config Config, indexes []
 	close(release)
 	wg.Wait()
 	return results, sample
+}
+
+func completeValidationCapture(body io.Reader, capture []byte, maxBytes int) ([]byte, error) {
+	target := min(maxBytes, 256<<10)
+	if len(capture) >= target {
+		return append([]byte(nil), capture[:target]...), nil
+	}
+	out := make([]byte, len(capture), target)
+	copy(out, capture)
+	additional := make([]byte, target-len(out))
+	if _, err := io.ReadFull(body, additional); err != nil {
+		return out, err
+	}
+	return append(out, additional...), nil
 }

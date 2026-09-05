@@ -59,7 +59,10 @@ func TestRunExercisesSignedPreparedSurfRawAndCleanupWithoutLeakingPrivateInputs(
 	if report.Target.ConfiguredChannels != 100 || report.Target.Capacity != 4 {
 		t.Fatalf("target = %+v", report.Target)
 	}
-	for _, name := range []string{"mint", "configured", "surf", "fan_in", "raw_capacity", "overload", "cleanup"} {
+	if report.Resources[0].PreparedChannels != 100 || report.Resources[0].ReadyChannels != 100 {
+		t.Fatalf("baseline prepared readiness = %+v", report.Resources[0])
+	}
+	for _, name := range []string{"mint", "configured", "surf", "fan_in", "prepared_raw", "raw_capacity", "capacity_recovery", "overload", "cleanup"} {
 		phase, ok := report.Phase(name)
 		if !ok || phase.Attempts == 0 || phase.Failures != 0 {
 			t.Fatalf("phase %q = %+v, present=%t", name, phase, ok)
