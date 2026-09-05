@@ -26,19 +26,26 @@ func runLive(channelCount int, ffmpeg string) error {
 	if _, err := exec.LookPath(ffmpeg); err != nil {
 		return err
 	}
-	hlsBase, err := os.MkdirTemp("", "loomarr-hotset-live-")
+	workRoot, err := os.MkdirTemp("", "loomarr-hotset-live-")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.RemoveAll(hlsBase) }()
+	defer func() { _ = os.RemoveAll(workRoot) }()
+	hlsBase := filepath.Join(workRoot, "hls")
+	if err := os.Mkdir(hlsBase, 0o755); err != nil {
+		return err
+	}
+	fixture := filepath.Join(workRoot, "copy-source.ts")
+	if err := generateMPEGTSFixture(ffmpeg, fixture); err != nil {
+		return err
+	}
 
 	var manager *playout.Manager
 	spawn := func(ctx context.Context, channelID string, plan playout.EncodePlan) (*playout.Process, error) {
-		proc, startErr := playout.Start(ctx, ffmpeg, syntheticMPEGTSArgs(), nil, nil)
+		proc, startErr := playout.Start(ctx, ffmpeg, copyMPEGTSArgs(fixture), nil, nil)
 		if startErr == nil {
-			// The synthetic ffmpeg is standing in for a copy-compatible source. Reporting copy here is
-			// what reproduces production accounting: it releases the conservative admission slot while
-			// leaving the very real source and HLS processes alive.
+			// The fixture source and HLS packager both stream-copy. Reporting copy reproduces production
+			// accounting: it releases the conservative admission slot while leaving both real processes.
 			manager.ReportProgram(channelID, plan, playout.EncoderSoftware, false, playout.Progress{})
 		}
 		return proc, startErr
@@ -136,16 +143,30 @@ func runLive(channelCount int, ffmpeg string) error {
 	return nil
 }
 
-func syntheticMPEGTSArgs() []string {
-	return []string{
+func generateMPEGTSFixture(ffmpeg, destination string) error {
+	args := []string{
 		"-hide_banner", "-loglevel", "error", "-nostdin",
-		"-re", "-f", "lavfi", "-i", "testsrc2=size=128x72:rate=10",
-		"-re", "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000",
+		"-f", "lavfi", "-i", "testsrc2=size=128x72:rate=10",
+		"-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000", "-t", "8",
 		"-map", "0:v:0", "-map", "1:a:0",
 		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-threads", "1",
 		"-pix_fmt", "yuv420p", "-g", "10", "-keyint_min", "10", "-sc_threshold", "0",
 		"-b:v", "160k", "-maxrate", "160k", "-bufsize", "320k",
 		"-c:a", "aac", "-b:a", "32k", "-ac", "2", "-ar", "48000",
+		"-f", "mpegts", "-mpegts_flags", "+resend_headers", destination,
+	}
+	if body, err := exec.Command(ffmpeg, args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("generate copy fixture: %w: %s", err, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func copyMPEGTSArgs(source string) []string {
+	return []string{
+		"-hide_banner", "-loglevel", "error", "-nostdin",
+		"-stream_loop", "-1", "-re", "-i", source,
+		"-map", "0:v:0", "-map", "0:a:0",
+		"-c", "copy",
 		"-f", "mpegts", "-mpegts_flags", "+resend_headers", "pipe:1",
 	}
 }
