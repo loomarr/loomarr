@@ -178,7 +178,20 @@ func valueOrDash(value string) string {
 
 func main() {
 	burst := flag.Int("burst", 0, "run this many surf actions, print the final state, and exit")
+	live := flag.Bool("live", false, "use real synthetic ffmpeg sources and production HLS remuxes")
+	ffmpeg := flag.String("ffmpeg", "ffmpeg", "ffmpeg binary used by the live prototype")
 	flag.Parse()
+	if *live {
+		count := *burst
+		if count <= 0 {
+			count = 50
+		}
+		if err := runLive(count, *ffmpeg); err != nil {
+			fmt.Fprintf(os.Stderr, "live prototype: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	p := newPrototype()
 	defer p.close()
 	if *burst > 0 {

@@ -93,3 +93,8 @@ include mk/android.mk
 # PROTOTYPE only: drive the warm-session hot set (optional ARGS=-burst=50).
 prototype-playout-hotset:
 	@$(GO) run ./cmd/prototype-playout-hotset $(ARGS)
+
+.PHONY: prototype-playout-hotset-live
+# PROTOTYPE only: battle-test the warm-session hot set with real ffmpeg + HLS processes.
+prototype-playout-hotset-live:
+	@$(GO) run ./cmd/prototype-playout-hotset -live -burst=$${CHANNELS:-50}
