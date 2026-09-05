@@ -36,6 +36,9 @@ type PlayoutTelemetry struct {
 	// retained only inside its warm grace interval and may be reclaimed to admit foreground work.
 	ViewerActiveSessions int `json:"viewerActiveSessions"`
 	GraceIdleSessions    int `json:"graceIdleSessions"`
+	// TranscodeCost is the number of live sessions currently consuming video-transcode slots.
+	// Copy sessions remain visible in Active but contribute zero here.
+	TranscodeCost int `json:"transcodeCost"`
 	// Running reports whether internal playout is wired at all. False on a Tunarr-only
 	// install, where an empty session list means "not our job" rather than "nothing playing" —
 	// a distinction the panel has to draw or it reads as a fault.
@@ -84,11 +87,12 @@ func (s *Server) playoutTelemetry(now time.Time) PlayoutTelemetry {
 		// difference here is "no data" versus "no streams", which the panel renders differently.
 		stats = []playout.SessionStat{}
 	}
-	viewerActive := 0
+	viewerActive, transcodeCost := 0, 0
 	for _, stat := range stats {
 		if stat.Viewers > 0 {
 			viewerActive++
 		}
+		transcodeCost += stat.TranscodeCost
 	}
 	return PlayoutTelemetry{
 		Sessions:             stats,
@@ -96,6 +100,7 @@ func (s *Server) playoutTelemetry(now time.Time) PlayoutTelemetry {
 		Capacity:             s.playoutObserver.Capacity(),
 		ViewerActiveSessions: viewerActive,
 		GraceIdleSessions:    len(stats) - viewerActive,
+		TranscodeCost:        transcodeCost,
 		Running:              true,
 	}
 }

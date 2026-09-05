@@ -2739,6 +2739,20 @@ and viewer telemetry see real demand while bytes continue feeding the warm remux
 session closes the sink and tears down its remux; an HLS remux with a live manifest request marks the
 lease active and remains protected.
 
+The transcode budget and total retained-session footprint are separate limits. Process-wide,
+`playout.Manager` retains at most **two proven-warm grace-idle sessions** across every EncodePlan,
+including video-copy sessions whose transcode cost is zero. Two matches the only speculative demand
+the Watch controller creates—the previous and next Channels beside the active one—and is a fixed
+lifecycle invariant rather than an operator setting. Configured Channel and guide counts never create
+sessions by themselves.
+
+Every transition into proven-warm idle re-evaluates that hot set. When it exceeds two, the Manager
+closes the least-recently-viewed session at the exact snapshotted idle generation; a concurrent
+reattach makes that close harmlessly fail, and the Manager re-snapshots until the invariant holds.
+Viewer-active sessions are never candidates. Closing an idle parent also closes its internal sinks,
+so its HLS remux, file descriptors, and scratch assets retire together. Immediate same-session
+reattach remains warm whenever that session is one of the two retained entries.
+
 Grace begins only after the parent has emitted transport. The last viewer leaving records one idle
 generation and its timestamp; reattachment invalidates that generation, and a later detach creates a
 new one. Both the grace callback and capacity reclamation close a session only when that exact idle
@@ -2747,10 +2761,12 @@ an attach/detach ABA cycle. A zero-byte session is not warm and closes immediate
 conservative reservation.
 
 The dashboard reports the complete live-session count (`active`) for compatibility and exposes
-viewer-active and grace-idle session counts separately; their sum is `active`. Its `capacity`
-denominator remains the live transcode budget, shrinking when a model goes resident and growing when
-it unloads. Viewer-demand transitions publish the same full `playout` snapshot over SSE, so the live
-panel does not wait for a later session start or stop to learn that a warm channel became idle.
+viewer-active and grace-idle session counts separately; their sum is `active`. `transcodeCost` is the
+sum of the live sessions' current video-transcode admission cost, so copy sessions remain visible in
+the total without pretending to consume an encode slot. Its `capacity` denominator remains the live
+transcode budget, shrinking when a model goes resident and growing when it unloads. Viewer-demand
+transitions publish the same full `playout` snapshot over SSE, so the live panel does not wait for a
+later session start or stop to learn that a warm channel became idle.
 
 **Watching from Loomarr's own UI (V46).** The Web UI plays a channel in the browser directly — a
 **Watch** sub-section on the channel-detail page (§12), also reachable from the guide's per-row menu.

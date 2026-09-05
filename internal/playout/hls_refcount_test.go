@@ -553,6 +553,52 @@ func TestHLSManager_AtCapacityReclaimsIdleWarmSession(t *testing.T) {
 	}
 }
 
+// Aggregate warm-session eviction has to retire the delivery adapter as well as the parent. An
+// idle HLS remux still owns a sink, process, and scratch tree even though its lease reports zero
+// viewer demand; closing the LRU parent must cascade through that sink and make stale assets vanish.
+func TestHLSManager_WarmIdleHotSetEvictionRetiresRemuxAssets(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	sessions := testManager(t, spawn, 0, time.Minute)
+	m := newTestHLSManager(t, sessions)
+	m.grace = time.Minute
+
+	for _, channelID := range []string{"ch1", "ch2", "ch3"} {
+		_, detach, err := m.Playlist(channelID, PlanFull)
+		if err != nil {
+			t.Fatalf("start %s HLS: %v", channelID, err)
+		}
+		if _, err := encoder(channelID).w.Write([]byte("transport")); err != nil {
+			t.Fatal(err)
+		}
+		sessions.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		// The fan-out pump is asynchronous; allow it to publish the byte before release makes the
+		// HLS sink idle. This mirrors the established capacity-reclamation test above.
+		time.Sleep(20 * time.Millisecond)
+		detach()
+	}
+
+	select {
+	case <-encoder("ch1").stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("oldest idle HLS parent was not stopped")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, ok := m.AssetPath("ch1", PlanFull, hlsPlaylistName); !ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("warm hot-set eviction left the HLS remux and assets alive")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for _, channelID := range []string{"ch2", "ch3"} {
+		if _, ok := m.AssetPath(channelID, PlanFull, hlsPlaylistName); !ok {
+			t.Fatalf("newer warm remux %s was retired before the LRU", channelID)
+		}
+	}
+}
+
 // The HLS remux is an internal sink, not a viewer. Once the manifest request releases its client
 // lease, the underlying session must report zero active viewers even though the remux stays warm and
 // continues consuming transport through its own grace interval.

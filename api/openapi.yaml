@@ -5727,6 +5727,9 @@ components:
           items:
             $ref: "#/components/schemas/SessionStat"
           type: array
+        transcodeCost:
+          format: int64
+          type: integer
         viewerActiveSessions:
           format: int64
           type: integer
@@ -5736,6 +5739,7 @@ components:
         - capacity
         - viewerActiveSessions
         - graceIdleSessions
+        - transcodeCost
         - running
       type: object
     PodEntryDTO:
@@ -7585,6 +7589,9 @@ components:
           type: number
         target:
           type: string
+        transcodeCost:
+          format: int64
+          type: integer
         uptimeMs:
           format: int64
           type: integer
@@ -7601,6 +7608,7 @@ components:
         - bufferedMs
         - uptimeMs
         - coldStartMs
+        - transcodeCost
       type: object
     SetFillerSourceEnabledInputBody:
       additionalProperties: false
