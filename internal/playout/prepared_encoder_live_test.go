@@ -14,6 +14,12 @@ import (
 	"github.com/loomarr/loomarr/internal/prepared"
 )
 
+type staticPreparedSourceAccess struct{ input prepared.Input }
+
+func (a staticPreparedSourceAccess) OpenInput(context.Context, prepared.Source) (prepared.Input, error) {
+	return a.input, nil
+}
+
 // This is the tagged proof that the shared live-encoder policy also produces a complete prepared
 // publication on the hardware this host actually detected. It skips software-only machines.
 func TestLivePreparedPackagerUsesDetectedHardware(t *testing.T) {
@@ -52,15 +58,14 @@ func TestLivePreparedPackagerUsesDetectedHardware(t *testing.T) {
 	packager := prepared.NewFFmpegPackager(bin, func(r prepared.RenditionContract) (prepared.VideoPlan, error) {
 		return PreparedVideoArgs(capability.Chosen, r)
 	})
-	readiness, err := prepared.OpenReadiness(library)
-	if err != nil {
-		t.Fatal(err)
-	}
 	preparer := prepared.NewPreparer(prepared.PreparerDependencies{
-		Library: library, Packager: packager, Readiness: readiness,
+		Library: library, Packager: packager, Access: staticPreparedSourceAccess{input: prepared.LocalInput(source)},
 	})
 	publication, err := preparer.Prepare(ctx, prepared.Request{
-		Source: prepared.Source{Path: source}, Rendition: rendition,
+		Source: prepared.Source{
+			ItemID: "hardware-test-item", SourceID: "hardware-test-source", Revision: "generated-v1",
+		},
+		Rendition: rendition,
 	})
 	if err != nil {
 		t.Fatalf("prepare with %s: %v", capability.Chosen, err)
