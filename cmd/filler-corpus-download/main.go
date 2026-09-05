@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/sha1"
@@ -97,6 +98,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	plan, err := planDownloads(inv, approvals, opts)
 	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-download:", err)
+		return 1
+	}
+	if err := requireNewLedger(opts.ledgerPath); err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download:", err)
 		return 1
 	}
@@ -402,11 +407,20 @@ func readJSONL[T any](path string) ([]T, error) {
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for line := 1; scanner.Scan(); line++ {
-		if len(scanner.Bytes()) == 0 {
+		raw := bytes.TrimSpace(scanner.Bytes())
+		if len(raw) == 0 {
 			continue
 		}
 		var value T
-		if err := json.Unmarshal(scanner.Bytes(), &value); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&value); err != nil {
+			return nil, fmt.Errorf("line %d: %w", line, err)
+		}
+		if err := decoder.Decode(&struct{}{}); err != io.EOF {
+			if err == nil {
+				err = fmt.Errorf("trailing JSON value")
+			}
 			return nil, fmt.Errorf("line %d: %w", line, err)
 		}
 		values = append(values, value)
@@ -414,15 +428,31 @@ func readJSONL[T any](path string) ([]T, error) {
 	return values, scanner.Err()
 }
 
+func requireNewLedger(path string) error {
+	_, err := os.Lstat(path)
+	switch {
+	case err == nil:
+		return fmt.Errorf("ledger output already exists")
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	default:
+		return fmt.Errorf("inspect ledger output: %w", err)
+	}
+}
+
 func writeJSON(path string, value any) error {
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(filepath.Dir(path), ".filler-corpus-ledger-*")
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o750); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(absolute), ".filler-corpus-ledger-*")
 	if err != nil {
 		return err
 	}
@@ -443,7 +473,11 @@ func writeJSON(path string, value any) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tempName, path); err != nil {
+	if err := os.Link(tempName, absolute); err != nil {
+		return fmt.Errorf("publish immutable download ledger: %w", err)
+	}
+	if err := os.Remove(tempName); err != nil {
+		_ = os.Remove(absolute)
 		return err
 	}
 	ok = true

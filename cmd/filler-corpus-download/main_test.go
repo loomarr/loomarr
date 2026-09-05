@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -254,6 +258,96 @@ func TestDownloadCountsInitialRequestAndRedirect(t *testing.T) {
 	}
 	if _, err := os.Stat(blockedPath); !os.IsNotExist(err) {
 		t.Fatalf("blocked download published a file: %v", err)
+	}
+}
+
+func TestReadJSONLRejectsUnknownAndTrailingFields(t *testing.T) {
+	dir := t.TempDir()
+	for name, raw := range map[string]string{
+		"unknown":  `{"caseId":"case","unknown":true}`,
+		"trailing": `{} {}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(dir, name+".jsonl")
+			if err := os.WriteFile(path, []byte(raw+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := readJSONL[fillercorpus.RightsDecision](path); err == nil {
+				t.Fatal("non-strict rights decision was accepted")
+			}
+		})
+	}
+}
+
+func TestRunRefusesExistingLedgerBeforeDownload(t *testing.T) {
+	retrieved := time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC)
+	inv := downloadableInventory(retrieved, "immutable", "https://creativecommons.org/publicdomain/mark/1.0/")
+	inventoryRaw, err := json.Marshal(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(inventoryRaw)
+	approval := approvalFor(inv, retrieved)
+	approval.InventorySHA256 = hex.EncodeToString(digest[:])
+	approvalRaw, err := json.Marshal(approval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	inventoryPath := filepath.Join(dir, "inventory.json")
+	approvalsPath := filepath.Join(dir, "approvals.jsonl")
+	ledgerPath := filepath.Join(dir, "ledger.json")
+	mediaDir := filepath.Join(dir, "media")
+	if err := os.WriteFile(inventoryPath, inventoryRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(approvalsPath, append(approvalRaw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte("existing immutable ledger\n")
+	if err := os.WriteFile(ledgerPath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--inventory", inventoryPath,
+		"--rights-approvals", approvalsPath,
+		"--out-dir", mediaDir,
+		"--ledger", ledgerPath,
+		"--user-agent", "loomarr-test/1.0 (test@example.invalid)",
+		"--generated-at", retrieved.Add(2 * time.Minute).Format(time.RFC3339),
+		"--max-requests", "1",
+		"--max-items", "1",
+		"--max-bytes", "1024",
+		"--delay", "500ms",
+		"--profile", "development",
+	}, &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "ledger output already exists") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if got, err := os.ReadFile(ledgerPath); err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("existing ledger changed: got=%q err=%v", got, err)
+	}
+	if _, err := os.Stat(mediaDir); !os.IsNotExist(err) {
+		t.Fatalf("download side effect occurred before refusal: %v", err)
+	}
+}
+
+func TestWriteJSONCannotReplacePublishedLedger(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ledger.json")
+	first := downloadLedger{SchemaVersion: fillercorpus.DownloadLedgerSchemaVersion}
+	if err := writeJSON(path, first); err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSON(path, downloadLedger{SchemaVersion: 999}); err == nil {
+		t.Fatal("immutable ledger was replaced")
+	}
+	if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("published ledger changed: got=%q err=%v", got, err)
 	}
 }
 
