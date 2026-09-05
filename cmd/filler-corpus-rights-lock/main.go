@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillercorpus"
+	"github.com/loomarr/loomarr/internal/fillerquarantine"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -29,6 +30,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("filler-corpus-rights-lock", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	inventoryPath := flags.String("inventory", "", "frozen source inventory JSON")
+	quarantineInspectionPath := flags.String("quarantine-inspection", "", "immutable quarantine-inspection report (development/certification non-local cases)")
 	worksheetPath := flags.String("worksheet", "", "inert rights worksheet JSON")
 	csvPath := flags.String("completed-csv", "", "completed rights review CSV")
 	outputPath := flags.String("approvals-out", "", "validated rights decisions JSONL")
@@ -50,7 +52,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock:", err)
 		return 1
 	}
-	decisions, err := lockDecisionsForProfile(*inventoryPath, *worksheetPath, *csvPath, lockedAt, *profile)
+	decisions, err := lockDecisionsForProfile(*inventoryPath, *worksheetPath, *csvPath, lockedAt, *profile, *quarantineInspectionPath)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock:", err)
 		return 1
@@ -63,7 +65,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, lockedAt time.Time, profile string) ([]fillercorpus.RightsDecision, error) {
+func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, lockedAt time.Time, profile string, inspectionPaths ...string) ([]fillercorpus.RightsDecision, error) {
+	if len(inspectionPaths) > 1 {
+		return nil, fmt.Errorf("at most one quarantine inspection path is permitted")
+	}
+	inspectionPath := ""
+	if len(inspectionPaths) == 1 {
+		inspectionPath = inspectionPaths[0]
+	}
 	inventoryRaw, err := os.ReadFile(inventoryPath)
 	if err != nil {
 		return nil, fmt.Errorf("read inventory: %w", err)
@@ -85,10 +94,10 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 	if !knownProfile {
 		return nil, fmt.Errorf("unknown rights profile %q", profile)
 	}
-	profileMatches := sheet.Profile == profile || (profile == fillercorpus.RightsProfileDevelopment && sheet.Profile == "")
+	profileMatches := sheet.Profile == profile
 	if sheet.SchemaVersion != expectedSchema || !profileMatches || len(sheet.Cases) == 0 || sheet.InventorySHA256 != inventoryDigest ||
 		!sheet.SnapshotAt.Equal(inv.SnapshotAt) ||
-		sheet.PreparedAt.Before(sheet.SnapshotAt) || sheet.MinItems <= 0 || sheet.MaxItems < sheet.MinItems || len(inv.Cases) < sheet.MinItems {
+		sheet.PreparedAt.Before(sheet.SnapshotAt) || sheet.MinItems <= 0 || sheet.MaxItems < sheet.MinItems {
 		return nil, fmt.Errorf("worksheet identity is invalid")
 	}
 	if profile == fillercorpus.RightsProfileCertification {
@@ -99,14 +108,48 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 		return nil, fmt.Errorf("non-certification worksheet cannot contain a holdout contract template")
 	}
 	expectedCases := make([]fillercorpus.RightsReviewRow, 0, len(inv.Cases))
-	for _, item := range inv.Cases {
-		expectedCases = append(expectedCases, fillercorpus.RightsReviewRowFromCase(item))
-	}
-	sort.Slice(expectedCases, func(i, j int) bool {
-		return sha256Hex(inventoryDigest+"/"+expectedCases[i].CaseID) < sha256Hex(inventoryDigest+"/"+expectedCases[j].CaseID)
-	})
-	if len(expectedCases) > sheet.MaxItems {
-		expectedCases = expectedCases[:sheet.MaxItems]
+	expectedInspectionByCase := make(map[string]*fillercorpus.QuarantineInspectionCaseBinding, len(inv.Cases))
+	if profile == fillercorpus.RightsProfileQuarantine {
+		if inspectionPath != "" || sheet.QuarantineInspection != nil {
+			return nil, fmt.Errorf("quarantine profile cannot consume a post-download inspection")
+		}
+		for _, item := range inv.Cases {
+			expectedCases = append(expectedCases, fillercorpus.RightsReviewRowFromCase(item))
+		}
+		sort.Slice(expectedCases, func(i, j int) bool {
+			return sha256Hex(inventoryDigest+"/"+expectedCases[i].CaseID) < sha256Hex(inventoryDigest+"/"+expectedCases[j].CaseID)
+		})
+		if len(expectedCases) > sheet.MaxItems {
+			expectedCases = expectedCases[:sheet.MaxItems]
+		}
+		if len(expectedCases) < sheet.MinItems {
+			return nil, fmt.Errorf("worksheet selection is below its minimum")
+		}
+	} else {
+		var inspectionRaw []byte
+		if inspectionPath != "" {
+			inspectionRaw, err = os.ReadFile(inspectionPath)
+			if err != nil {
+				return nil, fmt.Errorf("read quarantine inspection: %w", err)
+			}
+		}
+		authority, openErr := fillerquarantine.OpenRightsEligibility(inventoryRaw, inspectionRaw)
+		if openErr != nil {
+			return nil, openErr
+		}
+		selection, selectErr := authority.Selected(sheet.MinItems, sheet.MaxItems)
+		if selectErr != nil {
+			return nil, selectErr
+		}
+		if !reflect.DeepEqual(sheet.QuarantineInspection, selection.QuarantineInspection) {
+			return nil, fmt.Errorf("worksheet does not bind the exact quarantine inspection")
+		}
+		for _, candidate := range selection.Cases {
+			row := fillercorpus.RightsReviewRowFromCase(candidate.Inventory)
+			row.QuarantineInspection = candidate.QuarantineInspection
+			expectedCases = append(expectedCases, row)
+			expectedInspectionByCase[candidate.Inventory.CaseID] = candidate.QuarantineInspection
+		}
 	}
 	if len(sheet.Cases) != len(expectedCases) {
 		return nil, fmt.Errorf("worksheet selection does not match its frozen inventory and bounds")
@@ -137,10 +180,13 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 		if _, duplicate := byID[row.CaseID]; duplicate {
 			return nil, fmt.Errorf("duplicate worksheet row %s", row.CaseID)
 		}
+		if profile == fillercorpus.RightsProfileQuarantine && row.QuarantineInspection != nil {
+			return nil, fmt.Errorf("quarantine worksheet row %q cannot contain post-download authority", row.CaseID)
+		}
 		item := expectedCases[index]
 		item.Rank = index + 1
 		item.InventorySHA256 = inventoryDigest
-		if row.Rank != index+1 || !reflect.DeepEqual(fillercorpus.ImmutableRightsReviewRecord(row), fillercorpus.ImmutableRightsReviewRecord(item)) {
+		if row.Rank != index+1 || !reflect.DeepEqual(fillercorpus.ImmutableRightsReviewRecordForProfile(row, profile), fillercorpus.ImmutableRightsReviewRecordForProfile(item, profile)) {
 			return nil, fmt.Errorf("worksheet row %s changes the deterministic frozen selection", row.CaseID)
 		}
 		byID[row.CaseID] = row
@@ -157,10 +203,11 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 			return nil, fmt.Errorf("duplicate completed review row %s", caseID)
 		}
 		seen[caseID] = struct{}{}
-		if expected := fillercorpus.ImmutableRightsReviewRecord(row); !reflect.DeepEqual(record[:len(expected)], expected) {
+		expected := fillercorpus.ImmutableRightsReviewRecordForProfile(row, profile)
+		if !reflect.DeepEqual(record[:len(expected)], expected) {
 			return nil, fmt.Errorf("completed review row %s changes immutable worksheet fields", caseID)
 		}
-		fields := record[len(fillercorpus.ImmutableRightsReviewRecord(row)):]
+		fields := record[len(expected):]
 		var decision fillercorpus.RightsDecision
 		switch profile {
 		case fillercorpus.RightsProfileQuarantine:
@@ -172,6 +219,13 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 		}
 		if err != nil {
 			return nil, fmt.Errorf("completed review row %s: %w", caseID, err)
+		}
+		if binding := expectedInspectionByCase[caseID]; binding != nil {
+			value := *binding
+			decision.QuarantineInspection = &value
+		}
+		if profile != fillercorpus.RightsProfileQuarantine {
+			decision.WorksheetSchemaVersion = sheet.SchemaVersion
 		}
 		decisions = append(decisions, decision)
 	}

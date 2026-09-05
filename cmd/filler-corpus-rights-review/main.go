@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillercorpus"
+	"github.com/loomarr/loomarr/internal/fillerquarantine"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -25,6 +26,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("filler-corpus-rights-review", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	inventoryPath := flags.String("inventory", "", "frozen source inventory JSON")
+	quarantineInspectionPath := flags.String("quarantine-inspection", "", "immutable quarantine-inspection report (development/certification non-local cases)")
 	outputPath := flags.String("out", "", "non-authorizing rights worksheet JSON")
 	csvOutputPath := flags.String("csv-out", "", "spreadsheet-safe non-authorizing rights worksheet CSV")
 	preparedAtText := flags.String("prepared-at", "", "worksheet preparation time in RFC3339 format")
@@ -69,7 +71,32 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
-	result, err := prepareWorksheetForProfile(inv, sha256Hex(raw), preparedAt, *minItems, *maxItems, *profile, template)
+	var selection *fillerquarantine.RightsSelection
+	if *profile != fillercorpus.RightsProfileQuarantine {
+		var inspectionRaw []byte
+		if *quarantineInspectionPath != "" {
+			inspectionRaw, err = os.ReadFile(*quarantineInspectionPath)
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: read quarantine inspection:", err)
+				return 1
+			}
+		}
+		authority, openErr := fillerquarantine.OpenRightsEligibility(raw, inspectionRaw)
+		if openErr != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review:", openErr)
+			return 1
+		}
+		selected, selectErr := authority.Selected(*minItems, *maxItems)
+		if selectErr != nil {
+			_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review:", selectErr)
+			return 1
+		}
+		selection = &selected
+	} else if *quarantineInspectionPath != "" {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: quarantine profile cannot consume a post-download inspection")
+		return 2
+	}
+	result, err := prepareWorksheetForProfile(inv, sha256Hex(raw), preparedAt, *minItems, *maxItems, *profile, template, selection)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review:", err)
 		return 1
@@ -99,7 +126,8 @@ func writeReviewCSV(path string, sheet fillercorpus.RightsWorksheet) error {
 			return err
 		}
 		for _, row := range sheet.Cases {
-			record := append(fillercorpus.ImmutableRightsReviewRecord(row), make([]string, len(header)-len(fillercorpus.ImmutableRightsReviewRecord(row)))...)
+			immutable := fillercorpus.ImmutableRightsReviewRecordForProfile(row, sheet.Profile)
+			record := append(immutable, make([]string, len(header)-len(immutable))...)
 			if err := csvWriter.Write(record); err != nil {
 				return err
 			}
@@ -109,23 +137,9 @@ func writeReviewCSV(path string, sheet fillercorpus.RightsWorksheet) error {
 	})
 }
 
-func prepareWorksheet(inv fillercorpus.Inventory, digest string, preparedAt time.Time, minItems, maxItems int) (fillercorpus.RightsWorksheet, error) {
-	return prepareWorksheetForProfile(inv, digest, preparedAt, minItems, maxItems, fillercorpus.RightsProfileDevelopment, nil)
-}
-
-func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, preparedAt time.Time, minItems, maxItems int, profile string, template *fillercorpus.HoldoutRightsTemplate) (fillercorpus.RightsWorksheet, error) {
+func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, preparedAt time.Time, minItems, maxItems int, profile string, template *fillercorpus.HoldoutRightsTemplate, selection *fillerquarantine.RightsSelection) (fillercorpus.RightsWorksheet, error) {
 	if failures := fillercorpus.ValidateInventory(inv); len(failures) != 0 || preparedAt.Before(inv.SnapshotAt) {
 		return fillercorpus.RightsWorksheet{}, fmt.Errorf("inventory identity or worksheet time is invalid")
-	}
-	if len(inv.Cases) < minItems {
-		return fillercorpus.RightsWorksheet{}, fmt.Errorf("inventory has %d cases; minimum is %d", len(inv.Cases), minItems)
-	}
-	cases := append([]fillercorpus.InventoryCase(nil), inv.Cases...)
-	sort.Slice(cases, func(i, j int) bool {
-		return sha256Hex([]byte(digest+"/"+cases[i].CaseID)) < sha256Hex([]byte(digest+"/"+cases[j].CaseID))
-	})
-	if len(cases) > maxItems {
-		cases = cases[:maxItems]
 	}
 	schemaVersion, knownProfile := fillercorpus.RightsWorksheetSchemaForProfile(profile)
 	if !knownProfile {
@@ -138,10 +152,33 @@ func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, prepa
 	} else if template != nil {
 		return fillercorpus.RightsWorksheet{}, fmt.Errorf("rights profile and holdout template are inconsistent")
 	}
+	var cases []fillerquarantine.EligibleRightsCase
+	if profile == fillercorpus.RightsProfileQuarantine {
+		if selection != nil {
+			return fillercorpus.RightsWorksheet{}, fmt.Errorf("quarantine worksheet cannot consume post-download eligibility")
+		}
+		if len(inv.Cases) < minItems {
+			return fillercorpus.RightsWorksheet{}, fmt.Errorf("inventory has %d cases; minimum is %d", len(inv.Cases), minItems)
+		}
+		for _, item := range inv.Cases {
+			cases = append(cases, fillerquarantine.EligibleRightsCase{Inventory: item})
+		}
+		// Pre-download quarantine preserves its existing inventory order and
+		// deterministic digest shuffle.
+		sortRightsCases(cases, digest)
+		if len(cases) > maxItems {
+			cases = cases[:maxItems]
+		}
+	} else {
+		if selection == nil {
+			return fillercorpus.RightsWorksheet{}, fmt.Errorf("development and certification worksheets require validated quarantine eligibility")
+		}
+		cases = selection.Cases
+	}
 	result := fillercorpus.RightsWorksheet{
 		SchemaVersion: schemaVersion, Profile: profile, InventorySHA256: digest,
 		SnapshotAt: inv.SnapshotAt.UTC(), PreparedAt: preparedAt.UTC(), MinItems: minItems, MaxItems: maxItems,
-		HoldoutTemplate: template,
+		HoldoutTemplate: template, QuarantineInspection: selectionReportBinding(selection),
 		Instructions: []string{
 			"This worksheet is not download authority; blank rows fail closed.",
 			"Review the exact item, metadata, selected file, license assertion, rights prose, embedded material, attribution, and non-copyright restrictions.",
@@ -163,16 +200,32 @@ func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, prepa
 		}
 	}
 	seen := map[string]struct{}{}
-	for index, item := range cases {
+	for index, candidate := range cases {
+		item := candidate.Inventory
 		if _, exists := seen[item.CaseID]; exists {
 			return fillercorpus.RightsWorksheet{}, fmt.Errorf("duplicate candidate %s", item.CaseID)
 		}
 		seen[item.CaseID] = struct{}{}
 		row := fillercorpus.RightsReviewRowFromCase(item)
 		row.Rank, row.InventorySHA256 = index+1, digest
+		row.QuarantineInspection = candidate.QuarantineInspection
 		result.Cases = append(result.Cases, row)
 	}
 	return result, nil
+}
+
+func sortRightsCases(cases []fillerquarantine.EligibleRightsCase, digest string) {
+	sort.Slice(cases, func(i, j int) bool {
+		return sha256Hex([]byte(digest+"/"+cases[i].Inventory.CaseID)) < sha256Hex([]byte(digest+"/"+cases[j].Inventory.CaseID))
+	})
+}
+
+func selectionReportBinding(selection *fillerquarantine.RightsSelection) *fillercorpus.QuarantineInspectionBinding {
+	if selection == nil || selection.QuarantineInspection == nil {
+		return nil
+	}
+	value := *selection.QuarantineInspection
+	return &value
 }
 
 func sha256Hex(data []byte) string {

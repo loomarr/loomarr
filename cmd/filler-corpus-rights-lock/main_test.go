@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillercorpus"
+	"github.com/loomarr/loomarr/internal/fillerquarantine"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
@@ -21,6 +23,8 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 	worksheetPath := filepath.Join(dir, "worksheet.json")
 	csvPath := filepath.Join(dir, "completed.csv")
 	approvalsPath := filepath.Join(dir, "approvals.jsonl")
+	inspectionPath := filepath.Join(dir, "inspection.json")
+	heldInspectionPath := filepath.Join(dir, "held-inspection.json")
 	metadataDigest := strings.Repeat("a", 64)
 	retrievedAt := "2026-08-25T08:00:00Z"
 	reviewedAt := "2026-08-25T09:00:00Z"
@@ -37,9 +41,26 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 	if err := os.WriteFile(inventoryPath, inventoryRaw, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	reportRaw := testkit.FillerQuarantineReport(t, inventoryRaw, map[string]string{item.CaseID: fillerquarantine.DispositionEligibleForRightsReview}, nil)
+	if err := os.WriteFile(inspectionPath, reportRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	heldReportRaw := testkit.FillerQuarantineReport(t, inventoryRaw, map[string]string{item.CaseID: fillerquarantine.DispositionHold}, nil)
+	if err := os.WriteFile(heldInspectionPath, heldReportRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	authorityView, err := fillerquarantine.OpenRightsEligibility(inventoryRaw, reportRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := authorityView.Selected(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rowValue := fillercorpus.RightsReviewRowFromCase(item)
 	rowValue.Rank, rowValue.InventorySHA256 = 1, digest
-	worksheet := fillercorpus.RightsWorksheet{SchemaVersion: fillercorpus.RightsWorksheetSchemaVersion, Profile: fillercorpus.RightsProfileDevelopment, InventorySHA256: digest, SnapshotAt: retrievedTime, PreparedAt: retrievedTime.Add(30 * time.Minute), MinItems: 1, MaxItems: 1, Cases: []fillercorpus.RightsReviewRow{rowValue}}
+	rowValue.QuarantineInspection = selection.Cases[0].QuarantineInspection
+	worksheet := fillercorpus.RightsWorksheet{SchemaVersion: fillercorpus.RightsWorksheetSchemaVersion, Profile: fillercorpus.RightsProfileDevelopment, InventorySHA256: digest, SnapshotAt: retrievedTime, PreparedAt: retrievedTime.Add(30 * time.Minute), MinItems: 1, MaxItems: 1, QuarantineInspection: selection.QuarantineInspection, Cases: []fillercorpus.RightsReviewRow{rowValue}}
 	raw, err := json.Marshal(worksheet)
 	if err != nil {
 		t.Fatal(err)
@@ -52,16 +73,67 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 		t.Fatal(err)
 	}
 	writer := csv.NewWriter(file)
-	completed := append(fillercorpus.ImmutableRightsReviewRecord(rowValue), "rights-reviewer", reviewedAt, "approved", "CC0 dedication and item inspection permit redistribution.", "true", "", "[]")
+	completed := append(fillercorpus.ImmutableRightsReviewRecordForProfile(rowValue, fillercorpus.RightsProfileDevelopment), "rights-reviewer", reviewedAt, "approved", "CC0 dedication and item inspection permit redistribution.", "true", "", "[]")
 	if err := writer.WriteAll([][]string{fillercorpus.RightsReviewCSVHeader(), completed}); err != nil {
 		t.Fatal(err)
 	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
+	for name, reportPath := range map[string]string{
+		"held":  heldInspectionPath,
+		"drift": writeReportFixture(t, dir, "drifted-inspection.json", append(append([]byte(nil), reportRaw...), '\n')),
+	} {
+		t.Run(name+" report fails closed", func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			output := filepath.Join(dir, name+"-approvals.jsonl")
+			code := run([]string{
+				"--inventory", inventoryPath, "--quarantine-inspection", reportPath,
+				"--worksheet", worksheetPath, "--completed-csv", csvPath, "--approvals-out", output,
+				"--locked-at", "2026-08-25T10:00:00Z", "--profile", "development",
+			}, &stdout, &stderr)
+			if code != 1 {
+				t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+			if _, err := os.Stat(output); !os.IsNotExist(err) {
+				t.Fatalf("failed lock published authority: %v", err)
+			}
+		})
+	}
+	for name, mutate := range map[string]func(*fillercorpus.RightsWorksheet){
+		"missing global binding": func(value *fillercorpus.RightsWorksheet) { value.QuarantineInspection = nil },
+		"changed case binding": func(value *fillercorpus.RightsWorksheet) {
+			value.Cases[0].QuarantineInspection.ContentSHA256 = strings.Repeat("f", 64)
+		},
+	} {
+		t.Run(name+" fails closed", func(t *testing.T) {
+			worksheetCopyRaw, err := json.Marshal(worksheet)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var changed fillercorpus.RightsWorksheet
+			if err := json.Unmarshal(worksheetCopyRaw, &changed); err != nil {
+				t.Fatal(err)
+			}
+			mutate(&changed)
+			changedRaw, _ := json.Marshal(changed)
+			changedPath := writeReportFixture(t, dir, strings.ReplaceAll(name, " ", "-")+".json", changedRaw)
+			output := filepath.Join(dir, strings.ReplaceAll(name, " ", "-")+".jsonl")
+			var stdout, stderr bytes.Buffer
+			code := run([]string{
+				"--inventory", inventoryPath, "--quarantine-inspection", inspectionPath,
+				"--worksheet", changedPath, "--completed-csv", csvPath, "--approvals-out", output,
+				"--locked-at", "2026-08-25T10:00:00Z", "--profile", "development",
+			}, &stdout, &stderr)
+			if code != 1 {
+				t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+		})
+	}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
 		"--inventory", inventoryPath,
+		"--quarantine-inspection", inspectionPath,
 		"--worksheet", worksheetPath,
 		"--completed-csv", csvPath,
 		"--approvals-out", approvalsPath,
@@ -76,20 +148,31 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 		t.Fatal(err)
 	}
 	var approval struct {
-		InventorySHA256 string    `json:"inventorySha256"`
-		CaseID          string    `json:"caseId"`
-		MetadataSHA256  string    `json:"metadataSha256"`
-		ReviewerID      string    `json:"reviewerId"`
-		ReviewedAt      time.Time `json:"reviewedAt"`
-		Decision        string    `json:"decision"`
-		Redistributable bool      `json:"redistributable"`
+		WorksheetSchemaVersion int                                           `json:"worksheetSchemaVersion"`
+		InventorySHA256        string                                        `json:"inventorySha256"`
+		CaseID                 string                                        `json:"caseId"`
+		MetadataSHA256         string                                        `json:"metadataSha256"`
+		ReviewerID             string                                        `json:"reviewerId"`
+		ReviewedAt             time.Time                                     `json:"reviewedAt"`
+		Decision               string                                        `json:"decision"`
+		Redistributable        bool                                          `json:"redistributable"`
+		QuarantineInspection   *fillercorpus.QuarantineInspectionCaseBinding `json:"quarantineInspection"`
 	}
 	if err := json.Unmarshal(bytes.TrimSpace(approvalRaw), &approval); err != nil {
 		t.Fatal(err)
 	}
-	if approval.InventorySHA256 != digest || approval.CaseID != item.CaseID || approval.MetadataSHA256 != metadataDigest || approval.ReviewerID != "rights-reviewer" || approval.Decision != "approved" || !approval.Redistributable {
+	if approval.WorksheetSchemaVersion != fillercorpus.RightsWorksheetSchemaVersion || approval.InventorySHA256 != digest || approval.CaseID != item.CaseID || approval.MetadataSHA256 != metadataDigest || approval.ReviewerID != "rights-reviewer" || approval.Decision != "approved" || !approval.Redistributable || approval.QuarantineInspection == nil || approval.QuarantineInspection.Report.ReportSHA256 != fillercorpus.InventorySHA256(reportRaw) {
 		t.Fatalf("unexpected locked approval: %+v", approval)
 	}
+}
+
+func writeReportFixture(t *testing.T, dir, name string, raw []byte) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestRunRefusesExistingApprovalsBeforeReadingInputs(t *testing.T) {
