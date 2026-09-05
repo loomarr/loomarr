@@ -24,6 +24,9 @@ type AiringIdentity struct {
 type Block struct {
 	Content  io.ReadCloser
 	Identity AiringIdentity
+	// Format is the stable decoder shape carried by this block. The application adapter pins
+	// the first value for the session and rejects a later prepared block that differs.
+	Format BroadcastFormat
 }
 
 // BlockSource opens the finite MPEG-TS block that belongs on a Channel now. EOF is an Airing

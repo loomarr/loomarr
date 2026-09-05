@@ -206,6 +206,10 @@ type Manager struct {
 	// hardware encodes) and capped by any operator override. Re-read on every admission so a settings
 	// change or a model loading/unloading re-applies without a restart. <=0 ⇒ unmeasured, never block.
 	budget func() int
+	// estimateCost may prove a cold session will begin from an already prepared copy-only block.
+	// It runs outside mu so independent Channel lookups remain parallel. Nil keeps the conservative
+	// one-slot reservation until the first live program report.
+	estimateCost func(context.Context, string, EncodePlan) int
 	// committedCost is the summed admission cost of live sessions — the number of them currently
 	// TRANSCODING video (a `-c copy` session costs 0). Compared against budget() to admit. Guarded by
 	// mu; each session's contribution is tracked on the Session (cost) so a report/teardown adjusts it.
@@ -259,6 +263,13 @@ func (m *Manager) OnChange(fn func()) { m.onChange = fn }
 // WithObserver binds one application generation's session lifecycle observer.
 func (m *Manager) WithObserver(observer SessionObserver) *Manager {
 	m.observer = observer
+	return m
+}
+
+// WithCostEstimator installs a lookup-only cold-session cost proof. Only zero is a relaxation;
+// every other result retains the conservative one-transcode reservation.
+func (m *Manager) WithCostEstimator(estimate func(context.Context, string, EncodePlan) int) *Manager {
+	m.estimateCost = estimate
 	return m
 }
 
@@ -392,6 +403,28 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 		}
 		return s, nil
 	}
+	m.mu.Unlock()
+
+	// A prepared lookup can prove this exact cold start is copy-only before admission. Keep it
+	// outside the Manager lock: the lookup reads durable schedule/readiness state, and serializing
+	// unrelated Channels behind that I/O would recreate the multi-Channel cold-start convoy.
+	newCost := key.plan.EstimatedCost()
+	if m.estimateCost != nil && m.estimateCost(ctx, key.channel, key.plan) == 0 {
+		newCost = 0
+	}
+
+	// Another caller may have reserved this key while the estimate ran. Join its placeholder rather
+	// than spawning a second process; the same-key atomicity contract still holds.
+	m.mu.Lock()
+	if s := m.sessions[key]; s != nil {
+		m.mu.Unlock()
+		<-s.ready
+		if s.initErr != nil {
+			m.discardFailed(key, s)
+			return m.acquire(ctx, key)
+		}
+		return s, nil
+	}
 	// Cost-aware admission with idle reclamation (§9.1 V49). The bound counts concurrent VIDEO TRANSCODES,
 	// not sessions: a `-c copy` session (an h264 channel, or HEVC to an HEVC-capable client) costs 0
 	// and is always admitted, so a channel watched at two plans (baseline + hevc8) costs ONE (the
@@ -400,7 +433,6 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 	// program report. Checked under the lock against the live committedCost so parallel starts cannot
 	// overshoot the budget. A full budget may reclaim proven-warm work with zero viewer demand, but
 	// never an actively watched session.
-	newCost := key.plan.EstimatedCost()
 	if !Admit(m.budget(), m.committedCost, newCost) {
 		candidates := make([]idleCandidate, 0, len(m.sessions))
 		for candidateKey, candidateSession := range m.sessions {

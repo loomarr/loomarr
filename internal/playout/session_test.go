@@ -632,6 +632,22 @@ func TestAttach_AtCapacityRefusesRatherThanEvicting(t *testing.T) {
 	}
 }
 
+func TestAttach_PreparedCostEstimatorAdmitsCopySessionsBeyondTranscodeBudget(t *testing.T) {
+	spawn, _ := newFakeSpawner(t)
+	m := testManager(t, spawn, 1, time.Minute).WithCostEstimator(
+		func(context.Context, string, EncodePlan) int { return 0 },
+	)
+
+	for _, channel := range []string{"ch1", "ch2", "ch3"} {
+		if _, _, err := m.Attach(t.Context(), channel, PlanFull); err != nil {
+			t.Fatalf("prepared copy session %s was refused by transcode budget: %v", channel, err)
+		}
+	}
+	if got := m.ActiveCount(); got != 3 {
+		t.Fatalf("active prepared sessions = %d, want 3", got)
+	}
+}
+
 // A grace-idle session is retained only to make a likely return tune cheap. It must not reserve
 // the final transcode slot against a foreground tune: when the budget is full, reclaim the oldest
 // zero-viewer session and preserve the newer warm candidate. Sessions with viewers remain protected

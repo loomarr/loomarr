@@ -1,0 +1,195 @@
+package playout
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/diagnostics"
+)
+
+const (
+	capabilityEvidenceVersion = 1
+	capabilityEvidenceName    = ".host-capability-v1.json"
+	capabilityEvidenceMaxAge  = 7 * 24 * time.Hour
+	capabilityValidationSecs  = 1
+)
+
+type capabilityEvidence struct {
+	Version     int       `json:"version"`
+	Fingerprint string    `json:"fingerprint"`
+	Encoder     Encoder   `json:"encoder"`
+	MaxChannels int       `json:"maxChannels"`
+	ObservedAt  time.Time `json:"observedAt"`
+}
+
+type capabilityEvidenceDependencies struct {
+	now         func() time.Time
+	fingerprint func(context.Context, string, string, Profile) (string, error)
+	detect      func(context.Context, string, Profile, string) Capacity
+	validate    func(context.Context, string, Encoder, Profile) Capability
+}
+
+// DetectObservedWithEvidence reuses a persisted hardware measurement only after a short real
+// encoder trial proves it still emits keyframe-bearing MPEG-TS on the current FFmpeg/GPU host.
+// reused distinguishes that bounded restart validation from a full candidate/capacity benchmark.
+func DetectObservedWithEvidence(
+	ctx context.Context, ffmpegPath string, profile Profile, gpu, root string,
+	manager *diagnostics.ProcessManager,
+) (capacity Capacity, reused bool) {
+	return detectObservedWithEvidence(ctx, ffmpegPath, profile, gpu, root, capabilityEvidenceDependencies{
+		now:         time.Now,
+		fingerprint: hostCapabilityFingerprint,
+		detect: func(ctx context.Context, ffmpeg string, profile Profile, gpu string) Capacity {
+			return DetectObserved(ctx, ffmpeg, profile, gpu, manager)
+		},
+		validate: func(ctx context.Context, ffmpeg string, encoder Encoder, profile Profile) Capability {
+			return trialEncodeObserved(ctx, ffmpeg, encoder, profile, capabilityValidationSecs, manager)
+		},
+	})
+}
+
+func detectObservedWithEvidence(
+	ctx context.Context, ffmpegPath string, profile Profile, gpu, root string,
+	deps capabilityEvidenceDependencies,
+) (Capacity, bool) {
+	if deps.now == nil {
+		deps.now = time.Now
+	}
+	fingerprint, fingerprintErr := deps.fingerprint(ctx, ffmpegPath, gpu, profile)
+	if fingerprintErr == nil {
+		if evidence, ok := loadCapabilityEvidence(root, fingerprint, deps.now()); ok {
+			validated := deps.validate(ctx, ffmpegPath, evidence.Encoder, profile)
+			if validated.Works {
+				return Capacity{Chosen: evidence.Encoder, MaxChannels: evidence.MaxChannels}, true
+			}
+		}
+	}
+
+	capacity := deps.detect(ctx, ffmpegPath, profile, gpu)
+	if fingerprintErr == nil && !IsSoftwareEncoder(capacity.Chosen) && capacity.MaxChannels > 0 {
+		_ = storeCapabilityEvidence(root, capabilityEvidence{
+			Version: capabilityEvidenceVersion, Fingerprint: fingerprint,
+			Encoder: capacity.Chosen, MaxChannels: capacity.MaxChannels, ObservedAt: deps.now().UTC(),
+		})
+	}
+	return capacity, false
+}
+
+func loadCapabilityEvidence(root, fingerprint string, now time.Time) (capabilityEvidence, bool) {
+	if strings.TrimSpace(root) == "" || strings.TrimSpace(fingerprint) == "" {
+		return capabilityEvidence{}, false
+	}
+	body, err := os.ReadFile(filepath.Join(root, capabilityEvidenceName))
+	if err != nil {
+		return capabilityEvidence{}, false
+	}
+	var evidence capabilityEvidence
+	if err := json.Unmarshal(body, &evidence); err != nil || evidence.Version != capabilityEvidenceVersion ||
+		evidence.Fingerprint != fingerprint || evidence.ObservedAt.IsZero() || now.Before(evidence.ObservedAt) ||
+		now.Sub(evidence.ObservedAt) > capabilityEvidenceMaxAge || evidence.MaxChannels <= 0 ||
+		IsSoftwareEncoder(evidence.Encoder) || !supportedHardwareEncoder(evidence.Encoder) {
+		return capabilityEvidence{}, false
+	}
+	return evidence, true
+}
+
+func storeCapabilityEvidence(root string, evidence capabilityEvidence) error {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return fmt.Errorf("playout: empty capability evidence root")
+	}
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		return fmt.Errorf("playout: create capability evidence root: %w", err)
+	}
+	body, err := json.Marshal(evidence)
+	if err != nil {
+		return fmt.Errorf("playout: encode capability evidence: %w", err)
+	}
+	tmp, err := os.CreateTemp(root, ".host-capability-*")
+	if err != nil {
+		return fmt.Errorf("playout: create capability evidence: %w", err)
+	}
+	tmpPath := tmp.Name()
+	committed := false
+	defer func() {
+		_ = tmp.Close()
+		if !committed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := tmp.Chmod(0o600); err != nil {
+		return err
+	}
+	if _, err := tmp.Write(append(body, '\n')); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, filepath.Join(root, capabilityEvidenceName)); err != nil {
+		return fmt.Errorf("playout: publish capability evidence: %w", err)
+	}
+	committed = true
+	directory, err := os.Open(root)
+	if err != nil {
+		return fmt.Errorf("playout: open capability evidence root: %w", err)
+	}
+	defer func() { _ = directory.Close() }()
+	if err := directory.Sync(); err != nil {
+		return fmt.Errorf("playout: sync capability evidence root: %w", err)
+	}
+	return nil
+}
+
+func supportedHardwareEncoder(encoder Encoder) bool {
+	for _, candidate := range h264Engines {
+		if candidate != EncoderSoftware && candidate == encoder {
+			return true
+		}
+	}
+	return false
+}
+
+func hostCapabilityFingerprint(
+	ctx context.Context, ffmpegPath, gpu string, profile Profile,
+) (string, error) {
+	if strings.TrimSpace(ffmpegPath) == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	resolved, err := exec.LookPath(ffmpegPath)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", err
+	}
+	versionCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	version, err := exec.CommandContext(versionCtx, resolved, "-version").Output()
+	if err != nil {
+		return "", err
+	}
+	if len(version) > 64<<10 {
+		version = version[:64<<10]
+	}
+	digest := sha256.New()
+	_, _ = fmt.Fprintf(digest, "%s\x00%s\x00%s\x00%d\x00%d\x00%d\x00%s\x00%d\x00%d\x00%d\x00%d\x00%d\x00",
+		runtime.GOOS, runtime.GOARCH, resolved, info.Size(), info.ModTime().UnixNano(), info.Mode(),
+		strings.TrimSpace(gpu), profile.Width, profile.Height, profile.Framerate,
+		profile.VideoBitrate, profile.AudioBitrate)
+	_, _ = digest.Write(version)
+	return hex.EncodeToString(digest.Sum(nil)), nil
+}
