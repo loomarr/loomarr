@@ -2761,10 +2761,12 @@ an attach/detach ABA cycle. A zero-byte session is not warm and closes immediate
 conservative reservation.
 
 The dashboard reports the complete live-session count (`active`) for compatibility and exposes
-viewer-active and grace-idle session counts separately; their sum is `active`. Its `capacity`
-denominator remains the live transcode budget, shrinking when a model goes resident and growing when
-it unloads. Viewer-demand transitions publish the same full `playout` snapshot over SSE, so the live
-panel does not wait for a later session start or stop to learn that a warm channel became idle.
+viewer-active and grace-idle session counts separately; their sum is `active`. `transcodeCost` is the
+sum of the live sessions' current video-transcode admission cost, so copy sessions remain visible in
+the total without pretending to consume an encode slot. Its `capacity` denominator remains the live
+transcode budget, shrinking when a model goes resident and growing when it unloads. Viewer-demand
+transitions publish the same full `playout` snapshot over SSE, so the live panel does not wait for a
+later session start or stop to learn that a warm channel became idle.
 
 **Watching from Loomarr's own UI (V46).** The Web UI plays a channel in the browser directly — a
 **Watch** sub-section on the channel-detail page (§12), also reachable from the guide's per-row menu.

@@ -842,6 +842,61 @@ func TestWarmIdleHotSetUsesMostRecentViewNotOriginalStart(t *testing.T) {
 	}
 }
 
+func TestWarmIdleHotSetStaleCloseCallbackCannotForgetReplacement(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 1, time.Minute)
+
+	viewer, detach, err := m.Attach(t.Context(), "ch1", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warmSession(t, viewer, encoder("ch1"))
+	detach()
+
+	old := m.session("ch1", PlanFull)
+	old.mu.Lock()
+	idleGeneration := old.idleGeneration
+	originalOnClosed := old.onClosed
+	closeEntered := make(chan struct{})
+	allowCallback := make(chan struct{})
+	old.onClosed = func() {
+		close(closeEntered)
+		<-allowCallback
+		originalOnClosed()
+	}
+	old.mu.Unlock()
+
+	closed := make(chan bool, 1)
+	go func() { closed <- old.closeIfIdle(idleGeneration) }()
+	<-closeEntered
+
+	// Attach observes the old session as closed, removes that exact pointer, and installs a
+	// replacement before the old close callback resumes.
+	replacementViewer, replacementDetach, err := m.Attach(t.Context(), "ch1", PlanFull)
+	if err != nil {
+		close(allowCallback)
+		t.Fatal(err)
+	}
+	defer replacementDetach()
+	replacement := m.session("ch1", PlanFull)
+	if replacement == nil || replacement == old {
+		close(allowCallback)
+		t.Fatal("foreground attach did not install a replacement session")
+	}
+	warmSession(t, replacementViewer, encoder("ch1"))
+
+	close(allowCallback)
+	if ok := <-closed; !ok {
+		t.Fatal("selected exact idle generation was not closed")
+	}
+	if got := m.session("ch1", PlanFull); got != replacement {
+		t.Fatal("stale close callback forgot the replacement session")
+	}
+	if got := m.ActiveCount(); got != 1 {
+		t.Fatalf("live sessions = %d after stale callback, want replacement only", got)
+	}
+}
+
 func TestWarmIdleHotSetConcurrentDetachesRemainBounded(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 0, time.Minute)

@@ -171,6 +171,9 @@ type SessionStat struct {
 	// ColdStartMS is how long this channel took from session start to first frame — the black-screen
 	// window a viewer waited through (§9.1 V47 doctor). 0 before the first bytes arrive.
 	ColdStartMS int64 `json:"coldStartMs"`
+	// TranscodeCost is this session's current video-transcode admission cost. Zero means the
+	// programme copies video; one means it consumes one measured hardware/software encode slot.
+	TranscodeCost int `json:"transcodeCost"`
 }
 
 // sessionKey identifies one live encoder. A channel does NOT have a single stream — it has one
@@ -551,7 +554,7 @@ func (m *Manager) discardClosed(key sessionKey, s *Session) {
 // spawnPlaceholder resolves it (success or initErr), so concurrent same-key callers share one spawn.
 func (m *Manager) newPlaceholder(channelID string, plan EncodePlan) *Session {
 	key := sessionKey{channel: channelID, plan: plan}
-	return &Session{
+	s := &Session{
 		ChannelID: channelID,
 		Plan:      plan,
 		log:       m.log,
@@ -559,7 +562,6 @@ func (m *Manager) newPlaceholder(channelID string, plan EncodePlan) *Session {
 		// On terminal close (grace teardown, encoder death, or Stop), the session must both leave the
 		// map AND release its admission cost (§9.1 V49), then notify. close() is single-fire (guarded
 		// by s.closed), so forget runs exactly once — no double-subtract. forget does the notify.
-		onClosed:        func() { m.forget(key) },
 		onDemandChange:  m.notifyChange,
 		onBecameIdle:    m.enforceWarmIdleLimit,
 		startedAt:       time.Now(),
@@ -567,6 +569,11 @@ func (m *Manager) newPlaceholder(channelID string, plan EncodePlan) *Session {
 		inactiveViewers: map[int]bool{},
 		ready:           make(chan struct{}),
 	}
+	// Capture identity as well as key. An old close callback can race a foreground Attach that
+	// has already replaced this closed session at the same key; it must never delete or release
+	// the replacement's admission cost.
+	s.onClosed = func() { m.forget(key, s) }
+	return s
 }
 
 // spawnPlaceholder runs the ffmpeg spawn for a reserved placeholder OUTSIDE m.mu, then closes
@@ -1020,14 +1027,15 @@ func (m *Manager) Stop() {
 
 // forget removes a session from the map and releases its admission cost (§9.1 V49), then notifies.
 // Called from a session's onClosed, which close() fires exactly once — so the cost is subtracted
-// exactly once even if Stop races the grace timer. Idempotent against a key already gone (a manual
-// Stop that ran the map-delete first): only a still-present, identical session is subtracted.
-func (m *Manager) forget(key sessionKey) {
+// exactly once even if Stop races the grace timer. Identity is part of the guard: a foreground
+// attach can replace a closed session at the same key before its callback arrives, and that stale
+// callback must not delete the replacement or subtract its admission cost.
+func (m *Manager) forget(key sessionKey, closing *Session) {
 	m.mu.Lock()
 	removed := false
-	if s := m.sessions[key]; s != nil {
-		m.committedCost -= s.cost
-		s.cost = 0
+	if m.sessions[key] == closing {
+		m.committedCost -= closing.cost
+		closing.cost = 0
 		delete(m.sessions, key)
 		removed = true
 	}
@@ -1068,23 +1076,28 @@ func (m *Manager) Capacity() int {
 // unsorted map walk would reshuffle the rows on every read, which reads as flicker rather
 // than as data changing.
 //
-// Takes the manager lock, then each session's, in that order — the same order Attach uses,
-// so the two cannot deadlock against each other.
+// Snapshots session pointers and their manager-owned admission cost under the manager lock, then
+// reads each session after releasing it. Teardown callbacks need the manager lock, so holding it
+// while taking every session lock would turn an observational endpoint into a lock-order hazard.
 func (m *Manager) Stats(now time.Time) []SessionStat {
+	type candidate struct {
+		session       *Session
+		transcodeCost int
+	}
 	m.mu.Lock()
-	sessions := make([]*Session, 0, len(m.sessions))
+	sessions := make([]candidate, 0, len(m.sessions))
 	for _, s := range m.sessions {
-		sessions = append(sessions, s)
+		sessions = append(sessions, candidate{session: s, transcodeCost: s.cost})
 	}
 	m.mu.Unlock()
 
 	out := make([]SessionStat, 0, len(sessions))
-	for _, s := range sessions {
+	for _, candidate := range sessions {
 		// ⚠ Skip CLOSED sessions. Teardown is lazy: close() marks the session and disconnects
 		// its viewers, but the map entry survives until the next Attach on that channel
 		// deletes it. An unfiltered snapshot would keep reporting a dead encoder as live —
 		// indefinitely, on a channel nobody tunes again.
-		if st, ok := s.statIfLive(now); ok {
+		if st, ok := candidate.session.statIfLive(now, candidate.transcodeCost); ok {
 			out = append(out, st)
 		}
 	}
@@ -1104,7 +1117,7 @@ func (m *Manager) Stats(now time.Time) []SessionStat {
 // Liveness is read under the SAME lock as the rest of the snapshot: checking `closed`
 // separately would leave a window where a session closes between the check and the read, and
 // the row would describe an encoder that no longer exists.
-func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
+func (s *Session) statIfLive(now time.Time, transcodeCost int) (SessionStat, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -1120,15 +1133,16 @@ func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
 	buffered := s.last.OutTimeMS - uptime.Milliseconds()
 
 	return SessionStat{
-		ChannelID:   s.ChannelID,
-		Target:      s.Plan.String(),
-		Viewers:     s.activeViewerCountLocked(),
-		Encoder:     string(s.encoder),
-		Hardware:    s.encoder != "" && s.encoder != EncoderSoftware,
-		Speed:       s.last.Speed,
-		BufferedMS:  buffered,
-		UptimeMS:    uptime.Milliseconds(),
-		ColdStartMS: s.coldStartMs,
+		ChannelID:     s.ChannelID,
+		Target:        s.Plan.String(),
+		Viewers:       s.activeViewerCountLocked(),
+		Encoder:       string(s.encoder),
+		Hardware:      s.encoder != "" && s.encoder != EncoderSoftware,
+		Speed:         s.last.Speed,
+		BufferedMS:    buffered,
+		UptimeMS:      uptime.Milliseconds(),
+		ColdStartMS:   s.coldStartMs,
+		TranscodeCost: transcodeCost,
 	}, true
 }
 
