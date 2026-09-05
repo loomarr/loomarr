@@ -4600,7 +4600,10 @@ then records both digests and the plan contract in private challenge authority; 
 not render authority. It renders and freshly blinds the bound plan before two distinct direct-video
 model families assess it serially. The direct-video request contract reserves 4,096 completion
 tokens so provider-required hidden reasoning cannot consume the output budget needed for the strict
-JSON answer; that ceiling is part of the prompt digest and prompt-contract version. Every source
+JSON answer. In-range decisive timestamps are deterministically sorted and deduplicated before
+semantic validation because response order and repetition carry no claim; the untouched raw
+response remains the inference authority. The ceiling, schema uniqueness constraint, and
+canonicalization rule are part of the prompt digest and prompt-contract version. Every source
 must have an audio stream. Before concatenation,
 every segment is encoded deterministically to a common 960-by-720, 30-frame-per-second video and
 48 kHz stereo AAC audio profile with aspect-preserving padding and a fixed video track time base;
