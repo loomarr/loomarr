@@ -330,8 +330,8 @@ func (c *chainResolver) AiringNow(context.Context, string) (playout.Airing, stri
 	return airing, c.src, nil
 }
 
-func (c *chainResolver) Profile(context.Context) playout.Profile           { return c.profile }
-func (c *chainResolver) AudioTrackFor(context.Context, string, string) int { return 0 }
+func (c *chainResolver) Profile(context.Context) playout.Profile                   { return c.profile }
+func (c *chainResolver) AudioTrackFor(context.Context, string, string, string) int { return 0 }
 func (c *chainResolver) Tracks(context.Context, string) (playout.MediaTracks, error) {
 	return playout.MediaTracks{}, nil
 }

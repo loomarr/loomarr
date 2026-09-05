@@ -24,7 +24,7 @@ type preparedChannelReader interface {
 
 type preparedTimeline interface {
 	ScheduledBroadcasts(context.Context, string, time.Time, time.Time) ([]playout.Broadcast, error)
-	AudioTrackFor(context.Context, string, string) int
+	AudioTrackFor(context.Context, string, string, string) int
 }
 
 type preparedInputResolver interface {
@@ -225,7 +225,7 @@ func (r *preparedRuntimeResolver) resolveSource(
 	if input.URL == "" || input.Kind != library.InputFile {
 		return prepared.Request{}, false
 	}
-	audioTrack := r.timeline.AudioTrackFor(ctx, key.ChannelID, input.URL)
+	audioTrack := r.timeline.AudioTrackFor(ctx, key.ChannelID, key.LibraryItemID, input.URL)
 	request := prepared.Request{
 		Source:    prepared.Source{Path: input.URL, AudioTrack: audioTrack},
 		Rendition: r.rendition(),

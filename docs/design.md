@@ -17,12 +17,13 @@ configuration, and frontend detail. This document wins when behavior overlaps.
 
 **intent → suggest a lineup → acquire what's missing → build the schedule → converge the selected playout backend → backfill and maintain.**
 
-The app has **five cooperating subsystems**:
+The app has **six cooperating subsystems**:
 
 | Subsystem | Owns | "Decides…" |
 | --- | --- | --- |
 | **Suggester** (§8) | intent → proposal | *what* content belongs on the channel |
 | **Provisioner** (§3–§7) | acquire missing titles, track to available | *whether/when* content exists |
+| **Media Inventory** (§5) | retain provider-neutral item/source facts and provenance | *what Loomarr knows about available content* |
 | **Scheduler** (§9) | build lineup, insert pods, materialize locally, project to Tunarr when selected, backfill | *order, timing, and delivery* |
 | **Filler** (§10) | filler ingestion, clip catalog, pod assembly | *what plays in the breaks* |
 | **Web** (§12) | human control surface | *approval and oversight* |
@@ -63,11 +64,12 @@ The subsystems are internally decoupled (clean interfaces) but ship in one binar
 ### Boundaries (ports)
 Core logic depends only on interfaces; concrete adapters live at the edges.
 
-⚠ **Three of the eight below are Go `struct`s, not interfaces** (2026-08-10): `suggest.Suggester`, `catalog.Catalog` and `events.Bus`. That is not a defect — each has exactly one implementation and inverts its *own* dependencies through narrow interfaces it declares — but the column header said "Interface" for all eight, which sent a reader looking for a seam that is not there. The **Shape** column now says which is which.
+⚠ **Three of the nine below are Go `struct`s, not interfaces** (2026-08-10): `suggest.Suggester`, `catalog.Catalog` and `events.Bus`. That is not a defect — each has exactly one implementation and inverts its *own* dependencies through narrow interfaces it declares — but the column header said "Interface" for all nine, which sent a reader looking for a seam that is not there. The **Shape** column now says which is which.
 
 | Boundary | Shape | Adapters |
 | --- | --- | --- |
 | Library | **interface** `Library.Lookup(title) → (itemID, present)` | Emby, Jellyfin (shared impl, flavor-specific auth) |
+| Media Inventory | **interface** `inventory.Service` | durable aggregate over the Store; Library importer first, direct-file scanner later |
 | Requester | **interface** `Requester.Request/Cancel(title)` | Seerr (default), Sonarr+Radarr (alt) |
 | **Programmer** | **interface** `Programmer.Reconcile(channel, lineup)` | **Tunarr** (only impl; abstracted for future ErsatzTV) |
 | Suggester | *struct* `suggest.Suggester` | LLM: Ollama (local) or an OpenAI-compatible endpoint (hosted — OpenRouter, or a user-supplied Custom base URL; Claude via OpenRouter) |
@@ -162,6 +164,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the hermetic certification contract for filler admission.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
+- **`inventory`** · 3 importers
+  Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
 - **`plannerreference`**
@@ -248,9 +252,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`
   Materializes identity-blind evidence for independent semantic review.
-- **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `metrics`
+- **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 7**
@@ -311,7 +315,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -424,6 +428,90 @@ Store interface:
 ### Schema & migrations
 - Keep SQL ANSI where possible; `INSERT … ON CONFLICT(key) DO UPDATE` works on both.
 - **`goose`** (decided, §14) with an **embedded** FS and separate `migrations/sqlite` + `migrations/postgres` dirs so dialect DDL never leaks. Auto-run on startup (`AUTO_MIGRATE=true`).
+
+### Loomarr-owned Media Inventory (V66)
+
+The Library is an upstream availability authority and importer, not the database of record for
+Loomarr's understanding of content. `inventory.Service` owns one durable, provider-neutral aggregate
+of **Media Items**, **Media Sources**, their exact **Origins**, and current **Observations**. Emby and
+Jellyfin populate that model first; a future direct-file scanner uses the same write port. Downstream
+playout, preparation, scheduling, and search never receive provider response types.
+
+A Media Item is a metadata-bearing node whose kind is extensible. Series, seasons, collections, and
+other structural nodes may have no source; a movie, episode, extra, or future kind is playable only
+when source resolution finds a usable Media Source. This does not replace the provisionable Title or
+the filler Clip. Inventory membership grants neither availability state nor programme/filler
+authority. Title-to-item linkage uses grounded provider identifiers or an explicit operator link;
+names and filenames never merge identity.
+
+The first store shape has six structures, written atomically per imported snapshot:
+
+1. `inventory_items` — Loomarr item identity, extensible kind, and timestamps.
+2. `inventory_item_origins` — authority + external-item identity, observation document and coverage,
+   schema version, observed/last-seen times, and explicit missing state.
+3. `inventory_external_ids` — normalized grounded identifiers plus the Origin that asserted them.
+4. `inventory_sources` — Loomarr source identity, owning item, kind, safe canonical facts, and revision.
+5. `inventory_source_origins` — authority + external item/source identity, protected locator,
+   observation/coverage, and presence state.
+6. `inventory_source_measurements` — measured technical facts bound to one exact source revision.
+
+The service surface stays small:
+
+```go
+type Service interface {
+    ApplySnapshot(context.Context, Snapshot) (ItemID, error)
+    Item(context.Context, ItemRef) (Item, bool, error)
+    ResolveSource(context.Context, SourceRequest) (ResolvedSource, bool, error)
+    RecordMeasurement(context.Context, Measurement) error
+    MarkUnseen(context.Context, AuthorityID, time.Time, []OriginKey) error
+}
+```
+
+`ApplySnapshot` validates bounds and atomically resolves exact Origin identity before upserting the
+whole aggregate. Re-import is idempotent. Cross-origin coalescing requires a shared grounded external
+identifier or explicit link; title/filename similarity is never sufficient. `MarkUnseen` records
+explicit absence only after a completed scan. A timeout, authentication failure, or incomplete scan
+does not call it and therefore cannot erase the last useful inventory.
+
+Observations preserve broad safe metadata: hierarchy and external ids; names, overview, genres,
+tags, studios/people, dates, ratings, runtime and artwork references; source protocol/container,
+size, bitrate, duration and revision; and ordered video/audio/subtitle facts including codecs,
+language, dispositions, channels, dimensions, colour/HDR, and interlace. Typed fields express facts
+Loomarr understands. A bounded sanitized extension document retains unknown importer fields for
+future backfill. Coverage distinguishes absent/unknown from explicitly observed empty collections.
+The current observation per origin/source is retained rather than unbounded history.
+
+Validation is repeated at both domain and store boundaries. Credentials, authenticated or transcode
+URLs, user playback state, sessions, tokens, and artwork bytes are rejected or stripped before
+persistence. Operational locators are protected data and excluded from ordinary diagnostics/support
+exports. Collection cardinality, string lengths, and document byte limits are generous safety bounds,
+not a metadata-minimization policy, and the shared SQLite/PostgreSQL conformance suite enforces them
+identically.
+
+Source revision and freshness are consumer-specific. A local source uses size + modification time
+(and may reuse a stronger prepared fingerprint); a remote source uses an upstream revision/etag/date
+when available and bounded freshness otherwise. Stale descriptive facts may enrich a guide, while
+stale stream ordering cannot authorize an audio map that could dead-air playout. Measurements apply
+only when their source revision still matches; changed bytes reject the stale measurement.
+
+Inventory owns what a source is, not credentials for opening it. `ResolveSource` returns stable source
+identity/revision, safe observations, and a protected locator. The prepared-output follow-up (#1031)
+introduces a separate application adapter that opens that result just in time:
+
+```go
+type SourceAccess interface {
+    OpenInput(context.Context, inventory.ResolvedSource) (media.Input, error)
+}
+```
+
+A Library locator is the stable `{authority, external item, external source}` tuple; that Source Access
+adapter will construct a fresh authenticated original-stream request for each use. A local locator is a
+protected path plus revision facts. The resulting `media.Input` is transient and must never be
+serialized. Until #1031 lands, live playout retains the existing Library input resolver; #1030 may
+refresh missing/stale stream observations from the Library and then direct-probe the resolved input.
+Prepared readiness will store only source id/revision, selected track, rendition, and publication
+identity. Its tune-time lookup performs no Library request, source probe, hashing, or FFmpeg startup;
+a missing or stale inventory/prepared result remains an immediate live-playout fallback.
 
 ### Cached series episodes (§9 series expansion)
 
@@ -1815,11 +1903,17 @@ The mechanism, the way every mature media server (Plex/Emby/Jellyfin) does it:
    (`/data/tv/…`) to the local mount (`/cifs/fictionalserver/tv/…`). If the mapped file is readable,
    that is the ffmpeg input. **HTTP is the fallback** only when no mapping resolves a local file (a
    media server on another host, no shared mount) — so a zero-config install still works.
-2. **ffprobe decides, not the media server's metadata.** The resolved input is probed for its real
-   video/audio codec. `playout.PlanCopy` answers "can this be copied as-is?" against the resolved
-   **EncodePlan**'s copy sets (see "A session's identity is `(channel, encode-plan)`" below):
+2. **Measured source facts decide copy/transcode; durable Inventory decides audio when fresh.** The
+   resolved input is probed for its real video/audio codec. `playout.PlanCopy` answers "can this be
+   copied as-is?" against the resolved **EncodePlan**'s copy sets (see "A session's identity is
+   `(channel, encode-plan)`" below):
    `baseline` = h264+aac; `hevc8`/`hevc10` add HEVC (and, for `hevc10`, 10-bit + surround); a
-   media-server tuner resolves to the broadest, `full`.
+   media-server tuner resolves to the broadest, `full`. Preferred-audio selection first reads a
+   fresh V66 observation for the exact resolved input. A readable local file is keyed by its current
+   size + modification time and is probed immediately on a changed/missing revision; an HTTP input
+   refreshes through the Library importer before probing only when that metadata remains incomplete or
+   unavailable. One fallback probe persists the shared stream/format superset against the exact source
+   revision. Every failure still maps audio ordinal zero, so metadata can never dead-air a programme.
 3. **Direct-play (`-c copy`) when compatible — the common case, near-instant, no GPU. Transcode only
    when the codec genuinely is not playable by the plan** (e.g. HEVC to a `baseline` client, or
    10-bit to an 8-bit-only one).

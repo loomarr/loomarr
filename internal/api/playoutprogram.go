@@ -43,7 +43,7 @@ type PlayoutResolver interface {
 	// honouring the operator's preferred language (§9.1). Best-effort: 0 (the file's first
 	// track) whenever the preference cannot be resolved, so a probe failure costs the language
 	// and never the programme.
-	AudioTrackFor(ctx context.Context, channelID, streamURL string) int
+	AudioTrackFor(ctx context.Context, channelID, libraryItemID, streamURL string) int
 	// Tracks probes the audio + subtitle tracks of the channel's CURRENTLY-AIRING program, for
 	// the Watch surface's pickers (§9.1, V46). The options a viewer sees are what the airing file
 	// actually carries — not a hardcoded list and not an app setting. Best-effort: empty tracks
@@ -235,7 +235,7 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// Which audio track, honouring the operator's language preference (§9.1). Resolved here
 	// rather than inside ProgramArgs because it needs a probe of the source, and the args
 	// builder is deliberately a pure function.
-	audioTrack := s.playoutResolver.AudioTrackFor(r.Context(), channelID, streamURL)
+	audioTrack := s.playoutResolver.AudioTrackFor(r.Context(), channelID, airing.LibraryItemID, streamURL)
 
 	// Loudness normalisation, FILLER ONLY (§10 V40).
 	//
