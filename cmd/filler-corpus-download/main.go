@@ -26,34 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
 
-type downloadLedger struct {
-	SchemaVersion   int              `json:"schemaVersion"`
-	Profile         string           `json:"profile"`
-	InventorySHA256 string           `json:"inventorySha256"`
-	GeneratedAt     time.Time        `json:"generatedAt"`
-	MaxRequests     int              `json:"maxRequests"`
-	RequestsUsed    int              `json:"requestsUsed"`
-	MaxItems        int              `json:"maxItems"`
-	MaxBytes        int64            `json:"maxBytes"`
-	Bytes           int64            `json:"bytes"`
-	Cases           []downloadedCase `json:"cases"`
-}
-
-type downloadedCase struct {
-	CaseID              string                               `json:"caseId"`
-	Authority           string                               `json:"authority"`
-	ItemID              string                               `json:"itemId"`
-	LicenseURL          string                               `json:"licenseUrl"`
-	ItemURL             string                               `json:"itemUrl"`
-	MetadataURL         string                               `json:"metadataUrl"`
-	MetadataRetrievedAt time.Time                            `json:"metadataRetrievedAt"`
-	MetadataSHA256      string                               `json:"metadataSha256"`
-	Representation      fillercorpus.InventoryRepresentation `json:"representation"`
-	LocalFile           string                               `json:"localFile"`
-	ContentSHA256       string                               `json:"contentSha256"`
-	Approval            fillercorpus.RightsDecision          `json:"approval"`
-	VerifiedAt          time.Time                            `json:"verifiedAt"`
-}
+type downloadLedger = fillercorpus.DownloadLedger
 
 type plannedDownload struct {
 	candidate fillercorpus.InventoryCase
@@ -243,7 +216,7 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 	if err := os.MkdirAll(opts.outputDir, 0o750); err != nil {
 		return downloadLedger{}, err
 	}
-	ledger := downloadLedger{SchemaVersion: 2, Profile: opts.profile, GeneratedAt: opts.generatedAt.UTC(), MaxRequests: opts.maxRequests, MaxItems: opts.maxItems, MaxBytes: opts.maxBytes}
+	ledger := downloadLedger{SchemaVersion: fillercorpus.DownloadLedgerSchemaVersion, Profile: opts.profile, GeneratedAt: opts.generatedAt.UTC(), MaxRequests: opts.maxRequests, MaxItems: opts.maxItems, MaxBytes: opts.maxBytes}
 	lastRequestAt := time.Time{}
 	for _, item := range plan {
 		verifiedAt := opts.generatedAt.UTC()
@@ -276,7 +249,7 @@ func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDo
 			return downloadLedger{}, fmt.Errorf("%s: downloaded bytes or source checksums do not match inventory", item.candidate.CaseID)
 		}
 		ledger.Bytes += size
-		ledger.Cases = append(ledger.Cases, downloadedCase{
+		ledger.Cases = append(ledger.Cases, fillercorpus.DownloadCase{
 			CaseID: item.candidate.CaseID, Authority: item.candidate.Authority, ItemID: item.candidate.ItemID, LicenseURL: item.candidate.LicenseURL,
 			ItemURL: item.candidate.ItemURL, MetadataURL: item.candidate.MetadataURL,
 			MetadataRetrievedAt: item.candidate.MetadataRetrievedAt, MetadataSHA256: item.candidate.MetadataSHA256,
