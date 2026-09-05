@@ -62,7 +62,7 @@ func TestRunExercisesSignedPreparedSurfRawAndCleanupWithoutLeakingPrivateInputs(
 	if report.Resources[0].PreparedChannels != 100 || report.Resources[0].ReadyChannels != 100 {
 		t.Fatalf("baseline prepared readiness = %+v", report.Resources[0])
 	}
-	for _, name := range []string{"mint", "configured", "surf", "fan_in", "prepared_raw", "raw_capacity", "capacity_recovery", "overload", "cleanup"} {
+	for _, name := range []string{"mint", "configured", "surf", "prepared_fan_in", "fan_in", "prepared_raw", "raw_capacity", "capacity_recovery", "overload", "cleanup"} {
 		phase, ok := report.Phase(name)
 		if !ok || phase.Attempts == 0 || phase.Failures != 0 {
 			t.Fatalf("phase %q = %+v, present=%t", name, phase, ok)
@@ -122,11 +122,12 @@ type httpFixture struct {
 	mu               sync.Mutex
 	activeRaw        int
 	maxConcurrentRaw int
+	activeChannels   map[string]int
 }
 
 func newHTTPFixture(t *testing.T, channels int) *httpFixture {
 	t.Helper()
-	f := &httpFixture{admin: "admin-super-secret", device: "device-super-secret"}
+	f := &httpFixture{admin: "admin-super-secret", device: "device-super-secret", activeChannels: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/system/version", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+f.admin {
@@ -141,7 +142,7 @@ func newHTTPFixture(t *testing.T, channels int) *httpFixture {
 			return
 		}
 		f.mu.Lock()
-		active := f.activeRaw
+		active := len(f.activeChannels)
 		f.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{"running": true, "capacity": 4, "active": active, "viewerActiveSessions": active, "graceIdleSessions": 0, "transcodeCost": min(active, 4), "sessions": []any{}})
 	})
@@ -191,13 +192,28 @@ func newHTTPFixture(t *testing.T, channels int) *httpFixture {
 			http.NotFound(w, r)
 			return
 		}
+		channelID := strings.TrimPrefix(r.URL.Path, "/v1/playout/stream/")
 		f.mu.Lock()
+		if f.activeChannels[channelID] == 0 && len(f.activeChannels) >= 4 {
+			f.mu.Unlock()
+			http.Error(w, "capacity", http.StatusServiceUnavailable)
+			return
+		}
 		f.activeRaw++
+		f.activeChannels[channelID]++
 		if f.activeRaw > f.maxConcurrentRaw {
 			f.maxConcurrentRaw = f.activeRaw
 		}
 		f.mu.Unlock()
-		defer func() { f.mu.Lock(); f.activeRaw--; f.mu.Unlock() }()
+		defer func() {
+			f.mu.Lock()
+			f.activeRaw--
+			f.activeChannels[channelID]--
+			if f.activeChannels[channelID] == 0 {
+				delete(f.activeChannels, channelID)
+			}
+			f.mu.Unlock()
+		}()
 		w.Header().Set("Content-Type", "video/mp2t")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(make([]byte, 188))

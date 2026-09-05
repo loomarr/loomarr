@@ -151,7 +151,7 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 
 	logger := slog.New(slog.DiscardHandler)
 	processManager := diagnostics.NewProcessManager(st, nil, diagnostics.ProcessOptions{
-		OutputDir: filepath.Join(root, "diagnostics"), InstanceID: "synthetic-cert", FlushInterval: 10 * time.Millisecond,
+		OutputDir: filepath.Join(root, "diagnostics"), InstanceID: "synthetic-cert",
 	})
 	target.diagnostics = processManager
 	processLog := diagnostics.NewProcessLog(st, diagnostics.ProcessReadOptions{OutputDir: filepath.Join(root, "diagnostics")})

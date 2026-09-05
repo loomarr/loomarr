@@ -75,14 +75,29 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	})
 	report.Phases = append(report.Phases, phaseFrom("surf", surfObs))
 
-	fanObs := parallel(config.FanInViewers, config.FanInViewers, func(int) observation {
+	preparedFanObs := parallel(config.FanInViewers, config.FanInViewers, func(int) observation {
 		if len(preparedIndexes) == 0 || signed[preparedIndexes[0]] == nil {
 			return observation{class: "mint_failed"}
 		}
 		elapsed, hit, class := endpoint.prepared(ctx, signed[preparedIndexes[0]])
 		return observation{duration: elapsed, hit: hit, class: class}
 	})
+	report.Phases = append(report.Phases, phaseFrom("prepared_fan_in", preparedFanObs))
+	fanIndexes := []int{}
+	if len(transcodeIndexes) > 0 {
+		fanIndexes = make([]int, config.FanInViewers)
+		for index := range fanIndexes {
+			fanIndexes[index] = transcodeIndexes[0]
+		}
+	}
+	fanObs, fanSample := rawBurst(ctx, endpoint, config, fanIndexes)
+	if fanSample.SessionsActive > baseline.SessionsActive+1 || fanSample.TranscodeCost > baseline.TranscodeCost+1 {
+		fanObs = append(fanObs, observation{class: "fanout_split"})
+	}
 	report.Phases = append(report.Phases, phaseFrom("fan_in", fanObs))
+	if fanSample.Capacity > 0 {
+		report.Resources = append(report.Resources, fanSample)
+	}
 	preparedRaw, preparedRawSample := rawBurst(ctx, endpoint, config, selectBurstIndexes(preparedIndexes, target.Capacity))
 	preparedRawPhase := phaseFrom("prepared_raw", preparedRaw)
 	report.Phases = append(report.Phases, preparedRawPhase)

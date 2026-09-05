@@ -56,6 +56,9 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	if preparedRaw := report.PhaseMust("prepared_raw"); preparedRaw.Attempts != 4 || preparedRaw.Failures != 0 || preparedRaw.P95MS > 500 {
 		t.Fatalf("prepared raw phase = %+v", preparedRaw)
 	}
+	if fanIn := report.PhaseMust("fan_in"); fanIn.Attempts != 4 || fanIn.Failures != 0 {
+		t.Fatalf("fan-in phase = %+v", fanIn)
+	}
 	if report.PhaseMust("overload").HTTPClasses["http_503"] == 0 {
 		t.Fatalf("overload was not bounded: %+v", report.PhaseMust("overload"))
 	}

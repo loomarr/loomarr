@@ -1023,7 +1023,6 @@ func (s *Session) close() {
 	if proc != nil {
 		proc.Stop()
 	}
-
 	// Outside the lock, and after the cancel, so a subscriber that immediately re-reads the
 	// telemetry sees the session already gone rather than mid-teardown.
 	if s.onClosed != nil {
