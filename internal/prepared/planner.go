@@ -19,6 +19,11 @@ const preparationLookahead = 6 * time.Hour
 // another operator tuning surface.
 const preparationDrainReserve = 10 * time.Minute
 
+// preparationFinalizationTimeout bounds the narrow recovery path used only when an active encoder
+// consumes the River deadline despite the launch reserve. It gives lookup-only observation and
+// retention a final cancellation window without detaching ordinary shutdown cancellation.
+const preparationFinalizationTimeout = 30 * time.Second
+
 // CandidateClass orders the bounded readiness frontier. Zero is current so older callers and test
 // fixtures that omit the class remain maximally urgent.
 type CandidateClass uint8
@@ -177,6 +182,7 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 	var errs []error
 	var plan ReadinessPlan
 	var retention PruneResult
+	finalizationCtx := ctx
 	defer func() {
 		p.statusMu.Lock()
 		p.status.Running = false
@@ -196,11 +202,19 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 		errs = append(errs, resolveErr)
 		preparationErrs := p.prepare(ctx, uniqueCandidates(plan.Candidates))
 		errs = append(errs, preparationErrs...)
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			if !errors.Is(ctxErr, context.DeadlineExceeded) {
+				return ctxErr
+			}
+			errs = append(errs, ctxErr)
+			var cancel context.CancelFunc
+			finalizationCtx, cancel = context.WithTimeout(
+				context.WithoutCancel(ctx), preparationFinalizationTimeout,
+			)
+			defer cancel()
 		}
 		if observer, ok := p.resolver.(ReadinessObserver); ok {
-			observed, observeErr := observer.Observe(ctx, now, now.Add(preparationLookahead))
+			observed, observeErr := observer.Observe(finalizationCtx, now, now.Add(preparationLookahead))
 			if observeErr == nil {
 				plan = observed
 			}
@@ -209,7 +223,7 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 	}
 	if p.retainer != nil && p.budget != nil {
 		budget := p.budget()
-		result, err := p.retainer.Prune(ctx, budget, plan.Protected)
+		result, err := p.retainer.Prune(finalizationCtx, budget, plan.Protected)
 		retention = result
 		if err != nil {
 			errs = append(errs, fmt.Errorf("retain prepared media: %w", err))
