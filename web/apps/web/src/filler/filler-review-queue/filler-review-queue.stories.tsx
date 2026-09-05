@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { widthFrame, withRouter } from "@/test/story-utils";
+import { withRouter } from "@/test/story-utils";
 import { FillerReviewQueue } from "./filler-review-queue";
 
 const row = (index: number) => ({
@@ -94,23 +94,24 @@ const withReviews =
         return response(screening ?? screeningFor(hash));
       }
       if (url.pathname === "/v1/filler") {
-        const hash = url.searchParams.getAll("hashes")[0] ?? body.rows[0]?.clipHash;
+        const hashes = url.searchParams.getAll("hashes");
         return response({
-          clips: hash
-            ? [
-                {
-                  hash,
-                  name: "Mountain Dew commercial",
-                  kind: "commercial",
-                  durationMs: 30_000,
-                  tagged: true,
-                  aiTagged: true,
-                  playCount: 0,
-                  playsCounted: true,
-                },
-              ]
-            : [],
-          total: hash ? 1 : 0,
+          clips: hashes.map((hash, index) => ({
+            hash,
+            name:
+              index === 0
+                ? "Mountain Dew commercial"
+                : index % 2 === 0
+                  ? `Soda commercial ${index + 1}`
+                  : `Station promo ${index + 1}`,
+            kind: "commercial",
+            durationMs: 30_000,
+            tagged: true,
+            aiTagged: true,
+            playCount: 0,
+            playsCounted: true,
+          })),
+          total: hashes.length,
         });
       }
       if (request.method === "POST") return response({ id: "story-action" });
@@ -123,10 +124,16 @@ const withReviews =
     );
   };
 
+const withReviewWidth: Decorator = (Story) => (
+  <div style={{ width: 760, maxWidth: "calc(100vw - 32px)" }}>
+    <Story />
+  </div>
+);
+
 const meta = {
   title: "Filler/DecisionReviewQueue",
   component: FillerReviewQueue,
-  decorators: [widthFrame(760), withRouter("/filler/incoming")],
+  decorators: [withReviewWidth, withRouter("/filler/incoming")],
 } satisfies Meta<typeof FillerReviewQueue>;
 
 export default meta;
@@ -135,7 +142,10 @@ type Story = StoryObj<typeof meta>;
 export const GenuineReview: Story = { decorators: [withReviews({ rows: [row(1)], total: 1 })] };
 export const Empty: Story = { decorators: [withReviews({ rows: [], total: 0 })] };
 export const LargeQueue: Story = {
-  decorators: [withReviews({ rows: Array.from({ length: 24 }, (_, index) => row(index)), total: 24 })],
+  decorators: [withReviews({ rows: Array.from({ length: 10 }, (_, index) => row(index)), total: 24 })],
+  play: async ({ canvas }) => {
+    await canvas.findByText("Station promo 10");
+  },
 };
 export const Correction: Story = {
   decorators: [withReviews({ rows: [row(2)], total: 1 })],

@@ -6,7 +6,7 @@ import {
   getListFillerMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
@@ -99,6 +99,7 @@ beforeEach(() => {
 const prepareForPositiveDecision = async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Review evidence" }));
   await userEvent.click(await screen.findByRole("button", { name: "Play exact clip" }));
+  fireEvent.playing(document.querySelector("video") as HTMLVideoElement);
   await userEvent.click(await screen.findByRole("button", { name: "Close player" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Record as filler" })).toBeEnabled());
 };
@@ -118,7 +119,7 @@ describe("FillerReviewQueue", () => {
     expect(screen.getByText(/neither files nor removes the clip/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Record as filler" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Correct answer" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Record as not filler" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record as not filler" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Skip for now" })).toBeInTheDocument();
   });
 
@@ -146,7 +147,7 @@ describe("FillerReviewQueue", () => {
     expect(screeningReads).toBe(1);
   });
 
-  it("resolves a page of review identities in one bounded catalog read", async () => {
+  it("resolves one bounded page and focuses only the selected question", async () => {
     const secondHash = "b".repeat(64);
     let catalogReads = 0;
     server.use(
@@ -166,8 +167,88 @@ describe("FillerReviewQueue", () => {
     render(<FillerReviewQueue />, { wrapper });
 
     expect(await screen.findByText("Resolved clip 1 · 30s")).toBeInTheDocument();
-    expect(screen.getByText("Resolved clip 2 · 30s")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Is this a promo?" })).not.toBeInTheDocument();
+    expect(screen.getByText("Resolved clip 2")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Review question 2: Is this a promo?" }));
+    expect(await screen.findByText("Resolved clip 2 · 30s")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Is this a soda commercial?" })).not.toBeInTheDocument();
     expect(catalogReads).toBe(1);
+  });
+
+  it("uses the server cursor to page through a large queue", async () => {
+    const pageOne = Array.from({ length: 10 }, (_, index) => ({
+      ...review,
+      id: `decision-${index + 1}`,
+      clipHash: (index + 1).toString(16).padStart(64, "0"),
+      question: `Question ${index + 1}`,
+      createdAt: `2026-08-${String(25 - index).padStart(2, "0")}T12:00:00Z`,
+    }));
+    const pageTwo = [
+      {
+        ...review,
+        id: "decision-11",
+        clipHash: "b".repeat(64),
+        question: "Question 11",
+        createdAt: "2026-08-15T12:00:00Z",
+      },
+      {
+        ...review,
+        id: "decision-12",
+        clipHash: "c".repeat(64),
+        question: "Question 12",
+        createdAt: "2026-08-14T12:00:00Z",
+      },
+    ];
+    const requests: URL[] = [];
+    server.use(
+      http.get("*/v1/filler/decisions/reviews", ({ request }) => {
+        const url = new URL(request.url);
+        requests.push(url);
+        return HttpResponse.json({
+          rows: url.searchParams.has("beforeId") ? pageTwo : pageOne,
+          total: 12,
+        });
+      }),
+      getListFillerMockHandler(({ request }) => {
+        const hashes = new URL(request.url).searchParams.getAll("hashes");
+        return { clips: hashes.map((hash) => ({ ...clip, hash })), total: hashes.length };
+      }),
+    );
+    render(<FillerReviewQueue />, { wrapper });
+
+    expect(await screen.findByText(/Page 1 of 2/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(await screen.findByText(/Page 2 of 2/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Question 11" })).toBeInTheDocument();
+    expect(requests.at(-1)?.searchParams.get("limit")).toBe("10");
+    expect(requests.at(-1)?.searchParams.get("beforeId")).toBe("decision-10");
+    expect(requests.at(-1)?.searchParams.get("beforeAt")).toBe(pageOne.at(-1)?.createdAt);
+
+    await userEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    expect(await screen.findByText(/Page 1 of 2/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Question 1" })).toBeInTheDocument();
+  });
+
+  it("requires exact playback before recording any semantic answer", async () => {
+    server.use(getFillerDecisionReviewsMockHandler({ rows: [review], total: 1 }));
+    render(<FillerReviewQueue />, { wrapper });
+
+    expect(await screen.findByRole("button", { name: "Record as not filler" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Correct answer" }));
+    await userEvent.click(screen.getByLabelText("It is not filler"));
+    await userEvent.type(screen.getByLabelText("Correction"), "This is programme content");
+    expect(screen.getByRole("button", { name: "Save correction" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Review evidence" }));
+    await userEvent.click(screen.getByRole("button", { name: "Play exact clip" }));
+    await userEvent.click(screen.getByRole("button", { name: "Close player" }));
+    expect(screen.getByRole("button", { name: "Record as filler" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Play exact clip" }));
+    fireEvent.playing(document.querySelector("video") as HTMLVideoElement);
+    await userEvent.click(screen.getByRole("button", { name: "Close player" }));
+    expect(screen.getByRole("button", { name: "Record as not filler" })).toBeEnabled();
   });
 
   it("records skip for now without inventing an accept or reject answer", async () => {
@@ -305,5 +386,7 @@ describe("FillerReviewQueue", () => {
     expect(await screen.findByText("Applied review unavailable")).toBeInTheDocument();
     expect(screen.getByText(/terminal catalog effect/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm for library" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Correct" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
   });
 });

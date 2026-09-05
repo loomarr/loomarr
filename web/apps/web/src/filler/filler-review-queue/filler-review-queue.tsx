@@ -15,9 +15,16 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ReviewQueueNavigator } from "./review-queue-navigator";
 import { ScreeningSummary } from "./screening-summary";
 
 const humanize = (value: string) => value.replaceAll("_", " ");
+const REVIEW_PAGE_SIZE = 10;
+
+interface ReviewCursor {
+  beforeAt?: string;
+  beforeId?: string;
+}
 
 const ReviewCard = ({
   review,
@@ -38,7 +45,7 @@ const ReviewCard = ({
   const [verdict, setVerdict] = useState<"admit" | "reject">("admit");
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [previewOpened, setPreviewOpened] = useState(false);
+  const [playbackStarted, setPlaybackStarted] = useState(false);
   const shadowReview = review.applicationMode === "shadow";
   const exactHash = /^[0-9a-f]{64}$/.test(review.clipHash);
   const screeningQuery = fillerApi.useGetFillerScreening(
@@ -46,7 +53,7 @@ const ReviewCard = ({
     { query: { enabled: exactHash && evidenceOpen } },
   );
   const screening = unwrap(screeningQuery.data, (body) => body);
-  const canRecordPositiveAnswer = Boolean(shadowReview && previewOpened && clip);
+  const canRecordAnswer = Boolean(shadowReview && playbackStarted && clip);
   const action = fillerApi.useActOnFillerDecision({
     mutation: {
       onSuccess: (_result, variables) => {
@@ -87,7 +94,7 @@ const ReviewCard = ({
   };
 
   return (
-    <Card className="p-5" aria-labelledby={`review-${review.id}`}>
+    <Card className="min-w-0 p-5" aria-labelledby={`review-${review.id}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-muted-foreground text-xs">
@@ -167,14 +174,11 @@ const ReviewCard = ({
               <p className="text-onair-300 text-sm">The exact catalog clip could not be resolved.</p>
             ) : clip ? (
               <Button
-                variant={previewOpened ? "outline" : "default"}
+                variant={playbackStarted ? "outline" : "default"}
                 size="sm"
-                onClick={() => {
-                  setPreviewOpened(true);
-                  setPlaying(true);
-                }}
+                onClick={() => setPlaying(true)}
               >
-                {previewOpened ? "Play exact clip again" : "Play exact clip"}
+                {playbackStarted ? "Play exact clip again" : "Play exact clip"}
               </Button>
             ) : clipLoading ? (
               <p aria-live="polite" className="text-muted-foreground text-sm">
@@ -186,7 +190,7 @@ const ReviewCard = ({
 
             {screeningQuery.error ? (
               <div className="rounded-md border border-caution/35 bg-caution/5 p-3 text-sm">
-                Screening evidence could not be loaded. Positive confirmation remains unavailable.
+                Screening evidence could not be loaded. Applied admission remains unavailable.
               </div>
             ) : screening ? (
               <ScreeningSummary summary={screening} />
@@ -204,7 +208,7 @@ const ReviewCard = ({
           className="mt-5 rounded-md border border-border bg-muted/20 p-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (answer.trim() && (verdict === "reject" || canRecordPositiveAnswer)) submit("correct");
+            if (answer.trim() && canRecordAnswer) submit("correct");
           }}
         >
           <fieldset>
@@ -244,12 +248,7 @@ const ReviewCard = ({
             maxLength={512}
           />
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              type="submit"
-              disabled={
-                action.isPending || !answer.trim() || (verdict === "admit" && !canRecordPositiveAnswer)
-              }
-            >
+            <Button type="submit" disabled={action.isPending || !answer.trim() || !canRecordAnswer}>
               Save correction
             </Button>
             <Button
@@ -266,9 +265,9 @@ const ReviewCard = ({
         <div className="mt-5 flex flex-wrap gap-2">
           <Button
             onClick={() => submit("admit")}
-            disabled={action.isPending || !canRecordPositiveAnswer}
+            disabled={action.isPending || !canRecordAnswer}
             title={
-              canRecordPositiveAnswer
+              canRecordAnswer
                 ? "Record that this exact clip is filler; this does not file it"
                 : shadowReview
                   ? "Play the exact clip before recording an answer"
@@ -277,10 +276,21 @@ const ReviewCard = ({
           >
             {shadowReview ? "Record as filler" : "Confirm for library"}
           </Button>
-          <Button variant="outline" onClick={() => setCorrecting(true)} disabled={action.isPending}>
+          <Button
+            variant="outline"
+            onClick={() => setCorrecting(true)}
+            disabled={action.isPending || !shadowReview}
+          >
             {shadowReview ? "Correct answer" : "Correct"}
           </Button>
-          <Button variant="ghost" onClick={() => submit("reject")} disabled={action.isPending}>
+          <Button
+            variant="ghost"
+            onClick={() => submit("reject")}
+            disabled={action.isPending || !canRecordAnswer}
+            title={
+              canRecordAnswer ? "Record that this exact clip is not filler" : "Play the exact clip first"
+            }
+          >
             {shadowReview ? "Record as not filler" : "Reject"}
           </Button>
           <Button variant="ghost" onClick={() => submit("abandon")} disabled={action.isPending}>
@@ -288,21 +298,28 @@ const ReviewCard = ({
           </Button>
         </div>
       )}
-      <ClipPlayer clip={playing && clip ? clip : null} onClose={() => setPlaying(false)} />
+      <ClipPlayer
+        clip={playing && clip ? clip : null}
+        onClose={() => setPlaying(false)}
+        onPlaybackStart={() => setPlaybackStarted(true)}
+      />
     </Card>
   );
 };
 
 const FillerReviewQueue = ({ hideEmpty = false }: { hideEmpty?: boolean }) => {
   const [abandoned, setAbandoned] = useState(() => new Set<string>());
-  const query = fillerApi.useFillerDecisionReviews({ limit: 100 });
+  const [pageCursors, setPageCursors] = useState<ReviewCursor[]>([{}]);
+  const [selectedReviewID, setSelectedReviewID] = useState<string>();
+  const cursor = pageCursors.at(-1) ?? {};
+  const query = fillerApi.useFillerDecisionReviews({ limit: REVIEW_PAGE_SIZE, ...cursor });
   const body = unwrap(query.data, (value) => value);
   const reviewHashes = body?.rows.map((review) => review.clipHash) ?? [];
   // Resolve the rendered identities in one bounded catalog read. A per-card query turned a
-  // 100-row review page into 100 HTTP calls before the operator opened anything; only the much
+  // ten-row review page into ten HTTP calls before the operator opened anything; only the much
   // heavier screening byte verification stays per-row and on-demand.
   const clipsQuery = fillerApi.useListFiller(
-    { hashes: reviewHashes, includeHeld: true, includeComposites: true, limit: 100 },
+    { hashes: reviewHashes, includeHeld: true, includeComposites: true, limit: REVIEW_PAGE_SIZE },
     { query: { enabled: reviewHashes.length > 0 } },
   );
   const clips = unwrap(clipsQuery.data, (value) => value.clips) ?? [];
@@ -316,6 +333,25 @@ const FillerReviewQueue = ({ hideEmpty = false }: { hideEmpty?: boolean }) => {
       </Card>
     );
   const visibleRows = body.rows.filter((review) => !abandoned.has(review.id));
+  const pageNumber = pageCursors.length;
+  const pageCount = Math.max(1, Math.ceil(body.total / REVIEW_PAGE_SIZE));
+  const hasPreviousPage = pageNumber > 1;
+  const hasNextPage = body.rows.length === REVIEW_PAGE_SIZE && pageNumber < pageCount;
+  const selectedReview = visibleRows.find((review) => review.id === selectedReviewID) ?? visibleRows.at(0);
+
+  const goToPreviousPage = () => {
+    if (!hasPreviousPage) return;
+    setPageCursors((current) => current.slice(0, -1));
+    setSelectedReviewID(undefined);
+  };
+
+  const goToNextPage = () => {
+    const last = body.rows.at(-1);
+    if (!hasNextPage || !last) return;
+    setPageCursors((current) => [...current, { beforeAt: last.createdAt, beforeId: last.id }]);
+    setSelectedReviewID(undefined);
+  };
+
   if (visibleRows.length === 0) {
     if (abandoned.size === 0) {
       if (hideEmpty) return null;
@@ -345,16 +381,43 @@ const FillerReviewQueue = ({ hideEmpty = false }: { hideEmpty?: boolean }) => {
           below.
         </p>
       </div>
-      {visibleRows.map((review) => (
-        <ReviewCard
-          key={review.id}
-          review={review}
-          clip={clipsByHash.get(review.clipHash)}
-          clipLoading={clipsQuery.isLoading}
-          clipUnavailable={Boolean(clipsQuery.error)}
-          onAbandon={() => setAbandoned((current) => new Set(current).add(review.id))}
-        />
-      ))}
+      <div
+        className={
+          body.total > 1
+            ? "grid min-w-0 grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]"
+            : ""
+        }
+      >
+        {body.total > 1 ? (
+          <ReviewQueueNavigator
+            items={visibleRows.map((review) => ({
+              id: review.id,
+              question: review.question,
+              subject: clipsByHash.get(review.clipHash)?.name ?? `Clip ${review.clipHash.slice(0, 10)}…`,
+            }))}
+            selectedID={selectedReview?.id ?? ""}
+            total={body.total}
+            pageNumber={pageNumber}
+            pageCount={pageCount}
+            hasPreviousPage={hasPreviousPage}
+            hasNextPage={hasNextPage}
+            paging={query.isFetching}
+            onSelect={setSelectedReviewID}
+            onPreviousPage={goToPreviousPage}
+            onNextPage={goToNextPage}
+          />
+        ) : null}
+        {selectedReview ? (
+          <ReviewCard
+            key={selectedReview.id}
+            review={selectedReview}
+            clip={clipsByHash.get(selectedReview.clipHash)}
+            clipLoading={clipsQuery.isLoading}
+            clipUnavailable={Boolean(clipsQuery.error)}
+            onAbandon={() => setAbandoned((current) => new Set(current).add(selectedReview.id))}
+          />
+        ) : null}
+      </div>
     </section>
   );
 };
