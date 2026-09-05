@@ -15,8 +15,14 @@ cat > "$test_root/bin/git" <<'STUB'
 set -euo pipefail
 case "$*" in
   'rev-parse HEAD'|'rev-parse origin/main') printf '%s\n' "$RELEASE_TEST_HEAD" ;;
+  'rev-parse --is-shallow-repository') printf '%s\n' "$RELEASE_TEST_SHALLOW" ;;
   'fetch --no-tags origin main') ;;
+  'fetch --no-tags --unshallow origin main') : > "$RELEASE_TEST_UNSHALLOW_MARKER" ;;
   "merge-base --is-ancestor $RELEASE_TEST_EVIDENCE $RELEASE_TEST_HEAD")
+    if [[ "$RELEASE_TEST_SHALLOW" == true && ! -f "$RELEASE_TEST_UNSHALLOW_MARKER" ]]; then
+      echo "fatal: Not a valid commit name $RELEASE_TEST_EVIDENCE" >&2
+      exit 128
+    fi
     [[ "$RELEASE_TEST_ANCESTOR" == true ]]
     ;;
   "diff --name-only $RELEASE_TEST_EVIDENCE $RELEASE_TEST_HEAD")
@@ -41,8 +47,9 @@ qualified_job=$'Android TV — React Native Play bundle / Android TV — React N
 plain_job=$'Android TV — React Native Play bundle\tsuccess'
 
 run_case() {
-  local name=$1 runs=$2 jobs=$3 changed=$4 ancestor=$5 expected=$6
+  local name=$1 runs=$2 jobs=$3 changed=$4 ancestor=$5 expected=$6 shallow=${7:-false}
   local output status
+  rm -f "$test_root/unshallowed"
   set +e
   output=$(cd "$root" && \
     PATH="$test_root/bin:$PATH" \
@@ -52,6 +59,8 @@ run_case() {
     RELEASE_TEST_JOBS="$jobs" \
     RELEASE_TEST_CHANGED="$changed" \
     RELEASE_TEST_ANCESTOR="$ancestor" \
+    RELEASE_TEST_SHALLOW="$shallow" \
+    RELEASE_TEST_UNSHALLOW_MARKER="$test_root/unshallowed" \
     GITHUB_REF=refs/heads/main \
     GITHUB_REPOSITORY=loomarr/loomarr \
     GITHUB_SHA="$head_sha" \
@@ -75,6 +84,8 @@ run_case qualified-current "$current_run" "$qualified_job" '' true pass
 run_case plain-current "$current_run" "$plain_job" '' true pass
 run_case unchanged-android-ancestor "$ancestor_run" "$qualified_job" \
   $'web/apps/web/src/main.tsx\nweb/apps/web/vite.config.ts\n' true pass
+run_case shallow-android-ancestor "$ancestor_run" "$qualified_job" \
+  $'web/apps/web/src/main.tsx\n' true pass true
 run_case changed-android-ancestor "$ancestor_run" "$qualified_job" \
   $'web/apps/tv/src/app.tsx\n' true fail
 run_case unrelated-history "$ancestor_run" "$qualified_job" '' false fail
