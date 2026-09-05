@@ -171,19 +171,28 @@ type playoutResolver struct {
 	// don't store", never to a failed bind.
 	codecs codecWriter
 	cycles *cycleCache
-	// detectOnce / detected cache the measured encoder choice (detectedEncoder). detectStart lets
-	// the first tune kick that work off without waiting for it; detectReady publishes the completed
-	// fields atomically so later programme boundaries use the measured hardware result.
+	// detectOnce / detected cache the measured encoder choice (detectedEncoder). The first live
+	// demand synchronously attempts only the bounded persisted-evidence validation; on a miss,
+	// detectStart starts the full benchmark without making playback wait. detectReady publishes the
+	// completed fields atomically so later programme boundaries use the measured hardware result.
 	//
 	// Process-cached because Detect trial-encodes every candidate at ~5s apiece — fine once, far
 	// too slow on the per-program path. A verified hardware result can also survive restart through
 	// capabilityRoot, but it must earn reuse with the bounded real validation described below.
-	detectOnce    sync.Once
-	detectStart   sync.Once
-	detectReady   atomic.Bool
-	detectContext context.Context
-	detected      playout.Encoder
-	maxChannels   atomic.Int64
+	detectOnce     sync.Once
+	detectStart    sync.Once
+	detectEvidence sync.Once
+	inputsOnce     sync.Once
+	detectReady    atomic.Bool
+	detectContext  context.Context
+	detected       playout.Encoder
+	maxChannels    atomic.Int64
+	capabilityBin  string
+	capabilityGPU  string
+	capabilityPath string
+	// Test seam for the bounded persisted-evidence check. Nil uses the real FFmpeg/GPU
+	// fingerprint and one-second encoder trial; it never runs the full benchmark.
+	validateCapabilityEvidence func(context.Context) (playout.Capacity, bool)
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -1369,9 +1378,9 @@ func (r *playoutResolver) PlanFor(
 func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	enc := playout.Encoder(r.encoder())
 	if enc == "" {
-		// No operator override ⇒ warm the measured answer once, but NEVER make this viewer wait
-		// for the machine benchmark. Until it completes, software is the conservative encoder that
-		// is immediately available; later programme boundaries switch to the cached hardware result.
+		// A matching persisted result pays only its bounded real validation and is available to this
+		// first tune. A miss starts the expensive full benchmark asynchronously; until that completes,
+		// software is the conservative immediately-available fallback.
 		//
 		// This used to fall straight through to libx264 with a comment claiming the
 		// capability prober's choice "was stored at wizard time" — but nothing ever stored
@@ -1380,13 +1389,33 @@ func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 		// measured rather than inferred from `ffmpeg -encoders` (which lists encoders the
 		// hardware cannot actually run — the exact trap that took a live channel down: the
 		// host listed h264_vulkan, the container had no /dev/dri).
-		r.warmEncoderDetection(ctx)
+		r.reuseEncoderEvidence(ctx)
 		enc = playout.EncoderSoftware
 		if r.detectReady.Load() {
 			enc = r.detected
+		} else {
+			r.warmEncoderDetection(ctx)
 		}
 	}
 	return playout.Resolve(playout.TierFor(r.tier()), enc, r.capacity(), r.activeChannels())
+}
+
+func (r *playoutResolver) reuseEncoderEvidence(ctx context.Context) {
+	r.detectEvidence.Do(func() {
+		var capacity playout.Capacity
+		var ok bool
+		if r.validateCapabilityEvidence != nil {
+			capacity, ok = r.validateCapabilityEvidence(ctx)
+		} else {
+			bin, gpu, root := r.capabilityInputs()
+			capacity, ok = playout.ValidateObservedCapabilityEvidence(
+				ctx, bin, playout.DefaultProfile(), gpu, root, r.processDiagnostics,
+			)
+		}
+		if ok {
+			r.publishDetectedCapacity(capacity, true)
+		}
+	})
 }
 
 // warmEncoderDetection starts the expensive host probe once without putting it on a viewer's
@@ -1412,40 +1441,52 @@ func (r *playoutResolver) warmEncoderDetection(fallback context.Context) {
 // complete measurement and atomically replaces that evidence.
 func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 	r.detectOnce.Do(func() {
-		bin := r.ffmpegPath()
-		if bin == "" {
-			bin = "ffmpeg"
+		r.reuseEncoderEvidence(ctx)
+		if r.detectReady.Load() {
+			return
 		}
-		gpu := ""
-		if r.gpuName != nil {
-			gpu = r.gpuName()
-		}
-		root := ""
-		if r.capabilityRoot != nil {
-			root = r.capabilityRoot()
-		}
+		bin, gpu, root := r.capabilityInputs()
 		cap, reused := playout.DetectObservedWithEvidence(
 			ctx, bin, playout.DefaultProfile(), gpu, root, r.processDiagnostics,
 		)
-		r.detected = cap.Chosen
-		r.maxChannels.Store(int64(cap.MaxChannels))
-		if r.log != nil {
-			// INFO, not DEBUG: which encoder a box settled on is the first thing anyone asks
-			// when playout is slow, and the per-candidate reasons explain WHY a GPU was
-			// skipped ("Device creation failed" vs "not in this ffmpeg build").
-			skipped := make([]string, 0, len(cap.All))
-			for _, c := range cap.All {
-				if !c.Works {
-					skipped = append(skipped, string(c.Encoder)+": "+c.Err)
-				}
-			}
-			r.log.Info("playout: encoder probed",
-				"chosen", cap.Chosen, "measured_max_channels", cap.MaxChannels,
-				"reused_verified_evidence", reused, "skipped", skipped)
-		}
-		r.detectReady.Store(true)
+		r.publishDetectedCapacity(cap, reused)
 	})
 	return r.detected
+}
+
+func (r *playoutResolver) capabilityInputs() (bin, gpu, root string) {
+	r.inputsOnce.Do(func() {
+		if r.ffmpegPath != nil {
+			r.capabilityBin = r.ffmpegPath()
+		}
+		if r.capabilityBin == "" {
+			r.capabilityBin = "ffmpeg"
+		}
+		if r.gpuName != nil {
+			r.capabilityGPU = r.gpuName()
+		}
+		if r.capabilityRoot != nil {
+			r.capabilityPath = r.capabilityRoot()
+		}
+	})
+	return r.capabilityBin, r.capabilityGPU, r.capabilityPath
+}
+
+func (r *playoutResolver) publishDetectedCapacity(cap playout.Capacity, reused bool) {
+	r.detected = cap.Chosen
+	r.maxChannels.Store(int64(cap.MaxChannels))
+	if r.log != nil {
+		skipped := make([]string, 0, len(cap.All))
+		for _, c := range cap.All {
+			if !c.Works {
+				skipped = append(skipped, string(c.Encoder)+": "+c.Err)
+			}
+		}
+		r.log.Info("playout: encoder probed",
+			"chosen", cap.Chosen, "measured_max_channels", cap.MaxChannels,
+			"reused_verified_evidence", reused, "skipped", skipped)
+	}
+	r.detectReady.Store(true)
 }
 
 // HWEncodeSlots is how many concurrent HARDWARE encodes this box sustains — the capability probe's
@@ -1478,18 +1519,18 @@ func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {
 // encode regardless of how many programs it plays.
 func playoutSpawner(
 	ffmpegBin string, publicURL func() string, token func() string, log *slog.Logger,
-	processDiagnostics *diagnostics.ProcessManager, preparedSources ...func() playout.BlockSource,
+	processDiagnostics *diagnostics.ProcessManager, preparedSource func() playout.BlockSource,
 ) playout.Spawner {
 	return func(ctx context.Context, channelID string, target playout.EncodePlan) (*playout.Process, error) {
 		base := publicURL()
 		if base == "" {
 			return nil, fmt.Errorf("playout: server.public_url is not set, so the session cannot open blocks")
 		}
-		var preparedSource playout.BlockSource
-		if len(preparedSources) > 0 && preparedSources[0] != nil {
-			preparedSource = preparedSources[0]()
+		var prepared playout.BlockSource
+		if preparedSource != nil {
+			prepared = preparedSource()
 		}
-		source := playoutBlockSource(base, token, http.DefaultClient, preparedSource)
+		source := playoutBlockSource(base, token, http.DefaultClient, prepared)
 		return playout.BlockSpawner(ffmpegBin, source, log, processDiagnostics)(ctx, channelID, target)
 	}
 }
@@ -1498,13 +1539,9 @@ func playoutSpawner(
 // child chooses a format from the load ladder; every later child must acknowledge that exact format
 // before its bytes can enter the long-lived mux.
 func playoutBlockSource(
-	base string, token func() string, client *http.Client, preparedSources ...playout.BlockSource,
+	base string, token func() string, client *http.Client, preparedSource playout.BlockSource,
 ) playout.BlockSource {
 	var broadcast string
-	var preparedSource playout.BlockSource
-	if len(preparedSources) > 0 {
-		preparedSource = preparedSources[0]
-	}
 	return func(blockCtx context.Context, blockChannel string, blockPlan playout.EncodePlan) (playout.Block, error) {
 		if preparedSource != nil {
 			block, err := preparedSource(blockCtx, blockChannel, blockPlan)

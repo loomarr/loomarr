@@ -337,14 +337,17 @@ func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
 	}
 }
 
-// A viewer must never pay the machine-capability benchmark. Boot warms it independently; until
-// that result is ready, software is the conservative immediately-available fallback.
+// A viewer may pay the bounded persisted-evidence validation, but never the full machine benchmark.
+// With no reusable evidence, software is the conservative immediately-available fallback.
 func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
 	t.Parallel()
 	started := make(chan struct{})
 	release := make(chan struct{})
 	r := fillerResolver(t, t.TempDir(), filler.Pod{})
 	r.encoder = func() string { return "" }
+	r.validateCapabilityEvidence = func(context.Context) (playout.Capacity, bool) {
+		return playout.Capacity{}, false
+	}
 	r.ffmpegPath = func() string {
 		close(started)
 		<-release

@@ -92,77 +92,76 @@ func (o *PreparedOrigin) MPEGTSBlockSource(
 // MPEGTSReady is the lookup-only admission proof for a copy-only prepared cold start. It opens no
 // original source and starts no process; a miss or malformed boundary keeps conservative admission.
 func (o *PreparedOrigin) MPEGTSReady(ctx context.Context, channelID string, plan EncodePlan) (bool, error) {
+	_, ready, err := o.resolveMPEGTSBlock(ctx, channelID, plan)
+	return ready, err
+}
+
+type preparedMPEGTSBlock struct {
+	media    preparedMedia
+	format   BroadcastFormat
+	identity AiringIdentity
+	limit    time.Duration
+}
+
+// resolveMPEGTSBlock is the one admission definition shared by the lookup-only cost proof and the
+// process-opening source. Keeping publication, format, identity, and remaining-boundary validation
+// together prevents a session being admitted cheaply under rules the actual block later rejects.
+func (o *PreparedOrigin) resolveMPEGTSBlock(
+	ctx context.Context, channelID string, plan EncodePlan,
+) (preparedMPEGTSBlock, bool, error) {
 	if o == nil || o.library == nil || o.resolver == nil {
-		return false, nil
+		return preparedMPEGTSBlock{}, false, nil
 	}
 	window, ok, err := o.resolver.ResolvePrepared(ctx, TuneRequest{
 		ChannelID: channelID, Plan: plan, Delivery: DeliveryMPEGTS,
 	})
 	if err != nil || !ok {
-		return false, err
+		return preparedMPEGTSBlock{}, false, err
 	}
-	_, hit, err := o.load(window.Current)
-	if err != nil || !hit {
-		return false, err
+	media, ok, err := o.load(window.Current)
+	if err != nil || !ok {
+		return preparedMPEGTSBlock{}, false, err
 	}
-	_, validFormat := preparedBroadcastFormat(window.Current.Specification.Rendition)
+	format, ok := preparedBroadcastFormat(window.Current.Specification.Rendition)
 	identity := window.Current.Identity
-	validIdentity := !identity.StartedAt.IsZero() && identity.EndsAt.After(identity.StartedAt) &&
-		identity.StartedAt.Equal(window.Current.StartedAt) && window.Current.Offset >= 0 &&
-		identity.ContentID != "" && identity.ScheduleBlockID != "" &&
-		identity.EndsAt.Sub(identity.StartedAt) > window.Current.Offset
-	return validFormat && validIdentity, nil
+	limit := identity.EndsAt.Sub(identity.StartedAt) - window.Current.Offset
+	if !ok || identity.StartedAt.IsZero() || !identity.EndsAt.After(identity.StartedAt) ||
+		!identity.StartedAt.Equal(window.Current.StartedAt) || window.Current.Offset < 0 ||
+		identity.ContentID == "" || identity.ScheduleBlockID == "" || limit <= 0 {
+		return preparedMPEGTSBlock{}, false, nil
+	}
+	return preparedMPEGTSBlock{media: media, format: format, identity: identity, limit: limit}, true, nil
 }
 
 func newPreparedMPEGTSBlockSource(o *PreparedOrigin, start preparedBlockStarter) BlockSource {
 	return func(ctx context.Context, channelID string, plan EncodePlan) (Block, error) {
-		if o == nil || o.library == nil || o.resolver == nil || start == nil {
+		if start == nil {
 			return Block{}, ErrPreparedUnavailable
 		}
-		window, ok, err := o.resolver.ResolvePrepared(ctx, TuneRequest{
-			ChannelID: channelID, Plan: plan, Delivery: DeliveryMPEGTS,
-		})
+		resolved, ok, err := o.resolveMPEGTSBlock(ctx, channelID, plan)
 		if err != nil {
 			return Block{}, err
 		}
 		if !ok {
-			return Block{}, ErrPreparedUnavailable
-		}
-		media, ok, err := o.load(window.Current)
-		if err != nil {
-			return Block{}, err
-		}
-		if !ok {
-			return Block{}, ErrPreparedUnavailable
-		}
-		format, ok := preparedBroadcastFormat(window.Current.Specification.Rendition)
-		identity := window.Current.Identity
-		if !ok || identity.StartedAt.IsZero() || !identity.EndsAt.After(identity.StartedAt) ||
-			!identity.StartedAt.Equal(window.Current.StartedAt) || window.Current.Offset < 0 ||
-			identity.ContentID == "" || identity.ScheduleBlockID == "" {
-			return Block{}, ErrPreparedUnavailable
-		}
-		limit := identity.EndsAt.Sub(identity.StartedAt) - window.Current.Offset
-		if limit <= 0 {
 			return Block{}, ErrPreparedUnavailable
 		}
 		args := ProgramArgs(ProgramSpec{
 			Profile: Profile{
-				Width: format.Width, Height: format.Height, Framerate: format.Framerate,
-				VideoBitrate: format.VideoBitrate, AudioBitrate: format.AudioBitrate,
+				Width: resolved.format.Width, Height: resolved.format.Height, Framerate: resolved.format.Framerate,
+				VideoBitrate: resolved.format.VideoBitrate, AudioBitrate: resolved.format.AudioBitrate,
 			},
-			Input: media.manifestPath, Offset: window.Current.Offset, Limit: limit,
+			Input: resolved.media.manifestPath, Offset: resolved.media.airing.Offset, Limit: resolved.limit,
 			Plan: CopyPlan{CopyVideo: true, CopyAudio: true}, PaceFromFirstByte: true,
 		})
 		diagnosticArgs := append([]string(nil), args...)
 		for index := range diagnosticArgs {
-			if diagnosticArgs[index] == media.manifestPath {
+			if diagnosticArgs[index] == resolved.media.manifestPath {
 				diagnosticArgs[index] = "[prepared-manifest]"
 			}
 		}
 		proc, err := start(ctx, args, diagnostics.ProcessSpec{
 			Purpose: "playout_prepared_remux", ChannelID: channelID, Target: plan.String(),
-			ScheduleBlockID: identity.ScheduleBlockID, Args: diagnosticArgs,
+			ScheduleBlockID: resolved.identity.ScheduleBlockID, Args: diagnosticArgs,
 		})
 		if err != nil {
 			return Block{}, err
@@ -175,7 +174,7 @@ func newPreparedMPEGTSBlockSource(o *PreparedOrigin, start preparedBlockStarter)
 		}
 		return Block{
 			Content:  &processBlockContent{reader: proc.Stdout, process: proc},
-			Identity: identity, Format: format,
+			Identity: resolved.identity, Format: resolved.format,
 		}, nil
 	}
 }

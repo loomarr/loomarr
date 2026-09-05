@@ -2067,9 +2067,10 @@ a private schedule. A tune resolves in this order:
    block into the existing long-lived Channel mux. This child decodes and encodes nothing, owns no
    publication bytes, and is shared by every viewer of the Manager's `(Channel, EncodePlan)`
    session; starting an encoder or a second per-Channel packager remains a contract violation. The
-   prepared copy remux is paced from its first byte at wall-clock rate: the live-source tune-in burst
-   is forbidden here because an unbounded copy can outrun the raw viewer's bounded delivery queue
-   and disconnect a healthy television before its first frame.
+   prepared copy remux omits the live-source tune-in burst, and the long-lived Channel mux paces its
+   pipe input at wall-clock rate. That outer pacing also bounds any whole-segment demux burst from
+   fMP4/HLS before it reaches the raw viewer's finite queue; a copy must not disconnect a healthy
+   television before its first frame merely because it can read immutable bytes faster than live.
    The first prepared block pins the session to the publication's codec, dimensions, frame rate,
    and bitrates. Every later prepared block must match that format, while a prepared miss opens the
    ordinary live child constrained to the same format, so an Airing boundary cannot change decoder
@@ -2116,12 +2117,22 @@ maintenance work. Unknown, software-only, or one-slot capacity disables hardware
 does not guess and it does not consume the only live slot. This priority contract is shared code;
 adding a second semaphore around ffmpeg is forbidden.
 
-The host capability benchmark is control-plane warming, never tune-time work. With no explicit
-encoder override, the first actual media demand starts it in the background and playback proceeds
-with the software fallback until a safe result is ready; merely configuring Channels starts no
-media processes. A successful hardware result and measured capacity are written as versioned,
-bounded evidence beneath the persistent prepared root; the
-record includes an FFmpeg-build fingerprint, GPU identity, profile identity, and observation time.
+A session whose current block is prepared or direct-copy holds zero transcode capacity, but that is
+not a promise about its next Airing. Immediately before any later live child starts a video
+transcode, the Manager atomically raises that session's cost under the same measured admission gate
+used at tune-in; if no slot can be reclaimed, the child does not start and the block retry waits for
+capacity. Returning to a prepared/copy block releases the cost. Thus many prepared sessions may be
+served concurrently without reserving imaginary encoders, while simultaneous prepared misses can
+never convert them into unbounded live transcodes.
+
+The full host capability benchmark is control-plane warming, never tune-time work. With no explicit
+encoder override, the first actual media demand first checks for matching persisted evidence. When
+present, that demand waits only for its bounded real validation and uses the verified encoder on its
+first live child. Absent, expired, mismatched, malformed, or failed evidence starts the full benchmark
+in the background and playback proceeds with the software fallback until a safe result is ready;
+merely configuring Channels starts no media processes. A successful hardware result and measured
+capacity are written as versioned, bounded evidence beneath the persistent prepared root; the record
+includes an FFmpeg-build fingerprint, GPU identity, profile identity, and observation time.
 On restart Loomarr may publish that result only after the fingerprints match, the evidence is still
 within its bounded freshness window, and a short real keyframe-bearing MPEG-TS trial proves the
 chosen encoder still works. A mismatch, expiry, malformed record, or failed validation falls back

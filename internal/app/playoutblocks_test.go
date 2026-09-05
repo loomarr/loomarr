@@ -37,7 +37,7 @@ func TestPlayoutBlockSourcePinsTheFirstBroadcastFormat(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client())
+	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), nil)
 	for i := 0; i < 2; i++ {
 		block, err := source(context.Background(), "channel/one", playout.PlanFull)
 		if err != nil {
@@ -65,7 +65,7 @@ func TestPlayoutBlockSourceRejectsAFormatChange(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client())
+	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), nil)
 	first, err := source(context.Background(), "channel", playout.PlanBaseline)
 	if err != nil {
 		t.Fatal(err)

@@ -369,9 +369,19 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		preparedObserver = planner
 		jobReg.Add(preparedPlayoutJob(planner, ""))
 		preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
-		preparedBlockSource = preparedOrigin.MPEGTSBlockSource(
+		rawPreparedBlockSource := preparedOrigin.MPEGTSBlockSource(
 			set.str("playout.ffmpeg_path"), log, deps.processDiagnostics,
 		)
+		preparedBlockSource = func(
+			ctx context.Context, channelID string, plan playout.EncodePlan,
+		) (playout.Block, error) {
+			block, err := rawPreparedBlockSource(ctx, channelID, plan)
+			if err == nil && block.Content != nil && !playoutMgr.AdmitProgram(channelID, plan, false) {
+				_ = block.Content.Close()
+				return playout.Block{}, playout.ErrAtCapacity
+			}
+			return block, err
+		}
 		preparedMPEGTSReady = func(ctx context.Context, channelID string, plan playout.EncodePlan) bool {
 			ready, err := preparedOrigin.MPEGTSReady(ctx, channelID, plan)
 			return err == nil && ready

@@ -79,6 +79,25 @@ func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 	}
 }
 
+func TestPlayoutResolver_ProfileUsesValidatedEvidenceOnFirstTune(t *testing.T) {
+	validationCalls := 0
+	r := &playoutResolver{
+		tier: func() string { return "balanced" }, encoder: func() string { return "" },
+		capacity: func() int { return 4 }, activeChannels: func() int { return 0 },
+		validateCapabilityEvidence: func(context.Context) (playout.Capacity, bool) {
+			validationCalls++
+			return playout.Capacity{Chosen: playout.EncoderNVENC, MaxChannels: 4}, true
+		},
+	}
+
+	profile := r.Profile(t.Context())
+	if profile.Encoder != playout.EncoderNVENC || validationCalls != 1 ||
+		r.maxChannels.Load() != 4 || !r.detectReady.Load() {
+		t.Fatalf("first Profile = %+v, validation calls=%d max=%d ready=%v; want validated NVENC evidence",
+			profile, validationCalls, r.maxChannels.Load(), r.detectReady.Load())
+	}
+}
+
 func TestPlayoutResolver_AudioTrackHonoursChannelOverride(t *testing.T) {
 	r := &playoutResolver{
 		audioLanguage: func() string { return "eng" },

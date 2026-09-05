@@ -65,8 +65,9 @@ type Session struct {
 	Plan EncodePlan
 
 	// cost is this session's contribution to the manager's committedCost — 1 if it TRANSCODES video,
-	// 0 if it `-c copy`s (§9.1 V49 admission). Starts as Plan.EstimatedCost() at admission (a
-	// conservative guess) and is corrected to the real CopyPlan.Cost() when the first program reports.
+	// 0 if it `-c copy`s (§9.1 V49 admission). It starts from the tune-time estimate and transitions
+	// atomically to each real program's cost before that child starts; progress reports repeat the
+	// transition idempotently for legacy callers.
 	// Read/written under Manager.mu (the manager owns the budget accounting), not the session mu.
 	cost int
 
@@ -429,8 +430,8 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 	// not sessions: a `-c copy` session (an h264 channel, or HEVC to an HEVC-capable client) costs 0
 	// and is always admitted, so a channel watched at two plans (baseline + hevc8) costs ONE (the
 	// baseline transcode), not two — the plan-split no longer halves capacity. The incoming cost is
-	// conservatively estimated as one here and corrected to the real cost on the first
-	// program report. Checked under the lock against the live committedCost so parallel starts cannot
+	// estimated here and atomically transitioned to the real cost before each program child starts.
+	// Checked under the lock against the live committedCost so parallel starts cannot
 	// overshoot the budget. A full budget may reclaim proven-warm work with zero viewer demand, but
 	// never an actively watched session.
 	if !Admit(m.budget(), m.committedCost, newCost) {
@@ -1202,20 +1203,56 @@ func (m *Manager) ReportProgram(channelID string, plan EncodePlan, enc Encoder, 
 	s.encoder = enc
 	s.last = p
 	s.mu.Unlock()
+	// startChild admitted this real cost before spawning. Calling the same transition here keeps
+	// legacy/report-only callers correct and is idempotent for the production progress path.
+	_ = m.AdmitProgram(channelID, plan, transcoding)
+}
 
-	// Correct the session's admission cost to REALITY (§9.1 V49). At attach we ESTIMATED cost from the
-	// plan (every plan reserves one); now the program has actually resolved its copy plan, so we know
-	// the truth: cost 1 iff it transcodes video. Any session correctly frees its slot once it proves
-	// it only copies. Adjust committedCost by the
-	// DELTA under m.mu, keyed to this live session so a report racing teardown cannot corrupt the sum.
-	realCost := 0
+// AdmitProgram atomically transitions an existing session between copy and video-transcode cost.
+// A prepared session starts at zero, but a later prepared miss must earn capacity before its live
+// child starts; otherwise many cheap sessions could all cross an Airing boundary and oversubscribe
+// the measured encoder budget together.
+func (m *Manager) AdmitProgram(channelID string, plan EncodePlan, transcoding bool) bool {
+	key := sessionKey{channel: channelID, plan: plan}
+	desiredCost := 0
 	if transcoding {
-		realCost = 1
+		desiredCost = 1
 	}
-	m.mu.Lock()
-	if m.sessions[sessionKey{channel: channelID, plan: plan}] == s && s.cost != realCost {
-		m.committedCost += realCost - s.cost
-		s.cost = realCost
+	for {
+		m.mu.Lock()
+		s := m.sessions[key]
+		if s == nil {
+			m.mu.Unlock()
+			return false
+		}
+		if s.cost == desiredCost {
+			m.mu.Unlock()
+			return true
+		}
+		if desiredCost == 0 {
+			m.committedCost -= s.cost
+			s.cost = 0
+			m.mu.Unlock()
+			m.notifyChange()
+			return true
+		}
+		incoming := desiredCost - s.cost
+		if Admit(m.budget(), m.committedCost, incoming) {
+			m.committedCost += incoming
+			s.cost = desiredCost
+			m.mu.Unlock()
+			m.notifyChange()
+			return true
+		}
+		candidates := make([]idleCandidate, 0, len(m.sessions))
+		for candidateKey, candidateSession := range m.sessions {
+			if candidateKey != key && candidateSession.cost > 0 {
+				candidates = append(candidates, idleCandidate{key: candidateKey, session: candidateSession})
+			}
+		}
+		m.mu.Unlock()
+		if !reclaimOldestIdle(candidates) {
+			return false
+		}
 	}
-	m.mu.Unlock()
 }
