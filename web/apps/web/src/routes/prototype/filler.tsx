@@ -11,7 +11,7 @@ const FillerPrototypeScreen = () => {
   if (!import.meta.env.DEV) return null;
   const variant = ids.includes(search.variant as FillerPrototypeVariant)
     ? (search.variant as FillerPrototypeVariant)
-    : "review";
+    : "flow";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -20,9 +20,9 @@ const FillerPrototypeScreen = () => {
           <span className="font-semibold tracking-tight">Loomarr</span>
           <span className="text-muted-foreground text-sm">Filler</span>
           <nav className="flex gap-5 text-muted-foreground text-sm">
-            <span>Overview</span>
+            <span className="border-signal border-b-2 pb-1 text-foreground">Overview</span>
             <span>Sources</span>
-            <span className="border-signal border-b-2 pb-1 text-foreground">Incoming</span>
+            <span>Incoming</span>
             <span>Library</span>
             <span>Manage</span>
           </nav>

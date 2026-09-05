@@ -6,14 +6,14 @@ import { VariantFlow } from "./variant-flow";
 import { VariantReview } from "./variant-review";
 
 // PROTOTYPE — three read-only answers to “what should the filler pipeline feel like?”, switchable
-// through `?variant=review|flow|console` on the existing /filler/incoming route. Do not promote
+// through `?variant=review|flow|console` on the isolated /prototype/filler route. Do not promote
 // this code directly; fold the chosen hierarchy into the production modules and remove the rest.
 type FillerPrototypeVariant = "review" | "flow" | "console";
 
 const variants: { id: FillerPrototypeVariant; label: string }[] = [
-  { id: "review", label: "Decision desk" },
-  { id: "flow", label: "Pipeline map" },
-  { id: "console", label: "Safety console" },
+  { id: "review", label: "Evidence desk" },
+  { id: "flow", label: "Journey home" },
+  { id: "console", label: "Advanced ledger" },
 ];
 
 const FillerIncomingPrototype = ({

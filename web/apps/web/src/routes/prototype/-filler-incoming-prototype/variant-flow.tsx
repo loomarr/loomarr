@@ -1,29 +1,71 @@
-import { ArrowRight, Check, CircleAlert, Clock3, Download, Film, ShieldCheck } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  CircleAlert,
+  Clock3,
+  Download,
+  Film,
+  Radio,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
 
 const stages = [
-  { icon: Download, title: "Acquire", count: 18, note: "Rights-aware source plans", tone: "text-signal" },
-  { icon: Film, title: "Prepare", count: 7, note: "Split, condition, identify", tone: "text-onair-300" },
+  {
+    icon: Download,
+    title: "Sources",
+    count: "4 on",
+    note: "Rights-aware acquisition",
+    detail: "18 proposed or downloading",
+    tone: "text-signal",
+  },
+  {
+    icon: Film,
+    title: "Prepare",
+    count: "7",
+    note: "Condition, split, identify",
+    detail: "Models corroborate cuts",
+    tone: "text-onair-300",
+  },
   {
     icon: ShieldCheck,
-    title: "Certify",
-    count: 12,
-    note: "Safety, playback, audience, rights",
+    title: "Qualify",
+    count: "12",
+    note: "Role, safety, rights, playback",
+    detail: "3 genuinely need you",
     tone: "text-caution",
   },
-  { icon: Check, title: "Available", count: 284, note: "Eligible for channel matching", tone: "text-lock" },
+  {
+    icon: Check,
+    title: "Library",
+    count: "284",
+    note: "Verified playable children",
+    detail: "Eligible for channel matching",
+    tone: "text-lock",
+  },
 ];
 
 const VariantFlow = () => (
   <div className="flex flex-col gap-6 pb-20">
-    <header>
-      <Badge variant="suggest">Prototype B</Badge>
-      <h1 className="mt-2 font-semibold text-2xl">See the whole factory, not a pile of queues</h1>
-      <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-        A pipeline map for understanding throughput, bottlenecks, and exactly where human judgment enters.
-      </p>
+    <header className="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <div className="flex items-center gap-2">
+          <Badge variant="suggest">Prototype B</Badge>
+          <Badge variant="lock">Recommended landing</Badge>
+        </div>
+        <h1 className="mt-2 font-semibold text-2xl">Filler is working. Three decisions need you.</h1>
+        <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
+          Follow every item from acquisition to channel use without turning routine machine work into a human
+          queue.
+        </p>
+      </div>
+      <div className="flex items-center gap-2 rounded-full border border-lock/30 bg-lock/10 px-3 py-2 text-sm">
+        <Radio className="size-4 text-lock" />
+        <strong>12 of 12 channels covered</strong>
+      </div>
     </header>
 
     <section className="rounded-xl border border-border bg-card p-5">
@@ -31,25 +73,21 @@ const VariantFlow = () => (
         {stages.map((stage, index) => (
           <div key={stage.title} className="contents">
             <div className="rounded-lg border border-border bg-background p-4">
-              <stage.icon className={`size-5 ${stage.tone}`} />
-              <p className="mt-5 font-mono text-3xl tabular-nums">{stage.count}</p>
-              <p className="mt-1 font-medium text-sm">{stage.title}</p>
+              <div className="flex items-start justify-between gap-3">
+                <stage.icon className={`size-5 ${stage.tone}`} />
+                <p className="font-mono text-2xl tabular-nums">{stage.count}</p>
+              </div>
+              <p className="mt-5 font-medium text-sm">{stage.title}</p>
               <Caption>{stage.note}</Caption>
+              <p className="mt-3 text-muted-foreground text-xs">{stage.detail}</p>
             </div>
-            {index < stages.length - 1 && (
+            {index < stages.length - 1 ? (
               <div className="hidden items-center lg:flex">
                 <ArrowRight className="size-4 text-muted-foreground" />
               </div>
-            )}
+            ) : null}
           </div>
         ))}
-      </div>
-      <div className="mt-4 flex items-center gap-2 rounded-lg bg-caution/10 px-4 py-3 text-sm">
-        <CircleAlert className="size-4 text-caution" />
-        <strong>Certification is the bottleneck.</strong>
-        <span className="text-muted-foreground">
-          8 clips have evidence conflicts; 4 are ready for a person.
-        </span>
       </div>
     </section>
 
@@ -57,19 +95,32 @@ const VariantFlow = () => (
       <section className="rounded-xl border border-border bg-card">
         <div className="flex items-center justify-between border-border border-b p-4">
           <div>
-            <p className="font-medium text-sm">Work moving now</p>
-            <Caption>Machine-owned; no clicks required</Caption>
+            <p className="font-medium text-sm">Moving automatically</p>
+            <Caption>Visible progress; no clicks required</Caption>
           </div>
-          <Button size="sm" variant="outline">
-            View all activity
-          </Button>
+          <Badge variant="neutral">26 active</Badge>
         </div>
         <div className="divide-y divide-border">
           {[
-            ["1990s cereal compilation", "Splitting", "38 of 44 boundaries analysed", "86%"],
-            ["KCPQ station package", "Screening", "Visual and written evidence complete", "64%"],
-            ["Automotive spots · batch 14", "Conditioning", "Normalising playback derivatives", "42%"],
-          ].map(([name, state, detail, progress]) => (
+            {
+              name: "1990s cereal compilation",
+              state: "Structure",
+              detail: "Gemini and Seed agree on 7 child boundaries",
+              progress: "72%",
+            },
+            {
+              name: "Pacific Northwest station package",
+              state: "Child qualification",
+              detail: "5 roles verified · visual and spoken screening running",
+              progress: "64%",
+            },
+            {
+              name: "Automotive spots · batch 14",
+              state: "Conditioning",
+              detail: "Playback derivatives normalized and verified",
+              progress: "42%",
+            },
+          ].map(({ name, state, detail, progress }) => (
             <div key={name} className="grid gap-3 p-4 sm:grid-cols-[1fr_140px] sm:items-center">
               <div>
                 <p className="font-medium text-sm">{name}</p>
@@ -86,18 +137,29 @@ const VariantFlow = () => (
             </div>
           ))}
         </div>
+        <div className="flex items-center gap-2 border-border border-t bg-muted/20 p-4 text-muted-foreground text-xs">
+          <Sparkles className="size-4 text-signal" />
+          Logos, companies, products, era, category, and audience evidence are added after each child is
+          identified.
+        </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card">
+      <section className="rounded-xl border border-caution/35 bg-card">
         <div className="border-border border-b p-4">
-          <p className="font-medium text-sm">Your decisions</p>
-          <Caption>Only work the machine cannot settle</Caption>
+          <div className="flex items-center gap-2">
+            <CircleAlert className="size-4 text-caution" />
+            <p className="font-medium text-sm">Your decisions</p>
+            <Badge className="ml-auto" variant="caution">
+              3
+            </Badge>
+          </div>
+          <Caption>Only conflicts and exceptions reach this list</Caption>
         </div>
         <div className="divide-y divide-border">
           {[
-            ["4", "Audience suitability", "Two spoken, two visual conflicts"],
-            ["5", "Rights evidence", "Current-use grant is incomplete"],
-            ["3", "Compilation cuts", "Boundary confidence below policy"],
+            ["1", "Child role conflict", "Source evidence says PSA; video assessors say programme"],
+            ["1", "Audience restriction", "Visual evidence requires an adult-audience decision"],
+            ["1", "Current-use rights", "Grant expired; replacement evidence is available"],
           ].map(([count, title, detail]) => (
             <button
               type="button"
@@ -115,9 +177,12 @@ const VariantFlow = () => (
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 border-border border-t p-4 text-muted-foreground text-xs">
-          <Clock3 className="size-4" />
-          Oldest decision has waited 2 days
+        <div className="space-y-3 border-border border-t p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs">
+            <Clock3 className="size-4" />
+            Oldest decision has waited 46 minutes
+          </div>
+          <Button className="w-full">Review oldest exact child</Button>
         </div>
       </section>
     </div>
