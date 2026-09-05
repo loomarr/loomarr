@@ -4347,6 +4347,158 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 13, 2, 0, 0, 0, time.UTC)
+	newDecision := func(id, hash string) fillerdecision.Record {
+		return fillerdecision.Record{
+			ID: id, ClipHash: hash, EvidenceHash: "admission-evidence-" + id,
+			EvidenceVersion: "applied-v1", SchemaVersion: filleradmission.SchemaVersion,
+			PolicyVersion: "policy-v1", TaxonomyVersion: "taxonomy-v1",
+			ApplicationMode:         fillerdecision.ApplicationModeApplied,
+			ScreeningEvidenceSHA256: strings.Repeat("b", 64),
+			ReleaseAuthoritySHA256:  strings.Repeat("c", 64),
+			Result: filleradmission.Result{Decision: &filleradmission.Decision{
+				Verdict:        filleradmission.VerdictReview,
+				ReasonCodes:    []filleradmission.ReasonCode{filleradmission.ReasonMissingCommercialIdentity},
+				ReviewQuestion: "What product is this clip advertising?",
+			}},
+			CreatedAt: at,
+		}
+	}
+	seed := func(hash, path string, withPipeline bool) {
+		t.Helper()
+		if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+			Hash: hash, Path: path, Name: "Applied candidate", Kind: filler.Commercial,
+			DurationMs: 30_000, Held: true,
+		}, UpdatedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+		if withPipeline {
+			if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
+				ClipHash: hash, Stage: filler.StageAdmission, Status: filler.StatusDone,
+				Disposition: filler.DispositionReview, UpdatedAt: at,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	hash := strings.Repeat("a", 64)
+	seed(hash, "aa/aa/"+hash+".mp4", true)
+	decision := newDecision("applied-review", hash)
+	if err := s.PutFillerDecision(ctx, decision); err != nil {
+		t.Fatal(err)
+	}
+	action := fillerdecision.Action{
+		ID: "applied-admit", DecisionID: decision.ID, Kind: fillerdecision.ActionAdmit,
+		ActorID: "admin-1", CreatedAt: at.Add(time.Minute),
+	}
+	if err := s.CommitFillerDecisionAction(ctx, action); !errors.Is(err, fillerdecision.ErrActionMode) {
+		t.Fatalf("ordinary writer accepted applied decision: %v", err)
+	}
+	if err := s.CommitAppliedFillerDecisionAction(ctx, action); err != nil {
+		t.Fatal(err)
+	}
+	clip, err := s.GetClip(ctx, hash)
+	if err != nil || clip.Held || clip.AutoFiled {
+		t.Fatalf("applied admit clip = %+v, err = %v", clip, err)
+	}
+	pipeline, found, err := s.GetClipPipeline(ctx, hash)
+	if err != nil || !found || pipeline.Disposition != filler.DispositionFiled || pipeline.Status != filler.StatusDone {
+		t.Fatalf("applied admit pipeline = %+v, found = %v, err = %v", pipeline, found, err)
+	}
+	actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: decision.ID, Limit: 10})
+	if err != nil || actions.Total != 1 || actions.Rows[0].ID != action.ID {
+		t.Fatalf("applied admit actions = %+v, err = %v", actions, err)
+	}
+
+	reverse := fillerdecision.Action{
+		ID: "applied-reverse", DecisionID: decision.ID, Kind: fillerdecision.ActionReverse,
+		ActorID: "admin-1", Reason: "current evidence was withdrawn", SupersedesID: action.ID,
+		CreatedAt: at.Add(2 * time.Minute),
+	}
+	if err := s.CommitAppliedFillerDecisionAction(ctx, reverse); err != nil {
+		t.Fatal(err)
+	}
+	clip, _ = s.GetClip(ctx, hash)
+	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
+	if !clip.Held || pipeline.Disposition != filler.DispositionReview {
+		t.Fatalf("applied reversal left clip=%+v pipeline=%+v", clip, pipeline)
+	}
+	restore := fillerdecision.Action{
+		ID: "applied-restore", DecisionID: decision.ID, Kind: fillerdecision.ActionRestore,
+		ActorID: "admin-1", Reason: "fresh terminal release replay passed", SupersedesID: reverse.ID,
+		CreatedAt: at.Add(3 * time.Minute),
+	}
+	if err := s.CommitAppliedFillerDecisionAction(ctx, restore); err != nil {
+		t.Fatal(err)
+	}
+	clip, _ = s.GetClip(ctx, hash)
+	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
+	if clip.Held || pipeline.Disposition != filler.DispositionFiled {
+		t.Fatalf("applied restore left clip=%+v pipeline=%+v", clip, pipeline)
+	}
+
+	rejectedHash := strings.Repeat("e", 64)
+	seed(rejectedHash, "ee/ee/"+rejectedHash+".mp4", true)
+	rejectedDecision := newDecision("applied-reject-review", rejectedHash)
+	if err := s.PutFillerDecision(ctx, rejectedDecision); err != nil {
+		t.Fatal(err)
+	}
+	reject := fillerdecision.Action{
+		ID: "applied-reject", DecisionID: rejectedDecision.ID, Kind: fillerdecision.ActionReject,
+		ActorID: "admin-1", CreatedAt: at.Add(4 * time.Minute),
+	}
+	if err := s.CommitAppliedFillerDecisionAction(ctx, reject); err != nil {
+		t.Fatal(err)
+	}
+	playable, err := s.ListClips(ctx, ClipFilter{Hashes: []string{rejectedHash}})
+	if err != nil || len(playable) != 0 {
+		t.Fatalf("applied reject remained playable = %+v, err = %v", playable, err)
+	}
+	pipeline, _, _ = s.GetClipPipeline(ctx, rejectedHash)
+	if pipeline.Disposition != filler.DispositionDismissed {
+		t.Fatalf("applied reject pipeline = %+v", pipeline)
+	}
+	restoreRejected := fillerdecision.Action{
+		ID: "applied-restore-rejected", DecisionID: rejectedDecision.ID, Kind: fillerdecision.ActionRestore,
+		ActorID: "admin-1", Reason: "new terminal release replay passed", SupersedesID: reject.ID,
+		CreatedAt: at.Add(5 * time.Minute),
+	}
+	if err := s.CommitAppliedFillerDecisionAction(ctx, restoreRejected); err != nil {
+		t.Fatal(err)
+	}
+	playable, err = s.ListClips(ctx, ClipFilter{Hashes: []string{rejectedHash}})
+	if err != nil || len(playable) != 1 || playable[0].Held {
+		t.Fatalf("restored reject is not playable = %+v, err = %v", playable, err)
+	}
+
+	rollbackHash := strings.Repeat("d", 64)
+	seed(rollbackHash, "dd/dd/"+rollbackHash+".mp4", false)
+	rollbackDecision := newDecision("applied-without-pipeline", rollbackHash)
+	if err := s.PutFillerDecision(ctx, rollbackDecision); err != nil {
+		t.Fatal(err)
+	}
+	rollbackAction := fillerdecision.Action{
+		ID: "applied-rollback", DecisionID: rollbackDecision.ID, Kind: fillerdecision.ActionAdmit,
+		ActorID: "admin-1", CreatedAt: at.Add(6 * time.Minute),
+	}
+	if err := s.CommitAppliedFillerDecisionAction(ctx, rollbackAction); !errors.Is(err, fillerdecision.ErrActionStale) {
+		t.Fatalf("missing pipeline effect = %v, want stale rollback", err)
+	}
+	clip, err = s.GetClip(ctx, rollbackHash)
+	if err != nil || !clip.Held {
+		t.Fatalf("rolled-back clip = %+v, err = %v", clip, err)
+	}
+	actions, err = s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: rollbackDecision.ID, Limit: 10})
+	if err != nil || actions.Total != 0 {
+		t.Fatalf("rolled-back action persisted = %+v, err = %v", actions, err)
+	}
+}
+
 func testFillerSplitShadowDecisions(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)

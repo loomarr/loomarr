@@ -104,7 +104,8 @@ func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
 func seedHeldClip(t *testing.T, st store.Store, id string) {
 	t.Helper()
 	seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "toys")
-	// SetClipsHeld is the only writer of `held`, deliberately — see internal/store/clips.go.
+	// SetClipsHeld is the ordinary writer of `held`; terminal applied admission is the atomic
+	// cross-table exception — see internal/store/clips.go.
 	if _, err := st.SetClipsHeld(t.Context(), []string{id}, true, false, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}

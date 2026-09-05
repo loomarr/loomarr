@@ -2,6 +2,7 @@ package fillerdecision
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,13 +11,25 @@ import (
 	"github.com/loomarr/loomarr/internal/filleradmission"
 )
 
-type Service struct{ repo Repository }
+type Service struct {
+	repo    Repository
+	applied AppliedActionExecutor
+}
 
 func New(repo Repository) (*Service, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("%w: repository is required", ErrInvalid)
 	}
 	return &Service{repo: repo}, nil
+}
+
+// WithAppliedActions installs the one terminal executor permitted to publish applied decisions.
+// A nil executor deliberately leaves applied rows fail-closed while shadow audit remains usable.
+func (s *Service) WithAppliedActions(executor AppliedActionExecutor) *Service {
+	if s != nil {
+		s.applied = executor
+	}
+	return s
 }
 
 func (s *Service) Record(ctx context.Context, record Record) error {
@@ -30,7 +43,21 @@ func (s *Service) Act(ctx context.Context, action Action) error {
 	if err := ValidateAction(action); err != nil {
 		return err
 	}
-	return s.repo.CommitFillerDecisionAction(ctx, action)
+	record, err := s.repo.GetFillerDecision(ctx, action.DecisionID)
+	if err != nil {
+		return err
+	}
+	switch record.ApplicationMode {
+	case ApplicationModeShadow:
+		return s.repo.CommitFillerDecisionAction(ctx, action)
+	case ApplicationModeApplied:
+		if s.applied == nil {
+			return ErrAppliedUnavailable
+		}
+		return s.applied.ActOnAppliedFillerDecision(ctx, record, action)
+	default:
+		return ErrActionMode
+	}
 }
 
 func (s *Service) Overview(ctx context.Context) (Overview, error) {
@@ -123,6 +150,17 @@ func ValidateRecord(record Record) error {
 	if record.ApplicationMode != ApplicationModeShadow && record.ApplicationMode != ApplicationModeApplied {
 		return fmt.Errorf("%w: application mode must be shadow or applied", ErrInvalid)
 	}
+	switch record.ApplicationMode {
+	case ApplicationModeShadow:
+		if record.ScreeningEvidenceSHA256 != "" || record.ReleaseAuthoritySHA256 != "" {
+			return fmt.Errorf("%w: shadow decisions cannot carry release bindings", ErrInvalid)
+		}
+	case ApplicationModeApplied:
+		if !contentSHA256(record.ClipHash) || !contentSHA256(record.ScreeningEvidenceSHA256) ||
+			!contentSHA256(record.ReleaseAuthoritySHA256) {
+			return fmt.Errorf("%w: applied decisions require exact catalog, screening, and release identities", ErrInvalid)
+		}
+	}
 	for name, value := range map[string]string{
 		"id": record.ID, "clip hash": record.ClipHash, "evidence hash": record.EvidenceHash,
 		"evidence version": record.EvidenceVersion, "policy version": record.PolicyVersion,
@@ -154,6 +192,14 @@ func ValidateRecord(record Record) error {
 		}
 	}
 	return nil
+}
+
+func contentSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32 && value == strings.ToLower(value)
 }
 
 func recoveryFor(code filleradmission.OperationalCode, retryable bool) RecoveryAction {

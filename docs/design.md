@@ -4679,6 +4679,23 @@ to a shadow review records the operator's semantic judgment but has no catalog e
 operator confirmation remains unavailable until the terminal-admission module can revalidate the
 exact current release evidence and commit the action plus catalog effect as one outcome.
 
+That terminal module has one action interface and owns the complete proof before any publication
+write. For an applied `admit` (including a correction to `admit`) it resolves the decision's exact
+catalog hash to the current playback object, reprojects the attached sidecar, verifies the complete
+playback bytes, reproduces the referenced five-axis aggregate, replays the configured immutable
+release authority and every private axis record, and rechecks current rights. Only after all of
+those reads pass does one store transaction append the action, change `clips.held`, and settle the
+matching pipeline row to `filed`; a missing clip or pipeline row, stale decision, changed playback,
+held axis, authority drift, or rights withdrawal rolls the whole write back. Applied rejection (or
+a correction to `reject`) atomically appends the action, tombstones and holds the clip, and settles
+the pipeline row as an operator dismissal. Reversal and restore atomically return the clip to held
+review state; abandonment remains an append-only skip with no catalog mutation. The ordinary
+action writer accepts `shadow` rows only, while the publication writer accepts `applied` rows only,
+so bypassing the terminal module cannot accidentally give a shadow judgment a catalog effect.
+Every applied decision therefore carries the exact screening-aggregate and release-authority
+SHA-256 identities that terminal replay must reproduce; shadow rows carry neither. Application mode
+cannot be toggled independently from those bindings in either the domain validator or database.
+
 The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
 V38 `score` rung. Its first production evidence version records only facts whose provenance the
 current pipeline can prove: successful decoder passage, an explicit content-role token in the
