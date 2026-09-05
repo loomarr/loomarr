@@ -327,6 +327,38 @@ func TestPreparedRuntimeRebindsAnObservedSourceRevision(t *testing.T) {
 	}
 }
 
+func TestPreparedRuntimeInvalidatesStaleBindingWhenSourceReresolutionFails(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(19_000, 0)
+	rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
+	oldRequest := prepared.Request{Source: preparedSource("item", 2), Rendition: rendition}
+	sources := &preparedInputsFake{current: map[prepared.Source]bool{oldRequest.Source: false}}
+	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {{
+		Kind: schedule.SlotProgram, LibraryItemID: "item", Start: now, Stop: now.Add(time.Hour),
+	}}}}
+	r := newPreparedRuntimeForTest(t,
+		preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}},
+		timeline, sources, preparedLookupFake{hits: map[prepared.Request]prepared.Specification{
+			oldRequest: {SourceFingerprint: "old", Rendition: rendition},
+		}},
+		func() time.Time { return now }, nil, func() string { return "policy" },
+		func() string { return "internal" }, func() prepared.RenditionContract { return rendition },
+	)
+	key := prepared.BindingKey{ChannelID: "ch", LibraryItemID: "item"}
+	if err := r.readiness.RememberBinding(key, prepared.Binding{Policy: "policy", Request: oldRequest}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Plan(t.Context(), now, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}); err != nil || ok {
+		t.Fatalf("ResolvePrepared after failed stale rebind = ok %v err %v, want immediate miss", ok, err)
+	}
+	if _, ok := r.readiness.Binding(key, "policy", ""); ok {
+		t.Fatal("failed source re-resolution retained stale durable binding")
+	}
+}
+
 func TestPreparedRuntimeTuneIsLookupOnlyAndCarriesPreviousAiring(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(20_000, 0)

@@ -70,6 +70,35 @@ func TestReadinessReplacesStalePolicies(t *testing.T) {
 	}
 }
 
+func TestReadinessReconcileRemovesStaleBindingWhenReplacementIsUnavailable(t *testing.T) {
+	library, err := NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := OpenReadiness(library)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := BindingKey{ChannelID: "ch", LibraryItemID: "movie"}
+	request := Request{Source: testSource("movie"), Rendition: baselineRendition()}
+	if err := index.RememberBinding(key, Binding{Policy: "policy", Request: request}); err != nil {
+		t.Fatal(err)
+	}
+	if err := index.ReconcileBindings(nil, []BindingKey{key}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := index.Binding(key, "policy", ""); ok {
+		t.Fatal("stale binding remained in memory")
+	}
+	reopened, err := OpenReadiness(library)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := reopened.Binding(key, "policy", ""); ok {
+		t.Fatal("stale binding remained after restart")
+	}
+}
+
 func TestReadinessCorruptionDegradesToAReplaceableEmptyIndex(t *testing.T) {
 	library, err := NewLibrary(t.TempDir())
 	if err != nil {

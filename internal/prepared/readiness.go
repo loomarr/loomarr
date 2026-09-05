@@ -105,6 +105,13 @@ func (r *Readiness) RememberBinding(key BindingKey, binding Binding) error {
 // RememberBindings commits one planner pass with one atomic control-file replacement. Memory does
 // not expose the new bindings until the durable rename succeeds.
 func (r *Readiness) RememberBindings(updates map[BindingKey]Binding) error {
+	return r.ReconcileBindings(updates, nil)
+}
+
+// ReconcileBindings atomically removes stale selections and installs their replacements. A key
+// present in both collections is replaced because removals are applied before validated updates.
+// The planner uses this to ensure a failed source re-resolution cannot leave old bytes tuneable.
+func (r *Readiness) ReconcileBindings(updates map[BindingKey]Binding, removals []BindingKey) error {
 	if r == nil {
 		return ErrInvalidSpecification
 	}
@@ -115,12 +122,20 @@ func (r *Readiness) RememberBindings(updates map[BindingKey]Binding) error {
 		}
 		normalized[key] = binding
 	}
-	if len(normalized) == 0 {
+	for _, key := range removals {
+		if strings.TrimSpace(key.ChannelID) == "" || strings.TrimSpace(key.LibraryItemID) == "" {
+			return ErrInvalidSource
+		}
+	}
+	if len(normalized) == 0 && len(removals) == 0 {
 		return nil
 	}
 	r.persistMu.Lock()
 	defer r.persistMu.Unlock()
 	bindings := r.clone()
+	for _, key := range removals {
+		delete(bindings, key)
+	}
 	for key, binding := range normalized {
 		bindings[key] = binding
 	}

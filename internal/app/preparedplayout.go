@@ -152,12 +152,14 @@ func (r *preparedRuntimeResolver) Plan(
 	queued := make(map[prepared.Request]struct{})
 	protected := make(map[prepared.Specification]struct{})
 	resolvedBindings := make(map[prepared.BindingKey]prepared.Binding)
+	staleBindings := make([]prepared.BindingKey, 0)
 	policy := r.sourcePolicy()
 	resolutionAttempts := 0
 	for _, key := range keys {
 		channelPolicy := channelPolicies[key.ChannelID]
 		request, bound := r.readiness.Binding(key, policy, channelPolicy)
 		if bound && !r.sources.PreparedSourceCurrent(ctx, request.Source) {
+			staleBindings = append(staleBindings, key)
 			bound = false
 		}
 		if !bound {
@@ -200,7 +202,7 @@ func (r *preparedRuntimeResolver) Plan(
 		queued[request] = struct{}{}
 		plan.Candidates = append(plan.Candidates, prepared.Candidate{NeededAt: needed[key], Request: request})
 	}
-	if rememberErr := r.readiness.RememberBindings(resolvedBindings); rememberErr != nil {
+	if rememberErr := r.readiness.ReconcileBindings(resolvedBindings, staleBindings); rememberErr != nil {
 		// Preparation must never depend on source selection that did not survive the restart boundary.
 		plan.Candidates = nil
 		errs = append(errs, rememberErr)
