@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -45,6 +46,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: parse --prepared-at:", err)
 		return 2
+	}
+	if err := requireNewOutputs(*outputPath, *csvOutputPath); err != nil {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review:", err)
+		return 1
 	}
 	raw, err := os.ReadFile(*inventoryPath)
 	if err != nil {
@@ -187,10 +192,14 @@ func writeJSON(path string, value any) error {
 }
 
 func writeAtomic(path string, write func(io.Writer) error) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(filepath.Dir(path), ".filler-corpus-rights-review-*")
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o750); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(absolute), ".filler-corpus-rights-review-*")
 	if err != nil {
 		return err
 	}
@@ -211,9 +220,40 @@ func writeAtomic(path string, write func(io.Writer) error) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tempName, path); err != nil {
+	if err := os.Link(tempName, absolute); err != nil {
+		return fmt.Errorf("publish immutable rights worksheet: %w", err)
+	}
+	if err := os.Remove(tempName); err != nil {
+		_ = os.Remove(absolute)
 		return err
 	}
 	ok = true
+	return nil
+}
+
+func requireNewOutputs(paths ...string) error {
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolve output path: %w", err)
+		}
+		if _, duplicate := seen[absolute]; duplicate {
+			return fmt.Errorf("worksheet outputs must use distinct paths")
+		}
+		seen[absolute] = struct{}{}
+		_, err = os.Lstat(absolute)
+		switch {
+		case err == nil:
+			return fmt.Errorf("worksheet output already exists: %s", absolute)
+		case errors.Is(err, os.ErrNotExist):
+			continue
+		default:
+			return fmt.Errorf("inspect worksheet output: %w", err)
+		}
+	}
 	return nil
 }

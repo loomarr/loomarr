@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -59,6 +60,62 @@ func TestRunWritesSpreadsheetSafeInertCSV(t *testing.T) {
 		if columns[field] != "" {
 			t.Fatalf("%s unexpectedly grants authority", field)
 		}
+	}
+}
+
+func TestRunRefusesCollidingOrExistingOutputsBeforeReadingInventory(t *testing.T) {
+	dir := t.TempDir()
+	existing := filepath.Join(dir, "existing.csv")
+	original := []byte("review work that must survive\n")
+	if err := os.WriteFile(existing, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, output, csvOutput, want string
+	}{
+		{name: "existing", output: filepath.Join(dir, "new.json"), csvOutput: existing, want: "worksheet output already exists"},
+		{name: "same path", output: filepath.Join(dir, "same"), csvOutput: filepath.Join(dir, "same"), want: "distinct paths"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := run([]string{
+				"--inventory", filepath.Join(dir, "missing-inventory.json"),
+				"--out", test.output,
+				"--csv-out", test.csvOutput,
+				"--prepared-at", "2026-09-05T12:00:00Z",
+				"--profile", "quarantine",
+				"--min-items", "1",
+				"--max-items", "1",
+			}, &stdout, &stderr)
+			if code != 1 || !strings.Contains(stderr.String(), test.want) {
+				t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+		})
+	}
+	if got, err := os.ReadFile(existing); err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("existing review changed: got=%q err=%v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "new.json")); !os.IsNotExist(err) {
+		t.Fatalf("paired output was partially published: %v", err)
+	}
+}
+
+func TestWriteAtomicCannotReplacePublishedWorksheet(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "worksheet.json")
+	if err := writeAtomic(path, func(writer io.Writer) error {
+		_, err := writer.Write([]byte("first\n"))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAtomic(path, func(writer io.Writer) error {
+		_, err := writer.Write([]byte("replacement\n"))
+		return err
+	}); err == nil {
+		t.Fatal("immutable worksheet was replaced")
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "first\n" {
+		t.Fatalf("published worksheet changed: got=%q err=%v", got, err)
 	}
 }
 
