@@ -18,7 +18,11 @@ if [[ "$head" != "$GITHUB_SHA" ]]; then
 	echo 'android release: checked-out source does not match the workflow commit' >&2
 	exit 1
 fi
-git fetch --no-tags origin main
+if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+	git fetch --no-tags --unshallow origin main
+else
+	git fetch --no-tags origin main
+fi
 if [[ "$head" != "$(git rev-parse origin/main)" ]]; then
 	echo 'android release: source must be the current main commit' >&2
 	exit 1
