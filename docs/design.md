@@ -4631,8 +4631,9 @@ Model agreement selects what receives review but never becomes truth authority b
 The publisher preserves every original input and emits a new owner-only authority rather than
 editing the human lock, plan, challenge, model responses, locks, or comparison. It binds every input
 file hash, the plan's human-assessment and evidence-manifest hashes, the exact challenged source
-bytes and duplicate family, the review decisions, and the prior receipt's complete future-training
-exclusion. Its output always declares the evaluated challenge burned, training false, and production
+bytes and duplicate family, the review decisions, the prior receipt's complete future-training
+exclusion, and every rendered video hash exposed in a model request. Its output always declares the
+evaluated challenge burned, training false, and production
 admission false. A later holdout-plan contract must consume that authority as prior exposure: no
 source bytes, duplicate family, or programme provenance from the burned challenge may appear in a
 replacement challenge, and its future-training exclusion must be the exact cumulative union. Until
