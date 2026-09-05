@@ -174,7 +174,7 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 				continue
 			}
 			seen[candidate.Request] = struct{}{}
-			workCtx, release, ok := p.pool.AcquireBackground(ctx)
+			workCtx, release, ok := p.pool.AcquireBackground(ctx, candidate.NeededAt)
 			if !ok {
 				break
 			}
