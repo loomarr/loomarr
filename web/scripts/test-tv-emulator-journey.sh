@@ -163,15 +163,36 @@ wait_for_state "initial Channel tune" '.playUrlChannels[-1] == "classic-animatio
 key KEYCODE_DPAD_UP
 wait_for_state "handled remote tune" '.playUrlChannels[-1] == "science-fiction"'
 wait_for_ui "Watching identity after handled remote activity" "SCIENCE FICTION"
+wait_for_ui "Watching playbar after handled remote activity" "The Neutral Zone"
 sleep 6
 assert_ui_absent "Watching identity dismissed after inactivity" "SCIENCE FICTION"
+assert_ui_absent "Watching playbar dismissed after inactivity" "The Neutral Zone"
+key KEYCODE_DPAD_RIGHT
+sleep 1
+assert_ui_absent "Watching identity remains dismissed after unhandled input" "SCIENCE FICTION"
+assert_ui_absent "Watching playbar remains dismissed after unhandled input" "The Neutral Zone"
 key KEYCODE_DPAD_DOWN
 wait_for_state "return to initial Channel" '.playUrlChannels[-1] == "classic-animation"'
+sleep 6
 
-# OK opens Guide, and hardware Back dismisses it to the still-mounted Watching composition.
+# Guide tune activity starts the same bounded chrome window. Reopen Guide afterward so hardware
+# Back still proves it returns to the mounted Watching composition without inventing activity.
 key KEYCODE_DPAD_CENTER
 wait_for_ui "Guide" "Programme guide"
 wait_for_ui "authoritative Guide programme" "Radioactive Man"
+key KEYCODE_DPAD_DOWN
+key KEYCODE_DPAD_CENTER
+wait_for_state "Guide tune" '.playUrlChannels[-1] == "science-fiction"'
+wait_for_ui "Watching identity after Guide tune activity" "SCIENCE FICTION"
+wait_for_ui "Watching playbar after Guide tune activity" "The Neutral Zone"
+sleep 6
+assert_ui_absent "Watching identity dismissed after Guide tune inactivity" "SCIENCE FICTION"
+assert_ui_absent "Watching playbar dismissed after Guide tune inactivity" "The Neutral Zone"
+key KEYCODE_DPAD_DOWN
+wait_for_state "return to initial Channel after Guide tune" '.playUrlChannels[-1] == "classic-animation"'
+sleep 6
+key KEYCODE_DPAD_CENTER
+wait_for_ui "Guide before Back" "Programme guide"
 key KEYCODE_BACK
 wait_for_ui "Watching after Back" "Open programme guide"
 
@@ -182,6 +203,10 @@ key KEYCODE_DPAD_DOWN
 key KEYCODE_DPAD_CENTER
 wait_for_state "Surf tune" '.playUrlChannels[-1] == "science-fiction"'
 wait_for_ui "Watching identity after Surf tune activity" "SCIENCE FICTION"
+wait_for_ui "Watching playbar after Surf tune activity" "The Neutral Zone"
+sleep 6
+assert_ui_absent "Watching identity dismissed after Surf tune inactivity" "SCIENCE FICTION"
+assert_ui_absent "Watching playbar dismissed after Surf tune inactivity" "The Neutral Zone"
 
 # Android numeric keys must build and commit the exact server-authored Channel number.
 # Keep OK inside the production 1.2-second entry window; item 34 owns visual capture evidence.
