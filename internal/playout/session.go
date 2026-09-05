@@ -937,10 +937,14 @@ func (s *Session) closeIfIdle(expectedGeneration uint64) bool {
 		viewer.close()
 	}
 	cancel := s.cancel
+	proc := s.proc
 	s.mu.Unlock()
 
 	if cancel != nil {
 		cancel()
+	}
+	if proc != nil {
+		proc.Stop()
 	}
 	if s.onClosed != nil {
 		s.onClosed()
@@ -1002,6 +1006,7 @@ func (s *Session) close() {
 		viewer.close()
 	}
 	cancel := s.cancel
+	proc := s.proc
 	s.mu.Unlock()
 
 	// Stop can race a cold session's spawn. In that window there is no process context to
@@ -1010,6 +1015,13 @@ func (s *Session) close() {
 	// that ordinary race into a panic.
 	if cancel != nil {
 		cancel() // kills the process group (process.go)
+	}
+	// Cancellation asks the process-tree supervisor to stop, but it does not finish
+	// the Process wrapper's I/O and diagnostic lifecycle by itself. Reap it here so
+	// a session is not removed from capacity telemetry while its parent still appears
+	// to be running (and so shutdown never waits for a stale live-stream handler).
+	if proc != nil {
+		proc.Stop()
 	}
 
 	// Outside the lock, and after the cancel, so a subscriber that immediately re-reads the
