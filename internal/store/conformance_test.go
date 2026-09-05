@@ -198,6 +198,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FillerStructureAssessmentLedger", func(t *testing.T) { testFillerStructureAssessmentLedger(t, newStore) })
 		t.Run("FillerStructureWindowCallLedger", func(t *testing.T) { testFillerStructureWindowCallLedger(t, newStore) })
 		t.Run("FillerAdmissionDecisionAudit", func(t *testing.T) { testFillerAdmissionDecisionAudit(t, newStore) })
+		t.Run("FillerAppliedAdmissionTransaction", func(t *testing.T) { testFillerAppliedAdmissionTransaction(t, newStore) })
 		t.Run("FillerSplitShadowDecisions", func(t *testing.T) { testFillerSplitShadowDecisions(t, newStore) })
 		t.Run("FillerSpokenSafetyLedger", func(t *testing.T) { testFillerSpokenSafetyLedger(t, newStore) })
 		t.Run("FillerSpokenSafetyExecutionPort", func(t *testing.T) { testFillerSpokenSafetyExecutionPort(t, newStore) })

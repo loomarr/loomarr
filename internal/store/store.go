@@ -417,7 +417,8 @@ type ClipStore interface {
 	TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error)
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
-	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:
+	// ⚠ The ordinary writer of `held`/`auto_filed`; the applied-admission transaction is the
+	// cross-table exception that commits its audit and catalog effect together. For the same reason:
 	// UpsertClip omits both, which is what stops the folder scan filing a held clip by finding
 	// its file still on disk. `autoFiled` marks that no human looked before it became playable,
 	// and is cleared whenever a person decides.
@@ -590,6 +591,7 @@ type FillerStructureAssessmentStore interface {
 // operator actions. Projection rules remain in fillerdecision.Service.
 type FillerDecisionStore interface {
 	fillerdecision.Repository
+	fillerdecision.AppliedActionRepository
 }
 
 // FillerSafetyStore owns the path-free, append-only execution ledger for the

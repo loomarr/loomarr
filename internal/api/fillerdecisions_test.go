@@ -184,6 +184,39 @@ func TestFillerDecisionActionsRequireAdminAndAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestAppliedFillerDecisionFailsClosedWithoutTerminalAdmission(t *testing.T) {
+	srv, st := newServer(t)
+	hash := strings.Repeat("a", 64)
+	if err := st.PutFillerDecision(t.Context(), fillerdecision.Record{
+		ID: "applied-review", ClipHash: hash, EvidenceHash: "admission-evidence",
+		EvidenceVersion: "applied-v1", SchemaVersion: filleradmission.SchemaVersion,
+		PolicyVersion: "policy-v1", TaxonomyVersion: "taxonomy-v1",
+		ApplicationMode:         fillerdecision.ApplicationModeApplied,
+		ScreeningEvidenceSHA256: strings.Repeat("b", 64),
+		ReleaseAuthoritySHA256:  strings.Repeat("c", 64),
+		CreatedAt:               time.Date(2026, 9, 13, 2, 0, 0, 0, time.UTC),
+		Result: filleradmission.Result{Decision: &filleradmission.Decision{
+			Verdict:        filleradmission.VerdictReview,
+			ReasonCodes:    []filleradmission.ReasonCode{filleradmission.ReasonMissingCommercialIdentity},
+			ReviewQuestion: "What product is this clip advertising?",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res := do(t, srv, http.MethodPost, "/v1/filler/decisions/applied-review/actions", adminToken,
+		`{"actionId":"applied-action","kind":"admit","answer":"The closing card identifies soda."}`)
+	if res.StatusCode != http.StatusConflict {
+		raw, _ := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		t.Fatalf("applied action = %d, want 409: %s", res.StatusCode, raw)
+	}
+	_ = res.Body.Close()
+	actions, err := st.ListFillerDecisionActions(t.Context(), fillerdecision.ActionFilter{DecisionID: "applied-review", Limit: 10})
+	if err != nil || actions.Total != 0 {
+		t.Fatalf("unverified applied action persisted = %+v, %v", actions, err)
+	}
+}
+
 func TestFillerDecisionAbandonIsMeasurableWithoutResolvingTheReview(t *testing.T) {
 	srv, st := newServer(t)
 	seedDecisionAPI(t, st)

@@ -12153,7 +12153,7 @@ paths:
         - filler
   /v1/filler/decisions/{id}/actions:
     post:
-      description: Admin-only append-only action. The server records the authenticated actor and rejects stale or invalid state transitions (§10 V63).
+      description: Admin-only append-only action. The server records the authenticated actor and rejects stale or invalid state transitions. Shadow actions are audit-only; an applied action can change the catalog only after terminal release replay and commits that effect atomically (§10 V63).
       operationId: act-on-filler-decision
       parameters:
         - in: path
