@@ -3,6 +3,7 @@ package playout
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -690,6 +691,236 @@ func TestAttach_CopySessionsDoNotConsumeBudget(t *testing.T) {
 	}
 	if _, _, err := m.Attach(context.Background(), "ch3", PlanFull); err != ErrAtCapacity {
 		t.Fatalf("third cold session err = %v, want ErrAtCapacity", err)
+	}
+}
+
+// The transcode budget and the warm-session footprint are different limits. Fifty copy-compatible
+// Channels cost no transcode slots after their first program reports, but retaining all fifty would
+// still retain fifty parent processes and (for Watch) fifty HLS remuxes. The Manager keeps only the
+// two most recently viewed idle sessions beside the current viewer-active Channel.
+func TestWarmIdleHotSetBoundsFiftyChannelSurf(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 0, time.Minute)
+
+	var previousDetach func()
+	for i := range 50 {
+		channelID := fmt.Sprintf("ch-%02d", i)
+		viewer, detach, err := m.Attach(t.Context(), channelID, PlanFull)
+		if err != nil {
+			t.Fatalf("attach %s: %v", channelID, err)
+		}
+		warmSession(t, viewer, encoder(channelID))
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		if previousDetach != nil {
+			previousDetach()
+		}
+		previousDetach = detach
+	}
+
+	stats := m.Stats(time.Now())
+	active, idle := 0, 0
+	for _, stat := range stats {
+		if stat.Viewers > 0 {
+			active++
+		} else {
+			idle++
+		}
+	}
+	if active != 1 || idle != 2 || len(stats) != 3 {
+		t.Fatalf("sessions = %d active / %d idle / %d total, want 1 / 2 / 3", active, idle, len(stats))
+	}
+	for i := range 47 {
+		channelID := fmt.Sprintf("ch-%02d", i)
+		select {
+		case <-encoder(channelID).stopped:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("displaced idle session %s was not stopped", channelID)
+		}
+	}
+	for _, channelID := range []string{"ch-47", "ch-48", "ch-49"} {
+		select {
+		case <-encoder(channelID).stopped:
+			t.Fatalf("retained hot-set session %s was stopped", channelID)
+		default:
+		}
+	}
+}
+
+// A configured Channel is catalog state, not viewer demand. The session Manager deliberately has
+// no inventory-loading API: even diagnostics may inspect every configured Channel without lazily
+// starting its parent media process. This pins the 50+ Channel idle-host contract at the process
+// ownership seam instead of relying on a composition test that could only count session rows.
+func TestManagerConfiguredChannelsWithoutViewersStartNoMediaProcesses(t *testing.T) {
+	spawn, started := countingSpawner(t)
+	m := testManager(t, spawn, 0, time.Minute)
+
+	for i := range 64 {
+		channelID := fmt.Sprintf("configured-%02d", i)
+		if runID := m.ProcessRunID(channelID, PlanFull); runID != "" {
+			t.Fatalf("configured Channel %s unexpectedly has process %q", channelID, runID)
+		}
+	}
+
+	if got := started(); got != 0 {
+		t.Fatalf("64 configured Channels with no viewer demand started %d media processes, want 0", got)
+	}
+	if stats := m.Stats(time.Now()); len(stats) != 0 {
+		t.Fatalf("64 configured Channels with no viewer demand created %d live sessions, want 0", len(stats))
+	}
+}
+
+func TestWarmIdleHotSetIncludesCopyAndTranscodeSessions(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 0, time.Minute)
+
+	for i, transcoding := range []bool{false, true, false} {
+		channelID := fmt.Sprintf("ch-%d", i)
+		viewer, detach, err := m.Attach(t.Context(), channelID, PlanFull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		warmSession(t, viewer, encoder(channelID))
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, transcoding, Progress{})
+		detach()
+		time.Sleep(time.Millisecond)
+	}
+
+	if got := m.ActiveCount(); got != 2 {
+		t.Fatalf("live sessions = %d, want two idle sessions", got)
+	}
+	select {
+	case <-encoder("ch-0").stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("oldest copy session was exempted from the aggregate idle bound")
+	}
+}
+
+func TestWarmIdleHotSetUsesMostRecentViewNotOriginalStart(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 0, time.Minute)
+
+	for _, channelID := range []string{"ch1", "ch2"} {
+		viewer, detach, err := m.Attach(t.Context(), channelID, PlanFull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		warmSession(t, viewer, encoder(channelID))
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		detach()
+		time.Sleep(time.Millisecond)
+	}
+
+	// Rejoining ch1 makes it the most recently viewed idle session without spawning again.
+	original := encoder("ch1")
+	_, detach, err := m.Attach(t.Context(), "ch1", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if encoder("ch1") != original {
+		t.Fatal("reattaching a retained session spawned a new encoder")
+	}
+	detach()
+	time.Sleep(time.Millisecond)
+
+	viewer3, detach3, err := m.Attach(t.Context(), "ch3", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warmSession(t, viewer3, encoder("ch3"))
+	m.ReportProgram("ch3", PlanFull, EncoderSoftware, false, Progress{})
+	detach3()
+
+	select {
+	case <-encoder("ch2").stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("least-recently-viewed idle session was not stopped")
+	}
+	select {
+	case <-encoder("ch1").stopped:
+		t.Fatal("recently reattached session was stopped before an older idle session")
+	default:
+	}
+}
+
+func TestWarmIdleHotSetConcurrentDetachesRemainBounded(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 0, time.Minute)
+
+	detaches := make([]func(), 0, 50)
+	for i := range 50 {
+		channelID := fmt.Sprintf("ch-%02d", i)
+		viewer, detach, err := m.Attach(t.Context(), channelID, PlanFull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		warmSession(t, viewer, encoder(channelID))
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		detaches = append(detaches, detach)
+	}
+
+	var wg sync.WaitGroup
+	for _, detach := range detaches {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			detach()
+		}()
+	}
+	wg.Wait()
+
+	if got := m.ActiveCount(); got != 2 {
+		t.Fatalf("live sessions after concurrent detaches = %d, want 2", got)
+	}
+	for _, stat := range m.Stats(time.Now()) {
+		if stat.Viewers != 0 {
+			t.Fatalf("session %s retained %d viewers after every detach", stat.ChannelID, stat.Viewers)
+		}
+	}
+}
+
+func TestWarmIdleHotSetNeverEvictsActiveViewers(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	m := testManager(t, spawn, 0, time.Minute)
+
+	for i := range 4 {
+		channelID := fmt.Sprintf("active-%d", i)
+		viewer, _, err := m.Attach(t.Context(), channelID, PlanFull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		warmSession(t, viewer, encoder(channelID))
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+	}
+	for i := range 3 {
+		channelID := fmt.Sprintf("idle-%d", i)
+		viewer, detach, err := m.Attach(t.Context(), channelID, PlanFull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		warmSession(t, viewer, encoder(channelID))
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		detach()
+	}
+
+	stats := m.Stats(time.Now())
+	active, idle := 0, 0
+	for _, stat := range stats {
+		if stat.Viewers > 0 {
+			active++
+		} else {
+			idle++
+		}
+	}
+	if active != 4 || idle != 2 {
+		t.Fatalf("sessions = %d active / %d idle, want 4 / 2", active, idle)
+	}
+	for i := range 4 {
+		channelID := fmt.Sprintf("active-%d", i)
+		select {
+		case <-encoder(channelID).stopped:
+			t.Fatalf("viewer-active session %s was evicted", channelID)
+		default:
+		}
 	}
 }
 

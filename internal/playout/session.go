@@ -46,6 +46,15 @@ var ErrAtCapacity = errors.New("playout: at channel capacity")
 // the drop while holding more memory per stalled TV.
 const viewerBuffer = 8
 
+// warmIdleSessionLimit is the complete process-wide speculative/retained live hot set. The Watch
+// controller warms only the previous and next Channels beside current, so retaining more than two
+// proven-warm idle (Channel, EncodePlan) sessions buys no product latency while keeping their parent
+// and HLS process/file-descriptor/scratch cost alive. Viewer-active sessions are outside this limit.
+//
+// This is deliberately an internal invariant rather than a setting or constructor argument: callers
+// request playback and report demand; they do not arbitrate the Manager's lifecycle policy.
+const warmIdleSessionLimit = 2
+
 // Session is one channel's encoder plus its connected viewers.
 type Session struct {
 	ChannelID string
@@ -86,6 +95,10 @@ type Session struct {
 	onClosed func()
 	// onDemandChange publishes active↔idle viewer transitions after the session lock is released.
 	onDemandChange func()
+	// onBecameIdle lets the Manager enforce its process-wide warm-session invariant after the
+	// session lock is released. Separate from onDemandChange because active transitions need
+	// telemetry but cannot make the idle set exceed its limit.
+	onBecameIdle func()
 
 	// startedAt is when the channel came on air — the dashboard's uptime, and the denominator
 	// for judging whether a low speed is a cold start or a sustained problem.
@@ -448,9 +461,22 @@ type idleCandidate struct {
 // snapshotted under Manager.mu, then inspected and closed without it: Session.close calls back into
 // the manager to release cost, so holding the manager lock across close would deadlock.
 func reclaimOldestIdle(candidates []idleCandidate) bool {
+	_, oldest, oldestGeneration, ok := oldestIdle(candidates)
+	if !ok {
+		return false
+	}
+	return oldest.session.closeIfIdle(oldestGeneration)
+}
+
+// oldestIdle inspects one snapshot without holding Manager.mu. It returns the total currently-idle
+// count as well as the oldest exact idle generation, so both transcode admission and the aggregate
+// warm-session invariant share one LRU/ABA decision instead of growing subtly different policies.
+func oldestIdle(candidates []idleCandidate) (int, idleCandidate, uint64, bool) {
+	idleCount := 0
 	var oldest idleCandidate
 	var oldestSince time.Time
 	var oldestGeneration uint64
+	found := false
 	for _, candidate := range candidates {
 		candidate.session.mu.Lock()
 		idleSince := candidate.session.idleSince
@@ -460,17 +486,38 @@ func reclaimOldestIdle(candidates []idleCandidate) bool {
 		if !idle {
 			continue
 		}
-		if oldestSince.IsZero() || idleSince.Before(oldestSince) ||
+		idleCount++
+		if !found || idleSince.Before(oldestSince) ||
 			(idleSince.Equal(oldestSince) && lessSessionKey(candidate.key, oldest.key)) {
 			oldest = candidate
 			oldestSince = idleSince
 			oldestGeneration = idleGeneration
+			found = true
 		}
 	}
-	if oldestSince.IsZero() {
-		return false
+	return idleCount, oldest, oldestGeneration, found
+}
+
+// enforceWarmIdleLimit closes the least-recently-viewed exact idle generation until at most the
+// two useful adjacent sessions remain. Selection and close are deliberately outside Manager.mu:
+// close calls back into forget, and holding the manager lock across it would deadlock. A failed
+// close means a viewer or a newer idle generation won the ABA race, so resnapshot rather than
+// evicting a now-active session or leaving a stale over-limit decision in force.
+func (m *Manager) enforceWarmIdleLimit() {
+	for {
+		m.mu.Lock()
+		candidates := make([]idleCandidate, 0, len(m.sessions))
+		for key, session := range m.sessions {
+			candidates = append(candidates, idleCandidate{key: key, session: session})
+		}
+		m.mu.Unlock()
+
+		idleCount, oldest, idleGeneration, ok := oldestIdle(candidates)
+		if idleCount <= warmIdleSessionLimit || !ok {
+			return
+		}
+		_ = oldest.session.closeIfIdle(idleGeneration)
 	}
-	return oldest.session.closeIfIdle(oldestGeneration)
 }
 
 func lessSessionKey(left, right sessionKey) bool {
@@ -514,6 +561,7 @@ func (m *Manager) newPlaceholder(channelID string, plan EncodePlan) *Session {
 		// by s.closed), so forget runs exactly once — no double-subtract. forget does the notify.
 		onClosed:        func() { m.forget(key) },
 		onDemandChange:  m.notifyChange,
+		onBecameIdle:    m.enforceWarmIdleLimit,
 		startedAt:       time.Now(),
 		viewers:         map[int]sessionViewer{},
 		inactiveViewers: map[int]bool{},
@@ -657,6 +705,9 @@ func (s *Session) broadcast(chunk []byte) {
 	}
 	if becameIdle {
 		s.onIdle(idleGeneration)
+		if s.onBecameIdle != nil {
+			s.onBecameIdle()
+		}
 	}
 }
 
@@ -781,6 +832,9 @@ func (s *Session) setViewerActive(id int, active bool) bool {
 			return false
 		}
 		s.onIdle(idleGeneration)
+		if s.onBecameIdle != nil {
+			s.onBecameIdle()
+		}
 	}
 	return true
 }
@@ -821,6 +875,9 @@ func (s *Session) removeViewer(id int) {
 			return
 		}
 		s.onIdle(idleGeneration)
+		if s.onBecameIdle != nil {
+			s.onBecameIdle()
+		}
 	}
 }
 
