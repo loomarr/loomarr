@@ -35,6 +35,10 @@ grep -Fq 'content-desc="Loomarr"' "${script}" || {
 	printf 'release emulator harness must require the exact accessible Loomarr tile name\n' >&2
 	exit 1
 }
+grep -Fq 'mResumedActivity' "${script}" || {
+	printf 'release emulator harness must prove the launcher, not Loomarr, owns the visible surface\n' >&2
+	exit 1
+}
 [[ "${launcher_open}" -lt "${launcher_observed}" && "${launcher_observed}" -lt "${launcher_capture}" && "${launcher_capture}" -lt "${launcher_measured}" && "${launcher_measured}" -lt "${activity_launch}" ]] || {
   printf 'launcher identity observation, capture, and pixel measurement must precede MainActivity\n' >&2
   exit 1

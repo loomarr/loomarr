@@ -195,16 +195,17 @@ open_launcher_surface() {
 }
 
 wait_for_launcher_identity() {
+	local resumed_activity
 	for _ in {1..40}; do
 		dump_ui
 		launcher_node=$(grep -oE '<node[^>]*package="com.google.android.apps.tv.launcherx"[^>]*content-desc="Loomarr"[^>]*>' "${temp_dir}/window.xml" | head -1 || true)
 		if [[ -n "${launcher_node}" ]]; then
-			adb -s "${EMULATOR_SERIAL}" shell dumpsys activity activities |
-				awk '/mResumedActivity/{print; exit}' |
-				grep -Fq 'com.google.android.apps.tv.launcherx' || {
-					sleep 0.25
-					continue
-				}
+			resumed_activity=$(adb -s "${EMULATOR_SERIAL}" shell dumpsys activity activities |
+				awk '/mResumedActivity/{print; exit}')
+			if [[ "${resumed_activity}" != *com.google.android.apps.tv.launcherx* ]]; then
+				sleep 0.25
+				continue
+			fi
 			printf 'android-emulator: observed exact Loomarr tile on launcher surface\n'
 			return 0
 		fi
