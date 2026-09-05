@@ -1,5 +1,5 @@
 import { Action, ActivityIndicator, ProgressTrack, Surface, Text } from "@loomarr/design-system";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Pressable, View } from "react-native";
 
 import { ChannelIdentity, ProgrammeIdentity } from "../identity";
@@ -214,6 +214,7 @@ const TouchWatchingSurface = ({
 
 const TvWatchingSurface = ({
   chromeVisible = true,
+  controlsActivityKey = 0,
   controlsVisible = true,
   loading = false,
   loadError,
@@ -230,12 +231,25 @@ const TvWatchingSurface = ({
   const message = loading ? undefined : playbackMessage(snapshot, loadError);
   const recoverableFailure = Boolean(loadError) || snapshot.status === "failed";
   const overlayVisible = !loading && (controlsVisible || Boolean(message) || snapshot.status === "tuning");
+  const activityKeyRef = useRef(controlsActivityKey);
+  const dismissControlsRef = useRef(onDismissControls);
+
+  useEffect(() => {
+    activityKeyRef.current = controlsActivityKey;
+  }, [controlsActivityKey]);
+  useEffect(() => {
+    dismissControlsRef.current = onDismissControls;
+  }, [onDismissControls]);
+  const dismissControlsForActivity = useCallback(() => {
+    if (activityKeyRef.current !== controlsActivityKey) return;
+    dismissControlsRef.current();
+  }, [controlsActivityKey]);
 
   useEffect(() => {
     if (!overlayVisible || message || snapshot.status === "tuning") return undefined;
-    const timeout = setTimeout(onDismissControls, 5_000);
+    const timeout = setTimeout(dismissControlsForActivity, 5_000);
     return () => clearTimeout(timeout);
-  }, [message, onDismissControls, overlayVisible, snapshot.status]);
+  }, [dismissControlsForActivity, message, overlayVisible, snapshot.status]);
 
   return (
     <View style={{ backgroundColor: "#000", flex: 1 }}>

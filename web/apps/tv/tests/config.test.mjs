@@ -200,6 +200,18 @@ test("routes the native remote through TV adapters and preserves platform-home B
   assert.match(appSource, /if \(!destination\) return false/);
 });
 
+test("restarts Watching inactivity only for handled remote and tune activity", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /controlsActivityKey=\{controlsActivityKey\}/);
+  assert.match(appSource, /if \(result\.handled\) showControlsForActivity\(\);/);
+
+  const tuneHandlers = appSource.match(
+    /onTune=\{\(channelId\) => \{\s*void controller\.tuneChannel\(channelId\);\s*showControlsForActivity\(\);\s*setActive\("watching"\);\s*\}\}/g,
+  );
+  assert.equal(tuneHandlers?.length, 2, "Guide and Surf tune paths must restart Watching inactivity");
+});
+
 test("restores Guide and Surf focus by identity through the TV registries", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 

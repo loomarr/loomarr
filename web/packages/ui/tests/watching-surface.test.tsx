@@ -1,11 +1,27 @@
+// @vitest-environment jsdom
+
 import { LoomarrProvider } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { WatchingSurface } from "../index";
 
+(
+  globalThis as typeof globalThis & {
+    IS_REACT_ACT_ENVIRONMENT: boolean;
+  }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
 const channel = { id: "seven", inAppPlayable: true, name: "Science Fiction", number: 7 };
+const createTestContainer = () =>
+  (
+    globalThis as unknown as {
+      document: { createElement: (tagName: string) => Parameters<typeof createRoot>[0] };
+    }
+  ).document.createElement("div");
 const playing: PlayerSnapshot = {
   attemptId: 4,
   catalog: [channel],
@@ -55,6 +71,88 @@ const renderSurface = (
   );
 
 describe("WatchingSurface", () => {
+  it("dismisses TV identity and playbar five seconds after activity despite live programme updates", () => {
+    vi.useFakeTimers();
+    const container = createTestContainer();
+    const root = createRoot(container);
+    const firstDismiss = vi.fn();
+    const progressUpdateDismiss = vi.fn();
+    const render = (progressPercent: number, controlsActivityKey: number, onDismissControls: () => void) =>
+      root.render(
+        <LoomarrProvider>
+          <WatchingSurface
+            controlsActivityKey={controlsActivityKey}
+            density="tv"
+            onChannelDown={vi.fn()}
+            onChannelUp={vi.fn()}
+            onDismissControls={onDismissControls}
+            onGoLive={vi.fn()}
+            onOpenGuide={vi.fn()}
+            onOpenSurf={vi.fn()}
+            onPause={vi.fn()}
+            onPlay={vi.fn()}
+            onPrevious={vi.fn()}
+            onRetry={vi.fn()}
+            onShowControls={vi.fn()}
+            player={<div />}
+            schedule={{
+              now: { progressPercent, timeLabel: "9:00 PM–9:30 PM", title: "The Current Frontier" },
+            }}
+            snapshot={playing}
+          />
+        </LoomarrProvider>,
+      );
+
+    act(() => render(42, 0, firstDismiss));
+    act(() => vi.advanceTimersByTime(4_999));
+    act(() => render(43, 0, progressUpdateDismiss));
+    act(() => vi.advanceTimersByTime(1));
+
+    expect(firstDismiss).not.toHaveBeenCalled();
+    expect(progressUpdateDismiss).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("starts a fresh TV dismissal window only when handled activity changes", () => {
+    vi.useFakeTimers();
+    const container = createTestContainer();
+    const root = createRoot(container);
+    const dismiss = vi.fn();
+    const render = (controlsActivityKey: number) =>
+      root.render(
+        <LoomarrProvider>
+          <WatchingSurface
+            controlsActivityKey={controlsActivityKey}
+            density="tv"
+            onChannelDown={vi.fn()}
+            onChannelUp={vi.fn()}
+            onDismissControls={dismiss}
+            onGoLive={vi.fn()}
+            onOpenGuide={vi.fn()}
+            onOpenSurf={vi.fn()}
+            onPause={vi.fn()}
+            onPlay={vi.fn()}
+            onPrevious={vi.fn()}
+            onRetry={vi.fn()}
+            onShowControls={vi.fn()}
+            player={<div />}
+            snapshot={playing}
+          />
+        </LoomarrProvider>,
+      );
+
+    act(() => render(0));
+    act(() => vi.advanceTimersByTime(4_999));
+    act(() => render(1));
+    act(() => vi.advanceTimersByTime(1));
+    expect(dismiss).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(4_999));
+    expect(dismiss).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
   it("keeps one player mounted behind the TV presentation and quiet remote hints", () => {
     const output = renderSurface(playing);
     expect(output).toContain("one-native-player");
