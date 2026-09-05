@@ -350,9 +350,13 @@ classify() {
         scripts/apple-compilation-cache*) select_gate contracts; select_gate apple_mobile; select_gate apple_tv; select_gate policy ;;
         scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
         scripts/run-playwright-container.sh) select_gate contracts; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
+        # Android ancestry reuse evaluates intervening paths with this classifier. Until the
+        # produced evidence binds its identity, the authority cannot exempt its own changes.
+        scripts/ci-impact.sh) select_gate android; select_gate policy ;;
         scripts/ci-impact*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/testdata/ci-*) select_gate policy ;;
         scripts/dev-*) select_gate contracts; select_gate agent ;;
-        scripts/validate-android-release-source.sh) select_gate policy ;;
+        # The validator is the other half of that authority and likewise requires fresh evidence.
+        scripts/validate-android-release-source.sh) select_gate android; select_gate policy ;;
         scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh) select_gate android ;;
         scripts/generate-brand-assets.mjs|scripts/check-brand-assets.mjs) select_gate clients; select_gate android ;;
         scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
