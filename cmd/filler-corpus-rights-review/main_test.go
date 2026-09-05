@@ -130,6 +130,45 @@ func TestRunPreparesInertCertificationScheduleBoundToApprovedTemplate(t *testing
 	}
 }
 
+func TestRunPreparesInertQuarantineWorksheetWithExplicitDeniedUses(t *testing.T) {
+	snapshot := time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC)
+	inv := reviewInventory(snapshot, "quarantine-one")
+	raw, err := json.Marshal(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	inventoryPath, worksheetPath, csvPath := filepath.Join(dir, "inventory.json"), filepath.Join(dir, "worksheet.json"), filepath.Join(dir, "worksheet.csv")
+	if err := os.WriteFile(inventoryPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--inventory", inventoryPath, "--out", worksheetPath, "--csv-out", csvPath, "--prepared-at", snapshot.Add(time.Minute).Format(time.RFC3339), "--profile", "quarantine", "--min-items", "1", "--max-items", "1"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run() = %d, stderr = %s", code, stderr.String())
+	}
+	var worksheet fillercorpus.RightsWorksheet
+	worksheetRaw, err := os.ReadFile(worksheetPath)
+	if err != nil || json.Unmarshal(worksheetRaw, &worksheet) != nil {
+		t.Fatalf("worksheet read = %v", err)
+	}
+	if worksheet.SchemaVersion != fillercorpus.QuarantineRightsWorksheetSchemaVersion || worksheet.Profile != fillercorpus.RightsProfileQuarantine || worksheet.HoldoutTemplate != nil {
+		t.Fatalf("worksheet = %+v", worksheet)
+	}
+	records, err := csv.NewReader(mustOpen(t, csvPath)).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(records[0], fillercorpus.QuarantineRightsReviewCSVHeader()) {
+		t.Fatalf("header = %v", records[0])
+	}
+	for index := len(fillercorpus.ImmutableRightsReviewRecord(worksheet.Cases[0])); index < len(records[1]); index++ {
+		if records[1][index] != "" {
+			t.Fatalf("authority field %s was prefilled", records[0][index])
+		}
+	}
+}
+
 func mustOpen(t *testing.T, path string) *os.File {
 	t.Helper()
 	file, err := os.Open(path)

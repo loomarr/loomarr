@@ -27,7 +27,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	outputPath := flags.String("out", "", "non-authorizing rights worksheet JSON")
 	csvOutputPath := flags.String("csv-out", "", "spreadsheet-safe non-authorizing rights worksheet CSV")
 	preparedAtText := flags.String("prepared-at", "", "worksheet preparation time in RFC3339 format")
-	profile := flags.String("profile", "", "required rights profile: development or certification")
+	profile := flags.String("profile", "", "required rights profile: quarantine, development, or certification")
 	agreementID := flags.String("agreement-id", "", "maintainer/counsel-approved agreement identifier (certification only)")
 	agreementSHA256 := flags.String("agreement-sha256", "", "SHA-256 of the approved agreement form (certification only)")
 	processorID := flags.String("processor-id", "", "exact approved inference processor identifier (certification only)")
@@ -37,8 +37,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *inventoryPath == "" || *outputPath == "" || *preparedAtText == "" || *minItems <= 0 || *maxItems < *minItems || (*profile != fillercorpus.RightsProfileDevelopment && *profile != fillercorpus.RightsProfileCertification) {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: inventory, output, preparation time, explicit development/certification profile, and positive min/max item bounds are required")
+	if *inventoryPath == "" || *outputPath == "" || *preparedAtText == "" || *minItems <= 0 || *maxItems < *minItems || !fillercorpus.KnownRightsProfile(*profile) {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: inventory, output, preparation time, explicit quarantine/development/certification profile, and positive min/max item bounds are required")
 		return 2
 	}
 	preparedAt, err := time.Parse(time.RFC3339, *preparedAtText)
@@ -86,9 +86,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 func writeReviewCSV(path string, sheet fillercorpus.RightsWorksheet) error {
 	return writeAtomic(path, func(writer io.Writer) error {
 		csvWriter := csv.NewWriter(writer)
-		header := fillercorpus.RightsReviewCSVHeader()
-		if sheet.SchemaVersion == fillercorpus.HoldoutRightsWorksheetSchemaVersion {
-			header = fillercorpus.HoldoutRightsReviewCSVHeader()
+		header, err := fillercorpus.RightsReviewCSVHeaderForProfile(sheet.Profile)
+		if err != nil {
+			return err
 		}
 		if err := csvWriter.Write(header); err != nil {
 			return err
@@ -122,13 +122,15 @@ func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, prepa
 	if len(cases) > maxItems {
 		cases = cases[:maxItems]
 	}
-	schemaVersion := fillercorpus.RightsWorksheetSchemaVersion
+	schemaVersion, knownProfile := fillercorpus.RightsWorksheetSchemaForProfile(profile)
+	if !knownProfile {
+		return fillercorpus.RightsWorksheet{}, fmt.Errorf("unknown rights profile %q", profile)
+	}
 	if profile == fillercorpus.RightsProfileCertification {
 		if err := fillercorpus.ValidateHoldoutRightsTemplate(template); err != nil {
 			return fillercorpus.RightsWorksheet{}, err
 		}
-		schemaVersion = fillercorpus.HoldoutRightsWorksheetSchemaVersion
-	} else if profile != fillercorpus.RightsProfileDevelopment || template != nil {
+	} else if template != nil {
 		return fillercorpus.RightsWorksheet{}, fmt.Errorf("rights profile and holdout template are inconsistent")
 	}
 	result := fillercorpus.RightsWorksheet{
@@ -141,11 +143,18 @@ func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, prepa
 			"Set decision to approved only with explicit redistributable=true and a reasoned basis; otherwise set decision to held.",
 		},
 	}
-	if profile == fillercorpus.RightsProfileCertification {
+	switch profile {
+	case fillercorpus.RightsProfileCertification:
 		result.Instructions = []string{
 			"This worksheet is not legal, outreach, acquisition, download, provider-transfer, or spend authority; blank rows fail closed.",
 			"Review the exact executed per-master schedule, signer authority, every required grant, embedded rights category, territory, term, attribution, restriction, and any ambiguity adjudication.",
 			"Set decision to approved only when every certification field is complete and supported by the agreement and evidence digests; otherwise set decision to held with the unresolved facts preserved.",
+		}
+	case fillercorpus.RightsProfileQuarantine:
+		result.Instructions = []string{
+			"This worksheet is not legal, provider-transfer, redistribution, corpus-preparation, training, ingestion, scheduling, production, or spend authority; blank rows fail closed.",
+			"Review the exact item, metadata, selected representation, source terms, and local copy/inspection basis.",
+			"Approve only local copying/storage and local technical inspection; every downstream permission must be explicitly false.",
 		}
 	}
 	seen := map[string]struct{}{}

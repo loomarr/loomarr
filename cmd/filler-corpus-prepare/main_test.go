@@ -121,6 +121,33 @@ func TestPrepareCertificationRejectsSchemaThreeRightsApprovals(t *testing.T) {
 	}
 }
 
+func TestPrepareRejectsQuarantineAuthorityForEveryCorpusProfile(t *testing.T) {
+	for _, kind := range []fillereval.CorpusKind{fillereval.CorpusDevelopmentSeed, fillereval.CorpusCertification} {
+		t.Run(string(kind), func(t *testing.T) {
+			opts, deriver := preparationFixture(t)
+			mutatePreparationFixture(t, opts, func(_ *fillercorpus.Inventory, decisions []fillercorpus.RightsDecision, plan *preparationPlan) {
+				for index := range decisions {
+					decisions[index].Redistributable = false
+					decisions[index].QuarantineContract = &fillercorpus.QuarantineAcquisitionContract{
+						SchemaVersion:  fillercorpus.QuarantineAcquisitionContractSchemaVersion,
+						Purpose:        fillercorpus.QuarantinePurposeLocalInspection,
+						CopyAndStorage: true, LocalTechnicalInspection: true,
+					}
+				}
+				if kind == fillereval.CorpusCertification {
+					plan.Kind = kind
+					plan.Cases[1].Split = fillereval.SplitHoldout
+					plan.SliceGates[0].MinAccuracyLower = .5
+				}
+			})
+			opts.kind = kind
+			if _, _, err := prepare(t.Context(), opts, deriver); err == nil {
+				t.Fatal("quarantine authority entered corpus preparation")
+			}
+		})
+	}
+}
+
 func TestPrepareRejectsRetiredSchemaThreePlan(t *testing.T) {
 	opts, deriver := preparationFixture(t)
 	mutatePreparationFixture(t, opts, func(_ *fillercorpus.Inventory, _ []fillercorpus.RightsDecision, plan *preparationPlan) {

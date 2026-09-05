@@ -511,14 +511,14 @@ func validateRightsDecision(decision fillercorpus.RightsDecision, item fillercor
 	}
 	if kind == fillereval.CorpusCertification {
 		contract := decision.HoldoutContract
-		if contract == nil || (decision.Decision == "approved" && (len(contract.HoldReasons) != 0 || len(fillercorpus.HoldoutRightsHoldReasons(contract, preparedAt)) != 0)) {
+		if decision.QuarantineContract != nil || contract == nil || (decision.Decision == "approved" && (len(contract.HoldReasons) != 0 || len(fillercorpus.HoldoutRightsHoldReasons(contract, preparedAt)) != 0)) {
 			return fmt.Errorf("case %q lacks certification holdout authority", decision.CaseID)
 		}
 		wantRedistributable := contract.RedistributionScope == fillercorpus.RedistributionMasterAndDerivatives
 		if decision.Decision == "approved" && decision.Redistributable != wantRedistributable {
 			return fmt.Errorf("case %q has a conflicting redistribution scope", decision.CaseID)
 		}
-	} else if decision.HoldoutContract != nil || decision.Redistributable != (decision.Decision == "approved") {
+	} else if decision.QuarantineContract != nil || decision.HoldoutContract != nil || decision.Redistributable != (decision.Decision == "approved") {
 		return fmt.Errorf("case %q has an invalid development rights decision", decision.CaseID)
 	}
 	return nil

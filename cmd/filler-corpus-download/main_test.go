@@ -3,6 +3,8 @@ package main
 import (
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +114,63 @@ func TestPlanDownloadsCertificationRejectsLegacyAndProcessorDrift(t *testing.T) 
 	drifted.processorTermsSHA256 = strings.Repeat("f", 64)
 	if _, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, drifted); err == nil {
 		t.Fatal("changed processor terms authorized certification acquisition")
+	}
+}
+
+func TestPlanDownloadsQuarantineCannotGrantOrInheritDownstreamUse(t *testing.T) {
+	retrieved := time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC)
+	inv := downloadableInventory(retrieved, "quarantine", "")
+	approval := approvalFor(inv, retrieved)
+	approval.Redistributable = false
+	approval.QuarantineContract = &fillercorpus.QuarantineAcquisitionContract{
+		SchemaVersion:  fillercorpus.QuarantineAcquisitionContractSchemaVersion,
+		Purpose:        fillercorpus.QuarantinePurposeLocalInspection,
+		CopyAndStorage: true, LocalTechnicalInspection: true,
+	}
+	opts := planOptions(retrieved)
+	opts.profile = fillercorpus.RightsProfileQuarantine
+	if plan, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, opts); err != nil || len(plan) != 1 {
+		t.Fatalf("quarantine plan = %v, %v", plan, err)
+	}
+	for name, mutate := range map[string]func(*fillercorpus.RightsDecision){
+		"provider transfer":  func(value *fillercorpus.RightsDecision) { value.QuarantineContract.ProviderTransfer = true },
+		"redistribution":     func(value *fillercorpus.RightsDecision) { value.QuarantineContract.Redistribution = true },
+		"corpus preparation": func(value *fillercorpus.RightsDecision) { value.QuarantineContract.CorpusPreparation = true },
+		"training":           func(value *fillercorpus.RightsDecision) { value.QuarantineContract.Training = true },
+		"catalog ingestion":  func(value *fillercorpus.RightsDecision) { value.QuarantineContract.CatalogIngestion = true },
+		"scheduling":         func(value *fillercorpus.RightsDecision) { value.QuarantineContract.Scheduling = true },
+		"production":         func(value *fillercorpus.RightsDecision) { value.QuarantineContract.ProductionAdmission = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := approval
+			contract := *approval.QuarantineContract
+			changed.QuarantineContract = &contract
+			mutate(&changed)
+			if _, err := planDownloads(inv, []fillercorpus.RightsDecision{changed}, opts); err == nil {
+				t.Fatal("broadened quarantine authority was accepted")
+			}
+		})
+	}
+	development := opts
+	development.profile = fillercorpus.RightsProfileDevelopment
+	if _, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, development); err == nil {
+		t.Fatal("quarantine decision authorized development acquisition")
+	}
+}
+
+func TestExecuteDownloadsRecordsQuarantineProfile(t *testing.T) {
+	data := []byte("exact quarantine bytes")
+	path := filepath.Join(t.TempDir(), "source.mp4")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	item := downloadableInventory(time.Now().UTC(), "quarantine", "").Cases[0]
+	item.Representation.Bytes = int64(len(data))
+	ledger, err := executeDownloads(t.Context(), &http.Client{}, []plannedDownload{{candidate: item, path: path}}, options{
+		profile: fillercorpus.RightsProfileQuarantine, generatedAt: time.Now().UTC(), maxRequests: 1, maxItems: 1, maxBytes: int64(len(data)), outputDir: filepath.Dir(path),
+	})
+	if err != nil || ledger.SchemaVersion != 2 || ledger.Profile != fillercorpus.RightsProfileQuarantine || ledger.RequestsUsed != 0 || len(ledger.Cases) != 1 {
+		t.Fatalf("ledger = %+v, %v", ledger, err)
 	}
 }
 

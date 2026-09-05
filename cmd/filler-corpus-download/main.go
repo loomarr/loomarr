@@ -28,6 +28,7 @@ import (
 
 type downloadLedger struct {
 	SchemaVersion   int              `json:"schemaVersion"`
+	Profile         string           `json:"profile"`
 	InventorySHA256 string           `json:"inventorySha256"`
 	GeneratedAt     time.Time        `json:"generatedAt"`
 	MaxRequests     int              `json:"maxRequests"`
@@ -87,16 +88,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	maxItems := flags.Int("max-items", 0, "hard approved item ceiling")
 	maxBytes := flags.Int64("max-bytes", 0, "hard approved media-byte ceiling")
 	delay := flags.Duration("delay", time.Second, "minimum delay between HTTP requests")
-	profile := flags.String("profile", "", "required rights profile: development or certification")
+	profile := flags.String("profile", "", "required rights profile: quarantine, development, or certification")
 	processorID := flags.String("processor-id", "", "exact approved inference processor identifier (certification only)")
 	processorTermsSHA256 := flags.String("processor-terms-sha256", "", "SHA-256 of approved processor terms snapshot (certification only)")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	profileValid := *profile == fillercorpus.RightsProfileDevelopment || *profile == fillercorpus.RightsProfileCertification
+	profileValid := fillercorpus.KnownRightsProfile(*profile)
 	certificationIdentityValid := *profile != fillercorpus.RightsProfileCertification || (strings.TrimSpace(*processorID) != "" && fillercorpus.IsSHA256(*processorTermsSHA256))
 	if *inventoryPath == "" || *approvalsPath == "" || *outputDir == "" || *ledgerPath == "" || *userAgent == "" || *generatedAtText == "" || *maxRequests <= 0 || *maxItems <= 0 || *maxBytes <= 0 || *delay < 500*time.Millisecond || !profileValid || !certificationIdentityValid {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: inventory, rights approvals, output, ledger, identified User-Agent, generation time, explicit development/certification profile, positive ceilings, >=500ms delay, and certification processor identity are required")
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: inventory, rights approvals, output, ledger, identified User-Agent, generation time, explicit quarantine/development/certification profile, positive ceilings, >=500ms delay, and certification processor identity are required")
 		return 2
 	}
 	generatedAt, err := time.Parse(time.RFC3339, *generatedAtText)
@@ -176,19 +177,11 @@ func planDownloads(inv fillercorpus.Inventory, approvals []fillercorpus.RightsDe
 		if approval.MetadataSHA256 != candidate.MetadataSHA256 || approval.ReviewerID == "" || approval.ReviewedAt.IsZero() || approval.ReviewedAt.Before(candidate.MetadataRetrievedAt) || approval.ReviewedAt.After(opts.generatedAt) || strings.TrimSpace(approval.Basis) == "" {
 			return nil, fmt.Errorf("rights-reviewed item %s is not tied to its metadata and complete review", approval.CaseID)
 		}
+		if err := validateDecisionProfile(approval, opts); err != nil {
+			return nil, fmt.Errorf("rights-reviewed item %s: %w", approval.CaseID, err)
+		}
 		if approval.Decision == "held" {
 			continue
-		}
-		if opts.profile == fillercorpus.RightsProfileCertification {
-			contract := approval.HoldoutContract
-			if reasons := fillercorpus.HoldoutRightsHoldReasons(contract, opts.generatedAt); len(reasons) != 0 || contract.ProcessorID != opts.processorID || contract.ProcessorTermsSHA256 != opts.processorTermsSHA256 || len(contract.HoldReasons) != 0 {
-				return nil, fmt.Errorf("approved item %s lacks the exact certification holdout authority", approval.CaseID)
-			}
-		} else if approval.HoldoutContract != nil {
-			return nil, fmt.Errorf("development item %s carries a certification-only holdout contract", approval.CaseID)
-		}
-		if !approval.Redistributable && opts.profile != fillercorpus.RightsProfileCertification {
-			return nil, fmt.Errorf("approved item %s is not explicitly redistributable", approval.CaseID)
 		}
 		if requiresCredit(candidate.LicenseURL) && strings.TrimSpace(approval.RequiredCredit) == "" {
 			return nil, fmt.Errorf("approved item %s requires attribution", approval.CaseID)
@@ -214,11 +207,43 @@ func planDownloads(inv fillercorpus.Inventory, approvals []fillercorpus.RightsDe
 	return plan, nil
 }
 
+func validateDecisionProfile(approval fillercorpus.RightsDecision, opts options) error {
+	switch opts.profile {
+	case fillercorpus.RightsProfileQuarantine:
+		if approval.HoldoutContract != nil || approval.QuarantineContract == nil || approval.Redistributable {
+			return fmt.Errorf("decision is not restricted to quarantine")
+		}
+		reasons := fillercorpus.QuarantineAcquisitionHoldReasons(approval.QuarantineContract)
+		if approval.Decision == "approved" && (len(reasons) != 0 || len(approval.QuarantineContract.HoldReasons) != 0) {
+			return fmt.Errorf("approval lacks exact quarantine authority")
+		}
+		if approval.Decision == "held" && len(approval.QuarantineContract.HoldReasons) == 0 {
+			return fmt.Errorf("held quarantine decision has no hold reasons")
+		}
+	case fillercorpus.RightsProfileCertification:
+		if approval.QuarantineContract != nil || approval.HoldoutContract == nil {
+			return fmt.Errorf("decision lacks a certification holdout contract")
+		}
+		contract := approval.HoldoutContract
+		reasons := fillercorpus.HoldoutRightsHoldReasons(contract, opts.generatedAt)
+		if approval.Decision == "approved" && (len(reasons) != 0 || contract.ProcessorID != opts.processorID || contract.ProcessorTermsSHA256 != opts.processorTermsSHA256 || len(contract.HoldReasons) != 0) {
+			return fmt.Errorf("approval lacks the exact certification holdout authority")
+		}
+	case fillercorpus.RightsProfileDevelopment:
+		if approval.QuarantineContract != nil || approval.HoldoutContract != nil || approval.Redistributable != (approval.Decision == "approved") {
+			return fmt.Errorf("decision is not exact development authority")
+		}
+	default:
+		return fmt.Errorf("unknown rights profile %q", opts.profile)
+	}
+	return nil
+}
+
 func executeDownloads(ctx context.Context, client *http.Client, plan []plannedDownload, opts options) (downloadLedger, error) {
 	if err := os.MkdirAll(opts.outputDir, 0o750); err != nil {
 		return downloadLedger{}, err
 	}
-	ledger := downloadLedger{SchemaVersion: 1, GeneratedAt: opts.generatedAt.UTC(), MaxRequests: opts.maxRequests, MaxItems: opts.maxItems, MaxBytes: opts.maxBytes}
+	ledger := downloadLedger{SchemaVersion: 2, Profile: opts.profile, GeneratedAt: opts.generatedAt.UTC(), MaxRequests: opts.maxRequests, MaxItems: opts.maxItems, MaxBytes: opts.maxBytes}
 	lastRequestAt := time.Time{}
 	for _, item := range plan {
 		verifiedAt := opts.generatedAt.UTC()

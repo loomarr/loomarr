@@ -2,6 +2,7 @@ package fillercorpus
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -71,10 +72,34 @@ var holdoutRightsDecisionCSVFields = []string{
 	"adjudicator_id", "adjudicated_at", "adjudication_disposition", "required_credit", "restrictions_json",
 }
 
+var quarantineRightsDecisionCSVFields = []string{
+	"reviewer_id", "reviewed_at", "decision", "basis",
+	"copy_and_storage", "local_technical_inspection", "provider_transfer", "redistribution",
+	"corpus_preparation", "training", "catalog_ingestion", "scheduling", "production_admission",
+	"required_credit", "restrictions_json",
+}
+
 func RightsReviewCSVHeader() []string { return append([]string(nil), rightsReviewCSVHeader...) }
 
 func HoldoutRightsReviewCSVHeader() []string {
 	return append(append([]string(nil), rightsReviewCSVHeader[:len(rightsReviewCSVHeader)-7]...), holdoutRightsDecisionCSVFields...)
+}
+
+func QuarantineRightsReviewCSVHeader() []string {
+	return append(append([]string(nil), rightsReviewCSVHeader[:len(rightsReviewCSVHeader)-7]...), quarantineRightsDecisionCSVFields...)
+}
+
+func RightsReviewCSVHeaderForProfile(profile string) ([]string, error) {
+	switch profile {
+	case RightsProfileQuarantine:
+		return QuarantineRightsReviewCSVHeader(), nil
+	case RightsProfileDevelopment:
+		return RightsReviewCSVHeader(), nil
+	case RightsProfileCertification:
+		return HoldoutRightsReviewCSVHeader(), nil
+	default:
+		return nil, fmt.Errorf("unknown rights profile %q", profile)
+	}
 }
 
 func RightsReviewRowFromCase(item InventoryCase) RightsReviewRow {

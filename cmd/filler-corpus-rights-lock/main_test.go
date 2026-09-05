@@ -132,6 +132,47 @@ func TestParseDecisionRejectsIncompleteOrInconsistentAuthority(t *testing.T) {
 	})
 }
 
+func TestParseQuarantineDecisionAllowsOnlyLocalCopyAndInspection(t *testing.T) {
+	retrievedAt := time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC)
+	lockedAt := retrievedAt.Add(2 * time.Hour)
+	row := fillercorpus.RightsReviewRow{CaseID: "loc/item", MetadataRetrievedAt: retrievedAt}
+	valid := []string{
+		"rights-reviewer", retrievedAt.Add(time.Hour).Format(time.RFC3339), "approved", "Exact source terms permit a local quarantine copy and inspection.",
+		"true", "true", "false", "false", "false", "false", "false", "false", "false", "", "[]",
+	}
+	decision, err := parseQuarantineDecision(row, valid, lockedAt)
+	if err != nil || decision.QuarantineContract == nil || decision.Redistributable || len(decision.QuarantineContract.HoldReasons) != 0 {
+		t.Fatalf("decision = %+v, %v", decision, err)
+	}
+	for index, name := range []string{"provider transfer", "redistribution", "corpus preparation", "training", "catalog ingestion", "scheduling", "production admission"} {
+		t.Run(name, func(t *testing.T) {
+			fields := append([]string(nil), valid...)
+			fields[6+index] = "true"
+			if _, err := parseQuarantineDecision(row, fields, lockedAt); err == nil {
+				t.Fatal("downstream authority was accepted")
+			}
+		})
+	}
+	for _, index := range []int{4, 5} {
+		fields := append([]string(nil), valid...)
+		fields[index] = "false"
+		if _, err := parseQuarantineDecision(row, fields, lockedAt); err == nil {
+			t.Fatalf("required local authority field %d was omitted", index)
+		}
+	}
+	t.Run("held row remains inert", func(t *testing.T) {
+		fields := append([]string(nil), valid...)
+		fields[2] = "held"
+		for index := 4; index <= 12; index++ {
+			fields[index] = "false"
+		}
+		decision, err := parseQuarantineDecision(row, fields, lockedAt)
+		if err != nil || decision.QuarantineContract == nil || len(decision.QuarantineContract.HoldReasons) == 0 {
+			t.Fatalf("held decision = %+v, %v", decision, err)
+		}
+	})
+}
+
 func TestParseHoldoutDecisionRequiresEveryIndependentAuthorityAxis(t *testing.T) {
 	retrievedAt := time.Date(2026, 9, 2, 8, 0, 0, 0, time.UTC)
 	lockedAt := retrievedAt.Add(2 * time.Hour)

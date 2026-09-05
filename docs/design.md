@@ -5041,8 +5041,9 @@ disagreement; adjudication cannot turn an incomplete or malformed second review 
 independent labeling.
 
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
-authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
-metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and
+authority. The caller names one of three non-interchangeable profiles: `quarantine`, `development`,
+or `certification`. Every `approved` row binds the inventory digest, authority-qualified case ID,
+source metadata hash, reviewer, review time, rationale, purpose-specific authority, attribution, and
 restrictions; `held` rows remain inert. The downloader preflights aggregate item and byte ceilings
 before its first request, stays serial and identified, checks the initial URL and every redirect
 against both the case's frozen allowlist and the built-in policy for that authority, bounds each body
@@ -5051,6 +5052,18 @@ remain when they are part of the exact frozen representation URL; credentials an
 may. Media and its download ledger remain external to Git.
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
+
+`quarantine` is the narrow pre-review acquisition profile. Its schema-v5 worksheet locks a
+schema-v1 quarantine contract that must grant only local copying/storage and local technical
+inspection. Provider transfer, redistribution,
+development/certification corpus preparation, training, catalog ingestion, scheduling, and
+production admission are all present and false rather than inferred from omission. An approved
+quarantine decision may therefore retain `redistributable=false`; it is authority to obtain and
+measure an exact source locally, not a finding that the source may be published or used. The
+download ledger records the profile, and every downstream corpus-preparation profile rejects a
+quarantine contract even if its item identity and content hashes are otherwise valid. Promoting a
+surviving source requires a new development or certification rights decision against the same
+frozen inventory; a quarantine decision is never upgraded in place.
 
 A rights worksheet is a deterministic review aid, not authority. It records the digest of the exact
 frozen inventory, presents every selected source assertion and representation fact, and leaves the
@@ -5062,10 +5075,12 @@ unattributed BY/BY-SA approval, or inconsistent redistribution claim, and only t
 the downloader's JSONL ledger. The completed ledger binds each row to both that inventory digest and
 the item's metadata digest; copying an approval between inventory snapshots fails closed.
 
-The certification holdout uses a distinct schema-v4 rights contract; a schema-v3 approval remains
-readable development history but cannot authorize certification acquisition or preparation. The
-caller must name the `development` or `certification` profile before either locking rights decisions
-or downloading media. Certification binds one maintainer/counsel-approved agreement identifier and
+The certification holdout uses a distinct schema-v4 worksheet and schema-v1 rights contract, while
+quarantine uses its schema-v5 worksheet and schema-v1 acquisition contract; a schema-v3 approval
+remains readable development history
+but cannot authorize quarantine or certification acquisition or preparation. The caller must name
+the `quarantine`, `development`, or `certification` profile before either locking rights decisions or
+downloading media. Certification binds one maintainer/counsel-approved agreement identifier and
 SHA-256 plus one exact processor and terms-snapshot SHA-256 into the inert worksheet. Each completed
 per-master schedule then binds its own identifier and SHA-256, confirmed signer-authority evidence,
 and separate grants for commercial evaluation, copying/storage, technical transcoding, bounded

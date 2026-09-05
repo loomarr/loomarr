@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,12 +31,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	csvPath := flags.String("completed-csv", "", "completed rights review CSV")
 	outputPath := flags.String("approvals-out", "", "validated rights decisions JSONL")
 	lockedAtText := flags.String("locked-at", "", "decision lock time in RFC3339 format")
-	profile := flags.String("profile", "", "required rights profile: development or certification")
+	profile := flags.String("profile", "", "required rights profile: quarantine, development, or certification")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *inventoryPath == "" || *worksheetPath == "" || *csvPath == "" || *outputPath == "" || *lockedAtText == "" || (*profile != fillercorpus.RightsProfileDevelopment && *profile != fillercorpus.RightsProfileCertification) {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock: inventory, worksheet, completed CSV, approvals output, lock time, and explicit development/certification profile are required")
+	if *inventoryPath == "" || *worksheetPath == "" || *csvPath == "" || *outputPath == "" || *lockedAtText == "" || !fillercorpus.KnownRightsProfile(*profile) {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock: inventory, worksheet, completed CSV, approvals output, lock time, and explicit quarantine/development/certification profile are required")
 		return 2
 	}
 	lockedAt, err := time.Parse(time.RFC3339, *lockedAtText)
@@ -74,9 +75,9 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 	if err := json.Unmarshal(raw, &sheet); err != nil {
 		return nil, fmt.Errorf("decode worksheet: %w", err)
 	}
-	expectedSchema := fillercorpus.RightsWorksheetSchemaVersion
-	if profile == fillercorpus.RightsProfileCertification {
-		expectedSchema = fillercorpus.HoldoutRightsWorksheetSchemaVersion
+	expectedSchema, knownProfile := fillercorpus.RightsWorksheetSchemaForProfile(profile)
+	if !knownProfile {
+		return nil, fmt.Errorf("unknown rights profile %q", profile)
 	}
 	profileMatches := sheet.Profile == profile || (profile == fillercorpus.RightsProfileDevelopment && sheet.Profile == "")
 	if sheet.SchemaVersion != expectedSchema || !profileMatches || len(sheet.Cases) == 0 || sheet.InventorySHA256 != inventoryDigest ||
@@ -89,7 +90,7 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 			return nil, err
 		}
 	} else if sheet.HoldoutTemplate != nil {
-		return nil, fmt.Errorf("development worksheet cannot contain a holdout contract template")
+		return nil, fmt.Errorf("non-certification worksheet cannot contain a holdout contract template")
 	}
 	expectedCases := make([]fillercorpus.RightsReviewRow, 0, len(inv.Cases))
 	for _, item := range inv.Cases {
@@ -110,9 +111,9 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 	}
 	defer func() { _ = file.Close() }()
 	reader := csv.NewReader(file)
-	header := fillercorpus.RightsReviewCSVHeader()
-	if profile == fillercorpus.RightsProfileCertification {
-		header = fillercorpus.HoldoutRightsReviewCSVHeader()
+	header, err := fillercorpus.RightsReviewCSVHeaderForProfile(profile)
+	if err != nil {
+		return nil, err
 	}
 	reader.FieldsPerRecord = len(header)
 	records, err := reader.ReadAll()
@@ -155,9 +156,12 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 		}
 		fields := record[len(fillercorpus.ImmutableRightsReviewRecord(row)):]
 		var decision fillercorpus.RightsDecision
-		if profile == fillercorpus.RightsProfileCertification {
+		switch profile {
+		case fillercorpus.RightsProfileQuarantine:
+			decision, err = parseQuarantineDecision(row, fields, lockedAt)
+		case fillercorpus.RightsProfileCertification:
 			decision, err = parseHoldoutDecision(row, sheet.HoldoutTemplate, fields, lockedAt)
-		} else {
+		default:
 			decision, err = parseDecision(row, fields, lockedAt)
 		}
 		if err != nil {
@@ -169,6 +173,65 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 		return nil, fmt.Errorf("completed CSV covers %d of %d worksheet rows", len(seen), len(sheet.Cases))
 	}
 	return decisions, nil
+}
+
+func parseQuarantineDecision(row fillercorpus.RightsReviewRow, fields []string, lockedAt time.Time) (fillercorpus.RightsDecision, error) {
+	if len(fields) != 15 {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("quarantine review has %d fields; want 15", len(fields))
+	}
+	reviewerID := strings.TrimSpace(fields[0])
+	reviewedAt, err := time.Parse(time.RFC3339, strings.TrimSpace(fields[1]))
+	if reviewerID == "" || err != nil || reviewedAt.Before(row.MetadataRetrievedAt) || reviewedAt.After(lockedAt) {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("reviewer and review time must bind a completed review to the frozen metadata")
+	}
+	decision := strings.TrimSpace(fields[2])
+	if decision != "approved" && decision != "held" {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("decision must be approved or held")
+	}
+	basis := strings.TrimSpace(fields[3])
+	if basis == "" {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("a reasoned basis is required")
+	}
+	values := make([]bool, 9)
+	for index := range values {
+		value, parseErr := strconv.ParseBool(strings.TrimSpace(fields[4+index]))
+		if parseErr != nil {
+			return fillercorpus.RightsDecision{}, fmt.Errorf("%s must be explicitly true or false", fillercorpus.QuarantineRightsReviewCSVHeader()[len(fillercorpus.ImmutableRightsReviewRecord(row))+4+index])
+		}
+		values[index] = value
+	}
+	contract := &fillercorpus.QuarantineAcquisitionContract{
+		SchemaVersion:  fillercorpus.QuarantineAcquisitionContractSchemaVersion,
+		Purpose:        fillercorpus.QuarantinePurposeLocalInspection,
+		CopyAndStorage: values[0], LocalTechnicalInspection: values[1], ProviderTransfer: values[2],
+		Redistribution: values[3], CorpusPreparation: values[4], Training: values[5],
+		CatalogIngestion: values[6], Scheduling: values[7], ProductionAdmission: values[8],
+	}
+	contract.HoldReasons = fillercorpus.QuarantineAcquisitionHoldReasons(contract)
+	if decision == "approved" && len(contract.HoldReasons) != 0 {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("approval is held by: %s", strings.Join(contract.HoldReasons, ", "))
+	}
+	if decision == "held" {
+		if slices.Contains(values, true) {
+			return fillercorpus.RightsDecision{}, fmt.Errorf("held rows cannot grant quarantine or downstream authority")
+		}
+		if len(contract.HoldReasons) == 0 {
+			contract.HoldReasons = []string{"reviewer_hold"}
+		}
+	}
+	requiredCredit := strings.TrimSpace(fields[13])
+	if decision == "approved" && requiresCredit(row.LicenseURL) && requiredCredit == "" {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("the asserted license requires attribution")
+	}
+	var restrictions []string
+	if err := json.Unmarshal([]byte(fields[14]), &restrictions); err != nil {
+		return fillercorpus.RightsDecision{}, fmt.Errorf("restrictions_json must be a JSON string array")
+	}
+	return fillercorpus.RightsDecision{
+		InventorySHA256: row.InventorySHA256, CaseID: row.CaseID, CaptureIDs: append([]string(nil), row.CaptureIDs...), Authority: row.Authority, ItemID: row.ItemID, MetadataSHA256: row.MetadataSHA256,
+		ReviewerID: reviewerID, ReviewedAt: reviewedAt.UTC(), Decision: decision, Basis: basis, Redistributable: false,
+		RequiredCredit: requiredCredit, Restrictions: restrictions, QuarantineContract: contract,
+	}, nil
 }
 
 func parseHoldoutDecision(row fillercorpus.RightsReviewRow, template *fillercorpus.HoldoutRightsTemplate, fields []string, lockedAt time.Time) (fillercorpus.RightsDecision, error) {

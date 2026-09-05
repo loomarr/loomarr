@@ -109,6 +109,7 @@ type RawAuditInputs struct {
 
 type DownloadLedger struct {
 	SchemaVersion   int            `json:"schemaVersion"`
+	Profile         string         `json:"profile,omitempty"`
 	InventorySHA256 string         `json:"inventorySha256"`
 	GeneratedAt     time.Time      `json:"generatedAt"`
 	MaxRequests     int            `json:"maxRequests"`
