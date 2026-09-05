@@ -55,6 +55,27 @@ func TestVerifyAndroidReleaseWorkflow(t *testing.T) {
 	}
 }
 
+func TestAndroidPlayBuildUsesMeasuredNativeWorkerBound(t *testing.T) {
+	root := repositoryRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "web", "scripts", "build-shield-play.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	for _, required := range []string{
+		`readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-2}"`,
+		`readonly MAX_NATIVE_JOBS=2`,
+		`[[ ! "${NATIVE_JOBS}" =~ ^[12]$ ]]`,
+		`--max-workers=1`,
+		`/usr/bin/time -v "${gradle_command[@]}"`,
+		`Android build resources: cpu=%s memory_kib=%s native_jobs=%s gradle_workers=1 gradle_heap=%s`,
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("Android Play build is missing worker/measurement contract %q", required)
+		}
+	}
+}
+
 func replaceOnce(oldValue, newValue string, t *testing.T) func(string) string {
 	t.Helper()
 	return func(value string) string {

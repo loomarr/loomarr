@@ -11,7 +11,8 @@ readonly APP_DIR="${WEB_ROOT}/apps/tv"
 readonly OUTPUT_DIR="${ANDROID_RELEASE_OUTPUT_DIR:-${REPO_ROOT}/.artifacts/android-release}"
 readonly GRADLE_HEAP="${LOOMARR_ANDROID_GRADLE_HEAP:-1280m}"
 readonly ARCHITECTURES="armeabi-v7a,arm64-v8a,x86,x86_64"
-readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"
+readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-2}"
+readonly MAX_NATIVE_JOBS=2
 
 if [[ -z "${VERSION_NAME}" ]]; then
   printf 'usage: %s <major.minor.patch[-beta.N|-rc.N]>\n' "$0" >&2
@@ -19,6 +20,10 @@ if [[ -z "${VERSION_NAME}" ]]; then
 fi
 if [[ -z "${ANDROID_HOME:-}" ]]; then
   printf 'ANDROID_HOME must point to the Android SDK\n' >&2
+  exit 2
+fi
+if [[ ! "${NATIVE_JOBS}" =~ ^[12]$ ]]; then
+  printf 'LOOMARR_ANDROID_NATIVE_JOBS must be an integer from 1 through %s\n' "${MAX_NATIVE_JOBS}" >&2
   exit 2
 fi
 
@@ -55,13 +60,26 @@ export EXPO_PUBLIC_LOOMARR_CLIENT_VERSION="${VERSION_NAME}"
 
 (
   cd "${APP_DIR}/android"
-  CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=production EXPO_TV=1 \
-    ./gradlew bundleRelease \
-      --no-daemon \
-      --max-workers=1 \
-      "-Dorg.gradle.jvmargs=-Xmx${GRADLE_HEAP}" \
-      -Pkotlin.compiler.execution.strategy=in-process \
-      "-PreactNativeArchitectures=${ARCHITECTURES}"
+  cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf unknown)"
+  memory_kib="$(awk '/^MemTotal:/ { print $2; exit }' /proc/meminfo 2>/dev/null || true)"
+  printf 'Android build resources: cpu=%s memory_kib=%s native_jobs=%s gradle_workers=1 gradle_heap=%s\n' \
+    "${cpu_count}" "${memory_kib:-unknown}" "${NATIVE_JOBS}" "${GRADLE_HEAP}"
+
+  gradle_command=(
+    ./gradlew bundleRelease
+    --no-daemon
+    --max-workers=1
+    "-Dorg.gradle.jvmargs=-Xmx${GRADLE_HEAP}"
+    -Pkotlin.compiler.execution.strategy=in-process
+    "-PreactNativeArchitectures=${ARCHITECTURES}"
+  )
+  if /usr/bin/time --version 2>&1 | grep -Fq 'GNU time'; then
+    CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=production EXPO_TV=1 \
+      /usr/bin/time -v "${gradle_command[@]}"
+  else
+    CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=production EXPO_TV=1 \
+      "${gradle_command[@]}"
+  fi
 )
 
 readonly GENERATED_AAB="${APP_DIR}/android/app/build/outputs/bundle/release/app-release.aab"
