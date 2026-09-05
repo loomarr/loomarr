@@ -41,6 +41,7 @@ web-tooling	web/apps/web/package.json	web,visual,e2e,tuner,image
 workspace-tooling	web/package.json	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 openapi	api/openapi.yaml	contracts,go,go_full,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 android-listing	store-listing/android-tv/en-US/short-description.txt	android
+android-source-validator	scripts/validate-android-release-source.sh	policy
 release-image	Dockerfile	contracts,image
 observability-bundle	observability/metrics-manifest.txt	contracts
 documentation	docs/dev/testing.md	docs
