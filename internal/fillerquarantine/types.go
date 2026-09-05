@@ -90,11 +90,19 @@ type Case struct {
 	LocalFile     string              `json:"localFile"`
 	ContentSHA256 string              `json:"contentSha256"`
 	Bytes         int64               `json:"bytes"`
+	ExpectedMedia MediaExpectation    `json:"expectedMedia"`
 	Media         MediaEvidence       `json:"media"`
 	Fingerprint   FingerprintEvidence `json:"fingerprint"`
 	ExactExposure []ExactExposure     `json:"exactExposure,omitempty"`
 	Disposition   string              `json:"disposition"`
 	HoldReasons   []string            `json:"holdReasons,omitempty"`
+}
+
+type MediaExpectation struct {
+	Bytes      int64 `json:"bytes"`
+	DurationMS int64 `json:"durationMs,omitempty"`
+	Width      int   `json:"width,omitempty"`
+	Height     int   `json:"height,omitempty"`
 }
 
 type MediaEvidence struct {

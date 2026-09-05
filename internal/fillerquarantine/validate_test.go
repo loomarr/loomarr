@@ -23,6 +23,27 @@ func TestValidateAcceptsHeldIncompleteExposureAndRejectsAuthorityExpansion(t *te
 	}
 }
 
+func TestValidateAcceptsProbeGroundedMissingVideoHold(t *testing.T) {
+	report := validReportFixture()
+	report.Cases[0].Media = MediaEvidence{DurationMS: 1_000, HasAudio: true}
+	report.Cases[0].Fingerprint = FingerprintEvidence{}
+	report.Cases[0].HoldReasons = []string{"fingerprint_unusable", "missing_video", "prior_perceptual_exposure_incomplete"}
+	if err := Validate(report); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateRecomputesHoldReasonsFromEvidence(t *testing.T) {
+	report := validReportFixture()
+	report.Cases[0].HoldReasons = nil
+	report.Cases[0].Disposition = DispositionEligibleForRightsReview
+	report.Summary.Held = 0
+	report.Summary.EligibleForRightsReview = 1
+	if err := Validate(report); err == nil {
+		t.Fatal("erased prior-exposure hold accepted")
+	}
+}
+
 func TestResolveBeneathRejectsLexicalAndSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	if _, err := resolveBeneath(root, "../escape.mp4"); err == nil {
@@ -65,10 +86,11 @@ func validReportFixture() Report {
 		PriorSources: []PriorSource{{SourceID: "prior", SourcePath: "prior.mp4", SourceSHA256: digest, DurationMS: 1_000}},
 		Cases: []Case{{
 			CaseID: "case", LocalFile: "case.mp4", ContentSHA256: digest, Bytes: 1,
+			ExpectedMedia: MediaExpectation{Bytes: 1},
 			Media: MediaEvidence{DurationMS: 1_000, Width: 640, Height: 480, HasVideo: true, HasAudio: true, Quality: mediatools.MediaQuality{
 				EvidenceVersion: mediatools.MediaQualityEvidenceV1, Provenance: mediatools.MediaQualityProvenanceFFmpegDetectors, DurationMs: 1_000,
 			}},
-			Fingerprint: FingerprintEvidence{FrameCount: 1, FrameSHA256: digest, AudioBinCount: 1, AudioRMSSHA256: digest},
+			Fingerprint: FingerprintEvidence{FrameCount: 1, FrameSHA256: digest, AudioBinCount: 1, AudioRMSSHA256: digest, VisualComparable: true},
 			Disposition: DispositionHold, HoldReasons: []string{"prior_perceptual_exposure_incomplete"},
 		}},
 		Authority: AuthorityDisposition{CopyAndStorage: true, LocalTechnicalInspection: true},

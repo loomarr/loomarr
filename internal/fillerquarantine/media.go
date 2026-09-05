@@ -39,6 +39,19 @@ func inspectCandidates(ctx context.Context, config Config, inventory fillercorpu
 		if err != nil {
 			return nil, nil, fmt.Errorf("case %q probe: %w", item.CaseID, err)
 		}
+		usableVideo := !probed.NoVideo && probed.Width > 0 && probed.Height > 0
+		if !usableVideo {
+			fp := fingerprint{}
+			fingerprints[item.CaseID] = fp
+			candidate := inventoryByID[item.CaseID]
+			cases = append(cases, Case{
+				CaseID: item.CaseID, LocalFile: item.LocalFile, ContentSHA256: hashes.sha256, Bytes: bytes,
+				ExpectedMedia: mediaExpectation(candidate.Representation),
+				Media:         MediaEvidence{DurationMS: probed.DurationMs, Width: probed.Width, Height: probed.Height, HasVideo: false, HasAudio: !probed.Silent},
+				HoldReasons:   technicalHoldReasons(candidate.Representation, probed, mediatools.MediaQuality{}, fp),
+			})
+			continue
+		}
 		quality, err := config.Media.Quality(ctx, path, probed.DurationMs, !probed.Silent)
 		if err != nil {
 			return nil, nil, fmt.Errorf("case %q full decode: %w", item.CaseID, err)
@@ -52,12 +65,17 @@ func inspectCandidates(ctx context.Context, config Config, inventory fillercorpu
 		candidate := inventoryByID[item.CaseID]
 		cases = append(cases, Case{
 			CaseID: item.CaseID, LocalFile: item.LocalFile, ContentSHA256: hashes.sha256, Bytes: bytes,
-			Media:       MediaEvidence{DurationMS: probed.DurationMs, Width: probed.Width, Height: probed.Height, HasVideo: !probed.NoVideo, HasAudio: !probed.Silent, Quality: quality},
-			Fingerprint: fingerprintEvidence(fp), HoldReasons: technicalHoldReasons(candidate.Representation, probed, quality, fp),
+			ExpectedMedia: mediaExpectation(candidate.Representation),
+			Media:         MediaEvidence{DurationMS: probed.DurationMs, Width: probed.Width, Height: probed.Height, HasVideo: !probed.NoVideo, HasAudio: !probed.Silent, Quality: quality},
+			Fingerprint:   fingerprintEvidence(fp), HoldReasons: technicalHoldReasons(candidate.Representation, probed, quality, fp),
 		})
 	}
 	slices.SortFunc(cases, func(a, b Case) int { return strings.Compare(a.CaseID, b.CaseID) })
 	return cases, fingerprints, nil
+}
+
+func mediaExpectation(value fillercorpus.InventoryRepresentation) MediaExpectation {
+	return MediaExpectation{Bytes: value.Bytes, DurationMS: value.DurationMS, Width: value.Width, Height: value.Height}
 }
 
 func inspectPriorSources(ctx context.Context, config Config, authority fillerreview.TemporalStructureChallengeAuthority) ([]PriorSource, map[string]fingerprint, int, error) {

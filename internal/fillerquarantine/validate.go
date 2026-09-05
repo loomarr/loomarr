@@ -33,14 +33,24 @@ func Validate(report Report) error {
 	}
 
 	knownCases := make(map[string]struct{}, len(report.Cases))
+	requiredReasons := make(map[string]map[string]struct{}, len(report.Cases))
 	exact, eligible, held := 0, 0, 0
 	for index, item := range report.Cases {
 		if index > 0 && report.Cases[index-1].CaseID >= item.CaseID {
 			return fmt.Errorf("report cases are not uniquely sorted")
 		}
-		if item.CaseID == "" || item.LocalFile == "" || !validSHA256(item.ContentSHA256) || item.Bytes <= 0 || item.Media.DurationMS <= 0 || item.Media.Width <= 0 || item.Media.Height <= 0 || !item.Media.HasVideo || item.Media.Quality.DurationMs != item.Media.DurationMS || item.Media.Quality.EvidenceVersion != mediatools.MediaQualityEvidenceV1 || item.Media.Quality.Provenance != mediatools.MediaQualityProvenanceFFmpegDetectors || !validIntervals(item.Media.Quality.Black, item.Media.DurationMS) || !validIntervals(item.Media.Quality.Silence, item.Media.DurationMS) || !validIntervals(item.Media.Quality.Freeze, item.Media.DurationMS) || item.Fingerprint.FrameCount <= 0 || !validSHA256(item.Fingerprint.FrameSHA256) || item.Fingerprint.AudioBinCount < 0 || !validSHA256(item.Fingerprint.AudioRMSSHA256) || !slices.IsSorted(item.HoldReasons) {
+		if item.CaseID == "" || item.LocalFile == "" || !validSHA256(item.ContentSHA256) || item.Bytes <= 0 || item.ExpectedMedia.Bytes != item.Bytes || item.ExpectedMedia.DurationMS < 0 || item.ExpectedMedia.Width < 0 || item.ExpectedMedia.Height < 0 || item.Media.DurationMS <= 0 || item.Fingerprint.AudioBinCount < 0 || !slices.IsSorted(item.HoldReasons) {
 			return fmt.Errorf("report case %q is incomplete", item.CaseID)
 		}
+		requiredReasons[item.CaseID] = map[string]struct{}{}
+		if item.Media.HasVideo {
+			if item.Media.Width <= 0 || item.Media.Height <= 0 || item.Media.Quality.DurationMs != item.Media.DurationMS || item.Media.Quality.EvidenceVersion != mediatools.MediaQualityEvidenceV1 || item.Media.Quality.Provenance != mediatools.MediaQualityProvenanceFFmpegDetectors || !validIntervals(item.Media.Quality.Black, item.Media.DurationMS) || !validIntervals(item.Media.Quality.Silence, item.Media.DurationMS) || !validIntervals(item.Media.Quality.Freeze, item.Media.DurationMS) || item.Fingerprint.FrameCount <= 0 || !validSHA256(item.Fingerprint.FrameSHA256) || !validSHA256(item.Fingerprint.AudioRMSSHA256) {
+				return fmt.Errorf("report case %q has invalid decoded media evidence", item.CaseID)
+			}
+		} else if item.Media.Width < 0 || item.Media.Height < 0 || !zeroQuality(item.Media.Quality) || item.Fingerprint != (FingerprintEvidence{}) {
+			return fmt.Errorf("report case %q has inconsistent missing-video evidence", item.CaseID)
+		}
+		addTechnicalReasons(requiredReasons[item.CaseID], item)
 		if _, duplicate := knownCases[item.CaseID]; duplicate {
 			return fmt.Errorf("report repeats case %q", item.CaseID)
 		}
@@ -50,6 +60,9 @@ func Validate(report Report) error {
 				return fmt.Errorf("report case %q has invalid exact exposure", item.CaseID)
 			}
 			exact++
+		}
+		if len(item.ExactExposure) != 0 {
+			addReason(requiredReasons[item.CaseID], "exact_content_collision")
 		}
 		switch item.Disposition {
 		case DispositionEligibleForRightsReview:
@@ -89,10 +102,18 @@ func Validate(report Report) error {
 				return fmt.Errorf("unavailable prior source %q has fingerprint evidence", source.SourceID)
 			}
 		}
+		if _, duplicate := knownPrior[source.SourceID]; duplicate {
+			return fmt.Errorf("report repeats prior source id %q", source.SourceID)
+		}
 		knownPrior[source.SourceID] = struct{}{}
 	}
 	if unavailable != report.Summary.UnavailablePriorSources {
 		return fmt.Errorf("prior availability does not match summary")
+	}
+	if unavailable != 0 {
+		for id := range requiredReasons {
+			addReason(requiredReasons[id], "prior_perceptual_exposure_incomplete")
+		}
 	}
 
 	relatedCandidates, relatedPrior := 0, 0
@@ -129,6 +150,8 @@ func Validate(report Report) error {
 			}
 			if item.Related {
 				relatedCandidates++
+				addReason(requiredReasons[item.CaseA], "candidate_duplicate_risk")
+				addReason(requiredReasons[item.CaseB], "candidate_duplicate_risk")
 			}
 		case ComparisonPrior:
 			if _, ok := knownPrior[item.CaseB]; !ok {
@@ -136,6 +159,7 @@ func Validate(report Report) error {
 			}
 			if item.Related {
 				relatedPrior++
+				addReason(requiredReasons[item.CaseA], "prior_perceptual_exposure")
 			}
 		default:
 			return fmt.Errorf("comparison has invalid scope")
@@ -146,7 +170,48 @@ func Validate(report Report) error {
 	if len(report.Comparisons) != expectedComparisons || relatedCandidates != report.Summary.RelatedCandidatePairs || relatedPrior != report.Summary.RelatedPriorExposurePairs {
 		return fmt.Errorf("comparison coverage or summary is incomplete")
 	}
+	for _, item := range report.Cases {
+		expected := make([]string, 0, len(requiredReasons[item.CaseID]))
+		for reason := range requiredReasons[item.CaseID] {
+			expected = append(expected, reason)
+		}
+		slices.Sort(expected)
+		if !slices.Equal(item.HoldReasons, expected) {
+			return fmt.Errorf("case %q hold reasons do not follow from its evidence", item.CaseID)
+		}
+	}
 	return nil
+}
+
+func addTechnicalReasons(reasons map[string]struct{}, item Case) {
+	if !item.Media.HasVideo {
+		addReason(reasons, "missing_video")
+	}
+	if !item.Media.HasAudio {
+		addReason(reasons, "missing_audio")
+	}
+	if item.ExpectedMedia.DurationMS > 0 && absolute(item.Media.DurationMS-item.ExpectedMedia.DurationMS) > 1_000 {
+		addReason(reasons, "duration_mismatch")
+	}
+	if item.ExpectedMedia.Width > 0 && item.Media.Width != item.ExpectedMedia.Width || item.ExpectedMedia.Height > 0 && item.Media.Height != item.ExpectedMedia.Height {
+		addReason(reasons, "dimension_mismatch")
+	}
+	if intervalCoverage(item.Media.Quality.Black, item.Media.Quality.DurationMs) >= qualityFailureCoverage {
+		addReason(reasons, "mostly_black")
+	}
+	if intervalCoverage(item.Media.Quality.Freeze, item.Media.Quality.DurationMs) >= qualityFailureCoverage {
+		addReason(reasons, "mostly_frozen")
+	}
+	if item.Media.HasAudio && intervalCoverage(item.Media.Quality.Silence, item.Media.Quality.DurationMs) >= qualityFailureCoverage {
+		addReason(reasons, "mostly_silent")
+	}
+	if !item.Fingerprint.VisualComparable && !item.Fingerprint.AudioComparable {
+		addReason(reasons, "fingerprint_unusable")
+	}
+}
+
+func addReason(reasons map[string]struct{}, reason string) {
+	reasons[reason] = struct{}{}
 }
 
 func validSHA256(value string) bool {
@@ -170,4 +235,8 @@ func validIntervals(values []mediatools.Interval, duration int64) bool {
 		end = value.EndMs
 	}
 	return true
+}
+
+func zeroQuality(value mediatools.MediaQuality) bool {
+	return value.EvidenceVersion == 0 && value.Provenance == "" && value.DurationMs == 0 && len(value.Black) == 0 && len(value.Silence) == 0 && len(value.Freeze) == 0
 }

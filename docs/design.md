@@ -123,12 +123,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
-| `filler` | 7 | `diagnostics`, `filleradmission`, `llm`, `taxonomy` |
+| `filler` | 7 | `diagnostics`, `filleradmission`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
 | `httpx` | 9 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
 | `llm` | 6 | `httpx`, `metrics` |
+| `mediatools` | 5 | `diagnostics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `provision` | 17 | — |
@@ -158,7 +159,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 8 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillercorpus`** · 2 importers
+- **`fillercorpus`** · 3 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 3 importers
   Owns the hermetic certification contract for filler admission.
@@ -236,7 +237,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`mediatools`** · 4 importers · → `diagnostics`, `playout`, `proctree`
+- **`mediatools`** · 5 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
@@ -245,14 +246,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`filler`** · 7 importers · → `diagnostics`, `filleradmission`, `fillerdecision`, `llm`, `mediatools`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`fillerreference`** · 1 importer · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
+- **`fillerreference`** · 2 importers · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
   Owns the deterministic pre-screen for the production-ready filler reference cohort.
 
 **Layer 6**
 
 - **`clipfetch`** · 1 importer · → `filler`, `proctree`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillerreference`, `httpx`, `mediatools`
+- **`fillerreview`** · 1 importer · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillerreference`, `httpx`, `mediatools`
   Materializes identity-blind evidence for independent semantic review.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
@@ -269,6 +270,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 6 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
+- **`fillerquarantine`** · → `fillercorpus`, `fillerreference`, `fillerreview`, `mediatools`
+  Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`settings`** · 1 importer · → `library`
