@@ -89,10 +89,17 @@ func runLive(channelCount int, ffmpeg string) error {
 	}
 	currentDetach := tunes[len(tunes)-1].detach
 
+	// Retune the immediately previous Channel: that is one of the two deliberately retained LRU
+	// neighbors after the aggregate idle bound is enforced. The before-state retained every Channel,
+	// so using tunes[0] accidentally measured an unlimited-hot-set behavior the fixed policy rejects.
+	warmChannel := tunes[0].channel
+	if len(tunes) > 1 {
+		warmChannel = tunes[len(tunes)-2].channel
+	}
 	warm := make([]time.Duration, 0, 10)
 	for range 10 {
 		retuneStarted := time.Now()
-		_, detach, retuneErr := hls.Playlist(tunes[0].channel, playout.PlanBaseline)
+		_, detach, retuneErr := hls.Playlist(warmChannel, playout.PlanBaseline)
 		if retuneErr != nil {
 			currentDetach()
 			hls.Stop()
@@ -126,8 +133,9 @@ func runLive(channelCount int, ffmpeg string) error {
 		percentile(cold, 0.50), percentile(cold, 0.95), percentile(cold, 1))
 	fmt.Printf("%sWarm HLS retune:%s p50 %s / p95 %s / max %s\n", bold, reset,
 		percentile(warm, 0.50), percentile(warm, 0.95), percentile(warm, 1))
-	fmt.Printf("%sSteady ffmpeg processes:%s %d\n", bold, reset, steady.processes)
-	fmt.Printf("%sPeak ffmpeg processes:%s %d\n", bold, reset, peak.processes)
+	fmt.Printf("%sSteady ffmpeg processes after superseded viewers release:%s %d\n", bold, reset, steady.processes)
+	fmt.Printf("%sPeak ffmpeg processes during %d deliberately concurrent starts:%s %d\n",
+		bold, channelCount, reset, peak.processes)
 	fmt.Printf("%sPeak aggregate RSS:%s %s\n", bold, reset, bytesIEC(peak.rssKiB<<10))
 	fmt.Printf("%sPeak aggregate CPU:%s %.1f%%\n", bold, reset, peak.cpuPercent)
 	fmt.Printf("%sPeak ffmpeg file descriptors:%s %d\n", bold, reset, peak.fileDescriptors)
