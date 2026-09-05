@@ -63,10 +63,11 @@ func TestAndroidPlayBuildUsesMeasuredNativeWorkerBound(t *testing.T) {
 	}
 	script := string(data)
 	for _, required := range []string{
-		`readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-2}"`,
+		`readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"`,
 		`readonly MAX_NATIVE_JOBS=2`,
 		`[[ ! "${NATIVE_JOBS}" =~ ^[12]$ ]]`,
 		`--max-workers=1`,
+		`if /usr/bin/time -v true >/dev/null 2>&1; then`,
 		`/usr/bin/time -v "${gradle_command[@]}"`,
 		`Android build resources: cpu=%s memory_kib=%s native_jobs=%s gradle_workers=1 gradle_heap=%s`,
 	} {

@@ -11,7 +11,7 @@ readonly APP_DIR="${WEB_ROOT}/apps/tv"
 readonly OUTPUT_DIR="${ANDROID_RELEASE_OUTPUT_DIR:-${REPO_ROOT}/.artifacts/android-release}"
 readonly GRADLE_HEAP="${LOOMARR_ANDROID_GRADLE_HEAP:-1280m}"
 readonly ARCHITECTURES="armeabi-v7a,arm64-v8a,x86,x86_64"
-readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-2}"
+readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"
 readonly MAX_NATIVE_JOBS=2
 
 if [[ -z "${VERSION_NAME}" ]]; then
@@ -73,7 +73,7 @@ export EXPO_PUBLIC_LOOMARR_CLIENT_VERSION="${VERSION_NAME}"
     -Pkotlin.compiler.execution.strategy=in-process
     "-PreactNativeArchitectures=${ARCHITECTURES}"
   )
-  if /usr/bin/time --version 2>&1 | grep -Fq 'GNU time'; then
+  if /usr/bin/time -v true >/dev/null 2>&1; then
     CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=production EXPO_TV=1 \
       /usr/bin/time -v "${gradle_command[@]}"
   else
