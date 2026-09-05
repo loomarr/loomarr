@@ -85,9 +85,9 @@ const createNativeServerDiscovery = (): ServerDiscovery => {
           });
         }),
       ];
+      running = true;
       try {
         nativeModule.start();
-        running = true;
       } catch {
         stop();
         publish({
@@ -97,6 +97,7 @@ const createNativeServerDiscovery = (): ServerDiscovery => {
         });
         return;
       }
+      if (activeGeneration !== generation) return;
       timeout = setTimeout(() => {
         if (activeGeneration !== generation) return;
         const servers = snapshot.servers;

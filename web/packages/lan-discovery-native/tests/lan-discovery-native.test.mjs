@@ -145,6 +145,18 @@ describe("native LAN server discovery", () => {
     expect(discovery.snapshot().error).toContain("enter the address manually");
   });
 
+  it("stops a browse that reports a native error synchronously during startup", () => {
+    vi.useFakeTimers();
+    const discovery = createNativeServerDiscovery();
+    native.start.mockImplementationOnce(() => emit("loomarrDiscoveryError", { code: 3 }));
+
+    discovery.start();
+
+    expect(native.stop).toHaveBeenCalledTimes(1);
+    expect(discovery.snapshot()).toMatchObject({ status: "unavailable", servers: [] });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("cleans up listeners and prior timeouts across stop and restart", () => {
     vi.useFakeTimers();
     const discovery = createNativeServerDiscovery();
