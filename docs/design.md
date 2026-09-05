@@ -5065,6 +5065,25 @@ quarantine contract even if its item identity and content hashes are otherwise v
 surviving source requires a new development or certification rights decision against the same
 frozen inventory; a quarantine decision is never upgraded in place.
 
+`filler-corpus-quarantine-inspect` is the sole post-download quarantine gate. It consumes the exact
+schema-v4 inventory, schema-v2 quarantine download ledger, and the complete public/private authority
+pair for the named prior holdout. It strictly re-establishes those identities before opening media,
+resolves each ledger path beneath its declared root without symlink escape, and rechecks byte count,
+ledger SHA-256, and every available inventory checksum. One full-source probe and decode then records duration,
+dimensions, audio/video presence, and normalized black, silence, and freeze spans. The same complete
+decode cadence used by the production-reference duplicate audit produces visual dHash and audio-RMS
+sequences. New candidates are compared to one another and to every distinct source in the prior
+holdout authority; exact source or rendered-case hash collisions and perceptual relationships are
+reported separately. Missing prior source bytes make perceptual exposure `incomplete`, never `clear`.
+Missing audio or video, inventoried duration/dimension drift, unusable fingerprints, or black,
+silent, or frozen coverage at or above 95% is a technical hold; lower coverage remains measured
+evidence for later content review rather than an invented quality score.
+The immutable report binds every raw input digest, tool identity, algorithm version, observation, and
+comparison. A technically intact and exposure-clear result means only `eligible_for_rights_review`:
+provider transfer, redistribution, corpus preparation, training, catalog ingestion, scheduling, and
+production admission remain explicitly false. The command never repairs, transcodes, uploads, labels,
+or promotes media, and any failed mechanical check leaves the case held in quarantine.
+
 A rights worksheet is a deterministic review aid, not authority. It records the digest of the exact
 frozen inventory, presents every selected source assertion and representation fact, and leaves the
 reviewer, time, decision, rationale, redistribution, attribution, and restriction fields inert. Its
