@@ -13,7 +13,7 @@ const (
 	RightsProfileCertification = "certification"
 
 	QuarantineRightsWorksheetSchemaVersion     = 5
-	HoldoutRightsWorksheetSchemaVersion        = 4
+	HoldoutRightsWorksheetSchemaVersion        = 7
 	HoldoutRightsContractSchemaVersion         = 1
 	QuarantineAcquisitionContractSchemaVersion = 1
 	QuarantinePurposeLocalInspection           = "local_quarantine_inspection"
