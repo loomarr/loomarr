@@ -21,7 +21,7 @@ import (
 // segment runs the whole ladder for itself instead of waiting for six cron jobs to notice it).
 //
 // ⚠ **`filler.autosplit.enabled` now defaults ON** (maintainer decision, V51b). The gate it turns
-// on is strict: `SuggestedEra > 0` disqualifies at every threshold and `MaxAutoFileConfidence`
+// on is strict: `SuggestedEra > 0` disqualifies at every threshold and `MaxAutoSplitConfidence`
 // remains the ceiling. Segments it holds back keep their proposal and appear in Incoming with
 // `AutoSplitReject`'s reason recorded, so "why did this not auto-cut?" is answerable without
 // reading the log.

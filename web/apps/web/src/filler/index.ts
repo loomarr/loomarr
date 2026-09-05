@@ -9,6 +9,5 @@ export * from "./incoming-tab";
 export * from "./pin-clip-dialog";
 export * from "./sources-tab";
 export * from "./split-review-page";
-export * from "./tune-panel";
 export * from "./use-channel-filler-draft";
 export * from "./use-filler-invalidate";

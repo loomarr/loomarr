@@ -237,27 +237,18 @@ type Clip struct {
 	RemovedAt time.Time
 	// Held marks a clip that is recorded but NOT in the playable catalog (§10 V38). It is not
 	// matched into a pod, not attached to a filler-list, and not counted as coverage — it is
-	// waiting to be tagged and then filed or rejected.
-	//
-	// ⚠ Only INGESTED clips are held. A file an operator hand-copies into FILLER_DIR is a
-	// deliberate human act and is filed on sight; holding it would mean a clip you placed
-	// yourself sits invisible until you approve it. The scan writes false, the ingest path
-	// writes true — the asymmetry lives in the writers.
+	// waiting for processing and terminal admission or rejection. Every new non-composite clip
+	// starts held, including a hand copy: placement is acquisition intent, not safety authority.
 	//
 	// Held clips are excluded from listings and pod assembly by DEFAULT (opt-in to see them),
 	// the same polarity as RemovedAt and for the same reason: pod assembly loads the catalog
 	// with a zero filter, so the safe state has to be the zero value.
 	Held bool
-	// Confidence (0-100) is the grounding-CAPPED tagging score (§10 V38). It decides whether a
-	// held clip is filed automatically or waits for a human.
+	// Confidence (0-100) is the grounding-CAPPED diagnostic tagging score (§10 V38).
 	//
 	// ⚠ NEVER the model's self-assessment — see filler.TagSuggestion.Score. 0 = never scored,
-	// which can never clear a threshold; that is the safe direction.
+	// which means the classifier has not measured it.
 	Confidence int
-	// AutoFiled records that NO HUMAN LOOKED at this clip before it entered the catalog and
-	// became playable. Not telemetry: it is what makes an unattended decision reversible, and
-	// the only thing that can answer "which of these did I never see?" after the fact.
-	AutoFiled bool
 	// IsComposite marks a clip that is a RECORDED BREAK — many adverts in one file, like
 	// "KCPQ/Fox commercials, 5/28/1996" (§10 V45). A composite is NOT airable: it is excluded from
 	// pod assembly exactly like Held/RemovedAt, because airing a 16-minute block as one "commercial"

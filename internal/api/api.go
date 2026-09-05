@@ -114,7 +114,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerFillerPulls(humaAPI)
 	srv.registerFillerIncoming(humaAPI)
 	srv.registerFillerBulk(humaAPI)
-	srv.registerFillerFile(humaAPI)
 	srv.registerTaxonomy(humaAPI)
 	srv.registerImages(humaAPI)
 	srv.registerJobs(humaAPI)

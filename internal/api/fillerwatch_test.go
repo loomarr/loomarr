@@ -99,14 +99,12 @@ func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
 	}
 }
 
-// seedHeldClip is a clip that ARRIVED but has not been filed — the state auto-fetch leaves
-// everything in until a human reviews it (§10 V38).
+// seedHeldClip is a clip that arrived but has not been terminally admitted.
 func seedHeldClip(t *testing.T, st store.Store, id string) {
 	t.Helper()
 	seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "toys")
-	// SetClipsHeld is the ordinary writer of `held`; terminal applied admission is the atomic
-	// cross-table exception — see internal/store/clips.go.
-	if _, err := st.SetClipsHeld(t.Context(), []string{id}, true, false, time.Now().UTC()); err != nil {
+	// HoldClips is the ordinary one-way writer; terminal applied admission is the atomic release.
+	if _, err := st.HoldClips(t.Context(), []string{id}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 }

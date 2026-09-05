@@ -13,7 +13,7 @@ import type { IncomingPanelProps } from "./incoming-panel.type";
 import { PreparingRow, sentenceFor } from "./preparing-row";
 import { RejectedSection } from "./rejected-section";
 
-// IncomingPanel — what has been downloaded but is not yet filed (V35).
+// IncomingPanel — what has been downloaded but is not yet terminally admitted.
 //
 // Two halves of ONE read: clips whose tags need a human, and compilations mid-split.
 //
@@ -28,9 +28,8 @@ import { RejectedSection } from "./rejected-section";
 
 // ConfidenceMeter renders the grounding-capped score (V38).
 //
-// ⚠ The colour is a THRESHOLD read, not a gradient: the operator's real question is "would this
-// have filed itself?", so the bands mirror the settable range (50-95). A continuous ramp would
-// look precise about a number whose precision is not the point.
+// The bands make relative classification strength scannable. They do not encode an admission
+// threshold: this score is diagnostic and can never publish a clip.
 //
 // ⚠ Two lint rules pushed this shape, in sequence, and both were right: `aria-label` on a bare
 // <span> is silently ignored (ARIA only names elements that have a role), and once a role was
@@ -79,15 +78,13 @@ const ConfidenceMeter = ({ score }: { score: number }) => {
 const AskRow = ({
   ask,
   busy,
-  onConfirmEra,
   onEditTags,
   onDismiss,
-  onFile,
   onReclassify,
 }: {
   ask: IncomingClipDTO;
   busy: boolean;
-} & Pick<IncomingPanelProps, "onConfirmEra" | "onEditTags" | "onDismiss" | "onFile" | "onReclassify">) => {
+} & Pick<IncomingPanelProps, "onEditTags" | "onDismiss" | "onReclassify">) => {
   const guessed = (ask.suggestedEra ?? 0) > 0;
 
   return (
@@ -128,21 +125,9 @@ const AskRow = ({
       </div>
 
       <div className="flex shrink-0 flex-wrap gap-2">
-        {guessed && onConfirmEra && (
-          <Button size="sm" disabled={busy} onClick={() => onConfirmEra(ask)}>
-            Looks right
-          </Button>
-        )}
         {onEditTags && (
           <Button variant="outline" size="sm" disabled={busy} onClick={() => onEditTags(ask)}>
-            {guessed ? "Not right" : "Add tags"}
-          </Button>
-        )}
-        {/* File it as it stands — the tags are right enough, whatever the score said. Distinct
-            from "Looks right", which CONFIRMS a guessed era before filing. */}
-        {onFile && !guessed && (
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => onFile(ask)}>
-            Use it
+            {guessed ? "Review tags" : "Add tags"}
           </Button>
         )}
         {onDismiss && (
@@ -180,19 +165,13 @@ const IncomingPanel = ({
   reels,
   reelsTotal,
   suppressEmptyState = false,
-  recentlyFiled,
-  recentlyFiledTotal,
   stageOrder,
   rejected,
   rejectedTotal,
-  onConfirmEra,
   onEditTags,
   onDismiss,
-  onFile,
   onReclassify,
   onRetryStage,
-  onFileAllAsSuggested,
-  onSendBack,
   onRestore,
   onRetryFailure,
   busyPath,
@@ -208,13 +187,8 @@ const IncomingPanel = ({
   const allPreparing = Math.max(0, allClips - allDecisions);
   const allReels = reelsTotal ?? reels.length;
   const allRejected = rejectedTotal ?? rejected?.length ?? 0;
-  const allRecentlyFiled = recentlyFiledTotal ?? recentlyFiled?.length ?? 0;
   const nothingIncoming = clips.length === 0 && reels.length === 0;
   const ladder = stageOrder ?? [];
-  // "File all as suggested" only means something when something HAS a suggestion — otherwise it
-  // is a button that files clips as whatever they already are, which "Use it" already does per
-  // row and which nobody would expect from that label.
-  const anyGuessed = decisions.some((a) => (a.suggestedEra ?? 0) > 0);
 
   return (
     <div className={cn("flex flex-col gap-6", className)}>
@@ -243,17 +217,6 @@ const IncomingPanel = ({
                 ? `${pluralize(allDecisions, "clip")} ${allDecisions === 1 ? "needs" : "need"} a decision`
                 : `Loomarr is preparing ${pluralize(allPreparing, "clip")}`}
             </h2>
-            {onFileAllAsSuggested && anyGuessed && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                onClick={onFileAllAsSuggested}
-                title="File each of these, confirming the era Loomarr proposed for it"
-              >
-                {allDecisions > decisions.length ? "File shown as suggested" : "File all as suggested"}
-              </Button>
-            )}
           </div>
           {allDecisions > 0 && allPreparing > 0 && (
             <Caption>{pluralize(allPreparing, "more clip")} still being prepared, further down.</Caption>
@@ -261,6 +224,12 @@ const IncomingPanel = ({
           {allClips > clips.length && (
             <Caption>
               Showing the first {clips.length} of {allClips} incoming clips.
+            </Caption>
+          )}
+          {allDecisions > 0 && (
+            <Caption>
+              Classification confidence is diagnostic. Reviewing tags does not make a clip playable; final
+              admission follows the safety and rights checks.
             </Caption>
           )}
 
@@ -283,10 +252,8 @@ const IncomingPanel = ({
                   key={clip.hash}
                   ask={clip}
                   busy={busyPath === clip.path}
-                  {...(onConfirmEra ? { onConfirmEra } : {})}
                   {...(onEditTags ? { onEditTags } : {})}
                   {...(onDismiss ? { onDismiss } : {})}
-                  {...(onFile ? { onFile } : {})}
                   {...(onReclassify ? { onReclassify } : {})}
                 />
               ) : (
@@ -303,55 +270,7 @@ const IncomingPanel = ({
         </section>
       )}
 
-      {/* The audit half (§10 V38): what was filed with nobody looking. ⚠ It renders even when the
-          queue above is empty — "nothing needs you" and "here is what I did without asking" are
-          different statements, and an operator who did not expect auto-filing needs the second
-          one most on exactly the install where the first is true. */}
-      {recentlyFiled && recentlyFiled.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="font-medium text-sm">
-            Loomarr filed {pluralize(allRecentlyFiled, "clip")} without asking
-          </h2>
-          <Caption>
-            These are already playing. Least-confident first — send any of them back if they look wrong.
-          </Caption>
-          {allRecentlyFiled > recentlyFiled.length && (
-            <Caption>
-              Showing {recentlyFiled.length} of {allRecentlyFiled} filed clips.
-            </Caption>
-          )}
-          <ul className="flex flex-col gap-2">
-            {recentlyFiled.map((clip) => (
-              <li
-                key={clip.path}
-                className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4"
-              >
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="truncate font-medium text-sm">{clip.name}</span>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {(clip.confidence ?? 0) > 0 && <ConfidenceMeter score={clip.confidence ?? 0} />}
-                    <p className="text-muted-foreground text-xs">{clip.reason}</p>
-                  </div>
-                </div>
-                {onSendBack && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busyPath === clip.path}
-                    onClick={() => onSendBack(clip)}
-                    title="Take it out of rotation and put it back in the queue. The file stays."
-                  >
-                    Send it back
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* The audit half of REFUSAL (§10 V51b) — sibling of the section above. Both answer "what
-          did Loomarr decide without me", from opposite ends. */}
+      {/* The audit of unattended machine refusals (§10 V51b). */}
       {rejected && rejected.length > 0 && (
         <div className="flex flex-col gap-2">
           <RejectedSection

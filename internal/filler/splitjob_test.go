@@ -253,11 +253,11 @@ func (s *failingSplitStore) ReplaceSplitChildren(ctx context.Context, parentHash
 	return s.splitMemStore.ReplaceSplitChildren(ctx, parentHash, keep, at)
 }
 
-func (s *failingSplitStore) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+func (s *failingSplitStore) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
 	if err := s.fail("parent filing"); err != nil {
 		return 0, err
 	}
-	return s.splitMemStore.SetClipsHeld(ctx, paths, held, autoFiled, at)
+	return s.splitMemStore.ReleaseCompositeHolds(ctx, paths, at)
 }
 
 func (s *failingSplitStore) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
@@ -474,7 +474,7 @@ func (m *splitMemStore) SetClipComposite(_ context.Context, hash string, composi
 	m.clips[hash] = c
 	return nil
 }
-func (m *splitMemStore) SetClipsHeld(_ context.Context, paths []string, held, _ bool, _ time.Time) (int, error) {
+func (m *splitMemStore) ReleaseCompositeHolds(_ context.Context, paths []string, _ time.Time) (int, error) {
 	wanted := make(map[string]struct{}, len(paths))
 	for _, path := range paths {
 		wanted[path] = struct{}{}
@@ -484,7 +484,10 @@ func (m *splitMemStore) SetClipsHeld(_ context.Context, paths []string, held, _ 
 		if _, ok := wanted[c.Path]; !ok {
 			continue
 		}
-		c.Held = held
+		if !c.IsComposite {
+			continue
+		}
+		c.Held = false
 		m.clips[hash] = c
 		updated++
 	}

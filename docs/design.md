@@ -442,9 +442,8 @@ Store interface:
   ListSplitProposals(status)              # §10 V35: the Incoming tab's reels
   SetClipsRemoved(paths, at)              # §10 V35: the ONLY writer of the removal tombstone
                                           #   (the scan's upsert must never write it)
-                                          # §10 V38: clips carry `confidence` (0-100) + `auto_filed`
-                                          #   — the score is grounding-CAPPED, never self-reported,
-                                          #   and auto_filed is what makes an unattended file undoable
+                                          # §10 V38/V66: clips carry grounding-capped diagnostic
+                                          #   `confidence` (0-100); it grants no publication authority
   ListFillerSources/UpsertFillerSource/DeleteFillerSource   # §10 V35/V37: ONE flat list, all kinds
                                           #   ⚠ V37: `folder`/`library` are SINGLETON rows
                                           #   materialised from config — never operator-inserted,
@@ -984,7 +983,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
 | PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c/V57). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. Source trust cannot grant publication authority: the former `autoAdmit` switch is retired because source provenance is only one input to the certified terminal decision. The PATCH body carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
 | GET | `/v1/filler/watch` | **The Filler header's live status (§10 V38c/V55).** Returns `{health, sourcesOn, sourcesTotal, clips, lastScanAt?, autoFetch?}` — everything the page header renders, computed on the SERVER. `autoFetch` names whether fetching is enabled, the current catalog/disk measurements and ceilings, and the ceiling currently stopping it (`catalog` or `disk`); it is current state, not merely the last scheduler result, so a removal or settings change clears the warning immediately. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that judgement.** Deriving it in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
-| GET | `/v1/filler/incoming` | The ingest conveyor (admin, §10 V35): clips being prepared or waiting on a human, compilations mid-split, and the rejected/auto-filed audit feeds. One read behind the Filler page's Incoming tab, so a restart cannot lose the queue. **Every row list is capped at 100** and carries its full server-counted total (`clipsTotal`, `decisionsTotal`, `reelsTotal`, `rejectedTotal`, `recentlyFiledTotal`); a large import cannot create an unbounded response or make the tab badge collapse to the page length. Confidence is the real grounding-capped score (§10 V38), never model self-assessment; each item also carries the measured reason for its state. |
+| GET | `/v1/filler/incoming` | The ingest conveyor (admin, §10 V35): clips being prepared or waiting on a human, compilations mid-split, and rejected audit rows. One read behind the Filler page's Incoming tab, so a restart cannot lose the queue. **Every row list is capped at 100** and carries its full server-counted total (`clipsTotal`, `decisionsTotal`, `reelsTotal`, `rejectedTotal`); a large import cannot create an unbounded response or make the tab badge collapse to the page length. Confidence is the real grounding-capped score (§10 V38), never model self-assessment and never an admission threshold; each item also carries the measured reason for its state. |
 | GET | `/v1/filler/screening?hash=` | The admin-only, browser-safe five-axis screening projection for one exact filler clip. It returns `not_screened`, `available`, or `unavailable`; an available result contains the immutable subject/aggregate identities, overall outcome, the ordered visual/spoken/written/rights/playback outcomes and safe reason codes, assessment time, and the closed public Airworthiness decision. An unavailable attached reference retains only its safe failure code and content identities. Before publication, the route reopens the clip's current applied sidecar, reproduces its subject and aggregate, and reopens the playable file to match its complete-byte digest, byte count, and sparse catalog identity. A missing, unsafe, or changed playback object can therefore never retain a visible pass. It never returns a path, prompt, transcript, OCR text, restricted phrase, provider response, credential, private rights document, or raw evidence. Incoming loads this bounded record only when a row is expanded rather than multiplying filesystem reads across the whole conveyor. |
 | POST | `/v1/filler/bulk/tag` | Retag a selection (admin, §10 V35). Each tag field is **independent** — omitting one leaves it alone, so setting only the audience never blanks an era. Setting an era confirms an outstanding suggestion through the **same** path the single-clip edit uses. A selected clip that no longer exists is counted, not fatal: a selection races a re-scan. |
 | POST | `/v1/filler/bulk/remove` | Remove a selection from the catalog (admin, §10 V35). ⚠ **A tombstone.** The clip leaves the catalog and stops being used in breaks; **the file is untouched**, and the mark survives a re-scan (which a row delete could not). `restore:true` undoes it. |
@@ -2996,30 +2995,25 @@ rule that quietly stops holding when a second case appears.
 was a claim about the whole subsystem made from one binary's absence; a source that can fetch says
 so, and one that cannot says which tool it wants.
 
-### The clip lifecycle: held, then filed (V38)
+### The clip lifecycle: held, then admitted (V38/V66)
 
 Until V38 a clip had no lifecycle. The folder scan catalogued it and the tagger tagged it **in
 place**, which meant everything Loomarr downloaded was playable the moment it landed — tagged or
 not, right or wrong. V38 gives an arriving clip a **state**:
 
 - **held** — in Loomarr's records, **not in the playable catalog**. It is not matched into a pod,
-  not attached to a filler-list, and not counted as coverage. It is waiting to be tagged, and
-  then either filed or rejected.
-- **filed** — the catalog proper. Everything that plays is filed; everything filed was either
-  filed by a human or cleared the confidence bar below.
+  not attached to a filler-list, and not counted as coverage. It is waiting for processing and a
+  terminal admission or rejection.
+- **admitted** — the catalog proper. Everything that plays was admitted by the one terminal
+  applied-decision transaction after it reproduced the exact safety, playback and rights proof.
 
-⚠ **Two properties this must not break, both learned the hard way:**
-
-1. **Every existing clip migrates to `filed`.** They were catalogued under the old model and are
-   playing right now; migrating them to `held` would silently empty every channel's filler pool
-   on upgrade. This is the same class as `00026`'s upsert default, which would have switched off
-   every existing source — a default chosen for new rows, applied to old ones.
-2. **The drop-folder stays DIRECT.** A file an operator hand-copies into `FILLER_DIR` is a
-   deliberate human act, so it is filed on sight. Holding it would mean a clip you placed
-   yourself sits invisible until you approve it — the ceremony §7 warns about, which teaches
-   people to click through gates rather than read them. **Only ingested clips are held**: pulls,
-   queued downloads, and split segments, i.e. everything that arrives because *Loomarr* fetched
-   it rather than because a person put it there.
+⚠ **The V38 compatibility exceptions are retired.** Acquisition intent is not publication
+authority, whether the bytes came from a downloader, a watched folder, or a hand copy. Every new
+non-composite arrival starts held. Migration `00098` also quarantines every existing playable
+non-composite and returns any `filed` pipeline row to `review`; this can deliberately empty an
+upgraded install's filler pool until evidence is certified. Preserving unexplained playback would
+be safer for continuity and worse for the audience. Composite containers retain their separate
+split-repair lifecycle and are never themselves scheduled.
 
 ### The quality gate: reject the broken, normalise the quiet (V40)
 
@@ -3085,9 +3079,9 @@ target later simply works. `FILLER_DIR` and the watch folder hold files a person
 rewriting them is never something Loomarr does unasked.
 
 **On-file normalisation is available as an explicit opt-in** (`filler.conditioning.normalize_loudness`,
-default **off**, V42 — maintainer decision, surfacing the mock's Tune-panel toggle). When enabled,
-the auto-file step rewrites the clip in `FILLER_DIR` with ffmpeg `loudnorm` before it enters the
-catalog.
+default **off**, V42 — maintainer decision, originally surfacing the mock's Tune-panel toggle).
+When enabled, the conditioning rung creates the playback derivative with ffmpeg `loudnorm` while
+the clip remains held. This improves playback evidence; it grants no admission authority.
 
 ⚠ **It uses the SAME `filler.target_lufs` (−23) as the playout pass, not a second target.** Two
 targets in one system means a clip normalised on file is then corrected again downstream toward a
@@ -3095,9 +3089,9 @@ different number — double processing, and a quieter result than either setting
 target, whichever stage applies it.
 
 ⚠ **It changes the playback derivative and the operator is told so.** V66 retains the immutable
-source master, so the acquired bytes remain recoverable; the opt-in still changes what will air and
-therefore cannot be implicit. What it must not also be is *repeating*: a re-scan cannot tell by looking
-that a playable file has already been normalised,
+source master, so the acquired bytes remain recoverable; the opt-in still changes what could air
+after admission and therefore cannot be implicit. What it must not also be is *repeating*: a
+re-scan cannot tell by looking that a playback derivative has already been normalised,
 so without a marker every pass would normalise an already-normalised file, walking the loudness
 down on each run. The sidecar records `normalizedLufs` beside the clip, and the pass **skips any
 file already carrying that marker at the current target**. The marker travels with the clip the
@@ -3105,7 +3099,7 @@ same way `originalName` does, so a restored catalog does not re-do the work eith
 
 ⚠ **Playout still normalises, and that is deliberate rather than redundant.** A file normalised on
 disk measures at target already, so the playout filter is a no-op for it — while clips that arrived
-before the toggle was turned on, or from a source that bypassed auto-file, are still corrected. The
+before the toggle was turned on, or whose derivative has not yet been conditioned, are still corrected. The
 guarantee "every break plays at a consistent level" cannot depend on which clips happened to pass
 through one optional step.
 
@@ -4538,15 +4532,20 @@ reports the selected provider's own credential state.
 **`qwen2.5vl:7b`** — the prototype proved llava:7b's confident-fabrication (a misread date grounded as
 fact) is unsafe for the grounding gate, while qwen reads OCR accurately and fails honestly.
 
-The split confidence threshold reuses `filler.autofile.min_confidence`; the duration ceiling is
-`filler.autosplit.max_duration`. There are no `filler.embed.*` settings.
+The split confidence threshold is `filler.autosplit.min_confidence`; the duration ceiling is
+`filler.autosplit.max_duration`. Split-boundary confidence and classification confidence answer
+different questions and share no publication control. There are no `filler.embed.*` settings.
 
-### Tagging confidence, and auto-filing (V38)
+### Tagging confidence (V38; confidence publication retired)
 
-The tagger records a **confidence score** (0–100) alongside the tags. It exists for one job: to
-decide whether a held clip is **filed automatically** or **surfaced to a human** in Incoming.
-Anything scoring at or above `filler.autofile.min_confidence` is filed; anything below stays held
-and waits for a person.
+The tagger records a **confidence score** (0–100) alongside the tags. It is diagnostic evidence for
+classification review and prioritisation. It never decides whether a clip is playable: terminal
+admission replays exact five-axis safety, playback, Airworthiness, and current-use rights evidence.
+
+⚠ **V38 originally used this score as an auto-file threshold; that publication use is retired.**
+A grounded taxonomy result is not a safety verdict, a rights grant, or proof of complete playback.
+Keeping the score is useful; keeping a shortcut from score to airability would recreate a second,
+weaker admission authority.
 
 ⚠ **The score is grounding-gated, and that is the whole safety property.** It is NOT the model's
 own self-assessment, because this tagger has a measured history of confident fabrication — the
@@ -4559,33 +4558,17 @@ So the score is built in two layers, and only the first can *raise* it:
 1. **Grounding facts CAP it.** Everything `validateTags` can verify sets a ceiling — was the era
    found **literally** in the text or merely inferred; did audience and category match the known
    enums; was there any source text to check at all. ⚠ **An ungrounded era can never reach the
-   auto-file threshold**, no matter what the model claims. That is a hard ceiling, not a
+   fully-grounded score**, no matter what the model claims. That is a hard ceiling, not a
    subtraction, and it is the property to sabotage-test.
 2. **The model refines within the cap.** The model reports its own confidence and it may only
    *lower* the grounded ceiling, never lift it. A model that is unsure about a clip whose tags all
    verify is still worth surfacing; a model that is certain about an era it invented is not.
 
-**The consequence, stated plainly: auto-filed clips enter the catalog and can play on a channel
-with no human having looked at them.** That is a real change in what Loomarr does unattended, and
-it is why the ceiling above is not negotiable.
-
-⚠ **It is also strictly safer than what it replaces**, which is worth recording because the
-opposite is the intuitive reading. Before V38 an ingested clip was catalogued and playable
-*immediately*, with no score and no gate — auto-filing at 85 is the first time anything has stood
-between a downloaded file and a channel. The risk this section guards is not "clips reach
-channels unreviewed" (they already did); it is that a *fabricated* tag reaches matching and
-corrupts it silently.
-
-**Every auto-filed clip is attributed and reversible.** `auto_filed` records that no human looked
-at it, Incoming lists what was filed without asking, and sending one back to **held** is a single
-action. An unattended decision that cannot be found and undone is not a decision an appliance
-gets to make.
-
-**Defaults (maintainer, 2026-08-02):** auto-filing is **ON at 85**, matching the mock. ⚠ This
-means an existing install begins auto-filing on its first tagging run after upgrade without
-opting in — a deliberate product call, made with the grounding cap in mind: the fabrication class
-this section exists to guard against stays in Incoming regardless of the threshold, because an
-ungrounded era cannot clear it.
+**The consequence, stated plainly: confidence never publishes content.** It prioritises review
+and explains classification strength; a perfect score is still only metadata evidence. The former
+confidence threshold, `auto_filed` application state, legacy audit list, and direct withdrawal
+route are retired rather than maintained as a parallel lifecycle. Historical database columns may
+remain until a future schema rebuild, but no domain or API contract assigns them meaning.
 
 #### Evidence-based admission certification (V61 — supersedes the scalar gate)
 
@@ -6368,17 +6351,11 @@ duplicate conflicting actions fail closed. Automatic catalog filing remains behi
 compatibility gate until V61 certification explicitly enables a slice, so durable shadow records do
 not themselves widen unattended behavior.
 
-**Loudness normalisation — SPECIFIED, NOT YET BUILT.** Clips filed automatically should be
-normalised to **−16 LUFS** on the ingest path: filler is cut together from sources recorded
-decades apart, and without it a break swings between a whisper and a shout, which is the single
-most audible defect in a channel that otherwise works.
-
-⚠ **`filler.autofile.normalize_loudness` is deliberately NOT in the registry yet**, and the reason
-is a rule this very phase re-learned. The key was declared alongside the other two, `make
-config-docs` published it, and a grep for its consumer found **nothing** — the exact
-declared-but-unconsumed defect that got `filler.autofile.*` removed in V35's review, committed
-inside the phase that documents the lesson. §15's rule is that a setting nothing READS does not
-exist. The key lands with its ffmpeg `loudnorm` pass, in the same PR, or not at all.
+**Loudness normalisation is playback conditioning, not admission.** The transcode rung may build a
+normalised playback derivative when `filler.conditioning.normalize_loudness` is enabled, using the
+shared `filler.target_lufs` target. It retains the exact source master, records before/after
+measurements and recipe identity in the sidecar, and never mutates an operator's original. The
+former auto-file-named setting is retired because conditioning does not grant publication authority.
 
 **A new install has an empty drop-folder, so the first channel has nothing to break to.** The fix is a **starter pack**: `GET /v1/filler/discover?collection=<id>` lists a curated archive.org collection, the operator keeps or excludes rows, and only what survives is fetched through the ordinary ingest path. Three properties are load-bearing:
 
@@ -6494,7 +6471,9 @@ large import a memory and latency spike, while using `len(rows)` as the total hi
 the cap. The store therefore counts the conveyor union and review-ready reels separately from
 their bounded row reads.
 
-⚠ **No confidence score is reported, because nothing measures one.** The mock draws a per-item confidence bar; the tagger records neither a score nor a rationale. The queue therefore reports *why* an item is waiting, derived from its real state. An auto-file threshold (`filler.autofile.*`) is the feature that would need a real score, and it is not built — inventing one to fill a bar would put a number in front of an operator that no code produced.
+⚠ **Historical V35 state, retired in V38:** no confidence score was initially reported because
+nothing measured one. The tagger now persists a grounding-capped diagnostic score, while the queue
+still reports *why* an item is waiting from real state. The number does not grant admission.
 
 ### Sources can be switched off
 
@@ -6918,7 +6897,10 @@ unconfirmed suggestion.
 
    ⚠ **The player is clamped to `[startMs, endMs]` and reports the SEGMENT's length, never the reel's.** A 30-second cut of a 22-minute recording reads `0:04 / 0:30`. Handing the readout the reel's own numbers would present the whole recording as if it were the clip, which is precisely what makes a preview useless for judging one cut. One preview is open at a time and collapsing **unmounts** the element — otherwise every row the operator has ever clicked holds a range request open against a 20-minute file.
 
-   ⚠ **This was "not optional, ever" until V43, and the blanket rule was over-applied.** The same argument — quality varies by source — produced a *threshold* everywhere else in this pipeline: the tagger files a clip unattended above `filler.autofile.min_confidence` and asks below it. Splitting alone demanded a human for every reel, including the ones where every segment is plainly an advert. That asymmetry is what made compilations the most manual part of a system whose whole claim is that it maintains itself: Loomarr would decide unsupervised that a clip is a 1993 cereal advert and air it, but not accept a cut point it was certain about.
+   ⚠ **This was "not optional, ever" until V43, and the blanket rule was over-applied.** Boundary
+   confidence can safely automate the mechanical creation of well-supported child clips while
+   uncertain cuts remain for review. That automation does not publish the children: each child
+   still traverses conditioning, classification, five-axis screening, rights, and terminal admission.
 
    **`filler-split` is a scheduled job** (on by default). It proposes splits for over-long catalog clips rather than waiting for a click, so proposals are ready when the operator looks instead of costing minutes of waiting once they do.
 
@@ -6930,7 +6912,10 @@ unconfirmed suggestion.
 
    ⚠ **This was ALL-OR-NOTHING until V54, and the old rationale is worth stating rather than deleting.** It ran: *"a badly-split reel is not uniformly slightly-wrong; it has obvious tells… confirming the good segments and surfacing the rest would split one reel's decision across two places and hand the operator fragments to judge without the picture."* That was correct **while there was no per-segment evidence**. Splitting a decision arbitrarily is indeed worse than making it once. But the rule's cost was total: one doubtful segment in 52 sent all 52 back, so the operator's work never shrank and — measured 2026-08-11 — **~50 reels sat parked with none ever auto-confirmed**. With boundary evidence per cut, keeping five back is not splitting a decision arbitrarily; it is **routing by evidence**, which is what every other rung in this pipeline already does. The filmstrip still shows the whole picture, and the parent recording is still there to play (V45), so the operator judging those five has more context than the old rule assumed, not less.
 
-   ⚠ **The cost, recorded rather than discovered: a confirmed segment is AIRABLE.** `Confirm` does not set `held`, and pod assembly loads the catalog with a zero filter that excludes only held clips — so there is no second human gate after this one. A mis-cut clip plays half an advert in a real break before anyone sees it. It is recoverable (remove the clip — a tombstone, and the parent is retained), but visible, and it is precisely why the threshold defaults where it does: at 85, **both** of a segment's boundaries must be corroborated.
+   ⚠ **A confirmed segment is not airable.** Confirm writes the rendered child and lineage, then the
+   child traverses the complete pipeline while held. Boundary confidence decides whether a cut may
+   be created unattended; it is not evidence that the resulting content is safe, rights-cleared, or
+   eligible for a pod. Only the terminal applied-admission transaction may release it.
 
    ⚠ **The `filler.min_duration` floor is no longer one of those conditions, because it is enforced earlier (V54).** It used to be, and that is the reason auto-split could never fire: a real commercial compilation is *made of* sub-floor material. Measured 2026-08-11 on an 82-segment archive.org reel, **39 segments sat under the 10s floor**, the shortest 3.1s — station IDs and inter-ad bumpers. `AutoConfirmable` returns on the first failing segment, so `RejectTooShort` sank the reel before the grounding checks at the bottom of the loop were ever reached, and the V54 grounder below could not have changed the outcome no matter how well it worked. Those fragments are now dropped at **detection** (step 2 above), where a fragment the scan boundary would refuse anyway costs nothing to discard. `RejectTooShort` stays in the gate as defence-in-depth for hand-edited proposals and for those detected before V54; it is no longer a reason a freshly-detected reel sinks.
 
@@ -6997,13 +6982,13 @@ re-derive it, and the confirm round trip is exercised against a real store for t
 This is the same lesson `internal/store/conformance_filler.go` already records; it had simply
 never been applied to the split path.
 
-### The tagging score had no writer (V51a)
+### The tagging score had no writer (V51a; publication use retired)
 
 ⚠ **`clips.confidence` was 0 for every clip in every catalog that has ever existed.**
-`TagSuggestion.Score` computed the grounding-capped number and `Tagger.Run` compared it against
-`filler.autofile.min_confidence` to decide filing — then discarded it. `UpsertClip` inserts a
+`TagSuggestion.Score` computed the grounding-capped number and the historical tagger used it to
+decide filing — then discarded it. `UpsertClip` inserts a
 literal 0 and correctly omits the column from its `DO UPDATE`, so nothing ever persisted a score.
-Auto-filing worked; the number an operator uses to judge it was permanently absent, and the
+The old publication shortcut worked; the diagnostic number an operator needed was absent, and the
 Incoming meter (which correctly renders nothing at 0, because 0 means *never scored*) never
 appeared.
 
@@ -7167,16 +7152,12 @@ gets to make.**
 ⚠ `clips.removed_at` stays the *airability* gate and pod assembly is untouched. Two places, one
 truth: `removed_at` is **whether**, the pipeline row is **why**.
 
-#### The operator's decision is the fourth outcome (V54)
+#### Operator outcomes (V54; direct publication actions retired)
 
-⚠ **`review → terminal` had no operator-side writer, so three of the four decision buttons did
-not stick.** `filed` and `rejected` were only ever written by `filler.Pipeline` itself. The
-operator paths moved `clips` and left the pipeline row exactly where it was: `POST /v1/filler/file`
-cleared `held` and nothing else, `bulk/remove` wrote `removed_at` and nothing else, and confirming
-a guessed era did not file at all. The row still read `disposition=review`, so
-`ListClipPipelines(ConveyorOnly)` still returned it and `needsDecision` was still true — **a clip
-the operator had just filed came back on the next refetch, and `total` never reached zero.** The
-state machine was right; nothing outside the machine was permitted to advance it.
+⚠ **V54 added direct “Use it” and “Looks right” publication actions; those actions and their route
+are retired.** Confirming taxonomy is not equivalent to certifying content safety and rights. The
+only positive terminal transition is now an applied admission action whose transaction replays the
+exact current evidence before changing `held` and the pipeline disposition together.
 
 **`dismissed` is a fourth disposition, not a reuse of `rejected`.** A person saying *no* and the
 quality gate refusing are different facts, and `rejected`'s shape is built for the second: it
@@ -7187,29 +7168,18 @@ reason that means "no reason" and a `Soft()` case that is unconditionally true: 
 one enumeration can carry two subjects. That is the argument `reject.go` already makes for keeping
 `RejectReason` and `AutoSplitReject` apart, applied one level up.
 
-**The transitions, every operator path:**
+**Current transitions:**
 
 | Operator action | Route | Pipeline row |
 | --- | --- | --- |
-| *Use it* | `POST /v1/filler/file` | `review → filed` |
-| *Looks right* | `POST /v1/filler/file` with `asSuggested` | `review → filed`, era confirmed in the same call |
+| Review or correct tags | tag editor | classification changes; remains held |
+| Applied admit/corrected admit/restore | terminal applied-admission action | atomic `review → filed` after exact replay |
 | *Don't use it* | `POST /v1/filler/bulk/remove` | `review → dismissed` |
-| *Send it back* | `POST /v1/filler/hold` | `filed → review` |
 | Restore | `bulk/remove` with `restore: true` | `dismissed`/`rejected` `→ review` |
 
-⚠ **"Looks right" files through the EXISTING `asSuggested` flag rather than a second mutation.**
-That flag already confirms the suggested era — the store clears `suggested_era` in the same
-statement, so the question cannot outlive its answer — and then files, in one request. Chaining a
-PATCH and a file from the client would split the two halves across two requests, where a failure
-between them leaves a clip filed with an unconfirmed guess. It is also the *only* affirmative
-control a guessed clip has: the panel offers "Use it" only when there is no guess, so a "Looks
-right" that does not file leaves that clip with no way out of the queue at all.
-
-⚠ **The pipeline write is best-effort and guarded on the row's current disposition**, matching
-`clearPipelineRejects` rather than inventing a second convention. The catalog half has already
-landed by then and `removed_at` is what decides airability, so failing the request over the
-bookkeeping half would report a failure for a decision that took effect. A stale row shows a
-settled clip as still-deciding until the next write — visible and harmless, unlike the inverse.
+⚠ **Positive publication is never a best-effort pair of writes.** The action, clip release, and
+pipeline settlement commit in one transaction or none do. Tag correction remains deliberately
+non-terminal: it improves evidence and may trigger re-screening, but it cannot make media playable.
 
 ⚠ **`dismissed` is off the conveyor AND off the refusals list, and the second is not an
 oversight.** *"Loomarr didn't use N clips"* is the audit of what the appliance decided **without**

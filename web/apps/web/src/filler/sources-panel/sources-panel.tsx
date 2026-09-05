@@ -71,20 +71,12 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   // searching and downloading; clips already in the catalog are untouched, which is why nothing
   // here invalidates the clip list.
   const [togglingSource, setTogglingSource] = useState<string>();
-  const [admittingSource, setAdmittingSource] = useState<string>();
   // Which source's "Fetch now" is running. The request is row-scoped, and this local state keeps
   // the corresponding card busy while the bounded acquisition and catalog scan complete.
   const [fetchingSource, setFetchingSource] = useState<string>();
   const toggleSource = fillerApi.useSetFillerSourceEnabled({
     mutation: {
       onSettled: () => setTogglingSource(undefined),
-      onSuccess: () =>
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() }),
-    },
-  });
-  const setSourceAdmission = fillerApi.useSetFillerSourceEnabled({
-    mutation: {
-      onSettled: () => setAdmittingSource(undefined),
       onSuccess: () =>
         void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() }),
     },
@@ -223,25 +215,12 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
           toggleSource.mutate({ id, data: { enabled } });
         }}
         toggling={toggleSource.isPending ? togglingSource : null}
-        onToggleAutoAdmit={(id, autoAdmit) => {
-          const source = sources.find((candidate) => candidate.id === id);
-          if (!source) return;
-          setAdmittingSource(id);
-          setSourceAdmission.mutate({ id, data: { enabled: source.enabled, autoAdmit } });
-        }}
-        admitting={setSourceAdmission.isPending ? admittingSource : null}
         onRemove={(id) => {
           setRemovingSource(id);
           removeSource.mutate({ id });
         }}
         removing={removeSource.isPending ? removingSource : null}
-        error={
-          toggleSource.error?.detail ??
-          setSourceAdmission.error?.detail ??
-          fetchSource.error?.detail ??
-          sourcesError ??
-          null
-        }
+        error={toggleSource.error?.detail ?? fetchSource.error?.detail ?? sourcesError ?? null}
         // Finding clips is something you do TO a source (V35), so the search lives INSIDE
         // the row that owns it rather than in a detached card below the list (V35b, the
         // mock's `sv.showSearch`). ⚠ Searching downloads nothing; `Queue download` is the
@@ -408,12 +387,12 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
           </form>
           {addSource.error != null && <ErrorState error={addSource.error} />}
           {/* Scheduled source polling is real work (§10 V38b), while every arrival remains held
-              until the admission gate files it. Name both halves so a successful fetch does not
+              until terminal admission releases it. Name both halves so a successful fetch does not
               look broken merely because Catalog correctly excludes its Incoming clips. */}
           <Caption>
             Country-only sources are nationwide; add a market for local sources. Once installation geography
-            is configured, unclassified and out-of-market sources are not fetched. Grounded, high-confidence
-            clips may still be filed automatically only when that source allows it.
+            is configured, unclassified and out-of-market sources are not fetched. Source selection controls
+            acquisition only; every clip still needs certified safety, rights, and playback evidence.
           </Caption>
         </div>
       )}

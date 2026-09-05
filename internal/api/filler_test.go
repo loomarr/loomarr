@@ -1332,7 +1332,7 @@ func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "filed", filler.Commercial, 1992, filler.Kids, "cereal")
 	seedClip(t, st, "waiting", filler.Commercial, 1992, filler.Kids, "cereal")
-	if _, err := st.SetClipsHeld(context.Background(), []string{"waiting"}, true, false, time.Now()); err != nil {
+	if _, err := st.HoldClips(context.Background(), []string{"waiting"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 

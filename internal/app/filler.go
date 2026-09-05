@@ -126,8 +126,11 @@ func (a fillerPipelineClipAdapter) CommitConditioningPublication(ctx context.Con
 func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.SetClipsRemoved(ctx, paths, at)
 }
-func (a fillerPipelineClipAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
-	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+func (a fillerPipelineClipAdapter) HoldClips(ctx context.Context, paths []string, at time.Time) (int, error) {
+	return a.st.HoldClips(ctx, paths, at)
+}
+func (a fillerPipelineClipAdapter) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
+	return a.st.ReleaseCompositeHolds(ctx, paths, at)
 }
 func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
@@ -291,10 +294,7 @@ func (w *fillerChannelWake) Run(ctx context.Context, snapshots []filler.Clip) {
 }
 
 // fillerTagStoreAdapter bridges the store → filler.TagStore (the AI-tagging job).
-type fillerTagStoreAdapter struct {
-	st   store.Store
-	wake *fillerChannelWake
-}
+type fillerTagStoreAdapter struct{ st store.Store }
 
 func (a fillerTagStoreAdapter) ListUntaggedCommercials(ctx context.Context) ([]filler.StoreClip, error) {
 	clips, err := a.st.ListUntaggedCommercials(ctx)
@@ -317,15 +317,6 @@ func (a fillerTagStoreAdapter) SetClipBrand(ctx context.Context, path, brand str
 
 func (a fillerTagStoreAdapter) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
 	return a.st.SetClipConfidence(ctx, path, confidence, at)
-}
-
-func (a fillerTagStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
-	snapshots := fillerClipsByPath(ctx, a.st, paths)
-	updated, err := a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
-	if err == nil && updated > 0 {
-		a.wake.Run(ctx, snapshots)
-	}
-	return updated, err
 }
 
 // The taxonomy path (§10 V45a): the tagger serves the vocabulary, grounds against it, and persists
@@ -592,9 +583,9 @@ func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) erro
 func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
 }
-func (a fillerSplitStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+func (a fillerSplitStoreAdapter) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
 	snapshots := fillerClipsByPath(ctx, a.st, paths)
-	updated, err := a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+	updated, err := a.st.ReleaseCompositeHolds(ctx, paths, at)
 	if err == nil && updated > 0 {
 		a.wake.Run(ctx, snapshots)
 	}

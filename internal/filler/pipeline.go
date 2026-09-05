@@ -69,7 +69,7 @@ type Stage interface {
 }
 
 // Budget bounds one pass. Every field is a closure so a settings change hot-applies mid-run, the
-// same contract `AutoFilePolicy` uses.
+// the same hot-apply contract as other runtime policy reads.
 //
 // ⚠ The defaults carry forward the existing per-job batch constants (LanguageBatch 25,
 // TranscribeBatch 10, VisionBatch 5, defaultSplitsPerRun 3) rather than inventing new numbers, so
@@ -183,9 +183,12 @@ var fatalStages = map[StageID]RejectReason{
 // ClipStore is the slice of the store the pipeline needs beyond PipelineStore.
 type ClipStore interface {
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
-	// SetClipsHeld keeps every review verdict out of rotation, including a hand-dropped or
-	// previously-filed clip that was not already held when a later quality check asked for help.
-	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
+	// HoldClips keeps every review verdict out of rotation, including a previously-filed clip that
+	// was not already held when a later quality check asked for help.
+	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
+	// ReleaseCompositeHolds exposes confirmed lineage containers. Its store predicate excludes
+	// playable rows; non-composite publication belongs only to applied admission.
+	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// SetClipsRemoved tombstones a refused clip. ⚠ A TOMBSTONE, not a delete: `clips` is a synced
 	// cache, so a hard delete would be undone by the next scan finding the file still on disk and
 	// the clip would air again.
@@ -452,7 +455,7 @@ func (p *Pipeline) requeueLegacySegmentScreening(ctx context.Context) (int, erro
 			continue
 		}
 		at := p.now().UTC()
-		if _, err := p.clips.SetClipsHeld(ctx, []string{clip.Path}, true, false, at); err != nil {
+		if _, err := p.clips.HoldClips(ctx, []string{clip.Path}, at); err != nil {
 			return n, err
 		}
 		kept := row.Stages[:0:0]
@@ -510,7 +513,7 @@ func (p *Pipeline) repairLegacyCompositeHolds(ctx context.Context) (int, error) 
 		if !found || !clip.IsComposite || !clip.Held || clip.Path == "" {
 			continue
 		}
-		if _, err := p.clips.SetClipsHeld(ctx, []string{clip.Path}, false, false, p.now().UTC()); err != nil {
+		if _, err := p.clips.ReleaseCompositeHolds(ctx, []string{clip.Path}, p.now().UTC()); err != nil {
 			return n, err
 		}
 		n++
@@ -1081,7 +1084,7 @@ func (p *Pipeline) save(ctx context.Context, row ClipPipeline, clip StoreClip) e
 		row.NextRun = time.Time{}
 	}
 	if row.Disposition == DispositionReview && clip.Path != "" {
-		if _, err := p.clips.SetClipsHeld(ctx, []string{clip.Path}, true, false, p.now().UTC()); err != nil {
+		if _, err := p.clips.HoldClips(ctx, []string{clip.Path}, p.now().UTC()); err != nil {
 			return fmt.Errorf("hold clip for review: %w", err)
 		}
 	}

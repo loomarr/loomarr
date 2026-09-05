@@ -1345,9 +1345,6 @@ func testClipPipelineRetry(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, Clip{Clip: clip, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SetClipsHeld(ctx, []string{clip.Path}, false, true, now); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := s.SetClipsRemoved(ctx, []string{clip.Path}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -1372,8 +1369,8 @@ func testClipPipelineRetry(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.RemovedAt.IsZero() || !got.Held || got.AutoFiled {
-		t.Fatalf("restored clip = removed:%v held:%v auto:%v, want present and held", got.RemovedAt, got.Held, got.AutoFiled)
+	if !got.RemovedAt.IsZero() || !got.Held {
+		t.Fatalf("restored clip = removed:%v held:%v, want present and held", got.RemovedAt, got.Held)
 	}
 	row, found, err := s.GetClipPipeline(ctx, clip.Hash)
 	if err != nil || !found || row.Status != filler.StatusQueued || row.Disposition != filler.DispositionRunning || !row.ForceRun {
@@ -2195,27 +2192,25 @@ func testClipCounts(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 
-	seed := func(id, source string, held, autoFiled bool, era int) {
+	seed := func(id, source string, held bool, era int) {
 		c := sampleClip(id, id+".mp4", filler.Commercial, era, filler.Kids, "toys")
 		c.Source = source
 		c.Held = held
-		c.AutoFiled = autoFiled
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
 		}
 	}
-	seed("a1", "youtube", false, false, 1990)
-	seed("a2", "youtube", false, true, 1991)
-	seed("a3", "archive", false, false, 0) // untagged: era 0
-	seed("a4", "archive", true, false, 1992)
-	seed("a5", "", false, false, 1993)
+	seed("a1", "youtube", false, 1990)
+	seed("a2", "youtube", false, 1991)
+	seed("a3", "archive", false, 0) // untagged: era 0
+	seed("a4", "archive", true, 1992)
+	seed("a5", "", false, 1993)
 
 	filters := map[string]ClipFilter{
-		"catalog":   {},
-		"held":      {HeldOnly: true},
-		"untagged":  {UntaggedOnly: true},
-		"autofiled": {AutoFiledOnly: true},
-		"by-kind":   {Kind: filler.Commercial},
+		"catalog":  {},
+		"held":     {HeldOnly: true},
+		"untagged": {UntaggedOnly: true},
+		"by-kind":  {Kind: filler.Commercial},
 	}
 	for name, f := range filters {
 		listed, err := s.ListClips(ctx, f)
@@ -2230,12 +2225,6 @@ func testClipCounts(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("CountClips(%s) = %d, but ListClips returned %d — the two predicates have drifted",
 				name, got, len(listed))
 		}
-	}
-
-	// AutoFiledOnly must actually narrow, or the assertion above passes vacuously against a
-	// filter the WHERE builder ignores.
-	if n, _ := s.CountClips(ctx, ClipFilter{AutoFiledOnly: true}); n != 1 {
-		t.Errorf("auto-filed count = %d, want exactly the 1 seeded auto-filed clip", n)
 	}
 
 	// The per-source rollup must agree with the catalog total, or the Sources page's "N sources ·
@@ -2306,8 +2295,10 @@ func testClipLicense(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
-// testClipHeld covers the V38 clip lifecycle on BOTH backends: a held clip is recorded but is not
-// in the playable catalog, and only SetClipsHeld moves it.
+// testClipHeld covers the clip lifecycle on BOTH backends: a held clip is recorded but is not in
+// the playable catalog, ordinary storage can only add a hold, and only confirmed composite repair
+// can use the narrowly constrained release capability. Non-composite publication belongs to the
+// terminal applied-admission transaction.
 //
 // ⚠ The first assertion is the property the whole lifecycle rests on. Pod assembly, coverage, the
 // filler-list builder and the catalog listing all read through ListClips with a zero filter, so if
@@ -2412,26 +2403,45 @@ func testClipHeld(t *testing.T, newStore NewStoreFunc) {
 			"UpsertClip's DO UPDATE list for the writer's value, not just the seeded one", rescored)
 	}
 
-	// Filing is the only way out, and it records that nobody looked.
-	if _, err := s.SetClipsHeld(ctx, []string{"held.mp4"}, false, true, at); err != nil {
+	// The ordinary release capability cannot publish a non-composite, even when a caller asks.
+	if n, err := s.ReleaseCompositeHolds(ctx, []string{"held.mp4"}, at); err != nil || n != 0 {
+		t.Fatalf("release non-composite = %d, %v; want 0", n, err)
+	}
+	stillHeld, err := s.GetClip(ctx, "held.mp4")
+	if err != nil || !stillHeld.Held {
+		t.Fatalf("non-composite release bypassed admission: clip=%+v err=%v", stillHeld, err)
+	}
+
+	// Holding a playable clip is deliberately one-way.
+	if _, err := s.HoldClips(ctx, []string{"filed.mp4"}, at); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err := s.ListClips(ctx, ClipFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog) != 2 {
-		t.Fatalf("after filing, catalog has %d clips, want 2", len(catalog))
+	if len(catalog) != 0 {
+		t.Fatalf("after holding both clips, catalog has %d clips, want 0", len(catalog))
 	}
-	var flag bool
-	for _, c := range catalog {
-		if c.Path == "held.mp4" {
-			flag = c.AutoFiled
-		}
+	withdrawn, err := s.GetClip(ctx, "filed.mp4")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !flag {
-		t.Error("auto_filed did not survive — it is the only thing that can answer " +
-			"'which of these did I never see?'")
+	if !withdrawn.Held {
+		t.Errorf("withdrawn clip = held:%v, want true", withdrawn.Held)
+	}
+
+	// Composite release is retained solely to finish lineage repair. The WHERE clause itself owns
+	// the constraint, so a caller cannot widen it accidentally.
+	if err := s.SetClipComposite(ctx, "held.mp4", true, at); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.ReleaseCompositeHolds(ctx, []string{"held.mp4"}, at); err != nil || n != 1 {
+		t.Fatalf("release composite = %d, %v; want 1", n, err)
+	}
+	released, err := s.GetClip(ctx, "held.mp4")
+	if err != nil || released.Held {
+		t.Fatalf("released composite = held:%v err=%v, want false", released.Held, err)
 	}
 }
 
@@ -2463,9 +2473,6 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		}
 		if !got.Enabled {
 			t.Errorf("%s seeded switched OFF — it would sit in the UI doing nothing", want.id)
-		}
-		if !got.AutoAdmit {
-			t.Errorf("%s seeded with auto-admission OFF — upgrade must preserve the grounded workflow", want.id)
 		}
 		// ⚠ Fetchable, which is the whole point: `folder` and `library` are SCANNED, so before
 		// this seed a fresh install had no source it could download from at all.
@@ -2500,7 +2507,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		// Enabled explicitly: a Go bool zero-values to false, so a literal that omits it
 		// describes a source that is switched OFF. Real add paths go through
 		// NewFillerSource for exactly that reason.
-		Enabled: true, AutoAdmit: true,
+		Enabled: true,
 		// ⚠ NOT `classic_tv_commercials` — that is a SEEDED row now (00034), and 00032's unique
 		// index on (kind, uri) correctly refuses a second row pointing at the same collection.
 		// The fixture needs its own target; the index is doing its job.
@@ -2581,13 +2588,6 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if !added[0].LastFetchedAt.IsZero() {
 		t.Errorf("a never-fetched source has LastFetchedAt %v, want zero", added[0].LastFetchedAt)
 	}
-	if err := s.SetFillerSourceAutoAdmit(ctx, "src-1", false); err != nil {
-		t.Fatal(err)
-	}
-	if src1(t, s).AutoAdmit {
-		t.Error("source still auto-admits after its admission policy was switched off")
-	}
-
 	// ⚠ THE invariant the flat model has to carry itself (§10), MOVED in V38c from the kind to
 	// the TARGET. 00029 allowed exactly one folder row; 00032 allows many, because commercials
 	// living in two places is ordinary and V37 gave it no expression.
@@ -2761,9 +2761,6 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.SetFillerSourceEnabled(ctx, "nope", false); !errors.Is(err, ErrNotFound) {
 		t.Errorf("set enabled on unknown = %v, want ErrNotFound", err)
-	}
-	if err := s.SetFillerSourceAutoAdmit(ctx, "nope", false); !errors.Is(err, ErrNotFound) {
-		t.Errorf("set auto-admit on unknown = %v, want ErrNotFound", err)
 	}
 }
 
@@ -4403,7 +4400,7 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		t.Fatal(err)
 	}
 	clip, err := s.GetClip(ctx, hash)
-	if err != nil || clip.Held || clip.AutoFiled {
+	if err != nil || clip.Held {
 		t.Fatalf("applied admit clip = %+v, err = %v", clip, err)
 	}
 	pipeline, found, err := s.GetClipPipeline(ctx, hash)

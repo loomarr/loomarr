@@ -76,8 +76,6 @@ describe("SourcesTab", () => {
           configured: true,
           fetchable: false,
           enabled: true,
-          autoAdmit: true,
-          admissionControllable: true,
           switchable: true,
           removable: false,
           searchable: false,

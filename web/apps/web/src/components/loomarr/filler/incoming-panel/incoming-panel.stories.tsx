@@ -30,13 +30,11 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-// The two ask kinds side by side. They are different QUESTIONS, which is why the buttons differ:
-// a guessed era has a proposed answer to confirm, an untagged clip has nothing to confirm.
+// The two ask kinds side by side. Classification review is deliberately separate from admission.
 const BothAskKinds: Story = {
   args: {
     clips: [guessedEraAsk, untaggedAsk].map((c) => ({ ...c, needsDecision: true })),
     reels: [],
-    onConfirmEra: () => {},
     onEditTags: () => {},
     onDismiss: () => {},
   },
@@ -55,7 +53,6 @@ const OneRowBusy: Story = {
     clips: [guessedEraAsk, untaggedAsk].map((c) => ({ ...c, needsDecision: true })),
     reels: [],
     busyPath: guessedEraAsk.path,
-    onConfirmEra: () => {},
     onEditTags: () => {},
   },
 };
@@ -67,8 +64,7 @@ const NothingWaiting: Story = {
 };
 
 // V38: the confidence meter, on the three bands the colour switches between. ⚠ The score is
-// GROUNDING-CAPPED — the 40 here is what an ungrounded era gets no matter how certain the model
-// claimed to be, which is why it can never reach the auto-file threshold.
+// GROUNDING-CAPPED — diagnostic evidence for tag review, never publication authority.
 const WithConfidence: Story = {
   args: {
     clips: [
@@ -77,40 +73,7 @@ const WithConfidence: Story = {
       { ...guessedEraAsk, path: "high.mp4", name: "Frosted Flakes 1993", confidence: 92 },
     ],
     reels: [],
-    onConfirmEra: () => {},
     onEditTags: () => {},
-    onFile: () => {},
-    onFileAllAsSuggested: () => {},
-  },
-};
-
-// ⚠ THE audit half (§10 V38). Auto-filing is ON by default, so this is what an operator who did
-// not ask for it sees — rendered even with an EMPTY queue, because "nothing needs you" and "here
-// is what I did without asking" are different statements and the second one matters most on
-// exactly the install where the first is true.
-const FiledWithoutAsking: Story = {
-  args: {
-    clips: [],
-    reels: [],
-    recentlyFiled: [
-      {
-        ...untaggedAsk,
-        path: "auto-1.mp4",
-        name: "Hot Wheels spot",
-        confidence: 86,
-        autoFiled: true,
-        reason: "Loomarr was confident enough about these tags to file it without asking.",
-      },
-      {
-        ...untaggedAsk,
-        path: "auto-2.mp4",
-        name: "Station ident",
-        confidence: 95,
-        autoFiled: true,
-        reason: "Loomarr was confident enough about these tags to file it without asking.",
-      },
-    ],
-    onSendBack: () => {},
   },
 };
 
@@ -126,7 +89,6 @@ const OneBelt: Story = {
     clips: [needsDecisionClip, taggingClip, transcodingClip],
     reels: [],
     stageOrder: stageLadder,
-    onConfirmEra: () => {},
     onEditTags: () => {},
   },
 };
@@ -165,7 +127,6 @@ export default meta;
 export {
   BothAskKinds,
   CompilationsToReview,
-  FiledWithoutAsking,
   NothingWaiting,
   OneBelt,
   OneBeltExpanded,

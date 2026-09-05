@@ -26,6 +26,24 @@ func TestPostgresInvitationMigrationPreservesExistingContactAddresses(t *testing
 	testInvitationMigrationPreservesExistingContactAddresses(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresQuarantineLegacyFillerMigration(t *testing.T) {
+	ctx := context.Background()
+	dsn := startPostgres(t)
+	s, err := openPostgres(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	provider, err := newMigrationProvider(s.db, DialectPostgres, "migrations/postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	testQuarantineLegacyFillerMigration(t, s, s.db, "migrations/postgres/00098_quarantine_legacy_filler.sql")
+}
+
 func TestPostgresFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("pgx", startPostgres(t))

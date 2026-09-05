@@ -234,7 +234,7 @@ type SplitSegment struct {
 	//
 	// ⚠ **Not `Clip.Confidence`.** That is a TAG confidence ("do we know what this is?"); this is a
 	// BOUNDARY confidence ("did we cut in the right place?"). Confirm must never copy one into the
-	// other — doing so would corrupt the auto-file policy, which reads the tag one.
+	// other — doing so would corrupt both diagnostics and split review.
 	BoundaryConfidence int `json:"boundaryConfidence,omitempty"`
 	// StartEvidence/EndEvidence say WHY, in the operator's words ("black + silence", "silence only").
 	//

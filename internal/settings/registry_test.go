@@ -214,9 +214,7 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 	}
 
 	for child, controller := range map[string]string{
-		"filler.autofile.min_confidence":     "filler.autofile.enabled",
-		"filler.autofile.normalize_loudness": "filler.autofile.enabled",
-		"filler.autosplit.min_confidence":    "filler.autosplit.enabled",
+		"filler.autosplit.min_confidence": "filler.autosplit.enabled",
 	} {
 		s, ok := r.Get(child)
 		if !ok {
@@ -225,6 +223,19 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 		allowed := s.ShowWhen[controller]
 		if len(allowed) != 1 || allowed[0] != "true" {
 			t.Errorf("%s should ShowWhen %s=true, got %v", child, controller, s.ShowWhen)
+		}
+	}
+
+	conditioning, ok := r.Get("filler.conditioning.normalize_loudness")
+	if !ok {
+		t.Fatal("filler.conditioning.normalize_loudness not declared")
+	}
+	if len(conditioning.ShowWhen) != 0 {
+		t.Errorf("conditioning is independent of admission, got ShowWhen %v", conditioning.ShowWhen)
+	}
+	for _, retired := range []string{"filler.autofile.enabled", "filler.autofile.min_confidence", "filler.autofile.normalize_loudness"} {
+		if _, ok := r.Get(retired); ok {
+			t.Errorf("retired publication setting %s is still declared", retired)
 		}
 	}
 }

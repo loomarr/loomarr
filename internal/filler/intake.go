@@ -69,16 +69,15 @@ type IntakeResult struct {
 
 // TakeIn drains the watch folder into the clip folder.
 //
-// `fetched` marks the whole pass as Loomarr's own download (the auto-fetch and ingest paths) so
-// the sidecar records `fetchedBy` — the held/filed fork's signal. An operator dropping files in
-// runs the same code with `fetched=false`.
+// `fetched` marks the whole pass as Loomarr's own download so the sidecar records acquisition
+// provenance. It does not affect admission; every new clip starts held.
 func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (IntakeResult, error) {
 	return TakeInFrom(watchDir, clipDir, fetched, "", log)
 }
 
 // TakeInFrom preserves the registered source responsible for an unattended arrival. Registered
-// folder/library scans set fetched=true so the clip waits for the same grounded admission gate as
-// a remote download; a direct hand-copy still uses TakeIn(..., false, ...) as an operator decision.
+// folder/library scans set fetched=true; a direct hand-copy uses false because its provenance is
+// different, not because it receives different publication authority.
 func TakeInFrom(watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any)) (IntakeResult, error) {
 	var res IntakeResult
 	if watchDir == "" || clipDir == "" {

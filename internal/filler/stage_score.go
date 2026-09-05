@@ -14,28 +14,24 @@ import (
 
 // ScoreClipStore is the slice of the store the score stage writes through.
 type ScoreClipStore interface {
-	// SetClipConfidence is the score's single writer (§10 V51a).
+	// SetClipConfidence is diagnostic only. It cannot change catalog eligibility.
 	SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error
-	// SetClipsHeld files a clip into the catalog. The stage only ever FILES (held=false,
-	// autoFiled=true) — sending a clip back for review is a human's decision, made from Incoming.
-	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
 }
 
-// ScoreStage decides a clip's fate.
+// ScoreStage persists classification evidence and routes a held clip to review or rejection.
 type ScoreStage struct {
-	store    ScoreClipStore
-	autoFile *AutoFilePolicy
+	store ScoreClipStore
 	// rejectUnidentified promotes "nothing grounded anywhere" from review to a hard reject.
 	rejectUnidentified func() bool
 	now                func() time.Time
 }
 
 // NewScoreStage builds the stage.
-func NewScoreStage(store ScoreClipStore, autoFile *AutoFilePolicy, rejectUnidentified func() bool, now func() time.Time) *ScoreStage {
+func NewScoreStage(store ScoreClipStore, rejectUnidentified func() bool, now func() time.Time) *ScoreStage {
 	if now == nil {
 		now = time.Now
 	}
-	return &ScoreStage{store: store, autoFile: autoFile, rejectUnidentified: rejectUnidentified, now: now}
+	return &ScoreStage{store: store, rejectUnidentified: rejectUnidentified, now: now}
 }
 
 func (s *ScoreStage) ID() StageID     { return StageScore }
@@ -65,16 +61,8 @@ func (s *ScoreStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		return StageResult{Verdict: VerdictReview, Note: "nothing could be grounded — this needs a person"}, nil
 	}
 
-	if c.Held && s.autoFile.AllowsSource(ctx, c.Source, score) {
-		if s.store != nil {
-			if _, err := s.store.SetClipsHeld(ctx, []string{c.Path}, false, true, s.now().UTC()); err != nil {
-				return StageResult{}, err
-			}
-		}
-		return StageResult{Verdict: VerdictContinue, Note: "filed without asking"}, nil
-	}
 	if c.Held {
-		return StageResult{Verdict: VerdictReview, Note: "tagged, but not confidently enough to file unattended"}, nil
+		return StageResult{Verdict: VerdictReview, Note: "classification scored; certified terminal admission is still required"}, nil
 	}
 	return StageResult{Verdict: VerdictContinue}, nil
 }
@@ -109,8 +97,7 @@ func hasAnyGrounding(c StoreClip) bool {
 //
 // ⚠ It reuses `TagSuggestion.Score` rather than re-deriving the ceilings, so the pipeline and the
 // tagger cannot disagree about what a clip is worth. In particular `SuggestedEra > 0` — an era the
-// model proposed but could not ground — caps the score strictly below every settable threshold, so
-// a fabricated era can never be auto-filed however this install is configured.
+// model proposed but could not ground — caps the score below a fully-grounded result.
 func ScoreClip(c StoreClip) int {
 	sug := TagSuggestion{
 		Era:          c.Era,

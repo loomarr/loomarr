@@ -14,8 +14,6 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
   configured: true,
   fetchable: true,
   enabled: true,
-  autoAdmit: true,
-  admissionControllable: true,
   switchable: true,
   removable: false,
   // Defaults to NOT searchable: only archive has an upstream catalog to query, so a default of
@@ -198,22 +196,6 @@ describe("FillerSources switches", () => {
     await userEvent.click(screen.getByRole("switch", { name: "Use /data/filler" }));
 
     expect(onToggleEnabled).toHaveBeenCalledWith("folder", false);
-  });
-
-  it("changes automatic admission independently of source acquisition", async () => {
-    const onToggleAutoAdmit = vi.fn();
-    render(
-      <FillerSources
-        sources={[source({ kind: "archive", target: "Classic TV" })]}
-        onFetch={() => {}}
-        onToggleAutoAdmit={onToggleAutoAdmit}
-      />,
-    );
-
-    await userEvent.click(
-      screen.getByRole("switch", { name: "Automatically file grounded clips from Classic TV" }),
-    );
-    expect(onToggleAutoAdmit).toHaveBeenCalledWith("archive", false);
   });
 
   // ⚠ THE promise. A switched-off source keeps its clips, and the row has to say so — an

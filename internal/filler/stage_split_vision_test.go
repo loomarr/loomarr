@@ -99,7 +99,7 @@ func (p proposalQueue) ListSplitProposals(context.Context) ([]SplitProposal, err
 	return p.proposals, nil
 }
 
-// gatePolicy is auto-confirm ON at a mid threshold — below MaxAutoFileConfidence, so a grounded
+// gatePolicy is auto-confirm ON at a mid threshold — below MaxAutoSplitConfidence, so a grounded
 // era is not additionally required and Category alone decides.
 func gatePolicy() *AutoSplitPolicy {
 	return &AutoSplitPolicy{

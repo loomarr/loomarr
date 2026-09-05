@@ -2741,28 +2741,6 @@ components:
         - updated
         - pruned
       type: object
-    FileFillerInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FileFillerInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        asSuggested:
-          description: Confirm each clip's own suggested era as it files
-          type: boolean
-        paths:
-          description: Clip identities (paths relative to FILLER_DIR)
-          items:
-            type: string
-          minItems: 1
-          type: array
-      required:
-        - paths
-      type: object
     FillerAcquisitionRunDTO:
       additionalProperties: false
       properties:
@@ -3409,14 +3387,6 @@ components:
         overview:
           $ref: "#/components/schemas/PipelineOverviewDTO"
           description: Bounded lifecycle counts across the durable filler pipeline
-        recentlyFiled:
-          items:
-            $ref: "#/components/schemas/IncomingClipDTO"
-          type: array
-        recentlyFiledTotal:
-          description: All automatically filed audit rows; recentlyFiled is capped to one page
-          format: int64
-          type: integer
         reels:
           items:
             $ref: "#/components/schemas/IncomingReelDTO"
@@ -3452,8 +3422,6 @@ components:
         - rejected
         - rejectedTotal
         - stageOrder
-        - recentlyFiled
-        - recentlyFiledTotal
         - total
       type: object
     FillerIngestEvent:
@@ -3793,10 +3761,6 @@ components:
     FillerSourceDTO:
       additionalProperties: false
       properties:
-        admissionControllable:
-          type: boolean
-        autoAdmit:
-          type: boolean
         configured:
           type: boolean
         count:
@@ -3846,8 +3810,6 @@ components:
       required:
         - id
         - enabled
-        - autoAdmit
-        - admissionControllable
         - switchable
         - removable
         - kind
@@ -4239,25 +4201,6 @@ components:
         - state
         - checks
       type: object
-    HoldFillerInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/HoldFillerInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        paths:
-          description: Clip identities (paths relative to FILLER_DIR)
-          items:
-            type: string
-          minItems: 1
-          type: array
-      required:
-        - paths
-      type: object
     HostedModelView:
       additionalProperties: false
       properties:
@@ -4516,8 +4459,6 @@ components:
       properties:
         audience:
           type: string
-        autoFiled:
-          type: boolean
         category:
           type: string
         confidence:
@@ -4541,7 +4482,7 @@ components:
         needsDecision:
           type: boolean
         path:
-          description: The clip's disk path — used by the array-keyed hold/file/remove ops
+          description: The clip's disk path — used by the hold operation
           type: string
         pipeline:
           $ref: "#/components/schemas/IncomingPipelineDTO"
@@ -7447,8 +7388,6 @@ components:
           format: uri
           readOnly: true
           type: string
-        autoAdmit:
-          type: boolean
         country:
           type: string
         enabled:
@@ -7467,7 +7406,6 @@ components:
       required:
         - id
         - enabled
-        - autoAdmit
         - label
         - uri
       type: object
@@ -8136,8 +8074,6 @@ components:
           format: uri
           readOnly: true
           type: string
-        autoAdmit:
-          type: boolean
         enabled:
           type: boolean
         fetchEverySeconds:
@@ -8168,8 +8104,6 @@ components:
           format: uri
           readOnly: true
           type: string
-        autoAdmit:
-          type: boolean
         enabled:
           type: boolean
         fetchEverySeconds:
@@ -12262,32 +12196,6 @@ paths:
       summary: Runtime and quality for specific search results
       tags:
         - filler
-  /v1/filler/file:
-    post:
-      description: "Admin only (§10 V38). Admits held clips to the playable catalog — they become matchable into pods. With `asSuggested`, each clip's OWN ungrounded era guess is confirmed as it files (the mock's \"File all as suggested\"), which `bulk/tag` cannot express because it applies one era to the whole selection. Filing by hand CLEARS the auto-filed marker: a human looked. A materialized compilation child cannot be filed until its rendered-child screening rung completed."
-      operationId: file-filler-clips
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FileFillerInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BulkResultOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: File held clips into the catalog
-      tags:
-        - filler
   /v1/filler/fit:
     get:
       description: "The override picker's per-channel note (§10 V35). For every channel: which rung of the §10 ladder this clip would be drawn from, or WHY it would never be picked, plus the operator's pin/exclude state. Computed from the SAME predicates assembly uses, through the same per-channel selection as the pod preview — a note that disagrees with what airs is a confident wrong answer about why a channel looks the way it does. Read-only. ⚠ A PINNED clip reports no rung and no reason: a pin is placed ahead of the ladder, so it has none. ⚠ Every channel is listed, including paused ones — pinning to a paused channel is a decision that takes effect when it resumes."
@@ -12318,35 +12226,9 @@ paths:
       tags:
         - filler
         - channels
-  /v1/filler/hold:
-    post:
-      description: "Admin only (§10 V38). The undo for auto-filing: a clip Loomarr filed without asking goes back to Incoming and stops being matched into pods. ⚠ It does NOT remove the clip or touch the file — that is \"Remove from catalog\", a different action with a different promise."
-      operationId: hold-filler-clips
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/HoldFillerInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BulkResultOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Send clips back to the review queue
-      tags:
-        - filler
   /v1/filler/incoming:
     get:
-      description: Admin only (§10 V35) — the Filler page's Incoming tab. One bounded read for the clip conveyor, reviewable reels, rejected clips, and recently auto-filed clips. Each list carries its full total so a large import cannot make the response unbounded or make the badge report only the first page.
+      description: Admin only (§10 V35) — the Filler page's Incoming tab. One bounded read for the clip conveyor, reviewable reels, and rejected clips. Each list carries its full total so a large import cannot make the response unbounded or make the badge report only the first page.
       operationId: filler-incoming
       responses:
         "200":
@@ -12361,7 +12243,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: What has been downloaded but isn't filed yet
+      summary: What has been downloaded but isn't terminally admitted
       tags:
         - filler
   /v1/filler/ingest:
@@ -12830,7 +12712,7 @@ paths:
       tags:
         - filler
     patch:
-      description: "Admin only (§10 V35, extended V38c/V57). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. `autoAdmit` is separate: when true, only grounded clips that pass the global confidence gate may be filed without review. `folder` writes the drop-folder setting; any other id writes that source's own row. ⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never auto-fetch this source, or a positive number of seconds. Library sources became switchable in V38c, when §10 restored them to being scanned."
+      description: "Admin only (§10 V35, extended V38c/V57). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. Source configuration grants no catalog-admission authority. `folder` writes the drop-folder setting; any other id writes that source's own row. ⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never auto-fetch this source, or a positive number of seconds. Library sources became switchable in V38c, when §10 restored them to being scanned."
       operationId: set-filler-source-enabled
       parameters:
         - in: path
@@ -12857,7 +12739,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Control source acquisition, admission, and fetch cadence
+      summary: Control source acquisition and fetch cadence
       tags:
         - filler
   /v1/filler/split:

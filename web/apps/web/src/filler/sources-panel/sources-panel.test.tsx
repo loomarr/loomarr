@@ -55,7 +55,7 @@ const stubSources = () => {
     getAddFillerSourceMockHandler(async ({ request }) => {
       adds.push(await request.json());
       // ⚠ The add returns a RemoteSourceDTO — `{ id, label, uri, enabled }` — not a bare id.
-      return { id: "src-new", label: "New source", uri: "/mnt/extra-ads", enabled: true, autoAdmit: true };
+      return { id: "src-new", label: "New source", uri: "/mnt/extra-ads", enabled: true };
     }),
     getSetFillerSourceEnabledMockHandler(async ({ request, params }) => {
       enables.push({ id: String(params.id), body: await request.json() });
@@ -82,8 +82,6 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
   configured: true,
   fetchable: true,
   enabled: true,
-  autoAdmit: true,
-  admissionControllable: true,
   switchable: true,
   removable: false,
   searchable: false,
@@ -116,7 +114,7 @@ describe("SourcesPanel", () => {
     // The add form is admin-only, so it appears only once `/v1/auth/me` has resolved.
     await screen.findByRole("textbox", { name: "Library name" });
     await userEvent.click(screen.getByRole("combobox", { name: "Kind of source to add" }));
-    await userEvent.click(screen.getByRole("option", { name: "Internet Archive" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Internet Archive" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Collection or URL" }), "vintage_ads");
     await userEvent.type(screen.getByRole("textbox", { name: "Source country code" }), "us");
     await userEvent.type(screen.getByRole("textbox", { name: "Source local market" }), "New York");
@@ -140,18 +138,6 @@ describe("SourcesPanel", () => {
       // The id is the PATH PARAM the resolver parsed, so this pins WHICH source was switched —
       // the old version asserted `patch?.url` contained a string the test had also written.
       expect(enables).toEqual([{ id: "folder", body: { enabled: false } }]);
-    });
-  });
-
-  it("changes source admission without disabling acquisition", async () => {
-    const { enables } = stubSources();
-    renderPanel([source({ kind: "archive", id: "archive:classic", target: "Classic TV" })]);
-
-    await userEvent.click(
-      screen.getByRole("switch", { name: "Automatically file grounded clips from Classic TV" }),
-    );
-    await waitFor(() => {
-      expect(enables).toEqual([{ id: "archive:classic", body: { enabled: true, autoAdmit: false } }]);
     });
   });
 

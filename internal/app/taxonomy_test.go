@@ -15,6 +15,17 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
+type taxonomyAvailability map[provision.Key]string
+
+func (a taxonomyAvailability) Resolve(key provision.Key) (string, int64, bool) {
+	id, ok := a[key]
+	return id, time.Hour.Milliseconds(), ok
+}
+
+func (taxonomyAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
+	return schedule.EpisodeResolution{}
+}
+
 type taxonomyWakeRecorder struct {
 	snapshots []filler.Clip
 }
@@ -128,7 +139,7 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 	pods := filler.NewPodAdapter(clipCatalogAdapter{st: st}, nil, func() filler.Policy {
 		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, slog.New(slog.DiscardHandler))
-	engine := channels.New(st, nil, fillerAdmissionAvailability{
+	engine := channels.New(st, nil, taxonomyAvailability{
 		provision.Key("movie:tmdb:1"): "lib-1",
 		provision.Key("movie:tmdb:2"): "lib-2",
 	}, nil, channels.Config{

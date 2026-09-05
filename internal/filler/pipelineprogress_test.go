@@ -73,7 +73,7 @@ func (m *progMemStore) RetryClipPipeline(_ context.Context, _ ClipPipeline, p Cl
 	m.rows[p.ClipHash] = p
 	if restore {
 		c := m.clips[p.ClipHash]
-		c.RemovedAt, c.Held, c.AutoFiled = time.Time{}, true, false
+		c.RemovedAt, c.Held = time.Time{}, true
 		m.clips[p.ClipHash] = c
 	}
 	return nil
@@ -85,7 +85,10 @@ func (m *progMemStore) GetClip(_ context.Context, id string) (StoreClip, bool, e
 func (m *progMemStore) SetClipsRemoved(context.Context, []string, time.Time) (int, error) {
 	return 0, nil
 }
-func (m *progMemStore) SetClipsHeld(context.Context, []string, bool, bool, time.Time) (int, error) {
+func (m *progMemStore) HoldClips(context.Context, []string, time.Time) (int, error) {
+	return 0, nil
+}
+func (m *progMemStore) ReleaseCompositeHolds(context.Context, []string, time.Time) (int, error) {
 	return 0, nil
 }
 
