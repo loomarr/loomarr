@@ -21,6 +21,7 @@ const (
 	capabilityEvidenceName    = ".host-capability-v1.json"
 	capabilityEvidenceMaxAge  = 7 * 24 * time.Hour
 	capabilityValidationSecs  = 1
+	capabilityIdentityTimeout = 250 * time.Millisecond
 )
 
 type capabilityEvidence struct {
@@ -218,7 +219,9 @@ func hostCapabilityFingerprint(
 	if err != nil {
 		return "", err
 	}
-	versionCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	// This command runs on the first live fallback after restart. A wedged executable must turn
+	// evidence reuse into a quick miss, never become the cold-start latency itself.
+	versionCtx, cancel := context.WithTimeout(ctx, capabilityIdentityTimeout)
 	defer cancel()
 	version, err := exec.CommandContext(versionCtx, resolved, "-version").Output()
 	if err != nil {

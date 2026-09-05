@@ -2,6 +2,9 @@ package playout
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -55,6 +58,23 @@ func TestMatchingCapabilityEvidenceDoesNotRunEncoderValidation(t *testing.T) {
 	)
 	if !ok || capacity.Chosen != EncoderNVENC || capacity.MaxChannels != 7 || validationCalls != 0 {
 		t.Fatalf("matching evidence = %+v ok=%v validation calls=%d", capacity, ok, validationCalls)
+	}
+}
+
+func TestLoadMatchingCapabilityEvidenceBoundsAStalledIdentityCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX test executable")
+	}
+	ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\nexec sleep 5\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now()
+	_, ok := LoadMatchingObservedCapabilityEvidence(
+		t.Context(), ffmpeg, DefaultProfile(), "test-gpu", t.TempDir(),
+	)
+	if elapsed := time.Since(before); ok || elapsed >= time.Second {
+		t.Fatalf("matching stalled executable: ok=%v elapsed=%s, want miss below one second", ok, elapsed)
 	}
 }
 

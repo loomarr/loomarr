@@ -2127,8 +2127,10 @@ never convert them into unbounded live transcodes.
 
 The full host capability benchmark is control-plane warming, never tune-time work. With no explicit
 encoder override, the first actual media demand checks the persisted evidence against the current
-FFmpeg/GPU/profile fingerprint. A fresh exact match makes that previously verified encoder available
-to the first live child immediately, while its bounded real validation runs in the background. An
+FFmpeg/GPU/profile fingerprint. Both external identity commands have short bounded deadlines and a
+timeout is a miss, so this check cannot recreate the old one-second tune floor. A fresh exact match
+makes that previously verified encoder available to the first live child immediately, while its
+bounded real validation runs in the background. An
 absent, expired, mismatched, or malformed record starts the full benchmark in the background and
 playback proceeds with the software fallback until a safe result is ready. Failed revalidation also
 runs the full benchmark; any meanwhile-failed hardware child uses the existing software fallback
