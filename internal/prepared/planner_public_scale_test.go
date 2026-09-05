@@ -70,14 +70,15 @@ func TestPlannerPublicSeamScalesOneHundredChannelPriorityAndPreemption(t *testin
 			},
 		})
 	}
-	// Reverse the resolver output and add a weaker duplicate. Planner ordering—not fixture order—
-	// must choose the current claim and admit the earliest eleven current publications.
+	// Reverse the resolver output and add a duplicate that would consume one of the first eleven
+	// slots if requests were not deduplicated. Planner ordering—not fixture order—must still admit
+	// the earliest eleven unique current publications.
 	for left, right := 0, len(candidates)-1; left < right; left, right = left+1, right-1 {
 		candidates[left], candidates[right] = candidates[right], candidates[left]
 	}
 	duplicate := candidates[len(candidates)-1]
-	duplicate.Class = prepared.CandidateLookahead
-	duplicate.NeededAt = now.Add(6 * time.Hour)
+	duplicate.Class = prepared.CandidateCurrent
+	duplicate.NeededAt = now.Add(-time.Minute)
 	candidates = append(candidates, duplicate)
 
 	work := &blockingScalePreparation{
