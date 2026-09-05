@@ -27,6 +27,8 @@ The same preflight now disposes of the three remaining exact LOC leads without d
 
 Issue [#1100](https://github.com/loomarr/loomarr/issues/1100) owns the design-first soundtrack-expectation preflight so this evidence becomes a deterministic acquisition rule rather than reviewer memory.
 
+Source qualification alone is not yet sufficient to create a replacement holdout. The current planner can select standalone anchors only from the earlier locked 48-case evidence, while its separate hand-authored programme-parent inventory does not reproduce the generic corpus rights, quarantine, soundtrack, technical, family, suitability, or audience authorities. Issue [#1108](https://github.com/loomarr/loomarr/issues/1108) owns the design-first candidate-pool seam that must join those authorities, retain explicit held reasons, and provide the only deterministic source pool accepted by replacement planning. Until that bridge exists, none of the candidates below can be claimed to reach the replacement planner safely even after its individual source gates pass.
+
 ## Next metadata-only source lane
 
 A bounded Wikimedia Commons category sweep found a more promising direction: modern federal-source videos whose file metadata reports public-domain status and whose exact audiovisual source can be frozen before transfer. A second metadata-only pass reopened the exact Commons container records and established duration plus the presence of an encoded audio stream. That supports `soundtrack=present_expected`, not “usable audio”: only full local decode can detect digital silence, corruption, or inadequate coverage. Original-agency authorship, third-party material, rights beyond the Commons assertion, and suitability remain unresolved; download authority is false.
