@@ -113,6 +113,9 @@ test("composes the production TV root around shared dark pairing and paired API 
   assert.match(appSource, /<SafeAreaProvider>/);
   assert.match(appSource, /<LoomarrProvider insets=\{insets\} theme="dark">/);
   assert.match(appSource, /<PairingShell/);
+  assert.match(appSource, /allowServerEntry/);
+  assert.match(appSource, /discovery=\{discovery\}/);
+  assert.doesNotMatch(appSource, /Set EXPO_PUBLIC_LOOMARR_URL/);
   assert.match(appSource, /createPairingTransport/);
   assert.match(appSource, /validatePairingCredential/);
   assert.match(appSource, /createAuthenticatedFetch\(credential, onRevoked\)/);
@@ -133,11 +136,51 @@ test("hands the native splash to the shared Loomarr launch identity", async () =
   assert.match(appSource, /SplashScreen\.preventAutoHideAsync\(\)/);
   assert.match(appSource, /<View onLayout=\{hideNativeSplash\} style=\{\{ flex: 1 \}\}>/);
   assert.match(appSource, /SplashScreen\.hide\(\)/);
-  assert.match(appSource, /<BrandLaunch density="tv" onFinished=\{\(\) => setLaunchFinished\(true\)\} \/>/);
+  assert.match(
+    appSource,
+    /<BrandLaunch density="tv" onFinished=\{\(\) => setLaunchAnimationFinished\(true\)\} \/>/,
+  );
+  assert.match(appSource, /const launchMinimumMs = 1_200/);
+  assert.match(appSource, /return \(\) => clearTimeout\(timer\)/);
   assert.ok(
     appSource.indexOf("<PairingShell") < appSource.indexOf("<BrandLaunch"),
     "pairing must initialize beneath the launch identity instead of waiting for its animation",
   );
+});
+
+test("ships LAN discovery through Android NSD without restoring Kotlin", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const adapter = await readFile(
+    new URL(
+      "../../../packages/lan-discovery-native/src/lan-discovery-native/lan-discovery-native.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const nativeModule = await readFile(
+    new URL(
+      "../../../packages/lan-discovery-native/android/src/main/java/media/loomarr/tv/discovery/LoomarrLanDiscoveryModule.java",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+
+  assert.equal(manifest.dependencies["@loomarr/lan-discovery-native"], "workspace:*");
+  assert.match(adapter, /NativeModules\.LoomarrLanDiscovery/);
+  assert.match(nativeModule, /NsdManager/);
+  assert.match(nativeModule, /_loomarr\._tcp\./);
+  assert.match(nativeModule, /address\.indexOf\('%'\)/);
+  assert.match(nativeModule, /address\.indexOf\(':'\) >= 0/);
+  assert.match(nativeModule, /"\[" \+ address \+ "\]"/);
+  assert.doesNotMatch(nativeModule, /kotlin/i);
+});
+
+test("keeps the Watching inactivity callback stable across playback renders", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /const dismissControls = useCallback\(\(\) => setControlsVisible\(false\), \[\]\)/);
+  assert.match(appSource, /onDismissControls=\{dismissControls\}/);
+  assert.doesNotMatch(appSource, /onDismissControls=\{\(\) => setControlsVisible\(false\)\}/);
 });
 
 test("keeps the native player and Watching mounted beneath Guide and Surf", async () => {
@@ -248,4 +291,12 @@ test("releases playback and invalidation resources in the background before auth
   assert.match(appSource, /if \(closeStream\) return/);
   assert.match(appSource, /else closeActiveStream\(\)/);
   assert.match(appSource, /subscription\.remove\(\);\s+closeActiveStream\(\)/);
+});
+
+test("bounds LAN discovery to the foreground TV connection screen", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /useState\(AppState\.currentState === "active"\)/);
+  assert.match(appSource, /setAppForeground\(state === "active"\)/);
+  assert.match(appSource, /discoveryForeground=\{appForeground\}/);
 });

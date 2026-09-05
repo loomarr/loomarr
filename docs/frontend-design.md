@@ -32,6 +32,8 @@ migration plan and these precedence rules:
    the same React Native source. A clean reinstall and fresh pairing remain acceptable between the
    ephemeral-key sideload and the separately signed Play installation; cross-channel update
    continuity is not promised.
+   A clean Play install discovers local Loomarr servers and makes selection remote-friendly; manual
+   URL entry is a troubleshooting fallback, never the normal onboarding path or a build instruction.
 5. P3.5 shared-interface publication is complete. The 2026-09-03 maintainer decision authorizes the
    full Shield and Web parity migrations; other production native clients remain later work.
 6. The accepted React Native Shield surface is releasable and the Compose implementation is

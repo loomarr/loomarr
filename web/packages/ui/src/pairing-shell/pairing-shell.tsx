@@ -1,4 +1,5 @@
 import type { PairingState } from "@loomarr/core/pairing";
+import type { ServerDiscoverySnapshot } from "@loomarr/core/server-discovery";
 import {
   Action,
   ActivityIndicator,
@@ -14,15 +15,27 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import type { PairingShellProps } from "./pairing-shell.type";
 
+const emptyDiscovery: ServerDiscoverySnapshot = { servers: [], status: "unavailable" };
+const subscribeToNothing = () => () => undefined;
+const readEmptyDiscovery = () => emptyDiscovery;
+
 const PairingShell = ({
   allowServerEntry = false,
   density,
+  discovery,
+  discoveryForeground = false,
   initialServerUrl,
   renderPaired,
   session,
 }: PairingShellProps) => {
   const state = useSyncExternalStore(session.subscribe, session.snapshot, session.snapshot);
+  const discoveryState = useSyncExternalStore(
+    discovery?.subscribe ?? subscribeToNothing,
+    discovery?.snapshot ?? readEmptyDiscovery,
+    discovery?.snapshot ?? readEmptyDiscovery,
+  );
   const [serverUrl, setServerUrl] = useState(initialServerUrl ?? "");
+  const [manualEntry, setManualEntry] = useState(!discovery);
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -34,9 +47,27 @@ const PairingShell = ({
     const timer = setInterval(() => setTick((value) => value + 1), 1_000);
     return () => clearInterval(timer);
   }, [state.status]);
+  useEffect(() => {
+    if (state.status !== "needs-server" || !discovery || !discoveryForeground) {
+      discovery?.stop();
+      return undefined;
+    }
+    discovery.start();
+    return () => discovery.stop();
+  }, [discovery, discoveryForeground, state.status]);
 
   if (state.status === "paired") return renderPaired(state);
-  const content = pairingContent(state, density, session, allowServerEntry, serverUrl, setServerUrl);
+  const content = pairingContent(
+    state,
+    density,
+    session,
+    allowServerEntry,
+    serverUrl,
+    setServerUrl,
+    discovery ? discoveryState : undefined,
+    manualEntry,
+    setManualEntry,
+  );
   const awaitingApproval = state.status === "awaiting-approval";
   return (
     <Screen alignItems="center" density={density} gap="$section" justifyContent="center">
@@ -69,6 +100,9 @@ const pairingContent = (
   allowServerEntry: boolean,
   serverUrl: string,
   setServerUrl: (value: string) => void,
+  discovery: ServerDiscoverySnapshot | undefined,
+  manualEntry: boolean,
+  setManualEntry: (value: boolean) => void,
 ) => {
   if (state.status === "loading")
     return (
@@ -83,28 +117,64 @@ const pairingContent = (
     return (
       <>
         <Text density={density} textRole="title">
-          Connect this device
+          Find your Loomarr server
         </Text>
         <Text density={density} textRole="body">
-          Enter your Loomarr address to begin a secure, revocable device pairing.
+          Choose a server on this network. You’ll approve this TV on the next screen.
         </Text>
+        {discovery?.servers.map((server, index) => (
+          <Action
+            density={density}
+            hasTVPreferredFocus={density === "tv" && index === 0}
+            key={server.id}
+            onPress={() => void session.pair(server.url)}
+          >
+            {`${discovery.servers.length === 1 ? `Connect to ${server.name}` : server.name}\n${server.url}`}
+          </Action>
+        ))}
+        {discovery?.servers.length === 0 && discovery.status === "searching" ? (
+          <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
+            Searching this network…
+          </Text>
+        ) : null}
+        {discovery?.error ? (
+          <Text accessibilityLiveRegion="polite" density={density} textRole="metadata" tone="warning">
+            {discovery.error}
+          </Text>
+        ) : null}
         {allowServerEntry ? (
-          <>
-            <Field
-              autoCapitalize="none"
-              autoCorrect={false}
+          manualEntry ? (
+            <>
+              <Field
+                accessibilityLabel="Loomarr server address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                density={density}
+                hasTVPreferredFocus={density === "tv"}
+                keyboardType="url"
+                onChangeText={setServerUrl}
+                onSubmitEditing={() => void session.pair(serverUrl)}
+                placeholder="http://loomarr.local:8080"
+                returnKeyType="go"
+                value={serverUrl}
+              />
+              <Action density={density} onPress={() => void session.pair(serverUrl)}>
+                Continue
+              </Action>
+            </>
+          ) : (
+            <Action
               density={density}
-              onChangeText={setServerUrl}
-              placeholder="https://loomarr.example"
-              value={serverUrl}
-            />
-            <Action density={density} onPress={() => void session.pair(serverUrl)}>
-              Continue
+              hasTVPreferredFocus={density === "tv" && discovery?.servers.length === 0}
+              onPress={() => setManualEntry(true)}
+              tone="secondary"
+            >
+              Enter address manually
             </Action>
-          </>
+          )
         ) : (
           <Text density={density} textRole="metadata">
-            Set EXPO_PUBLIC_LOOMARR_URL for this TV build, then restart the app.
+            Server selection is unavailable in this client.
           </Text>
         )}
       </>
@@ -231,6 +301,16 @@ const pairingContent = (
         </Text>
         <Action density={density} onPress={() => void session.pair(state.serverUrl ?? serverUrl)}>
           Try again
+        </Action>
+        <Action
+          density={density}
+          onPress={() => {
+            setManualEntry(false);
+            session.chooseServer();
+          }}
+          tone="secondary"
+        >
+          Choose another server
         </Action>
       </>
     );

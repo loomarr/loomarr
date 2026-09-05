@@ -231,8 +231,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make android` | ✅ | React Native Android TV — signed four-ABI Play bundle verification <br>*runs:* `android-release-test` |
-| `make android-release-test` |  | build an ephemeral signed React Native AAB and verify identity, ABIs, and 16 KiB alignment |
+| `make android` | ✅ | React Native Android TV — verified unsigned four-ABI Play artifact <br>*runs:* `android-release-test` |
+| `make android-release-test` |  | compile once, strip the ephemeral CI signature, and retain promotion evidence |
 
 ## What CI runs
 

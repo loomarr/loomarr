@@ -6,9 +6,10 @@ readonly AAB_PATH="${1:-}"
 readonly EXPECTED_VERSION="${2:-}"
 readonly EXPECTED_CODE="${3:-}"
 readonly EVIDENCE_PATH="${4:-}"
+readonly SIGNING_MODE="${5:-signed}"
 
 if [[ -z "${AAB_PATH}" || -z "${EXPECTED_VERSION}" || -z "${EXPECTED_CODE}" || -z "${EVIDENCE_PATH}" ]]; then
-  printf 'usage: %s <aab> <version-name> <version-code> <evidence-json>\n' "$0" >&2
+  printf 'usage: %s <aab> <version-name> <version-code> <evidence-json> [signed|unsigned]\n' "$0" >&2
   exit 2
 fi
 if [[ ! -f "${AAB_PATH}" ]]; then
@@ -19,7 +20,13 @@ if [[ -z "${ANDROID_HOME:-}" ]]; then
   printf 'ANDROID_HOME must point to the Android SDK\n' >&2
   exit 2
 fi
-: "${LOOMARR_ANDROID_UPLOAD_CERT_SHA256:?LOOMARR_ANDROID_UPLOAD_CERT_SHA256 is required}"
+if [[ "${SIGNING_MODE}" != signed && "${SIGNING_MODE}" != unsigned ]]; then
+  printf 'Shield App Bundle signing mode must be signed or unsigned\n' >&2
+  exit 2
+fi
+if [[ "${SIGNING_MODE}" == signed ]]; then
+  : "${LOOMARR_ANDROID_UPLOAD_CERT_SHA256:?LOOMARR_ANDROID_UPLOAD_CERT_SHA256 is required}"
+fi
 
 for command in jq unzip keytool jarsigner strings; do
   command -v "${command}" >/dev/null 2>&1 || {
@@ -43,28 +50,46 @@ normalize_fingerprint() {
   tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]'
 }
 
-EXPECTED_FINGERPRINT="$(printf '%s' "${LOOMARR_ANDROID_UPLOAD_CERT_SHA256}" | normalize_fingerprint)"
-readonly EXPECTED_FINGERPRINT
-[[ "${EXPECTED_FINGERPRINT}" =~ ^[0-9A-F]{64}$ ]] || {
-  printf 'LOOMARR_ANDROID_UPLOAD_CERT_SHA256 must be a SHA-256 certificate fingerprint\n' >&2
-  exit 2
-}
-
-LC_ALL=C jarsigner -verify "${AAB_PATH}" >/dev/null
-BUNDLE_FINGERPRINT="$(
-  LC_ALL=C keytool -printcert -jarfile "${AAB_PATH}" |
-    awk -F': ' '/SHA256:/{print $2; exit}' |
-    normalize_fingerprint
-)"
-readonly BUNDLE_FINGERPRINT
-[[ "${BUNDLE_FINGERPRINT}" == "${EXPECTED_FINGERPRINT}" ]] || {
-  printf 'Shield App Bundle certificate does not match the protected upload fingerprint\n' >&2
-  exit 1
-}
-
 INSPECTION_DIR="$(mktemp -d)"
 readonly INSPECTION_DIR
 trap 'rm -rf "${INSPECTION_DIR}"' EXIT
+
+BUNDLE_FINGERPRINT=""
+if [[ "${SIGNING_MODE}" == signed ]]; then
+  EXPECTED_FINGERPRINT="$(printf '%s' "${LOOMARR_ANDROID_UPLOAD_CERT_SHA256}" | normalize_fingerprint)"
+  readonly EXPECTED_FINGERPRINT
+  [[ "${EXPECTED_FINGERPRINT}" =~ ^[0-9A-F]{64}$ ]] || {
+    printf 'LOOMARR_ANDROID_UPLOAD_CERT_SHA256 must be a SHA-256 certificate fingerprint\n' >&2
+    exit 2
+  }
+
+  # Upload keys are intentionally self-signed. Trust the embedded certificate only for this
+  # cryptographic verification, then bind that exact certificate to the protected fingerprint.
+  readonly SIGNER_CERTIFICATE="${INSPECTION_DIR}/signer.pem"
+  readonly SIGNER_TRUSTSTORE="${INSPECTION_DIR}/signer-trust.p12"
+  readonly SIGNER_TRUSTSTORE_PASSWORD="loomarr-aab-verifier"
+  keytool -printcert -rfc -jarfile "${AAB_PATH}" >"${SIGNER_CERTIFICATE}"
+  keytool -importcert -noprompt -alias loomarr-upload \
+    -file "${SIGNER_CERTIFICATE}" -keystore "${SIGNER_TRUSTSTORE}" -storetype PKCS12 \
+    -storepass "${SIGNER_TRUSTSTORE_PASSWORD}" >/dev/null 2>&1
+  LC_ALL=C jarsigner -verify -strict -keystore "${SIGNER_TRUSTSTORE}" \
+    -storepass "${SIGNER_TRUSTSTORE_PASSWORD}" "${AAB_PATH}" >/dev/null 2>&1
+  BUNDLE_FINGERPRINT="$(
+    LC_ALL=C keytool -printcert -file "${SIGNER_CERTIFICATE}" |
+      awk -F': ' '/SHA256:/{print $2; exit}' |
+      normalize_fingerprint
+  )"
+  [[ "${BUNDLE_FINGERPRINT}" == "${EXPECTED_FINGERPRINT}" ]] || {
+    printf 'Shield App Bundle certificate does not match the protected upload fingerprint\n' >&2
+    exit 1
+  }
+else
+  if unzip -Z1 "${AAB_PATH}" | grep -Eq '^META-INF/'; then
+    printf 'unsigned Shield App Bundle contains forbidden META-INF signing material\n' >&2
+    exit 1
+  fi
+fi
+readonly BUNDLE_FINGERPRINT
 unzip -q "${AAB_PATH}" 'base/manifest/AndroidManifest.xml' 'base/resources.pb' 'base/lib/*/*.so' 'base/assets/*' -d "${INSPECTION_DIR}"
 
 readonly MANIFEST_PATH="${INSPECTION_DIR}/base/manifest/AndroidManifest.xml"
@@ -149,6 +174,10 @@ fi
 readonly AAB_SHA256
 COMMIT="$(git -C "$(dirname "${BASH_SOURCE[0]}")/../.." rev-parse HEAD)"
 readonly COMMIT
+PRODUCER_RUN_ID="${GITHUB_RUN_ID:-}"
+PRODUCER_EVENT="${GITHUB_EVENT_NAME:-}"
+PRODUCER_WORKFLOW_REF="${GITHUB_WORKFLOW_REF:-}"
+readonly PRODUCER_RUN_ID PRODUCER_EVENT PRODUCER_WORKFLOW_REF
 
 jq -n \
   --arg aab "${AAB_PATH}" \
@@ -157,11 +186,19 @@ jq -n \
   --arg versionName "${EXPECTED_VERSION}" \
   --argjson versionCode "${EXPECTED_CODE}" \
   --arg commit "${COMMIT}" \
+  --arg producerRunId "${PRODUCER_RUN_ID}" \
+  --arg producerEvent "${PRODUCER_EVENT}" \
+  --arg producerWorkflowRef "${PRODUCER_WORKFLOW_REF}" \
   --arg uploadCertificateSha256 "${BUNDLE_FINGERPRINT}" \
+  --argjson signed "$([[ "${SIGNING_MODE}" == signed ]] && printf true || printf false)" \
   --argjson nativeLibraries "${#LIBRARIES[@]}" \
   --argjson bundleBytes "$(wc -c <"${BUNDLE_PATH}" | tr -d ' ')" \
   '{aab: $aab, aabSha256: $aabSha256, package: $package, versionName: $versionName,
-    versionCode: $versionCode, commit: $commit, uploadCertificateSha256: $uploadCertificateSha256,
+    versionCode: $versionCode, commit: $commit, signed: $signed,
+    producerRunId: (if $producerRunId == "" then null else $producerRunId end),
+    producerEvent: (if $producerEvent == "" then null else $producerEvent end),
+    producerWorkflowRef: (if $producerWorkflowRef == "" then null else $producerWorkflowRef end),
+    uploadCertificateSha256: (if $uploadCertificateSha256 == "" then null else $uploadCertificateSha256 end),
     launcherActivity: "loomarr.media.MainActivity", leanbackLauncher: true,
     applicationLabel: "Loomarr", icon: true, banner: true,
     sourceEntry: "web/apps/tv/index.ts", javascriptBundle: "base/assets/index.android.bundle",

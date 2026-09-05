@@ -32,9 +32,9 @@ const markDrawArgs = ({ barHeight, barWidth, left, top }) =>
     `rectangle ${left + index * barWidth},${top} ${left + (index + 1) * barWidth - 1},${top + barHeight - 1}`,
   ]);
 
-const renderMark = ({ output, size }) => {
-  const barWidth = Math.round(size * 0.075);
-  const barHeight = Math.round(size * 0.52);
+const renderMark = ({ output, size, barWidthRatio = 0.075, barHeightRatio = 0.52 }) => {
+  const barWidth = Math.round(size * barWidthRatio);
+  const barHeight = Math.round(size * barHeightRatio);
   const left = Math.round((size - barWidth * 7) / 2);
   const top = Math.round((size - barHeight) / 2);
   mkdirSync(dirname(output), { recursive: true });
@@ -105,8 +105,18 @@ renderMark({ output: join(repoRoot, "web/apps/web/public/icon-512.png"), size: 5
 renderMark({ output: join(repoRoot, "web/apps/mobile/assets/icon.png"), size: 1024 });
 renderMark({ output: join(repoRoot, "web/apps/mobile/assets/adaptive-icon.png"), size: 1024 });
 renderMark({ output: join(repoRoot, "web/apps/mobile/assets/splash-icon.png"), size: 1024 });
-renderMark({ output: join(repoRoot, "web/apps/tv/assets/icon.png"), size: 1024 });
-renderMark({ output: join(repoRoot, "web/apps/tv/assets/adaptive-icon.png"), size: 1024 });
+renderMark({
+  output: join(repoRoot, "web/apps/tv/assets/icon.png"),
+  size: 1024,
+  barWidthRatio: 0.095,
+  barHeightRatio: 0.7,
+});
+renderMark({
+  output: join(repoRoot, "web/apps/tv/assets/adaptive-icon.png"),
+  size: 1024,
+  barWidthRatio: 0.095,
+  barHeightRatio: 0.7,
+});
 
 renderLockup({
   output: join(repoRoot, "web/apps/tv/assets/tv-banner.png"),

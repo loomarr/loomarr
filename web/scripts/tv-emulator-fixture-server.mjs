@@ -4,9 +4,10 @@ import { extname, join, normalize } from "node:path";
 
 const port = Number.parseInt(process.argv[2] ?? "18777", 10);
 const mediaDirectory = process.argv[3];
+const listenHost = process.argv[4] ?? "127.0.0.1";
 
 if (!Number.isInteger(port) || port < 1 || port > 65_535 || !mediaDirectory) {
-  console.error("usage: node tv-emulator-fixture-server.mjs PORT MEDIA_DIRECTORY");
+  console.error("usage: node tv-emulator-fixture-server.mjs PORT MEDIA_DIRECTORY [LISTEN_HOST]");
   process.exit(2);
 }
 
@@ -217,10 +218,14 @@ const server = createServer((request, response) => {
   writeJson(response, 404, { title: "Fixture route not found" });
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`tv-emulator-fixture: listening on http://127.0.0.1:${port}`);
+server.listen(port, listenHost, () => {
+  console.log(`tv-emulator-fixture: listening on http://${listenHost}:${port}`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => server.close(() => process.exit(0)));
+  process.on(signal, () => {
+    server.close(() => process.exit(0));
+    server.closeAllConnections();
+    setTimeout(() => process.exit(1), 1_000).unref();
+  });
 }

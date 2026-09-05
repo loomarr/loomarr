@@ -119,20 +119,13 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			permissions: map[string]string{"actions": "read", "contents": "read"},
 			jobs: map[string]workflowJobAuthority{
 				"release": {
+					condition: "github.ref == 'refs/heads/main'",
 					environment: map[string]string{
 						"ANDROID_RELEASE_OUTPUT_DIR":         "${{ github.workspace }}/.artifacts/android-release",
 						"LOOMARR_ANDROID_KEYSTORE_PASSWORD":  "${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}",
 						"LOOMARR_ANDROID_KEY_ALIAS":          "${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}",
 						"LOOMARR_ANDROID_KEY_PASSWORD":       "${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}",
 						"LOOMARR_ANDROID_UPLOAD_CERT_SHA256": "${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}",
-					},
-					steps: map[string]workflowStepAuthority{
-						"make fe-install": exactWorkflowStep(6, "Install the React Native workspace", workflowStepAuthority{
-							targets: []string{"fe-install"}, allowsAcquisition: true,
-						}),
-						"make fe-codegen": exactWorkflowStep(7, "Generate the React Native API client", workflowStepAuthority{
-							targets: []string{"fe-codegen"},
-						}),
 					},
 				},
 			},
@@ -189,7 +182,12 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-android.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
 			"make fe-codegen": exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),
-			"make android":    exactWorkflowStep(8, "", workflowStepAuthority{targets: []string{"android"}}),
+			"make android": exactWorkflowStep(8, "", workflowStepAuthority{
+				targets: []string{"android"},
+				environment: map[string]string{
+					"ANDROID_CI_OUTPUT_DIR": "${{ github.workspace }}/.artifacts/android-ci",
+				},
+			}),
 		}),
 		"ci-apple-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install":                exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
