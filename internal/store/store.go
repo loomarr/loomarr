@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -785,6 +786,15 @@ type CountStore interface {
 	CountActiveSessions(ctx context.Context, now time.Time) (int, error)
 }
 
+// InventoryStore persists provider-neutral Media Inventory aggregates (§5 V66). The methods are
+// aggregate-shaped so no consumer can partially update the normalized six-table representation.
+type InventoryStore interface {
+	ApplyInventorySnapshot(ctx context.Context, snapshot inventory.Snapshot) (inventory.ItemID, error)
+	InventoryItem(ctx context.Context, ref inventory.ItemRef) (inventory.Item, bool, error)
+	RecordInventoryMeasurement(ctx context.Context, measurement inventory.Measurement) error
+	MarkInventoryUnseen(ctx context.Context, authority inventory.AuthorityID, at time.Time, seen []inventory.OriginKey) error
+}
+
 // Store is the full persistence surface (§5) — the union of the per-domain
 // interfaces above, which is what the composition root and the conformance suite
 // hold. Callers that need one domain should depend on that domain's interface
@@ -824,6 +834,7 @@ type Store interface {
 	ImageStore
 	DiscoveryFeedbackStore
 	DiscoveryQualityStore
+	InventoryStore
 
 	// Close releases the underlying database handle.
 	Close() error
