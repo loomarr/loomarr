@@ -17,6 +17,8 @@ var (
 	ErrSourceChanged = errors.New("prepared: source revision changed")
 	// ErrPackagerUnavailable means preparation has no media packager or Source Access port wired.
 	ErrPackagerUnavailable = errors.New("prepared: packager unavailable")
+	// ErrTransientInput means code attempted to serialize an operational FFmpeg input.
+	ErrTransientInput = errors.New("prepared: transient input cannot be serialized")
 )
 
 // Source is the durable, provider-neutral identity of the exact Inventory source and selected
@@ -45,6 +47,10 @@ func HTTPInput(url string) Input { return Input{url: url, http: true} }
 
 // IsHTTP reports which FFmpeg protocol options apply without exposing the operational input.
 func (i Input) IsHTTP() bool { return i.http }
+
+// MarshalJSON fails closed so an authenticated URL or protected path cannot enter generic durable
+// documents if Input is accidentally embedded in one later.
+func (Input) MarshalJSON() ([]byte, error) { return nil, ErrTransientInput }
 
 // SourceAccess validates a durable source revision and opens its current operational input. A
 // Library implementation may mint a fresh authenticated URL on every call; a local implementation

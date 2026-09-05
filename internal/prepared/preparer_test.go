@@ -14,12 +14,8 @@ import (
 
 func TestTransientInputDoesNotSerialize(t *testing.T) {
 	t.Parallel()
-	body, err := json.Marshal(prepared.HTTPInput("http://media/original?api_key=secret"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(body) != "{}" {
-		t.Fatalf("serialized transient input = %s, want no operational fields", body)
+	if _, err := json.Marshal(prepared.HTTPInput("http://media/original?api_key=secret")); !errors.Is(err, prepared.ErrTransientInput) {
+		t.Fatalf("serialized transient input error = %v, want ErrTransientInput", err)
 	}
 }
 
