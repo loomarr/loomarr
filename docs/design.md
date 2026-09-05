@@ -2956,6 +2956,68 @@ a session cookie, so segment routes authenticate a **device** by token, not a **
 This is the only route family that bypasses the allowlist model, it is read-only, and it is scoped to
 playout. It is described in §11 alongside the credential paths rather than left implicit here.
 
+### Production-path playout load certification (#1037)
+
+Many configured Channels and many simultaneously active streams are different capacities and the
+certification must never collapse them into one number. `playout-load-cert` is an explicit, opt-in
+operator command. It targets a separately named Loomarr origin through the same authenticated
+routes real clients use; it never starts, discovers, or falls back to the maintainer smoke stack.
+The caller supplies at least 100 Channel ids in an ordered private manifest, the instance origin,
+an administrator bearer through the environment, and the device playout credential through the
+environment. The command refuses an unbounded run, a non-loopback origin unless remote execution is
+explicitly acknowledged, fewer than 100 Channels for a certifying run, duplicate ids, URL/query
+credentials, and output paths outside the worktree artifact directory.
+
+The harness first mints a short-lived signed HLS URL for every Channel through
+`POST /v1/channels/{id}/play-url`; the device token is used only for the raw MPEG-TS route. It records
+Channels by stable run-local ordinal, never by id. A signed URL, bearer, token, media path, Library
+title, response body containing operator text, or free-form server error must never enter terminal or
+machine output. The report records only bounded vocabulary, counts, timings, numeric resource
+samples, HTTP classes, media stream shapes, the target build identity, and a hash of the ordered
+private manifest. Credentials are read from environment values, are never accepted as command-line
+flags, and are removed from retained request URLs before any error is classified.
+
+One run uses an explicit start barrier and per-request deadlines. Its fixed phases are: mint and
+prepared-only lookup over the whole configured catalog; rapid latest-request-wins surf churn; a
+same-Channel viewer fan-in; a cold burst up to the server-reported active transcode capacity; one
+bounded overload attempt; cancellation and warm-grace reuse; grace expiry and recovery; and a
+programme-boundary soak. A private optional cohort manifest may assign copy, H.264/HEVC transcode,
+AAC/EAC3/AC3, expected-failure, and remote-input roles to Channel ordinals. Missing roles make that
+lane non-certifying rather than silently inventing coverage. Synthetic fixtures use deterministic
+FFmpeg sources in an isolated instance; an operator cohort may instead read real files over a
+Tailscale/shared mount. A separately declared remote-FFmpeg lane may push MPEG-TS over TCP/Tailscale
+to that isolated instance, but it is reported independently and never substitutes for the real
+Loomarr HTTP route phases.
+
+The client measures signed-URL mint, HLS master, first referenced asset/body byte, and raw MPEG-TS
+first byte independently. HLS parsing accepts only relative same-origin asset references returned by
+the master; redirects to another origin, traversal, missing auth propagation, and an empty media
+playlist fail closed. A bounded capture is independently checked with `ffprobe` and must contain
+exactly one expected video stream and one expected audio stream. Percentiles use nearest-rank over
+successful observations and retain failure counts separately; a failed request never disappears
+from a latency distribution by being coerced to zero.
+
+Resource observation composes three existing public/admin projections rather than adding a
+benchmark-only production endpoint: `/metrics` supplies process RSS, CPU-seconds deltas, goroutines,
+file descriptors, HTTP in-flight requests, and active Playout sessions;
+`/v1/playout/sessions` supplies measured capacity, active/viewer/grace counts, and transcode cost;
+`/v1/playout/status` supplies bounded GPU/encoder health. Retained Process diagnostics supply the
+application-managed FFmpeg live/peak count. A sampler records baseline, every phase peak, and final
+state. Cancellation, idle expiry, parent/child failure, and shutdown drills are separate opt-in
+profiles because shutdown mutates only the explicitly named disposable instance.
+
+Certification requires 100 or more configured Channels to complete mint and surf with bounded
+failure and resource growth; every admitted stream at measured capacity to yield valid media without
+interrupting an existing held stream; overload to return the documented bounded admission outcome
+without transcode cost exceeding capacity; prepared HLS p95 master-to-first-body below 100 ms and raw
+prepared p95 first decoded frame below 500 ms; and FFmpeg/session/file-descriptor/goroutine state to
+return to the recorded baseline within one grace interval plus ten seconds. Cold-start results remain
+diagnostic and separate child from parent cost; they do not weaken the prepared-path thresholds.
+Every run writes one schema-versioned JSON report atomically plus a concise summary under
+`$LOOMARR_ARTIFACT_DIR`. The report is unsuccessful, not partial-success, when a required phase,
+sample, media validation, cleanup assertion, exact target identity, or credential-redaction audit is
+missing.
+
 ### Playout status — one place that answers "why is this channel black?" (V47)
 
 Playout has several ways to fail that all present identically to a viewer (a black frame) but have
