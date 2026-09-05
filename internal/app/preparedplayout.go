@@ -34,9 +34,11 @@ type preparedChannelReader interface {
 type preparedTimeline interface {
 	ScheduledBroadcasts(context.Context, string, time.Time, time.Time) ([]playout.Broadcast, error)
 	AudioTrackFor(context.Context, string, string, string) int
+	AudioTrackFromInventory(context.Context, string, string) (int, bool)
 }
 
 type preparedSourceResolver interface {
+	ResolvePreparedSourceFromInventory(context.Context, string, library.PathMap) (prepared.Source, string, bool)
 	ResolvePreparedSource(context.Context, string, library.PathMap) (prepared.Source, string, bool)
 	PreparedSourceCurrent(context.Context, prepared.Source) bool
 }
@@ -202,21 +204,24 @@ func (r *preparedRuntimeResolver) plan(
 				channelReady[key.ChannelID] = false
 				continue
 			}
-			if need.class == prepared.CandidateLookahead {
-				if optionalResolutionAttempts >= preparedOptionalResolutionBatch {
-					channelReady[key.ChannelID] = false
-					continue
-				}
-				optionalResolutionAttempts++
-			} else {
-				if hotResolutionAttempts >= preparedHotResolutionBatch {
-					channelReady[key.ChannelID] = false
-					continue
-				}
-				hotResolutionAttempts++
-			}
 			var resolved bool
-			request, resolved = r.resolveSource(ctx, key)
+			request, resolved = r.resolveSourceFromInventory(ctx, key)
+			if !resolved {
+				if need.class == prepared.CandidateLookahead {
+					if optionalResolutionAttempts >= preparedOptionalResolutionBatch {
+						channelReady[key.ChannelID] = false
+						continue
+					}
+					optionalResolutionAttempts++
+				} else {
+					if hotResolutionAttempts >= preparedHotResolutionBatch {
+						channelReady[key.ChannelID] = false
+						continue
+					}
+					hotResolutionAttempts++
+				}
+				request, resolved = r.resolveSource(ctx, key)
+			}
 			if !resolved {
 				channelReady[key.ChannelID] = false
 				continue
@@ -270,6 +275,28 @@ func (r *preparedRuntimeResolver) plan(
 	plan.Summary.MissingBindings = plan.Summary.ScheduledBindings - plan.Summary.ReadyBindings
 	plan.Summary.QueuedPublications = len(plan.Candidates)
 	return plan, errors.Join(errs...)
+}
+
+func (r *preparedRuntimeResolver) resolveSourceFromInventory(
+	ctx context.Context, key prepared.BindingKey,
+) (prepared.Request, bool) {
+	if r.rendition == nil {
+		return prepared.Request{}, false
+	}
+	var pathMap library.PathMap
+	if r.pathMap != nil {
+		pathMap = r.pathMap()
+	}
+	source, input, ok := r.sources.ResolvePreparedSourceFromInventory(ctx, key.LibraryItemID, pathMap)
+	if !ok || input == "" {
+		return prepared.Request{}, false
+	}
+	track, ok := r.timeline.AudioTrackFromInventory(ctx, key.ChannelID, key.LibraryItemID)
+	if !ok {
+		return prepared.Request{}, false
+	}
+	source.AudioTrack = track
+	return prepared.Request{Source: source, Rendition: r.rendition()}, true
 }
 
 func (r *preparedRuntimeResolver) resolveSource(
