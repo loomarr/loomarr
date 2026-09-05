@@ -208,7 +208,7 @@ func sourceObservationOf(result probed) SourceObservation {
 			Index: stream.Index, Kind: kind, Codec: stream.CodecName, Profile: stream.Profile,
 			Level: scalarJSON(stream.Level), Language: stream.Tags.Language, Title: stream.Tags.Title,
 			Default: stream.Disposition.Default != 0, Forced: stream.Disposition.Forced != 0,
-			Channels: stream.Channels, ChannelLayout: stream.ChannelLayout, SampleRate: int(parseInt(stream.SampleRate)),
+			Channels: stream.Channels, ChannelLayout: stream.ChannelLayout, SampleRate: parseNativeInt(stream.SampleRate),
 			Width: stream.Width, Height: stream.Height, FrameRate: stream.AvgFrameRate,
 			PixelFormat: stream.PixFmt, ColorSpace: stream.ColorSpace, ColorTransfer: stream.ColorTransfer,
 			ColorPrimaries: stream.ColorPrimaries,
@@ -242,6 +242,14 @@ func scalarJSON(raw json.RawMessage) string {
 		return string(number)
 	}
 	return ""
+}
+
+func parseNativeInt(value string) int {
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 func probeTerminationReason(ctx context.Context) string {
