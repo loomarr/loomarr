@@ -68,13 +68,20 @@ func loadTemporalStructureHoldoutFamily(path string, selection fillereval.Tempor
 		if strings.TrimSpace(item.CaseID) == "" || !reviewSHA256(item.ContentSHA256) || strings.TrimSpace(item.LocalFile) == "" || len(item.FrameHashes) == 0 {
 			return temporalStructureHoldoutFamilyAudit{}, "", fmt.Errorf("temporal structure holdout family fingerprint is invalid")
 		}
-		if expected, exists := selected[item.CaseID]; exists && expected != item.ContentSHA256 {
+		expected, selectedCase := selected[item.CaseID]
+		if !selectedCase {
+			return temporalStructureHoldoutFamilyAudit{}, "", fmt.Errorf("temporal structure holdout family authority case set does not match selection")
+		}
+		if expected != item.ContentSHA256 {
 			return temporalStructureHoldoutFamilyAudit{}, "", fmt.Errorf("temporal structure holdout family content drift for %q", item.CaseID)
 		}
 		if _, duplicate := seen[item.CaseID]; duplicate {
 			return temporalStructureHoldoutFamilyAudit{}, "", fmt.Errorf("temporal structure holdout family repeats a case")
 		}
 		seen[item.CaseID] = struct{}{}
+	}
+	if len(seen) != len(selected) {
+		return temporalStructureHoldoutFamilyAudit{}, "", fmt.Errorf("temporal structure holdout family authority case set does not match selection")
 	}
 	memberFamily, seenFamilyIDs := map[string]string{}, map[string]struct{}{}
 	nonCliqueFamilies := 0
