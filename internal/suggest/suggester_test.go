@@ -1109,8 +1109,8 @@ func TestSuggest_ToolFreeNameGroundingIsBoundedAndDeduplicated(t *testing.T) {
 		testkit.NewLLM(testkit.FinalResponse(`{
 			"channelName":"Friday Night",
 			"picks":[
-				{"mediaType":"series","tmdbId":90001,"name":"Full House"},
-				{"mediaType":"series","tmdbId":90002,"name":"full house"},
+				{"mediaType":"movie","tmdbId":90001,"name":"Full House"},
+				{"mediaType":"series","tmdbId":90002,"name":"FULL-HOUSE"},
 				{"mediaType":"series","tmdbId":90003,"name":"Family Matters"},
 				{"mediaType":"series","tmdbId":90004,"name":"Step by Step"},
 				{"mediaType":"series","tmdbId":90005,"name":"Boy Meets World"},

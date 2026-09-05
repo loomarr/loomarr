@@ -11,10 +11,14 @@ import (
 )
 
 type nameGroundingResult struct {
-	proposed  pick
-	candidate catalog.Candidate
-	err       error
-	found     bool
+	query      nameGroundingQuery
+	candidates []catalog.Candidate
+	err        error
+}
+
+type nameGroundingQuery struct {
+	name     string
+	proposed []pick
 }
 
 const maxPickNameQueries = 8
@@ -30,66 +34,86 @@ func (s *Suggester) groundPickNames(
 	surfaced map[provision.Key]catalog.Candidate,
 	trace *DecisionTrace,
 ) ([]pick, error) {
-	queries := make([]pick, 0, min(len(picks), maxPickNameQueries))
-	seen := make(map[string]bool)
+	queries := make([]nameGroundingQuery, 0, min(len(picks), maxPickNameQueries))
 	for _, proposed := range picks {
-		if len(queries) == maxPickNameQueries {
-			break
-		}
 		mediaType := provision.MediaType(proposed.MediaType)
 		name := strings.Join(strings.Fields(proposed.Name), " ")
 		if !mediaType.Valid() || name == "" {
 			continue
 		}
-		queryKey := fmt.Sprintf("%s\x00%s", mediaType, strings.ToLower(name))
-		if seen[queryKey] {
+		queryIndex := -1
+		for index := range queries {
+			if sameExactTitle(queries[index].name, name) {
+				queryIndex = index
+				break
+			}
+		}
+		proposed.Name = name
+		if queryIndex < 0 {
+			if len(queries) == maxPickNameQueries {
+				continue
+			}
+			queries = append(queries, nameGroundingQuery{name: name, proposed: []pick{proposed}})
 			continue
 		}
-		seen[queryKey] = true
-		proposed.Name = name
-		queries = append(queries, proposed)
+		duplicateConstraint := false
+		for _, existing := range queries[queryIndex].proposed {
+			if existing.MediaType == proposed.MediaType && existing.Year == proposed.Year {
+				duplicateConstraint = true
+				break
+			}
+		}
+		if !duplicateConstraint {
+			queries[queryIndex].proposed = append(queries[queryIndex].proposed, proposed)
+		}
 	}
 
 	results := make([]nameGroundingResult, len(queries))
 	var wg sync.WaitGroup
-	for index, proposed := range queries {
+	for index, query := range queries {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[index] = s.groundPickName(ctx, proposed)
+			candidates, err := s.catalog.Search(ctx, query.name, catalog.ScopeAll, catalogSearchLimit)
+			if err != nil {
+				err = fmt.Errorf("ground proposed title %q: %w", query.name, err)
+			}
+			results[index] = nameGroundingResult{query: query, candidates: candidates, err: err}
 		}()
 	}
 	wg.Wait()
 
 	grounded := make([]pick, 0, len(results))
+	groundedKeys := make(map[provision.Key]bool)
 	for _, result := range results {
 		if result.err != nil {
 			return nil, result.err
 		}
-		if !result.found {
-			continue
+		for _, proposed := range result.query.proposed {
+			candidate, found := exactCandidateForPick(result.candidates, proposed)
+			if !found {
+				continue
+			}
+			key, _ := candidate.Key()
+			if groundedKeys[key] {
+				continue
+			}
+			groundedKeys[key] = true
+			ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, feedback)
+			mergeDecisionTrace(trace, &ranked.Trace)
+			surfaced[key] = candidate
+			proposed.MediaType = string(candidate.MediaType)
+			proposed.TMDBID = candidate.TMDBID
+			proposed.TVDBID = candidate.TVDBID
+			proposed.Name = candidate.Name
+			grounded = append(grounded, proposed)
 		}
-		candidate := result.candidate
-		ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, feedback)
-		mergeDecisionTrace(trace, &ranked.Trace)
-		key, _ := candidate.Key()
-		surfaced[key] = candidate
-		proposed := result.proposed
-		proposed.MediaType = string(candidate.MediaType)
-		proposed.TMDBID = candidate.TMDBID
-		proposed.TVDBID = candidate.TVDBID
-		proposed.Name = candidate.Name
-		grounded = append(grounded, proposed)
 	}
 	return grounded, nil
 }
 
-func (s *Suggester) groundPickName(ctx context.Context, proposed pick) nameGroundingResult {
+func exactCandidateForPick(candidates []catalog.Candidate, proposed pick) (catalog.Candidate, bool) {
 	mediaType := provision.MediaType(proposed.MediaType)
-	candidates, err := s.catalog.Search(ctx, proposed.Name, catalog.ScopeAll, catalogSearchLimit)
-	if err != nil {
-		return nameGroundingResult{proposed: proposed, err: fmt.Errorf("ground proposed title %q: %w", proposed.Name, err)}
-	}
 	byKey := make(map[provision.Key]catalog.Candidate)
 	for _, candidate := range candidates {
 		if candidate.MediaType != mediaType || !sameExactTitle(candidate.Name, proposed.Name) ||
@@ -102,11 +126,11 @@ func (s *Suggester) groundPickName(ctx context.Context, proposed pick) nameGroun
 		}
 	}
 	if len(byKey) != 1 {
-		return nameGroundingResult{proposed: proposed}
+		return catalog.Candidate{}, false
 	}
 	var candidate catalog.Candidate
 	for _, exact := range byKey {
 		candidate = exact
 	}
-	return nameGroundingResult{proposed: proposed, candidate: candidate, found: true}
+	return candidate, true
 }
