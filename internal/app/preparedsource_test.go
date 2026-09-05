@@ -43,6 +43,30 @@ func TestPreparedSourceAccessOpensFreshLibraryOriginalWithoutPersistingIt(t *tes
 	}
 }
 
+func TestPreparedSourceAccessRejectsChangedLibraryRevision(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	server := testkit.NewMediaServer(t)
+	item := func(revision string) json.RawMessage {
+		return json.RawMessage(fmt.Sprintf(`{
+			"Id":"item-1","Type":"Movie","DateLastSaved":"2026-09-04T12:00:00Z",
+			"MediaSources":[{"Id":"source-1","ETag":%q,"MediaStreams":[
+				{"Index":0,"Type":"Video","Codec":"h264"},
+				{"Index":1,"Type":"Audio","Language":"eng"}
+			]}]
+		}`, revision))
+	}
+	server.InventoryItems = map[string]json.RawMessage{"item-1": item("rev-1")}
+	r := &playoutResolver{lib: newTestLibraryClient(server), inventory: inventory.New(st), now: time.Now}
+	source, _, ok := r.ResolvePreparedSource(t.Context(), "item-1", nil)
+	if !ok {
+		t.Fatal("initial Library source did not resolve")
+	}
+	server.InventoryItems["item-1"] = item("rev-2")
+	if _, err := r.OpenInput(t.Context(), source); !errors.Is(err, prepared.ErrSourceChanged) {
+		t.Fatalf("changed Library OpenInput error = %v, want ErrSourceChanged", err)
+	}
+}
+
 func TestPreparedSourceAccessRejectsChangedLocalRevision(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	service := inventory.New(st)

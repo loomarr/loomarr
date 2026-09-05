@@ -1063,40 +1063,65 @@ func (r *playoutResolver) OpenInput(ctx context.Context, selected prepared.Sourc
 	if err != nil || !ok {
 		return prepared.Input{}, prepared.ErrSourceChanged
 	}
+	source, origin, ok := preparedInventoryOrigin(item, selected)
+	if !ok {
+		return prepared.Input{}, prepared.ErrSourceChanged
+	}
+	switch source.Kind {
+	case inventory.SourceLocalFile:
+		info, statErr := os.Stat(origin.Locator.Path)
+		if statErr != nil || !info.Mode().IsRegular() || localInventoryRevision(info) != selected.Revision ||
+			!library.StatReadableFile(origin.Locator.Path) {
+			return prepared.Input{}, prepared.ErrSourceChanged
+		}
+		return prepared.LocalInput(origin.Locator.Path), nil
+	case inventory.SourceLibraryOriginal:
+		if r.lib == nil {
+			return prepared.Input{}, prepared.ErrSourceChanged
+		}
+		lib := r.lib.Snapshot()
+		current, originErr := lib.InventoryOrigin(origin.Locator.ExternalItemID)
+		if originErr != nil || current.Authority != origin.Locator.Authority {
+			return prepared.Input{}, prepared.ErrSourceChanged
+		}
+		snapshot, present, refreshErr := lib.InventorySnapshot(ctx, origin.Locator.ExternalItemID)
+		if refreshErr != nil || !present {
+			return prepared.Input{}, prepared.ErrSourceChanged
+		}
+		if _, applyErr := r.inventory.ApplySnapshot(ctx, snapshot); applyErr != nil {
+			return prepared.Input{}, prepared.ErrSourceChanged
+		}
+		item, ok, itemErr := r.inventory.Item(ctx, inventory.ItemRef{ID: inventory.ItemID(selected.ItemID)})
+		if itemErr != nil || !ok {
+			return prepared.Input{}, prepared.ErrSourceChanged
+		}
+		_, origin, ok = preparedInventoryOrigin(item, selected)
+		if !ok {
+			return prepared.Input{}, prepared.ErrSourceChanged
+		}
+		input := lib.StreamURLForSource(origin.Locator.ExternalItemID, origin.Locator.ExternalSourceID)
+		if input == "" {
+			return prepared.Input{}, prepared.ErrSourceChanged
+		}
+		return prepared.HTTPInput(input), nil
+	}
+	return prepared.Input{}, prepared.ErrSourceChanged
+}
+
+func preparedInventoryOrigin(
+	item inventory.Item, selected prepared.Source,
+) (inventory.Source, inventory.SourceOrigin, bool) {
 	for _, source := range item.Sources {
 		if string(source.ID) != selected.SourceID || source.Revision != selected.Revision {
 			continue
 		}
 		for _, origin := range source.Origins {
-			if !origin.MissingAt.IsZero() {
-				continue
-			}
-			switch source.Kind {
-			case inventory.SourceLocalFile:
-				info, statErr := os.Stat(origin.Locator.Path)
-				if statErr != nil || !info.Mode().IsRegular() || localInventoryRevision(info) != selected.Revision ||
-					!library.StatReadableFile(origin.Locator.Path) {
-					return prepared.Input{}, prepared.ErrSourceChanged
-				}
-				return prepared.LocalInput(origin.Locator.Path), nil
-			case inventory.SourceLibraryOriginal:
-				if r.lib == nil {
-					return prepared.Input{}, prepared.ErrSourceChanged
-				}
-				lib := r.lib.Snapshot()
-				current, originErr := lib.InventoryOrigin(origin.Locator.ExternalItemID)
-				if originErr != nil || current.Authority != origin.Locator.Authority {
-					continue
-				}
-				input := lib.StreamURLForSource(origin.Locator.ExternalItemID, origin.Locator.ExternalSourceID)
-				if input == "" {
-					return prepared.Input{}, prepared.ErrSourceChanged
-				}
-				return prepared.HTTPInput(input), nil
+			if origin.MissingAt.IsZero() {
+				return source, origin, true
 			}
 		}
 	}
-	return prepared.Input{}, prepared.ErrSourceChanged
+	return inventory.Source{}, inventory.SourceOrigin{}, false
 }
 
 func (r *playoutResolver) ensureLocalInventorySource(ctx context.Context, input string) (inventory.OriginKey, bool) {
