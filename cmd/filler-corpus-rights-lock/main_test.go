@@ -92,6 +92,61 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 	}
 }
 
+func TestRunRefusesExistingApprovalsBeforeReadingInputs(t *testing.T) {
+	dir := t.TempDir()
+	approvalsPath := filepath.Join(dir, "approvals.jsonl")
+	original := []byte("existing locked authority\n")
+	if err := os.WriteFile(approvalsPath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--inventory", filepath.Join(dir, "missing-inventory.json"),
+		"--worksheet", filepath.Join(dir, "missing-worksheet.json"),
+		"--completed-csv", filepath.Join(dir, "missing-review.csv"),
+		"--approvals-out", approvalsPath,
+		"--locked-at", "2026-09-05T12:00:00Z",
+		"--profile", "quarantine",
+	}, &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "approvals output already exists") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if got, err := os.ReadFile(approvalsPath); err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("existing approvals changed: got=%q err=%v", got, err)
+	}
+}
+
+func TestDecodeWorksheetRejectsUnknownAndTrailingFields(t *testing.T) {
+	for name, raw := range map[string]string{
+		"unknown":  `{"schemaVersion":3,"unknown":true}`,
+		"trailing": `{} {}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := decodeWorksheet([]byte(raw)); err == nil {
+				t.Fatal("non-strict worksheet was accepted")
+			}
+		})
+	}
+}
+
+func TestWriteJSONLCannotReplacePublishedApprovals(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "approvals.jsonl")
+	first := []fillercorpus.RightsDecision{{CaseID: "first"}}
+	if err := writeJSONL(path, first); err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSONL(path, []fillercorpus.RightsDecision{{CaseID: "replacement"}}); err == nil {
+		t.Fatal("immutable rights decisions were replaced")
+	}
+	if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("published approvals changed: got=%q err=%v", got, err)
+	}
+}
+
 func TestParseDecisionRejectsIncompleteOrInconsistentAuthority(t *testing.T) {
 	retrievedAt := time.Date(2026, 8, 25, 8, 0, 0, 0, time.UTC)
 	lockedAt := retrievedAt.Add(2 * time.Hour)

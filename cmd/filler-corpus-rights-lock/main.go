@@ -3,9 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -44,6 +46,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock: parse --locked-at:", err)
 		return 2
 	}
+	if err := requireNewApprovals(*outputPath); err != nil {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock:", err)
+		return 1
+	}
 	decisions, err := lockDecisionsForProfile(*inventoryPath, *worksheetPath, *csvPath, lockedAt, *profile)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-lock:", err)
@@ -71,8 +77,8 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 	if err != nil {
 		return nil, fmt.Errorf("read worksheet: %w", err)
 	}
-	var sheet fillercorpus.RightsWorksheet
-	if err := json.Unmarshal(raw, &sheet); err != nil {
+	sheet, err := decodeWorksheet(raw)
+	if err != nil {
 		return nil, fmt.Errorf("decode worksheet: %w", err)
 	}
 	expectedSchema, knownProfile := fillercorpus.RightsWorksheetSchemaForProfile(profile)
@@ -374,11 +380,43 @@ func requiresCredit(licenseURL string) bool {
 	return strings.Contains(value, "/licenses/by/") || strings.Contains(value, "/licenses/by-sa/")
 }
 
+func decodeWorksheet(raw []byte) (fillercorpus.RightsWorksheet, error) {
+	var sheet fillercorpus.RightsWorksheet
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&sheet); err != nil {
+		return sheet, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			err = fmt.Errorf("trailing JSON value")
+		}
+		return sheet, err
+	}
+	return sheet, nil
+}
+
+func requireNewApprovals(path string) error {
+	_, err := os.Lstat(path)
+	switch {
+	case err == nil:
+		return fmt.Errorf("approvals output already exists")
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	default:
+		return fmt.Errorf("inspect approvals output: %w", err)
+	}
+}
+
 func writeJSONL(path string, decisions []fillercorpus.RightsDecision) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(filepath.Dir(path), ".filler-corpus-rights-lock-*")
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o750); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(absolute), ".filler-corpus-rights-lock-*")
 	if err != nil {
 		return err
 	}
@@ -403,7 +441,11 @@ func writeJSONL(path string, decisions []fillercorpus.RightsDecision) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tempName, path); err != nil {
+	if err := os.Link(tempName, absolute); err != nil {
+		return fmt.Errorf("publish immutable rights decisions: %w", err)
+	}
+	if err := os.Remove(tempName); err != nil {
+		_ = os.Remove(absolute)
 		return err
 	}
 	ok = true
