@@ -1213,7 +1213,7 @@ Channel/proposal/Board filtering and Help search stay **client-side** — househ
 
 ## 8. Suggester (AI suggestion engine)
 
-Turns a channel **intent** (NL description + optional constraints: era, runtime target, tone, must-include/exclude) into a **proposal**: a lineup from existing library content + an acquisition list of missing titles. Approved acquisitions feed the provisioner; the approved lineup feeds the scheduler. The intent also carries the **refine** inputs (§7 `POST .../{id}/refine`): a free-text change plus the channel's *current lineup* as context, rendered into the prompt so the model reasons from what's already there. Grounding is unchanged — the current lineup is context only; every new pick is still grounded through the catalog tool (real ids), so a refine can't invent titles any more than a fresh suggestion can.
+Turns a channel **intent** (NL description + optional constraints: era, runtime target, tone, must-include/exclude) into a **proposal**: a lineup from existing library content + an acquisition list of missing titles. Approved acquisitions feed the provisioner; the approved lineup feeds the scheduler. The intent also carries the **refine** inputs (§7 `POST .../{id}/refine`): a free-text change plus the channel's *current lineup* as context, rendered into the prompt so the model reasons from what's already there. Grounding is unchanged — the current lineup is context only; every new pick is still grounded through a Catalog operation (real ids), so a refine can't invent titles any more than a fresh suggestion can.
 
 **Ambient context is an explicit snapshot, not hidden nondeterminism.** Today the suggester reasons
 about a daypart or weather condition only when the request says it (for example, “rainy late night”).
@@ -1230,11 +1230,24 @@ Evaluation pins these values or writes them into the request so identical inputs
 
 ### Grounding — the critical correctness rule
 An AI that can trigger real downloads must never act on a hallucinated title.
-- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. The tool supports **title search**, **genre + era discovery**, **TMDB keyword discovery** for holidays, motifs, franchises, and topics, and validated scalar country/language/runtime/vote qualifiers on discovery — so an abstract intent ("high-energy 90s action") or a thematic one ("cozy Christmas movies") surfaces grounded content instead of depending on an exact title match. Each returned candidate carries the source-backed subset of **genres, short overview, original language/country, runtime, vote average/count, and resolved keyword names** that its corpus supplied. These fields are additive reasoning evidence, never identity or authority: omitted means unknown, not mismatch; invalid/non-finite values are omitted; and sparse metadata cannot exclude a candidate by itself. Network and person anchors require their own grounded resolver and are not inferred from titles, studios, or model prose.
+- The LLM does **not** supply trusted identity. Normally it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results; the bounded exact-name fallback below handles providers that ignore the tool. The tool supports **title search**, **genre + era discovery**, **TMDB keyword discovery** for holidays, motifs, franchises, and topics, and validated scalar country/language/runtime/vote qualifiers on discovery — so an abstract intent ("high-energy 90s action") or a thematic one ("cozy Christmas movies") surfaces grounded content instead of depending on an exact title match. Each returned candidate carries the source-backed subset of **genres, short overview, original language/country, runtime, vote average/count, and resolved keyword names** that its corpus supplied. These fields are additive reasoning evidence, never identity or authority: omitted means unknown, not mismatch; invalid/non-finite values are omitted; and sparse metadata cannot exclude a candidate by itself. Network and person anchors require their own grounded resolver and are not inferred from titles, studios, or model prose.
 - TMDB movie and TV discovery use different genre id namespaces. Human genre names are translated per endpoint (`Science Fiction` → movie `878` but TV `10765`, `Action` → movie `28` but TV `10759`, and `Family` → movie `10751` but TV `10762`) before a mixed search is blended. One shared numeric mapping would silently make valid TV discovery empty.
 - Every proposal item resolves to a real id, tagged `in_library: true|false`; unresolvable items are dropped before display.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
+
+A provider that ignores the offered tool may still return schema-valid picks containing plausible
+title names and invented ids. Those names are useful only as **search input**; neither a name nor the
+model's id is identity evidence. When such a turn has picks but this run has surfaced no candidates,
+the Suggester performs one provider-neutral name-grounding fallback: it coalesces at most eight title
+names, runs their independent `Catalog.Search` operations concurrently under the request context,
+and keeps only one unambiguous normalized exact-title match of the requested media type (and year when
+the pick supplied one). Missing, ambiguous, wrong-media, and year-conflicting results are dropped. The
+canonical ids from the surviving Catalog candidates replace every model-authored id, enter the same
+`surfaced` map as native tool results, and pass through the unchanged proposal chokepoint, acquisition
+revalidation, quota, and approval gate. A successful fallback requires no second model call; zero exact
+matches returns the typed no-grounded-title outcome. The fallback is unavailable once another corpus
+has surfaced candidates, so it cannot broaden a successful tool, reference, or adjacency result.
 
 ### Reference-backed Intent
 
@@ -1366,10 +1379,12 @@ discoveries when such candidates exist. The reserve is conditional on relevance 
 qualifier; it never licenses random novelty or forces a weak acquisition.
 
 A schema-valid empty final answer is not accepted immediately when the model never surfaced a catalog
-candidate. Loomarr gives that exact failure one lower-temperature retry that explicitly requires a
-catalog call and names the title/genre/keyword choices. The retry neither invents candidates nor
-widens authority: it still passes through the same read-only tool, surfaced-id chokepoint, acquisition
-revalidation, quota, and approval gate. A second empty answer fails normally, keeping the loop bounded.
+candidate. Loomarr gives that exact pick-less failure one lower-temperature retry that explicitly
+requires a catalog call and names the title/genre/keyword choices. A schema-valid turn that did name
+picks instead takes the bounded exact-name fallback above and is never sent back to the model merely
+to repeat its names as tool arguments. Neither recovery invents candidates or widens authority: both
+still pass through the same read-only Catalog, surfaced-id chokepoint, acquisition revalidation, quota,
+and approval gate. A second empty answer fails normally, keeping the model loop bounded.
 
 Policy grounding does not delegate explicit user constraints back to probabilistic output. A rating
 the user writes (for example, `keep it PG-13`) is retained as the exact audience ceiling even on an
