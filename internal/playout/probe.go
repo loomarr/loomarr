@@ -143,6 +143,7 @@ type SourceObservation struct {
 	Container      string
 	DurationMillis int64
 	Bitrate        int64
+	UnsafePreroll  bool
 	Streams        []ObservedStream
 }
 
@@ -181,7 +182,7 @@ func FFprobeSourceNextTo(ffmpegPath string, observers ...*diagnostics.ProcessMan
 		observer = observers[0]
 	}
 	return func(ctx context.Context, input string) (SourceObservation, error) {
-		result, err := runFFprobeObserved(ctx, bin, input, false, observer)
+		result, err := runFFprobeObserved(ctx, bin, input, true, observer)
 		if err != nil {
 			return SourceObservation{}, err
 		}
@@ -191,8 +192,9 @@ func FFprobeSourceNextTo(ffmpegPath string, observers ...*diagnostics.ProcessMan
 
 func sourceObservationOf(result probed) SourceObservation {
 	observation := SourceObservation{
-		Container: result.Format.FormatName,
-		Bitrate:   parseInt(result.Format.BitRate),
+		Container:     result.Format.FormatName,
+		Bitrate:       parseInt(result.Format.BitRate),
+		UnsafePreroll: formatOf(result).VideoPreroll,
 	}
 	if duration := parseFloat(result.Format.Duration); duration > 0 {
 		observation.DurationMillis = int64(duration * 1000)

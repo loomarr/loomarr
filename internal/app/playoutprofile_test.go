@@ -182,6 +182,7 @@ func TestPlayoutResolver_AudioTrackPersistsFullProbeWhenLibraryUnavailable(t *te
 		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
 			probeCalls++
 			return playout.SourceObservation{Container: "matroska", DurationMillis: 90_000, Bitrate: 4_000_000,
+				UnsafePreroll: true,
 				Streams: []playout.ObservedStream{
 					{Index: 0, Kind: "video", Codec: "h264", Width: 1920, Height: 1080},
 					{Index: 1, Kind: "audio", Codec: "aac", Language: "jpn", Channels: 2},
@@ -208,7 +209,7 @@ func TestPlayoutResolver_AudioTrackPersistsFullProbeWhenLibraryUnavailable(t *te
 		t.Fatalf("persisted fallback = (%+v, %v, %v)", item, ok, err)
 	}
 	facts := item.Sources[0].Measurement.Observation.Facts
-	if facts.Container != "matroska" || facts.DurationMillis != 90_000 || len(facts.Streams) != 3 ||
+	if facts.Container != "matroska" || facts.DurationMillis != 90_000 || !facts.UnsafePreroll || len(facts.Streams) != 3 ||
 		facts.Streams[0].Width != 1920 {
 		t.Fatalf("persisted probe lost superset facts: %+v", facts)
 	}

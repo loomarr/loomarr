@@ -1062,6 +1062,7 @@ func (r *playoutResolver) ensureRemoteInventorySource(ctx context.Context, origi
 func inventoryFactsOf(observed playout.SourceObservation) inventory.SourceFacts {
 	facts := inventory.SourceFacts{
 		Container: observed.Container, DurationMillis: observed.DurationMillis, Bitrate: observed.Bitrate,
+		UnsafePreroll: observed.UnsafePreroll,
 	}
 	for _, stream := range observed.Streams {
 		facts.Streams = append(facts.Streams, inventory.Stream{

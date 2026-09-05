@@ -64,10 +64,11 @@ func TestSourceObservationOf_PreservesSharedProbeSuperset(t *testing.T) {
 			{"index":2,"codec_type":"audio","codec_name":"eac3","channels":6,"channel_layout":"5.1",
 			 "sample_rate":"48000","disposition":{"default":1},"tags":{"language":"eng","title":"Surround"}}
 		],
+		"packets":[{"stream_index":0,"pts_time":"-0.5","flags":"KD_"}],
 		"format":{"format_name":"matroska,webm","duration":"90.25","bit_rate":"4000000"}
 	}`))
 	if observed.Container != "matroska,webm" || observed.DurationMillis != 90_250 || observed.Bitrate != 4_000_000 ||
-		len(observed.Streams) != 2 {
+		!observed.UnsafePreroll || len(observed.Streams) != 2 {
 		t.Fatalf("source observation = %+v", observed)
 	}
 	video, audio := observed.Streams[0], observed.Streams[1]
