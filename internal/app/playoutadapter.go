@@ -172,27 +172,28 @@ type playoutResolver struct {
 	codecs codecWriter
 	cycles *cycleCache
 	// detectOnce / detected cache the measured encoder choice (detectedEncoder). The first live
-	// demand synchronously attempts only the bounded persisted-evidence validation; on a miss,
-	// detectStart starts the full benchmark without making playback wait. detectReady publishes the
-	// completed fields atomically so later programme boundaries use the measured hardware result.
+	// demand synchronously checks only the persisted evidence fingerprint, then detectStart validates
+	// a match (or performs the full benchmark on a miss) without making playback wait.
 	//
 	// Process-cached because Detect trial-encodes every candidate at ~5s apiece — fine once, far
 	// too slow on the per-program path. A verified hardware result can also survive restart through
-	// capabilityRoot, but it must earn reuse with the bounded real validation described below.
+	// capabilityRoot when its cheap host fingerprint still matches; a bounded real validation then
+	// runs asynchronously.
 	detectOnce     sync.Once
 	detectStart    sync.Once
 	detectEvidence sync.Once
 	inputsOnce     sync.Once
 	detectReady    atomic.Bool
+	detectedMu     sync.RWMutex
 	detectContext  context.Context
 	detected       playout.Encoder
 	maxChannels    atomic.Int64
 	capabilityBin  string
 	capabilityGPU  string
 	capabilityPath string
-	// Test seam for the bounded persisted-evidence check. Nil uses the real FFmpeg/GPU
-	// fingerprint and one-second encoder trial; it never runs the full benchmark.
-	validateCapabilityEvidence func(context.Context) (playout.Capacity, bool)
+	// Test seam for the cheap persisted-evidence identity check. Nil fingerprints the real
+	// FFmpeg/GPU/profile and reads the evidence; it starts no encoder trial or full benchmark.
+	loadCapabilityEvidence func(context.Context) (playout.Capacity, bool)
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -1378,9 +1379,9 @@ func (r *playoutResolver) PlanFor(
 func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	enc := playout.Encoder(r.encoder())
 	if enc == "" {
-		// A matching persisted result pays only its bounded real validation and is available to this
-		// first tune. A miss starts the expensive full benchmark asynchronously; until that completes,
-		// software is the conservative immediately-available fallback.
+		// A matching persisted result is available to this first tune after only its host fingerprint
+		// matches. Its real encoder validation runs asynchronously; a miss likewise starts the full
+		// benchmark in the background and uses software until a safe result is ready.
 		//
 		// This used to fall straight through to libx264 with a comment claiming the
 		// capability prober's choice "was stored at wizard time" — but nothing ever stored
@@ -1392,10 +1393,9 @@ func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 		r.reuseEncoderEvidence(ctx)
 		enc = playout.EncoderSoftware
 		if r.detectReady.Load() {
-			enc = r.detected
-		} else {
-			r.warmEncoderDetection(ctx)
+			enc = r.publishedEncoder()
 		}
+		r.warmEncoderDetection(ctx)
 	}
 	return playout.Resolve(playout.TierFor(r.tier()), enc, r.capacity(), r.activeChannels())
 }
@@ -1404,12 +1404,12 @@ func (r *playoutResolver) reuseEncoderEvidence(ctx context.Context) {
 	r.detectEvidence.Do(func() {
 		var capacity playout.Capacity
 		var ok bool
-		if r.validateCapabilityEvidence != nil {
-			capacity, ok = r.validateCapabilityEvidence(ctx)
+		if r.loadCapabilityEvidence != nil {
+			capacity, ok = r.loadCapabilityEvidence(ctx)
 		} else {
 			bin, gpu, root := r.capabilityInputs()
-			capacity, ok = playout.ValidateObservedCapabilityEvidence(
-				ctx, bin, playout.DefaultProfile(), gpu, root, r.processDiagnostics,
+			capacity, ok = playout.LoadMatchingObservedCapabilityEvidence(
+				ctx, bin, playout.DefaultProfile(), gpu, root,
 			)
 		}
 		if ok {
@@ -1441,17 +1441,13 @@ func (r *playoutResolver) warmEncoderDetection(fallback context.Context) {
 // complete measurement and atomically replaces that evidence.
 func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 	r.detectOnce.Do(func() {
-		r.reuseEncoderEvidence(ctx)
-		if r.detectReady.Load() {
-			return
-		}
 		bin, gpu, root := r.capabilityInputs()
 		cap, reused := playout.DetectObservedWithEvidence(
 			ctx, bin, playout.DefaultProfile(), gpu, root, r.processDiagnostics,
 		)
 		r.publishDetectedCapacity(cap, reused)
 	})
-	return r.detected
+	return r.publishedEncoder()
 }
 
 func (r *playoutResolver) capabilityInputs() (bin, gpu, root string) {
@@ -1473,7 +1469,9 @@ func (r *playoutResolver) capabilityInputs() (bin, gpu, root string) {
 }
 
 func (r *playoutResolver) publishDetectedCapacity(cap playout.Capacity, reused bool) {
+	r.detectedMu.Lock()
 	r.detected = cap.Chosen
+	r.detectedMu.Unlock()
 	r.maxChannels.Store(int64(cap.MaxChannels))
 	if r.log != nil {
 		skipped := make([]string, 0, len(cap.All))
@@ -1487,6 +1485,12 @@ func (r *playoutResolver) publishDetectedCapacity(cap playout.Capacity, reused b
 			"reused_verified_evidence", reused, "skipped", skipped)
 	}
 	r.detectReady.Store(true)
+}
+
+func (r *playoutResolver) publishedEncoder() playout.Encoder {
+	r.detectedMu.RLock()
+	defer r.detectedMu.RUnlock()
+	return r.detected
 }
 
 // HWEncodeSlots is how many concurrent HARDWARE encodes this box sustains — the capability probe's

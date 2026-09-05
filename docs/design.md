@@ -2126,17 +2126,19 @@ served concurrently without reserving imaginary encoders, while simultaneous pre
 never convert them into unbounded live transcodes.
 
 The full host capability benchmark is control-plane warming, never tune-time work. With no explicit
-encoder override, the first actual media demand first checks for matching persisted evidence. When
-present, that demand waits only for its bounded real validation and uses the verified encoder on its
-first live child. Absent, expired, mismatched, malformed, or failed evidence starts the full benchmark
-in the background and playback proceeds with the software fallback until a safe result is ready;
-merely configuring Channels starts no media processes. A successful hardware result and measured
-capacity are written as versioned, bounded evidence beneath the persistent prepared root; the record
-includes an FFmpeg-build fingerprint, GPU identity, profile identity, and observation time.
-On restart Loomarr may publish that result only after the fingerprints match, the evidence is still
-within its bounded freshness window, and a short real keyframe-bearing MPEG-TS trial proves the
-chosen encoder still works. A mismatch, expiry, malformed record, or failed validation falls back
-to the full benchmark and replaces the evidence atomically on success. Software-only and explicit
+encoder override, the first actual media demand checks the persisted evidence against the current
+FFmpeg/GPU/profile fingerprint. A fresh exact match makes that previously verified encoder available
+to the first live child immediately, while its bounded real validation runs in the background. An
+absent, expired, mismatched, or malformed record starts the full benchmark in the background and
+playback proceeds with the software fallback until a safe result is ready. Failed revalidation also
+runs the full benchmark; any meanwhile-failed hardware child uses the existing software fallback
+ladder. Merely configuring Channels starts no media processes. A successful hardware result and
+measured capacity are written as versioned, bounded evidence beneath the persistent prepared root;
+the record includes an FFmpeg-build fingerprint, GPU identity, profile identity, and observation time.
+On restart Loomarr may publish that result only after the fingerprints match and the evidence is
+still within its bounded freshness window, then a short real keyframe-bearing MPEG-TS trial revalidates
+the chosen encoder asynchronously. A mismatch, expiry, malformed record, or failed validation falls
+back to the full benchmark and replaces the evidence atomically on success. Software-only and explicit
 operator choices are not reused as hardware evidence. This turns a normal restart into one bounded
 validation rather than re-running every multi-second candidate and warm-capacity trial, without
 trusting an encoder merely because FFmpeg lists it. A viewer may not inherit either benchmark.

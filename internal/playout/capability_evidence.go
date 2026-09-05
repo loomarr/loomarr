@@ -57,19 +57,16 @@ func DetectObservedWithEvidence(
 	})
 }
 
-// ValidateObservedCapabilityEvidence performs only the bounded restart fast path. A miss never
-// launches the full candidate/capacity benchmark, allowing a first tune to fall back to software
-// while that expensive work warms in the background.
-func ValidateObservedCapabilityEvidence(
+// LoadMatchingObservedCapabilityEvidence performs only the cheap restart identity check. It never
+// launches an encoder trial or the full candidate/capacity benchmark. Callers may therefore use a
+// still-fresh measurement immediately when the FFmpeg/GPU/profile fingerprint is unchanged, while
+// DetectObservedWithEvidence revalidates that measurement asynchronously.
+func LoadMatchingObservedCapabilityEvidence(
 	ctx context.Context, ffmpegPath string, profile Profile, gpu, root string,
-	manager *diagnostics.ProcessManager,
 ) (Capacity, bool) {
-	capacity, _, ok := validatedCapabilityEvidence(ctx, ffmpegPath, profile, gpu, root, capabilityEvidenceDependencies{
+	capacity, _, ok := matchingCapabilityEvidence(ctx, ffmpegPath, profile, gpu, root, capabilityEvidenceDependencies{
 		now:         time.Now,
 		fingerprint: hostCapabilityFingerprint,
-		validate: func(ctx context.Context, ffmpeg string, encoder Encoder, profile Profile) Capability {
-			return trialEncodeObserved(ctx, ffmpeg, encoder, profile, capabilityValidationSecs, manager)
-		},
 	})
 	return capacity, ok
 }
@@ -100,6 +97,21 @@ func validatedCapabilityEvidence(
 	ctx context.Context, ffmpegPath string, profile Profile, gpu, root string,
 	deps capabilityEvidenceDependencies,
 ) (Capacity, string, bool) {
+	capacity, fingerprint, ok := matchingCapabilityEvidence(ctx, ffmpegPath, profile, gpu, root, deps)
+	if !ok || deps.validate == nil {
+		return Capacity{}, fingerprint, false
+	}
+	validated := deps.validate(ctx, ffmpegPath, capacity.Chosen, profile)
+	if !validated.Works {
+		return Capacity{}, fingerprint, false
+	}
+	return capacity, fingerprint, true
+}
+
+func matchingCapabilityEvidence(
+	ctx context.Context, ffmpegPath string, profile Profile, gpu, root string,
+	deps capabilityEvidenceDependencies,
+) (Capacity, string, bool) {
 	if deps.now == nil {
 		deps.now = time.Now
 	}
@@ -108,11 +120,7 @@ func validatedCapabilityEvidence(
 		return Capacity{}, "", false
 	}
 	evidence, ok := loadCapabilityEvidence(root, fingerprint, deps.now())
-	if !ok || deps.validate == nil {
-		return Capacity{}, fingerprint, false
-	}
-	validated := deps.validate(ctx, ffmpegPath, evidence.Encoder, profile)
-	if !validated.Works {
+	if !ok {
 		return Capacity{}, fingerprint, false
 	}
 	return Capacity{Chosen: evidence.Encoder, MaxChannels: evidence.MaxChannels}, fingerprint, true

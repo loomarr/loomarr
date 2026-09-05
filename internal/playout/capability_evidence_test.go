@@ -32,6 +32,32 @@ func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing
 	}
 }
 
+func TestMatchingCapabilityEvidenceDoesNotRunEncoderValidation(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	if err := storeCapabilityEvidence(root, capabilityEvidence{
+		Version: capabilityEvidenceVersion, Fingerprint: "host-a",
+		Encoder: EncoderNVENC, MaxChannels: 7, ObservedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	validationCalls := 0
+	capacity, _, ok := matchingCapabilityEvidence(
+		t.Context(), "ffmpeg", DefaultProfile(), "nvidia", root,
+		capabilityEvidenceDependencies{
+			now:         func() time.Time { return now },
+			fingerprint: func(context.Context, string, string, Profile) (string, error) { return "host-a", nil },
+			validate: func(context.Context, string, Encoder, Profile) Capability {
+				validationCalls++
+				return Capability{Encoder: EncoderNVENC, Works: true}
+			},
+		},
+	)
+	if !ok || capacity.Chosen != EncoderNVENC || capacity.MaxChannels != 7 || validationCalls != 0 {
+		t.Fatalf("matching evidence = %+v ok=%v validation calls=%d", capacity, ok, validationCalls)
+	}
+}
+
 func TestDetectObservedWithEvidenceRejectsMismatchExpiryAndFailedValidation(t *testing.T) {
 	for _, test := range []struct {
 		name       string
