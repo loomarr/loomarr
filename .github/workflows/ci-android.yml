@@ -36,3 +36,12 @@ jobs:
           key: android-tv-react-native-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.run_id }}
           restore-keys: android-tv-react-native-${{ runner.os }}-
       - run: make android
+        env:
+          ANDROID_CI_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/android-ci
+      - name: Retain the exact unsigned merge-result bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: loomarr-android-unsigned-${{ github.sha }}
+          path: .artifacts/android-ci/*
+          if-no-files-found: error
+          retention-days: 30

@@ -20,6 +20,24 @@ const memoryStore = (credential?: PairingCredential) => ({
 });
 
 describe("pairing contract", () => {
+  it("returns a failed attempt to clean server selection without retaining a code", async () => {
+    const session = new PairingSession({
+      createTransport: () => ({
+        poll: vi.fn(),
+        start: vi.fn(async () => {
+          throw new Error("unreachable");
+        }),
+      }),
+      deviceName: "Living room",
+      store: memoryStore(),
+    });
+    await session.pair("http://loomarr.local:8080");
+    expect(session.snapshot()).toMatchObject({ status: "failed" });
+
+    session.chooseServer();
+
+    expect(session.snapshot()).toEqual({ status: "needs-server" });
+  });
   it("accepts only origin-like http addresses", () => {
     expect(normalizeServerUrl(" https://loomarr.media/// ")).toBe("https://loomarr.media");
     expect(normalizeServerUrl("https://user:secret@loomarr.media")).toBeUndefined();

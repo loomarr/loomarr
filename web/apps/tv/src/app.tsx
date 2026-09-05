@@ -10,6 +10,7 @@ import {
 } from "@loomarr/core/pairing";
 import { createServerVersionSource } from "@loomarr/core/system-version";
 import { BrandLaunch, LoomarrProvider } from "@loomarr/design-system";
+import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import { createPlayerController } from "@loomarr/player";
 import {
   createExpoVideoTransport,
@@ -53,6 +54,7 @@ import appConfig from "../app.json";
 void SplashScreen.preventAutoHideAsync();
 
 const clientVersion = process.env.EXPO_PUBLIC_LOOMARR_CLIENT_VERSION ?? appConfig.expo.version;
+const launchMinimumMs = 1_200;
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -252,6 +254,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     snapshot.channel?.id,
     snapshot.livePlayback?.viewerTimeMs ?? Date.now(),
   );
+  const dismissControls = useCallback(() => setControlsVisible(false), []);
   return (
     <View style={{ flex: 1 }}>
       <WatchingSurface
@@ -263,7 +266,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
         loadError={loadError}
         onChannelDown={() => void controller.step(-1)}
         onChannelUp={() => void controller.step(1)}
-        onDismissControls={() => setControlsVisible(false)}
+        onDismissControls={dismissControls}
         onGoLive={() => void controller.goLive()}
         onOpenGuide={() => dispatchRemoteEvent({ key: "select" })}
         onOpenSurf={() => setActive("surf")}
@@ -387,8 +390,11 @@ const TvPairedRoot = ({
 const TvClient = () => {
   useKeepAwake();
   const insets = useSafeAreaInsets();
-  const [launchFinished, setLaunchFinished] = useState(false);
+  const [launchAnimationFinished, setLaunchAnimationFinished] = useState(false);
+  const [launchMinimumElapsed, setLaunchMinimumElapsed] = useState(false);
+  const launchStartedAt = useRef(Date.now());
   const nativeSplashHidden = useRef(false);
+  const discovery = useMemo(createNativeServerDiscovery, []);
   const session = useMemo(
     () =>
       new PairingSession({
@@ -404,18 +410,25 @@ const TvClient = () => {
     nativeSplashHidden.current = true;
     SplashScreen.hide();
   }, []);
+  useEffect(() => {
+    const remaining = Math.max(0, launchMinimumMs - (Date.now() - launchStartedAt.current));
+    const timer = setTimeout(() => setLaunchMinimumElapsed(true), remaining);
+    return () => clearTimeout(timer);
+  }, []);
   return (
     <LoomarrProvider insets={insets} theme="dark">
       <View onLayout={hideNativeSplash} style={{ flex: 1 }}>
         <PairingShell
+          allowServerEntry
           density="tv"
+          discovery={discovery}
           initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
           renderPaired={(credential) => <TvPairedRoot credential={credential} session={session} />}
           session={session}
         />
-        {launchFinished ? null : (
+        {launchAnimationFinished && launchMinimumElapsed ? null : (
           <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
-            <BrandLaunch density="tv" onFinished={() => setLaunchFinished(true)} />
+            <BrandLaunch density="tv" onFinished={() => setLaunchAnimationFinished(true)} />
           </View>
         )}
       </View>

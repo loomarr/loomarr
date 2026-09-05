@@ -8,7 +8,8 @@ The full rationale and current Google requirements are in
 
 ## Release identity
 
-The protected workflow accepts one version name and derives its Play code:
+[`web/apps/tv/android-release.json`](../../web/apps/tv/android-release.json) owns the next version
+name. CI and the protected workflow independently derive and verify its Play code:
 
 ```text
 major * 100000000 + minor * 1000000 + patch * 10000 + channel
@@ -60,24 +61,21 @@ The service account is invited to Play Console only after the first manual AAB e
 to `loomarr.media` and testing-track release rights; do not grant account administration or
 Production access. Enable the Google Play Developer API in its Cloud project.
 
-## First signed AAB
+## Artifact production and first signed AAB
 
-Run **Android TV beta** from `main` with:
+Changing the release identity or any Android input makes the merge queue compile one unsigned AAB.
+CI verifies and retains it with its exact commit, workflow run, immutable artifact id, and SHA-256
+digest. Before the first automated publication, run **Android TV beta** from that exact `main` with:
 
-- version `0.1.0-beta.1`;
 - **Publish to Play** disabled.
 
-The workflow requires current `main` to have successful Android CI evidence. The newest main-branch
-run whose Android job actually executed must be successful; the guard accepts both the plain and
-qualified job names reported for the reusable workflow. Evidence from an ancestor may be reused only when that commit
-is still in current `main`'s ancestry and the fail-closed CI impact classifier proves that no Android
-input changed afterward; any TV, shared-client, generated API, build, listing, or signing input
-change requires a fresh Android gate. The workflow generates the Android project from `web/apps/tv`,
-builds with the protected upload key, verifies the signature and certificate, checks `loomarr.media`,
-requires all four Android ABIs, verifies 16 KiB ELF alignment for every packaged 64-bit native
-library, and retains the AAB plus its JSON evidence for 30 days. Download that AAB and upload it
-manually while enrolling
-in Play App Signing.
+The protected workflow accepts only the unique, unexpired Android artifact produced for its exact
+current-main commit. It downloads by immutable artifact id, verifies source/run/digest and unsigned
+state, signs with the protected upload key, proves all non-signature entries stayed byte-identical,
+then repeats package, version, ABI, 16 KiB, launcher, banner, JavaScript, and certificate checks. It
+retains the signed AAB and evidence for 30 days. It does not install Node, run Expo, Gradle, CMake, or
+any Apple build. Download that first signed AAB and upload it manually only while enrolling in Play
+App Signing; subsequent Internal releases use the publisher.
 
 Do not use Internal App Sharing for acceptance; it re-signs artifacts with a disposable identity and
 does not prove the beta update path.
@@ -85,9 +83,34 @@ does not prove the beta update path.
 ## Automated testing-track release
 
 After the manual bootstrap and service-account setup, dispatch the workflow with **Publish to Play**
-enabled. The publisher opens one Play edit, uploads the exact digest-verified AAB, replaces the
+enabled. The publisher opens one Play edit, uploads the exact signed and digest-verified AAB, replaces the
 Internal track release, and commits the edit. Global concurrency prevents two edits from racing.
 The workflow exposes no Closed, Open, or Production choice.
+
+Before dispatch, the exact CI artifact must pass the clean-install journey on a Loomarr-owned Android
+TV emulator on the maintainer's machine. The journey starts with empty app data and no embedded
+server URL, observes the launcher artwork and process-dead launch animation, uses automatic LAN
+discovery (plus the manual fallback in a separate case), completes pairing, restarts into Watching,
+and proves the playbar hides after five seconds of remote inactivity. Agents never use the physical
+Shield for this release gate.
+
+Download the exact merge-queue artifact, then run the compile-free acceptance harness with one
+explicit emulator serial:
+
+```bash
+LOOMARR_TV_EMULATOR_SERIAL=emulator-5554 \
+  ./scripts/test-android-release-emulator.sh \
+  .artifacts/android-ci/loomarr-tv-<version>-<code>-unsigned.aab \
+  .artifacts/android-ci/loomarr-tv-<version>-<code>-unsigned.json
+```
+
+The harness refuses physical-device serials, verifies the producer digest and bundle identity,
+creates device-specific APK splits with a disposable local key, and installs only those splits. It
+then drives automatic DNS-SD pairing and a separate manual-address pairing against an isolated
+fixture, checks the five-second playbar deadline, and retains screenshots, a paired cold-launch
+recording, and digest-bound acceptance evidence under `.artifacts/emulator-proof/`. It downloads
+the pinned official bundletool only when `LOOMARR_BUNDLETOOL_JAR` is not supplied; no application
+source is compiled.
 
 If publication fails, inspect the Play edit error and dispatch a new version only after determining
 whether Play consumed the code. Never lower or reuse a code. Halt a bad rollout in Play Console;

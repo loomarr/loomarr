@@ -99,6 +99,13 @@ classify() {
       select_gate expo_android_tv
       select_gate android
       ;;
+    web/packages/lan-discovery-native/*)
+      known=true
+      select_gate clients
+      select_gate apple_tv
+      select_gate expo_android_tv
+      select_gate android
+      ;;
     web/packages/design-system/*|web/packages/ui/*|web/packages/ui-tv/*)
       known=true
       select_gate clients
@@ -368,8 +375,8 @@ classify() {
         scripts/ci-impact*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/testdata/ci-*) select_gate policy ;;
         scripts/dev-*) select_gate contracts; select_gate agent ;;
         # The validator is the other half of that authority and likewise requires fresh evidence.
-        scripts/validate-android-release-source.sh) select_gate android; select_gate policy ;;
-        scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh) select_gate android ;;
+        scripts/validate-android-release-source.sh|scripts/download-android-ci-artifact.sh|scripts/sign-android-ci-artifact.sh) select_gate android; select_gate policy ;;
+        scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/test-android-release-emulator.sh) select_gate android ;;
         scripts/generate-brand-assets.mjs|scripts/check-brand-assets.mjs) select_gate clients; select_gate android ;;
         scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
         *) select_gate contracts ;;

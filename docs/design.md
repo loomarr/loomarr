@@ -166,6 +166,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Concrete adapter for Loomarr's required Rust image worker (§22).
 - **`inventory`** · 3 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
+- **`landiscovery`**
+  Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
 - **`plannerreference`**
@@ -2474,6 +2476,25 @@ the server-authored clock, never the television RTC. Pairing, device capability 
 latest-request-wins tuning, signed URL handling, bounded player error recovery, and overscan-safe
 margins remain unchanged.
 
+An unpaired TV normally never asks the viewer to type a server URL. While Loomarr is running it
+advertises `_loomarr._tcp.local.` over DNS-SD/mDNS with a human-readable instance name, HTTP port,
+protocol version `1`, and the HTTP scheme served by the application listener. The advertisement
+contains no credential, user identity, path, query, or externally routable address, is limited to the local
+multicast domain, and is best-effort: advertisement failure is logged and never prevents the HTTP
+service from becoming ready. It starts and stops with one application generation.
+
+The Android TV adapter browses that service type only while the unpaired connection screen is in the
+foreground. Found, updated, and lost instances are de-duplicated by service identity; resolved IPv4
+and IPv6 addresses are rendered as remote-focusable Loomarr server choices. Discovery grants no
+trust or authorization: the viewer explicitly chooses a server and then completes the existing
+revocable device-code pairing. With one result the screen presents one primary Connect action; with
+several it presents a choice. **Enter address manually** remains a secondary troubleshooting action
+for VLANs, guest networks, or routers that block multicast and uses the platform URL keyboard (which
+also accepts input from the Google TV phone remote). A release contains no household URL. Discovery
+timeout, permission failure, and zero results leave manual setup usable rather than presenting build
+instructions. Android's `NsdManager` owns platform discovery behind a small Java React Native adapter;
+this does not restore the retired Kotlin application or put discovery mechanics into pairing state.
+
 Watching, Surf, and Guide share one app-scoped **playable Channel catalog**; no surface snapshots
 its own lineup. The catalog treats authenticated `/v1/events` `channel` frames only as invalidation
 signals and always re-reads `GET /v1/channels` as the authority. It performs the same full read when
@@ -2519,15 +2540,25 @@ stays below Android's version-code ceiling. The build derives the code from the 
 operator does not type two independent identities that can drift.
 
 The sideload artifact is a signed APK containing the production React Native entry and only the
-`arm64-v8a` native libraries required by the Shield. The Play artifact is a signed Android App
-Bundle from the same React Native TV source and contains `armeabi-v7a`, `arm64-v8a`, `x86`, and
+`arm64-v8a` native libraries required by the Shield. The Play producer compiles one unsigned Android
+App Bundle from the same React Native TV source, the exact merge-result commit, and a
+source-controlled release identity. It contains `armeabi-v7a`, `arm64-v8a`, `x86`, and
 `x86_64`; every packaged 64-bit ELF LOAD segment is aligned for 16 KiB pages. Android's 16 KiB
 devices are 64-bit, so the required `arm64-v8a` and `x86_64` libraries carry that alignment while
-the separately required 32-bit TV ABIs retain their platform alignment. Both builds require all four
-keystore inputs, keep signing material outside the repository, and record machine-readable evidence
-for the artifact digest, package, name, code, upload-certificate digest, launcher activity, TV
-launcher metadata, icon, banner, embedded JavaScript bundle, and packaged ABI set. The local test
-paths create ephemeral signing material and perform the same artifact inspections. The sideload test
+the separately required 32-bit TV ABIs retain their platform alignment. CI verifies package, name,
+code, launcher activity, TV launcher metadata, icon/banner resources, embedded startup identity,
+JavaScript bundle, ABI set, and the unsigned artifact digest, then retains that bundle with evidence
+bound to the exact workflow run and commit. Before release dispatch, the maintainer's compile-free
+emulator harness verifies the same digest, installs device-specific splits, and supplies the visible
+clean-install, discovery, manual fallback, startup-animation, pairing, playback, and playbar evidence
+that archive inspection cannot. The protected Internal-release job downloads that immutable artifact
+by id, rejects missing/expired/ambiguous provenance, digest drift, any pre-existing signature, and
+unexpected `META-INF` material, signs it with the durable upload key using the pinned JDK, proves
+every non-signature ZIP entry is unchanged, and re-runs the certificate-bound verifier before
+optional publication. It performs no Gradle, CMake, Expo prebuild, Node installation, or Apple build.
+There is no rebuild fallback and no name-only/latest-artifact selection. The sideload path still
+requires all four keystore inputs and records the same applicable artifact evidence. Local release
+tests create ephemeral signing material. The sideload test
 also cleanly uninstalls any prior `loomarr.media` package from a Loomarr-owned Android TV emulator,
 installs the APK, and cold-launches the Leanback activity.
 
@@ -7247,6 +7278,8 @@ surface without a wire-format migration. The opt-in profiler also exposes Go 1.2
 | Pairing QR rendering | **`qrcode` behind a Loomarr-owned `QrCode` interface** | Pairing must preserve the shipping scan path on web, iOS, Android, Android TV, and Apple TV. The library generates the standards-correct matrix and Loomarr renders that matrix through the already-approved `react-native-svg` substrate; keeping it private to the design system prevents product modules from depending on its API or inventing divergent QR treatments. Hand-writing a QR encoder would add security- and interoperability-sensitive code for no product value, while a React Native wrapper would publish JSX-in-JavaScript that requires client-specific transpiler exceptions. |
 | Native client runtime | **Expo + React Native; `react-native-tvos` for TV builds; Expo Router at the navigation seam; `expo-video` behind the native player adapter** | One maintained React/React Native toolchain serves iOS, Android, Android TV, and Apple TV while preserving platform-specific navigation, focus, safe-area, overscan, and playback adapters. Every Expo app in the monorepo resolves the same React Native TV version to prevent duplicate native runtimes. `expo-video` is the supported AVPlayer/ExoPlayer HLS host and remains an optional peer behind `@loomarr/player/native`; browser and platform-neutral player entries never import it. Expo's supported Reanimated and Worklets versions are direct app dependencies because optional-peer auto-resolution can select native-incompatible releases that JavaScript-only doctor and bundle checks miss. `expo-splash-screen` owns the generated native launch screen so the shared Loomarr startup identity is preserved without checking generated iOS or Android projects into source. The Expo config-plugin API is a direct build dependency because Loomarr's generated Android build limits must not depend on pnpm's transitive layout. The TV app directly owns `expo-keep-awake` so pairing and playback cannot disappear behind the platform ambient screen while the viewer is actively using Loomarr. Local Android builds set Gradle's worker ceiling and `CMAKE_BUILD_PARALLEL_LEVEL`, and the generated root Gradle project registers one-slot CMake compile/link pools for every Android application and library subproject as its plugin is applied. The environment setting bounds `cmake --build`; the generated pools separately govern AGP's direct Ninja invocations for native dependencies such as Reanimated, which otherwise fan out enough compiler processes to pin a 4 GB scope at its memory-high threshold. The debug device target also runs Expo's embed generator before Gradle packaging; an `assembleDebug` APK without that step is a Metro client, not a standalone physical-device proof. Apple CI uses GitHub's dedicated Xcode 27 preview image and fails closed on the 27.x major. The native apps pin one coordinated Expo SDK 58 canary release until SDK 58 is stable because the iOS 27 SDK requires the UIScene lifecycle: Expo 57 prebuild crashes before React starts, while the pinned SDK 58 build supplies Expo's complete `ExpoAppSceneDelegate` lifecycle and React factory provider. A partial project-local scene patch is rejected because it can survive launch while leaving a blank window or bypassing Expo lifecycle, deep-link, and system-UI forwarding. Expo prebuild keeps native projects inspectable and makes local Xcode/Gradle and future store builds possible; EAS is optional distribution infrastructure, not the only build path. |
 | Native paired credential storage | **`expo-secure-store` behind the shared pairing store port** | A revocable device token must survive restarts without entering AsyncStorage or application state. SecureStore uses Android Keystore-backed encrypted preferences and Apple Keychain, supports the TV targets, and is the narrow Expo-native adapter for the shared validated credential envelope. The credential remains member-scoped; corrupt local data is cleared, and only an authoritative 401 removes a valid stored token. |
+| Local TV server discovery | **`github.com/grandcat/zeroconf` v1.0.0 for bounded Go advertisement; Android `NsdManager` behind a Loomarr-owned Java React Native adapter** | A self-hosted TV client should not require remote-control URL entry. The pure-Go library publishes standard DNS-SD/mDNS records without a daemon or cloud service; the platform API browses and resolves them without adding a native dependency or restoring Kotlin. Both sit behind Loomarr-owned lifecycle and discovery interfaces; manual URL entry remains the permanent fallback and discovery never grants authorization. |
+| Android App Bundle emulator install | **Google `bundletool` 1.18.1, downloaded from its official release and pinned by SHA-256** | Release acceptance must install device-specific APK splits from the exact unsigned CI AAB without asking Gradle or Expo to compile another artifact. The harness signs only those disposable emulator APKs with a one-day local key; the AAB bytes and producer evidence remain untouched. This tool is local release-test infrastructure and does not ship in Loomarr or the Android application. |
 | Server state + API client | **TanStack Query** with hooks **generated by `orval`** from `api/openapi.yaml` | One generator yields both types and query/mutation hooks; `openapi-typescript`+`openapi-fetch` rejected only because orval removes more hand-written glue |
 | Wire schemas for validation | **`orval` `client: "zod"`**, a second output block over the same spec → `@loomarr/api/zod` | The form schemas in `packages/core` used to MIRROR wire field names by hand, and it shipped a bug: `intentSchema` said `maxAcquire` where the wire says `maxAcquisitions` (and `runtimeTarget` for `runtimeTargetMin`), so a user's acquisition cap serialized into JSON the server ignored and silently vanished. Each schema is now `.pick()`ed off its generated wire schema, making a lookalike name a **compile error at the schema definition** (`Type 'true' is not assignable to type 'never'`). ⚠ This replaces a hand-written contract test that covered **one** of three schemas with a guarantee that covers all three and every future one — the same "a grep beats a convention" reasoning as `check-retired.sh`. ⚠ **Generation carries names and types, NOT rules:** the spec declares 5 `minimum`, 3 `maximum` and 7 `minLength` in ~9k lines and `maxAcquisitions` has no bounds at all, and OpenAPI has nowhere to put a user-facing message — so trims, lengths, the 0–200 cap and all copy stay hand-authored in `.extend()`, and `confirm` (form-only, never sent) is added there too. Zod stays on v3; `zod@3.25.76` exposes the `./v4` bridge subpath, so v4 remains a separate decision. ⚠ **This row said the mock generator was rejected outright; that was true at V53a and is no longer.** It was rejected for its DATA because it targets OpenAPI 3.0 idioms while this spec is 3.1 — it degraded `type: ["array","null"]` to `arrayElement([[], null])` without descending into `items` (137 never-populated list fields), and `useExamples` reads singular `.example` where Huma emits plural `examples:` (0 of 53 tags used). **V53b removed the first half** by making arrays non-nullable, taking never-populated list mocks to 0; the `useExamples` half remains, which is why it stays unset. See the MSW row below for what is adopted and what is still not trusted. |
 | FE test mocking | **`msw`** + **`@faker-js/faker`** (devDeps), handlers generated by `orval` `mock: { type: "msw" }` → `@loomarr/api/msw` | Before V53d, **31 test files each hand-rolled a local `stubFetch`**, so 31 places independently encoded what the wire looks like — the FE doing exactly what the Go side bans ("Phases do not invent private mocks; extend the testkit"). This is that shared layer. ⚠ **What is generated is the WIRING, not the data.** The URL, method and status come from the spec, so a renamed route is fixed by a regenerate where a hand-written path would silently stop matching and its test keep passing against nothing — `/v1/suggestions` → `/v1/proposals` (V41) is the case this repo has lived (named here as the historical example, not as a live route — retired-ok). ⚠ **The generated DATA is never trusted and every test passes an override:** optional fields emit as `arrayElement([value, undefined])` so presence varies per CALL, and nothing is seeded, which is flaky rather than merely arbitrary. `useExamples` stays UNSET — it reads singular `example` and Huma emits 3.1 plural `examples:`, so setting it would imply a guarantee that does not hold. ⚠ **`onUnhandledRequest: "error"` is NOT used**, because it does not fail a test: MSW's docs define it as "print an error and halt request execution", and the maintainer confirms (mswjs/msw#946) that the interceptor swallows the exception so the runner never sees it. `src/test/msw/server.ts` records unhandled requests and throws in `afterEach` instead — which is what makes a moved route go red. Fixtures are parsed through their generated zod response schema (`validated()`), catching fixture drift where orval cannot: its `runtimeValidation` is absent in 7.21.0, and in 8.x the only `.parse()` injection is the Angular path while the custom-mutator branch returns before it (orval PR #3226, open). `faker` is a transitive requirement of the generated handlers, imported at module scope even though its values are always overridden. `msw`'s build script is denied in `pnpm-workspace.yaml` — it installs a browser service worker, and `setupServer` (Node) needs none. |

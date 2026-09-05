@@ -157,6 +157,9 @@ importers:
       '@loomarr/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
+      '@loomarr/lan-discovery-native':
+        specifier: workspace:*
+        version: link:../../packages/lan-discovery-native
       '@loomarr/player':
         specifier: workspace:*
         version: link:../../packages/player
@@ -508,6 +511,22 @@ importers:
       vitest:
         specifier: 4.1.11
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(msw@2.15.0(@types/node@26.4.0)(typescript@7.0.2))(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.12)(yaml@2.9.0))
+
+  packages/lan-discovery-native:
+    dependencies:
+      '@loomarr/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      react-native:
+        specifier: npm:react-native-tvos@0.86.2-0
+        version: react-native-tvos@0.86.2-0(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react-native-tvos@0.86.2-0)(react@19.2.3)
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
 
   packages/player:
     dependencies:

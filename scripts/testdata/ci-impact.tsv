@@ -19,6 +19,7 @@ web-story-only	web/apps/web/src/design/typography/typography.stories.tsx	web,vis
 web-runtime-tokens	web/packages/tokens/src/tokens/tokens.ts	web,visual,tuner,image
 mobile-client	web/apps/mobile/app/index.tsx	clients,apple_mobile,expo_android_mobile
 tv-client	web/apps/tv/src/app.tsx	clients,apple_tv,expo_android_tv,android
+android-lan-discovery-native	web/packages/lan-discovery-native/index.ts	clients,apple_tv,expo_android_tv,android
 shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-ui-tv	web/packages/ui-tv/src/watching-navigation/watching-navigation.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-api	web/packages/api/src/unwrap/unwrap.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
@@ -45,6 +46,9 @@ openapi	api/openapi.yaml	contracts,go,go_full,web,clients,apple_mobile,apple_tv,
 android-listing	store-listing/android-tv/en-US/short-description.txt	android
 android-impact-authority	scripts/ci-impact.sh	android,policy
 android-source-validator	scripts/validate-android-release-source.sh	android,policy
+android-artifact-downloader	scripts/download-android-ci-artifact.sh	android,policy
+android-artifact-signer	scripts/sign-android-ci-artifact.sh	android,policy
+android-emulator-acceptance	scripts/test-android-release-emulator.sh	android
 release-image	Dockerfile	contracts,image
 observability-bundle	observability/metrics-manifest.txt	contracts
 documentation	docs/dev/testing.md	docs
