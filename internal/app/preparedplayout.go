@@ -188,8 +188,8 @@ func (r *preparedRuntimeResolver) plan(
 	resolvedBindings := make(map[prepared.BindingKey]prepared.Binding)
 	staleBindings := make([]prepared.BindingKey, 0)
 	policy := r.sourcePolicy()
-	hotResolutionAttempts := 0
-	optionalResolutionAttempts := 0
+	hotBindingResolutions := 0
+	optionalBindingResolutions := 0
 	optionalCandidates := 0
 	for _, key := range keys {
 		need := needed[key]
@@ -204,22 +204,22 @@ func (r *preparedRuntimeResolver) plan(
 				channelReady[key.ChannelID] = false
 				continue
 			}
+			if need.class == prepared.CandidateLookahead {
+				if optionalBindingResolutions >= preparedOptionalResolutionBatch {
+					channelReady[key.ChannelID] = false
+					continue
+				}
+				optionalBindingResolutions++
+			} else {
+				if hotBindingResolutions >= preparedHotResolutionBatch {
+					channelReady[key.ChannelID] = false
+					continue
+				}
+				hotBindingResolutions++
+			}
 			var resolved bool
 			request, resolved = r.resolveSourceFromInventory(ctx, key)
 			if !resolved {
-				if need.class == prepared.CandidateLookahead {
-					if optionalResolutionAttempts >= preparedOptionalResolutionBatch {
-						channelReady[key.ChannelID] = false
-						continue
-					}
-					optionalResolutionAttempts++
-				} else {
-					if hotResolutionAttempts >= preparedHotResolutionBatch {
-						channelReady[key.ChannelID] = false
-						continue
-					}
-					hotResolutionAttempts++
-				}
 				request, resolved = r.resolveSource(ctx, key)
 			}
 			if !resolved {

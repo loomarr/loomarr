@@ -882,15 +882,7 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 	if r.audioLanguage == nil || streamURL == "" {
 		return 0
 	}
-	prefer := r.audioLanguage()
-	// A channel override wins over the instance default. Failure to reload the channel is
-	// deliberately non-fatal: AiringNow already resolved enough state to play, so falling back
-	// to the global preference is better than taking the programme off air for an optional track.
-	if r.channels != nil && channelID != "" {
-		if ch, err := r.channels.GetChannel(ctx, channelID); err == nil {
-			prefer = schedule.ResolveAudioLanguage(ch.Policy, prefer)
-		}
-	}
+	prefer := r.preferredAudioLanguage(ctx, channelID)
 	if strings.TrimSpace(prefer) == "" {
 		// Explicitly cleared ⇒ the operator wants ffmpeg's original behaviour. Skip the probe
 		// entirely rather than paying for an answer that cannot change the outcome.
@@ -924,12 +916,7 @@ func (r *playoutResolver) AudioTrackFromInventory(
 	if r.audioLanguage == nil {
 		return 0, true
 	}
-	prefer := r.audioLanguage()
-	if r.channels != nil && channelID != "" {
-		if ch, err := r.channels.GetChannel(ctx, channelID); err == nil {
-			prefer = schedule.ResolveAudioLanguage(ch.Policy, prefer)
-		}
-	}
+	prefer := r.preferredAudioLanguage(ctx, channelID)
 	if strings.TrimSpace(prefer) == "" {
 		return 0, true
 	}
@@ -948,6 +935,19 @@ func (r *playoutResolver) AudioTrackFromInventory(
 		return 0, false
 	}
 	return playout.PickAudioTrack(playoutAudioTracks(source.Observation.Facts.Streams), prefer), true
+}
+
+func (r *playoutResolver) preferredAudioLanguage(ctx context.Context, channelID string) string {
+	prefer := r.audioLanguage()
+	// A channel override wins over the instance default. Failure to reload the channel is
+	// deliberately non-fatal: AiringNow already resolved enough state to play, so falling back
+	// to the global preference is better than taking the programme off air for an optional track.
+	if r.channels != nil && channelID != "" {
+		if ch, err := r.channels.GetChannel(ctx, channelID); err == nil {
+			prefer = schedule.ResolveAudioLanguage(ch.Policy, prefer)
+		}
+	}
+	return prefer
 }
 
 func (r *playoutResolver) inventoryAudioTracks(

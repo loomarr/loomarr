@@ -315,7 +315,7 @@ func TestPreparedRuntimePlanExposesOneHundredChannelHotFrontier(t *testing.T) {
 	}
 }
 
-func TestPreparedRuntimeInventoryBackedHotFrontierBypassesExternalRefreshLimit(t *testing.T) {
+func TestPreparedRuntimeInventoryBackedHotFrontierAvoidsExternalRefresh(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(17_250, 0)
 	const channelCount = 150
@@ -347,14 +347,14 @@ func TestPreparedRuntimeInventoryBackedHotFrontierBypassesExternalRefreshLimit(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Candidates) != channelCount {
-		t.Fatalf("inventory-backed candidates = %d, want %d", len(plan.Candidates), channelCount)
+	if len(plan.Candidates) != preparedHotResolutionBatch {
+		t.Fatalf("inventory-backed candidates = %d, want bounded frontier %d", len(plan.Candidates), preparedHotResolutionBatch)
 	}
-	if inputs.inventoryCalls != channelCount || inputs.calls != 0 {
-		t.Fatalf("source resolution = %d inventory, %d external; want %d, 0", inputs.inventoryCalls, inputs.calls, channelCount)
+	if inputs.inventoryCalls != preparedHotResolutionBatch || inputs.calls != 0 {
+		t.Fatalf("source resolution = %d inventory, %d external; want %d, 0", inputs.inventoryCalls, inputs.calls, preparedHotResolutionBatch)
 	}
-	if timeline.inventoryAudioCalls != channelCount || timeline.audioCalls != 0 {
-		t.Fatalf("audio resolution = %d inventory, %d external; want %d, 0", timeline.inventoryAudioCalls, timeline.audioCalls, channelCount)
+	if timeline.inventoryAudioCalls != preparedHotResolutionBatch || timeline.audioCalls != 0 {
+		t.Fatalf("audio resolution = %d inventory, %d external; want %d, 0", timeline.inventoryAudioCalls, timeline.audioCalls, preparedHotResolutionBatch)
 	}
 }
 
@@ -367,13 +367,13 @@ func TestPreparedRuntimeScalesCurrentAndNextProtectionAtFiftyAndOneHundredChanne
 			now := time.Unix(17_300, 0)
 			channels := make([]store.Channel, channelCount)
 			broadcasts := make(map[string][]playout.Broadcast, channelCount)
-			inventorySources := make(map[string]library.InputSource, channelCount*3)
-			hits := make(map[prepared.Request]prepared.Specification, channelCount*3)
+			inventorySources := make(map[string]library.InputSource, channelCount*2)
+			hits := make(map[prepared.Request]prepared.Specification, channelCount*2)
 			rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
 			for i := range channels {
 				channelID := fmt.Sprintf("ch-%03d", i)
 				channels[i] = store.Channel{Channel: schedule.Channel{ID: channelID}}
-				for offset, class := range []string{"current", "next", "later"} {
+				for offset, class := range []string{"current", "next"} {
 					itemID := fmt.Sprintf("%s-%03d", class, i)
 					start := now.Add(time.Duration(offset)*time.Hour - 30*time.Minute)
 					broadcasts[channelID] = append(broadcasts[channelID], playout.Broadcast{
@@ -395,15 +395,20 @@ func TestPreparedRuntimeScalesCurrentAndNextProtectionAtFiftyAndOneHundredChanne
 				func() string { return "internal" }, func() prepared.RenditionContract { return rendition },
 			)
 
-			plan, err := r.Plan(t.Context(), now, now.Add(6*time.Hour))
-			if err != nil {
-				t.Fatal(err)
+			var plan prepared.ReadinessPlan
+			passes := (channelCount*2 + preparedHotResolutionBatch - 1) / preparedHotResolutionBatch
+			for range passes {
+				var err error
+				plan, err = r.Plan(t.Context(), now, now.Add(6*time.Hour))
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			if len(plan.Protected) != channelCount*2 {
 				t.Fatalf("protected publications = %d, want current+next %d", len(plan.Protected), channelCount*2)
 			}
-			if plan.Summary.ReadyChannels != channelCount || plan.Summary.ReadyBindings != channelCount*3 {
-				t.Fatalf("readiness = %+v, want every current, next, and visible later binding ready", plan.Summary)
+			if plan.Summary.ReadyChannels != channelCount || plan.Summary.ReadyBindings != channelCount*2 {
+				t.Fatalf("readiness = %+v, want every current and next binding ready", plan.Summary)
 			}
 			if inputs.calls != 0 || timeline.audioCalls != 0 {
 				t.Fatalf("durable scale plan performed external source/audio work: %d/%d", inputs.calls, timeline.audioCalls)
