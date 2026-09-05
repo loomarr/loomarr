@@ -77,10 +77,6 @@ func TestBuildTemporalStructureHoldoutPlanRejectsProhibitedRoleCoverage(t *testi
 	report.FlaggedUnionCases = 1
 	report.CoverageHoldCases--
 	fixture.suitability = writeTemporalHumanJSON(t, t.TempDir(), "suitability.json", report)
-	audit := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
-	audit.Fingerprints = audit.Fingerprints[1:]
-	audit.Summary.Cases--
-	fixture.family = writeTemporalHumanJSON(t, t.TempDir(), "family.json", audit)
 	_, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output")))
 	if err == nil || !strings.Contains(err.Error(), "insufficient eligible bumper") {
 		t.Fatalf("prohibited coverage error = %v", err)
@@ -99,6 +95,37 @@ func TestBuildTemporalStructureHoldoutPlanRejectsDuplicateFamilyCoverage(t *test
 	_, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output")))
 	if err == nil || !strings.Contains(err.Error(), "insufficient eligible bumper") {
 		t.Fatalf("duplicate-family coverage error = %v", err)
+	}
+}
+
+func TestBuildTemporalStructureHoldoutPlanRejectsFamilyAuthorityCaseSetDrift(t *testing.T) {
+	tests := map[string]func(*temporalStructureHoldoutFamilyAudit){
+		"missing selected case": func(audit *temporalStructureHoldoutFamilyAudit) {
+			audit.Fingerprints = audit.Fingerprints[:len(audit.Fingerprints)-1]
+			audit.Summary.Cases--
+		},
+		"unselected extra case": func(audit *temporalStructureHoldoutFamilyAudit) {
+			audit.Fingerprints = append(audit.Fingerprints, temporalStructureHoldoutFingerprint{
+				CaseID:        "case-outside-locked-selection",
+				ContentSHA256: strings.Repeat("f", 64),
+				LocalFile:     "outside.mp4",
+				FrameHashes:   []uint64{1},
+				AudioRMS:      []uint32{1},
+			})
+			audit.Summary.Cases++
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			fixture := newTemporalStructureHoldoutFixture(t)
+			audit := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
+			mutate(&audit)
+			fixture.family = writeTemporalHumanJSON(t, t.TempDir(), "family.json", audit)
+			_, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output")))
+			if err == nil || !strings.Contains(err.Error(), "family authority case set does not match selection") {
+				t.Fatalf("family authority case-set error = %v", err)
+			}
+		})
 	}
 }
 
