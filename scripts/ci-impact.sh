@@ -119,6 +119,18 @@ classify() {
       select_gate image
       select_gate android
       ;;
+    web/packages/player/*)
+      known=true
+      select_gate web
+      select_gate clients
+      select_all_native_clients
+      # The browser and native adapters share one transport contract. Browser playback
+      # reaches the tuner matrix and production image; the native adapters reach every
+      # supported client build and Android TV bundle.
+      select_gate tuner
+      select_gate image
+      select_gate android
+      ;;
     web/package.json|web/pnpm-lock.yaml|web/pnpm-workspace.yaml|web/.gitignore|web/biome.json|web/tsconfig.base.json)
       known=true
       select_gate web

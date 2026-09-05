@@ -182,7 +182,7 @@ jobs:
           # affect a web job and must not spend six runners rebuilding + re-Playwrighting the SPA.
           # The Go filter keeps the broad glob on purpose: `make ci-lint` actionlints EVERY workflow
           # and `cmd/releaseverify` reads release.yml, so those genuinely need any-workflow coverage.
-          if echo "$changed" | grep -qE '^web/(apps/web/|packages/(api|core|fixtures|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^Makefile$|^\.github/workflows/ci\.yml$'; then
+          if echo "$changed" | grep -qE '^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^Makefile$|^\.github/workflows/ci\.yml$'; then
             echo "web=true" >> "$GITHUB_OUTPUT"
           else
             echo "web=false" >> "$GITHUB_OUTPUT"
@@ -190,10 +190,10 @@ jobs:
           # The candidate Expo clients and Loomarr-owned universal packages have their own
           # gate. A native-only edit must not wake the legacy SPA, Playwright, tuner, or image
           # jobs. Both Expo apps use fixtures in their native Storybook graph; fixtures depend on
-          # core and API, so all three packages are real client inputs even before a production
+          # core, API, and player, so all four packages are real client inputs even before a production
           # screen imports a particular shared module. Workspace-root dependency and tooling inputs
           # still gate both families because they can change how either graph resolves or builds.
-          if echo "$changed" | grep -qE '^brand-assets\.lock\.json$|^scripts/(generate-brand-assets|check-brand-assets)\.mjs$|^web/(apps/(mobile|tv)/|packages/(api|core|design-system|fixtures|ui)/|turbo\.json$)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^web/scripts/|^Makefile$|^\.github/workflows/ci\.yml$'; then
+          if echo "$changed" | grep -qE '^brand-assets\.lock\.json$|^scripts/(generate-brand-assets|check-brand-assets)\.mjs$|^web/(apps/(mobile|tv)/|packages/(api|core|design-system|fixtures|player|ui)/|turbo\.json$)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^web/scripts/|^Makefile$|^\.github/workflows/ci\.yml$'; then
             echo "clients=true" >> "$GITHUB_OUTPUT"
           else
             echo "clients=false" >> "$GITHUB_OUTPUT"
@@ -214,7 +214,7 @@ jobs:
           # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
           # frontend, or embedded-help change to reach a tag before the production image
           # containing it had ever been built.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/(apps/web/|packages/(api|core|fixtures|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"
