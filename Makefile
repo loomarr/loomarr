@@ -88,3 +88,7 @@ include mk/docs.mk
 include mk/frontend.mk
 include mk/smoke.mk
 include mk/android.mk
+
+.PHONY: prototype-prepared-admission
+prototype-prepared-admission: ## PROTOTYPE: exercise capacity-aware prepared admission
+	@go run ./cmd/prototype-prepared-admission
