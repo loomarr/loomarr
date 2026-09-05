@@ -4620,9 +4620,10 @@ plan authoring and receipt, all locked assessment sets named by the comparison, 
 comparison itself, and one reviewer submission. It first reproduces the comparison byte-for-byte.
 The review target is then exactly every construction-authority `standalone` case named by the
 comparison's diagnostic candidates: it cannot omit an inconvenient target or expand into a new
-full-corpus audit. Each target records complete-span audiovisual coverage, one reviewer identity and
-fixed review time, sorted unique decisive timestamps, a bounded rationale, the original closed
-unit/role, and exactly one disposition: `confirmed_original`, `structural_disqualification`, or
+full-corpus audit. Each target records complete-span audiovisual coverage, explicit bounded
+observations of the opening, ordered internal joins, and closing, one reviewer identity and fixed
+review time, sorted unique decisive timestamps, a bounded rationale, the original closed unit/role,
+and exactly one disposition: `confirmed_original`, `structural_disqualification`, or
 `role_correction`. A structural disqualification must replace `standalone` with a non-standalone
 unit and no role; a role correction must retain `standalone` and select a different valid role.
 Model agreement selects what receives review but never becomes truth authority by itself.
@@ -4636,7 +4637,14 @@ admission false. A later holdout-plan contract must consume that authority as pr
 source bytes, duplicate family, or programme provenance from the burned challenge may appear in a
 replacement challenge, and its future-training exclusion must be the exact cumulative union. Until
 that replacement machinery and new source inventory exist, adjudication can explain and quarantine
-the bad truth but cannot manufacture a corrected certification score.
+the bad truth but cannot manufacture a corrected certification score. The planner makes lineage
+explicit: an invocation is either a genesis plan with no prior adjudication, or a replacement plan
+with one or more immutable prior adjudication authorities; omitting both or mixing the modes fails.
+A replacement validates every prior authority, rejects any candidate whose source bytes, duplicate
+family, or programme provenance appears in their cumulative exposure, binds their file hashes in the
+new receipt, and publishes the sorted de-duplicated union of prior and newly selected exposure. The
+genesis/replacement mode and prior-exposure set are part of the plan contract, so a caller cannot
+silently forget burned evidence while requesting a replacement.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. Its prompt identity binds the system prompt,
