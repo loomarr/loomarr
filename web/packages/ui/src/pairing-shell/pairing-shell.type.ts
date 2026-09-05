@@ -7,6 +7,7 @@ type PairingShellProps = {
   allowServerEntry?: boolean;
   density: Density;
   discovery?: ServerDiscovery;
+  discoveryForeground?: boolean;
   initialServerUrl?: string;
   renderPaired(credential: PairingCredential): ReactNode;
   session: PairingSession;

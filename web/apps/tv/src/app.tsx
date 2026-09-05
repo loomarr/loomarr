@@ -390,6 +390,7 @@ const TvPairedRoot = ({
 const TvClient = () => {
   useKeepAwake();
   const insets = useSafeAreaInsets();
+  const [appForeground, setAppForeground] = useState(AppState.currentState === "active");
   const [launchAnimationFinished, setLaunchAnimationFinished] = useState(false);
   const [launchMinimumElapsed, setLaunchMinimumElapsed] = useState(false);
   const launchStartedAt = useRef(Date.now());
@@ -415,6 +416,12 @@ const TvClient = () => {
     const timer = setTimeout(() => setLaunchMinimumElapsed(true), remaining);
     return () => clearTimeout(timer);
   }, []);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      setAppForeground(state === "active");
+    });
+    return () => subscription.remove();
+  }, []);
   return (
     <LoomarrProvider insets={insets} theme="dark">
       <View onLayout={hideNativeSplash} style={{ flex: 1 }}>
@@ -422,6 +429,7 @@ const TvClient = () => {
           allowServerEntry
           density="tv"
           discovery={discovery}
+          discoveryForeground={appForeground}
           initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
           renderPaired={(credential) => <TvPairedRoot credential={credential} session={session} />}
           session={session}

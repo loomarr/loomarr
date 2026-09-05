@@ -23,6 +23,7 @@ const PairingShell = ({
   allowServerEntry = false,
   density,
   discovery,
+  discoveryForeground = false,
   initialServerUrl,
   renderPaired,
   session,
@@ -47,13 +48,13 @@ const PairingShell = ({
     return () => clearInterval(timer);
   }, [state.status]);
   useEffect(() => {
-    if (state.status !== "needs-server" || !discovery) {
+    if (state.status !== "needs-server" || !discovery || !discoveryForeground) {
       discovery?.stop();
       return undefined;
     }
     discovery.start();
     return () => discovery.stop();
-  }, [discovery, state.status]);
+  }, [discovery, discoveryForeground, state.status]);
 
   if (state.status === "paired") return renderPaired(state);
   const content = pairingContent(
@@ -128,7 +129,7 @@ const pairingContent = (
             key={server.id}
             onPress={() => void session.pair(server.url)}
           >
-            {discovery.servers.length === 1 ? `Connect to ${server.name}` : server.name}
+            {`${discovery.servers.length === 1 ? `Connect to ${server.name}` : server.name}\n${server.url}`}
           </Action>
         ))}
         {discovery?.servers.length === 0 && discovery.status === "searching" ? (

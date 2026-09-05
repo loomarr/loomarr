@@ -289,3 +289,11 @@ test("releases playback and invalidation resources in the background before auth
   assert.match(appSource, /else closeActiveStream\(\)/);
   assert.match(appSource, /subscription\.remove\(\);\s+closeActiveStream\(\)/);
 });
+
+test("bounds LAN discovery to the foreground TV connection screen", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /useState\(AppState\.currentState === "active"\)/);
+  assert.match(appSource, /setAppForeground\(state === "active"\)/);
+  assert.match(appSource, /discoveryForeground=\{appForeground\}/);
+});
