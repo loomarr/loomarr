@@ -201,7 +201,9 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 		}
 		if observer, ok := p.resolver.(ReadinessObserver); ok {
 			observed, observeErr := observer.Observe(ctx, now, now.Add(preparationLookahead))
-			plan = observed
+			if observeErr == nil {
+				plan = observed
+			}
 			errs = append(errs, observeErr)
 		}
 	}
