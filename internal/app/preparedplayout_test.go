@@ -521,6 +521,43 @@ func TestPreparedRuntimeRebindsAnObservedSourceRevision(t *testing.T) {
 	}
 }
 
+func TestPreparedRuntimeScheduleChangeAdvancesTheUrgentFrontier(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(18_500, 0)
+	rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
+	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {{
+		Kind: schedule.SlotProgram, LibraryItemID: "old", Start: now, Stop: now.Add(time.Hour),
+	}}}}
+	inputs := &preparedInputsFake{sources: map[string]library.InputSource{
+		"old": {URL: "/media/old.mkv", Kind: library.InputFile},
+		"new": {URL: "/media/new.mkv", Kind: library.InputFile},
+	}}
+	oldRequest := prepared.Request{Source: preparedSource("old", 2), Rendition: rendition}
+	r := newPreparedRuntimeForTest(t,
+		preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}},
+		timeline, inputs, preparedLookupFake{hits: map[prepared.Request]prepared.Specification{
+			oldRequest: {SourceFingerprint: "old", Rendition: rendition},
+		}}, func() time.Time { return now }, nil, func() string { return "policy" },
+		func() string { return "internal" }, func() prepared.RenditionContract { return rendition },
+	)
+	if plan, err := r.Plan(t.Context(), now, now.Add(time.Hour)); err != nil || len(plan.Protected) != 1 {
+		t.Fatalf("initial ready plan = (%+v, %v)", plan, err)
+	}
+
+	timeline.broadcasts["ch"] = []playout.Broadcast{{
+		Kind: schedule.SlotProgram, LibraryItemID: "new", Start: now, Stop: now.Add(time.Hour),
+	}}
+	plan, err := r.Plan(t.Context(), now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRequest := prepared.Request{Source: preparedSource("new", 2), Rendition: rendition}
+	if len(plan.Protected) != 0 || len(plan.Candidates) != 1 ||
+		plan.Candidates[0].Class != prepared.CandidateCurrent || plan.Candidates[0].Request != newRequest {
+		t.Fatalf("changed schedule plan = protected %+v candidates %+v, want new current first", plan.Protected, plan.Candidates)
+	}
+}
+
 func TestPreparedRuntimeInvalidatesStaleBindingWhenSourceReresolutionFails(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(19_000, 0)
