@@ -4602,8 +4602,9 @@ model families assess it serially. The direct-video request contract reserves 4,
 tokens so provider-required hidden reasoning cannot consume the output budget needed for the strict
 JSON answer. In-range decisive timestamps are deterministically sorted and deduplicated before
 semantic validation because response order and repetition carry no claim; the untouched raw
-response remains the inference authority. The ceiling, schema uniqueness constraint, and
-canonicalization rule are part of the prompt digest and prompt-contract version. Every source
+response remains the inference authority. The array ceiling and canonicalization rule are part of
+the prompt digest and prompt-contract version; provider-facing schemas do not use `uniqueItems`
+because otherwise qualifying CoreWeave structured-output routes reject the grammar. Every source
 must have an audio stream. Before concatenation,
 every segment is encoded deterministically to a common 960-by-720, 30-frame-per-second video and
 48 kHz stereo AAC audio profile with aspect-preserving padding and a fixed video track time base;
@@ -4614,7 +4615,9 @@ without a second blind full-corpus review, but it cannot establish broadcast sui
 training data, or authorize production admission. Both permissions remain explicitly false.
 
 Suitability screening is repeated over every freshly rendered structure case because concatenation
-and excerpt construction create new viewing contexts. A prohibited signal in any derivative is a
+and excerpt construction create new viewing contexts. Its prompt identity binds the system prompt,
+sentinel dynamic content and schema, request title, and 4,096-token completion ceiling so mandatory
+provider reasoning cannot consume the structured answer budget. A prohibited signal in any derivative is a
 conservative source-level quarantine: the private construction authority projects the observation
 back to every overlapping source segment, and every case derived from that source remains held even
 when another model reports no signal. Repetition at the same source-relative interval strengthens
