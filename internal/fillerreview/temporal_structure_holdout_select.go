@@ -10,8 +10,9 @@ import (
 )
 
 type temporalStructureHoldoutSelectedAnchor struct {
-	receipt TemporalStructureHoldoutAnchor
-	source  TemporalStructureChallengeSource
+	receipt    TemporalStructureHoldoutAnchor
+	source     TemporalStructureChallengeSource
+	transition TemporalTransitionAuthorityCase
 }
 
 var temporalStructureHoldoutRoleQuotas = map[fillereval.TemporalRole]int{
@@ -53,6 +54,10 @@ func selectTemporalStructureHoldoutAnchors(seed string, loaded temporalStructure
 			familyByCase[member] = family.FamilyID
 		}
 	}
+	transitionByAlias := make(map[string]TemporalTransitionAuthorityCase, len(loaded.transition.Cases))
+	for _, item := range loaded.transition.Cases {
+		transitionByAlias[item.EvidenceAlias] = item
+	}
 	byRole := make(map[fillereval.TemporalRole][]temporalStructureHoldoutSelectedAnchor)
 	for _, assessment := range loaded.human.Assessments {
 		if assessment.Unit != fillereval.UnitStandalone || assessment.Role == nil || temporalStructureHoldoutRoleQuotas[*assessment.Role] == 0 {
@@ -62,9 +67,10 @@ func selectTemporalStructureHoldoutAnchors(seed string, loaded temporalStructure
 		mapping := mapByAlias[assessment.EvidenceAlias]
 		quality := qualityByAlias[assessment.EvidenceAlias]
 		suitability := suitabilityByAlias[assessment.EvidenceAlias]
+		transition := transitionByAlias[assessment.EvidenceAlias]
 		selection, selectionExists := selectionByCase[mapping.CaseID]
 		fingerprint, fingerprintExists := fingerprintByCase[mapping.CaseID]
-		if evidence.Alias == "" || mapping.Alias == "" || quality.EvidenceAlias == "" || suitability.EvidenceAlias == "" || !selectionExists {
+		if evidence.Alias == "" || mapping.Alias == "" || quality.EvidenceAlias == "" || suitability.EvidenceAlias == "" || transition.EvidenceAlias == "" || !selectionExists {
 			return nil, fmt.Errorf("temporal structure holdout anchor %q lacks complete authority", assessment.EvidenceAlias)
 		}
 		if mapping.ContentSHA256 != selection.ContentSHA256 || quality.SourceMediaSHA256 != evidence.Video.SHA256 {
@@ -106,47 +112,31 @@ func selectTemporalStructureHoldoutAnchors(seed string, loaded temporalStructure
 					Reference: mapping.CaseID, MetadataSHA256: metadataSHA, RetrievedAt: loaded.evidence.GeneratedAt,
 				},
 			},
+			transition: transition,
 		})
 	}
-	selected := make([]temporalStructureHoldoutSelectedAnchor, 0, temporalStructureHoldoutClassCases)
-	seenFamilies := map[string]struct{}{}
-	seenSourceSHA := map[string]struct{}{}
-	for _, role := range []fillereval.TemporalRole{
+	roles := []fillereval.TemporalRole{
 		fillereval.TemporalRoleBumper, fillereval.TemporalRoleCommercial, fillereval.TemporalRolePromo,
 		fillereval.TemporalRolePSA, fillereval.TemporalRoleTrailer,
-	} {
+	}
+	for _, role := range roles {
 		candidates := byRole[role]
-		sort.Slice(candidates, func(i, j int) bool { return candidates[i].receipt.RankSHA256 < candidates[j].receipt.RankSHA256 })
-		for _, candidate := range candidates {
-			if len(selectedRoleAnchors(selected, role)) == temporalStructureHoldoutRoleQuotas[role] {
-				break
-			}
-			if _, duplicate := seenFamilies[candidate.receipt.FamilyID]; duplicate {
-				continue
-			}
-			if _, duplicate := seenSourceSHA[candidate.source.SHA256]; duplicate {
-				continue
-			}
-			selected = append(selected, candidate)
-			seenFamilies[candidate.receipt.FamilyID] = struct{}{}
-			seenSourceSHA[candidate.source.SHA256] = struct{}{}
-		}
-		if len(selectedRoleAnchors(selected, role)) != temporalStructureHoldoutRoleQuotas[role] {
+		sort.Slice(candidates, func(i, j int) bool { return candidates[i].receipt.CaseID < candidates[j].receipt.CaseID })
+		byRole[role] = candidates
+		if len(candidates) < temporalStructureHoldoutRoleQuotas[role] {
 			return nil, fmt.Errorf("temporal structure holdout has insufficient eligible %s anchors", role)
 		}
 	}
-	sort.Slice(selected, func(i, j int) bool { return selected[i].receipt.RankSHA256 < selected[j].receipt.RankSHA256 })
-	return selected, nil
-}
-
-func selectedRoleAnchors(anchors []temporalStructureHoldoutSelectedAnchor, role fillereval.TemporalRole) []temporalStructureHoldoutSelectedAnchor {
-	var result []temporalStructureHoldoutSelectedAnchor
-	for _, anchor := range anchors {
-		if anchor.receipt.Role == role {
-			result = append(result, anchor)
-		}
+	var eligible []temporalStructureHoldoutSelectedAnchor
+	for _, role := range roles {
+		eligible = append(eligible, byRole[role]...)
 	}
-	return result
+	sort.Slice(eligible, func(i, j int) bool { return eligible[i].receipt.CaseID < eligible[j].receipt.CaseID })
+	selected, ok := solveTemporalStructureHoldoutAnchors(seed, eligible)
+	if !ok {
+		return nil, fmt.Errorf("temporal structure holdout cannot jointly satisfy role, family, source, timing, role-pair, and transition quotas")
+	}
+	return selected, nil
 }
 
 func selectTemporalStructureHoldoutParents(seed string, inventory TemporalStructureHoldoutProgrammeInventory) ([]TemporalStructureChallengeSource, error) {

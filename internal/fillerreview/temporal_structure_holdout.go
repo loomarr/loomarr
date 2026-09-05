@@ -12,27 +12,28 @@ import (
 
 const (
 	TemporalStructureHoldoutSchemaVersion   = 1
-	TemporalStructureHoldoutContractVersion = "filler-temporal-structure-holdout-plan-v2"
+	TemporalStructureHoldoutContractVersion = "filler-temporal-structure-holdout-plan-v3"
 	TemporalStructureHoldoutCases           = 36
 	temporalStructureHoldoutClassCases      = 12
 	temporalStructureHoldoutParentSources   = 6
 )
 
 type TemporalStructureHoldoutConfig struct {
-	SelectionPath          string
-	EvidenceManifestPath   string
-	EvidencePrivateMapPath string
-	HumanAssessmentPath    string
-	HumanAttestationPath   string
-	MediaQualityPath       string
-	SuitabilityPath        string
-	ReferenceAuditPath     string
-	FamilyAuditPath        string
-	ProgrammeInventoryPath string
-	SourceRoot             string
-	Seed                   string
-	PlannedAt              time.Time
-	OutputDir              string
+	SelectionPath           string
+	EvidenceManifestPath    string
+	EvidencePrivateMapPath  string
+	HumanAssessmentPath     string
+	HumanAttestationPath    string
+	MediaQualityPath        string
+	SuitabilityPath         string
+	ReferenceAuditPath      string
+	FamilyAuditPath         string
+	TransitionAuthorityPath string
+	ProgrammeInventoryPath  string
+	SourceRoot              string
+	Seed                    string
+	PlannedAt               time.Time
+	OutputDir               string
 }
 
 type TemporalStructureHoldoutProgrammeInventory struct {
@@ -43,24 +44,37 @@ type TemporalStructureHoldoutProgrammeInventory struct {
 }
 
 type TemporalStructureHoldoutReceipt struct {
-	SchemaVersion              int                                    `json:"schemaVersion"`
-	ContractVersion            string                                 `json:"contractVersion"`
-	PlannedAt                  time.Time                              `json:"plannedAt"`
-	SeedSHA256                 string                                 `json:"seedSha256"`
-	Inputs                     []TemporalStructureHoldoutInput        `json:"inputs"`
-	AuthoringSHA256            string                                 `json:"authoringSha256"`
-	Cases                      int                                    `json:"cases"`
-	StandaloneCases            int                                    `json:"standaloneCases"`
-	CompilationCases           int                                    `json:"compilationCases"`
-	ProgrammeExcerptCases      int                                    `json:"programmeExcerptCases"`
-	IndependentSources         int                                    `json:"independentSources"`
-	ProgrammeParents           int                                    `json:"programmeParents"`
-	StandaloneRoleCounts       map[fillereval.TemporalRole]int        `json:"standaloneRoleCounts"`
-	SelectedAnchors            []TemporalStructureHoldoutAnchor       `json:"selectedAnchors"`
-	CompilationConstructions   []TemporalStructureHoldoutCompilation  `json:"compilationConstructions"`
-	ProgrammeConstructions     []TemporalStructureHoldoutProgrammeCut `json:"programmeConstructions"`
-	TrainingAllowed            bool                                   `json:"trainingAllowed"`
-	ProductionAdmissionAllowed bool                                   `json:"productionAdmissionAllowed"`
+	SchemaVersion              int                                       `json:"schemaVersion"`
+	ContractVersion            string                                    `json:"contractVersion"`
+	PlannedAt                  time.Time                                 `json:"plannedAt"`
+	SeedSHA256                 string                                    `json:"seedSha256"`
+	Inputs                     []TemporalStructureHoldoutInput           `json:"inputs"`
+	AuthoringSHA256            string                                    `json:"authoringSha256"`
+	Cases                      int                                       `json:"cases"`
+	StandaloneCases            int                                       `json:"standaloneCases"`
+	CompilationCases           int                                       `json:"compilationCases"`
+	ProgrammeExcerptCases      int                                       `json:"programmeExcerptCases"`
+	IndependentSources         int                                       `json:"independentSources"`
+	ProgrammeParents           int                                       `json:"programmeParents"`
+	StandaloneRoleCounts       map[fillereval.TemporalRole]int           `json:"standaloneRoleCounts"`
+	SelectedAnchors            []TemporalStructureHoldoutAnchor          `json:"selectedAnchors"`
+	CompilationConstructions   []TemporalStructureHoldoutCompilation     `json:"compilationConstructions"`
+	ProgrammeConstructions     []TemporalStructureHoldoutProgrammeCut    `json:"programmeConstructions"`
+	FutureTrainingExclusion    TemporalStructureHoldoutTrainingExclusion `json:"futureTrainingExclusion"`
+	TrainingAllowed            bool                                      `json:"trainingAllowed"`
+	ProductionAdmissionAllowed bool                                      `json:"productionAdmissionAllowed"`
+}
+
+type TemporalStructureHoldoutTrainingExclusion struct {
+	Split               string                                        `json:"split"`
+	SourceSHA256        []string                                      `json:"sourceSha256"`
+	FamilyIDs           []string                                      `json:"familyIds"`
+	ProgrammeProvenance []TemporalStructureHoldoutProgrammeProvenance `json:"programmeProvenance"`
+}
+
+type TemporalStructureHoldoutProgrammeProvenance struct {
+	Authority string `json:"authority"`
+	Reference string `json:"reference"`
 }
 
 type TemporalStructureHoldoutInput struct {
@@ -79,13 +93,14 @@ type TemporalStructureHoldoutAnchor struct {
 }
 
 type TemporalStructureHoldoutCompilation struct {
-	CaseID         string   `json:"caseId"`
-	FirstSourceID  string   `json:"firstSourceId"`
-	SecondSourceID string   `json:"secondSourceId"`
-	JoinBand       string   `json:"joinBand"`
-	JoinAtMS       int64    `json:"joinAtMs"`
-	DurationMS     int64    `json:"durationMs"`
-	Roles          []string `json:"roles"`
+	CaseID            string                    `json:"caseId"`
+	FirstSourceID     string                    `json:"firstSourceId"`
+	SecondSourceID    string                    `json:"secondSourceId"`
+	JoinBand          string                    `json:"joinBand"`
+	TransitionStratum TemporalTransitionStratum `json:"transitionStratum"`
+	JoinAtMS          int64                     `json:"joinAtMs"`
+	DurationMS        int64                     `json:"durationMs"`
+	Roles             []string                  `json:"roles"`
 }
 
 type TemporalStructureHoldoutProgrammeCut struct {
@@ -110,6 +125,11 @@ func BuildTemporalStructureHoldoutPlan(config TemporalStructureHoldoutConfig) (T
 	if err := validateTemporalStructureHoldoutConfig(config); err != nil {
 		return TemporalStructureHoldoutResult{}, err
 	}
+	stage, err := beginTemporalTruthEvidenceStage(config.OutputDir)
+	if err != nil {
+		return TemporalStructureHoldoutResult{}, err
+	}
+	defer stage.Cleanup()
 	loaded, err := loadTemporalStructureHoldout(config)
 	if err != nil {
 		return TemporalStructureHoldoutResult{}, err
@@ -132,7 +152,7 @@ func BuildTemporalStructureHoldoutPlan(config TemporalStructureHoldoutConfig) (T
 	}
 	authoringRaw = append(authoringRaw, '\n')
 	receipt.AuthoringSHA256 = hashBytes(authoringRaw)
-	if err := validateTemporalStructureHoldoutReceipt(receipt, authoring); err != nil {
+	if err := validateTemporalStructureHoldoutReceipt(receipt, authoring, &loaded.transition); err != nil {
 		return TemporalStructureHoldoutResult{}, err
 	}
 	receiptRaw, err := json.MarshalIndent(receipt, "", "  ")
@@ -140,11 +160,6 @@ func BuildTemporalStructureHoldoutPlan(config TemporalStructureHoldoutConfig) (T
 		return TemporalStructureHoldoutResult{}, err
 	}
 	receiptRaw = append(receiptRaw, '\n')
-	stage, err := beginTemporalTruthEvidenceStage(config.OutputDir)
-	if err != nil {
-		return TemporalStructureHoldoutResult{}, err
-	}
-	defer stage.Cleanup()
 	if err := writeTemporalTruthNew(filepath.Join(stage.path, "authoring.json"), authoringRaw, 0o600); err != nil {
 		return TemporalStructureHoldoutResult{}, err
 	}
@@ -161,7 +176,7 @@ func validateTemporalStructureHoldoutConfig(config TemporalStructureHoldoutConfi
 	paths := []string{
 		config.SelectionPath, config.EvidenceManifestPath, config.EvidencePrivateMapPath,
 		config.HumanAssessmentPath, config.HumanAttestationPath, config.MediaQualityPath,
-		config.SuitabilityPath, config.ReferenceAuditPath, config.FamilyAuditPath, config.ProgrammeInventoryPath,
+		config.SuitabilityPath, config.ReferenceAuditPath, config.FamilyAuditPath, config.TransitionAuthorityPath, config.ProgrammeInventoryPath,
 		config.SourceRoot, config.OutputDir,
 	}
 	for _, path := range paths {

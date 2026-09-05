@@ -53,6 +53,7 @@ type TemporalTruthVideoInfo struct {
 	DurationMS int64
 	Width      int
 	Height     int
+	HasAudio   bool
 }
 
 type TemporalTruthEvidenceOCR interface {

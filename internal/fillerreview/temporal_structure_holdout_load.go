@@ -18,6 +18,7 @@ type temporalStructureHoldoutLoaded struct {
 	quality            TemporalMediaQualityReport
 	suitability        TemporalSuitabilityComparisonReport
 	family             temporalStructureHoldoutFamilyAudit
+	transition         TemporalTransitionAuthority
 	programmeInventory TemporalStructureHoldoutProgrammeInventory
 	inputs             []TemporalStructureHoldoutInput
 }
@@ -75,6 +76,10 @@ func loadTemporalStructureHoldout(config TemporalStructureHoldoutConfig) (tempor
 	if err != nil {
 		return temporalStructureHoldoutLoaded{}, err
 	}
+	transition, transitionSHA, err := loadTemporalTransitionAuthority(config.TransitionAuthorityPath, evidence, evidenceSHA, privateMap, hashBytes(privateMapRaw), config.PlannedAt)
+	if err != nil {
+		return temporalStructureHoldoutLoaded{}, err
+	}
 	inventory, inventorySHA, err := loadTemporalStructureHoldoutProgrammeInventory(config.ProgrammeInventoryPath, config.SourceRoot, config.PlannedAt)
 	if err != nil {
 		return temporalStructureHoldoutLoaded{}, err
@@ -90,6 +95,7 @@ func loadTemporalStructureHoldout(config TemporalStructureHoldoutConfig) (tempor
 		{Name: "reference_audit", SHA256: referenceAuditSHA},
 		{Name: "selection", SHA256: hashBytes(selectionRaw)},
 		{Name: "suitability", SHA256: suitabilitySHA},
+		{Name: "transition_authority", SHA256: transitionSHA},
 	}
 	for _, input := range inputs {
 		if !reviewSHA256(input.SHA256) {
@@ -100,7 +106,7 @@ func loadTemporalStructureHoldout(config TemporalStructureHoldoutConfig) (tempor
 	return temporalStructureHoldoutLoaded{
 		selection: selection, evidence: evidence, evidenceSHA: evidenceSHA, privateMap: privateMap,
 		human: human, humanSHA: humanSHA, quality: quality, suitability: suitability,
-		family: family, programmeInventory: inventory, inputs: inputs,
+		family: family, transition: transition, programmeInventory: inventory, inputs: inputs,
 	}, nil
 }
 

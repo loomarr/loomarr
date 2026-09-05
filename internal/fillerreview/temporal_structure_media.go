@@ -54,6 +54,9 @@ func (media *FFmpegTemporalStructureMedia) Render(ctx context.Context, segments 
 		if err != nil {
 			return TemporalStructureRenderResult{}, fmt.Errorf("render part %d: %w", index, err)
 		}
+		if !info.HasAudio {
+			return TemporalStructureRenderResult{}, fmt.Errorf("render part %d lacks required audio", index)
+		}
 		partNames = append(partNames, name)
 		result.Parts = append(result.Parts, TemporalStructureRenderedPart{DurationMS: info.DurationMS})
 	}
@@ -82,6 +85,9 @@ func (media *FFmpegTemporalStructureMedia) Render(ctx context.Context, segments 
 	result.Video, err = media.media.probeReviewVideo(ctx, output)
 	if err != nil {
 		return TemporalStructureRenderResult{}, err
+	}
+	if !result.Video.HasAudio {
+		return TemporalStructureRenderResult{}, fmt.Errorf("rendered structure case lacks required audio")
 	}
 	return result, nil
 }
