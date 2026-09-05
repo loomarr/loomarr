@@ -37,6 +37,7 @@ type observingCandidates struct {
 	before     ReadinessPlan
 	after      ReadinessPlan
 	observeErr error
+	observeCtx error
 	calls      atomic.Int64
 }
 
@@ -45,8 +46,9 @@ func (f *observingCandidates) Plan(context.Context, time.Time, time.Time) (Readi
 	return f.before, nil
 }
 
-func (f *observingCandidates) Observe(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
+func (f *observingCandidates) Observe(ctx context.Context, _ time.Time, _ time.Time) (ReadinessPlan, error) {
 	f.calls.Add(1)
+	f.observeCtx = ctx.Err()
 	return f.after, f.observeErr
 }
 
@@ -345,16 +347,18 @@ type recordingRetainer struct {
 	calls     int
 	budget    int64
 	protected []Specification
+	ctxErr    error
 	result    PruneResult
 	err       error
 }
 
 func (r *recordingRetainer) Prune(
-	_ context.Context, budget int64, protected []Specification,
+	ctx context.Context, budget int64, protected []Specification,
 ) (PruneResult, error) {
 	r.calls++
 	r.budget = budget
 	r.protected = append([]Specification(nil), protected...)
+	r.ctxErr = ctx.Err()
 	return r.result, r.err
 }
 
@@ -478,6 +482,69 @@ func TestPlannerDeadlineReserveDrainsIntoObservationAndRetention(t *testing.T) {
 	}
 	if retainer.calls != 1 || len(retainer.protected) != 1 || retainer.protected[0] != afterProtected {
 		t.Fatalf("retention protected = %+v, want post-observation hot set", retainer.protected)
+	}
+}
+
+type expiringPlannerContext struct {
+	context.Context
+	deadline time.Time
+	done     chan struct{}
+	expired  atomic.Bool
+	once     sync.Once
+}
+
+func newExpiringPlannerContext(parent context.Context) *expiringPlannerContext {
+	return &expiringPlannerContext{
+		Context: parent, deadline: time.Now().Add(preparationDrainReserve + time.Minute),
+		done: make(chan struct{}),
+	}
+}
+
+func (c *expiringPlannerContext) Deadline() (time.Time, bool) { return c.deadline, true }
+func (c *expiringPlannerContext) Done() <-chan struct{}       { return c.done }
+func (c *expiringPlannerContext) Err() error {
+	if c.expired.Load() {
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+func (c *expiringPlannerContext) expire() {
+	c.once.Do(func() {
+		c.expired.Store(true)
+		close(c.done)
+	})
+}
+
+func TestPlannerDeadlineDuringWorkStillObservesAndRetains(t *testing.T) {
+	now := time.Unix(21_625, 0)
+	request := Request{Source: testSource("deadline"), Rendition: baselineRendition()}
+	protected := Specification{SourceFingerprint: "current", Rendition: baselineRendition()}
+	resolver := &observingCandidates{
+		before: ReadinessPlan{Candidates: []Candidate{{Request: request}}},
+		after:  ReadinessPlan{Protected: []Specification{protected}},
+	}
+	retainer := &recordingRetainer{}
+	ctx := newExpiringPlannerContext(t.Context())
+	p := NewPlanner(PlannerDependencies{
+		Resolver: resolver,
+		Preparation: &recordingPreparation{run: func(workCtx context.Context, _ Request) error {
+			ctx.expire()
+			<-workCtx.Done()
+			return workCtx.Err()
+		}},
+		Pool: media.NewEncodePool(func() int { return 2 }), Retainer: retainer,
+		BudgetBytes: func() int64 { return 512 }, Now: func() time.Time { return now },
+	})
+
+	err := p.Run(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run error = %v, want deadline exceeded after finalization", err)
+	}
+	if got := resolver.calls.Load(); got != 2 || resolver.observeCtx != nil {
+		t.Fatalf("post-deadline observation = calls %d ctx %v, want one live finalization call", got, resolver.observeCtx)
+	}
+	if retainer.calls != 1 || retainer.ctxErr != nil || len(retainer.protected) != 1 || retainer.protected[0] != protected {
+		t.Fatalf("post-deadline retention = calls %d ctx %v protected %+v", retainer.calls, retainer.ctxErr, retainer.protected)
 	}
 }
 
