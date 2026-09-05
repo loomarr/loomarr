@@ -133,6 +133,9 @@ func (media *FFmpegTemporalTruthMedia) probeReviewVideo(ctx context.Context, pat
 			}
 			result.Width, result.Height = stream.Width, stream.Height
 		}
+		if stream.CodecType == "audio" {
+			result.HasAudio = true
+		}
 	}
 	if result.Width <= 0 || result.Height <= 0 {
 		return TemporalTruthVideoInfo{}, fmt.Errorf("review video contains no measured video stream")
