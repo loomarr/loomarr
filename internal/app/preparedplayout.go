@@ -29,6 +29,7 @@ type preparedTimeline interface {
 
 type preparedSourceResolver interface {
 	ResolvePreparedSource(context.Context, string, library.PathMap) (prepared.Source, string, bool)
+	PreparedSourceCurrent(context.Context, prepared.Source) bool
 }
 
 type preparedLookup interface {
@@ -156,6 +157,9 @@ func (r *preparedRuntimeResolver) Plan(
 	for _, key := range keys {
 		channelPolicy := channelPolicies[key.ChannelID]
 		request, bound := r.readiness.Binding(key, policy, channelPolicy)
+		if bound && !r.sources.PreparedSourceCurrent(ctx, request.Source) {
+			bound = false
+		}
 		if !bound {
 			if resolutionAttempts >= preparedCandidateBatch {
 				channelReady[key.ChannelID] = false

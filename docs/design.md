@@ -495,23 +495,24 @@ stale stream ordering cannot authorize an audio map that could dead-air playout.
 only when their source revision still matches; changed bytes reject the stale measurement.
 
 Inventory owns what a source is, not credentials for opening it. `ResolveSource` returns stable source
-identity/revision, safe observations, and a protected locator. The prepared-output follow-up (#1031)
-introduces a separate application adapter that opens that result just in time:
+identity/revision, safe observations, and a protected locator. Prepared output uses a separate
+application adapter that opens a durable provider-neutral selection just in time:
 
 ```go
 type SourceAccess interface {
-    OpenInput(context.Context, inventory.ResolvedSource) (media.Input, error)
+    OpenInput(context.Context, prepared.Source) (prepared.Input, error)
 }
 ```
 
-A Library locator is the stable `{authority, external item, external source}` tuple; that Source Access
-adapter will construct a fresh authenticated original-stream request for each use. A local locator is a
-protected path plus revision facts. The resulting `media.Input` is transient and must never be
-serialized. Until #1031 lands, live playout retains the existing Library input resolver; #1030 may
-refresh missing/stale stream observations from the Library and then direct-probe the resolved input.
-Prepared readiness will store only source id/revision, selected track, rendition, and publication
-identity. Its tune-time lookup performs no Library request, source probe, hashing, or FFmpeg startup;
-a missing or stale inventory/prepared result remains an immediate live-playout fallback.
+`prepared.Source` stores only the stable Inventory item/source identity, observed revision, selected
+audio track, and rendition. Source Access resolves that identity against the latest Inventory
+observation before every background package attempt. For a Library origin it constructs a fresh
+authenticated original-stream request; for a local origin it validates the protected path against its
+revision facts. The resulting `prepared.Input` is transient and rejects serialization. Prepared
+readiness stores only the durable selection and publication identity. Its control-plane planner
+invalidates a binding when Inventory has observed a different revision, while tune-time lookup performs
+no Library request, source probe, hashing, or FFmpeg startup. A missing or stale inventory/prepared
+result remains an immediate live-playout fallback.
 
 ### Cached series episodes (§9 series expansion)
 

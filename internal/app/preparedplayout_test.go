@@ -52,8 +52,11 @@ func (f *preparedTimelineFake) AudioTrackFor(_ context.Context, channelID, _, _ 
 }
 
 type preparedInputsFake struct {
-	sources map[string]library.InputSource
-	calls   int
+	sources       map[string]library.InputSource
+	revisions     map[string]string
+	current       map[prepared.Source]bool
+	calls         int
+	currentChecks int
 }
 
 func (f *preparedInputsFake) ResolvePreparedSource(
@@ -64,7 +67,19 @@ func (f *preparedInputsFake) ResolvePreparedSource(
 	if !ok || input.URL == "" {
 		return prepared.Source{}, "", false
 	}
-	return preparedSource(itemID, 0), input.URL, true
+	source := preparedSource(itemID, 0)
+	if revision := f.revisions[itemID]; revision != "" {
+		source.Revision = revision
+	}
+	return source, input.URL, true
+}
+
+func (f *preparedInputsFake) PreparedSourceCurrent(_ context.Context, source prepared.Source) bool {
+	f.currentChecks++
+	if f.current == nil {
+		return true
+	}
+	return f.current[source]
 }
 
 func preparedSource(itemID string, audioTrack int) prepared.Source {
@@ -269,6 +284,46 @@ func TestPreparedRuntimePlanBoundsColdResolutionButStillProtectsDurableSchedule(
 	}
 	if plan.Summary != wantSummary {
 		t.Fatalf("summary = %+v, want %+v", plan.Summary, wantSummary)
+	}
+}
+
+func TestPreparedRuntimeRebindsAnObservedSourceRevision(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(18_000, 0)
+	rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
+	oldRequest := prepared.Request{Source: preparedSource("item", 2), Rendition: rendition}
+	newSource := preparedSource("item", 2)
+	newSource.Revision = "revision-item-2"
+	newRequest := prepared.Request{Source: newSource, Rendition: rendition}
+	sources := &preparedInputsFake{
+		sources:   map[string]library.InputSource{"item": {URL: "http://media/item", Kind: library.InputHTTP}},
+		revisions: map[string]string{"item": newSource.Revision},
+		current:   map[prepared.Source]bool{oldRequest.Source: false, newSource: true},
+	}
+	r := newPreparedRuntimeForTest(t,
+		preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}},
+		&preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {{
+			Kind: schedule.SlotProgram, LibraryItemID: "item", Start: now, Stop: now.Add(time.Hour),
+		}}}},
+		sources, preparedLookupFake{hits: map[prepared.Request]prepared.Specification{
+			oldRequest: {SourceFingerprint: "old", Rendition: rendition},
+		}},
+		func() time.Time { return now }, nil, func() string { return "policy" },
+		func() string { return "internal" }, func() prepared.RenditionContract { return rendition },
+	)
+	key := prepared.BindingKey{ChannelID: "ch", LibraryItemID: "item"}
+	if err := r.readiness.RememberBinding(key, prepared.Binding{Policy: "policy", Request: oldRequest}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := r.Plan(t.Context(), now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Protected) != 0 || len(plan.Candidates) != 1 || plan.Candidates[0].Request != newRequest {
+		t.Fatalf("revision-change plan = protected %+v candidates %+v, want only revision-2 candidate", plan.Protected, plan.Candidates)
+	}
+	if bound, ok := r.readiness.Binding(key, "policy", ""); !ok || bound != newRequest {
+		t.Fatalf("rebound source = (%+v, %v), want revision-2", bound, ok)
 	}
 }
 

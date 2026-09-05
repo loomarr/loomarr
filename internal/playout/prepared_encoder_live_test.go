@@ -12,13 +12,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
-
-type staticPreparedSourceAccess struct{ input prepared.Input }
-
-func (a staticPreparedSourceAccess) OpenInput(context.Context, prepared.Source) (prepared.Input, error) {
-	return a.input, nil
-}
 
 // This is the tagged proof that the shared live-encoder policy also produces a complete prepared
 // publication on the hardware this host actually detected. It skips software-only machines.
@@ -59,7 +54,8 @@ func TestLivePreparedPackagerUsesDetectedHardware(t *testing.T) {
 		return PreparedVideoArgs(capability.Chosen, r)
 	})
 	preparer := prepared.NewPreparer(prepared.PreparerDependencies{
-		Library: library, Packager: packager, Access: staticPreparedSourceAccess{input: prepared.LocalInput(source)},
+		Library: library, Packager: packager,
+		Access: &testkit.PreparedSourceAccess{Input: prepared.LocalInput(source)},
 	})
 	publication, err := preparer.Prepare(ctx, prepared.Request{
 		Source: prepared.Source{

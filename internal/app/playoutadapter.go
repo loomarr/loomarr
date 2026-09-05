@@ -1051,6 +1051,20 @@ func (r *playoutResolver) ResolvePreparedSource(
 	}, input.URL, true
 }
 
+// PreparedSourceCurrent compares a durable binding with Loomarr's latest Inventory observation.
+// It performs no source or Library I/O and is called only by the readiness control plane, never tune.
+func (r *playoutResolver) PreparedSourceCurrent(ctx context.Context, selected prepared.Source) bool {
+	if r == nil || r.inventory == nil || strings.TrimSpace(selected.ItemID) == "" {
+		return false
+	}
+	item, ok, err := r.inventory.Item(ctx, inventory.ItemRef{ID: inventory.ItemID(selected.ItemID)})
+	if err != nil || !ok {
+		return false
+	}
+	_, _, ok = preparedInventoryOrigin(item, selected)
+	return ok
+}
+
 // OpenInput is Source Access for background preparation. It verifies the exact Inventory revision,
 // then exposes a protected local path or freshly minted authenticated original-file URL only to
 // FFmpeg. Tune never calls this method.

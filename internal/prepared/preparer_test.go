@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestTransientInputDoesNotSerialize(t *testing.T) {
@@ -60,23 +61,6 @@ func (p *countingPackager) count() int {
 	return p.builds
 }
 
-type sourceAccess struct {
-	mu         sync.Mutex
-	input      prepared.Input
-	calls      int
-	failOnCall int
-}
-
-func (a *sourceAccess) OpenInput(context.Context, prepared.Source) (prepared.Input, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.calls++
-	if a.failOnCall == a.calls {
-		return prepared.Input{}, prepared.ErrSourceChanged
-	}
-	return a.input, nil
-}
-
 func preparedRequest(id string) prepared.Request {
 	return prepared.Request{
 		Source:    prepared.Source{ItemID: "item-" + id, SourceID: "source-" + id, Revision: "revision-" + id},
@@ -98,13 +82,13 @@ func TestPreparerLookupNeverOpensOrBuildsOnDemand(t *testing.T) {
 		t.Fatal(err)
 	}
 	packager := &countingPackager{}
-	access := &sourceAccess{input: prepared.LocalInput("/media/movie.mkv")}
+	access := &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")}
 	preparer := newTestPreparer(t, lib, packager, access)
 
 	if _, ok, err := preparer.Lookup(preparedRequest("movie")); err != nil || ok {
 		t.Fatalf("cold Lookup = (_, %v, %v), want fast miss", ok, err)
 	}
-	if packager.count() != 0 || access.calls != 0 {
+	if packager.count() != 0 || access.Calls() != 0 {
 		t.Fatal("Lookup opened the source or started preparation")
 	}
 }
@@ -116,7 +100,7 @@ func TestPreparerSharesOnePublicationAcrossConcurrentRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	packager := &countingPackager{}
-	preparer := newTestPreparer(t, lib, packager, &sourceAccess{input: prepared.LocalInput("/media/movie.mkv")})
+	preparer := newTestPreparer(t, lib, packager, &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")})
 	req := preparedRequest("movie")
 
 	const callers = 8
@@ -165,7 +149,7 @@ func TestPreparerChangedRevisionProducesANewPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	packager := &countingPackager{}
-	preparer := newTestPreparer(t, lib, packager, &sourceAccess{input: prepared.LocalInput("/media/movie.mkv")})
+	preparer := newTestPreparer(t, lib, packager, &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")})
 	oldRequest := preparedRequest("movie")
 	old, err := preparer.Prepare(t.Context(), oldRequest)
 	if err != nil {
@@ -192,7 +176,7 @@ func TestPreparerSelectedAudioTrackIsPartOfSourceIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	packager := &countingPackager{}
-	preparer := newTestPreparer(t, lib, packager, &sourceAccess{input: prepared.LocalInput("/media/movie.mkv")})
+	preparer := newTestPreparer(t, lib, packager, &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")})
 	one := preparedRequest("movie")
 	two := one
 	two.Source.AudioTrack = 1
@@ -216,7 +200,7 @@ func TestPreparerFailedPackagingRemainsUnready(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantErr := errors.New("packager stopped")
-	preparer := newTestPreparer(t, lib, &countingPackager{err: wantErr}, &sourceAccess{input: prepared.LocalInput("/media/movie.mkv")})
+	preparer := newTestPreparer(t, lib, &countingPackager{err: wantErr}, &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")})
 	req := preparedRequest("movie")
 	if _, err := preparer.Prepare(t.Context(), req); !errors.Is(err, wantErr) {
 		t.Fatalf("Prepare error = %v, want %v", err, wantErr)
@@ -238,8 +222,8 @@ func TestPreparerRejectsSourceThatChangesWhilePackaging(t *testing.T) {
 		}
 		return prepared.Output{Files: []string{"media.m3u8"}}, nil
 	})
-	preparer := newTestPreparer(t, lib, packager, &sourceAccess{
-		input: prepared.LocalInput("/media/movie.mkv"), failOnCall: 2,
+	preparer := newTestPreparer(t, lib, packager, &testkit.PreparedSourceAccess{
+		Input: prepared.LocalInput("/media/movie.mkv"), FailOnCall: 2,
 	})
 	req := preparedRequest("movie")
 	if _, err := preparer.Prepare(t.Context(), req); !errors.Is(err, prepared.ErrSourceChanged) {
@@ -256,7 +240,7 @@ func TestPreparerLookupReusesACompletePublicationAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := preparedRequest("movie")
-	access := &sourceAccess{input: prepared.LocalInput("/media/movie.mkv")}
+	access := &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")}
 	first := newTestPreparer(t, library, &countingPackager{}, access)
 	if _, err := first.Prepare(t.Context(), request); err != nil {
 		t.Fatal(err)
