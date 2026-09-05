@@ -2066,7 +2066,10 @@ a private schedule. A tune resolves in this order:
    authoritative Airing offset through a copy-only fMP4-to-TS remux child and feeds that finite
    block into the existing long-lived Channel mux. This child decodes and encodes nothing, owns no
    publication bytes, and is shared by every viewer of the Manager's `(Channel, EncodePlan)`
-   session; starting an encoder or a second per-Channel packager remains a contract violation.
+   session; starting an encoder or a second per-Channel packager remains a contract violation. The
+   prepared copy remux is paced from its first byte at wall-clock rate: the live-source tune-in burst
+   is forbidden here because an unbounded copy can outrun the raw viewer's bounded delivery queue
+   and disconnect a healthy television before its first frame.
    The first prepared block pins the session to the publication's codec, dimensions, frame rate,
    and bitrates. Every later prepared block must match that format, while a prepared miss opens the
    ordinary live child constrained to the same format, so an Airing boundary cannot change decoder

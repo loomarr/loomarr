@@ -53,6 +53,10 @@ type ProgramSpec struct {
 	AudioTrack    int      // the N in -map 0:a:N (PickAudioTrack); 0 = the file's first track
 	TargetLUFS    string   // filler loudness normalisation (§10 V40); "" = none (library titles)
 	Plan          CopyPlan // per-stream copy/transcode decision (PlanCopy); zero value = transcode both
+	// PaceFromFirstByte suppresses the ordinary mid-program tune-in burst. Prepared media is
+	// independently keyframe-aligned and a copy-only remux can otherwise outrun the bounded network
+	// viewer queue before the HTTP handler drains its first chunk. Realtime pacing still applies.
+	PaceFromFirstByte bool
 
 	// Source is the PROBE the Plan was derived from — the full MediaFormat, not the two booleans
 	// it reduces to.
@@ -149,7 +153,7 @@ func ProgramArgs(spec ProgramSpec) []string {
 	// seconds before its wall-clock boundary; applying it to that short remaining tail repeats the
 	// same mistake. Both presented live as commercials arriving and leaving about ten seconds late.
 	args = append(args, "-readrate", "1.0")
-	if offset >= tuneInBurstThreshold && limit > tuneInBurstThreshold {
+	if !spec.PaceFromFirstByte && offset >= tuneInBurstThreshold && limit > tuneInBurstThreshold {
 		args = append(args, "-readrate_initial_burst", strconv.Itoa(readrateInitialBurst))
 	}
 
