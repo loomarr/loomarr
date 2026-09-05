@@ -2126,13 +2126,17 @@ immutable publication; it never rewrites bytes under an existing key.
 
 Hardware encoding is a **host-wide resource**, not private state inside live playout or preparation.
 One measured encode pool admits both classes. Live program children take foreground leases and may
-use every slot. The readiness planner may hold at most one background lease, only when measured
-capacity leaves at least one separate slot for a cold live tune. If foreground demand reaches that
-last slot, the pool cancels the background encode and gives it a short bounded opportunity to exit;
-if it does not, that one live child takes the existing software fallback rather than waiting behind
-maintenance work. Unknown, software-only, or one-slot capacity disables hardware preparation — it
-does not guess and it does not consume the only live slot. This priority contract is shared code;
-adding a second semaphore around ffmpeg is forbidden.
+use every slot. The readiness planner may fill at most `capacity - 1` background leases, leaving one
+separate slot for a cold live tune. Every background lease is independently cancellable and carries
+the publication's need time. The first foreground arrival consumes the idle reserve; each additional
+arrival that finds the pool full cancels exactly one farthest-needed background lease and receives a
+short bounded opportunity to take the released slot. Concurrent foreground waiters and already
+preempting leases are counted explicitly, so several callers waking on one release cannot cancel
+more work than their outstanding demand requires. If a cancelled worker does not release in time,
+that live child takes the existing software fallback rather than waiting behind maintenance work.
+Unknown, software-only, or one-slot capacity disables hardware preparation — it does not guess and
+it does not consume the only live slot. This priority contract is shared code; adding a second
+semaphore around ffmpeg is forbidden.
 
 A session whose current block is prepared or direct-copy holds zero transcode capacity, but that is
 not a promise about its next Airing. Immediately before any later live child starts a video
@@ -2165,11 +2169,29 @@ trusting an encoder merely because FFmpeg lists it. A viewer may not inherit eit
 Prepared bytes live under `playout.prepared_dir` (default `/data/prepared`), a persistent root that
 is intentionally separate from `playout.hls_dir` scratch. The `playout-prepare` scheduler job runs
 once a minute by default with the long media timeout and looks six hours ahead across Channels whose
-effective backend is internal. It orders unique library items by earliest need, so all currently
-airing items precede later programmes and two Channels scheduling one movie still submit one source
-rendition. A pass exposes at most sixteen new misses to path/audio resolution before it starts media
-work; this bounds a cold 100-Channel install instead of issuing hundreds of media-server calls in
-one burst. Completed warmed publications are skipped on the next pass, so the frontier advances.
+effective backend is internal. Its readiness frontier has three explicit classes: the currently
+airing programme on every Channel is urgent; the next programme per Channel is guaranteed when the
+prepared-media budget can retain it; and the rest of the six-hour horizon is opportunistic. Within a
+class, earlier need wins. Publication identity remains source/rendition based, so two Channels
+scheduling one movie submit one preparation and the strongest class wins.
+
+A pass may resolve up to 128 current/next bindings absent from the durable readiness index, enough
+to expose the complete current hot set of a 100-Channel installation without an artificial sixteen-
+Channel floor. It separately exposes at most sixteen optional six-hour misses. Existing readiness
+bindings and provider-neutral Inventory observations are inspected without an external refresh;
+only the still-unresolved part of that larger bounded frontier may perform media-server path/source
+refresh or source-backed audio probing. Tune never performs either kind of work. Completed warmed
+publications are skipped on the next pass, so the frontier advances.
+
+Only one planner pass executes at a time; overlapping scheduled or manual calls coalesce rather
+than preparing the same frontier twice. It stable-sorts and deduplicates the plan, fills every spare
+background lease admitted by the measured pool, and refills released slots while useful job time
+remains. Once the River deadline enters a fixed drain/observation/retention reserve, it starts no new
+publication: active workers drain or observe cancellation, then one lookup-only observation pass
+recomputes resulting readiness, retention runs, and the job returns. Foreground preemption is a
+normal yield and the cancelled candidate remains ahead of less urgent work on a later opportunity;
+source failures remain independent errors and do not starve the rest of the admitted wave. Planner
+status is published from that post-work observation, never merely from the pre-work snapshot.
 
 Preparation consumes Loomarr's provider-neutral Media Inventory. A readable local source remains
 the preferred input, but an installation without a shared media mount may prepare the Library's
@@ -2200,13 +2222,18 @@ every other subsystem. Both cases keep the live fallback.
 The same `playout-prepare` pass owns the prepared store's lifecycle; retention is not a second task
 that can race preparation or silently stop running. After readiness work it enforces the hot-applied
 `playout.prepared_budget_gb` soft cap (default 512 GiB) over complete publication bytes, evicting
-whole immutable publications oldest-use first. `Lookup` and asset delivery touch use in memory, so
-segment traffic does not turn into database or per-request filesystem writes. A publication used in
-the last fifteen minutes is protected, and every publication is protected for the first thirty
-minutes after process start so a restart cannot immediately collect current programmes before the
-schedule frontier has been rebuilt. If those protected bytes alone exceed the budget, playback wins:
-the pass leaves the store over its soft cap and logs the exact byte totals rather than breaking an
-active HLS manifest. A later pass converges after the grace expires.
+whole immutable publications oldest-use first. Ready current and next publications are the schedule-
+protected hot set; later six-hour lookahead is opportunistic and therefore remains evictable. When
+one publication serves several Channels or readiness classes, its strongest current/next claim wins.
+This bounds schedule protection to at most two unique publications per Channel instead of retaining
+an arbitrarily large six-hour aggregate ahead of what a viewer can surf to. `Lookup` and asset
+delivery touch use in memory, so segment traffic does not turn into database or per-request
+filesystem writes. A publication used in the last fifteen minutes is protected, and every
+publication is protected for the first thirty minutes after process start so a restart cannot
+immediately collect current programmes before the schedule frontier has been rebuilt. If the
+current/next and recent-use protected bytes alone exceed the budget, playback wins: the pass leaves
+the store over its soft cap and logs the exact byte totals rather than breaking an active HLS
+manifest. A later pass converges after the grace expires or the hot set moves.
 
 Eviction serializes only with the individual publication key it is deleting; a whole-store scan may
 not take a lock that blocks unrelated tunes. It deletes only complete directories whose names are
@@ -2230,15 +2257,15 @@ index is a visible warning and a clean live fallback, not a boot failure; the ne
 control-plane resolution replaces it. The index contains no credentials, operational locators, or
 irreplaceable state and is excluded from the media-byte budget.
 
-The planner resolves a full readiness plan rather than a bare work queue. Every already-prepared
-publication in the accepted six-hour schedule is passed to retention as protected, while no more
-than sixteen bindings absent from the durable index may contact the media server or audio prober in
-one pass. Readiness probes use a non-touching library lookup: only a successful publication build,
-manifest load, or asset open advances playback LRU. This separation is load-bearing. Treating the
-minute-level schedule scan as viewer use would make every scheduled publication permanently hot;
-evicting without schedule protection would instead rebuild and evict the same over-budget horizon
-forever. When the protected horizon itself is larger than the cap, Loomarr keeps it and reports the
-soft-cap overage; publications no longer in that horizon remain eligible oldest-playback-use first.
+The planner resolves a full readiness plan rather than a bare work queue. Every ready current/next
+publication is passed to retention as protected; ready later-horizon publications remain visible to
+readiness but evictable. Readiness probes use a non-touching library lookup: only a successful
+publication build, manifest load, or asset open advances playback LRU. This separation is load-
+bearing. Treating the minute-level schedule scan as viewer use would make every scheduled
+publication permanently hot; protecting the whole horizon would exceed the default budget at 50–100
+Channels and turn nominal retention into an unbounded soft-cap exception. When the current/next hot
+set itself is larger than the cap, Loomarr keeps it and reports the soft-cap overage; publications
+outside that hot set remain eligible oldest-playback-use first.
 
 **V56 is a replacement phase, with a deletion map.** First, characterization tests pin tune behavior
 at the new interface. Then the current `Manager` and `HLSManager` move behind the module as the live
@@ -8676,7 +8703,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Execution history is lazy and bounded.** Expanding a task loads `GET /v1/jobs/{name}/history`; the collapsed Tasks list never pays for an execution-history query. The response summarizes the **past 24 hours** (run count, failure count, and average duration) and returns only the five latest executions with their trigger (`scheduled` or `manual`), start time, duration, outcome, and error. River's existing finalized execution rows are the source of truth: each named Loomarr task has a distinct River kind, and the worker records the Loomarr outcome in River output metadata before that row finalizes. Rows from before outcome recording began are omitted rather than falsely called successful. `scheduled_jobs` remains the one-row-per-task status read model; do not duplicate execution rows into an application table.
 - **River is the engine.** Each registry job becomes a River **periodic job** whose worker calls the same `Run` func; River owns due-selection, leadership (so only one replica runs a tick), retries with backoff, and the durable job records behind run history. **Run now** = inserting the job's args immediately — the same worker, no separate code path. The `scheduled_jobs` table remains the read model the Tasks page renders (last run, last result, paused), because River's own tables are keyed by *job execution*, not by "the operator's view of this named task".
 
-- ⚠ **Concurrency is per-QUEUE, and a job's ceiling therefore bounds only the jobs that share its queue (V54).** There are two: `default` (MaxWorkers 1 on SQLite, 4 on Postgres) and `long` (**1 on both**). A job's queue is **derived from its `Timeout`** — declared ceiling ⇒ `long`, none ⇒ `default` — and never hand-set, because a typo in a hand-set name would insert onto a queue with no producer and the job would then never run, silently and forever. Deriving the queue *set* and the *routing* from one function makes that state unreachable.
+- ⚠ **Concurrency is per-QUEUE, and a job's ceiling therefore bounds only the jobs that share its queue (V54).** There are two: `default` (MaxWorkers 1 on SQLite, 4 on Postgres) and `long` (**1 on both**). A job's queue is **derived from its `Timeout`** — a ceiling longer than River's one-minute default ⇒ `long`; zero or an explicit ceiling at or below that default ⇒ `default` — and never hand-set, because a typo in a hand-set name would insert onto a queue with no producer and the job would then never run, silently, forever. This distinction is load-bearing: `system-health` keeps its explicit ten-second cancellation ceiling but must remain claimable on `default` while a thirty-minute media preparation occupies `long`. Deriving the queue *set* and the *routing* from one function makes an unserved queue name unreachable.
 
   This arrived with `Job.Timeout` because the ceiling created the problem the queue solves. Fixing the 60-second SIGKILL let one job hold the single SQLite slot for half an hour: measured 2026-08-12, a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and **every other job was starved for its whole duration** — channel maintenance, `images-fetch` and `seerr-queue-poll` all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage for everything sharing it.
 

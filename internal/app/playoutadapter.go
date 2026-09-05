@@ -882,15 +882,7 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 	if r.audioLanguage == nil || streamURL == "" {
 		return 0
 	}
-	prefer := r.audioLanguage()
-	// A channel override wins over the instance default. Failure to reload the channel is
-	// deliberately non-fatal: AiringNow already resolved enough state to play, so falling back
-	// to the global preference is better than taking the programme off air for an optional track.
-	if r.channels != nil && channelID != "" {
-		if ch, err := r.channels.GetChannel(ctx, channelID); err == nil {
-			prefer = schedule.ResolveAudioLanguage(ch.Policy, prefer)
-		}
-	}
+	prefer := r.preferredAudioLanguage(ctx, channelID)
 	if strings.TrimSpace(prefer) == "" {
 		// Explicitly cleared ⇒ the operator wants ffmpeg's original behaviour. Skip the probe
 		// entirely rather than paying for an answer that cannot change the outcome.
@@ -913,6 +905,49 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 	tracks := observed.AudioTracks()
 	r.recordSourceMeasurement(ctx, libraryItemID, streamURL, observed)
 	return playout.PickAudioTrack(tracks, prefer)
+}
+
+// AudioTrackFromInventory applies the channel's audio policy using only Loomarr-owned durable
+// metadata. A missing observation is explicit so the planner can spend its bounded refresh budget;
+// this path never contacts the Library server and never invokes ffprobe.
+func (r *playoutResolver) AudioTrackFromInventory(
+	ctx context.Context, channelID, libraryItemID string,
+) (int, bool) {
+	if r.audioLanguage == nil {
+		return 0, true
+	}
+	prefer := r.preferredAudioLanguage(ctx, channelID)
+	if strings.TrimSpace(prefer) == "" {
+		return 0, true
+	}
+	if r.inventory == nil || r.lib == nil || strings.TrimSpace(libraryItemID) == "" {
+		return 0, false
+	}
+	origin, err := r.lib.InventoryOrigin(libraryItemID)
+	if err != nil {
+		return 0, false
+	}
+	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
+		Item: inventory.ItemRef{Origin: &origin}, Kinds: []inventory.SourceKind{inventory.SourceLibraryOriginal},
+		RequiredCoverage: []string{"audioStreams"},
+	})
+	if err != nil || !ok {
+		return 0, false
+	}
+	return playout.PickAudioTrack(playoutAudioTracks(source.Observation.Facts.Streams), prefer), true
+}
+
+func (r *playoutResolver) preferredAudioLanguage(ctx context.Context, channelID string) string {
+	prefer := r.audioLanguage()
+	// A channel override wins over the instance default. Failure to reload the channel is
+	// deliberately non-fatal: AiringNow already resolved enough state to play, so falling back
+	// to the global preference is better than taking the programme off air for an optional track.
+	if r.channels != nil && channelID != "" {
+		if ch, err := r.channels.GetChannel(ctx, channelID); err == nil {
+			prefer = schedule.ResolveAudioLanguage(ch.Policy, prefer)
+		}
+	}
+	return prefer
 }
 
 func (r *playoutResolver) inventoryAudioTracks(
@@ -1063,6 +1098,36 @@ func (r *playoutResolver) ResolvePreparedSource(
 	return prepared.Source{
 		ItemID: string(resolved.ItemID), SourceID: string(resolved.ID), Revision: resolved.Revision,
 	}, input.URL, true
+}
+
+// ResolvePreparedSourceFromInventory resolves an already imported Library original without a
+// media-server request. When a path map exists it deliberately misses: the refresh path must first
+// attempt the operator's direct-disk mapping instead of silently rebinding the item to HTTP.
+func (r *playoutResolver) ResolvePreparedSourceFromInventory(
+	ctx context.Context, libraryItemID string, pathMap library.PathMap,
+) (prepared.Source, string, bool) {
+	if r == nil || r.lib == nil || r.inventory == nil || len(pathMap) > 0 ||
+		strings.TrimSpace(libraryItemID) == "" {
+		return prepared.Source{}, "", false
+	}
+	lib := r.lib.Snapshot()
+	origin, err := lib.InventoryOrigin(libraryItemID)
+	if err != nil {
+		return prepared.Source{}, "", false
+	}
+	resolved, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
+		Item: inventory.ItemRef{Origin: &origin}, Kinds: []inventory.SourceKind{inventory.SourceLibraryOriginal},
+	})
+	if err != nil || !ok {
+		return prepared.Source{}, "", false
+	}
+	input := lib.StreamURLForSource(resolved.Locator.ExternalItemID, resolved.Locator.ExternalSourceID)
+	if input == "" {
+		return prepared.Source{}, "", false
+	}
+	return prepared.Source{
+		ItemID: string(resolved.ItemID), SourceID: string(resolved.ID), Revision: resolved.Revision,
+	}, input, true
 }
 
 // PreparedSourceCurrent compares a durable binding with Loomarr's latest Inventory observation.
