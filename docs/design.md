@@ -4614,6 +4614,30 @@ prohibited and operational holds cannot be selected. The constructed truth can t
 without a second blind full-corpus review, but it cannot establish broadcast suitability, enter
 training data, or authorize production admission. Both permissions remain explicitly false.
 
+Opening that comparison can invalidate inherited anchor truth without authorizing a post-hoc score
+repair. A targeted anchor-adjudication module consumes the exact public and private challenge,
+plan authoring and receipt, all locked assessment sets named by the comparison, the immutable
+comparison itself, and one reviewer submission. It first reproduces the comparison byte-for-byte.
+The review target is then exactly every construction-authority `standalone` case named by the
+comparison's diagnostic candidates: it cannot omit an inconvenient target or expand into a new
+full-corpus audit. Each target records complete-span audiovisual coverage, one reviewer identity and
+fixed review time, sorted unique decisive timestamps, a bounded rationale, the original closed
+unit/role, and exactly one disposition: `confirmed_original`, `structural_disqualification`, or
+`role_correction`. A structural disqualification must replace `standalone` with a non-standalone
+unit and no role; a role correction must retain `standalone` and select a different valid role.
+Model agreement selects what receives review but never becomes truth authority by itself.
+
+The publisher preserves every original input and emits a new owner-only authority rather than
+editing the human lock, plan, challenge, model responses, locks, or comparison. It binds every input
+file hash, the plan's human-assessment and evidence-manifest hashes, the exact challenged source
+bytes and duplicate family, the review decisions, and the prior receipt's complete future-training
+exclusion. Its output always declares the evaluated challenge burned, training false, and production
+admission false. A later holdout-plan contract must consume that authority as prior exposure: no
+source bytes, duplicate family, or programme provenance from the burned challenge may appear in a
+replacement challenge, and its future-training exclusion must be the exact cumulative union. Until
+that replacement machinery and new source inventory exist, adjudication can explain and quarantine
+the bad truth but cannot manufacture a corrected certification score.
+
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. Its prompt identity binds the system prompt,
 sentinel dynamic content and schema, request title, and 4,096-token completion ceiling so mandatory
