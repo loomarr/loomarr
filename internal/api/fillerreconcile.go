@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // reconcileChannelsForFillerChange is the latency path for §10 V56. The clip state is already
@@ -38,12 +37,4 @@ func (s *Server) reconcileChannelsForFillerChange(ctx context.Context, snapshots
 				"channel", ch.ID, "err", err)
 		}
 	}
-}
-
-func storeClipsToFiller(clips []store.Clip) []filler.Clip {
-	out := make([]filler.Clip, len(clips))
-	for i := range clips {
-		out[i] = clips[i].Clip
-	}
-	return out
 }
