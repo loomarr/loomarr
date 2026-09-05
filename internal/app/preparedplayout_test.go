@@ -31,7 +31,9 @@ func (s preparedChannels) GetChannel(_ context.Context, id string) (store.Channe
 type preparedTimelineFake struct {
 	broadcasts          map[string][]playout.Broadcast
 	audioTrackByChannel map[string]int
+	inventoryAudio      bool
 	audioCalls          int
+	inventoryAudioCalls int
 	lastFrom            time.Time
 	lastTo              time.Time
 }
@@ -51,12 +53,38 @@ func (f *preparedTimelineFake) AudioTrackFor(_ context.Context, channelID, _, _ 
 	return 2
 }
 
+func (f *preparedTimelineFake) AudioTrackFromInventory(
+	_ context.Context, channelID, _ string,
+) (int, bool) {
+	f.inventoryAudioCalls++
+	if !f.inventoryAudio {
+		return 0, false
+	}
+	if track, ok := f.audioTrackByChannel[channelID]; ok {
+		return track, true
+	}
+	return 2, true
+}
+
 type preparedInputsFake struct {
-	sources       map[string]library.InputSource
-	revisions     map[string]string
-	current       map[prepared.Source]bool
-	calls         int
-	currentChecks int
+	sources          map[string]library.InputSource
+	inventorySources map[string]library.InputSource
+	revisions        map[string]string
+	current          map[prepared.Source]bool
+	calls            int
+	inventoryCalls   int
+	currentChecks    int
+}
+
+func (f *preparedInputsFake) ResolvePreparedSourceFromInventory(
+	_ context.Context, itemID string, _ library.PathMap,
+) (prepared.Source, string, bool) {
+	f.inventoryCalls++
+	input, ok := f.inventorySources[itemID]
+	if !ok || input.URL == "" {
+		return prepared.Source{}, "", false
+	}
+	return preparedSource(itemID, 0), input.URL, true
 }
 
 func (f *preparedInputsFake) ResolvePreparedSource(
@@ -284,6 +312,76 @@ func TestPreparedRuntimePlanExposesOneHundredChannelHotFrontier(t *testing.T) {
 	}
 	if plan.Summary != wantSummary {
 		t.Fatalf("summary = %+v, want %+v", plan.Summary, wantSummary)
+	}
+}
+
+func TestPreparedRuntimeInventoryBackedHotFrontierBypassesExternalRefreshLimit(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(17_250, 0)
+	const channelCount = 150
+	channels := make([]store.Channel, channelCount)
+	broadcasts := make(map[string][]playout.Broadcast, channelCount)
+	inventorySources := make(map[string]library.InputSource, channelCount)
+	for i := range channels {
+		channelID := fmt.Sprintf("ch-%03d", i)
+		itemID := fmt.Sprintf("item-%03d", i)
+		channels[i] = store.Channel{Channel: schedule.Channel{ID: channelID}}
+		broadcasts[channelID] = []playout.Broadcast{{
+			Kind: schedule.SlotProgram, LibraryItemID: itemID,
+			Start: now.Add(-time.Minute), Stop: now.Add(time.Hour),
+		}}
+		inventorySources[itemID] = library.InputSource{
+			URL: "http://media/" + itemID, Kind: library.InputHTTP,
+		}
+	}
+	timeline := &preparedTimelineFake{broadcasts: broadcasts, inventoryAudio: true}
+	inputs := &preparedInputsFake{inventorySources: inventorySources}
+	r := newPreparedRuntimeForTest(
+		t, preparedChannels{channels: channels}, timeline, inputs, preparedLookupFake{},
+		func() time.Time { return now }, nil, func() string { return "policy" },
+		func() string { return "internal" },
+		func() prepared.RenditionContract { return playout.CanonicalPreparedRendition(playout.TierBalanced) },
+	)
+
+	plan, err := r.Plan(t.Context(), now, now.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Candidates) != channelCount {
+		t.Fatalf("inventory-backed candidates = %d, want %d", len(plan.Candidates), channelCount)
+	}
+	if inputs.inventoryCalls != channelCount || inputs.calls != 0 {
+		t.Fatalf("source resolution = %d inventory, %d external; want %d, 0", inputs.inventoryCalls, inputs.calls, channelCount)
+	}
+	if timeline.inventoryAudioCalls != channelCount || timeline.audioCalls != 0 {
+		t.Fatalf("audio resolution = %d inventory, %d external; want %d, 0", timeline.inventoryAudioCalls, timeline.audioCalls, channelCount)
+	}
+}
+
+func TestPreparedRuntimeObservationDoesNotResolveAbsentBindings(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(17_375, 0)
+	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {{
+		Kind: schedule.SlotProgram, LibraryItemID: "item", Start: now, Stop: now.Add(time.Hour),
+	}}}}
+	inputs := &preparedInputsFake{}
+	r := newPreparedRuntimeForTest(
+		t, preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}},
+		timeline, inputs, preparedLookupFake{}, func() time.Time { return now }, nil,
+		func() string { return "policy" }, func() string { return "internal" },
+		func() prepared.RenditionContract { return playout.CanonicalPreparedRendition(playout.TierBalanced) },
+	)
+
+	plan, err := r.Observe(t.Context(), now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.MissingBindings != 1 {
+		t.Fatalf("observation summary = %+v, want one missing binding", plan.Summary)
+	}
+	if inputs.inventoryCalls != 0 || inputs.calls != 0 ||
+		timeline.inventoryAudioCalls != 0 || timeline.audioCalls != 0 {
+		t.Fatalf("lookup-only observation did source/audio work: inputs %+v timeline %+v", inputs, timeline)
 	}
 }
 
