@@ -88,3 +88,8 @@ include mk/docs.mk
 include mk/frontend.mk
 include mk/smoke.mk
 include mk/android.mk
+
+.PHONY: prototype-playout-hotset
+# PROTOTYPE only: drive the warm-session hot set (optional ARGS=-burst=50).
+prototype-playout-hotset:
+	@$(GO) run ./cmd/prototype-playout-hotset $(ARGS)
