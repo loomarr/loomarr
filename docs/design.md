@@ -2116,15 +2116,22 @@ rendition. A pass exposes at most sixteen new misses to path/audio resolution be
 work; this bounds a cold 100-Channel install instead of issuing hundreds of media-server calls in
 one burst. Completed warmed publications are skipped on the next pass, so the frontier advances.
 
-Only readable local files are eligible for preparation. An item that resolves only to the media
-server's HTTP stream remains a live fallback; a reusable immutable publication must not pretend a
-remote response is a stable source file. The planner owns path mapping, preferred-audio probing,
-fingerprinting, and ffmpeg. Each pass writes one atomic, versioned readiness index under the
-persistent prepared root. The index binds a Channel, library item, active source policy, selected
-audio track, source fingerprint, and immutable publication; startup loads it into memory before the
-minute scheduler runs. Tune reads that memory index and `Preparer.Lookup` only. An absent entry,
-changed tier, audio preference, path map, file stat, or publication is an immediate prepared miss.
-Tune never contacts the media server, probes audio, hashes bytes, or waits for the scheduler.
+Preparation consumes Loomarr's provider-neutral Media Inventory. A readable local source remains
+the preferred input, but an installation without a shared media mount may prepare the Library's
+authenticated original-file HTTP source; that is still Loomarr's FFmpeg encode, not a media-server
+transcode. Durable preparation identity is the Inventory item/source id, source revision, selected
+audio track, rendition contract, and packaging version. Immediately before background packaging, a
+Source Access adapter validates that exact revision and opens either the protected local path or a
+freshly authenticated Library URL. The resulting input is transient: URLs, tokens, and paths never
+enter prepared bindings, publication metadata, logs, or diagnostics.
+
+The planner owns bounded Inventory import/selection, path mapping, preferred-audio probing, and
+FFmpeg. Each pass writes one atomic, versioned readiness index under the persistent prepared root.
+The index binds a Channel, library item, active source policy, stable source id/revision, selected
+audio track, and rendition; startup loads it into memory before the minute scheduler runs. Tune reads
+that memory index and `Preparer.Lookup` only. An absent entry, changed tier, audio preference, path
+map, source revision, or publication is an immediate prepared miss. Tune never opens a source,
+contacts the media server, probes audio, hashes bytes, starts FFmpeg, or waits for the scheduler.
 
 The accelerated packaging driver reuses the live playout encoder's device setup, hardware decode and
 upload, filter, preset, rate-control, and GOP builders. Its driver contract separates pre-input
@@ -2154,16 +2161,17 @@ the setting stable across ext4, ZFS, APFS, and network mounts. At the balanced 5
 larger raise the cap without restart or accept live fallback for evicted cold programmes.
 
 Readiness identity survives process restarts in a versioned `.readiness.json` control file inside
-the prepared root. It records two regenerable indexes: `(Channel, library item, global source
-policy, Channel audio policy) -> local path / selected audio / rendition`, and `(absolute path,
-size, mtime, selected audio) -> content fingerprint`. The scheduler is the only writer. It snapshots
-updates under a short memory lock, writes a private temporary file, fsyncs it, atomically renames it,
-and fsyncs the root; tune reads the in-memory snapshot loaded at boot and never waits on that write.
-The source stat in `Preparer.Lookup` still proves the persisted file version before reuse, while a
-tier, language, Channel override, path-map, size, or mtime change makes the entry miss by identity.
-A corrupt index is a visible warning and a clean live fallback, not a boot failure; the next
-successful control-plane resolution replaces it. The index contains no irreplaceable state and is
-excluded from the media-byte budget.
+the prepared root. It records one regenerable index: `(Channel, library item, global source policy,
+Channel audio policy) -> Inventory item/source id + source revision + selected audio + rendition`.
+The scheduler is the only writer. It snapshots updates under a short memory lock, writes a private
+temporary file, fsyncs it, atomically renames it, and fsyncs the root; tune reads the in-memory
+snapshot loaded at boot and never waits on that write. The source revision incorporates local
+size/mtime or the Library's upstream revision, so a changed source produces a new publication
+identity when the control plane observes it. Source Access validates that revision immediately
+before and after packaging; `Preparer.Lookup` remains source-I/O-free. A corrupt or older-version
+index is a visible warning and a clean live fallback, not a boot failure; the next successful
+control-plane resolution replaces it. The index contains no credentials, operational locators, or
+irreplaceable state and is excluded from the media-byte budget.
 
 The planner resolves a full readiness plan rather than a bare work queue. Every already-prepared
 publication in the accepted six-hour schedule is passed to retention as protected, while no more
