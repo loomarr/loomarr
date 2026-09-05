@@ -230,7 +230,7 @@ func TestPreparedRuntimeCandidatesKeepChannelAudioOverridesDistinct(t *testing.T
 	}
 }
 
-func TestPreparedRuntimePlanBoundsColdResolutionButStillProtectsDurableSchedule(t *testing.T) {
+func TestPreparedRuntimePlanExposesOneHundredChannelHotFrontier(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(17_000, 0)
 	channels := make([]store.Channel, 100)
@@ -271,8 +271,8 @@ func TestPreparedRuntimePlanBoundsColdResolutionButStillProtectsDurableSchedule(
 		t.Fatal(err)
 	}
 	inputs := r.sources.(*preparedInputsFake)
-	if inputs.calls != preparedCandidateBatch || len(plan.Candidates) != preparedCandidateBatch {
-		t.Fatalf("cold work = %d resolutions, %d candidates; want bounded %d", inputs.calls, len(plan.Candidates), preparedCandidateBatch)
+	if inputs.calls != 99 || len(plan.Candidates) != 99 {
+		t.Fatalf("cold work = %d resolutions, %d candidates; want all 99 missing hot bindings", inputs.calls, len(plan.Candidates))
 	}
 	if len(plan.Protected) != 1 || plan.Protected[0].SourceFingerprint != "durable" {
 		t.Fatalf("protected = %+v, want durable publication beyond cold batch", plan.Protected)
@@ -280,10 +280,52 @@ func TestPreparedRuntimePlanBoundsColdResolutionButStillProtectsDurableSchedule(
 	wantSummary := prepared.ReadinessSummary{
 		Channels: 100, ReadyChannels: 1,
 		ScheduledBindings: 100, ReadyBindings: 1, MissingBindings: 99,
-		QueuedPublications: preparedCandidateBatch,
+		QueuedPublications: 99,
 	}
 	if plan.Summary != wantSummary {
 		t.Fatalf("summary = %+v, want %+v", plan.Summary, wantSummary)
+	}
+}
+
+func TestPreparedRuntimeProtectsCurrentAndNextButNotLaterLookahead(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(17_500, 0)
+	rendition := playout.CanonicalPreparedRendition(playout.TierBalanced)
+	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {
+		{Kind: schedule.SlotProgram, LibraryItemID: "current", Start: now.Add(-time.Minute), Stop: now.Add(time.Hour)},
+		{Kind: schedule.SlotProgram, LibraryItemID: "next", Start: now.Add(time.Hour), Stop: now.Add(2 * time.Hour)},
+		{Kind: schedule.SlotProgram, LibraryItemID: "later", Start: now.Add(2 * time.Hour), Stop: now.Add(3 * time.Hour)},
+	}}}
+	inputs := &preparedInputsFake{sources: map[string]library.InputSource{
+		"current": {URL: "/media/current.mkv", Kind: library.InputFile},
+		"next":    {URL: "/media/next.mkv", Kind: library.InputFile},
+		"later":   {URL: "/media/later.mkv", Kind: library.InputFile},
+	}}
+	hits := make(map[prepared.Request]prepared.Specification)
+	for _, item := range []string{"current", "next", "later"} {
+		request := prepared.Request{Source: preparedSource(item, 2), Rendition: rendition}
+		hits[request] = prepared.Specification{SourceFingerprint: item, Rendition: rendition}
+	}
+	r := newPreparedRuntimeForTest(t,
+		preparedChannels{channels: []store.Channel{{Channel: schedule.Channel{ID: "ch"}}}},
+		timeline, inputs, preparedLookupFake{hits: hits}, func() time.Time { return now }, nil,
+		func() string { return "policy" }, func() string { return "internal" },
+		func() prepared.RenditionContract { return rendition },
+	)
+
+	plan, err := r.Plan(t.Context(), now, now.Add(6*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Protected) != 2 {
+		t.Fatalf("protected publications = %+v, want only current and next", plan.Protected)
+	}
+	protected := map[string]bool{}
+	for _, specification := range plan.Protected {
+		protected[specification.SourceFingerprint] = true
+	}
+	if !protected["current"] || !protected["next"] || protected["later"] {
+		t.Fatalf("protected publication identities = %+v", protected)
 	}
 }
 

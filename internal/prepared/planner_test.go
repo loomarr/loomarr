@@ -31,6 +31,22 @@ type countingCandidates struct {
 	items []Candidate
 }
 
+type observingCandidates struct {
+	before ReadinessPlan
+	after  ReadinessPlan
+	calls  atomic.Int64
+}
+
+func (f *observingCandidates) Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
+	f.calls.Add(1)
+	return f.before, nil
+}
+
+func (f *observingCandidates) Observe(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
+	f.calls.Add(1)
+	return f.after, nil
+}
+
 func (f *countingCandidates) Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
 	f.calls.Add(1)
 	return ReadinessPlan{Candidates: f.items}, nil
@@ -326,6 +342,35 @@ func TestPlannerStatusReportsResolvedReadinessAndRetentionAfterYield(t *testing.
 	}
 	if got := p.Status(); got != want {
 		t.Fatalf("status = %+v, want %+v", got, want)
+	}
+}
+
+func TestPlannerStatusObservesResultingReadinessAfterWork(t *testing.T) {
+	now := time.Unix(21_000, 0)
+	request := Request{Source: testSource("warming"), Rendition: baselineRendition()}
+	before := ReadinessPlan{
+		Candidates: []Candidate{{Request: request}},
+		Summary: ReadinessSummary{
+			Channels: 100, ScheduledBindings: 100, MissingBindings: 100, QueuedPublications: 100,
+		},
+	}
+	after := ReadinessPlan{Summary: ReadinessSummary{
+		Channels: 100, ReadyChannels: 100, ScheduledBindings: 100, ReadyBindings: 100,
+	}}
+	resolver := &observingCandidates{before: before, after: after}
+	p := NewPlanner(PlannerDependencies{
+		Resolver: resolver, Preparation: &recordingPreparation{},
+		Pool: media.NewEncodePool(func() int { return 2 }), Now: func() time.Time { return now },
+	})
+
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Status().Readiness; got != after.Summary {
+		t.Fatalf("post-work readiness = %+v, want resulting %+v", got, after.Summary)
+	}
+	if got := resolver.calls.Load(); got != 2 {
+		t.Fatalf("resolver calls = %d, want plan plus lookup-only observation", got)
 	}
 }
 
