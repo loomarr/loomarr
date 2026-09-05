@@ -77,3 +77,15 @@ func TestReleaseSourceEvidence(t *testing.T) {
 		t.Fatalf("release source evidence contract: %v\n%s", err, output)
 	}
 }
+
+func TestAndroidReleaseSourceEvidence(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	cmd := exec.Command("bash", filepath.Join("scripts", "validate-android-release-source-test.sh"))
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Android release source evidence contract: %v\n%s", err, output)
+	}
+}

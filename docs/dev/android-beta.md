@@ -67,11 +67,16 @@ Run **Android TV beta** from `main` with:
 - version `0.1.0-beta.1`;
 - **Publish to Play** disabled.
 
-The workflow requires the exact `main` commit to have a successful CI run in which the Android job
-actually executed. It generates the Android project from `web/apps/tv`, builds with the protected
-upload key, verifies the signature and certificate, checks `loomarr.media`, requires all four
-Android ABIs, verifies 16 KiB ELF alignment for every packaged 64-bit native library, and retains
-the AAB plus its JSON evidence for 30 days. Download that AAB and upload it manually while enrolling
+The workflow requires current `main` to have successful Android CI evidence. The newest main-branch
+run whose Android job actually executed must be successful; the guard accepts both the plain and
+qualified job names reported for the reusable workflow. Evidence from an ancestor may be reused only when that commit
+is still in current `main`'s ancestry and the fail-closed CI impact classifier proves that no Android
+input changed afterward; any TV, shared-client, generated API, build, listing, or signing input
+change requires a fresh Android gate. The workflow generates the Android project from `web/apps/tv`,
+builds with the protected upload key, verifies the signature and certificate, checks `loomarr.media`,
+requires all four Android ABIs, verifies 16 KiB ELF alignment for every packaged 64-bit native
+library, and retains the AAB plus its JSON evidence for 30 days. Download that AAB and upload it
+manually while enrolling
 in Play App Signing.
 
 Do not use Internal App Sharing for acceptance; it re-signs artifacts with a disposable identity and
