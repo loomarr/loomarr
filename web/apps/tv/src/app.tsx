@@ -69,6 +69,7 @@ type TvPairedRuntime = {
 const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
   const [catalogLoading, setCatalogLoading] = useState(true);
+  const [controlsActivityKey, setControlsActivityKey] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [loadError, setLoadError] = useState<string>();
   const [serverVersion, setServerVersion] = useState<string>();
@@ -213,15 +214,19 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     },
     [controller],
   );
+  const showControlsForActivity = useCallback(() => {
+    setControlsVisible(true);
+    setControlsActivityKey((key) => key + 1);
+  }, []);
   const dispatchRemoteEvent = useCallback(
     (event: TvWatchingRemoteEvent) => {
       const result = reduceTvWatchingRemote(remoteStateRef.current, event);
       remoteStateRef.current = result.state;
       setRemoteState(result.state);
-      if (result.handled) setControlsVisible(true);
+      if (result.handled) showControlsForActivity();
       runRemoteIntent(result.intent);
     },
-    [runRemoteIntent],
+    [runRemoteIntent, showControlsForActivity],
   );
   useTVEventHandler(({ eventKeyAction, eventType }) => {
     if (active !== "watching") return;
@@ -251,6 +256,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     <View style={{ flex: 1 }}>
       <WatchingSurface
         chromeVisible={active === "watching"}
+        controlsActivityKey={controlsActivityKey}
         controlsVisible={controlsVisible}
         density="tv"
         loading={catalogLoading}
@@ -268,7 +274,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
           if (loadError) refreshSafely();
           else void controller.retry();
         }}
-        onShowControls={() => setControlsVisible(true)}
+        onShowControls={showControlsForActivity}
         numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
         player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
         schedule={schedule}
@@ -293,6 +299,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               focusRegistry={guideFocusRegistry}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
+                showControlsForActivity();
                 setActive("watching");
               }}
               preferredChannelId={snapshot.channel?.id}
@@ -327,6 +334,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               onDisconnect={() => runtime.session.disconnect()}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
+                showControlsForActivity();
                 setActive("watching");
               }}
               playableChannelIds={snapshot.catalog.map(({ id }) => id)}

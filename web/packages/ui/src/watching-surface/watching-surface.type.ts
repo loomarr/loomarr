@@ -23,6 +23,8 @@ interface WatchingSurfaceProps {
   chromeVisible?: boolean;
   /** Presentation-owned visibility; playback state deliberately does not own UI chrome. */
   controlsVisible?: boolean;
+  /** Changes only after handled Watching activity, not while live playback presentation updates. */
+  controlsActivityKey?: number;
   density: Density;
   /** True only while the authoritative Channel catalog request is unresolved. */
   loading?: boolean;
