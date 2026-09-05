@@ -151,7 +151,10 @@ test("hands the native splash to the shared Loomarr launch identity", async () =
 test("ships LAN discovery through Android NSD without restoring Kotlin", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const adapter = await readFile(
-    new URL("../../../packages/lan-discovery-native/index.ts", import.meta.url),
+    new URL(
+      "../../../packages/lan-discovery-native/src/lan-discovery-native/lan-discovery-native.ts",
+      import.meta.url,
+    ),
     "utf8",
   );
   const nativeModule = await readFile(
