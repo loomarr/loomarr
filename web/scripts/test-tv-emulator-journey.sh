@@ -115,6 +115,18 @@ wait_for_ui() {
   return 1
 }
 
+assert_ui_absent() {
+  local description="$1"
+  local unexpected="$2"
+  dump_ui
+  if grep -Fq "${unexpected}" "${journey_dir}/window.xml"; then
+    printf 'TV emulator still showed %s (%s)\n' "${description}" "${unexpected}" >&2
+    cat "${journey_dir}/window.xml" >&2
+    return 1
+  fi
+  printf 'tv-emulator-journey: observed %s\n' "${description}"
+}
+
 journey_state() {
   curl --fail --silent "http://127.0.0.1:${JOURNEY_PORT}/__journey"
 }
@@ -143,15 +155,25 @@ key() {
 # Fresh storage must exercise the real pair-start/poll/store transition before Watching appears.
 wait_for_ui "fresh pairing code" "Pairing code 2468"
 wait_for_state "pair start and approval polling" '.pairStarts == 1 and .pairPolls >= 1'
-wait_for_ui "Watching home" "Classic Animation" 40
+wait_for_ui "Watching home" "Open programme guide" 40
 wait_for_state "initial Channel tune" '.playUrlChannels[-1] == "classic-animation"'
+
+# A handled remote event reveals both pieces of Watching chrome. Neither may remain after the
+# five-second inactivity window, so the journey's persistent home sentinel lives outside them.
+key KEYCODE_DPAD_UP
+wait_for_state "handled remote tune" '.playUrlChannels[-1] == "science-fiction"'
+wait_for_ui "Watching identity after handled remote activity" "SCIENCE FICTION"
+sleep 6
+assert_ui_absent "Watching identity dismissed after inactivity" "SCIENCE FICTION"
+key KEYCODE_DPAD_DOWN
+wait_for_state "return to initial Channel" '.playUrlChannels[-1] == "classic-animation"'
 
 # OK opens Guide, and hardware Back dismisses it to the still-mounted Watching composition.
 key KEYCODE_DPAD_CENTER
 wait_for_ui "Guide" "Programme guide"
 wait_for_ui "authoritative Guide programme" "Radioactive Man"
 key KEYCODE_BACK
-wait_for_ui "Watching after Back" "Classic Animation"
+wait_for_ui "Watching after Back" "Open programme guide"
 
 # Left opens Surf; moving down and OK tunes the focused second Channel back into Watching.
 key KEYCODE_DPAD_LEFT
@@ -159,7 +181,7 @@ wait_for_ui "Surf" "Channel surfer"
 key KEYCODE_DPAD_DOWN
 key KEYCODE_DPAD_CENTER
 wait_for_state "Surf tune" '.playUrlChannels[-1] == "science-fiction"'
-wait_for_ui "Watching after Surf tune" "Science Fiction"
+wait_for_ui "Watching identity after Surf tune activity" "SCIENCE FICTION"
 
 # Android numeric keys must build and commit the exact server-authored Channel number.
 # Keep OK inside the production 1.2-second entry window; item 34 owns visual capture evidence.
@@ -179,7 +201,7 @@ wait_for_state "background event-stream release" ".eventDisconnects > ${event_di
 adb -s "${emulator_serial}" shell am start -W -n "${PACKAGE_ID}/.MainActivity" >/dev/null
 wait_for_state "foreground catalog refresh" ".channelLoads > ${channel_loads_before}"
 wait_for_state "foreground retune" ".playUrlChannels | length > ${play_urls_before} and .[-1] == \"classic-animation\""
-wait_for_ui "Watching after foreground restoration" "Classic Animation"
+wait_for_ui "Watching after foreground restoration" "Open programme guide"
 
 # Surf's final remote-reachable action owns a confirmation step before revocation and local reset.
 key KEYCODE_DPAD_LEFT
