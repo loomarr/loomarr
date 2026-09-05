@@ -14,6 +14,7 @@ type NativeDiscoveryModule = {
 
 type NativeServer = DiscoveredServer & { protocol: string };
 const nativeModule = NativeModules.LoomarrLanDiscovery as NativeDiscoveryModule | undefined;
+const discoveryTimeoutMs = 30_000;
 
 const createNativeServerDiscovery = (): ServerDiscovery => {
   let snapshot: ServerDiscoverySnapshot = {
@@ -22,14 +23,21 @@ const createNativeServerDiscovery = (): ServerDiscovery => {
   };
   const listeners = new Set<() => void>();
   let subscriptions: Array<{ remove(): void }> = [];
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let generation = 0;
+  let running = false;
   const publish = (next: ServerDiscoverySnapshot) => {
     snapshot = next;
     for (const listener of listeners) listener();
   };
   const stop = () => {
+    generation += 1;
+    if (timeout !== undefined) clearTimeout(timeout);
+    timeout = undefined;
     for (const subscription of subscriptions) subscription.remove();
     subscriptions = [];
-    nativeModule?.stop();
+    if (running) nativeModule?.stop();
+    running = false;
   };
 
   return {
@@ -44,31 +52,65 @@ const createNativeServerDiscovery = (): ServerDiscovery => {
         return;
       }
       stop();
+      const activeGeneration = ++generation;
       publish({ servers: [], status: "searching" });
       const events = new NativeEventEmitter(nativeModule);
       subscriptions = [
         events.addListener("loomarrDiscoveryFound", (server: NativeServer) => {
+          if (activeGeneration !== generation) return;
           if (server.protocol !== "1" || !server.id || !server.name || !server.url) return;
           const byId = new Map(snapshot.servers.map((candidate) => [candidate.id, candidate]));
-          byId.set(server.id, { id: server.id, name: server.name, url: server.url });
+          const next = { id: server.id, name: server.name, url: server.url };
+          const previous = byId.get(server.id);
+          if (previous?.name === next.name && previous.url === next.url) return;
+          byId.set(server.id, next);
           publish({
             servers: [...byId.values()].sort((left, right) => left.name.localeCompare(right.name)),
             status: "searching",
           });
         }),
         events.addListener("loomarrDiscoveryLost", ({ id }: { id?: string }) => {
+          if (activeGeneration !== generation) return;
           if (!id) return;
           publish({ ...snapshot, servers: snapshot.servers.filter((server) => server.id !== id) });
         }),
         events.addListener("loomarrDiscoveryError", () => {
+          if (activeGeneration !== generation) return;
+          const servers = snapshot.servers;
+          stop();
           publish({
             error: "Couldn't search this network. You can still enter the address manually.",
-            servers: snapshot.servers,
+            servers,
             status: "unavailable",
           });
         }),
       ];
-      nativeModule.start();
+      try {
+        nativeModule.start();
+        running = true;
+      } catch {
+        stop();
+        publish({
+          error: "Couldn't search this network. You can still enter the address manually.",
+          servers: [],
+          status: "unavailable",
+        });
+        return;
+      }
+      timeout = setTimeout(() => {
+        if (activeGeneration !== generation) return;
+        const servers = snapshot.servers;
+        stop();
+        publish(
+          servers.length > 0
+            ? { servers, status: "idle" }
+            : {
+                error: "Couldn't find a Loomarr server. You can still enter the address manually.",
+                servers,
+                status: "unavailable",
+              },
+        );
+      }, discoveryTimeoutMs);
     },
     stop,
     subscribe(listener) {

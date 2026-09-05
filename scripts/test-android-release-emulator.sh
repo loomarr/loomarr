@@ -188,6 +188,10 @@ launch() {
 	adb -s "${EMULATOR_SERIAL}" shell am start -n "${PACKAGE_ID}/.MainActivity" >/dev/null
 }
 
+open_launcher_surface() {
+	adb -s "${EMULATOR_SERIAL}" shell input keyevent KEYCODE_HOME
+}
+
 key() {
 	adb -s "${EMULATOR_SERIAL}" shell input keyevent "$1"
 	sleep 0.25
@@ -198,6 +202,9 @@ dns-sd -R "${DISCOVERY_NAME}" _loomarr._tcp local "${JOURNEY_PORT}" \
 	protocol=1 scheme=http >"${temp_dir}/dns-sd.log" 2>&1 &
 discovery_pid=$!
 adb -s "${EMULATOR_SERIAL}" shell pm clear "${PACKAGE_ID}" >/dev/null
+open_launcher_surface
+wait_for_ui "launcher surface identity" "Loomarr"
+adb -s "${EMULATOR_SERIAL}" exec-out screencap -p >"${evidence_dir}/launcher-surface.png"
 launch
 wait_for_ui "automatic LAN discovery" "Connect to ${DISCOVERY_NAME}"
 dump_ui
@@ -294,6 +301,7 @@ jq -n \
 	 producerCommit: $producerCommit, producerRunId: $producerRunId,
 	 versionCode: $versionCode, versionName: $versionName,
 	 automaticLanDiscovery: true, discoveredAddressPairing: true, manualAddressFallback: true,
+	 launcherSurfaceObserved: true, launcherSurfaceScreenshot: "launcher-surface.png",
 	 pairedColdLaunchMaxLuma: $pairedLaunchMaxLuma, pairedColdLaunchMinLuma: $pairedLaunchMinLuma,
 	 pairedColdLaunchRecording: "paired-launch.mp4", pairedColdLaunchVideoCovered: true,
 	 playbarAutoHide: true}' \

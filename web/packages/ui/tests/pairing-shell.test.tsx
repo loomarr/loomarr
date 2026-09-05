@@ -139,6 +139,45 @@ describe("TV pairing offer", () => {
     act(() => root.unmount());
   });
 
+  it("keeps manual address entry available when automatic discovery times out", async () => {
+    const session = new PairingSession({
+      createTransport: vi.fn(),
+      deviceName: "Living Room TV",
+      store: {
+        clear: vi.fn(async () => undefined),
+        read: vi.fn(async () => undefined),
+        write: vi.fn(async () => undefined),
+      },
+    });
+    await session.initialize(undefined);
+    const discovery: ServerDiscovery = {
+      snapshot: () => ({
+        error: "Couldn't find a Loomarr server. You can still enter the address manually.",
+        servers: [],
+        status: "unavailable",
+      }),
+      start: vi.fn(),
+      stop: vi.fn(),
+      subscribe: () => () => undefined,
+    };
+
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider theme="dark">
+        <PairingShell
+          allowServerEntry
+          density="tv"
+          discovery={discovery}
+          discoveryForeground
+          renderPaired={() => null}
+          session={session}
+        />
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toContain("Couldn&#x27;t find a Loomarr server");
+    expect(markup).toContain("Enter address manually");
+  });
+
   it("keeps the Loomarr mark in the living-room QR code", async () => {
     const { pairing, session } = await awaitingSession();
 
