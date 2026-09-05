@@ -11,6 +11,7 @@ import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
@@ -18,7 +19,7 @@ import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Enumeration;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import org.json.JSONObject;
@@ -27,6 +28,10 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
   private static final String SERVICE_TYPE = "_loomarr._tcp.";
   private static final String BROADCAST_REQUEST = "LOOMARR_DISCOVER/1";
   private static final int BROADCAST_PORT = 51029;
+  private static final int MAX_UNICAST_TARGETS = 254;
+  private static final long BROADCAST_INTERVAL_MS = 3_000;
+  private static final long UNICAST_SWEEP_INTERVAL_MS = 15_000;
+  private static final long UNICAST_PACKET_GAP_MS = 5;
   private final NsdManager manager;
   private NsdManager.DiscoveryListener listener;
   private volatile DatagramSocket broadcastSocket;
@@ -123,15 +128,22 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
       if (activeGeneration != generation) return;
       broadcastSocket = socket;
       byte[] request = BROADCAST_REQUEST.getBytes(StandardCharsets.UTF_8);
-      long nextSend = 0;
+      Set<InetAddress> broadcastTargets = broadcastTargets();
+      Set<InetAddress> unicastTargets = subnetUnicastTargets();
+      long nextBroadcast = 0;
+      long nextUnicastSweep = 0;
+      int unicastSweepsRemaining = 2;
       byte[] response = new byte[1025];
       while (activeGeneration == generation && !socket.isClosed()) {
         long now = System.currentTimeMillis();
-        if (now >= nextSend) {
-          for (InetAddress target : broadcastTargets()) {
-            socket.send(new DatagramPacket(request, request.length, target, BROADCAST_PORT));
-          }
-          nextSend = now + 3000;
+        if (now >= nextBroadcast) {
+          sendRequest(socket, request, broadcastTargets, 0);
+          nextBroadcast = now + BROADCAST_INTERVAL_MS;
+        }
+        if (unicastSweepsRemaining > 0 && now >= nextUnicastSweep) {
+          sendRequest(socket, request, unicastTargets, UNICAST_PACKET_GAP_MS);
+          unicastSweepsRemaining -= 1;
+          nextUnicastSweep = now + UNICAST_SWEEP_INTERVAL_MS;
         }
         try {
           DatagramPacket packet = new DatagramPacket(response, response.length);
@@ -148,8 +160,21 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
     }
   }
 
+  private static void sendRequest(
+      DatagramSocket socket, byte[] request, Set<InetAddress> targets, long packetGapMs)
+      throws InterruptedException {
+    for (InetAddress target : targets) {
+      try {
+        socket.send(new DatagramPacket(request, request.length, target, BROADCAST_PORT));
+      } catch (Exception ignored) {
+        // One unreachable interface or neighbour must not stop either UDP path.
+      }
+      if (packetGapMs > 0) Thread.sleep(packetGapMs);
+    }
+  }
+
   private static Set<InetAddress> broadcastTargets() throws Exception {
-    Set<InetAddress> targets = new HashSet<>();
+    Set<InetAddress> targets = new LinkedHashSet<>();
     targets.add(InetAddress.getByName("255.255.255.255"));
     Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
     if (interfaces == null) return targets;
@@ -162,6 +187,48 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
       }
       for (InterfaceAddress address : network.getInterfaceAddresses()) {
         if (address.getBroadcast() != null) targets.add(address.getBroadcast());
+      }
+    }
+    return targets;
+  }
+
+  private static Set<InetAddress> subnetUnicastTargets() throws Exception {
+    Set<InetAddress> targets = new LinkedHashSet<>();
+    Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+    if (interfaces == null) return targets;
+    while (interfaces.hasMoreElements() && targets.size() < MAX_UNICAST_TARGETS) {
+      NetworkInterface network = interfaces.nextElement();
+      try {
+        if (!network.isUp() || network.isLoopback()) continue;
+      } catch (Exception ignored) {
+        continue;
+      }
+      for (InterfaceAddress address : network.getInterfaceAddresses()) {
+        InetAddress local = address.getAddress();
+        if (!(local instanceof Inet4Address)) continue;
+        if (address.getNetworkPrefixLength() < 0) continue;
+        int prefix = Math.max(address.getNetworkPrefixLength(), 24);
+        if (prefix > 30) continue;
+
+        byte[] octets = local.getAddress();
+        long localValue = ((long) (octets[0] & 0xff) << 24)
+            | ((long) (octets[1] & 0xff) << 16)
+            | ((long) (octets[2] & 0xff) << 8)
+            | (long) (octets[3] & 0xff);
+        long mask = (0xffff_ffffL << (32 - prefix)) & 0xffff_ffffL;
+        long first = (localValue & mask) + 1;
+        long last = (localValue | (~mask & 0xffff_ffffL)) - 1;
+        for (long candidate = first;
+            candidate <= last && targets.size() < MAX_UNICAST_TARGETS;
+            candidate += 1) {
+          if (candidate == localValue) continue;
+          targets.add(InetAddress.getByAddress(new byte[] {
+              (byte) (candidate >>> 24),
+              (byte) (candidate >>> 16),
+              (byte) (candidate >>> 8),
+              (byte) candidate,
+          }));
+        }
       }
     }
     return targets;
