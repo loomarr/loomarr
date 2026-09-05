@@ -151,7 +151,7 @@ func newPreparedMPEGTSBlockSource(o *PreparedOrigin, start preparedBlockStarter)
 				VideoBitrate: resolved.format.VideoBitrate, AudioBitrate: resolved.format.AudioBitrate,
 			},
 			Input: resolved.media.manifestPath, Offset: resolved.media.airing.Offset, Limit: resolved.limit,
-			Plan: CopyPlan{CopyVideo: true, CopyAudio: true}, PaceFromFirstByte: true,
+			Plan: CopyPlan{CopyVideo: true, CopyAudio: true}, UnpacedInput: true,
 		})
 		diagnosticArgs := append([]string(nil), args...)
 		for index := range diagnosticArgs {

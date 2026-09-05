@@ -67,10 +67,11 @@ func TestLive_PreparedMPEGTSBlockProducesTransportUnderOneSecond(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	startedAt := time.Now().UTC().Add(-12 * time.Second)
+	const hostileOffset = 12*time.Second + 250*time.Millisecond
+	startedAt := time.Now().UTC().Add(-hostileOffset)
 	origin := newPreparedOrigin(lib, fixedPreparedResolver{ok: true, window: PreparedWindow{
 		Current: PreparedAiring{
-			Specification: spec, StartedAt: startedAt, Offset: 12 * time.Second,
+			Specification: spec, StartedAt: startedAt, Offset: hostileOffset,
 			Identity: AiringIdentity{
 				StartedAt: startedAt, EndsAt: startedAt.Add(24 * time.Second), Kind: schedule.SlotProgram,
 				ContentID: "live-source", ScheduleBlockID: "block-live-source",

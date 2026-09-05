@@ -238,8 +238,8 @@ func TestPreparedMPEGTSBlockCopiesPublicationAtAiringOffset(t *testing.T) {
 			t.Errorf("prepared remux args missing %q: %s", want, joined)
 		}
 	}
-	if strings.Contains(joined, "-readrate_initial_burst") {
-		t.Fatalf("prepared copy remux must not outrun the raw viewer queue: %s", joined)
+	if strings.Contains(joined, "-readrate") {
+		t.Fatalf("prepared copy remux must leave pacing to the Channel mux: %s", joined)
 	}
 	if gotSpec.Purpose != "playout_prepared_remux" || gotSpec.ChannelID != "ch-one" ||
 		gotSpec.ScheduleBlockID != "block-one" || strings.Contains(strings.Join(gotSpec.Args, " "), pub.Directory) {
