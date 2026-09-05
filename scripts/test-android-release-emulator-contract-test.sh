@@ -35,7 +35,7 @@ grep -Fq 'content-desc="Loomarr"' "${script}" || {
 	printf 'release emulator harness must require the exact accessible Loomarr tile name\n' >&2
 	exit 1
 }
-grep -Fq 'mResumedActivity' "${script}" || {
+grep -Fq 'mCurrentFocus=' "${script}" || {
 	printf 'release emulator harness must prove the launcher, not Loomarr, owns the visible surface\n' >&2
 	exit 1
 }
