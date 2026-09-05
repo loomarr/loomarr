@@ -12,7 +12,7 @@ import (
 // Validate proves the report is complete, deterministically ordered, and
 // incapable of granting authority beyond local quarantine inspection.
 func Validate(report Report) error {
-	if report.SchemaVersion != SchemaVersion || report.ContractVersion != ContractVersion || report.GeneratedAt.IsZero() || report.Algorithm == "" {
+	if report.SchemaVersion != SchemaVersion || report.ContractVersion != ContractVersion || report.GeneratedAt.IsZero() || report.Ceilings.MaxMediaWallTimeMS <= 0 || report.Algorithm == "" {
 		return fmt.Errorf("report identity is invalid")
 	}
 	for _, digest := range []string{report.Inputs.InventorySHA256, report.Inputs.DownloadLedgerSHA256, report.Inputs.PriorPublicManifestSHA256, report.Inputs.PriorAuthoritySHA256} {

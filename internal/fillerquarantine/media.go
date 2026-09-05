@@ -25,7 +25,7 @@ func inspectCandidates(ctx context.Context, config Config, inventory fillercorpu
 		if err != nil {
 			return nil, nil, fmt.Errorf("case %q source path: %w", item.CaseID, err)
 		}
-		hashes, bytes, err := hashFile(path)
+		hashes, bytes, err := hashFile(ctx, path)
 		if err != nil {
 			return nil, nil, fmt.Errorf("case %q source identity: %w", item.CaseID, err)
 		}
@@ -111,7 +111,7 @@ func inspectPriorSources(ctx context.Context, config Config, authority fillerrev
 			}
 			return nil, nil, 0, fmt.Errorf("prior source %q path: %w", source.SourceID, err)
 		}
-		hashes, _, err := hashFile(path)
+		hashes, _, err := hashFile(ctx, path)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("prior source %q identity: %w", source.SourceID, err)
 		}
@@ -162,8 +162,8 @@ func technicalHoldReasons(expected fillercorpus.InventoryRepresentation, probed 
 	if !probed.Silent && intervalCoverage(quality.Silence, quality.DurationMs) >= qualityFailureCoverage {
 		reasons = append(reasons, "mostly_silent")
 	}
-	visual := fillerreference.CompareDuplicateSequences(fp.frames, fp.frames).Related
-	audio := fillerreference.CompareAudioEnvelopes(fp.audio, fp.audio).Related
+	visual := fillerreference.VisualFingerprintComparable(fp.frames)
+	audio := fillerreference.AudioFingerprintComparable(fp.audio)
 	if !visual && !audio {
 		reasons = append(reasons, "fingerprint_unusable")
 	}

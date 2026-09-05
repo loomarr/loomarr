@@ -40,6 +40,7 @@ type Config struct {
 	PriorAuthorityPath      string
 	PriorSourceRoot         string
 	ExpectedPriorCases      int
+	MaxMediaWallTime        time.Duration
 	GeneratedAt             time.Time
 	Media                   Media
 }
@@ -50,12 +51,17 @@ type Report struct {
 	GeneratedAt     time.Time                               `json:"generatedAt"`
 	Inputs          InputIdentity                           `json:"inputs"`
 	MediaTools      fillerreview.TemporalTruthMediaIdentity `json:"mediaTools"`
+	Ceilings        Ceilings                                `json:"ceilings"`
 	Algorithm       string                                  `json:"duplicateAlgorithm"`
 	Summary         Summary                                 `json:"summary"`
 	PriorSources    []PriorSource                           `json:"priorSources"`
 	Cases           []Case                                  `json:"cases"`
 	Comparisons     []Comparison                            `json:"comparisons"`
 	Authority       AuthorityDisposition                    `json:"authority"`
+}
+
+type Ceilings struct {
+	MaxMediaWallTimeMS int64 `json:"maxMediaWallTimeMs"`
 }
 
 type InputIdentity struct {

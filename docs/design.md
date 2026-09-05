@@ -5078,6 +5078,9 @@ decode cadence used by the production-reference duplicate audit produces visual 
 sequences. New candidates are compared to one another and to every distinct source in the prior
 holdout authority; exact source or rendered-case hash collisions and perceptual relationships are
 reported separately. Missing prior source bytes make perceptual exposure `incomplete`, never `clear`.
+The caller supplies a positive media-processing wall-time ceiling, which is recorded in the report
+and covers candidate and prior-source hashing, probing, decoding, fingerprinting, and in-process
+fingerprint alignment. Expiration publishes no partial report.
 Missing audio or video, inventoried duration/dimension drift, unusable fingerprints, or black,
 silent, or frozen coverage at or above 95% is a technical hold; lower coverage remains measured
 evidence for later content review rather than an invented quality score.

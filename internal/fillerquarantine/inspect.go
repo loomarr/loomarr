@@ -53,11 +53,13 @@ func Inspect(ctx context.Context, config Config) (Report, error) {
 			InventorySHA256: inventorySHA, DownloadLedgerSHA256: fillercorpus.InventorySHA256(ledgerRaw),
 			PriorPublicManifestSHA256: publicSHA, PriorAuthoritySHA256: authoritySHA,
 		},
-		MediaTools: config.Media.Identity(), Algorithm: fillerreference.DuplicateAlgorithm,
+		MediaTools: config.Media.Identity(), Ceilings: Ceilings{MaxMediaWallTimeMS: config.MaxMediaWallTime.Milliseconds()}, Algorithm: fillerreference.DuplicateAlgorithm,
 		Authority: AuthorityDisposition{CopyAndStorage: true, LocalTechnicalInspection: true},
 	}
+	mediaCtx, cancelMedia := context.WithTimeout(ctx, config.MaxMediaWallTime)
+	defer cancelMedia()
 
-	prior, priorFingerprints, unavailable, err := inspectPriorSources(ctx, config, authority)
+	prior, priorFingerprints, unavailable, err := inspectPriorSources(mediaCtx, config, authority)
 	if err != nil {
 		return Report{}, err
 	}
@@ -65,13 +67,17 @@ func Inspect(ctx context.Context, config Config) (Report, error) {
 	report.Summary.PriorSources = len(prior)
 	report.Summary.UnavailablePriorSources = unavailable
 
-	cases, candidateFingerprints, err := inspectCandidates(ctx, config, inventory, ledger)
+	cases, candidateFingerprints, err := inspectCandidates(mediaCtx, config, inventory, ledger)
 	if err != nil {
 		return Report{}, err
 	}
 	report.Cases = cases
-	compareCandidates(&report, candidateFingerprints)
-	comparePriorExposure(&report, candidateFingerprints, priorFingerprints, unavailable != 0)
+	if err := compareCandidates(mediaCtx, &report, candidateFingerprints); err != nil {
+		return Report{}, err
+	}
+	if err := comparePriorExposure(mediaCtx, &report, candidateFingerprints, priorFingerprints, unavailable != 0); err != nil {
+		return Report{}, err
+	}
 	applyExactExposure(&report, authority)
 	finalize(&report)
 	if err := Validate(report); err != nil {
@@ -81,8 +87,8 @@ func Inspect(ctx context.Context, config Config) (Report, error) {
 }
 
 func validateConfig(config Config) error {
-	if config.InventoryPath == "" || config.DownloadLedgerPath == "" || config.DownloadRoot == "" || config.PriorPublicManifestPath == "" || config.PriorAuthorityPath == "" || config.PriorSourceRoot == "" || config.ExpectedPriorCases <= 0 || config.GeneratedAt.IsZero() || config.Media == nil {
-		return fmt.Errorf("inventory, ledger, download root, prior holdout, source root, expected case count, generated time, and media adapter are required")
+	if config.InventoryPath == "" || config.DownloadLedgerPath == "" || config.DownloadRoot == "" || config.PriorPublicManifestPath == "" || config.PriorAuthorityPath == "" || config.PriorSourceRoot == "" || config.ExpectedPriorCases <= 0 || config.MaxMediaWallTime.Milliseconds() <= 0 || config.GeneratedAt.IsZero() || config.Media == nil {
+		return fmt.Errorf("inventory, ledger, download root, prior holdout, source root, expected case count, media wall-time ceiling, generated time, and media adapter are required")
 	}
 	identity := config.Media.Identity()
 	for name, tool := range map[string]fillerreview.TemporalTruthToolIdentity{"ffmpeg": identity.FFmpeg, "ffprobe": identity.FFprobe} {

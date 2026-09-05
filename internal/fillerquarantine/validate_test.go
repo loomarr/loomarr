@@ -1,6 +1,7 @@
 package fillerquarantine
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,26 @@ func TestValidateRecomputesHoldReasonsFromEvidence(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsMissingMediaWallTimeCeiling(t *testing.T) {
+	report := validReportFixture()
+	report.Ceilings.MaxMediaWallTimeMS = 0
+	if err := Validate(report); err == nil {
+		t.Fatal("report without media wall-time ceiling accepted")
+	}
+}
+
+func TestHashFileHonorsCancellation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "source.mp4")
+	if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := hashFile(ctx, path); err == nil {
+		t.Fatal("hashing ignored cancellation")
+	}
+}
+
 func TestResolveBeneathRejectsLexicalAndSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	if _, err := resolveBeneath(root, "../escape.mp4"); err == nil {
@@ -81,7 +102,7 @@ func validReportFixture() Report {
 	return Report{
 		SchemaVersion: SchemaVersion, ContractVersion: ContractVersion, GeneratedAt: time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC),
 		Inputs:     InputIdentity{InventorySHA256: digest, DownloadLedgerSHA256: digest, PriorPublicManifestSHA256: digest, PriorAuthoritySHA256: digest},
-		MediaTools: fillerreview.TemporalTruthMediaIdentity{FFmpeg: tool, FFprobe: tool}, Algorithm: "fixture",
+		MediaTools: fillerreview.TemporalTruthMediaIdentity{FFmpeg: tool, FFprobe: tool}, Ceilings: Ceilings{MaxMediaWallTimeMS: 1_000}, Algorithm: "fixture",
 		Summary:      Summary{Cases: 1, Held: 1, PriorSources: 1, UnavailablePriorSources: 1},
 		PriorSources: []PriorSource{{SourceID: "prior", SourcePath: "prior.mp4", SourceSHA256: digest, DurationMS: 1_000}},
 		Cases: []Case{{

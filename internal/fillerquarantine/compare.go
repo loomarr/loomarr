@@ -1,9 +1,11 @@
 package fillerquarantine
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -11,11 +13,14 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerreview"
 )
 
-func compareCandidates(report *Report, fingerprints map[string]fingerprint) {
+func compareCandidates(ctx context.Context, report *Report, fingerprints map[string]fingerprint) error {
 	for i := range report.Cases {
 		for j := i + 1; j < len(report.Cases); j++ {
 			left, right := report.Cases[i].CaseID, report.Cases[j].CaseID
-			comparison := compare(ComparisonCandidate, left, right, fingerprints[left], fingerprints[right])
+			comparison, err := compare(ctx, ComparisonCandidate, left, right, fingerprints[left], fingerprints[right])
+			if err != nil {
+				return fmt.Errorf("compare candidates %q and %q: %w", left, right, err)
+			}
 			report.Comparisons = append(report.Comparisons, comparison)
 			if comparison.Related {
 				report.Summary.RelatedCandidatePairs++
@@ -24,9 +29,10 @@ func compareCandidates(report *Report, fingerprints map[string]fingerprint) {
 			}
 		}
 	}
+	return nil
 }
 
-func comparePriorExposure(report *Report, candidates map[string]fingerprint, prior map[string]fingerprint, incomplete bool) {
+func comparePriorExposure(ctx context.Context, report *Report, candidates map[string]fingerprint, prior map[string]fingerprint, incomplete bool) error {
 	for caseIndex := range report.Cases {
 		item := &report.Cases[caseIndex]
 		if incomplete {
@@ -37,7 +43,10 @@ func comparePriorExposure(report *Report, candidates map[string]fingerprint, pri
 			if !ok {
 				continue
 			}
-			comparison := compare(ComparisonPrior, item.CaseID, source.SourceID, candidates[item.CaseID], fp)
+			comparison, err := compare(ctx, ComparisonPrior, item.CaseID, source.SourceID, candidates[item.CaseID], fp)
+			if err != nil {
+				return fmt.Errorf("compare candidate %q to prior source %q: %w", item.CaseID, source.SourceID, err)
+			}
 			report.Comparisons = append(report.Comparisons, comparison)
 			if comparison.Related {
 				report.Summary.RelatedPriorExposurePairs++
@@ -45,11 +54,18 @@ func comparePriorExposure(report *Report, candidates map[string]fingerprint, pri
 			}
 		}
 	}
+	return nil
 }
 
-func compare(scope, left, right string, a, b fingerprint) Comparison {
-	visual := fillerreference.CompareDuplicateSequences(a.frames, b.frames)
-	audio := fillerreference.CompareAudioEnvelopes(a.audio, b.audio)
+func compare(ctx context.Context, scope, left, right string, a, b fingerprint) (Comparison, error) {
+	visual, err := fillerreference.CompareDuplicateSequencesContext(ctx, a.frames, b.frames)
+	if err != nil {
+		return Comparison{}, err
+	}
+	audio, err := fillerreference.CompareAudioEnvelopesContext(ctx, a.audio, b.audio)
+	if err != nil {
+		return Comparison{}, err
+	}
 	result := Comparison{Scope: scope, CaseA: left, CaseB: right, Visual: visual, Audio: audio, Related: visual.Related || audio.Related}
 	if visual.Related {
 		result.Basis = append(result.Basis, "visual")
@@ -57,7 +73,7 @@ func compare(scope, left, right string, a, b fingerprint) Comparison {
 	if audio.Related {
 		result.Basis = append(result.Basis, "audio")
 	}
-	return result
+	return result, nil
 }
 
 func applyExactExposure(report *Report, authority fillerreview.TemporalStructureChallengeAuthority) {
@@ -118,8 +134,8 @@ func finalize(report *Report) {
 func fingerprintEvidence(fp fingerprint) FingerprintEvidence {
 	return FingerprintEvidence{
 		FrameCount: len(fp.frames), FrameSHA256: hashUint64(fp.frames), AudioBinCount: len(fp.audio), AudioRMSSHA256: hashUint32(fp.audio),
-		VisualComparable: fillerreference.CompareDuplicateSequences(fp.frames, fp.frames).Related,
-		AudioComparable:  fillerreference.CompareAudioEnvelopes(fp.audio, fp.audio).Related,
+		VisualComparable: fillerreference.VisualFingerprintComparable(fp.frames),
+		AudioComparable:  fillerreference.AudioFingerprintComparable(fp.audio),
 	}
 }
 

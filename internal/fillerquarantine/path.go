@@ -1,6 +1,7 @@
 package fillerquarantine
 
 import (
+	"context"
 	"crypto/md5"  // #nosec G501 -- source metadata may carry an MD5 identity that must be rechecked.
 	"crypto/sha1" // #nosec G505 -- source metadata may carry a SHA-1 identity that must be rechecked.
 	"crypto/sha256"
@@ -46,7 +47,7 @@ type fileHashes struct {
 	md5    string
 }
 
-func hashFile(path string) (fileHashes, int64, error) {
+func hashFile(ctx context.Context, path string) (fileHashes, int64, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return fileHashes{}, 0, err
@@ -55,7 +56,7 @@ func hashFile(path string) (fileHashes, int64, error) {
 	sha256Hash := sha256.New()
 	sha1Hash := sha1.New() // #nosec G401 -- compatibility identity, not a security decision.
 	md5Hash := md5.New()   // #nosec G401 -- compatibility identity, not a security decision.
-	bytes, err := io.Copy(io.MultiWriter(sha256Hash, sha1Hash, md5Hash), file)
+	bytes, err := io.Copy(io.MultiWriter(sha256Hash, sha1Hash, md5Hash), contextReader{ctx: ctx, reader: file})
 	if err != nil {
 		return fileHashes{}, 0, err
 	}
@@ -64,4 +65,18 @@ func hashFile(path string) (fileHashes, int64, error) {
 		sha1:   hex.EncodeToString(sha1Hash.Sum(nil)),
 		md5:    hex.EncodeToString(md5Hash.Sum(nil)),
 	}, bytes, nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (reader contextReader) Read(buffer []byte) (int, error) {
+	select {
+	case <-reader.ctx.Done():
+		return 0, reader.ctx.Err()
+	default:
+		return reader.reader.Read(buffer)
+	}
 }

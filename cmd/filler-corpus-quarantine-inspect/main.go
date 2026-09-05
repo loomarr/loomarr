@@ -27,6 +27,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	priorAuthority := flags.String("prior-authority", "", "prior holdout private authority")
 	priorSourceRoot := flags.String("prior-source-root", "", "root beneath every prior authority source path")
 	priorCases := flags.Int("prior-cases", 0, "exact prior holdout case count")
+	maxMediaWallTime := flags.Duration("max-media-wall-time", 0, "positive ceiling for hashing, media tools, and fingerprint comparison")
 	ffmpeg := flags.String("ffmpeg", "", "ffmpeg executable; ffprobe is resolved next to it")
 	output := flags.String("output", "", "new immutable quarantine inspection JSON")
 	generatedText := flags.String("generated-at", "", "fixed RFC3339 inspection time")
@@ -34,8 +35,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	generatedAt, err := time.Parse(time.RFC3339, *generatedText)
-	if err != nil || *inventory == "" || *ledger == "" || *downloadRoot == "" || *priorPublic == "" || *priorAuthority == "" || *priorSourceRoot == "" || *priorCases <= 0 || *ffmpeg == "" || *output == "" || flags.NArg() != 0 {
-		_, _ = fmt.Fprintln(stderr, "filler-corpus-quarantine-inspect: inventory, ledger, download root, prior public/private authority, prior source root/count, ffmpeg, output, and fixed generated-at are required")
+	if err != nil || *inventory == "" || *ledger == "" || *downloadRoot == "" || *priorPublic == "" || *priorAuthority == "" || *priorSourceRoot == "" || *priorCases <= 0 || maxMediaWallTime.Milliseconds() <= 0 || *ffmpeg == "" || *output == "" || flags.NArg() != 0 {
+		_, _ = fmt.Fprintln(stderr, "filler-corpus-quarantine-inspect: inventory, ledger, download root, prior public/private authority, prior source root/count, positive media wall-time ceiling, ffmpeg, output, and fixed generated-at are required")
 		return 2
 	}
 	ctx := context.Background()
@@ -46,7 +47,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	report, err := fillerquarantine.Inspect(ctx, fillerquarantine.Config{
 		InventoryPath: *inventory, DownloadLedgerPath: *ledger, DownloadRoot: *downloadRoot,
 		PriorPublicManifestPath: *priorPublic, PriorAuthorityPath: *priorAuthority, PriorSourceRoot: *priorSourceRoot,
-		ExpectedPriorCases: *priorCases, GeneratedAt: generatedAt, Media: media,
+		ExpectedPriorCases: *priorCases, MaxMediaWallTime: *maxMediaWallTime, GeneratedAt: generatedAt, Media: media,
 	})
 	if err != nil {
 		return fail(stderr, err)
