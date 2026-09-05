@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,6 +24,16 @@ type fixedCandidates struct {
 	protected []Specification
 	summary   ReadinessSummary
 	err       error
+}
+
+type countingCandidates struct {
+	calls atomic.Int64
+	items []Candidate
+}
+
+func (f *countingCandidates) Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
+	f.calls.Add(1)
+	return ReadinessPlan{Candidates: f.items}, nil
 }
 
 func (f fixedCandidates) Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
@@ -64,6 +75,101 @@ func TestPlannerPreparesUniqueCandidatesInNeedOrder(t *testing.T) {
 	}
 	if len(work.requests) != 2 || work.requests[0] != a || work.requests[1] != b {
 		t.Fatalf("requests = %#v, want [a b] in earliest-need order", work.requests)
+	}
+}
+
+func TestPlannerFillsAndRefillsMeasuredBackgroundCapacity(t *testing.T) {
+	const (
+		capacity   = 12
+		candidates = 100
+	)
+	now := time.Unix(1_000, 0)
+	items := make([]Candidate, candidates)
+	for i := range items {
+		items[i] = Candidate{
+			NeededAt: now.Add(time.Duration(i) * time.Second),
+			Request:  Request{Source: testSource(string(rune(i + 1))), Rendition: baselineRendition()},
+		}
+	}
+	started := make(chan struct{}, capacity-1)
+	releaseFirstWave := make(chan struct{})
+	var calls atomic.Int64
+	var active atomic.Int64
+	var peak atomic.Int64
+	work := &recordingPreparation{run: func(context.Context, Request) error {
+		call := calls.Add(1)
+		current := active.Add(1)
+		defer active.Add(-1)
+		for {
+			prior := peak.Load()
+			if prior >= current || peak.CompareAndSwap(prior, current) {
+				break
+			}
+		}
+		if call <= capacity-1 {
+			started <- struct{}{}
+			<-releaseFirstWave
+		}
+		return nil
+	}}
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{items: items}, Preparation: work,
+		Pool: media.NewEncodePool(func() int { return capacity }), Now: func() time.Time { return now },
+	})
+	done := make(chan error, 1)
+	go func() { done <- p.Run(t.Context()) }()
+	for range capacity - 1 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("planner did not fill measured background capacity")
+		}
+	}
+	if got := peak.Load(); got != capacity-1 {
+		t.Fatalf("first-wave concurrency = %d, want %d", got, capacity-1)
+	}
+	close(releaseFirstWave)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := calls.Load(); got != candidates {
+		t.Fatalf("preparation calls = %d, want %d after refill", got, candidates)
+	}
+	if got := peak.Load(); got != capacity-1 {
+		t.Fatalf("peak preparation concurrency = %d, want %d", got, capacity-1)
+	}
+}
+
+func TestPlannerCoalescesOverlappingRuns(t *testing.T) {
+	started := make(chan struct{})
+	finish := make(chan struct{})
+	resolver := &countingCandidates{items: []Candidate{{
+		Request: Request{Source: testSource("warming"), Rendition: baselineRendition()},
+	}}}
+	p := NewPlanner(PlannerDependencies{
+		Resolver: resolver,
+		Preparation: &recordingPreparation{run: func(context.Context, Request) error {
+			close(started)
+			<-finish
+			return nil
+		}},
+		Pool: media.NewEncodePool(func() int { return 2 }), Now: time.Now,
+	})
+	first := make(chan error, 1)
+	go func() { first <- p.Run(t.Context()) }()
+	<-started
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolver.calls.Load(); got != 1 {
+		t.Fatalf("resolver calls during overlap = %d, want one coalesced pass", got)
+	}
+	if got := p.Status(); !got.Running {
+		t.Fatalf("overlapping yield cleared in-progress status: %+v", got)
+	}
+	close(finish)
+	if err := <-first; err != nil {
+		t.Fatal(err)
 	}
 }
 
