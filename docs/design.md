@@ -2082,10 +2082,12 @@ a private schedule. A tune resolves in this order:
    block into the existing long-lived Channel mux. This child decodes and encodes nothing, owns no
    publication bytes, and is shared by every viewer of the Manager's `(Channel, EncodePlan)`
    session; starting an encoder or a second per-Channel packager remains a contract violation. The
-   prepared copy remux omits the live-source tune-in burst, and the long-lived Channel mux paces its
-   pipe input at wall-clock rate. That outer pacing also bounds any whole-segment demux burst from
-   fMP4/HLS before it reaches the raw viewer's finite queue; a copy must not disconnect a healthy
-   television before its first frame merely because it can read immutable bytes faster than live.
+   prepared copy remux does not pace its immutable input; the long-lived Channel mux is the sole
+   wall-clock pacing authority. Applying input read-rate before the child's authoritative seek would
+   turn its distance from the preceding segment boundary into viewer-visible cold-start latency.
+   The outer pacing also bounds any whole-segment demux burst from fMP4/HLS before it reaches the raw
+   viewer's finite queue; a copy must not disconnect a healthy television before its first frame
+   merely because it can read immutable bytes faster than live.
    The first prepared block pins the session to the publication's codec, dimensions, frame rate,
    and bitrates. Every later prepared block must match that format, while a prepared miss opens the
    ordinary live child constrained to the same format, so an Airing boundary cannot change decoder
