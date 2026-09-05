@@ -14,6 +14,11 @@ import (
 
 const preparationLookahead = 6 * time.Hour
 
+// preparationDrainReserve leaves enough of River's media-job deadline to observe the resulting
+// readiness and run retention after active encoders exit. It is intentionally internal policy, not
+// another operator tuning surface.
+const preparationDrainReserve = 10 * time.Minute
+
 // Candidate is one immutable source/rendition needed by the accepted schedule. NeededAt controls
 // priority only; Channel identity is deliberately absent because publications are shared.
 type Candidate struct {
@@ -103,6 +108,7 @@ type Planner struct {
 	budget   func() int64
 	now      func() time.Time
 	log      *slog.Logger
+	runMu    sync.Mutex
 	statusMu sync.RWMutex
 	status   PlannerStatus
 }
@@ -143,6 +149,10 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 	if p == nil {
 		return nil
 	}
+	if !p.runMu.TryLock() {
+		return nil
+	}
+	defer p.runMu.Unlock()
 	p.statusMu.Lock()
 	p.status.Running = true
 	p.statusMu.Unlock()
@@ -165,31 +175,11 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 		now := p.now()
 		var resolveErr error
 		plan, resolveErr = p.resolver.Plan(ctx, now, now.Add(preparationLookahead))
-		candidates := plan.Candidates
-		slices.SortStableFunc(candidates, func(a, b Candidate) int { return a.NeededAt.Compare(b.NeededAt) })
-		seen := make(map[Request]struct{}, len(candidates))
 		errs = append(errs, resolveErr)
-		for _, candidate := range candidates {
-			if _, duplicate := seen[candidate.Request]; duplicate {
-				continue
-			}
-			seen[candidate.Request] = struct{}{}
-			workCtx, release, ok := p.pool.AcquireBackground(ctx, candidate.NeededAt)
-			if !ok {
-				break
-			}
-			_, err := p.preparer.Prepare(workCtx, candidate.Request)
-			preempted := ctx.Err() == nil && errors.Is(err, context.Canceled) && workCtx.Err() != nil
-			release()
-			if preempted {
-				break
-			}
-			if err != nil {
-				errs = append(errs, fmt.Errorf("prepare source %q: %w", candidate.Request.Source.SourceID, err))
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
+		preparationErrs := p.prepare(ctx, uniqueCandidates(plan.Candidates))
+		errs = append(errs, preparationErrs...)
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 	}
 	if p.retainer != nil && p.budget != nil {
@@ -213,6 +203,85 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 	}
 	runErr = errors.Join(errs...)
 	return runErr
+}
+
+type preparationResult struct {
+	order     int
+	sourceID  string
+	err       error
+	preempted bool
+}
+
+// prepare keeps the pool full while useful job time remains, then drains every worker before the
+// caller observes readiness or prunes the store. One foreground preemption stops new launches for
+// this pass: the cancelled urgent frontier remains ahead of less urgent work on the next tick.
+func (p *Planner) prepare(ctx context.Context, candidates []Candidate) []error {
+	results := make(chan preparationResult, len(candidates))
+	next, active := 0, 0
+	launching := true
+	completed := make([]preparationResult, 0)
+	for next < len(candidates) || active > 0 {
+		if launching && next < len(candidates) && usefulPreparationTime(ctx) {
+			candidate := candidates[next]
+			workCtx, release, ok := p.pool.AcquireBackground(ctx, candidate.NeededAt)
+			if ok {
+				order := next
+				next++
+				active++
+				go func() {
+					_, err := p.preparer.Prepare(workCtx, candidate.Request)
+					preempted := ctx.Err() == nil && errors.Is(err, context.Canceled) && workCtx.Err() != nil
+					release()
+					results <- preparationResult{
+						order: order, sourceID: candidate.Request.Source.SourceID,
+						err: err, preempted: preempted,
+					}
+				}()
+				continue
+			}
+		}
+		if active == 0 {
+			break
+		}
+		result := <-results
+		active--
+		if result.preempted {
+			launching = false
+			continue
+		}
+		if result.err != nil {
+			completed = append(completed, result)
+		}
+	}
+	slices.SortFunc(completed, func(a, b preparationResult) int { return a.order - b.order })
+	errs := make([]error, 0, len(completed))
+	for _, result := range completed {
+		errs = append(errs, fmt.Errorf("prepare source %q: %w", result.sourceID, result.err))
+	}
+	return errs
+}
+
+func uniqueCandidates(candidates []Candidate) []Candidate {
+	candidates = append([]Candidate(nil), candidates...)
+	slices.SortStableFunc(candidates, func(a, b Candidate) int { return a.NeededAt.Compare(b.NeededAt) })
+	seen := make(map[Request]struct{}, len(candidates))
+	unique := candidates[:0]
+	for _, candidate := range candidates {
+		if _, duplicate := seen[candidate.Request]; duplicate {
+			continue
+		}
+		seen[candidate.Request] = struct{}{}
+		unique = append(unique, candidate)
+	}
+	return unique
+}
+
+func usefulPreparationTime(ctx context.Context) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	deadline, bounded := ctx.Deadline()
+	return !bounded || time.Until(deadline) > preparationDrainReserve
 }
 
 func retentionStatusFrom(result PruneResult) RetentionStatus {
