@@ -26,7 +26,7 @@ func TestPublishTemporalStructureAnchorAdjudicationBurnsChallengeWithoutRepairin
 	if authority.ChallengeDisposition != TemporalStructureBurnedDiagnosticOnly || authority.BlindHumanAuditRequired || authority.CertificationScoreRepairAllowed || authority.TrainingAllowed || authority.ProductionAdmissionAllowed {
 		t.Fatalf("unsafe adjudication disposition = %+v", authority)
 	}
-	if authority.PriorExposure.Split != "holdout" || len(authority.PriorExposure.SourceSHA256) != 18 || len(authority.PriorExposure.FamilyIDs) != 12 || len(authority.PriorExposure.ProgrammeProvenance) != 6 {
+	if authority.PriorExposure.Split != "holdout" || len(authority.PriorExposure.SourceSHA256) != 54 || len(authority.PriorExposure.FamilyIDs) != 12 || len(authority.PriorExposure.ProgrammeProvenance) != 6 {
 		t.Fatalf("prior exposure was not preserved = %+v", authority.PriorExposure)
 	}
 	item := authority.Cases[0]

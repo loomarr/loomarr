@@ -226,12 +226,17 @@ func buildTemporalStructureAnchorAdjudication(config TemporalStructureAnchorAdju
 	if err != nil {
 		return TemporalStructureAnchorAdjudicationAuthority{}, err
 	}
+	requestExposure := emptyTemporalStructureHoldoutExposure()
+	for _, item := range manifest.Cases {
+		requestExposure.SourceSHA256 = append(requestExposure.SourceSHA256, item.Video.SHA256)
+	}
+	priorExposure := unionTemporalStructureHoldoutExposure(receipt.FutureTrainingExclusion, requestExposure)
 	return TemporalStructureAnchorAdjudicationAuthority{
 		SchemaVersion: TemporalStructureAnchorAdjudicationSchemaVersion, ContractVersion: TemporalStructureAnchorAdjudicationAuthorityContract,
 		ChallengeID: manifest.ChallengeID, AdjudicatedAt: config.AdjudicatedAt.UTC(), ReviewerID: submission.ReviewerID,
 		Inputs: inputs, EvidenceManifestSHA256: evidenceSHA, HumanAssessmentSHA256: humanSHA,
 		PlanReceiptSHA256: hashBytes(receiptRaw), ComparisonSHA256: comparisonSHA,
-		PriorExposure: cloneTemporalStructureTrainingExclusion(receipt.FutureTrainingExclusion), Cases: cases,
+		PriorExposure: priorExposure, Cases: cases,
 		ChallengeDisposition:    TemporalStructureBurnedDiagnosticOnly,
 		BlindHumanAuditRequired: false, CertificationScoreRepairAllowed: false, TrainingAllowed: false, ProductionAdmissionAllowed: false,
 	}, nil
