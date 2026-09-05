@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -33,9 +34,10 @@ type countingCandidates struct {
 }
 
 type observingCandidates struct {
-	before ReadinessPlan
-	after  ReadinessPlan
-	calls  atomic.Int64
+	before     ReadinessPlan
+	after      ReadinessPlan
+	observeErr error
+	calls      atomic.Int64
 }
 
 func (f *observingCandidates) Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
@@ -45,7 +47,7 @@ func (f *observingCandidates) Plan(context.Context, time.Time, time.Time) (Readi
 
 func (f *observingCandidates) Observe(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
 	f.calls.Add(1)
-	return f.after, nil
+	return f.after, f.observeErr
 }
 
 func (f *countingCandidates) Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
@@ -476,6 +478,34 @@ func TestPlannerDeadlineReserveDrainsIntoObservationAndRetention(t *testing.T) {
 	}
 	if retainer.calls != 1 || len(retainer.protected) != 1 || retainer.protected[0] != afterProtected {
 		t.Fatalf("retention protected = %+v, want post-observation hot set", retainer.protected)
+	}
+}
+
+func TestPlannerObservationFailurePreservesTheResolvedHotSet(t *testing.T) {
+	now := time.Unix(21_750, 0)
+	protected := Specification{SourceFingerprint: "current", Rendition: baselineRendition()}
+	wantSummary := ReadinessSummary{Channels: 100, ReadyChannels: 99, MissingBindings: 1}
+	resolver := &observingCandidates{
+		before:     ReadinessPlan{Protected: []Specification{protected}, Summary: wantSummary},
+		after:      ReadinessPlan{},
+		observeErr: errors.New("transient schedule read"),
+	}
+	retainer := &recordingRetainer{}
+	p := NewPlanner(PlannerDependencies{
+		Resolver: resolver, Preparation: &recordingPreparation{},
+		Pool: media.NewEncodePool(func() int { return 2 }), Retainer: retainer,
+		BudgetBytes: func() int64 { return 512 }, Now: func() time.Time { return now },
+	})
+
+	err := p.Run(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "transient schedule read") {
+		t.Fatalf("Run error = %v, want observation failure", err)
+	}
+	if retainer.calls != 1 || len(retainer.protected) != 1 || retainer.protected[0] != protected {
+		t.Fatalf("retention lost pre-work hot set after observation failure: %+v", retainer.protected)
+	}
+	if got := p.Status().Readiness; got != wantSummary {
+		t.Fatalf("status after failed observation = %+v, want last complete plan %+v", got, wantSummary)
 	}
 }
 
