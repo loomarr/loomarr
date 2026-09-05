@@ -63,8 +63,8 @@ type PlannerStatus struct {
 	Retention         RetentionStatus
 }
 
-// CandidateResolver reads the authoritative schedule and returns locally readable sources.
-// Implemented at composition, where channels, library path mapping, and audio selection meet.
+// CandidateResolver reads the authoritative schedule and returns stable Inventory sources.
+// Implemented at composition, where channels, source access, and audio selection meet.
 type CandidateResolver interface {
 	Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error)
 }
@@ -185,7 +185,7 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 				break
 			}
 			if err != nil {
-				errs = append(errs, fmt.Errorf("prepare %q: %w", candidate.Request.Source.Path, err))
+				errs = append(errs, fmt.Errorf("prepare source %q: %w", candidate.Request.Source.SourceID, err))
 			}
 			if ctx.Err() != nil {
 				return ctx.Err()
