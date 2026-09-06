@@ -5813,6 +5813,39 @@ grounded taxonomy requirements, the four exact-span screens, and the immutable s
 The compatibility calculation is non-authorizing measurement only. Missing complete-timeline
 evidence or materialization authority holds the proposal; it never selects the older automatic gate.
 
+Opening that comparison can invalidate inherited anchor truth without authorizing a post-hoc score
+repair. A targeted anchor-adjudication module consumes the exact public and private challenge,
+plan authoring and receipt, all locked assessment sets named by the comparison, the immutable
+comparison itself, and one reviewer submission. It first reproduces the comparison byte-for-byte.
+The review target is then exactly every construction-authority `standalone` case named by the
+comparison's diagnostic candidates: it cannot omit an inconvenient target or expand into a new
+full-corpus audit. Each target records complete-span audiovisual coverage, explicit bounded
+observations of the opening, ordered internal joins, and closing, one reviewer identity and fixed
+review time, sorted unique decisive timestamps, a bounded rationale, the original closed unit/role,
+and exactly one disposition: `confirmed_original`, `structural_disqualification`, or
+`role_correction`. A structural disqualification must replace `standalone` with a non-standalone
+unit and no role; a role correction must retain `standalone` and select a different valid role.
+Model agreement selects what receives review but never becomes truth authority by itself.
+
+The publisher preserves every original input and emits a new owner-only authority rather than
+editing the human lock, plan, challenge, model responses, locks, or comparison. It binds every input
+file hash, the plan's human-assessment and evidence-manifest hashes, the exact challenged source
+bytes and duplicate family, the review decisions, the prior receipt's complete future-training
+exclusion, and every rendered video hash exposed in a model request. Its output always declares the
+evaluated challenge burned, training false, and production
+admission false. A later holdout-plan contract must consume that authority as prior exposure: no
+source bytes, duplicate family, or programme provenance from the burned challenge may appear in a
+replacement challenge, and its future-training exclusion must be the exact cumulative union. Until
+that replacement machinery and new source inventory exist, adjudication can explain and quarantine
+the bad truth but cannot manufacture a corrected certification score. The planner makes lineage
+explicit: an invocation is either a genesis plan with no prior adjudication, or a replacement plan
+with one or more immutable prior adjudication authorities; omitting both or mixing the modes fails.
+A replacement validates every prior authority, rejects any candidate whose source bytes, duplicate
+family, or programme provenance appears in their cumulative exposure, binds their file hashes in the
+new receipt, and publishes the sorted de-duplicated union of prior and newly selected exposure. The
+genesis/replacement mode and prior-exposure set are part of the plan contract, so a caller cannot
+silently forget burned evidence while requesting a replacement.
+
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. Its prompt identity binds the system prompt,
 sentinel dynamic content and schema, request title, and 4,096-token completion ceiling so mandatory
@@ -6693,20 +6726,82 @@ disagreement; adjudication cannot turn an incomplete or malformed second review 
 independent labeling.
 
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
-authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
-metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and
+authority. The caller names one of three non-interchangeable profiles: `quarantine`, `development`,
+or `certification`. Every `approved` row binds the inventory digest, authority-qualified case ID,
+source metadata hash, reviewer, review time, rationale, purpose-specific authority, attribution, and
 restrictions; `held` rows remain inert. The downloader preflights aggregate item and byte ceilings
 before its first request, stays serial and identified, checks the initial URL and every redirect
 against both the case's frozen allowlist and the built-in policy for that authority, bounds each body
 by the inventoried size, verifies source checksums when present, and adds SHA-256. Query strings may
 remain when they are part of the exact frozen representation URL; credentials and fragments never
-may. For Met original images, the inventory freezes a metadata-digest cache key, and each bounded
+may. The request ceiling counts the initial request and every redirect hop before that hop is sent.
+For Met original images, the inventory freezes a metadata-digest cache key, and each bounded
 GET attempt may add its deterministic run/case/attempt cache key to avoid inconsistent CDN cache
 entries. These keys cannot change the selected host or image path, relax exact byte counts or
 available source checksums, or expand the existing request and byte ceilings. Media and its download
 ledger remain external to Git.
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
+
+`quarantine` is the narrow pre-review acquisition profile. Its schema-v5 worksheet locks a
+schema-v1 quarantine contract that must grant only local copying/storage and local technical
+inspection. Provider transfer, redistribution,
+development/certification corpus preparation, training, catalog ingestion, scheduling, and
+production admission are all present and false rather than inferred from omission. An approved
+quarantine decision may therefore retain `redistributable=false`; it is authority to obtain and
+measure an exact source locally, not a finding that the source may be published or used. The
+download ledger records the profile, and every downstream corpus-preparation profile rejects a
+quarantine contract even if its item identity and content hashes are otherwise valid. Promoting a
+surviving source requires a new development or certification rights decision against the same
+frozen inventory; a quarantine decision is never upgraded in place.
+
+`filler-corpus-quarantine-inspect` is the sole post-download quarantine gate. It consumes the exact
+schema-v4 inventory, schema-v2 quarantine download ledger, and the complete public/private authority
+pair for the named prior holdout. It strictly re-establishes those identities before opening media,
+resolves each ledger path beneath its declared root without symlink escape, and rechecks byte count,
+ledger SHA-256, and every available inventory checksum. One full-source probe and decode then records duration,
+dimensions, audio/video presence, and normalized black, silence, and freeze spans. The same complete
+decode cadence used by the production-reference duplicate audit produces visual dHash and audio-RMS
+sequences. New candidates are compared to one another and to every distinct source in the prior
+holdout authority; exact source or rendered-case hash collisions and perceptual relationships are
+reported separately. Missing prior source bytes make perceptual exposure `incomplete`, never `clear`.
+The caller supplies a positive media-processing wall-time ceiling, which is recorded in the report
+and covers candidate and prior-source hashing, probing, decoding, fingerprinting, and in-process
+fingerprint alignment. Expiration publishes no partial report.
+Missing audio or video, inventoried duration/dimension drift, unusable fingerprints, or black,
+silent, or frozen coverage at or above 95% is a technical hold; lower coverage remains measured
+evidence for later content review rather than an invented quality score.
+The immutable report binds every raw input digest, tool identity, algorithm version, observation, and
+comparison. A technically intact and exposure-clear result means only `eligible_for_rights_review`:
+provider transfer, redistribution, corpus preparation, training, catalog ingestion, scheduling, and
+production admission remain explicitly false. The command never repairs, transcodes, uploads, labels,
+or promotes media, and any failed mechanical check leaves the case held in quarantine.
+
+Development and certification rights review consume that quarantine disposition as a fail-closed
+authority input. Schema-v5 `quarantine` review remains the pre-download local-copy/inspection path
+and cannot consume a report that does not exist yet. A development or certification worksheet that
+can select any non-local case instead requires one strict schema-v1 quarantine-inspection report.
+The worksheet freezes the raw report SHA-256 and all four report input identities; development
+worksheets advance from schema v3 to v6 and certification worksheets from schema v4 to v7.
+Historical v3/v4 worksheets and their decisions remain readable evidence, but cannot authorize new
+preparation.
+
+Selection is transport-aware and deterministic: it is the union of valid direct
+`transport=local` cases and non-local cases that occur exactly once in the bound report as
+`eligible_for_rights_review` with no hold reasons. A held or absent non-local inventory case cannot
+enter the worksheet. A local-only inventory does not invent a download-ledger or inspection-report
+requirement. The rights lock independently reopens and validates the exact report, reproduces that
+selection, and attaches the report binding plus inspected content SHA-256 to every locked non-local
+decision; worksheet or CSV projections are never trusted as inspection authority.
+
+Preparation independently reopens the report before it creates a derivative staging directory or
+provider-visible packet. Every non-local approval must carry the reproduced report binding, and the
+actual local source SHA-256 must equal the inspected content SHA-256. A held or missing case, report
+drift, swapped worksheet, legacy unbound decision, or source-byte mismatch fails before output.
+Direct local media retains its inventory-bound path and is still rehashed against every available
+inventory checksum. One deep `fillerquarantine` module owns strict report decoding and validation,
+inventory/report identity, case uniqueness and disposition, transport-aware selection, and
+content-hash requirements; review, lock, and preparation commands do not reimplement that policy.
 
 A rights worksheet is a deterministic review aid, not authority. It records the digest of the exact
 frozen inventory, presents every selected source assertion and representation fact, and leaves the
@@ -6781,10 +6876,12 @@ copied into the worksheet nor accepted by the locker. The board is development e
 candidate-blind certification review, and the locker still reopens every source byte after the
 review.
 
-The certification holdout uses a distinct schema-v4 rights contract; a schema-v3 approval remains
-readable development history but cannot authorize certification acquisition or preparation. The
-caller must name the `development` or `certification` profile before either locking rights decisions
-or downloading media. Certification binds one maintainer/counsel-approved agreement identifier and
+The certification holdout uses a distinct schema-v7 worksheet and schema-v1 rights contract, while
+quarantine uses its schema-v5 worksheet and schema-v1 acquisition contract. Historical schema-v3
+development and schema-v4 certification artifacts remain readable evidence but cannot authorize new
+preparation. The caller must name
+the `quarantine`, `development`, or `certification` profile before either locking rights decisions or
+downloading media. Certification binds one maintainer/counsel-approved agreement identifier and
 SHA-256 plus one exact processor and terms-snapshot SHA-256 into the inert worksheet. Each completed
 per-master schedule then binds its own identifier and SHA-256, confirmed signer-authority evidence,
 and separate grants for commercial evaluation, copying/storage, technical transcoding, bounded
