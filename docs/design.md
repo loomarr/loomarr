@@ -5105,6 +5105,16 @@ Every applied decision therefore carries the exact screening-aggregate and relea
 SHA-256 identities that terminal replay must reproduce; shadow rows carry neither. Application mode
 cannot be toggled independently from those bindings in either the domain validator or database.
 
+For a publishing action, terminal replay also carries the exact current rights-grant identity and
+source/acquisition/master/policy/use scope into the publication transaction, bound to the replayed
+decision, clip, screening aggregate, and release authority. The transaction checks that the grant is
+still the current head, authorized, effective, unexpired, and withdrawal-clear at the current
+transaction-time check. It serializes that check with rights-head changes through the catalog commit;
+a withdrawal or superseding grant committed before that check prevents publication and leaves the
+action, catalog, and pipeline unchanged. An old action timestamp cannot substitute for current time.
+This is an internal replay result, not an operator-supplied permission or a replacement for complete
+release verification. Non-publishing actions do not require a grant to return material to held state.
+
 The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
 V38 `score` rung. Its first production evidence version records only facts whose provenance the
 current pipeline can prove: successful decoder passage, an explicit content-role token in the
