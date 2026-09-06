@@ -51,6 +51,16 @@ func (s *Service) Act(ctx context.Context, action Action) error {
 	case ApplicationModeShadow:
 		return s.repo.CommitFillerDecisionAction(ctx, action)
 	case ApplicationModeApplied:
+		existing, found, err := s.repo.FindFillerDecisionAction(ctx, action.ID)
+		if err != nil {
+			return err
+		}
+		if found {
+			if SameAction(existing, action) {
+				return nil
+			}
+			return ErrConflict
+		}
 		if s.applied == nil {
 			return ErrAppliedUnavailable
 		}

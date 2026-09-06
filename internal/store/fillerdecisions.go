@@ -297,11 +297,6 @@ func (s *sqlStore) commitFillerDecisionAction(
 	if fillerdecision.ApplicationMode(applicationMode) != requiredMode {
 		return fillerdecision.ErrActionMode
 	}
-	if applied && appliedActionPublishes(action) {
-		if err := s.lockAndVerifyAppliedRights(ctx, tx, receipt, action.DecisionID, clipHash, screeningHash, releaseHash); err != nil {
-			return err
-		}
-	}
 
 	existing, found, err := getFillerDecisionAction(ctx, tx, s.ph, action.ID)
 	if err != nil {
@@ -312,6 +307,11 @@ func (s *sqlStore) commitFillerDecisionAction(
 			return nil
 		}
 		return fillerdecision.ErrConflict
+	}
+	if applied && appliedActionPublishes(action) {
+		if err := s.lockAndVerifyAppliedRights(ctx, tx, receipt, action.DecisionID, clipHash, screeningHash, releaseHash); err != nil {
+			return err
+		}
 	}
 	latest, hasLatest, err := latestFillerDecisionAction(ctx, tx, s.ph, action.DecisionID)
 	if err != nil {
@@ -343,6 +343,12 @@ func (s *sqlStore) commitFillerDecisionAction(
 		return fmt.Errorf("commit filler decision action: %w", err)
 	}
 	return nil
+}
+
+// FindFillerDecisionAction is the durable retry lookup. The action remains immutable and callers
+// must use SameAction before accepting it as the result of a retry.
+func (s *sqlStore) FindFillerDecisionAction(ctx context.Context, id string) (fillerdecision.Action, bool, error) {
+	return getFillerDecisionAction(ctx, s.db, s.ph, id)
 }
 
 func appliedActionPublishes(action fillerdecision.Action) bool {
@@ -510,9 +516,7 @@ func latestFillerDecisionAction(ctx context.Context, q actionRowQueryer, ph plac
 }
 
 func sameFillerDecisionAction(a, b fillerdecision.Action) bool {
-	return a.ID == b.ID && a.DecisionID == b.DecisionID && a.Kind == b.Kind && a.ActorID == b.ActorID &&
-		a.Reason == b.Reason && a.Answer == b.Answer && a.CorrectedVerdict == b.CorrectedVerdict &&
-		a.SupersedesID == b.SupersedesID
+	return fillerdecision.SameAction(a, b)
 }
 
 func scanFillerDecisionAction(sc scannable) (fillerdecision.Action, error) {

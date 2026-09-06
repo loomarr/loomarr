@@ -117,6 +117,7 @@ type Counts struct {
 // Repository is the narrow persistence port. Implementations must preserve
 // canonical result bytes and validate action transitions transactionally.
 type Repository interface {
+	ActionLookup
 	PutFillerDecision(context.Context, Record) error
 	GetFillerDecision(context.Context, string) (Record, error)
 	ListFillerDecisions(context.Context, DecisionFilter) (DecisionPage, error)
@@ -130,7 +131,21 @@ type Repository interface {
 // accept applied decisions only and commit the action, clip airability, and pipeline disposition
 // in one transaction. Release verification happens before this seam in AppliedActionExecutor.
 type AppliedActionRepository interface {
+	ActionLookup
 	CommitAppliedFillerDecisionAction(context.Context, Action, *AppliedRightsReceipt) error
+}
+
+// ActionLookup lets retry boundaries recognize an already committed immutable action before
+// replaying current terminal evidence. It never authorizes a different request: callers must
+// compare every request-identity field before treating a result as a retry.
+type ActionLookup interface {
+	FindFillerDecisionAction(context.Context, string) (Action, bool, error)
+}
+
+func SameAction(a, b Action) bool {
+	return a.ID == b.ID && a.DecisionID == b.DecisionID && a.Kind == b.Kind && a.ActorID == b.ActorID &&
+		a.Reason == b.Reason && a.Answer == b.Answer && a.CorrectedVerdict == b.CorrectedVerdict &&
+		a.SupersedesID == b.SupersedesID
 }
 
 // AppliedActionExecutor owns terminal evidence replay before an applied action can reach the

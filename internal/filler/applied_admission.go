@@ -50,8 +50,7 @@ func (a *AppliedAdmission) ActOnAppliedFillerDecision(
 	record fillerdecision.Record,
 	action fillerdecision.Action,
 ) error {
-	if a == nil || a.resolver == nil || a.summary == nil || a.evidence == nil ||
-		a.certification == nil || a.committer == nil {
+	if a == nil || a.committer == nil {
 		return fillerdecision.ErrAppliedUnavailable
 	}
 	if err := fillerdecision.ValidateRecord(record); err != nil {
@@ -62,6 +61,19 @@ func (a *AppliedAdmission) ActOnAppliedFillerDecision(
 	}
 	if record.ApplicationMode != fillerdecision.ApplicationModeApplied || action.DecisionID != record.ID {
 		return fillerdecision.ErrActionMode
+	}
+	existing, found, err := a.committer.FindFillerDecisionAction(ctx, action.ID)
+	if err != nil {
+		return err
+	}
+	if found {
+		if fillerdecision.SameAction(existing, action) {
+			return nil
+		}
+		return fillerdecision.ErrConflict
+	}
+	if a.resolver == nil || a.summary == nil || a.evidence == nil || a.certification == nil {
+		return fillerdecision.ErrAppliedUnavailable
 	}
 	var receipt *fillerdecision.AppliedRightsReceipt
 	if appliedActionPublishes(action) {

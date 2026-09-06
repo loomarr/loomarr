@@ -4764,8 +4764,52 @@ func testFillerAppliedAdmissionNegativeCases(t *testing.T, newStore NewStoreFunc
 		if err := s.CommitAppliedFillerDecisionAction(ctx, action, receipt); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.CommitAppliedFillerDecisionAction(ctx, action, receipt); err != nil {
+		now := time.Now().UTC()
+		expiredUntil := now.Add(-time.Hour)
+		expired := rights(now.Add(-2*time.Hour), &expiredUntil, valid.SHA256, "7")
+		withdrawnAt := now.Add(-90 * time.Minute)
+		withdrawn, err := filler.NewFillerRightsGrant(
+			valid.Scope, filler.FillerRightsProhibited, filler.FillerRightsWithdrawalActive,
+			strings.Repeat("8", 64), "operator", now.Add(-time.Hour), nil, &withdrawnAt,
+			expired.SHA256, now,
+		)
+		if err != nil {
 			t.Fatal(err)
+		}
+		changes := []struct {
+			name  string
+			grant filler.FillerRightsGrant
+		}{
+			{"expired", expired},
+			{"withdrawn", withdrawn},
+			{"superseded", rights(now.Add(-time.Hour), nil, withdrawn.SHA256, "9")},
+		}
+		for _, change := range changes {
+			t.Run(change.name, func(t *testing.T) {
+				if err := s.PutFillerRightsGrant(ctx, change.grant); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.CommitAppliedFillerDecisionAction(ctx, action, receipt); err != nil {
+					t.Fatalf("exact retry after %s = %v", change.name, err)
+				}
+				clip, err := s.GetClip(ctx, fixtureClipHash)
+				if err != nil || clip.Held {
+					t.Fatalf("exact retry after %s changed filed clip = %+v, err = %v", change.name, clip, err)
+				}
+				pipeline, found, err := s.GetClipPipeline(ctx, fixtureClipHash)
+				if err != nil || !found || pipeline.Disposition != filler.DispositionFiled || pipeline.Status != filler.StatusDone {
+					t.Fatalf("exact retry after %s changed pipeline = %+v, found = %v, err = %v", change.name, pipeline, found, err)
+				}
+				page, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: action.DecisionID, Limit: 10})
+				if err != nil || page.Total != 1 {
+					t.Fatalf("exact retry after %s actions = %+v, err = %v", change.name, page, err)
+				}
+			})
+		}
+		conflict := action
+		conflict.ActorID = "other-admin"
+		if err := s.CommitAppliedFillerDecisionAction(ctx, conflict, receipt); !errors.Is(err, fillerdecision.ErrConflict) {
+			t.Fatalf("conflicting retry = %v, want conflict", err)
 		}
 		clip, err := s.GetClip(ctx, fixtureClipHash)
 		if err != nil || clip.Held {

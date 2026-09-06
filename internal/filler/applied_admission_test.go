@@ -23,6 +23,7 @@ func (f appliedAdmissionResolverFunc) ResolveAppliedAdmissionMedia(ctx context.C
 type appliedAdmissionCommitter struct {
 	actions  recordfixture.Recorder[fillerdecision.Action, struct{}]
 	receipts recordfixture.Recorder[*fillerdecision.AppliedRightsReceipt, struct{}]
+	existing fillerdecision.Action
 }
 
 func (c *appliedAdmissionCommitter) CommitAppliedFillerDecisionAction(_ context.Context, action fillerdecision.Action, receipt *fillerdecision.AppliedRightsReceipt) error {
@@ -31,6 +32,10 @@ func (c *appliedAdmissionCommitter) CommitAppliedFillerDecisionAction(_ context.
 	}
 	_, err := c.actions.Call(action)
 	return err
+}
+
+func (c *appliedAdmissionCommitter) FindFillerDecisionAction(_ context.Context, id string) (fillerdecision.Action, bool, error) {
+	return c.existing, c.existing.ID == id, nil
 }
 
 func TestAppliedAdmissionReplaysCurrentReleaseBeforePublication(t *testing.T) {
@@ -90,6 +95,20 @@ func TestAppliedAdmissionFailsClosedBeforeTheCatalogTransaction(t *testing.T) {
 			t.Fatal("withdrawn rights reached the catalog transaction")
 		}
 	})
+}
+
+func TestAppliedAdmissionExactRetrySkipsUnavailableReleaseReplay(t *testing.T) {
+	module, record, action, committer, _, _ := appliedAdmissionFixture(t)
+	committer.existing = action
+	module.resolver = appliedAdmissionResolverFunc(func(context.Context, string) (string, error) {
+		return "", errors.New("release is no longer available")
+	})
+	if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); err != nil {
+		t.Fatalf("exact retry = %v, want recorded result", err)
+	}
+	if committer.actions.Calls() != 0 {
+		t.Fatal("exact retry committed another catalog effect")
+	}
 }
 
 func TestAppliedAdmissionHeldActionsDoNotRequirePublicationEvidence(t *testing.T) {
