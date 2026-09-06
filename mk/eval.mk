@@ -318,12 +318,14 @@ filler-corpus-met-rights-attestation: ## prepare one pending, digest-bound Met r
 	@test -n "$$LOOMARR_FILLER_CORPUS_MET_INVENTORY" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_MET_INVENTORY is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-met-rights-complete \
 	    --mode prepare \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_MET_INVENTORY" \
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" \
 	    --prescreen "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN" \
+	    --quarantine-inspection "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" \
 	    --attestation-out "$${LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-rights-attestation.json}"
 
 filler-corpus-met-rights-complete: ## expand one accepted Met attestation into item-bound review rows
@@ -331,6 +333,7 @@ filler-corpus-met-rights-complete: ## expand one accepted Met attestation into i
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-met-rights-complete \
 	    --mode complete \
@@ -338,6 +341,7 @@ filler-corpus-met-rights-complete: ## expand one accepted Met attestation into i
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" \
 	    --prescreen "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN" \
 	    --attestation "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION" \
+	    --quarantine-inspection "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" \
 	    --completed-csv-out "$${LOOMARR_FILLER_CORPUS_MET_RIGHTS_COMPLETED_CSV_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-rights-completed.csv}"
 
 filler-corpus-nasa: ## freeze bounded NASA pilot and full-inventory artifacts

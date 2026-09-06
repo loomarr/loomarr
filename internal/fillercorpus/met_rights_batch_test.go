@@ -177,16 +177,23 @@ func newMetRightsBatchFixture(t *testing.T) *metRightsBatchFixture {
 	row := RightsReviewRowFromCase(fixture.inventory.Cases[0])
 	row.Rank = 1
 	row.InventorySHA256 = digestBytes(inventoryRaw)
+	reportBinding := &QuarantineInspectionBinding{
+		ReportSHA256: strings.Repeat("c", 64), InventorySHA256: digestBytes(inventoryRaw),
+		DownloadLedgerSHA256: strings.Repeat("d", 64), PriorPublicManifestSHA256: strings.Repeat("e", 64),
+		PriorAuthoritySHA256: strings.Repeat("f", 64),
+	}
+	row.QuarantineInspection = &QuarantineInspectionCaseBinding{Report: *reportBinding, ContentSHA256: strings.Repeat("9", 64)}
 	worksheet := RightsWorksheet{
-		SchemaVersion:   RightsWorksheetSchemaVersion,
-		Profile:         RightsProfileDevelopment,
-		InventorySHA256: digestBytes(inventoryRaw),
-		SnapshotAt:      fixture.inventory.SnapshotAt,
-		PreparedAt:      fixture.inventory.SnapshotAt.Add(30 * time.Minute),
-		MinItems:        1,
-		MaxItems:        1,
-		Instructions:    []string{"Review the exact item."},
-		Cases:           []RightsReviewRow{row},
+		SchemaVersion:        RightsWorksheetSchemaVersion,
+		Profile:              RightsProfileDevelopment,
+		InventorySHA256:      digestBytes(inventoryRaw),
+		SnapshotAt:           fixture.inventory.SnapshotAt,
+		PreparedAt:           fixture.inventory.SnapshotAt.Add(30 * time.Minute),
+		MinItems:             1,
+		MaxItems:             1,
+		Instructions:         []string{"Review the exact item."},
+		QuarantineInspection: reportBinding,
+		Cases:                []RightsReviewRow{row},
 	}
 	worksheetRaw, _ := json.Marshal(worksheet)
 	return &metRightsBatchFixture{
@@ -194,6 +201,27 @@ func newMetRightsBatchFixture(t *testing.T) *metRightsBatchFixture {
 		worksheet: worksheet, worksheetRaw: worksheetRaw,
 		prescreen: prescreen, prescreenRaw: prescreenRaw,
 		reviewedAt: prescreen.PreparedAt.Add(time.Minute),
+	}
+}
+
+func TestMetRightsBatchReviewRejectsMissingMalformedOrInconsistentReportBindings(t *testing.T) {
+	tests := map[string]func(*RightsWorksheet){
+		"missing report":            func(value *RightsWorksheet) { value.QuarantineInspection = nil },
+		"missing case binding":      func(value *RightsWorksheet) { value.Cases[0].QuarantineInspection = nil },
+		"malformed content binding": func(value *RightsWorksheet) { value.Cases[0].QuarantineInspection.ContentSHA256 = "not-a-digest" },
+		"inconsistent report binding": func(value *RightsWorksheet) {
+			value.Cases[0].QuarantineInspection.Report.ReportSHA256 = strings.Repeat("8", 64)
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			fixture := newMetRightsBatchFixture(t)
+			mutate(&fixture.worksheet)
+			fixture.worksheetRaw, _ = json.Marshal(fixture.worksheet)
+			if _, err := PrepareMetRightsBatchAttestation(fixture.inventoryRaw, fixture.worksheetRaw, fixture.prescreenRaw); err == nil {
+				t.Fatal("invalid report binding passed")
+			}
+		})
 	}
 }
 

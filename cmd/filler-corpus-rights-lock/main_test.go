@@ -197,12 +197,24 @@ func TestMetBatchCompletionStillPassesThroughOrdinaryItemLevelLocker(t *testing.
 		t.Fatal(err)
 	}
 	inventoryDigest := fmt.Sprintf("%x", sha256.Sum256(inventoryRaw))
+	inspectionRaw := testkit.FillerQuarantineReport(t, inventoryRaw, map[string]string{
+		item.CaseID: fillerquarantine.DispositionEligibleForRightsReview,
+	}, nil)
+	authority, err := fillerquarantine.OpenRightsEligibility(inventoryRaw, inspectionRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := authority.Selected(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	row := fillercorpus.RightsReviewRowFromCase(item)
 	row.Rank, row.InventorySHA256 = 1, inventoryDigest
+	row.QuarantineInspection = selection.Cases[0].QuarantineInspection
 	worksheet := fillercorpus.RightsWorksheet{
 		SchemaVersion: fillercorpus.RightsWorksheetSchemaVersion, Profile: fillercorpus.RightsProfileDevelopment,
 		InventorySHA256: inventoryDigest, SnapshotAt: snapshot, PreparedAt: snapshot.Add(time.Minute), MinItems: 1, MaxItems: 1,
-		Instructions: []string{"Review the exact item."}, Cases: []fillercorpus.RightsReviewRow{row},
+		Instructions: []string{"Review the exact item."}, QuarantineInspection: selection.QuarantineInspection, Cases: []fillercorpus.RightsReviewRow{row},
 	}
 	worksheetRaw, err := json.Marshal(worksheet)
 	if err != nil {
@@ -248,12 +260,33 @@ func TestMetBatchCompletionStillPassesThroughOrdinaryItemLevelLocker(t *testing.
 	inventoryPath := filepath.Join(dir, "inventory.json")
 	worksheetPath := filepath.Join(dir, "worksheet.json")
 	csvPath := filepath.Join(dir, "completed.csv")
-	for path, raw := range map[string][]byte{inventoryPath: inventoryRaw, worksheetPath: worksheetRaw, csvPath: completion.CompletedCSV} {
+	inspectionPath := filepath.Join(dir, "quarantine-inspection.json")
+	for path, raw := range map[string][]byte{inventoryPath: inventoryRaw, worksheetPath: worksheetRaw, csvPath: completion.CompletedCSV, inspectionPath: inspectionRaw} {
 		if err := os.WriteFile(path, raw, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	decisions, err := lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath, snapshot.Add(4*time.Minute), fillercorpus.RightsProfileDevelopment)
+	if _, err := lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath, snapshot.Add(4*time.Minute), fillercorpus.RightsProfileDevelopment); err == nil {
+		t.Fatal("ordinary locker accepted the remote Met batch without its quarantine inspection")
+	}
+	driftedInspectionPath := writeReportFixture(t, dir, "drifted-quarantine-inspection.json", append(append([]byte(nil), inspectionRaw...), '\n'))
+	if _, err := lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath, snapshot.Add(4*time.Minute), fillercorpus.RightsProfileDevelopment, driftedInspectionPath); err == nil {
+		t.Fatal("ordinary locker accepted a drifted quarantine inspection")
+	}
+	changedWorksheet := worksheet
+	changedWorksheet.Cases = append([]fillercorpus.RightsReviewRow(nil), worksheet.Cases...)
+	changedCaseBinding := *changedWorksheet.Cases[0].QuarantineInspection
+	changedCaseBinding.ContentSHA256 = strings.Repeat("f", 64)
+	changedWorksheet.Cases[0].QuarantineInspection = &changedCaseBinding
+	changedWorksheetRaw, _ := json.Marshal(changedWorksheet)
+	changedWorksheetPath := writeReportFixture(t, dir, "changed-binding-worksheet.json", changedWorksheetRaw)
+	if _, err := lockDecisionsForProfile(inventoryPath, changedWorksheetPath, csvPath, snapshot.Add(4*time.Minute), fillercorpus.RightsProfileDevelopment, inspectionPath); err == nil {
+		t.Fatal("ordinary locker accepted a changed quarantine case binding")
+	}
+	if _, err := fillercorpus.CompleteMetRightsBatchReview(inventoryRaw, changedWorksheetRaw, prescreenRaw, attestationRaw); err == nil {
+		t.Fatal("batch completion accepted a changed report binding after attestation")
+	}
+	decisions, err := lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath, snapshot.Add(4*time.Minute), fillercorpus.RightsProfileDevelopment, inspectionPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +297,7 @@ func TestMetBatchCompletionStillPassesThroughOrdinaryItemLevelLocker(t *testing.
 	if err := os.WriteFile(inventoryPath, append(inventoryRaw, ' '), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath, snapshot.Add(4*time.Minute), fillercorpus.RightsProfileDevelopment); err == nil {
+	if _, err := lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath, snapshot.Add(4*time.Minute), fillercorpus.RightsProfileDevelopment, inspectionPath); err == nil {
 		t.Fatal("ordinary locker accepted a batch review after inventory drift")
 	}
 }
