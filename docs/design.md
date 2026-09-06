@@ -6824,7 +6824,12 @@ and review time, explicitly accepts the recorded non-copyright limitations, and 
 development-corpus copying, technical transformation, and evidence extraction. The aid reconstructs
 every immutable worksheet row and fills the same decision columns for each independently identified
 item; the ordinary rights locker remains the sole producer of downloader authority and revalidates all
-rows. The attestation time must be canonical UTC and no earlier than its bound pre-screen; this
+rows. Current report-bound development worksheets retain their exact quarantine report and per-case
+content bindings through batch proposal and completion; the batch aid must not strip those bindings,
+synthesize eligibility, or reinterpret quarantine-only permission as development or redistribution
+permission. Missing, malformed, or inconsistent bindings refuse the batch. The ordinary rights locker
+independently reopens and validates the exact inspection report before producing any downloader
+authority. The attestation time must be canonical UTC and no earlier than its bound pre-screen; this
 offline development artifact has no rolling production-certificate lifetime. A held pre-screen case,
 mixed authority, incomplete coverage, stale time, changed artifact,
 unknown field, blank attestation, attribution requirement, or non-empty restriction refuses batch
