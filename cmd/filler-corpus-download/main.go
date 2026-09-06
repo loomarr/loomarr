@@ -93,7 +93,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: read approvals:", err)
 		return 1
 	}
-	plan, err := planDownloadsForProfile(inv, approvals, opts)
+	plan, err := planDownloads(inv, approvals, opts)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download:", err)
 		return 1
@@ -128,35 +128,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func planDownloadsForProfile(inv fillercorpus.Inventory, approvals []fillercorpus.RightsDecision, opts options) ([]plannedDownload, error) {
-	for _, approval := range approvals {
-		if err := validateDecisionProfile(approval, opts); err != nil {
-			return nil, fmt.Errorf("rights-reviewed item %s: %w", approval.CaseID, err)
-		}
-	}
-	if opts.profile != fillercorpus.RightsProfileQuarantine {
-		return planDownloads(inv, approvals, opts)
-	}
-	projected := make([]fillercorpus.RightsDecision, len(approvals))
-	original := make(map[string]fillercorpus.RightsDecision, len(approvals))
-	for index, approval := range approvals {
-		original[approval.CaseID] = approval
-		approval.QuarantineContract = nil
-		approval.Redistributable = approval.Decision == "approved"
-		projected[index] = approval
-	}
-	development := opts
-	development.profile = fillercorpus.RightsProfileDevelopment
-	plan, err := planDownloads(inv, projected, development)
-	if err != nil {
-		return nil, err
-	}
-	for index := range plan {
-		plan[index].approval = original[plan[index].candidate.CaseID]
-	}
-	return plan, nil
-}
-
 func validateDecisionProfile(approval fillercorpus.RightsDecision, opts options) error {
 	switch opts.profile {
 	case fillercorpus.RightsProfileQuarantine:
@@ -164,7 +135,10 @@ func validateDecisionProfile(approval fillercorpus.RightsDecision, opts options)
 			return fmt.Errorf("decision is not restricted to quarantine")
 		}
 		reasons := fillercorpus.QuarantineAcquisitionHoldReasons(approval.QuarantineContract)
-		if approval.Decision == "approved" && (len(reasons) != 0 || len(approval.QuarantineContract.HoldReasons) != 0) {
+		if len(reasons) != 0 {
+			return fmt.Errorf("decision lacks exact quarantine authority")
+		}
+		if approval.Decision == "approved" && len(approval.QuarantineContract.HoldReasons) != 0 {
 			return fmt.Errorf("approval lacks exact quarantine authority")
 		}
 		if approval.Decision == "held" && len(approval.QuarantineContract.HoldReasons) == 0 {
@@ -176,7 +150,10 @@ func validateDecisionProfile(approval fillercorpus.RightsDecision, opts options)
 		}
 		contract := approval.HoldoutContract
 		reasons := fillercorpus.HoldoutRightsHoldReasons(contract, opts.generatedAt)
-		if approval.Decision == "approved" && (len(reasons) != 0 || contract.ProcessorID != opts.processorID || contract.ProcessorTermsSHA256 != opts.processorTermsSHA256 || len(contract.HoldReasons) != 0) {
+		if len(reasons) != 0 || contract.ProcessorID != opts.processorID || contract.ProcessorTermsSHA256 != opts.processorTermsSHA256 {
+			return fmt.Errorf("decision lacks the exact certification holdout authority")
+		}
+		if approval.Decision == "approved" && len(contract.HoldReasons) != 0 {
 			return fmt.Errorf("approval lacks the exact certification holdout authority")
 		}
 	case fillercorpus.RightsProfileDevelopment:

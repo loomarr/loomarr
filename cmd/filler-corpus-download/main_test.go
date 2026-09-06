@@ -97,7 +97,7 @@ func TestPlanDownloadsRequiresMetadataBoundRightsReview(t *testing.T) {
 	retrieved := time.Date(2026, 8, 25, 8, 0, 0, 0, time.UTC)
 	inv := downloadableInventory(retrieved, "soda-ad", "https://creativecommons.org/publicdomain/mark/1.0/")
 	approval, opts := approvalFor(inv, retrieved), planOptions(retrieved)
-	if plan, err := planDownloadsForProfile(inv, []fillercorpus.RightsDecision{approval}, opts); err != nil || len(plan) != 1 {
+	if plan, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, opts); err != nil || len(plan) != 1 {
 		t.Fatalf("plan = %v, %v", plan, err)
 	}
 	approval.MetadataSHA256 = strings.Repeat("b", 64)
@@ -213,15 +213,29 @@ func TestPlanDownloadsQuarantineCannotGrantOrInheritDownstreamUse(t *testing.T) 
 			contract := *approval.QuarantineContract
 			changed.QuarantineContract = &contract
 			mutate(&changed)
-			if _, err := planDownloadsForProfile(inv, []fillercorpus.RightsDecision{changed}, opts); err == nil {
+			if _, err := planDownloads(inv, []fillercorpus.RightsDecision{changed}, opts); err == nil {
 				t.Fatal("broadened quarantine authority was accepted")
 			}
 		})
 	}
 	development := opts
 	development.profile = fillercorpus.RightsProfileDevelopment
-	if _, err := planDownloadsForProfile(inv, []fillercorpus.RightsDecision{approval}, development); err == nil {
+	if _, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, development); err == nil {
 		t.Fatal("quarantine decision authorized development acquisition")
+	}
+	held := approval
+	contract := *approval.QuarantineContract
+	held.QuarantineContract = &contract
+	held.Decision = "held"
+	held.QuarantineContract.HoldReasons = []string{"rights_review_incomplete"}
+	held.QuarantineContract.CopyAndStorage = false
+	if _, err := planDownloads(inv, []fillercorpus.RightsDecision{held}, opts); err == nil {
+		t.Fatal("held decision with invalid quarantine permissions was accepted")
+	}
+	unknown := opts
+	unknown.profile = "unknown"
+	if _, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, unknown); err == nil {
+		t.Fatal("unknown profile was accepted")
 	}
 }
 
@@ -236,6 +250,7 @@ func TestExecuteDownloadsRecordsQuarantineProfile(t *testing.T) {
 	item := inv.Cases[0]
 	item.Representation.Bytes = int64(len(data))
 	inv.Cases[0] = item
+	inv.Captures[0].PredictedMediaBytes = int64(len(data))
 	approval := approvalFor(inv, retrieved)
 	approval.Redistributable = false
 	approval.QuarantineContract = &fillercorpus.QuarantineAcquisitionContract{
@@ -299,7 +314,7 @@ func TestDownloadCountsInitialRequestAndRedirect(t *testing.T) {
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK, Status: "200 OK", Request: request, ContentLength: int64(len(data)),
-			Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(data))),
+			Header: http.Header{"Content-Type": []string{"video/mp4"}}, Body: io.NopCloser(strings.NewReader(string(data))),
 		}, nil
 	})}
 	opts := options{profile: fillercorpus.RightsProfileDevelopment, inventorySHA256: strings.Repeat("f", 64), generatedAt: time.Now().UTC(), maxRequests: 2, maxItems: 1, maxBytes: int64(len(data)), maxImagePixels: maximumDownloadedImagePixels, outputDir: filepath.Dir(path)}

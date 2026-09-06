@@ -61,6 +61,9 @@ func planDownloads(inv fillercorpus.Inventory, approvals []fillercorpus.RightsDe
 }
 
 func validateDownloadApproval(candidate fillercorpus.InventoryCase, approval fillercorpus.RightsDecision, opts options) error {
+	if err := validateDecisionProfile(approval, opts); err != nil {
+		return fmt.Errorf("rights-reviewed item %s: %w", approval.CaseID, err)
+	}
 	if approval.InventorySHA256 != opts.inventorySHA256 {
 		return fmt.Errorf("rights-reviewed item %s is not tied to the frozen inventory", approval.CaseID)
 	}
@@ -84,7 +87,7 @@ func validateDownloadApproval(candidate fillercorpus.InventoryCase, approval fil
 	} else if approval.HoldoutContract != nil {
 		return fmt.Errorf("development item %s carries a certification-only holdout contract", approval.CaseID)
 	}
-	if !approval.Redistributable && opts.profile != fillercorpus.RightsProfileCertification {
+	if !approval.Redistributable && opts.profile == fillercorpus.RightsProfileDevelopment {
 		return fmt.Errorf("approved item %s is not explicitly redistributable", approval.CaseID)
 	}
 	if requiresCredit(candidate.LicenseURL) && strings.TrimSpace(approval.RequiredCredit) == "" {
