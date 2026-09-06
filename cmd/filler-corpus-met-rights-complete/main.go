@@ -133,12 +133,12 @@ func validateMetRightsBatchInspection(inventoryRaw, worksheetRaw, inspectionRaw 
 		return fmt.Errorf("select Met quarantine eligibility: %w", err)
 	}
 	if !reflect.DeepEqual(worksheet.QuarantineInspection, selection.QuarantineInspection) || len(worksheet.Cases) != len(selection.Cases) {
-		return fmt.Errorf("Met worksheet does not bind the exact quarantine inspection selection")
+		return fmt.Errorf("met worksheet does not bind the exact quarantine inspection selection")
 	}
 	for index, candidate := range selection.Cases {
 		if worksheet.Cases[index].CaseID != candidate.Inventory.CaseID ||
 			!reflect.DeepEqual(worksheet.Cases[index].QuarantineInspection, candidate.QuarantineInspection) {
-			return fmt.Errorf("Met worksheet case %q does not bind the exact quarantine inspection selection", worksheet.Cases[index].CaseID)
+			return fmt.Errorf("met worksheet case %q does not bind the exact quarantine inspection selection", worksheet.Cases[index].CaseID)
 		}
 	}
 	return nil
