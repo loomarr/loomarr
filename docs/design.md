@@ -5115,6 +5115,15 @@ action, catalog, and pipeline unchanged. An old action timestamp cannot substitu
 This is an internal replay result, not an operator-supplied permission or a replacement for complete
 release verification. Non-publishing actions do not require a grant to return material to held state.
 
+An exact retry of an already committed action returns its recorded result without another catalog
+effect or fresh release replay. This remains true after the grant expires, is withdrawn, or is
+superseded, or the applied executor becomes unavailable. The recorded action must match the decision,
+actor, kind, reason, answer, corrected verdict, and superseded-action identity; a conflicting request
+under the same action id fails closed. Server-assigned retry time does not change request identity.
+This read of an immutable prior result never authorizes a new action: new publishing actions still
+require the complete current proof and transaction checks, and each store writer retains its
+shadow/applied mode guard.
+
 The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
 V38 `score` rung. Its first production evidence version records only facts whose provenance the
 current pipeline can prove: successful decoder passage, an explicit content-role token in the
