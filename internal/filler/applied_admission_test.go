@@ -21,21 +21,35 @@ func (f appliedAdmissionResolverFunc) ResolveAppliedAdmissionMedia(ctx context.C
 }
 
 type appliedAdmissionCommitter struct {
-	actions recordfixture.Recorder[fillerdecision.Action, struct{}]
+	actions  recordfixture.Recorder[fillerdecision.Action, struct{}]
+	receipts recordfixture.Recorder[*fillerdecision.AppliedRightsReceipt, struct{}]
 }
 
-func (c *appliedAdmissionCommitter) CommitAppliedFillerDecisionAction(_ context.Context, action fillerdecision.Action) error {
+func (c *appliedAdmissionCommitter) CommitAppliedFillerDecisionAction(_ context.Context, action fillerdecision.Action, receipt *fillerdecision.AppliedRightsReceipt) error {
+	if _, err := c.receipts.Call(receipt); err != nil {
+		return err
+	}
 	_, err := c.actions.Call(action)
 	return err
 }
 
 func TestAppliedAdmissionReplaysCurrentReleaseBeforePublication(t *testing.T) {
 	module, record, action, committer, _, _ := appliedAdmissionFixture(t)
+	tags := screeningChildTagsFixture(t)
+	wantPolicySHA256 := screeningProfileFixture(ScreenRights, "4").PolicySHA256
 	if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); err != nil {
 		t.Fatal(err)
 	}
 	if actions := committer.actions.Inputs(); len(actions) != 1 || actions[0] != action {
 		t.Fatalf("committed actions = %+v, want the verified admit", actions)
+	}
+	receipts := committer.receipts.Inputs()
+	if len(receipts) != 1 || receipts[0] == nil || receipts[0].DecisionID != record.ID || receipts[0].ClipHash != record.ClipHash ||
+		receipts[0].ScreeningEvidenceSHA256 != record.ScreeningEvidenceSHA256 || receipts[0].ReleaseAuthoritySHA256 != record.ReleaseAuthoritySHA256 ||
+		receipts[0].SourceID != "archive:commercials" || receipts[0].AcquisitionID != "acq-17" ||
+		receipts[0].SourceMasterSHA256 != tags.MediaAssets.SourceMaster.SHA256 || receipts[0].PolicySHA256 != wantPolicySHA256 ||
+		receipts[0].Use != FillerBroadcastUse || receipts[0].GrantSHA256 != screeningDigest("7") {
+		t.Fatalf("committed receipt = %+v, want replayed record and grant identities", receipts)
 	}
 }
 
@@ -96,6 +110,11 @@ func TestAppliedAdmissionHeldActionsDoNotRequirePublicationEvidence(t *testing.T
 	}
 	if actions := committer.actions.Inputs(); len(actions) != 2 || actions[0].Kind != fillerdecision.ActionReject || actions[1].Kind != fillerdecision.ActionRestore {
 		t.Fatalf("committed actions = %+v, want reject and restore", actions)
+	}
+	for _, receipt := range committer.receipts.Inputs() {
+		if receipt != nil {
+			t.Fatalf("held action captured receipt = %+v, want nil", receipt)
+		}
 	}
 }
 

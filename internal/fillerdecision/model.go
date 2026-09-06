@@ -70,6 +70,15 @@ type Action struct {
 	CreatedAt                                             time.Time
 }
 
+// AppliedRightsReceipt is the exact current-grant identity observed while replaying a release.
+// It is an internal handoff, not persisted action data: the store must re-read and lock the
+// current head before it can publish.
+type AppliedRightsReceipt struct {
+	DecisionID, ClipHash, ScreeningEvidenceSHA256, ReleaseAuthoritySHA256 string
+	SourceID, AcquisitionID, SourceMasterSHA256, PolicySHA256, Use        string
+	GrantSHA256                                                           string
+}
+
 type Cursor struct {
 	BeforeCreatedAt time.Time
 	BeforeID        string
@@ -121,7 +130,7 @@ type Repository interface {
 // accept applied decisions only and commit the action, clip airability, and pipeline disposition
 // in one transaction. Release verification happens before this seam in AppliedActionExecutor.
 type AppliedActionRepository interface {
-	CommitAppliedFillerDecisionAction(context.Context, Action) error
+	CommitAppliedFillerDecisionAction(context.Context, Action, *AppliedRightsReceipt) error
 }
 
 // AppliedActionExecutor owns terminal evidence replay before an applied action can reach the

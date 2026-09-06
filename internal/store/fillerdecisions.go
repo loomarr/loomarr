@@ -248,14 +248,14 @@ func (s *sqlStore) FillerDecisionCounts(ctx context.Context) (fillerdecision.Cou
 }
 
 func (s *sqlStore) CommitFillerDecisionAction(ctx context.Context, action fillerdecision.Action) error {
-	return s.commitFillerDecisionAction(ctx, action, fillerdecision.ApplicationModeShadow, false)
+	return s.commitFillerDecisionAction(ctx, action, fillerdecision.ApplicationModeShadow, false, nil)
 }
 
 // CommitAppliedFillerDecisionAction is the sole catalog-publication writer for durable V61
 // actions. The caller must first replay terminal release; this transaction then rechecks the
 // immutable decision mode/currentness and makes its audit and catalog consequences indivisible.
-func (s *sqlStore) CommitAppliedFillerDecisionAction(ctx context.Context, action fillerdecision.Action) error {
-	return s.commitFillerDecisionAction(ctx, action, fillerdecision.ApplicationModeApplied, true)
+func (s *sqlStore) CommitAppliedFillerDecisionAction(ctx context.Context, action fillerdecision.Action, receipt *fillerdecision.AppliedRightsReceipt) error {
+	return s.commitFillerDecisionAction(ctx, action, fillerdecision.ApplicationModeApplied, true, receipt)
 }
 
 func (s *sqlStore) commitFillerDecisionAction(
@@ -263,6 +263,7 @@ func (s *sqlStore) commitFillerDecisionAction(
 	action fillerdecision.Action,
 	requiredMode fillerdecision.ApplicationMode,
 	applied bool,
+	receipt *fillerdecision.AppliedRightsReceipt,
 ) error {
 	if err := fillerdecision.ValidateAction(action); err != nil {
 		return err
@@ -273,15 +274,15 @@ func (s *sqlStore) commitFillerDecisionAction(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var outcome, verdict, applicationMode, clipHash string
-	lock := `SELECT d.outcome_kind, d.verdict, d.application_mode, d.clip_hash FROM filler_admission_decisions d WHERE d.id = ?
+	var outcome, verdict, applicationMode, clipHash, screeningHash, releaseHash string
+	lock := `SELECT d.outcome_kind, d.verdict, d.application_mode, d.clip_hash, d.screening_evidence_sha256, d.release_authority_sha256 FROM filler_admission_decisions d WHERE d.id = ?
 		AND NOT EXISTS (SELECT 1 FROM filler_admission_decisions newer
 			WHERE newer.clip_hash = d.clip_hash AND (newer.created_at > d.created_at
 			OR (newer.created_at = d.created_at AND newer.id > d.id)))`
 	if s.dialect == DialectPostgres {
 		lock += ` FOR UPDATE`
 	}
-	if err := tx.QueryRowContext(ctx, s.ph(lock), action.DecisionID).Scan(&outcome, &verdict, &applicationMode, &clipHash); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, s.ph(lock), action.DecisionID).Scan(&outcome, &verdict, &applicationMode, &clipHash, &screeningHash, &releaseHash); errors.Is(err, sql.ErrNoRows) {
 		var exists int
 		if countErr := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM filler_admission_decisions WHERE id = ?`), action.DecisionID).Scan(&exists); countErr != nil {
 			return fmt.Errorf("check stale filler decision: %w", countErr)
@@ -295,6 +296,11 @@ func (s *sqlStore) commitFillerDecisionAction(
 	}
 	if fillerdecision.ApplicationMode(applicationMode) != requiredMode {
 		return fillerdecision.ErrActionMode
+	}
+	if applied && appliedActionPublishes(action) {
+		if err := s.lockAndVerifyAppliedRights(ctx, tx, receipt, action.DecisionID, clipHash, screeningHash, releaseHash); err != nil {
+			return err
+		}
 	}
 
 	existing, found, err := getFillerDecisionAction(ctx, tx, s.ph, action.ID)
@@ -335,6 +341,38 @@ func (s *sqlStore) commitFillerDecisionAction(
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit filler decision action: %w", err)
+	}
+	return nil
+}
+
+func appliedActionPublishes(action fillerdecision.Action) bool {
+	return action.Kind == fillerdecision.ActionAdmit ||
+		action.Kind == fillerdecision.ActionCorrect && action.CorrectedVerdict == filleradmission.VerdictAdmit
+}
+
+func (s *sqlStore) lockAndVerifyAppliedRights(ctx context.Context, tx *sql.Tx, receipt *fillerdecision.AppliedRightsReceipt, decisionID, clipHash, screeningHash, releaseHash string) error {
+	if receipt == nil || receipt.DecisionID != decisionID || receipt.ClipHash != clipHash ||
+		receipt.ScreeningEvidenceSHA256 != screeningHash || receipt.ReleaseAuthoritySHA256 != releaseHash {
+		return fillerdecision.ErrAppliedUnavailable
+	}
+	scope := filler.FillerRightsScope{SourceID: receipt.SourceID, AcquisitionID: receipt.AcquisitionID,
+		SourceMasterSHA256: receipt.SourceMasterSHA256, PolicySHA256: receipt.PolicySHA256, Use: receipt.Use}
+	if err := filler.ValidateFillerRightsScope(scope); err != nil {
+		return fillerdecision.ErrAppliedUnavailable
+	}
+	head, found, err := currentFillerRightsHead(ctx, tx, s.ph, scope, s.dialect == DialectPostgres)
+	if err != nil || !found || head != receipt.GrantSHA256 {
+		return fillerdecision.ErrAppliedUnavailable
+	}
+	var payload string
+	if err := tx.QueryRowContext(ctx, s.ph(`SELECT grant_json FROM filler_rights_grants WHERE grant_sha256 = ?`), head).Scan(&payload); err != nil {
+		return fillerdecision.ErrAppliedUnavailable
+	}
+	var grant filler.FillerRightsGrant
+	if err := json.Unmarshal([]byte(payload), &grant); err != nil || grant.SHA256 != head || filler.ValidateFillerRightsGrant(grant) != nil || grant.Scope != scope ||
+		grant.Status != filler.FillerRightsAuthorized || grant.Withdrawal != filler.FillerRightsWithdrawalClear ||
+		time.Now().UTC().Before(grant.EffectiveAt) || grant.ValidUntil != nil && !time.Now().UTC().Before(*grant.ValidUntil) {
+		return fillerdecision.ErrAppliedUnavailable
 	}
 	return nil
 }

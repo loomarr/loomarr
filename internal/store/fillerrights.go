@@ -27,7 +27,7 @@ func (s *sqlStore) PutFillerRightsGrant(ctx context.Context, grant filler.Filler
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	current, found, err := currentFillerRightsHead(ctx, tx, s.ph, grant.Scope)
+	current, found, err := currentFillerRightsHead(ctx, tx, s.ph, grant.Scope, s.dialect == DialectPostgres)
 	if err != nil {
 		return err
 	}
@@ -131,9 +131,13 @@ func (s *sqlStore) CurrentFillerRightsGrant(ctx context.Context, scope filler.Fi
 	return grant, true, nil
 }
 
-func currentFillerRightsHead(ctx context.Context, tx *sql.Tx, ph placeholder, scope filler.FillerRightsScope) (string, bool, error) {
+func currentFillerRightsHead(ctx context.Context, tx *sql.Tx, ph placeholder, scope filler.FillerRightsScope, lock bool) (string, bool, error) {
 	var current string
-	err := tx.QueryRowContext(ctx, ph(`SELECT grant_sha256 FROM filler_rights_heads WHERE `+fillerRightsScopeWhere),
+	query := `SELECT grant_sha256 FROM filler_rights_heads WHERE ` + fillerRightsScopeWhere
+	if lock {
+		query += ` FOR UPDATE`
+	}
+	err := tx.QueryRowContext(ctx, ph(query),
 		scope.SourceID, scope.AcquisitionID, scope.SourceMasterSHA256, scope.PolicySHA256, scope.Use,
 	).Scan(&current)
 	if errors.Is(err, sql.ErrNoRows) {
