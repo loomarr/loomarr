@@ -1,8 +1,10 @@
 package fillerdecision
 
 import (
+	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,6 +46,11 @@ func TestValidateRecordRequiresClosedApplicationMode(t *testing.T) {
 	for _, mode := range []ApplicationMode{ApplicationModeShadow, ApplicationModeApplied} {
 		record := validRecord()
 		record.ApplicationMode = mode
+		if mode == ApplicationModeApplied {
+			record.ClipHash = strings.Repeat("a", 64)
+			record.ScreeningEvidenceSHA256 = strings.Repeat("b", 64)
+			record.ReleaseAuthoritySHA256 = strings.Repeat("c", 64)
+		}
 		if err := ValidateRecord(record); err != nil {
 			t.Fatalf("ValidateRecord(application mode %q) = %v", mode, err)
 		}
@@ -56,6 +63,111 @@ func TestValidateRecordRequiresClosedApplicationMode(t *testing.T) {
 			t.Fatalf("ValidateRecord(application mode %q) = %v, want ErrInvalid", mode, err)
 		}
 	}
+}
+
+func TestValidateRecordBindsAppliedReleaseEvidenceOnly(t *testing.T) {
+	applied := validRecord()
+	applied.ApplicationMode = ApplicationModeApplied
+	applied.ClipHash = strings.Repeat("a", 64)
+	applied.ScreeningEvidenceSHA256 = strings.Repeat("b", 64)
+	applied.ReleaseAuthoritySHA256 = strings.Repeat("c", 64)
+	if err := ValidateRecord(applied); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*Record){
+		"catalog hash": func(record *Record) { record.ClipHash = "clip" },
+		"screening":    func(record *Record) { record.ScreeningEvidenceSHA256 = "" },
+		"release":      func(record *Record) { record.ReleaseAuthoritySHA256 = strings.Repeat("C", 64) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			record := applied
+			mutate(&record)
+			if err := ValidateRecord(record); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("error = %v, want ErrInvalid", err)
+			}
+		})
+	}
+	shadow := validRecord()
+	shadow.ScreeningEvidenceSHA256 = strings.Repeat("b", 64)
+	if err := ValidateRecord(shadow); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("shadow release binding = %v, want ErrInvalid", err)
+	}
+}
+
+type actionRoutingRepository struct {
+	Repository
+	record fillerdecisionRecordResult
+	action Action
+}
+
+type fillerdecisionRecordResult struct {
+	value Record
+	err   error
+}
+
+func (r *actionRoutingRepository) GetFillerDecision(context.Context, string) (Record, error) {
+	return r.record.value, r.record.err
+}
+
+func (r *actionRoutingRepository) CommitFillerDecisionAction(_ context.Context, action Action) error {
+	r.action = action
+	return nil
+}
+
+type appliedActionExecutor struct{ action Action }
+
+func (e *appliedActionExecutor) ActOnAppliedFillerDecision(_ context.Context, _ Record, action Action) error {
+	e.action = action
+	return nil
+}
+
+func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
+	action := Action{
+		ID: "action-1", DecisionID: "decision-1", ActorID: "admin-1", Kind: ActionAdmit,
+		CreatedAt: time.Date(2026, 8, 25, 6, 0, 0, 0, time.UTC),
+	}
+	t.Run("shadow", func(t *testing.T) {
+		repo := &actionRoutingRepository{record: fillerdecisionRecordResult{value: validRecord()}}
+		service, err := New(repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := service.Act(t.Context(), action); err != nil || repo.action != action {
+			t.Fatalf("Act = %v, action = %+v", err, repo.action)
+		}
+	})
+	t.Run("applied unavailable", func(t *testing.T) {
+		record := validRecord()
+		record.ApplicationMode = ApplicationModeApplied
+		repo := &actionRoutingRepository{record: fillerdecisionRecordResult{value: record}}
+		service, err := New(repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := service.Act(t.Context(), action); !errors.Is(err, ErrAppliedUnavailable) {
+			t.Fatalf("Act = %v, want ErrAppliedUnavailable", err)
+		}
+		if repo.action.ID != "" {
+			t.Fatal("applied action used the shadow writer")
+		}
+	})
+	t.Run("applied terminal executor", func(t *testing.T) {
+		record := validRecord()
+		record.ApplicationMode = ApplicationModeApplied
+		repo := &actionRoutingRepository{record: fillerdecisionRecordResult{value: record}}
+		executor := &appliedActionExecutor{}
+		service, err := New(repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		service.WithAppliedActions(executor)
+		if err := service.Act(t.Context(), action); err != nil || executor.action != action {
+			t.Fatalf("Act = %v, terminal action = %+v", err, executor.action)
+		}
+		if repo.action.ID != "" {
+			t.Fatal("applied action used the shadow writer")
+		}
+	})
 }
 
 func TestValidateCorrectionRequiresAnAnswerAndClosedVerdict(t *testing.T) {

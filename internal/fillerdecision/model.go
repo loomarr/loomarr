@@ -35,6 +35,7 @@ const (
 type Record struct {
 	ID, ClipHash, EvidenceHash                      string
 	EvidenceVersion, PolicyVersion, TaxonomyVersion string
+	ScreeningEvidenceSHA256, ReleaseAuthoritySHA256 string
 	SchemaVersion                                   int
 	ApplicationMode                                 ApplicationMode
 	Result                                          filleradmission.Result
@@ -116,11 +117,27 @@ type Repository interface {
 	ListFillerDecisionActivity(context.Context, Cursor, int) (ActivityPage, error)
 }
 
+// AppliedActionRepository is the catalog-publication persistence seam. Its implementation must
+// accept applied decisions only and commit the action, clip airability, and pipeline disposition
+// in one transaction. Release verification happens before this seam in AppliedActionExecutor.
+type AppliedActionRepository interface {
+	CommitAppliedFillerDecisionAction(context.Context, Action) error
+}
+
+// AppliedActionExecutor owns terminal evidence replay before an applied action can reach the
+// catalog-publication transaction. Service routes shadow actions around it and applied actions
+// through it, so callers have one Act interface without being able to confuse the two modes.
+type AppliedActionExecutor interface {
+	ActOnAppliedFillerDecision(context.Context, Record, Action) error
+}
+
 var (
-	ErrInvalid          = errors.New("filler decision: invalid")
-	ErrConflict         = errors.New("filler decision: conflicting immutable record")
-	ErrActionStale      = errors.New("filler decision: stale action")
-	ErrActionNotAllowed = errors.New("filler decision: action not allowed")
+	ErrInvalid            = errors.New("filler decision: invalid")
+	ErrConflict           = errors.New("filler decision: conflicting immutable record")
+	ErrActionStale        = errors.New("filler decision: stale action")
+	ErrActionNotAllowed   = errors.New("filler decision: action not allowed")
+	ErrActionMode         = errors.New("filler decision: action writer does not match application mode")
+	ErrAppliedUnavailable = errors.New("filler decision: applied terminal admission is unavailable")
 )
 
 type NextAction string
