@@ -13,6 +13,8 @@ import (
 const (
 	TemporalStructureHoldoutSchemaVersion   = 3
 	TemporalStructureHoldoutContractVersion = "filler-temporal-structure-holdout-plan-v7"
+	TemporalStructureHoldoutPlanGenesis     = "genesis"
+	TemporalStructureHoldoutPlanReplacement = "replacement"
 	TemporalStructureHoldoutCases           = 60
 	temporalStructureHoldoutClassCases      = 12
 	temporalStructureHoldoutParentSources   = 6
@@ -33,6 +35,8 @@ type TemporalStructureHoldoutConfig struct {
 	ProgrammeInventoryPath      string
 	SourceRoot                  string
 	Seed                        string
+	Genesis                     bool
+	PriorAdjudicationPaths      []string
 	PlannedAt                   time.Time
 	OutputDir                   string
 }
@@ -48,6 +52,7 @@ type TemporalStructureHoldoutReceipt struct {
 	SchemaVersion                 int                                        `json:"schemaVersion"`
 	ContractVersion               string                                     `json:"contractVersion"`
 	PlannedAt                     time.Time                                  `json:"plannedAt"`
+	PlanKind                      string                                     `json:"planKind"`
 	SeedSHA256                    string                                     `json:"seedSha256"`
 	Inputs                        []TemporalStructureHoldoutInput            `json:"inputs"`
 	AuthoringSHA256               string                                     `json:"authoringSha256"`
@@ -65,6 +70,7 @@ type TemporalStructureHoldoutReceipt struct {
 	MultiCompilationConstructions []TemporalStructureHoldoutMultiCompilation `json:"multiCompilationConstructions"`
 	ProgrammeConstructions        []TemporalStructureHoldoutProgrammeCut     `json:"programmeConstructions"`
 	ProgrammeSpotConstructions    []TemporalStructureHoldoutProgrammeSpot    `json:"programmeSpotConstructions"`
+	PriorExposure                 TemporalStructureHoldoutTrainingExclusion  `json:"priorExposure"`
 	FutureTrainingExclusion       TemporalStructureHoldoutTrainingExclusion  `json:"futureTrainingExclusion"`
 	BlindHumanAuditRequired       *bool                                      `json:"blindHumanAuditRequired"`
 	TrainingAllowed               *bool                                      `json:"trainingAllowed"`
@@ -166,7 +172,7 @@ func BuildTemporalStructureHoldoutPlan(config TemporalStructureHoldoutConfig) (T
 	if err != nil {
 		return TemporalStructureHoldoutResult{}, err
 	}
-	parents, err := selectTemporalStructureHoldoutParents(config.Seed, loaded.programmeInventory)
+	parents, err := selectTemporalStructureHoldoutParents(config.Seed, loaded.programmeInventory, loaded.prior.exposure)
 	if err != nil {
 		return TemporalStructureHoldoutResult{}, err
 	}
@@ -212,8 +218,9 @@ func validateTemporalStructureHoldoutConfig(config TemporalStructureHoldoutConfi
 			return fmt.Errorf("temporal structure holdout requires every authority path, source root, and output")
 		}
 	}
-	if strings.TrimSpace(config.Seed) == "" || config.PlannedAt.IsZero() {
-		return fmt.Errorf("temporal structure holdout requires a private seed and fixed planning time")
+	validLineage := config.Genesis && len(config.PriorAdjudicationPaths) == 0 || !config.Genesis && len(config.PriorAdjudicationPaths) > 0
+	if strings.TrimSpace(config.Seed) == "" || config.PlannedAt.IsZero() || !validLineage {
+		return fmt.Errorf("temporal structure holdout requires a private seed, fixed planning time, and exactly one genesis or prior-adjudication lineage mode")
 	}
 	return nil
 }
