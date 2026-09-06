@@ -72,7 +72,7 @@ func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 		return filler.Probed{DurationMs: 30_000}, nil
 	}}
 	syncer := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
-		WithAcquisitionAuthority(st)
+		WithAcquisitionManifests(st)
 	if _, err := syncer.Sync(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 		return filler.Probed{DurationMs: 30_000}, nil
 	}}
 	syncer := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
-		WithAcquisitionAuthority(st)
+		WithAcquisitionManifests(st)
 	if _, err := syncer.Sync(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -230,8 +230,8 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manual.Held {
-		t.Fatalf("genuinely unowned operator clip was held: %+v", manual)
+	if !manual.Held {
+		t.Fatalf("newly discovered operator clip was not held: %+v", manual)
 	}
 
 	artifacts, err := st.ListRecoverableAcquisitionArtifacts(t.Context(), 10)
@@ -321,7 +321,7 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 		return filler.Probed{DurationMs: 30_000}, nil
 	}}
 	syncer := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, func() time.Time { return now }, slog.New(slog.NewTextHandler(io.Discard, nil))).
-		WithAcquisitionAuthority(st)
+		WithAcquisitionManifests(st)
 	if _, err := syncer.Sync(t.Context()); err != nil {
 		t.Fatal(err)
 	}
