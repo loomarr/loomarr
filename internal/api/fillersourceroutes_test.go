@@ -283,35 +283,6 @@ func TestSetFillerSourceEnabled_DisablingKeepsTheClips(t *testing.T) {
 	}
 }
 
-func TestSetFillerSourceAutoAdmit_IsIndependentOfAcquisition(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
-	ctx := context.Background()
-	if err := st.UpsertFillerSource(ctx, store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
-		t.Fatal(err)
-	}
-	every := 900
-	if err := st.SetFillerSourceFetchPolicy(ctx, "classic", &every, nil); err != nil {
-		t.Fatal(err)
-	}
-	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic",
-		`{"enabled":true,"autoAdmit":false}`, adminToken)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", res.StatusCode)
-	}
-	for _, src := range registeredSources(t, st) {
-		if src.ID == "classic" {
-			if !src.Enabled || src.AutoAdmit {
-				t.Fatalf("source policy = enabled:%v autoAdmit:%v, want true/false", src.Enabled, src.AutoAdmit)
-			}
-			if src.FetchEverySeconds == nil || *src.FetchEverySeconds != every {
-				t.Fatalf("admission toggle reset fetch policy: %v", src.FetchEverySeconds)
-			}
-			return
-		}
-	}
-	t.Fatal("classic source disappeared")
-}
-
 // A row with no work behind it gets no switch, and asking for one is refused rather than
 // silently accepted. Storing a flag nothing reads is how a control that changes nothing ships.
 //

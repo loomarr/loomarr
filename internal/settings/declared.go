@@ -59,12 +59,9 @@ func mailboxAddress(value any) error {
 // Generated tokens (API_TOKEN, PLAYOUT_TOKEN) live in secrets.go
 // (minted, not demanded — §4), not the app-managed registry.
 
-// autoFileConfidenceRange bounds `filler.autofile.min_confidence` to 50–95 (§10 V38).
-//
-// ⚠ **The upper bound is load-bearing, not cosmetic.** `filler.MaxAutoFileConfidence` is 95 and
-// an ungrounded era is capped strictly BELOW it, which is what guarantees no settable threshold
-// can auto-file a fabricated era. Raising this ceiling without raising that cap silently breaks
-// the guarantee §10 makes.
+// autoSplitConfidenceRange bounds `filler.autosplit.min_confidence` to 50–95 (§10 V43).
+// The lower bound is load-bearing: an ungrounded era is capped below 50, so no reachable
+// threshold can accept a cut on the strength of an invented era.
 //
 // ⚠ The number is repeated here rather than imported: `settings` must not depend on `filler`
 // (the dependency runs the other way — the tagger reads settings). `filler`'s own test pins the
@@ -72,13 +69,13 @@ func mailboxAddress(value any) error {
 //
 // The lower bound is a usability floor: below 50 the threshold admits clips whose tags did not
 // fully verify, which makes Incoming an empty room and the catalog a surprise.
-func autoFileConfidenceRange(v any) error {
+func autoSplitConfidenceRange(v any) error {
 	n, ok := v.(int)
 	if !ok {
 		return fmt.Errorf("want a whole number")
 	}
 	if n < 50 || n > 95 {
-		return fmt.Errorf("want 50-95 (got %d) — below 50 files clips whose tags didn't verify; above 95 nothing would ever file", n)
+		return fmt.Errorf("want 50-95 (got %d) — below 50 accepts cuts whose tags did not verify; above 95 accepts no ordinary grounded proposal", n)
 	}
 	return nil
 }
@@ -665,22 +662,6 @@ func declared() []Setting {
 			Kind: KindBool, Default: false,
 			Doc: "Classify untagged commercials against the grounded era, audience, brand, and taxonomy vocabulary.",
 		},
-		// Auto-filing (§10 V38). ⚠ These two keys were REMOVED from §15 in V35's review as
-		// declared-but-unconsumed — §15's own rule is that a setting not in the registry does not
-		// exist, and the corollary is that one nothing READS does not either. They return here
-		// with their consumer in the same PR: the tag job reads them, and a test proves a clip
-		// below the threshold reaches Incoming instead of the catalog.
-		//
-		// ⚠ **ON by default** (maintainer, 2026-08-02), which means an existing install begins
-		// filing clips without a human on its first tagging run after upgrade. What makes that
-		// safe is not this number but §10's grounding CAP: an ungrounded era scores below every
-		// reachable threshold, so the fabrication class stays with a person regardless of what
-		// this is set to. `filler.Score` owns that property and a sabotage test pins it.
-		{
-			Key: "filler.autofile.enabled", Label: "File confident clips automatically", EnvVar: "FILLER_AUTOFILE_ENABLED", Group: GroupFiller,
-			Kind: KindBool, Default: true,
-			Doc: "File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming.",
-		},
 		{
 			// On-demand transcription (§10 V44). ⚠ OFF by default: it shares the whisper seam with
 			// the language gate on the local path (~341s per clip under QEMU), and spends provider
@@ -767,16 +748,7 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"filler.vision.provider": {"openai"}},
 		},
 		{
-			// ⚠ Max is filler.MaxAutoFileConfidence (95), and the ceiling is load-bearing rather
-			// than cosmetic: an ungrounded era is capped BELOW it, so no settable value can admit
-			// a fabricated era. Raising this bound without raising that cap breaks the guarantee.
-			Key: "filler.autofile.min_confidence", Label: "Confidence required to file", EnvVar: "FILLER_AUTOFILE_MIN_CONFIDENCE", Group: GroupFiller,
-			Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
-			Doc:      "How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check.",
-			ShowWhen: map[string][]string{"filler.autofile.enabled": {"true"}},
-		},
-		{
-			// On-file loudness normalisation (§10 V42, wired for real in V51b).
+			// Playback-derivative loudness normalisation (§10 V42/V66).
 			//
 			// ⚠ **This key spent three phases gating a function nothing called, and the note that
 			// used to sit here claimed the opposite.** It said the setting "lands with its
@@ -790,11 +762,9 @@ func declared() []Setting {
 			// COMMENT asserting a consumer exists is not the same as a consumer existing, and
 			// nothing failed when it stopped being true.
 			//
-			// ⚠ DEFAULT OFF, and the default is the safety property rather than a preference.
-			// This REWRITES the operator's file in FILLER_DIR: the original is unrecoverable.
-			// V40 chose playout-only normalisation for exactly that reason and it remains the
-			// default path; this is an explicit opt-in for operators who want the correction
-			// baked in.
+			// DEFAULT OFF. The conditioning rung retains an immutable source master and applies
+			// this only to the playback derivative, so the operator can opt into a baked playback
+			// correction without sacrificing evidence or recoverability.
 			//
 			// ⚠ There is deliberately NO separate target here. The pass reuses
 			// `filler.target_lufs` (−23), because two targets in one system means a clip
@@ -806,16 +776,15 @@ func declared() []Setting {
 			// every pass would normalise an already-normalised file and walk the loudness down
 			// run after run. The transcode rung writes that marker after the encode lands, and
 			// its own `mezzanine` marker stops the re-encode independently.
-			Key: "filler.autofile.normalize_loudness", Label: "Rewrite files to normalize loudness", EnvVar: "FILLER_AUTOFILE_NORMALIZE_LOUDNESS",
+			Key: "filler.conditioning.normalize_loudness", Label: "Normalize playback derivative loudness", EnvVar: "FILLER_CONDITIONING_NORMALIZE_LOUDNESS",
 			Group: GroupFiller, Kind: KindBool, Default: false,
-			Doc:      "Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk.",
-			ShowWhen: map[string][]string{"filler.autofile.enabled": {"true"}},
+			Doc: "Normalize the playback derivative during conditioning while retaining the immutable source master. Leave off to normalize only during playback.",
 		},
 
 		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and
 		// its result always required a human, which made compilations the most manual part of a
-		// system whose claim is that it maintains itself — while the tagger beside it files
-		// clips unattended above a threshold.
+		// system whose claim is that it maintains itself. Cut acceptance still creates held
+		// children; it does not grant any child permission to air.
 		{
 			// (`filler.split.every` was retired here in V51b. Splitting is no longer a sweep with
 			// its own cadence — it is a rung every long recording reaches as it is ingested, so
@@ -837,12 +806,9 @@ func declared() []Setting {
 			Doc: "Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming.",
 		},
 		{
-			// ⚠ A SEPARATE number from `filler.autofile.min_confidence`, and the separation is
-			// the point: one dial would force the stricter of two different failure modes to
-			// govern both. Bounded by the same range for the same reason — an ungrounded era is
-			// capped below 95, so no settable value can auto-confirm a fabricated one.
+			// This threshold governs cut acceptance only; it has no catalog-publication effect.
 			Key: "filler.autosplit.min_confidence", Label: "Confidence required to accept cuts", EnvVar: "FILLER_AUTOSPLIT_MIN_CONFIDENCE",
-			Group: GroupFiller, Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
+			Group: GroupFiller, Kind: KindInt, Default: 85, Validate: autoSplitConfidenceRange,
 			Doc:      "How sure Loomarr must be about every advert it found inside a recording before cutting it up without asking (50–95).",
 			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
 		},

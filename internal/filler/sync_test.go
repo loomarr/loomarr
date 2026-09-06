@@ -296,15 +296,9 @@ func TestSync_FailedListingPreservesLastKnownCatalog(t *testing.T) {
 	}
 }
 
-// --- V38: the lifecycle fork ---
-
-// ⚠ THE mechanism the whole review queue depends on. Ingest downloads into the same folder the
-// scan watches, so at catalogue time a fetched clip and a hand-copied one are both just files.
-// The `.info.json` sidecar `clipfetch` writes is what tells them apart.
-//
-// If this fork were wrong in the "no sidecar ⇒ hold" direction, an operator's own files would sit
-// invisible until approved. Wrong the other way, every download would go straight to air.
-func TestSync_HoldsDownloadedClipsAndFilesHandCopiedOnes(t *testing.T) {
+// Every new clip starts held. Acquisition provenance remains useful evidence, but neither a
+// downloader nor a hand copy proves safety, rights, or playback fitness.
+func TestSync_HoldsDownloadedAndHandCopiedClips(t *testing.T) {
 	dir := t.TempDir()
 	// A downloaded clip. ⚠ The signal is the `fetchedBy` FIELD, not the sidecar's existence
 	// (V38c): Loomarr writes sidecars for hand-dropped clips too now, so a bare `{"title":"x"}`
@@ -332,9 +326,8 @@ func TestSync_HoldsDownloadedClipsAndFilesHandCopiedOnes(t *testing.T) {
 		t.Error("a DOWNLOADED clip (sidecar present) was filed on sight — it must wait for review")
 	}
 	copied, _, _ := st.GetClip(context.Background(), "copied.mp4")
-	if copied.Held {
-		t.Error("a HAND-COPIED clip (no sidecar) was held — a file the operator placed themselves " +
-			"would sit invisible until approved")
+	if !copied.Held {
+		t.Error("a HAND-COPIED clip bypassed terminal admission")
 	}
 }
 
@@ -380,7 +373,7 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 	source.clips[0].Path = filepath.ToSlash(relative)
 	st := newMemStore()
 	syncer := filler.NewSyncer(source, st, testLayout(dir), func() time.Time { return now }, discardLog()).
-		WithAcquisitionAuthority(authority)
+		WithAcquisitionManifests(authority)
 
 	if _, err := syncer.Sync(t.Context()); err != nil {
 		t.Fatal(err)
@@ -423,7 +416,7 @@ func TestSync_RefusesManifestDigestSubstitution(t *testing.T) {
 	source.clips[0].Path = filepath.Base(media)
 	st := newMemStore()
 	syncer := filler.NewSyncer(source, st, testLayout(dir), func() time.Time { return now }, discardLog()).
-		WithAcquisitionAuthority(authority)
+		WithAcquisitionManifests(authority)
 
 	if _, err := syncer.Sync(t.Context()); err != nil {
 		t.Fatal(err)
@@ -619,7 +612,7 @@ func TestSync_EmptyCatalogRebuildMarksConditioningParentCompositeInEitherScanOrd
 	}
 }
 
-func TestSync_ConditionedChildClearsHoldOnlyWhenRetainedParentResolves(t *testing.T) {
+func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		parentPath string
@@ -627,14 +620,13 @@ func TestSync_ConditionedChildClearsHoldOnlyWhenRetainedParentResolves(t *testin
 		withParent bool
 		parentMode string
 		selfParent bool
-		wantHeld   bool
 	}{
 		{name: "child scanned before parent", parentPath: "z-parent.mp4", childPath: "a-child.mp4", withParent: true},
 		{name: "child scanned after parent", parentPath: "a-parent.mp4", childPath: "z-child.mp4", withParent: true},
-		{name: "parent missing", parentPath: "missing-parent.mp4", childPath: "child.mp4", wantHeld: true},
-		{name: "parent sidecar unreadable", parentPath: "parent.mp4", childPath: "child.mp4", withParent: true, parentMode: "unreadable", wantHeld: true},
-		{name: "parent is itself conditioned lineage", parentPath: "parent.mp4", childPath: "child.mp4", withParent: true, parentMode: "conditioned", wantHeld: true},
-		{name: "child names itself as parent", parentPath: "parent.mp4", childPath: "child.mp4", withParent: true, selfParent: true, wantHeld: true},
+		{name: "parent missing", parentPath: "missing-parent.mp4", childPath: "child.mp4"},
+		{name: "parent sidecar unreadable", parentPath: "parent.mp4", childPath: "child.mp4", withParent: true, parentMode: "unreadable"},
+		{name: "parent is itself conditioned lineage", parentPath: "parent.mp4", childPath: "child.mp4", withParent: true, parentMode: "conditioned"},
+		{name: "child names itself as parent", parentPath: "parent.mp4", childPath: "child.mp4", withParent: true, selfParent: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -699,10 +691,11 @@ func TestSync_ConditionedChildClearsHoldOnlyWhenRetainedParentResolves(t *testin
 				t.Fatal(err)
 			}
 			child, found, err := st.GetClip(context.Background(), childHash)
-			if err != nil || !found || child.Held != tc.wantHeld || child.ParentHash != lineageParentHash {
-				t.Fatalf("rebuilt child = %+v, found=%v, err=%v; held want %v", child, found, err, tc.wantHeld)
+			if err != nil || !found || !child.Held || child.ParentHash != lineageParentHash {
+				t.Fatalf("rebuilt child = %+v, found=%v, err=%v; want held", child, found, err)
 			}
-			if tc.withParent && !tc.wantHeld {
+			validParent := tc.withParent && tc.parentMode == "" && !tc.selfParent
+			if validParent {
 				parent, found, err := st.GetClip(context.Background(), parentHash)
 				if err != nil || !found || !parent.IsComposite {
 					t.Fatalf("rebuilt parent = %+v, found=%v, err=%v; want retained composite", parent, found, err)
@@ -836,7 +829,7 @@ func TestSync_ConditioningStateWithoutLineageCannotBecomeAnAirableTopLevelClip(t
 		wantHeld    bool
 	}{
 		{name: "conditioning evidence without lineage", conditioned: true, wantHeld: true},
-		{name: "ordinary top-level mezzanine", conditioned: false, wantHeld: false},
+		{name: "ordinary top-level mezzanine", conditioned: false, wantHeld: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -889,7 +882,7 @@ func TestSync_UnreadableOrWrongTypedConditioningStateRemainsHeld(t *testing.T) {
 		{name: "wrong typed lineage", sidecar: `{"loomarr":{"conditioningLineage":"not-lineage"}}`, wantHeld: true, wantState: filler.SidecarInvalid},
 		{name: "wrong typed conditioning evidence", sidecar: `{"loomarr":{"conditioning":[]}}`, wantHeld: true, wantState: filler.SidecarInvalid},
 		{name: "unknown catalog kind", sidecar: `{"loomarr":{"kind":"programme"}}`, wantHeld: true, wantState: filler.SidecarInvalid},
-		{name: "valid ordinary top-level tags", sidecar: `{"loomarr":{"originalName":"ordinary.mp4"}}`, wantHeld: false, wantState: filler.SidecarValid},
+		{name: "valid ordinary top-level tags", sidecar: `{"loomarr":{"originalName":"ordinary.mp4"}}`, wantHeld: true, wantState: filler.SidecarValid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -1274,10 +1267,8 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 	}
 }
 
-// A hand-dropped clip is FILED, not held (§10 V38c). Intake writes no `fetchedBy` for it, so the
-// sync's held/filed fork must let it straight into the catalog — holding a file the operator
-// placed themselves would mean it sits invisible until approved.
-func TestSync_AWatchFolderDropIsFiledNotHeld(t *testing.T) {
+// A hand-dropped clip is an acquisition request, not an admission decision.
+func TestSync_AWatchFolderDropStartsHeld(t *testing.T) {
 	clipDir := t.TempDir()
 	watchDir := filepath.Join(clipDir, filler.WatchDirName)
 	if err := os.MkdirAll(watchDir, 0o750); err != nil {
@@ -1299,9 +1290,8 @@ func TestSync_AWatchFolderDropIsFiledNotHeld(t *testing.T) {
 	}
 
 	for _, c := range st.clips {
-		if c.Held {
-			t.Error("a hand-dropped clip was HELD — it would sit invisible until approved, " +
-				"which is the ceremony §7 warns teaches people to click through gates")
+		if !c.Held {
+			t.Error("a hand-dropped clip bypassed terminal admission")
 		}
 	}
 }

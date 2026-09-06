@@ -70,8 +70,6 @@ const FillerSources = ({
   fetching,
   onToggleEnabled,
   toggling,
-  onToggleAutoAdmit,
-  admitting,
   onRemove,
   removing,
   renderSearch,
@@ -221,21 +219,6 @@ const FillerSources = ({
           {s.license}
         </span>
       )}
-      {onToggleAutoAdmit && s.admissionControllable && (
-        <label
-          htmlFor={`source-auto-admit-${s.id}`}
-          className="flex shrink-0 items-center gap-2 text-muted-foreground text-xs"
-        >
-          <span>Auto-file grounded</span>
-          <Switch
-            id={`source-auto-admit-${s.id}`}
-            checked={s.autoAdmit}
-            disabled={admitting != null}
-            onChange={() => onToggleAutoAdmit(s.id, !s.autoAdmit)}
-            aria-label={`Automatically file grounded clips from ${s.target}`}
-          />
-        </label>
-      )}
       {/* ⚠ Keyed by ID, not KIND. It used to pass `s.kind`, which was unambiguous only
                 while each kind had exactly one row; V38c allows many folders and many libraries,
                 so a kind key would put every folder row into "Fetching…" at once and the operator
@@ -284,9 +267,8 @@ const FillerSources = ({
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-sm">Where filler comes from</h3>
           <p className="mt-1 max-w-xl text-muted-foreground text-sm">
-            “Use” controls scanning and downloading. “Auto-file grounded” separately lets clips that pass
-            Loomarr’s confidence guard leave Incoming without another approval. Channel matching and
-            exclusions still decide where they can play.
+            “Use” controls scanning and downloading. It grants no permission to play: arrivals remain in
+            Incoming until their safety, rights, playback, and audience evidence passes terminal admission.
           </p>
         </div>
         {/* ⚠ `svcOnLine` is PLAIN mono text — no border, no background, no padding. Measured off

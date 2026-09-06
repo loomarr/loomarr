@@ -91,8 +91,8 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
         <h1 className="font-semibold text-xl">Review split</h1>
         <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
           Detection proposed these cuts in <span className="font-medium text-static-200">{parentName}</span>.
-          Confirming files the segments under the original compilation. Edit, drop, or merge until the list is
-          right; leaving keeps the proposal for later.
+          Confirming creates held segments under the original compilation. Edit, drop, or merge until the list
+          is right; leaving keeps the proposal for later.
         </p>
       </div>
       <SplitReviewEditor

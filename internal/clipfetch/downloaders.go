@@ -139,9 +139,7 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, err, out.String())
 	}
-	// ⚠ **Mark what we just downloaded as OURS** — the held/filed fork's only signal (§10 V38c).
-	// A clip Loomarr fetched waits in Incoming for a human; one an operator dropped in is filed on
-	// sight. Only the downloader can tell them apart.
+	// Mark what we downloaded as ours so recovery can bind it to acquisition provenance.
 	//
 	// Stamped AFTERWARDS rather than written here, because yt-dlp owns this sidecar
 	// (`--write-info-json`) and re-creating it would throw away the title and description that

@@ -30,10 +30,6 @@ interface FillerSourcesProps {
   onToggleEnabled?: (id: string, enabled: boolean) => void;
   /** Which row's switch is in flight, so one toggle disables rather than the whole list. */
   toggling?: string | null;
-  /** Allow grounded clips from one source to be filed automatically. Independent of acquisition. */
-  onToggleAutoAdmit?: (id: string, autoAdmit: boolean) => void;
-  /** Which source's admission policy is in flight. */
-  admitting?: string | null;
   /**
    * Forget a registered source (V37). ⚠ Only rows with `removable` — the config-backed
    * singletons are configuration, changed in Settings, and the server 409s a delete on them.

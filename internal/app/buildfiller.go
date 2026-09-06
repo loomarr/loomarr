@@ -39,7 +39,7 @@ import (
 // the `if` rather than living inside the tagger. Nil for both is the honest un-opted-in state,
 // and every reader treats it that way — the manual sweep becomes a no-op, and the rung reports
 // "no language model is configured" on each clip's ladder rather than silently doing nothing.
-func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder) (llm.Provider, *filler.Tagger) {
+func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, recorder *metrics.Recorder) (llm.Provider, *filler.Tagger) {
 	if !set.boolv("filler.ai_tagging") {
 		return nil, nil
 	}
@@ -50,44 +50,9 @@ func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.L
 
 	// The generation's clip-root FS lets tagging read the info-JSON sidecars ingest writes beside
 	// each clip (§10). A zero layout yields nil and tagging falls back to filenames.
-	tagger := filler.NewTagger(fillerTagStoreAdapter{st: st, wake: wake}, provider, layout.FS(), time.Now, log).
-		// Auto-filing (§10 V38): a held clip whose grounding-capped score clears the threshold
-		// is filed without a human. Closures, not captured values, so a changed threshold
-		// applies on the next run rather than the next restart.
-		//
-		// ⚠ `boolv`, NOT `boolOn`. The two differ only when the settings service cannot answer,
-		// and here that difference is the whole safety property: `boolOn` fails OPEN (returns
-		// true), which would publish unreviewed clips to live channels exactly when the install
-		// is degraded. Holding is the safe failure.
-		WithAutoFile(filler.AutoFilePolicy{
-			Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
-			MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
-			SourceAllowed: fillerSourceAutoAdmit(st),
-		})
+	tagger := filler.NewTagger(fillerTagStoreAdapter{st: st}, provider, layout.FS(), time.Now, log)
 
 	return provider, tagger
-}
-
-// fillerSourceAutoAdmit resolves the source-specific admission decision at run time (§10 V57).
-// The folder policy owns hand-copied, manual-ingest and pre-provenance clips. A named source that
-// cannot be resolved fails closed; silently treating an unknown id as trusted would turn broken
-// attribution into publication authority.
-func fillerSourceAutoAdmit(st store.FillerSourceStore) func(context.Context, string) (bool, error) {
-	return func(ctx context.Context, source string) (bool, error) {
-		if source == "" || source == "filler-dir" {
-			source = "folder"
-		}
-		sources, err := st.ListFillerSources(ctx)
-		if err != nil {
-			return false, err
-		}
-		for _, candidate := range sources {
-			if candidate.ID == source {
-				return candidate.AutoAdmit, nil
-			}
-		}
-		return false, nil
-	}
 }
 
 // buildSyncer constructs the catalog syncer and its scan sources (§10 V38c).
@@ -130,7 +95,7 @@ func buildSyncer(st store.Store, set resolved, layout filler.Layout, log *slog.L
 
 	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, layout, time.Now, log).
 		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") }).
-		WithAcquisitionAuthority(st)
+		WithAcquisitionManifests(st)
 
 	// Keep the library scanner wired while the connection is empty. The adapter treats the
 	// library module's explicit unconfigured result as an empty optional source, then starts
@@ -356,11 +321,11 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 			func() string { return set.str("playout.ffmpeg_path") },
 			// ⚠ The loudness target is applied only when the operator opted in. This is the
 			// FIRST production caller of on-file loudness normalisation: V42 built the pass,
-			// and `filler.autofile.normalize_loudness` gated a function nothing called, so the
+			// and `filler.conditioning.normalize_loudness` gates the derivative recipe, so the
 			// setting has been inert since it shipped. Folding it into the encode that is
 			// happening anyway is what finally wires it.
 			func() float64 {
-				if !set.boolv("filler.autofile.normalize_loudness") {
+				if !set.boolv("filler.conditioning.normalize_loudness") {
 					return 0
 				}
 				// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
@@ -383,22 +348,14 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 			func() string { return set.str("filler.language") }, time.Now),
 		filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
 			func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now),
-		filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st: st, wake: wake}, fillerDrop, time.Now),
+		filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st: st}, fillerDrop, time.Now),
 		filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
 			func() bool { return set.boolv("filler.vision.enabled") }, time.Now),
-		// V61 shadow execution is the fail-closed seam immediately before the V38 compatibility
-		// gate. It records only production facts with known provenance; score remains filing
-		// authority until certification explicitly enables a slice.
+		// V61 shadow execution records only production facts with known provenance. Score remains
+		// diagnostic; it cannot publish a clip while certified terminal admission is unavailable.
 		filler.NewAdmissionStage(admissionObserver),
-		filler.NewScoreStage(fillerTagStoreAdapter{st: st, wake: wake}, &filler.AutoFilePolicy{
-			// ⚠ `boolv`, the FAIL-CLOSED read, not `boolOn`. The two differ only when the
-			// settings service cannot answer, and here that difference is the safety property:
-			// failing OPEN would publish unreviewed clips to live channels exactly when the
-			// install is degraded.
-			Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
-			MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
-			SourceAllowed: fillerSourceAutoAdmit(st),
-		}, func() bool { return set.boolv("filler.reject.unidentified") }, time.Now),
+		filler.NewScoreStage(fillerTagStoreAdapter{st: st},
+			func() bool { return set.boolv("filler.reject.unidentified") }, time.Now),
 	}
 	if splitter != nil {
 		autoSplitPolicy := &filler.AutoSplitPolicy{

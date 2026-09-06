@@ -24,11 +24,11 @@ import (
 // about the REEL, not just about itself.
 
 // AutoSplitPolicy is what the gate reads, resolved per call so a settings change takes effect on
-// the next run rather than at the next restart (the same hot-apply contract `AutoFilePolicy` uses).
+// the next run rather than at the next restart.
 type AutoSplitPolicy struct {
 	// Enabled reports whether auto-confirm is on at all.
 	//
-	// ⚠ Must be backed by a FAIL-CLOSED read (`boolv`, not `boolOn`), like AutoFilePolicy. When
+	// ⚠ Must be backed by a FAIL-CLOSED read (`boolv`, not `boolOn`). When
 	// the settings service cannot answer, the safe answer is "don't cut" — failing open would
 	// consume compilations unattended precisely when the install is degraded.
 	Enabled func() bool
@@ -37,6 +37,9 @@ type AutoSplitPolicy struct {
 	// MaxDuration is the longest a segment may be and still be advert-shaped.
 	MaxDuration func() time.Duration
 }
+
+// MaxAutoSplitConfidence is the strictest operator-selectable boundary threshold.
+const MaxAutoSplitConfidence = 95
 
 // AutoSplitReject names why a proposal was not auto-confirmed. Returned rather than logged so
 // the caller can report it — an unattended decision that leaves no trace is not one an appliance
@@ -76,8 +79,8 @@ func minConfidence(pol *AutoSplitPolicy) int {
 		return 85
 	}
 	n := pol.MinConfidence()
-	if n <= 0 || n > MaxAutoFileConfidence {
-		return MaxAutoFileConfidence
+	if n <= 0 || n > MaxAutoSplitConfidence {
+		return MaxAutoSplitConfidence
 	}
 	return n
 }
@@ -156,7 +159,7 @@ func segmentContentVerdict(s SplitSegment, pol *AutoSplitPolicy, minClipDuration
 	// only unambiguous reels cut sets it to the top and gets segments Loomarr READ a year
 	// for. Below the ceiling, tags alone suffice — but a guessed era still disqualifies
 	// above, because `SuggestedEra` is checked at every setting.
-	if minConfidence(pol) >= MaxAutoFileConfidence && s.Era == 0 {
+	if minConfidence(pol) >= MaxAutoSplitConfidence && s.Era == 0 {
 		return RejectUngrounded
 	}
 	return AutoSplitOK

@@ -5,7 +5,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { IncomingPanel } from "@/components/loomarr/filler/incoming-panel";
-import { TunePanel } from "../tune-panel";
 import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { IncomingTabProps } from "./incoming-tab.type";
 import { useClipPipeline } from "./use-clip-pipeline";
@@ -43,7 +42,6 @@ const IncomingTab = ({
   const excludedClips = allClips.filter((clip) => excludedHashes.has(clip.hash));
   const clips = allClips.filter((clip) => !excludedHashes.has(clip.hash));
   const reels = unwrap(incomingQuery.data, (b) => b.reels) ?? [];
-  const recentlyFiled = unwrap(incomingQuery.data, (b) => b.recentlyFiled) ?? [];
   const rejected = unwrap(incomingQuery.data, (b) => b.rejected) ?? [];
   const stageOrder = unwrap(incomingQuery.data, (b) => b.stageOrder) ?? [];
   const overview = unwrap(incomingQuery.data, (b) => b.overview);
@@ -66,7 +64,6 @@ const IncomingTab = ({
     : undefined;
   const reelsTotal = unwrap(incomingQuery.data, (b) => b.reelsTotal) ?? reels.length;
   const rejectedTotal = unwrap(incomingQuery.data, (b) => b.rejectedTotal) ?? rejected.length;
-  const recentlyFiledTotal = unwrap(incomingQuery.data, (b) => b.recentlyFiledTotal) ?? recentlyFiled.length;
 
   // Which clip a write is in flight for, so ONE row disables rather than the whole list. The
   // mutation's own isPending is global to the hook — using it alone greys out every button on
@@ -74,25 +71,6 @@ const IncomingTab = ({
   const [busyClip, setBusyClip] = useState<string>();
   const settle = () => setBusyClip(undefined);
 
-  // Filing — plain, and as-suggested. ⚠ It carries the error toast that used to sit on the
-  // era-confirm mutation: "Looks right" now files through this hook (§10 V54), and without one a
-  // failed decision would be silent, leaving the operator to conclude the row simply did not move.
-  const fileClips = fillerApi.useFileFillerClips({
-    mutation: {
-      onSettled: settle,
-      onSuccess: invalidateLifecycle,
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't file those clips"),
-    },
-  });
-  const holdClips = fillerApi.useHoldFillerClips({
-    mutation: {
-      onSettled: settle,
-      onSuccess: () => {
-        toast.success("Sent back", { description: "It's out of rotation and back in the queue." });
-        invalidateLifecycle();
-      },
-    },
-  });
   const removeClips = fillerApi.useBulkRemoveFiller({
     mutation: {
       onSettled: settle,
@@ -120,17 +98,7 @@ const IncomingTab = ({
       onError: (error) => toast.error(toProblem(error).title ?? "Couldn't retry that clip"),
     },
   });
-  // ⚠ The era-confirm PATCH mutation that used to live here is GONE, not merely unused (§10 V54).
-  // "Looks right" files through `fileClips` with `asSuggested`, so the single-clip tag route has no
-  // caller on this tab — and a mutation left wired to nothing is how a later reader concludes there
-  // are two ways to confirm an era and picks the one that no longer files. The route still exists
-  // and is still the Catalog's tag dialog's writer; what is deleted is this tab's second path to it.
-  const busy =
-    removeClips.isPending ||
-    fileClips.isPending ||
-    holdClips.isPending ||
-    rewind.isPending ||
-    retryFailures.isPending;
+  const busy = removeClips.isPending || rewind.isPending || retryFailures.isPending;
 
   return (
     <div className="flex flex-col gap-4">
@@ -161,10 +129,6 @@ const IncomingTab = ({
           </div>
         </section>
       )}
-      {/* ⚠ ABOVE the queue, matching the mock: the policy is the context the rows below are
-          read in. Its counts come from this tab's query rather than a second one — the panel
-          reports on the queue it sits over. */}
-      <TunePanel filed={recentlyFiledTotal} needsYou={decisionsTotal} />
       <IncomingPanel
         clips={clips}
         clipsTotal={clipsTotal}
@@ -172,8 +136,6 @@ const IncomingTab = ({
         reels={reels}
         reelsTotal={reelsTotal}
         suppressEmptyState={semanticReviewCount > 0}
-        recentlyFiled={recentlyFiled}
-        recentlyFiledTotal={recentlyFiledTotal}
         rejected={rejected}
         rejectedTotal={rejectedTotal}
         stageOrder={stageOrder}
@@ -189,24 +151,6 @@ const IncomingTab = ({
         onRetryFailure={(clip) => {
           setBusyClip(clip.hash);
           retryFailures.mutate({ data: { hashes: [clip.hash] } });
-        }}
-        // "Looks right" CONFIRMS the guess and FILES, in one request (§10 V54).
-        //
-        // ⚠ It used to PATCH the era and stop there, which meant it did not file — and for a
-        // clip with a guessed era it is the only affirmative control on the row, because the
-        // panel offers "Use it" only when there is no guess. So the one button that was
-        // supposed to clear a guessed clip out of the queue left it exactly where it was.
-        //
-        // ⚠ Routed through the EXISTING `asSuggested` flag rather than chaining a PATCH and a
-        // file from here. The server confirms each clip's own `suggestedEra` — the store clears
-        // `suggested_era` in the same statement, so the question cannot outlive its answer — and
-        // then files, in one round trip. Two client-side mutations would put the halves in
-        // different requests, where a failure between them leaves a clip filed with an
-        // unconfirmed guess. It is also exactly what "File all as suggested" below sends, for a
-        // selection of one, so the single and bulk paths cannot drift.
-        onConfirmEra={(ask) => {
-          setBusyClip(ask.path);
-          fileClips.mutate({ data: { paths: [ask.path], asSuggested: true } });
         }}
         // ⚠ The clip's IDENTITY, not its path. The shell's dialog resolves a clip by hash — it
         // is shared with the Catalog tab, whose rows are keyed that way — and handing it a path
@@ -224,34 +168,8 @@ const IncomingTab = ({
         // put it — the server's action is a tombstone, never a delete.
         onDismiss={(ask) => {
           setBusyClip(ask.path);
-          // ⚠ bulk-remove is HASH-keyed (§10 V45a) — unlike file/hold below, which stay `paths` (the
-          // V38 SetClipsHeld/File store methods are path-keyed by design). IncomingClipDTO carries both.
+          // ⚠ bulk-remove is HASH-keyed (§10 V45a); IncomingClipDTO carries both identity and path.
           removeClips.mutate({ data: { hashes: [ask.hash] } });
-        }}
-        // "Use it" files a clip as it stands — its tags are right enough. No era to confirm, so
-        // this is the plain file, not the confirm-then-file above.
-        onFile={(ask) => {
-          setBusyClip(ask.path);
-          fileClips.mutate({ data: { paths: [ask.path] } });
-        }}
-        // ⚠ `asSuggested` is what makes this per-CLIP: the server confirms each clip's own
-        // proposed era. Sending one era for the whole selection is what the bulk tag bar does,
-        // and it is the wrong answer for a queue of different guesses.
-        // ⚠ This depends on the server never marking a COMPILATION as needing a decision (§10 V54).
-        // It used to, and this button would then have tried to file the reels themselves — a
-        // 20-minute recording filed as a commercial. Do not "helpfully" widen the filter here; the
-        // invariant belongs server-side, where `IncomingClipDTO` carries no composite marker for a
-        // client to re-derive it from.
-        onFileAllAsSuggested={() =>
-          fileClips.mutate({
-            data: { paths: clips.filter((c) => c.needsDecision).map((a) => a.path), asSuggested: true },
-          })
-        }
-        // The undo for auto-filing. ⚠ NOT a removal: the clip and its file both stay, it simply
-        // stops being matched into pods until someone decides.
-        onSendBack={(clip) => {
-          setBusyClip(clip.path);
-          holdClips.mutate({ data: { paths: [clip.path] } });
         }}
         {...(busy ? { busyPath: busyClip } : {})}
       />

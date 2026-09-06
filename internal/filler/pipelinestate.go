@@ -221,7 +221,7 @@ type PipelineFilter struct {
 //
 // ⚠ PipelineStore is the ONLY writer of this table, which is what keeps the state machine
 // in one module. Every other filler column keeps its existing owner (SetClipLanguage,
-// SetClipTranscript, ApplyClipVision, SetClipsHeld, …) — this phase adds no second writer to any
+// SetClipTranscript, ApplyClipVision, HoldClips, …) — this phase adds no second writer to any
 // of them, which is why the 1600-line store conformance suite needs no rework to accept it.
 type PipelineStore interface {
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first.

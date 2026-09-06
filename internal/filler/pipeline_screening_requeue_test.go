@@ -10,7 +10,7 @@ import (
 func TestPipeline_BackfillsLegacyChildrenThroughFailClosedScreening(t *testing.T) {
 	st := newPipeMemStore()
 	st.put(filler.StoreClip{Clip: filler.Clip{
-		Hash: "child", Path: "children/child.mp4", ParentHash: "parent", AutoFiled: true,
+		Hash: "child", Path: "children/child.mp4", ParentHash: "parent",
 	}})
 	st.rows["child"] = filler.ClipPipeline{
 		ClipHash: "child", Stage: filler.StageScore, Status: filler.StatusDone,
@@ -29,8 +29,7 @@ func TestPipeline_BackfillsLegacyChildrenThroughFailClosedScreening(t *testing.T
 	}
 	row := st.rows["child"]
 	clip := st.clips["child"]
-	if result.Requeued != 1 || row.Stage != filler.StageScreen || row.Disposition != filler.DispositionReview ||
-		!clip.Held || clip.AutoFiled {
+	if result.Requeued != 1 || row.Stage != filler.StageScreen || row.Disposition != filler.DispositionReview || !clip.Held {
 		t.Fatalf("legacy child was not safely rewound: result=%+v row=%+v clip=%+v", result, row, clip)
 	}
 	if len(row.Stages) != 2 || row.Stages[0].Stage != filler.StageProbe || row.Stages[1].Stage != filler.StageScreen {
