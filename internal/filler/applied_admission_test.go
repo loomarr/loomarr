@@ -24,6 +24,7 @@ type appliedAdmissionCommitter struct {
 	actions  recordfixture.Recorder[fillerdecision.Action, struct{}]
 	receipts recordfixture.Recorder[*fillerdecision.AppliedRightsReceipt, struct{}]
 	existing fillerdecision.Action
+	findErr  error
 }
 
 func (c *appliedAdmissionCommitter) CommitAppliedFillerDecisionAction(_ context.Context, action fillerdecision.Action, receipt *fillerdecision.AppliedRightsReceipt) error {
@@ -35,6 +36,9 @@ func (c *appliedAdmissionCommitter) CommitAppliedFillerDecisionAction(_ context.
 }
 
 func (c *appliedAdmissionCommitter) FindFillerDecisionAction(_ context.Context, id string) (fillerdecision.Action, bool, error) {
+	if c.findErr != nil {
+		return fillerdecision.Action{}, false, c.findErr
+	}
 	return c.existing, c.existing.ID == id, nil
 }
 
@@ -109,6 +113,72 @@ func TestAppliedAdmissionExactRetrySkipsUnavailableReleaseReplay(t *testing.T) {
 	if committer.actions.Calls() != 0 {
 		t.Fatal("exact retry committed another catalog effect")
 	}
+}
+
+func TestAppliedAdmissionReleaseReplayFailureRechecksCommittedAction(t *testing.T) {
+	t.Run("same action committed during replay", func(t *testing.T) {
+		module, record, action, committer, _, certification := appliedAdmissionFixture(t)
+		certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
+			committer.existing = action
+			withdrawn := request.RequestedAt.Add(-time.Minute)
+			decision, err := NewFillerRightsUseDecision(request, FillerRightsProhibited, FillerRightsWithdrawalActive, screeningDigest("7"), nil, &withdrawn)
+			return decision, true, err
+		})
+
+		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); err != nil {
+			t.Fatalf("replay failure after same action commit = %v, want recorded result", err)
+		}
+		if committer.actions.Calls() != 0 {
+			t.Fatal("replay failure committed another catalog effect")
+		}
+	})
+
+	t.Run("conflicting action committed during replay", func(t *testing.T) {
+		module, record, action, committer, _, certification := appliedAdmissionFixture(t)
+		conflict := action
+		conflict.ActorID = "admin-2"
+		certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
+			committer.existing = conflict
+			withdrawn := request.RequestedAt.Add(-time.Minute)
+			decision, err := NewFillerRightsUseDecision(request, FillerRightsProhibited, FillerRightsWithdrawalActive, screeningDigest("7"), nil, &withdrawn)
+			return decision, true, err
+		})
+
+		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); !errors.Is(err, fillerdecision.ErrConflict) {
+			t.Fatalf("replay failure after conflicting action commit = %v, want conflict", err)
+		}
+		if committer.actions.Calls() != 0 {
+			t.Fatal("replay failure committed another catalog effect")
+		}
+	})
+
+	t.Run("no action committed during replay", func(t *testing.T) {
+		module, record, action, committer, _, certification := appliedAdmissionFixture(t)
+		certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
+			withdrawn := request.RequestedAt.Add(-time.Minute)
+			decision, err := NewFillerRightsUseDecision(request, FillerRightsProhibited, FillerRightsWithdrawalActive, screeningDigest("7"), nil, &withdrawn)
+			return decision, true, err
+		})
+
+		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
+			t.Fatalf("replay failure without committed action = %v, want unavailable", err)
+		}
+		if committer.actions.Calls() != 0 {
+			t.Fatal("replay failure committed another catalog effect")
+		}
+	})
+
+	t.Run("lookup error fails closed", func(t *testing.T) {
+		module, record, action, committer, _, _ := appliedAdmissionFixture(t)
+		committer.findErr = errors.New("durable action lookup unavailable")
+
+		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); !errors.Is(err, committer.findErr) {
+			t.Fatalf("lookup error = %v, want lookup failure", err)
+		}
+		if committer.actions.Calls() != 0 {
+			t.Fatal("lookup error committed another catalog effect")
+		}
+	})
 }
 
 func TestAppliedAdmissionHeldActionsDoNotRequirePublicationEvidence(t *testing.T) {

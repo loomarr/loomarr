@@ -80,6 +80,16 @@ func (a *AppliedAdmission) ActOnAppliedFillerDecision(
 		var err error
 		receipt, err = a.verifyCurrentRelease(ctx, record)
 		if err != nil {
+			existing, found, lookupErr := a.committer.FindFillerDecisionAction(ctx, action.ID)
+			if lookupErr != nil {
+				return lookupErr
+			}
+			if found {
+				if fillerdecision.SameAction(existing, action) {
+					return nil
+				}
+				return fillerdecision.ErrConflict
+			}
 			return fmt.Errorf("%w: %v", fillerdecision.ErrAppliedUnavailable, err)
 		}
 	}
