@@ -19,7 +19,9 @@ func TestLoadTemporalStructureHoldoutPriorAcceptsPublishedAdjudication(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prior.planKind != TemporalStructureHoldoutPlanReplacement || len(prior.inputs) != 1 || len(prior.exposure.SourceSHA256) != 54 || len(prior.exposure.FamilyIDs) != 12 || len(prior.exposure.ProgrammeProvenance) != 6 {
+	// The repaired fixture's complete burned lineage contains 78 source hashes, 12 family IDs,
+	// and 6 programme parents; keep these cardinalities explicit rather than merely non-empty.
+	if prior.planKind != TemporalStructureHoldoutPlanReplacement || len(prior.inputs) != 1 || len(prior.exposure.SourceSHA256) != 78 || len(prior.exposure.FamilyIDs) != 12 || len(prior.exposure.ProgrammeProvenance) != 6 {
 		t.Fatalf("loaded published prior = %+v", prior)
 	}
 }

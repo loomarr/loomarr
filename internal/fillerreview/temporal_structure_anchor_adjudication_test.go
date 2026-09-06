@@ -27,7 +27,9 @@ func TestPublishTemporalStructureAnchorAdjudicationBurnsChallengeWithoutRepairin
 	if authority.ChallengeDisposition != TemporalStructureBurnedDiagnosticOnly || authority.BlindHumanAuditRequired || authority.CertificationScoreRepairAllowed || authority.TrainingAllowed || authority.ProductionAdmissionAllowed {
 		t.Fatalf("unsafe adjudication disposition = %+v", authority)
 	}
-	if authority.PriorExposure.Split != "holdout" || len(authority.PriorExposure.SourceSHA256) != 96 || len(authority.PriorExposure.FamilyIDs) != 12 || len(authority.PriorExposure.ProgrammeProvenance) != 6 {
+	// The repaired fixture burns 78 source hashes: 12 anchor sources and 6 programme parents,
+	// with the remaining hashes representing the rendered cases in the complete lineage.
+	if authority.PriorExposure.Split != "holdout" || len(authority.PriorExposure.SourceSHA256) != 78 || len(authority.PriorExposure.FamilyIDs) != 12 || len(authority.PriorExposure.ProgrammeProvenance) != 6 {
 		t.Fatalf("prior exposure was not preserved = %+v", authority.PriorExposure)
 	}
 	item := authority.Cases[0]
