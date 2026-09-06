@@ -56,22 +56,16 @@ const reel: IncomingReelDTO = {
 };
 
 describe("IncomingPanel", () => {
-  // ⚠ The two asks are different QUESTIONS and get different affordances. A guessed era has a
-  // proposed answer to confirm; an untagged clip has nothing to confirm, so offering "Looks
-  // right" there would ask an operator to approve something they were never shown.
-  it("offers confirm only for a clip that carries a guess", () => {
-    renderAsks(
-      <IncomingPanel
-        clips={[d(guessed), d(untagged)]}
-        reels={[]}
-        onConfirmEra={() => {}}
-        onEditTags={() => {}}
-      />,
-    );
+  it("offers classification review without pretending that it publishes a clip", async () => {
+    const onEditTags = vi.fn();
+    renderAsks(<IncomingPanel clips={[d(guessed), d(untagged)]} reels={[]} onEditTags={onEditTags} />);
 
-    expect(screen.getAllByRole("button", { name: "Looks right" })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Not right" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Looks right" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use it" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Review tags" }));
+    expect(onEditTags).toHaveBeenCalledWith(d(guessed));
     expect(screen.getByRole("button", { name: "Add tags" })).toBeInTheDocument();
+    expect(screen.getByText(/classification confidence is diagnostic/i)).toBeInTheDocument();
   });
 
   it("shows the guess as a guess, distinct from a confirmed tag", () => {
@@ -105,19 +99,6 @@ describe("IncomingPanel", () => {
     expect(screen.getByText("Showing the first 1 of 137 incoming clips.")).toBeInTheDocument();
   });
 
-  it("passes the whole clip to the handlers, not just its path", async () => {
-    const onConfirmEra = vi.fn();
-    renderAsks(<IncomingPanel clips={[d(guessed)]} reels={[]} onConfirmEra={onConfirmEra} />);
-
-    await userEvent.click(screen.getByRole("button", { name: "Looks right" }));
-
-    // The caller needs the whole ask (audience included) to build a safe PATCH: the server
-    // writes era and audience unconditionally, so a confirm carrying only the era would wipe
-    // audience. `category` rides along on the DTO too, but it's a derived shadow — the actual
-    // PATCH (built in `incoming-tab.tsx`) never sends it.
-    expect(onConfirmEra).toHaveBeenCalledWith(d(guessed));
-  });
-
   // One row disables, not the whole list — a page that greys out entirely while a single
   // confirm lands reads as having frozen.
   it("disables only the row being written", () => {
@@ -130,7 +111,7 @@ describe("IncomingPanel", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Not right" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Review tags" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Add tags" })).toBeEnabled();
   });
 
@@ -155,9 +136,9 @@ describe("IncomingPanel", () => {
   });
 });
 
-// --- V38: confidence + the filing decisions ---
+// --- Classification confidence and legacy-publication audit ---
 
-describe("IncomingPanel confidence and filing", () => {
+describe("IncomingPanel confidence and publication history", () => {
   const ask = (over: Partial<IncomingClipDTO> = {}): IncomingClipDTO => ({
     path: "a.mp4",
     hash: "hash-a",
@@ -178,39 +159,6 @@ describe("IncomingPanel confidence and filing", () => {
     // about a clip the tagger simply has not reached.
     rerender(<IncomingPanel clips={[d(ask({ confidence: 0 }))]} reels={[]} />);
     expect(screen.queryByLabelText(/confidence/i)).not.toBeInTheDocument();
-  });
-
-  // ⚠ "File all as suggested" commits each clip's OWN era. It is offered only when something
-  // HAS a suggestion — otherwise the label promises something the action would not do.
-  it("offers File all as suggested only when a clip carries a guess", async () => {
-    const onFileAllAsSuggested = vi.fn();
-    const { rerender } = render(
-      <IncomingPanel clips={[d(ask())]} reels={[]} onFileAllAsSuggested={onFileAllAsSuggested} />,
-    );
-    expect(screen.queryByRole("button", { name: /file all as suggested/i })).not.toBeInTheDocument();
-
-    rerender(
-      <IncomingPanel
-        clips={[d(ask({ suggestedEra: 1985 }))]}
-        reels={[]}
-        onFileAllAsSuggested={onFileAllAsSuggested}
-      />,
-    );
-    await userEvent.click(screen.getByRole("button", { name: /file all as suggested/i }));
-    expect(onFileAllAsSuggested).toHaveBeenCalledOnce();
-  });
-
-  // ⚠ THE audit half. Auto-filing is on by default, so an operator must be able to see what was
-  // filed without them — and it renders even when nothing is waiting, because that is exactly
-  // the install where "nothing needs you" would otherwise be the whole story.
-  it("shows what was filed without asking, and offers the undo", async () => {
-    const onSendBack = vi.fn();
-    const filed = ask({ path: "auto.mp4", name: "Auto ad", confidence: 88, autoFiled: true });
-    render(<IncomingPanel clips={[]} reels={[]} recentlyFiled={[filed]} onSendBack={onSendBack} />);
-
-    expect(screen.getByText(/filed 1 clip without asking/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /send it back/i }));
-    expect(onSendBack).toHaveBeenCalledWith(filed);
   });
 });
 

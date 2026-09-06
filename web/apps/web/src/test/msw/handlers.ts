@@ -159,8 +159,6 @@ const appHandlers = (): RequestHandler[] => [
     decisionsTotal: 0,
     reels: [],
     reelsTotal: 0,
-    recentlyFiled: [],
-    recentlyFiledTotal: 0,
     rejected: [],
     rejectedTotal: 0,
     stageOrder: [],

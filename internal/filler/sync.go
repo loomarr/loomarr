@@ -110,10 +110,9 @@ type Store interface {
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)
 }
 
-// AcquisitionAuthority is the durable held/filed authority for Loomarr downloads. Filesystem
-// validation stays in Syncer because it owns the applied clip root; persistence only resolves and
-// advances manifest values.
-type AcquisitionAuthority interface {
+// AcquisitionManifestStore resolves and advances durable download manifests. Filesystem
+// validation stays in Syncer because it owns the applied clip root.
+type AcquisitionManifestStore interface {
 	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (AcquisitionArtifact, bool, error)
 	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []AcquisitionArtifact) error
 }
@@ -123,28 +122,6 @@ type AcquisitionAuthority interface {
 type StoreClip struct {
 	Clip
 	UpdatedAt time.Time
-}
-
-// wasFetchedByUs reports whether Loomarr DOWNLOADED this clip, rather than an operator putting it
-// there (§10 V38c) — the held/filed fork.
-//
-// ⚠ **Reads a FIELD inside the sidecar, not the sidecar's existence** (changed from V38b). The old
-// test was "does `<name>.info.json` exist", which worked only while Loomarr never wrote sidecars.
-// V38c writes tags back for hand-dropped clips too, so existence now says nothing — every tagged
-// clip would look downloaded, and a hand-dropped one would start being held for review.
-//
-// The field is also the better signal, not merely a repair: an operator who copies a clip TOGETHER
-// with its sidecar gets the honest answer, and one who tidies sidecars away no longer flips a
-// clip's lifecycle by accident. Explicit beats inferred.
-//
-// A missing drop-folder path answers false, which files the clip. That is the right failure: an
-// install whose FILLER_DIR we cannot read should behave as it did before this phase rather than
-// holding every clip it finds.
-func (s *Syncer) wasFetchedByUs(clipPath string) bool {
-	if s.dir == "" || clipPath == "" {
-		return false
-	}
-	return SidecarFetchedByUs(filepath.Join(s.dir, clipPath))
 }
 
 // ErrSourceDisabled reports that the drop-folder is switched off on the Sources tab (§10 V35).
@@ -176,7 +153,7 @@ type Syncer struct {
 	// libraries copies clips out of a media-server library. nil ⇒ library rows do no work, which
 	// is the honest state for an install with no media server configured.
 	libraries    *LibraryScanner
-	acquisitions AcquisitionAuthority
+	acquisitions AcquisitionManifestStore
 }
 
 // drainScanSources reads every registered folder and library into the watch folder (§10 V38c),
@@ -324,9 +301,9 @@ func (s *Syncer) WithScanSources(srcs ScanSourceStore, libraries *LibraryScanner
 	return s
 }
 
-// WithAcquisitionAuthority makes durable manifests authoritative for newly discovered ownership.
-func (s *Syncer) WithAcquisitionAuthority(authority AcquisitionAuthority) *Syncer {
-	s.acquisitions = authority
+// WithAcquisitionManifests enables durable provenance repair for downloaded arrivals.
+func (s *Syncer) WithAcquisitionManifests(manifests AcquisitionManifestStore) *Syncer {
+	s.acquisitions = manifests
 	return s
 }
 
@@ -524,7 +501,6 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			// because a future edit to one that forgot the other fails silently.
 			merged.Held = existing.Held
 			merged.Confidence = existing.Confidence
-			merged.AutoFiled = existing.AutoFiled
 			merged.IsComposite = existing.IsComposite || rc.IsComposite
 			// ⚠ Play counters are PRESERVED, not re-derived: a scan knows nothing about what
 			// aired. Belt and braces with UpsertClip's ON CONFLICT list, which also omits them
@@ -551,21 +527,11 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			if merged.Source == "" {
 				merged.Source = "filler-dir"
 			}
-			// ⚠ The lifecycle fork (§10 V38), and it is decided ONLY for a clip this scan has
-			// never seen — an existing clip's `Held` is preserved above, so re-scanning can
-			// never re-hold something a human already filed.
-			//
-			// Ingest downloads into this same folder, so at catalogue time a downloaded file and
-			// a hand-copied one are both just files on disk. The sidecar's `fetchedBy` field is
-			// what tells them apart: Loomarr FETCHED this ⇒ HOLD it for review; a person put it
-			// here ⇒ file it on sight. Holding a hand-copied clip would mean a file you placed
-			// yourself sits invisible until you approve it, which is the ceremony §7 warns
-			// teaches people to click through gates.
-			//
-			// ⚠ V38c moved this from "a sidecar EXISTS" to the field. Existence stopped working
-			// the moment Loomarr began writing tags back for hand-dropped clips too — every
-			// tagged clip would have looked downloaded, and would have started being held.
-			merged.Held = acquired || s.wasFetchedByUs(rc.Path)
+			// Every new non-composite arrival starts held. A hand copy proves that an operator
+			// wanted Loomarr to examine the bytes; it proves neither audience safety nor rights.
+			// Existing rows preserve their settled state above, so a routine re-scan cannot
+			// withdraw already-admitted media.
+			merged.Held = true
 			res.Added++
 		}
 		if rc.LineageInvalid || rc.ConditioningHold {

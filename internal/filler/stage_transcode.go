@@ -44,7 +44,7 @@ type TranscodeStage struct {
 	// ffmpegPath is the operator's configured binary; empty falls back to PATH.
 	ffmpegPath func() string
 	// targetLUFS folds loudness normalisation into the same pass. A closure returning 0 leaves the
-	// audio alone, which is what `filler.autofile.normalize_loudness` off means.
+	// audio alone, which is what `filler.conditioning.normalize_loudness` off means.
 	targetLUFS func() float64
 	now        func() time.Time
 	// transcode is a seam around the ffmpeg driver. Production always uses mediatools.Transcode;

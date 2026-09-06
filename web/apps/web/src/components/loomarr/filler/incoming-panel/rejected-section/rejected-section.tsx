@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
 
-// The audit half of REFUSAL (§10 V51b/V51e) — the sibling of "filed without asking".
+// The audit half of refusal (§10 V51b/V51e), beside legacy publication history.
 //
 // ⚠ **Not optional, and `filler.reject.unidentified` is why.** That setting is ON by default and
 // tombstones a clip nothing could identify — but "we could not identify it" is a different claim
