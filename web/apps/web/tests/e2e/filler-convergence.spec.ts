@@ -17,10 +17,10 @@ const clip = {
   playsCounted: true,
 };
 
-test("a trusted source converges into a channel break without routine approval", async ({ page }) => {
+test("a fetched arrival becomes playable only after terminal admission completes", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
   let fetched = false;
-  let reviewSkipped = false;
+  let terminalAdmissionApplied = false;
   const calls: string[] = [];
 
   await page.route("**/v1/**", async (route) => {
@@ -83,25 +83,25 @@ test("a trusted source converges into a channel break without routine approval",
     }
     if (path === "/v1/filler/readiness") {
       return reply({
-        ready: fetched,
-        nextAction: fetched ? "none" : "add_filler",
+        ready: terminalAdmissionApplied,
+        nextAction: terminalAdmissionApplied ? "none" : "add_filler",
         fetch: { enabled: true, catalogClips: fetched ? 1 : 0 },
         pipeline: {
-          runnable: 0,
+          runnable: fetched && !terminalAdmissionApplied ? 1 : 0,
           scheduled: 0,
           inProgress: 0,
           needsDecision: 0,
           recoverable: 0,
-          admitted: fetched ? 1 : 0,
+          admitted: terminalAdmissionApplied ? 1 : 0,
           rejected: 0,
           dismissed: 0,
         },
         pool: {
-          clips: fetched ? 1 : 0,
-          commercials: fetched ? 1 : 0,
-          eligible: fetched ? 1 : 0,
+          clips: terminalAdmissionApplied ? 1 : 0,
+          commercials: terminalAdmissionApplied ? 1 : 0,
+          eligible: terminalAdmissionApplied ? 1 : 0,
           untagged: 0,
-          channels: fetched
+          channels: terminalAdmissionApplied
             ? [
                 {
                   channelId: "ch-1",
@@ -132,10 +132,10 @@ test("a trusted source converges into a channel break without routine approval",
                 updatedAt: "2026-08-24T04:00:01Z",
                 completedAt: "2026-08-24T04:00:01Z",
                 outcome: {
-                  enrolled: 1,
-                  preparing: 0,
+                  enrolled: fetched ? 1 : 0,
+                  preparing: fetched && !terminalAdmissionApplied ? 1 : 0,
                   needsDecision: 0,
-                  admitted: 1,
+                  admitted: terminalAdmissionApplied ? 1 : 0,
                   rejected: 0,
                   dismissed: 0,
                 },
@@ -146,47 +146,43 @@ test("a trusted source converges into a channel break without routine approval",
     }
     if (path === "/v1/filler/decisions/overview") {
       return reply({
-        healthy: fetched,
-        nextAction: fetched ? "none" : "review_decisions",
-        actionCount: fetched ? 0 : 1,
+        healthy: false,
+        nextAction: "review_decisions",
+        actionCount: 1,
         counts: {
-          admitted: fetched ? 1 : 0,
+          admitted: terminalAdmissionApplied ? 1 : 0,
           rejected: 0,
-          reviews: fetched ? 0 : 1,
-          unresolvedReviews: fetched ? 0 : 1,
+          reviews: 1,
+          unresolvedReviews: 1,
           operational: 0,
           retryable: 0,
         },
       });
     }
     if (path === "/v1/filler/decisions/reviews") {
-      const rows =
-        !fetched && !reviewSkipped
-          ? [
-              {
-                id: "review-1",
-                clipHash: "ambiguous-spot",
-                question: "Is this a toy commercial?",
-                reasonCodes: ["conflict_product"],
-                evidenceRefs: ["closing-frame"],
-                conflicts: [
-                  {
-                    claim: "product",
-                    values: ["toy", "programme excerpt"],
-                    evidenceRefs: ["closing-frame"],
-                    resolved: false,
-                  },
-                ],
-                createdAt: "2026-08-24T03:59:00Z",
-              },
-            ]
-          : [];
+      const rows = [
+        {
+          id: "review-1",
+          clipHash: "ambiguous-spot",
+          question: "Is this a toy commercial?",
+          reasonCodes: ["conflict_product"],
+          evidenceRefs: ["closing-frame"],
+          conflicts: [
+            {
+              claim: "product",
+              values: ["toy", "programme excerpt"],
+              evidenceRefs: ["closing-frame"],
+              resolved: false,
+            },
+          ],
+          createdAt: "2026-08-24T03:59:00Z",
+        },
+      ];
       return reply({ rows, total: rows.length });
     }
     if (path === "/v1/filler/decisions/review-1/actions" && method === "POST") {
       const body = request.postDataJSON();
       expect(body).toMatchObject({ kind: "abandon", reason: "skip for now" });
-      reviewSkipped = true;
       calls.push("review skipped without verdict");
       return reply({ id: body.actionId });
     }
@@ -195,16 +191,28 @@ test("a trusted source converges into a channel break without routine approval",
         rows: fetched
           ? [
               {
-                id: "event-1",
+                id: "shadow-event",
                 decisionId: "decision-1",
                 clipHash: clip.hash,
                 kind: "automatic_admit",
                 applicationMode: "shadow",
                 createdAt: "2026-08-24T04:00:01Z",
               },
+              ...(terminalAdmissionApplied
+                ? [
+                    {
+                      id: "applied-event",
+                      decisionId: "decision-2",
+                      clipHash: clip.hash,
+                      kind: "automatic_admit",
+                      applicationMode: "applied",
+                      createdAt: "2026-08-24T04:00:02Z",
+                    },
+                  ]
+                : []),
             ]
           : [],
-        total: fetched ? 1 : 0,
+        total: fetched ? (terminalAdmissionApplied ? 2 : 1) : 0,
       });
     }
     if (path === "/v1/filler/decisions/diagnostics") return reply({ rows: [], total: 0 });
@@ -213,11 +221,56 @@ test("a trusted source converges into a channel break without routine approval",
         sourcesOn: 1,
         sourcesTotal: 1,
         clips: fetched ? 1 : 0,
-        held: 0,
+        held: fetched && !terminalAdmissionApplied ? 1 : 0,
         health: "healthy",
       });
     }
-    if (path === "/v1/filler") return reply({ clips: fetched ? [clip] : [], total: fetched ? 1 : 0 });
+    if (path === "/v1/filler/incoming") {
+      const incoming = fetched && !terminalAdmissionApplied;
+      return reply({
+        clips: incoming
+          ? [
+              {
+                ...clip,
+                from: "Trusted Commercials",
+                reason: "Record the admission check",
+                pipeline: {
+                  lifecycle: "runnable",
+                  progress: 0,
+                  stage: "admission",
+                  stages: [],
+                  status: "pending",
+                  updatedAt: "2026-08-24T04:00:01Z",
+                },
+              },
+            ]
+          : [],
+        clipsTotal: incoming ? 1 : 0,
+        decisionsTotal: 0,
+        overview: {
+          runnable: incoming ? 1 : 0,
+          scheduled: 0,
+          inProgress: 0,
+          needsDecision: 0,
+          recoverable: 0,
+          admitted: terminalAdmissionApplied ? 1 : 0,
+          rejected: 0,
+          dismissed: 0,
+        },
+        reels: [],
+        reelsTotal: 0,
+        rejected: [],
+        rejectedTotal: 0,
+        stageOrder: ["admission"],
+        total: 0,
+      });
+    }
+    if (path === "/v1/filler") {
+      return reply({
+        clips: terminalAdmissionApplied ? [clip] : [],
+        total: terminalAdmissionApplied ? 1 : 0,
+      });
+    }
     if (path === "/v1/channels/ch-1") {
       return reply({
         id: "ch-1",
@@ -229,24 +282,24 @@ test("a trusted source converges into a channel break without routine approval",
         strategy: "shuffle",
         lineup: [],
         policy: { scope: { era: { from: 1990, to: 1999 } } },
-        breakCount: fetched ? 1 : 0,
+        breakCount: terminalAdmissionApplied ? 1 : 0,
         pendingCount: 0,
         programCount: 2,
-        slotCount: fetched ? 3 : 2,
+        slotCount: terminalAdmissionApplied ? 3 : 2,
       });
     }
     if (path === "/v1/channels/ch-1/filler/coverage") {
       return reply({
         level: "exact",
-        total: fetched ? 1 : 0,
-        rungs: [{ level: "exact", clips: fetched ? 1 : 0 }],
+        total: terminalAdmissionApplied ? 1 : 0,
+        rungs: [{ level: "exact", clips: terminalAdmissionApplied ? 1 : 0 }],
         criteria: [
-          { criterion: "era", clips: fetched ? 1 : 0 },
-          { criterion: "audience", clips: fetched ? 1 : 0 },
-          { criterion: "category", clips: fetched ? 1 : 0 },
-          { criterion: "kind", clips: fetched ? 1 : 0 },
-          { criterion: "duration", clips: fetched ? 1 : 0 },
-          { criterion: "quality", clips: fetched ? 1 : 0 },
+          { criterion: "era", clips: terminalAdmissionApplied ? 1 : 0 },
+          { criterion: "audience", clips: terminalAdmissionApplied ? 1 : 0 },
+          { criterion: "category", clips: terminalAdmissionApplied ? 1 : 0 },
+          { criterion: "kind", clips: terminalAdmissionApplied ? 1 : 0 },
+          { criterion: "duration", clips: terminalAdmissionApplied ? 1 : 0 },
+          { criterion: "quality", clips: terminalAdmissionApplied ? 1 : 0 },
         ],
       });
     }
@@ -255,11 +308,11 @@ test("a trusted source converges into a channel break without routine approval",
       return reply({
         coverage: {
           level: "exact",
-          total: fetched ? 1 : 0,
-          rungs: [{ level: "exact", clips: fetched ? 1 : 0 }],
+          total: terminalAdmissionApplied ? 1 : 0,
+          rungs: [{ level: "exact", clips: terminalAdmissionApplied ? 1 : 0 }],
           criteria: [],
         },
-        entries: fetched
+        entries: terminalAdmissionApplied
           ? [
               {
                 path: clip.path,
@@ -271,15 +324,15 @@ test("a trusted source converges into a channel break without routine approval",
               },
             ]
           : [],
-        totalMs: fetched ? 30000 : 0,
+        totalMs: terminalAdmissionApplied ? 30000 : 0,
         matchLevel: "exact",
       });
     }
     if (path === "/v1/taxonomy") {
       return reply({
         taxa: [],
-        totalClips: fetched ? 1 : 0,
-        taggedClips: fetched ? 1 : 0,
+        totalClips: terminalAdmissionApplied ? 1 : 0,
+        taggedClips: terminalAdmissionApplied ? 1 : 0,
         unclassifiedClips: 0,
         axisCoverage: [],
       });
@@ -295,12 +348,23 @@ test("a trusted source converges into a channel break without routine approval",
 
   await page.goto("/filler/sources");
   await expect(page.getByText("Trusted Commercials")).toBeVisible();
-  await expect(page.getByRole("switch", { name: /automatically file grounded clips/i })).toBeChecked();
+  await expect(
+    page.getByText(/arrivals remain in Incoming until their safety, rights, playback/i),
+  ).toBeVisible();
+  await expect(page.getByRole("switch", { name: /automatically file grounded clips/i })).toHaveCount(0);
   await page.getByRole("button", { name: /fetch now from trusted commercials/i }).click();
   await expect.poll(() => fetched).toBe(true);
 
+  await page.goto("/filler/incoming");
+  await expect(page.getByText("Trusted Toy Spot", { exact: true })).toBeVisible();
+  await expect(page.getByText("Record the admission check", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("Trusted Toy Spot: Record the admission check");
+
   await page.goto("/filler");
-  await expect(page.getByText("Filler is working on its own")).toBeVisible();
+  await expect(page.getByText("A few clips need your judgment")).toBeVisible();
+  await expect(
+    page.getByText("1 clip could not be classified safely without a person.", { exact: true }),
+  ).toBeVisible();
   const fillerNav = page.getByRole("navigation", { name: "Filler sections" });
   await expect(fillerNav.getByRole("link", { name: "Overview" })).toBeVisible();
   await expect(fillerNav.getByRole("link", { name: "Incoming" })).toBeVisible();
@@ -310,6 +374,24 @@ test("a trusted source converges into a channel break without routine approval",
 
   await page.goto("/filler/manage");
   await expect(page.getByText("Would admit (shadow)")).toBeVisible();
+
+  await page.goto("/channels/ch-1/filler");
+  await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();
+  await expect(page.getByText("No clips match this selection yet.")).toBeVisible();
+  await expect(page.getByText("Trusted Toy Spot", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("1 eligible commercial", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /apply filler/i })).toHaveCount(0);
+
+  await page.goto("/filler/attention");
+  await expect(page.getByRole("heading", { name: "Is this a toy commercial?" })).toBeVisible();
+
+  // This is a backend-state simulation, not an operator approval or UI publish action. It models
+  // certified automatic terminal admission completing after fetch; the frontend only observes it.
+  terminalAdmissionApplied = true;
+
+  await page.goto("/filler/manage");
+  await expect(page.getByText("Would admit (shadow)")).toBeVisible();
+  await expect(page.getByText("Admitted automatically")).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();
