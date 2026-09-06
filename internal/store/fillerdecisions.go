@@ -19,6 +19,13 @@ const fillerDecisionSelect = `SELECT id, clip_hash, evidence_hash, evidence_vers
 	release_authority_sha256, result_json, created_at
 	FROM filler_admission_decisions`
 
+const unresolvedFillerReviewPredicate = `(NOT EXISTS (
+	SELECT 1 FROM filler_admission_actions a WHERE a.decision_id = d.id AND a.kind IN ('admit', 'reject', 'correct')
+) OR (d.application_mode = 'applied' AND (
+	SELECT a.kind FROM filler_admission_actions a WHERE a.decision_id = d.id AND a.kind <> 'abandon'
+	ORDER BY a.created_at DESC, a.id DESC LIMIT 1
+) = 'restore'))`
+
 func (s *sqlStore) PutFillerDecision(ctx context.Context, record fillerdecision.Record) error {
 	if err := fillerdecision.ValidateRecord(record); err != nil {
 		return err
@@ -204,7 +211,7 @@ func fillerDecisionWhere(filter fillerdecision.DecisionFilter, includeCursor boo
 	}
 	if filter.UnresolvedOnly {
 		clauses = append(clauses, `d.outcome_kind = 'semantic'`, `d.verdict = 'review'`,
-			`NOT EXISTS (SELECT 1 FROM filler_admission_actions a WHERE a.decision_id = d.id AND a.kind IN ('admit', 'reject', 'correct'))`)
+			unresolvedFillerReviewPredicate)
 	}
 	if includeCursor && !filter.Cursor.BeforeCreatedAt.IsZero() {
 		if filter.Cursor.BeforeID == "" {
@@ -227,9 +234,7 @@ func (s *sqlStore) FillerDecisionCounts(ctx context.Context) (fillerdecision.Cou
 		COALESCE(SUM(CASE WHEN d.outcome_kind = 'semantic' AND d.verdict = 'review' THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(CASE WHEN d.outcome_kind = 'operational' THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(CASE WHEN d.outcome_kind = 'operational' AND d.retryable = 1 THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN d.outcome_kind = 'semantic' AND d.verdict = 'review' AND NOT EXISTS (
-			SELECT 1 FROM filler_admission_actions a WHERE a.decision_id = d.id
-			AND a.kind IN ('admit', 'reject', 'correct')) THEN 1 ELSE 0 END), 0)
+		COALESCE(SUM(CASE WHEN d.outcome_kind = 'semantic' AND d.verdict = 'review' AND `+unresolvedFillerReviewPredicate+` THEN 1 ELSE 0 END), 0)
 		FROM filler_admission_decisions d
 		WHERE NOT EXISTS (SELECT 1 FROM filler_admission_decisions newer
 			WHERE newer.clip_hash = d.clip_hash AND (newer.created_at > d.created_at
@@ -313,7 +318,7 @@ func (s *sqlStore) commitFillerDecisionAction(
 	} else if action.SupersedesID != "" {
 		return fillerdecision.ErrActionStale
 	}
-	if !actionAllowed(outcome, filleradmission.Verdict(verdict), latest, hasLatest, action.Kind) {
+	if !actionAllowed(outcome, filleradmission.Verdict(verdict), fillerdecision.ApplicationMode(applicationMode), latest, hasLatest, action.Kind) {
 		return fillerdecision.ErrActionNotAllowed
 	}
 	_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO filler_admission_actions
@@ -350,10 +355,10 @@ func (s *sqlStore) applyFillerDecisionCatalogEffect(ctx context.Context, tx *sql
 	case action.Kind == fillerdecision.ActionRestore:
 		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, removed_at = 0, updated_at = ?
 			WHERE hash = ? AND (held = ? OR removed_at <> 0)`
-		clipArgs = []any{false, false, timestamp, clipHash, true}
+		clipArgs = []any{true, false, timestamp, clipHash, true}
 		pipelineFrom, pipelineTo = []filler.Disposition{
 			filler.DispositionReview, filler.DispositionRejected, filler.DispositionDismissed,
-		}, filler.DispositionFiled
+		}, filler.DispositionReview
 	case action.Kind == fillerdecision.ActionReject ||
 		action.Kind == fillerdecision.ActionCorrect && action.CorrectedVerdict == filleradmission.VerdictReject:
 		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, removed_at = ?, updated_at = ? WHERE hash = ?`
@@ -400,15 +405,21 @@ func (s *sqlStore) applyFillerDecisionCatalogEffect(ctx context.Context, tx *sql
 	return nil
 }
 
-func actionAllowed(outcome string, verdict filleradmission.Verdict, latest fillerdecision.Action, hasLatest bool, next fillerdecision.ActionKind) bool {
+func actionAllowed(outcome string, verdict filleradmission.Verdict, applicationMode fillerdecision.ApplicationMode, latest fillerdecision.Action, hasLatest bool, next fillerdecision.ActionKind) bool {
 	if outcome != string(fillerdecision.OutcomeSemantic) {
 		return false
 	}
 	state := string(verdict)
 	if hasLatest {
 		switch latest.Kind {
-		case fillerdecision.ActionAdmit, fillerdecision.ActionRestore:
+		case fillerdecision.ActionAdmit:
 			state = string(filleradmission.VerdictAdmit)
+		case fillerdecision.ActionRestore:
+			if applicationMode == fillerdecision.ApplicationModeApplied {
+				state = string(filleradmission.VerdictReview)
+			} else {
+				state = string(filleradmission.VerdictAdmit)
+			}
 		case fillerdecision.ActionReject:
 			state = string(filleradmission.VerdictReject)
 		case fillerdecision.ActionCorrect:

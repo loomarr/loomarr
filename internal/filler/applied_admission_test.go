@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/testkit/recordfixture"
 )
 
 type appliedAdmissionResolverFunc func(context.Context, string) (string, error)
@@ -20,16 +21,12 @@ func (f appliedAdmissionResolverFunc) ResolveAppliedAdmissionMedia(ctx context.C
 }
 
 type appliedAdmissionCommitter struct {
-	actions []fillerdecision.Action
-	err     error
+	actions recordfixture.Recorder[fillerdecision.Action, struct{}]
 }
 
 func (c *appliedAdmissionCommitter) CommitAppliedFillerDecisionAction(_ context.Context, action fillerdecision.Action) error {
-	if c.err != nil {
-		return c.err
-	}
-	c.actions = append(c.actions, action)
-	return nil
+	_, err := c.actions.Call(action)
+	return err
 }
 
 func TestAppliedAdmissionReplaysCurrentReleaseBeforePublication(t *testing.T) {
@@ -37,8 +34,8 @@ func TestAppliedAdmissionReplaysCurrentReleaseBeforePublication(t *testing.T) {
 	if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); err != nil {
 		t.Fatal(err)
 	}
-	if len(committer.actions) != 1 || committer.actions[0] != action {
-		t.Fatalf("committed actions = %+v, want the verified admit", committer.actions)
+	if actions := committer.actions.Inputs(); len(actions) != 1 || actions[0] != action {
+		t.Fatalf("committed actions = %+v, want the verified admit", actions)
 	}
 }
 
@@ -49,7 +46,7 @@ func TestAppliedAdmissionFailsClosedBeforeTheCatalogTransaction(t *testing.T) {
 		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
 			t.Fatalf("authority drift = %v, want unavailable", err)
 		}
-		if len(committer.actions) != 0 {
+		if committer.actions.Calls() != 0 {
 			t.Fatal("authority drift reached the catalog transaction")
 		}
 	})
@@ -61,7 +58,7 @@ func TestAppliedAdmissionFailsClosedBeforeTheCatalogTransaction(t *testing.T) {
 		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
 			t.Fatalf("playback drift = %v, want unavailable", err)
 		}
-		if len(committer.actions) != 0 {
+		if committer.actions.Calls() != 0 {
 			t.Fatal("playback drift reached the catalog transaction")
 		}
 	})
@@ -75,23 +72,30 @@ func TestAppliedAdmissionFailsClosedBeforeTheCatalogTransaction(t *testing.T) {
 		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
 			t.Fatalf("withdrawn rights = %v, want unavailable", err)
 		}
-		if len(committer.actions) != 0 {
+		if committer.actions.Calls() != 0 {
 			t.Fatal("withdrawn rights reached the catalog transaction")
 		}
 	})
 }
 
-func TestAppliedAdmissionRejectDoesNotRequirePublicationEvidence(t *testing.T) {
+func TestAppliedAdmissionHeldActionsDoNotRequirePublicationEvidence(t *testing.T) {
 	module, record, action, committer, _, _ := appliedAdmissionFixture(t)
 	module.resolver = appliedAdmissionResolverFunc(func(context.Context, string) (string, error) {
 		return "", errors.New("playback deliberately unavailable")
 	})
-	action.Kind = fillerdecision.ActionReject
-	if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); err != nil {
-		t.Fatal(err)
+	for _, kind := range []fillerdecision.ActionKind{fillerdecision.ActionReject, fillerdecision.ActionRestore} {
+		t.Run(string(kind), func(t *testing.T) {
+			action.Kind = kind
+			if kind == fillerdecision.ActionRestore {
+				action.Reason = "restored to held review"
+			}
+			if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
-	if len(committer.actions) != 1 || committer.actions[0].Kind != fillerdecision.ActionReject {
-		t.Fatalf("committed actions = %+v, want reject", committer.actions)
+	if actions := committer.actions.Inputs(); len(actions) != 2 || actions[0].Kind != fillerdecision.ActionReject || actions[1].Kind != fillerdecision.ActionRestore {
+		t.Fatalf("committed actions = %+v, want reject and restore", actions)
 	}
 }
 

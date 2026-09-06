@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filleradmission"
+	"github.com/loomarr/loomarr/internal/testkit/recordfixture"
 )
 
 func TestValidateRecordKeepsSemanticAndOperationalStatesDisjoint(t *testing.T) {
@@ -96,8 +97,8 @@ func TestValidateRecordBindsAppliedReleaseEvidenceOnly(t *testing.T) {
 
 type actionRoutingRepository struct {
 	Repository
-	record fillerdecisionRecordResult
-	action Action
+	record  fillerdecisionRecordResult
+	actions recordfixture.Recorder[Action, struct{}]
 }
 
 type fillerdecisionRecordResult struct {
@@ -110,15 +111,17 @@ func (r *actionRoutingRepository) GetFillerDecision(context.Context, string) (Re
 }
 
 func (r *actionRoutingRepository) CommitFillerDecisionAction(_ context.Context, action Action) error {
-	r.action = action
-	return nil
+	_, err := r.actions.Call(action)
+	return err
 }
 
-type appliedActionExecutor struct{ action Action }
+type appliedActionExecutor struct {
+	actions recordfixture.Recorder[Action, struct{}]
+}
 
 func (e *appliedActionExecutor) ActOnAppliedFillerDecision(_ context.Context, _ Record, action Action) error {
-	e.action = action
-	return nil
+	_, err := e.actions.Call(action)
+	return err
 }
 
 func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
@@ -132,8 +135,11 @@ func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := service.Act(t.Context(), action); err != nil || repo.action != action {
-			t.Fatalf("Act = %v, action = %+v", err, repo.action)
+		if err := service.Act(t.Context(), action); err != nil {
+			t.Fatalf("Act = %v, action = %+v", err, repo.actions.Inputs())
+		}
+		if actions := repo.actions.Inputs(); len(actions) != 1 || actions[0] != action {
+			t.Fatalf("recorded actions = %+v", actions)
 		}
 	})
 	t.Run("applied unavailable", func(t *testing.T) {
@@ -147,7 +153,7 @@ func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
 		if err := service.Act(t.Context(), action); !errors.Is(err, ErrAppliedUnavailable) {
 			t.Fatalf("Act = %v, want ErrAppliedUnavailable", err)
 		}
-		if repo.action.ID != "" {
+		if repo.actions.Calls() != 0 {
 			t.Fatal("applied action used the shadow writer")
 		}
 	})
@@ -161,10 +167,13 @@ func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
 			t.Fatal(err)
 		}
 		service.WithAppliedActions(executor)
-		if err := service.Act(t.Context(), action); err != nil || executor.action != action {
-			t.Fatalf("Act = %v, terminal action = %+v", err, executor.action)
+		if err := service.Act(t.Context(), action); err != nil {
+			t.Fatalf("Act = %v, terminal action = %+v", err, executor.actions.Inputs())
 		}
-		if repo.action.ID != "" {
+		if actions := executor.actions.Inputs(); len(actions) != 1 || actions[0] != action {
+			t.Fatalf("terminal action = %+v", actions)
+		}
+		if repo.actions.Calls() != 0 {
 			t.Fatal("applied action used the shadow writer")
 		}
 	})

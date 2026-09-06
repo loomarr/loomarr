@@ -4466,8 +4466,31 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 	}
 	clip, _ = s.GetClip(ctx, hash)
 	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
-	if clip.Held || pipeline.Disposition != filler.DispositionFiled {
+	if !clip.Held || pipeline.Disposition != filler.DispositionReview {
 		t.Fatalf("applied restore left clip=%+v pipeline=%+v", clip, pipeline)
+	}
+	reviews, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
+		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
+		UnresolvedOnly: true, Limit: 10,
+	})
+	if err != nil || reviews.Total != 1 || len(reviews.Rows) != 1 || reviews.Rows[0].ID != decision.ID {
+		t.Fatalf("applied restored review queue = %+v, err = %v", reviews, err)
+	}
+	counts, err := s.FillerDecisionCounts(ctx)
+	if err != nil || counts.UnresolvedReviews != reviews.Total {
+		t.Fatalf("applied restored review counts = %+v, rows = %+v, err = %v", counts, reviews, err)
+	}
+	readmit := fillerdecision.Action{
+		ID: "applied-readmit", DecisionID: decision.ID, Kind: fillerdecision.ActionAdmit,
+		ActorID: "admin-1", SupersedesID: restore.ID, CreatedAt: at.Add(3*time.Minute + time.Second),
+	}
+	if err := s.CommitAppliedFillerDecisionAction(ctx, readmit); err != nil {
+		t.Fatalf("applied restored review did not accept a new decision: %v", err)
+	}
+	clip, _ = s.GetClip(ctx, hash)
+	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
+	if clip.Held || pipeline.Disposition != filler.DispositionFiled {
+		t.Fatalf("applied readmit left clip=%+v pipeline=%+v", clip, pipeline)
 	}
 
 	rejectedHash := strings.Repeat("e", 64)
@@ -4500,8 +4523,27 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		t.Fatal(err)
 	}
 	playable, err = s.ListClips(ctx, ClipFilter{Hashes: []string{rejectedHash}})
-	if err != nil || len(playable) != 1 || playable[0].Held {
-		t.Fatalf("restored reject is not playable = %+v, err = %v", playable, err)
+	if err != nil || len(playable) != 0 {
+		t.Fatalf("restored reject remained playable = %+v, err = %v", playable, err)
+	}
+	restoredReject, err := s.GetClip(ctx, rejectedHash)
+	if err != nil || !restoredReject.Held {
+		t.Fatalf("restored reject is not held = %+v, err = %v", restoredReject, err)
+	}
+	pipeline, _, err = s.GetClipPipeline(ctx, rejectedHash)
+	if err != nil || pipeline.Disposition != filler.DispositionReview {
+		t.Fatalf("restored reject pipeline = %+v, err = %v", pipeline, err)
+	}
+	reviews, err = s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
+		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
+		UnresolvedOnly: true, Limit: 10,
+	})
+	if err != nil || reviews.Total != 1 || len(reviews.Rows) != 1 || reviews.Rows[0].ID != rejectedDecision.ID {
+		t.Fatalf("restored reject review queue = %+v, err = %v", reviews, err)
+	}
+	counts, err = s.FillerDecisionCounts(ctx)
+	if err != nil || counts.UnresolvedReviews != reviews.Total {
+		t.Fatalf("restored reject review counts = %+v, rows = %+v, err = %v", counts, reviews, err)
 	}
 
 	rollbackHash := strings.Repeat("d", 64)

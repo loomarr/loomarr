@@ -101,7 +101,7 @@ func (a *AppliedAdmission) verifyCurrentRelease(ctx context.Context, record fill
 }
 
 func appliedActionPublishes(action fillerdecision.Action) bool {
-	return action.Kind == fillerdecision.ActionAdmit || action.Kind == fillerdecision.ActionRestore ||
+	return action.Kind == fillerdecision.ActionAdmit ||
 		action.Kind == fillerdecision.ActionCorrect && action.CorrectedVerdict == filleradmission.VerdictAdmit
 }
 
