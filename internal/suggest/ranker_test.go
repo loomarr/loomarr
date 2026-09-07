@@ -188,7 +188,9 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 		"TGIF",
 		"Criterion",
 		"The Criterion Channel",
+		"Criterion Channel",
 		"Lantern",
+		"Lantern Parade",
 		"a channel like TGIF from the 90s",
 		"a named Friday-night family sitcom collection",
 		"Criterion Collection lineup",
@@ -215,6 +217,7 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 		"1990s family comedies",
 		"Comedy",
 		"Science Fiction",
+		"Classic Simpsons",
 	} {
 		if requiresMembershipEvidence(Intent{Description: description}) {
 			t.Fatalf("ordinary theme request was over-gated: %q", description)
@@ -228,6 +231,15 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 	} {
 		if requiresMembershipEvidence(intent) {
 			t.Fatalf("ordinary request was over-gated: %+v", intent)
+		}
+	}
+	for _, intent := range []Intent{
+		{Description: "Criterion Channel", RefineText: "best picks"},
+		{Description: "Criterion Channel", MustInclude: []string{"Classic Simpsons"}},
+		{Description: "Criterion Collection lineup", RefineText: "best picks"},
+	} {
+		if !requiresMembershipEvidence(intent) {
+			t.Fatalf("cross-field cue bypassed named-set gate: %+v", intent)
 		}
 	}
 }

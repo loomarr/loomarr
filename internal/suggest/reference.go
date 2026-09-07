@@ -198,8 +198,7 @@ func bareProperNameNamesSet(text string) bool {
 		bareProperNamePattern.FindString(name) != name {
 		return false
 	}
-	words := strings.Fields(name)
-	return len(words) == 1 || words[0] == "The"
+	return !intentRequestsCuratedEpisodes(Intent{Description: text})
 }
 
 // positiveIntentOrReferenceNamesTitle verifies the provenance of a catalog title.
