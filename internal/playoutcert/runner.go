@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 )
@@ -187,6 +188,17 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		appendSampledPhase(&report, samper, overloadPhase)
 		recordBurstSample(&report, "overload", overloadSample)
 	}
+	if slices.Contains(config.FaultProfiles, FaultParentFailure) {
+		samper.begin("parent_failure")
+		parentPhase, parentSample := parentFailureDrill(ctx, endpoint, config, transcodeIndexes, samper)
+		appendSampledPhase(&report, samper, parentPhase)
+		recordBurstSample(&report, "parent_failure", parentSample)
+		if parentPhase.Failures == 0 {
+			qualifyFault(&report, FaultParentFailure, "complete")
+		} else {
+			unavailableFault(&report, FaultParentFailure, "drill_failed")
+		}
+	}
 	samper.begin("capacity_recovery")
 	recoveryObs, recoverySample := waitForConvergence(ctx, endpoint, config, baseline, min(config.CleanupTimeout, config.WarmGrace+10*time.Second))
 	appendSampledPhase(&report, samper, phaseFrom("capacity_recovery", []observation{recoveryObs}))
@@ -252,6 +264,61 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	report.CompletedAt = config.Now()
 	report.Certified = config.Certify && len(report.Failures) == 0
 	return report, nil
+}
+
+func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, sampler *phaseSampler) (Phase, ResourceSample) {
+	controller, ok := config.FaultController.(ParentFaultController)
+	if !ok || len(indexes) < 2 {
+		return phaseFrom("parent_failure", []observation{{class: "controller_unavailable"}}), ResourceSample{}
+	}
+	// A held reader gives the controller an admitted, initially decoded parent;
+	// this is deliberately not the graceful session teardown path.
+	held := startHeldBurst(ctx, endpoint, config, indexes[:2])
+	if len(held.results) != 2 || held.results[0].class != "ok" || held.results[1].class != "ok" {
+		held.release()
+		return phaseFrom("parent_failure", []observation{{class: "initial_media_missing"}}), held.sample
+	}
+	request := ParentFaultRequest{BaseURL: endpoint.base.String(), ChannelID: config.Channels[indexes[0]].ID}
+	generation, err := controller.CurrentParent(ctx, request)
+	if err != nil {
+		held.release()
+		return phaseFrom("parent_failure", []observation{{class: "generation_unavailable"}}), held.sample
+	}
+	request.Generation = generation
+	receipt, err := controller.FailParent(ctx, request)
+	// The controller's Stop waits for its exact owned process to exit.  The
+	// held observers then establish that the selected reader ended while its
+	// independently admitted peer continued decoding through the event.
+	held.verify(ctx)
+	held.release()
+	if err != nil || !receipt.Exited || receipt.ChannelID != request.ChannelID || receipt.Generation != request.Generation || held.results[0].class != "held_stream_interrupted" || held.results[1].class != "ok" {
+		return phaseFrom("parent_failure", []observation{{class: "fault_failed"}}), held.sample
+	}
+	// A fresh public admission after the owned parent exit is the recovery
+	// assertion. It is bounded by the normal request and sampling deadlines.
+	recovery, sample := rawBurst(ctx, endpoint, config, indexes[:1])
+	return phaseFrom("parent_failure", recovery), sample
+}
+
+func qualifyFault(report *Report, profile FaultProfile, outcome string) {
+	for index := range report.FaultProfiles {
+		if report.FaultProfiles[index].Profile == profile {
+			report.FaultProfiles[index].Status = "qualified"
+			report.FaultProfiles[index].Outcome = outcome
+			break
+		}
+	}
+	report.Failures = slices.DeleteFunc(report.Failures, func(failure string) bool { return failure == string(profile)+"_unavailable" })
+}
+
+func unavailableFault(report *Report, profile FaultProfile, outcome string) {
+	for index := range report.FaultProfiles {
+		if report.FaultProfiles[index].Profile == profile {
+			report.FaultProfiles[index].Status = "unavailable"
+			report.FaultProfiles[index].Outcome = outcome
+			break
+		}
+	}
 }
 
 func containsIndex(indexes []int, want int) bool {

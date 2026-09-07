@@ -46,6 +46,8 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 		RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
 		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
 		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(),
+		FaultProfiles:            []FaultProfile{FaultParentFailure},
+		FaultController:          target,
 		Validator:                FFprobeValidator{}, Decoder: FFmpegDecoder{},
 	}
 	report, err := Run(ctx, config)
@@ -54,6 +56,15 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	}
 	if !report.Certified {
 		t.Fatalf("certification failed: %v\n%sresources=%+v", report.Failures, HumanSummary(report), report.Resources)
+	}
+	parentFault := report.PhaseMust("parent_failure")
+	if parentFault.Failures != 0 || parentFault.Attempts != 1 || len(parentFault.Media) != 1 {
+		t.Fatalf("parent-failure recovery evidence = %+v", parentFault)
+	}
+	for _, row := range report.FaultProfiles {
+		if row.Profile == FaultParentFailure && (row.Status != "qualified" || row.Outcome != "complete") {
+			t.Fatalf("parent-failure qualification = %+v", row)
+		}
 	}
 	if report.PhaseMust("configured").PreparedHits != 100 {
 		t.Fatalf("prepared hits = %d", report.PhaseMust("configured").PreparedHits)

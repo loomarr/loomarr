@@ -1,11 +1,22 @@
 package playoutcert
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/testkit/playoutcertfixture"
 )
+
+func TestSyntheticParentFaultRefusesWrongTargetAndStaleParent(t *testing.T) {
+	target := &SyntheticTarget{BaseURL: "http://127.0.0.1:9999", parents: map[string]*syntheticParent{}}
+	if _, err := target.CurrentParent(context.Background(), ParentFaultRequest{BaseURL: "http://127.0.0.1:9998", ChannelID: "channel"}); err == nil {
+		t.Fatal("CurrentParent accepted a mismatched target")
+	}
+	if _, err := target.FailParent(context.Background(), ParentFaultRequest{BaseURL: target.BaseURL, ChannelID: "channel", Generation: 1}); err == nil {
+		t.Fatal("FailParent accepted a stale parent")
+	}
+}
 
 func TestFaultProfileSelectionFailsClosed(t *testing.T) {
 	valid := func() Config {

@@ -42,15 +42,25 @@ type SyntheticTarget struct {
 	AdminBearer string
 	DeviceToken string
 
-	server          *http.Server
-	listener        net.Listener
-	origin          *playout.Origin
-	diagnostics     *diagnostics.ProcessManager
-	store           store.Store
-	root            string
-	boundaryWitness *syntheticBoundaryWitness
-	closeOnce       sync.Once
-	scope           string
+	server               *http.Server
+	listener             net.Listener
+	origin               *playout.Origin
+	diagnostics          *diagnostics.ProcessManager
+	store                store.Store
+	root                 string
+	boundaryWitness      *syntheticBoundaryWitness
+	closeOnce            sync.Once
+	scope                string
+	parentsMu            sync.Mutex
+	parents              map[string]*syntheticParent
+	nextParentGeneration uint64
+	parentsWG            sync.WaitGroup
+}
+
+type syntheticParent struct {
+	process    *playout.Process
+	generation uint64
+	faulting   bool
 }
 
 func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*SyntheticTarget, error) {
@@ -84,7 +94,7 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	if scope == "" {
 		scope = "isolated-playout-cert"
 	}
-	target := &SyntheticTarget{root: root, scope: scope, boundaryWitness: newSyntheticBoundaryWitness()}
+	target := &SyntheticTarget{root: root, scope: scope, boundaryWitness: newSyntheticBoundaryWitness(), parents: make(map[string]*syntheticParent)}
 	fail := func(err error) (*SyntheticTarget, error) { _ = target.Close(context.Background()); return nil, err }
 
 	st, err := store.Open(ctx, "sqlite://"+filepath.Join(root, "loomarr.db"), true)
@@ -182,7 +192,12 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	spawner := func(spawnCtx context.Context, channelID string, plan playout.EncodePlan) (*playout.Process, error) {
 		sourceID := target.boundaryWitness.nextSource()
 		sourceForParent := syntheticBlockSource(target.BaseURL, device, preparedBlock, manager, target.boundaryWitness, sourceID)
-		return playout.BlockSpawner(ffmpeg, sourceForParent, logger, processManager)(spawnCtx, channelID, plan)
+		process, spawnErr := playout.BlockSpawner(ffmpeg, sourceForParent, logger, processManager)(spawnCtx, channelID, plan)
+		if spawnErr != nil {
+			return nil, spawnErr
+		}
+		target.registerParent(channelID, process)
+		return process, nil
 	}
 	manager = playout.NewManager(spawner, func() int { return config.Capacity }, config.Grace, logger).
 		WithCostEstimator(func(estimateCtx context.Context, channelID string, plan playout.EncodePlan) int {
@@ -242,6 +257,67 @@ func (t *SyntheticTarget) Scope() string {
 	return t.scope
 }
 
+func (t *SyntheticTarget) registerParent(channelID string, process *playout.Process) {
+	t.parentsMu.Lock()
+	t.nextParentGeneration++
+	generation := t.nextParentGeneration
+	t.parents[channelID] = &syntheticParent{process: process, generation: generation}
+	t.parentsMu.Unlock()
+	t.parentsWG.Add(1)
+	go func() {
+		defer t.parentsWG.Done()
+		_ = process.Wait()
+		t.parentsMu.Lock()
+		if current := t.parents[channelID]; current != nil && current.process == process && current.generation == generation {
+			delete(t.parents, channelID)
+		}
+		t.parentsMu.Unlock()
+	}()
+}
+
+// FailParent performs the parent-failure drill only for this target's current
+// owned parent. It never resolves or signals an arbitrary PID.
+func (t *SyntheticTarget) FailParent(ctx context.Context, request ParentFaultRequest) (ParentFaultReceipt, error) {
+	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
+		return ParentFaultReceipt{}, errors.New("parent fault target mismatch")
+	}
+	if err := ctx.Err(); err != nil {
+		return ParentFaultReceipt{}, err
+	}
+	t.parentsMu.Lock()
+	parent := t.parents[request.ChannelID]
+	if parent == nil || parent.process == nil || parent.faulting || request.Generation == 0 || request.Generation != parent.generation {
+		t.parentsMu.Unlock()
+		return ParentFaultReceipt{}, errors.New("parent fault stale or already ended")
+	}
+	parent.faulting = true
+	process, generation := parent.process, parent.generation
+	t.parentsMu.Unlock()
+	process.Stop()
+	// Stop waits for the owned child to leave; Wait is safe concurrently and
+	// establishes that the receipt is issued after an actual exit.
+	_ = process.Wait()
+	return ParentFaultReceipt{ChannelID: request.ChannelID, Generation: generation, Exited: true}, nil
+}
+
+// CurrentParent exposes the current opaque generation only after validating
+// target identity. It does not expose a process ID or any diagnostics handle.
+func (t *SyntheticTarget) CurrentParent(ctx context.Context, request ParentFaultRequest) (uint64, error) {
+	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
+		return 0, errors.New("parent fault target mismatch")
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	t.parentsMu.Lock()
+	defer t.parentsMu.Unlock()
+	parent := t.parents[request.ChannelID]
+	if parent == nil || parent.process == nil || parent.faulting {
+		return 0, errors.New("parent fault stale or already ended")
+	}
+	return parent.generation, nil
+}
+
 // ProgrammeBoundaryWitness returns the isolated target's causal observation
 // seam. It is intentionally not available from ordinary production origins.
 func (t *SyntheticTarget) ProgrammeBoundaryWitness() ProgrammeBoundaryWitness {
@@ -257,6 +333,7 @@ func (t *SyntheticTarget) Close(ctx context.Context) error {
 		if t.origin != nil {
 			t.origin.Quiesce()
 		}
+		t.parentsWG.Wait()
 		if t.server != nil {
 			result = t.server.Shutdown(ctx)
 		} else if t.listener != nil {

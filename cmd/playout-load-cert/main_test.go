@@ -12,6 +12,14 @@ import (
 	"github.com/loomarr/loomarr/internal/playoutcert"
 )
 
+func TestCleanupFailureIsPersistedAsUncertifiedReport(t *testing.T) {
+	report := playoutcert.Report{Certified: true}
+	recordIsolatedCleanupFailure(&report)
+	if report.Certified || !strings.Contains(strings.Join(report.Failures, ","), "isolated_cleanup_failed") {
+		t.Fatalf("cleanup failure report = %+v", report)
+	}
+}
+
 func TestCommandRejectsMissingSecretsAndOutputEscapeWithoutEchoingValues(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := filepath.Join(dir, "manifest.json")

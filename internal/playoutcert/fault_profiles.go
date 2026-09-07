@@ -1,6 +1,7 @@
 package playoutcert
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -23,6 +24,28 @@ var knownFaultProfiles = []FaultProfile{FaultChildFailure, FaultParentFailure, F
 // provide this identity so shutdown authority cannot be represented by a boolean.
 type FaultController interface {
 	Scope() string
+}
+
+// ParentFaultController can stop only a parent process which it owns for the
+// current isolated target. The base URL binding prevents a scope string from
+// becoming authority over a different endpoint.
+type ParentFaultController interface {
+	FaultController
+	CurrentParent(context.Context, ParentFaultRequest) (uint64, error)
+	FailParent(context.Context, ParentFaultRequest) (ParentFaultReceipt, error)
+}
+
+type ParentFaultRequest struct {
+	BaseURL    string
+	ChannelID  string
+	Generation uint64
+}
+
+// ParentFaultReceipt contains only causal, non-secret evidence.
+type ParentFaultReceipt struct {
+	ChannelID  string
+	Generation uint64
+	Exited     bool
 }
 
 type FaultQualification struct {

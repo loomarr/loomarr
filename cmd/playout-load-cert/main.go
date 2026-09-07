@@ -22,7 +22,7 @@ type manifest struct {
 
 type repeatedFlag []string
 
-func (f *repeatedFlag) String() string { return strings.Join(*f, ",") }
+func (f *repeatedFlag) String() string         { return strings.Join(*f, ",") }
 func (f *repeatedFlag) Set(value string) error { *f = append(*f, value); return nil }
 
 func main() { os.Exit(run(context.Background(), os.Args[1:], os.Getenv, os.Stdout, os.Stderr)) }
@@ -67,7 +67,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 2
 	}
 	controllerScope := ""
-	if *synthetic { controllerScope = strings.TrimSpace(*syntheticScope) }
+	if *synthetic {
+		controllerScope = strings.TrimSpace(*syntheticScope)
+	}
 	if *synthetic && controllerScope == "" {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: synthetic scope is required")
 		return 2
@@ -137,10 +139,14 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 1
 	}
 	if closeErr := closeIsolated(isolated, *cleanupTimeout); closeErr != nil {
-		_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated target cleanup failed")
-		return 1
+		recordIsolatedCleanupFailure(&report)
 	}
 	return publishReport(resolvedOutput, report, *certify, stdout, stderr)
+}
+
+func recordIsolatedCleanupFailure(report *playoutcert.Report) {
+	report.Failures = append(report.Failures, "isolated_cleanup_failed")
+	report.Certified = false
 }
 
 func publishReport(output string, report playoutcert.Report, certify bool, stdout, stderr io.Writer) int {
