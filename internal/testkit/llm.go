@@ -18,6 +18,8 @@ import (
 type LLM struct {
 	mu    sync.Mutex
 	turns []llm.Response // dequeued front-to-back per Chat call
+	// Errors are returned in order before scripted responses, for provider-failure paths.
+	Errors []error
 	// Delay simulates a slow model, to exercise JOB_TIMEOUT (§8). Zero = instant.
 	Delay time.Duration
 	Calls int
@@ -76,6 +78,11 @@ func (m *LLM) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOpt
 	m.LastOpts = opts
 	m.LastMessages = messages
 	m.Calls++
+	if len(m.Errors) > 0 {
+		err := m.Errors[0]
+		m.Errors = m.Errors[1:]
+		return llm.Response{}, err
+	}
 	if len(m.turns) == 0 {
 		return llm.Response{}, nil // no more scripted turns → empty final
 	}

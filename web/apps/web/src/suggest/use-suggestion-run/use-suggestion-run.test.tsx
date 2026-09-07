@@ -60,7 +60,13 @@ describe("useSuggestionRun", () => {
 
     // The job errors mid-flight; the backend emits `failed` over the stream.
     journey.milestone = "failed";
-    journey.failure = { code: "generation_failed", message: "Loomarr couldn't generate this channel." };
+    journey.failure = {
+      code: "generation_failed",
+      message: "Loomarr couldn't generate this channel.",
+      reason: "provider_unavailable",
+      recoveryAction: "retry_later",
+      guidance: "Try again later.",
+    };
     journey.actions = ["retry"];
     await emit("job-1", "failed");
 
@@ -86,7 +92,13 @@ describe("useSuggestionRun", () => {
   it("restores the active Job from authoritative state after a reload", async () => {
     const journey = stub();
     journey.milestone = "failed";
-    journey.failure = { code: "no_grounded_titles", message: "No grounded titles matched this request." };
+    journey.failure = {
+      code: "no_grounded_titles",
+      message: "No grounded titles matched this request.",
+      reason: "no_catalog_match",
+      recoveryAction: "broaden_request",
+      guidance: "Broaden the request.",
+    };
     journey.actions = ["edit", "retry"];
     window.sessionStorage.setItem("loomarr.activeProposalJob", "job-1");
 
@@ -95,5 +107,32 @@ describe("useSuggestionRun", () => {
     await waitFor(() => expect(result.current.failed).toBe(true));
     expect(result.current.failure?.code).toBe("no_grounded_titles");
     expect(result.current.actions).toEqual(["edit", "retry"]);
+  });
+
+  it("retains the complete authorized intent when editing a failed request", async () => {
+    const journey = stub();
+    journey.intent = {
+      description: "90s action movies",
+      era: "1990s",
+      mustInclude: ["Heat"],
+      runtimeTargetMin: 180,
+    };
+    journey.milestone = "failed";
+    journey.failure = {
+      code: "no_grounded_titles",
+      message: "No grounded titles matched this request.",
+      reason: "no_catalog_match",
+      recoveryAction: "broaden_request",
+      guidance: "Broaden the request.",
+    };
+    journey.actions = ["edit"];
+    window.sessionStorage.setItem("loomarr.activeProposalJob", "job-1");
+
+    const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.failed).toBe(true));
+
+    act(() => result.current.reset(true));
+    expect(result.current.intent).toEqual(journey.intent);
+    expect(result.current.failed).toBe(false);
   });
 });

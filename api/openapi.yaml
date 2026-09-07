@@ -7098,13 +7098,43 @@ components:
             - budget_exhausted
             - generation_failed
           type: string
+        guidance:
+          type: string
         message:
+          type: string
+        reason:
+          enum:
+            - retrieval_unavailable
+            - reference_unreadable
+            - no_catalog_match
+            - named_set_unproven
+            - constraints_conflict
+            - date_semantics_unclear
+            - invalid_tool_calls
+            - provider_timeout
+            - provider_unavailable
+            - provider_response_invalid
+            - discovery_budget_exhausted
+            - generation_failed
+          type: string
+        recoveryAction:
+          enum:
+            - edit_reference
+            - broaden_request
+            - provide_examples
+            - resolve_constraints
+            - clarify_dates
+            - simplify_request
+            - retry_later
           type: string
         trace:
           $ref: "#/components/schemas/DecisionTrace"
       required:
         - code
+        - reason
+        - recoveryAction
         - message
+        - guidance
       type: object
     ProposalJourneyListOutputBody:
       additionalProperties: false

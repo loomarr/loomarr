@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -100,6 +101,71 @@ func TestProposalJourneyEndpointFailsClosedForForbiddenAndCorruptState(t *testin
 			}
 		})
 	}
+}
+
+func TestProposalJourneyFailureProjectionDoesNotSerializePrivateTrace(t *testing.T) {
+	t.Parallel()
+
+	private := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true,
+		Terminal: suggest.TerminalProviderFailure,
+		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:603", Name: "private-candidate", Ownership: "library",
+			Rank: suggest.RankTuple{TieKey: "movie:tmdb:603"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
+	if err := suggest.ValidateDecisionTrace(private); err != nil {
+		t.Fatalf("private trace must be valid: %v", err)
+	}
+	failure := &proposalworkflow.Failure{Code: proposalworkflow.FailureGenerationFailed, Reason: proposalworkflow.FailureReasonProviderUnavailable,
+		RecoveryAction: proposalworkflow.RecoveryActionRetryLater, Message: "safe", Guidance: "safe", Trace: private}
+	srv := proposalJourneyServer(t, &fakeProposalWorkflow{journey: proposalworkflow.Journey{
+		Version: proposalworkflow.WorkflowVersion1, JobID: "job-failed", Milestone: proposalworkflow.MilestoneFailed,
+		Failure: failure, Attempts: []proposalworkflow.Attempt{{Version: proposalworkflow.WorkflowVersion1, Number: 1, Status: proposalworkflow.AttemptFailed, Failure: failure}},
+	}})
+	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-failed", memberToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) == "" || containsAny(string(encoded), "private-candidate", "movie:tmdb:603", "library") {
+		t.Fatalf("failure response leaked private trace: %s", encoded)
+	}
+	current, ok := body["failure"].(map[string]any)
+	if !ok || current["reason"] != "provider_unavailable" || current["recoveryAction"] != "retry_later" {
+		t.Fatalf("current failure recovery = %#v", body["failure"])
+	}
+	attempts, ok := body["attempts"].([]any)
+	if !ok || len(attempts) != 1 {
+		t.Fatalf("attempt history = %#v", body["attempts"])
+	}
+	attempt, ok := attempts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("attempt = %#v", attempts[0])
+	}
+	history, ok := attempt["failure"].(map[string]any)
+	if !ok || history["reason"] != "provider_unavailable" || history["recoveryAction"] != "retry_later" {
+		t.Fatalf("attempt failure recovery = %#v", attempt["failure"])
+	}
+	if private.Candidates[0].Name != "private-candidate" {
+		t.Fatalf("public projection mutated persisted trace: %+v", private)
+	}
+	for _, projected := range []any{current["trace"], history["trace"]} {
+		trace, ok := projected.(map[string]any)
+		if !ok || trace["terminal"] != suggest.TerminalProviderFailure || trace["truncated"] != true || trace["surfacedTotal"] != float64(65) || trace["recordedTotal"] != float64(65) || trace["candidates"] != nil || len(trace) != 6 {
+			t.Fatalf("public trace = %#v", projected)
+		}
+	}
+}
+
+func containsAny(value string, values ...string) bool {
+	for _, candidate := range values {
+		if strings.Contains(value, candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 type fakeProposalWorkflow struct {

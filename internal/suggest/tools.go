@@ -16,15 +16,15 @@ import (
 // else returns an error result the model can react to (defense against a model
 // inventing a tool). Returns the JSON result string AND the candidates (so the
 // suggester can track what was surfaced for grounding).
-func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace) {
+func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
 	if tc.Name != catalogToolName {
-		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil, DecisionTrace{}
+		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil, DecisionTrace{}, false
 	}
 	arguments := tc.Arguments
 	if rawMode, present := arguments["mode"]; present {
 		mode, ok := rawMode.(string)
 		if !ok || strings.TrimSpace(mode) != "collection" {
-			return `{"error":"mode must be collection when provided"}`, nil, DecisionTrace{}
+			return `{"error":"mode must be collection when provided"}`, nil, DecisionTrace{}, false
 		}
 		return s.runCollectionTool(ctx, arguments, intent, feedback)
 	}
@@ -36,7 +36,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 		}
 	}
 	if parseErr != nil {
-		return fmt.Sprintf(`{"error":%q}`, parseErr.Error()), nil, DecisionTrace{}
+		return fmt.Sprintf(`{"error":%q}`, parseErr.Error()), nil, DecisionTrace{}, false
 	}
 	mtArg, _ := arguments["media_type"].(string)
 
@@ -52,7 +52,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 		cands, err = s.catalog.Search(ctx, stringArg(arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
 	}
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
 	}
 	if !discoveryMode {
 		query := stringArg(arguments["query"])
@@ -64,7 +64,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	}
 	for _, candidate := range cands {
 		if resolveErr := s.resolveMembershipSource(ctx, intent, candidate.Name); resolveErr != nil {
-			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
+			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
 		}
 	}
 	if mtArg != "" {
@@ -73,31 +73,31 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), cands, feedback)
 	cands = ranked.Candidates
 	blob, _ := json.Marshal(toolResult(cands))
-	return string(blob), cands, ranked.Trace
+	return string(blob), cands, ranked.Trace, true
 }
 
 // runCollectionTool resolves only the exact constituent titles the model names.
 // It intentionally does not use network, genre, era, or adjacent discovery as
 // membership evidence: those are thematic evidence, not a named set's roster.
-func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]any, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace) {
+func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]any, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
 	for key := range arguments {
 		if key != "mode" && key != "media_type" && key != "titles" {
-			return `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, nil, DecisionTrace{}
+			return `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, nil, DecisionTrace{}, false
 		}
 	}
 	mediaType := provision.MediaType(stringArg(arguments["media_type"]))
 	if !mediaType.Valid() {
-		return `{"error":"collection mode requires media_type movie or series"}`, nil, DecisionTrace{}
+		return `{"error":"collection mode requires media_type movie or series"}`, nil, DecisionTrace{}, false
 	}
 	titles, err := collectionTitleAnchors(arguments["titles"])
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{}
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{}, false
 	}
 	candidates := make([]catalog.Candidate, 0, len(titles))
 	for _, title := range titles {
 		results, searchErr := s.catalog.Search(ctx, title.name, catalog.ScopeAll, catalogSearchLimit)
 		if searchErr != nil {
-			return fmt.Sprintf(`{"error":%q}`, searchErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
+			return fmt.Sprintf(`{"error":%q}`, searchErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
 		}
 		candidate, found := exactCandidateForPick(results, pick{MediaType: string(mediaType), Name: title.name, Year: title.year})
 		if !found {
@@ -111,11 +111,11 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 		candidates = append(candidates, candidate)
 	}
 	if len(candidates) == 0 {
-		return `{"error":"No exact member titles matched; provide constituent titles, not a block or network name."}`, nil, DecisionTrace{}
+		return `{"error":"No exact member titles matched; provide constituent titles, not a block or network name."}`, nil, DecisionTrace{}, true
 	}
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), candidates, feedback)
 	blob, _ := json.Marshal(toolResult(ranked.Candidates))
-	return string(blob), ranked.Candidates, ranked.Trace
+	return string(blob), ranked.Candidates, ranked.Trace, true
 }
 
 type collectionTitleAnchor struct {

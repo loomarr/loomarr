@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -161,6 +162,10 @@ const groundingRetryPrompt = `You returned no grounded picks without finding usa
 	`or keywords for a holiday, motif, franchise, or topic. Then select only ids the tool returns.`
 
 func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error) {
+	if conflictingConstraints(intent) {
+		trace := DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalConstraintsConflict}
+		return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, errors.New("suggestion constraints conflict"))
+	}
 	// A tool call receives Intent by value, but this map deliberately shares the
 	// exact membership evidence it adds with the final grounding chokepoint.
 	intent.membershipKeys = make(map[provision.Key]bool)
@@ -177,8 +182,17 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	}
 	referenceSeed, hasReference, referenceErr := s.groundReference(ctx, &intent)
 	if referenceErr != nil {
-		trace := DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
-		cause := fmt.Errorf("%w: %v", ErrNoGroundedTitles, referenceErr)
+		terminal := TerminalRetrievalFailure
+		var readErr *referenceReadError
+		if errors.Is(referenceErr, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+			// A concurrent resolver failure must not hide the caller's cancellation
+			// or be reported as an unreadable public page.
+			referenceErr = errors.Join(referenceErr, ctx.Err())
+		} else if errors.As(referenceErr, &readErr) {
+			terminal = TerminalReferenceUnreadable
+		}
+		trace := DecisionTrace{Version: DecisionTraceVersion, Terminal: terminal}
+		cause := fmt.Errorf("%w: %w", ErrNoGroundedTitles, referenceErr)
 		return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, cause)
 	}
 	if hasReference && len(referenceSeed.candidates) == 0 {
@@ -292,7 +306,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		out, perr := parsePicks(final)
 		if perr == nil {
 			if len(surfaced) == 0 && len(out.Picks) > 0 {
-				out.Picks, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
+				out.Picks, out.nameGroundingIncomplete, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
 				if err != nil {
 					trace.Terminal = TerminalRetrievalFailure
 					return Proposal{}, NewFailure(FailureProvider, trace, err)
@@ -312,7 +326,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 			}
 			if buildErr != nil {
 				if errors.Is(buildErr, ErrNoGroundedTitles) {
-					if trace.Terminal == "" {
+					if errors.Is(buildErr, errNamedSetMembershipUnproven) {
+						trace.Terminal = TerminalNamedSetUnproven
+					} else if trace.Terminal == "" {
 						trace.Terminal = FailureSelectionEmpty
 					}
 					return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, buildErr)
@@ -341,6 +357,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 	if *finalizationOnly {
 		tools = nil
 	}
+	invalidRounds := 0
 	for round := 0; round < maxToolRounds; round++ {
 		// The model turn is about to block — say so BEFORE awaiting it. This is the
 		// slow step (model load + inference), so reporting it afterwards would leave
@@ -349,6 +366,17 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		reportProgress(ctx, PhaseReasoning, round+1)
 		resp, err := s.llm.Chat(ctx, *messages, chatOpts(tools, temp))
 		if err != nil {
+			cause := err
+			if errors.Is(ctx.Err(), context.Canceled) && !errors.Is(err, context.Canceled) {
+				cause = errors.Join(err, ctx.Err())
+			}
+			if errors.Is(cause, context.Canceled) {
+				return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", cause))
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				trace.Terminal = TerminalProviderTimeout
+				return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", err))
+			}
 			trace.Terminal = TerminalProviderFailure
 			return "", NewFailure(FailureProvider, *trace, fmt.Errorf("llm chat: %w", err))
 		}
@@ -368,7 +396,10 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 			toolCalls := resp.ToolCalls[:1]
 			*messages = append(*messages, assistantToolCallMsg(toolCalls))
 			for _, tc := range toolCalls {
-				result, cands, rankedTrace := s.runTool(ctx, tc, intent, feedback)
+				result, cands, rankedTrace, valid := s.runTool(ctx, tc, intent, feedback)
+				if !valid {
+					invalidRounds++
+				}
 				mergeDecisionTrace(trace, &rankedTrace)
 				for _, c := range cands {
 					if k, err := c.Key(); err == nil {
@@ -404,8 +435,34 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		return resp.Content, nil
 	}
 	// Ran out of tool rounds without a final turn: expose the bounded terminal fact.
-	trace.Terminal = FailureBudgetExhausted
+	if invalidRounds == maxToolRounds {
+		trace.Terminal = TerminalInvalidToolCalls
+	} else {
+		trace.Terminal = FailureBudgetExhausted
+	}
 	return "", NewFailure(FailureBudgetExhausted, *trace, errors.New("suggestion tool-round budget exhausted"))
+}
+
+func conflictingConstraints(intent Intent) bool {
+	excluded := make(map[string]struct{}, len(intent.MustExclude))
+	for _, value := range intent.MustExclude {
+		if normalized := normalizeConstraint(value); normalized != "" {
+			excluded[normalized] = struct{}{}
+		}
+	}
+	for _, value := range intent.MustInclude {
+		normalized := normalizeConstraint(value)
+		if normalized != "" {
+			if _, found := excluded[normalized]; found {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func normalizeConstraint(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(value), " "))
 }
 
 // ErrNoGroundedTitles is returned when a run produced no grounded picks at all —

@@ -58,7 +58,13 @@ const stubRefine = (opts: { proposals: ProposalDTO[]; failed?: boolean }) =>
         ? {
             ...journey(),
             milestone: "failed",
-            failure: { code: "generation_failed", message: "Refine couldn't complete. Try again." },
+            failure: {
+              code: "generation_failed",
+              message: "Refine couldn't complete. Try again.",
+              reason: "provider_unavailable",
+              recoveryAction: "retry_later",
+              guidance: "Try again later.",
+            },
             actions: ["retry", "check_ai"],
           }
         : journey(opts.proposals[0]),

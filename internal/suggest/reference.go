@@ -53,6 +53,13 @@ type referenceGrounding struct {
 	messages   []llm.Message
 }
 
+// referenceReadError marks a failed fetch of the supplied public page. Catalog
+// failures after a successful fetch deliberately do not use it.
+type referenceReadError struct{ err error }
+
+func (e *referenceReadError) Error() string { return e.err.Error() }
+func (e *referenceReadError) Unwrap() error { return e.err }
+
 // groundExplicitMembershipAnchors accepts user-supplied constituent titles only
 // when Catalog resolves exactly one identity. Model-proposed collection rosters
 // never reach this path: existence is not evidence of membership.
@@ -96,7 +103,7 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 
 	evidence, err := s.references.Lookup(ctx, reference.Lookup{URL: rawURL})
 	if err != nil {
-		return referenceGrounding{}, true, fmt.Errorf("resolve reference: %w", err)
+		return referenceGrounding{}, true, &referenceReadError{err: fmt.Errorf("resolve reference: %w", err)}
 	}
 	titles := boundedReferenceTitles(evidence.TitleAnchors)
 	if len(titles) == 0 {

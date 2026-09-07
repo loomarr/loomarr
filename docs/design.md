@@ -1773,6 +1773,74 @@ Intent, claim bounded work, complete/fail one claimed Attempt, and inspect/list 
 snapshots. The Store and the model/catalog runner are private ports inside that implementation; API,
 worker, and frontend callers do not reconstruct lifecycle rules from raw Job/Proposal/Channel reads.
 
+A failed Journey preserves its stable outer failure code and adds a closed `reason` category and
+`recoveryAction`, with fixed server-owned explanation and guidance. The reason distinguishes
+reference retrieval, no catalog match, unverified named-set membership, contradictory constraints,
+unclear date semantics, invalid tool-call exhaustion, provider timeout/unavailability, and otherwise
+unclassified generation failure. Recovery actions name the useful next step: edit the reference,
+broaden the request, provide examples, resolve constraints, clarify dates, simplify the request, or
+retry later. These describe recovery; only the Journey's existing server-authorized actions grant
+permission to edit, retry, or inspect AI settings. A member is never instructed to change an
+administrator-only setting as their required recovery step.
+
+The fixed projection keeps malformed final JSON separate from invalid tool arguments: the former
+uses `provider_response_invalid` with `retry_later`; only an explicit invalid-tool terminal uses
+`invalid_tool_calls` with `retry_later`. Ordinary exhausted discovery without that terminal uses
+`discovery_budget_exhausted` with `simplify_request`. Provider timeout and provider unavailability
+remain distinct reasons with `retry_later`. Retry guidance explains the failed provider stage and,
+if it repeats, points to the existing authorized AI-check action or asking an administrator; it does
+not assert that the user's request caused a provider protocol error. New producer-specific reasons
+remain unavailable until their allowlisted typed evidence exists; generic outer codes do not invent
+that evidence.
+
+The existing `retrieval_failure` terminal covers both reference and catalog operations. It therefore
+projects as `retrieval_unavailable` with `retry_later`; it does not assert that the reference page
+was unreadable. `reference_unreadable` and `edit_reference` require a distinct typed terminal from
+the reference-read stage. A catalog lookup failure after successful reference retrieval must retain
+the retrieval-unavailable advice. Invalid-tool guidance likewise names the failed AI catalog-search
+stage rather than collapsing to an unexplained retry.
+
+Only allowlisted typed producer evidence selects a specific reason; it takes precedence over a
+less-specific stable outer code. Unknown evidence uses the bounded generic reason and cannot enter
+copy. Failure projections for the builder, My Requests, and attempt history expose no raw provider
+error, prompt, model response, fetched text, credential, private Library title, candidate identity,
+or arbitrary diagnostic string. Internal decision traces remain available to their existing private
+consumers; requester-facing failure traces retain only validated terminal vocabulary and aggregate
+counts. Pre-submit field validation supplies actionable local feedback without inventing a Job or
+Journey. A failed execution materializes neither a Proposal nor a Channel.
+
+Failure producers preserve the existing discovery, repair, and source-query budgets. A tool round
+has a typed validity outcome: unsupported tools and rejected argument shapes are invalid; valid
+empty searches and retrieval failures are distinct outcomes. Exhaustion reports `invalid_tool_calls`
+only when every consumed tool round was invalid; mixed rounds retain the general discovery-budget
+reason. Malformed final JSON remains a separate terminal. Only an actual provider-turn deadline
+selects `provider_timeout`; catalog/reference deadlines do not become provider failures. A failed
+public-page read can select `reference_unreadable`, while catalog failure after a successful read
+continues to select retrieval unavailability. A missing resolver is infrastructure unavailability,
+not evidence that the supplied page is bad. Named-set failure requires existing typed membership
+rejection evidence, never a broad-match count or a newly inferred keyword rule. Before inference,
+nonempty include and exclude constraints that are identical after case and whitespace normalization
+are contradictory. This exact conflict check does not interpret dates or other natural-language
+relationships, and invalid model interpretations continue through the existing bounded repair path.
+
+Named-set recovery derives from the existing membership grounding check. A private typed outcome
+may record that a final selection was empty solely because otherwise grounded candidate identities
+lacked the required membership evidence. Both tool-surfaced picks and direct-final exact-title
+resolution carry that outcome through the final boundary as `named_set_unproven`; a real catalog
+identity alone still cannot prove membership. Mixed rejection causes, unresolved or unsurfaced
+identities, ordinary empty searches, and catalog failures retain their own existing outcomes rather
+than acquiring a named-set explanation. The evidence is captured at the rejecting branch, not
+reconstructed from a trace string, a keyword scan, or an earlier failed attempt. It changes no search,
+repair, approval, or grounding rule and exposes no rejected identity to the requester.
+
+Date-conflict evidence must prove an empty intersection of source-anchored windows joined as
+requirements on the same semantic axis. A union and separate premiere/airing axes are not a
+contradiction. A model interpretation is a hypothesis: invalid or unanchored model claims consume
+bounded repair capacity and cannot blame the user's request. A clarification reason requires actual
+ambiguous request evidence. Both tool execution and final Proposal construction enforce any required
+validated interpretation; omission cannot bypass it. The concrete interpretation schema and its
+immutable certification fixtures must be documented before implementing that producer.
+
 The Proposal Job id is the correlation spine, not a mega-state-machine key that steals domain
 ownership. A Proposal remains the grounded artifact and approval audit. Approval remains the only
 authority to create acquisitions and atomically materializes the intent-bound Channel. The Channel

@@ -1480,6 +1480,163 @@ func TestSuggest_RepairsMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestSuggest_FailureProducers(t *testing.T) {
+	terminal := func(t *testing.T, err error, want string) {
+		t.Helper()
+		var failure *suggest.Failure
+		if !errors.As(err, &failure) || failure.Trace.Terminal != want {
+			t.Fatalf("failure = %#v, want terminal %q", err, want)
+		}
+	}
+	t.Run("all invalid tool rounds", func(t *testing.T) {
+		responses := make([]llm.Response, 6)
+		for i := range responses {
+			responses[i] = testkit.ToolCallResponse("unsupported", nil)
+		}
+		_, err := buildSuggester(t, testkit.NewLLM(responses...)).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
+		terminal(t, err, suggest.TerminalInvalidToolCalls)
+	})
+	t.Run("six malformed catalog calls are invalid", func(t *testing.T) {
+		arguments := []map[string]any{
+			{"query": 1},
+			{"query": "  "},
+			{"genres": "science fiction"},
+			{"media_type": "documentary", "network": "HBO"},
+			{"runtime_min": 90, "runtime_max": 30},
+			{"vote_average_min": 11},
+		}
+		responses := make([]llm.Response, 0, len(arguments))
+		for _, args := range arguments {
+			responses = append(responses, testkit.ToolCallResponse("catalog_search", args))
+		}
+		model := testkit.NewLLM(responses...)
+		_, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
+		terminal(t, err, suggest.TerminalInvalidToolCalls)
+		if model.Calls != len(arguments) {
+			t.Fatalf("model calls = %d, want %d malformed calls", model.Calls, len(arguments))
+		}
+	})
+	t.Run("mixed valid and invalid rounds retain budget terminal", func(t *testing.T) {
+		responses := []llm.Response{testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"})}
+		for range 5 {
+			responses = append(responses, testkit.ToolCallResponse("unsupported", nil))
+		}
+		_, err := buildSuggester(t, testkit.NewLLM(responses...)).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
+		terminal(t, err, suggest.FailureBudgetExhausted)
+	})
+	t.Run("malformed final JSON stays separate", func(t *testing.T) {
+		_, err := buildSuggester(t, testkit.NewLLM(
+			testkit.FinalResponse("not json"), testkit.FinalResponse("still not json"), testkit.FinalResponse("again not json"),
+		)).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
+		terminal(t, err, suggest.TerminalMalformedExhausted)
+	})
+	t.Run("provider deadline", func(t *testing.T) {
+		model := testkit.NewLLM()
+		model.Errors = []error{context.DeadlineExceeded}
+		_, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
+		terminal(t, err, suggest.TerminalProviderTimeout)
+	})
+	t.Run("caller cancellation with provider cancellation is not provider timeout", func(t *testing.T) {
+		model := testkit.NewLLM()
+		model.Errors = []error{context.Canceled}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := buildSuggester(t, model).Suggest(ctx, suggest.Intent{Description: "science fiction"})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want cancellation", err)
+		}
+		var failure *suggest.Failure
+		if !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalProviderTimeout {
+			t.Fatalf("cancellation was relabeled as provider timeout: %#v", err)
+		}
+	})
+	t.Run("caller cancellation survives a concurrent provider error", func(t *testing.T) {
+		model := testkit.NewLLM()
+		model.Errors = []error{errors.New("provider disconnected")}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := buildSuggester(t, model).Suggest(ctx, suggest.Intent{Description: "science fiction"})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want cancellation", err)
+		}
+		var failure *suggest.Failure
+		if !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalProviderTimeout || failure.Trace.Terminal == suggest.TerminalProviderFailure {
+			t.Fatalf("cancellation was assigned provider blame: %#v", err)
+		}
+	})
+}
+
+func TestSuggest_ConstraintConflictStopsBeforeInference(t *testing.T) {
+	model := testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`))
+	proposal, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{
+		Description: "science fiction", MustInclude: []string{"  The   Matrix "}, MustExclude: []string{"the matrix"},
+	})
+	var failure *suggest.Failure
+	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalConstraintsConflict {
+		t.Fatalf("error = %#v, want constraints conflict", err)
+	}
+	if model.Calls != 0 || len(proposal.Lineup) != 0 || len(proposal.Acquisitions) != 0 {
+		t.Fatalf("conflict ran inference or produced proposal: calls=%d proposal=%+v", model.Calls, proposal)
+	}
+
+	model = testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`))
+	_, err = buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{
+		Description: "science fiction", MustInclude: []string{"The Matrix"}, MustExclude: []string{"The Matrix Reloaded"},
+	})
+	if model.Calls == 0 || err == nil {
+		t.Fatalf("distinct constraints should reach ordinary inference: calls=%d err=%v", model.Calls, err)
+	}
+}
+
+func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T) {
+	intent := suggest.Intent{Description: "Use https://lineups.example/friday"}
+	model := testkit.NewLLM()
+	_, err := buildSuggester(t, model).WithReferences(&testkit.ReferenceResolver{Err: errors.New("page unavailable")}).Suggest(context.Background(), intent)
+	var failure *suggest.Failure
+	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalReferenceUnreadable || model.Calls != 0 {
+		t.Fatalf("read failure = %#v, calls=%d", err, model.Calls)
+	}
+	model = testkit.NewLLM()
+	_, err = buildSuggester(t, model).Suggest(context.Background(), intent)
+	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalRetrievalFailure || model.Calls != 0 {
+		t.Fatalf("missing resolver = %#v, calls=%d", err, model.Calls)
+	}
+
+	ms := testkit.NewMediaServer(t)
+	ms.Close() // the shared adapter now reports a local catalog transport failure.
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model = testkit.NewLLM()
+	_, err = suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+		WithReferences(&testkit.ReferenceResolver{Evidence: reference.Evidence{TitleAnchors: []string{"The Matrix"}}}).
+		Suggest(context.Background(), intent)
+	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalRetrievalFailure || model.Calls != 0 {
+		t.Fatalf("catalog failure after successful reference read = %#v, calls=%d", err, model.Calls)
+	}
+	t.Run("wrapped lookup cancellation is not page unreadable", func(t *testing.T) {
+		model := testkit.NewLLM()
+		_, err := buildSuggester(t, model).WithReferences(&testkit.ReferenceResolver{Err: fmt.Errorf("lookup interrupted: %w", context.Canceled)}).Suggest(context.Background(), intent)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want cancellation", err)
+		}
+		if !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalReferenceUnreadable || model.Calls != 0 {
+			t.Fatalf("lookup cancellation was assigned page blame: %#v, calls=%d", err, model.Calls)
+		}
+	})
+	t.Run("caller cancellation survives concurrent lookup error", func(t *testing.T) {
+		model := testkit.NewLLM()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := buildSuggester(t, model).WithReferences(&testkit.ReferenceResolver{Err: errors.New("resolver connection reset")}).Suggest(ctx, intent)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want cancellation", err)
+		}
+		if !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalReferenceUnreadable || model.Calls != 0 {
+			t.Fatalf("caller cancellation was assigned page blame: %#v, calls=%d", err, model.Calls)
+		}
+	})
+}
+
 // T0.4: a run that grounds NOTHING (every pick fabricated) returns
 // ErrNoGroundedTitles — a clear failure, not a silent empty success.
 func TestSuggest_AllFabricated_ErrNoGroundedTitles(t *testing.T) {
@@ -1535,6 +1692,71 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 			prop, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
 			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
 				t.Fatalf("unsubstantiated reference picks should fail closed, got error %v and trace %+v", err, prop.Trace)
+			}
+			var failure *suggest.Failure
+			if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.TerminalNamedSetUnproven {
+				t.Fatalf("unsubstantiated members = %#v, want named-set recovery terminal", err)
+			}
+		})
+	}
+}
+
+func TestSuggest_NamedSetDirectFinalExactIdentityWithoutMembershipIsRecoverable(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
+		Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
+	})
+	s := suggest.New(
+		testkit.NewLLM(testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"}]}`)),
+		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil), nil, 10,
+	)
+
+	_, err := s.Suggest(context.Background(), suggest.Intent{Description: "Criterion Collection"})
+	var failure *suggest.Failure
+	if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.TerminalNamedSetUnproven {
+		t.Fatalf("direct final unproven member = %#v, want named-set recovery terminal", err)
+	}
+}
+
+func TestSuggest_NamedSetMembershipIsNotAppliedToMixedOrOrdinaryEmptyFailures(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
+		Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
+	})
+	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
+	for _, tc := range []struct {
+		name, description string
+		responses         []llm.Response
+	}{
+		{
+			name: "mixed membership and unsurfaced identity", description: "Criterion Collection",
+			responses: []llm.Response{
+				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives"}}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},{"mediaType":"series","tvdbId":99999,"name":"Invented"}]}`),
+			},
+		},
+		{
+			name: "direct final mixed membership and unresolved title", description: "Criterion Collection",
+			responses: []llm.Response{
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},{"mediaType":"series","tvdbId":99999,"name":"Missing Title"}]}`),
+			},
+		},
+		{
+			name: "ordinary empty exact-title search", description: "family comedy",
+			responses: []llm.Response{
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Missing Title"}]}`),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			model := testkit.NewLLM(tc.responses...)
+			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+			_, err := s.Suggest(context.Background(), suggest.Intent{Description: tc.description})
+			var failure *suggest.Failure
+			if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalNamedSetUnproven {
+				t.Fatalf("failure = %#v, must retain its non-membership classification", err)
 			}
 		})
 	}

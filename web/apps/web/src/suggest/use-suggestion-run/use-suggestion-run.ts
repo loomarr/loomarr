@@ -17,11 +17,18 @@ const ACTIVE_JOB_KEY = "loomarr.activeProposalJob";
 // Detailed phases (searching · reasoning · scoring) are transient SSE hints. The
 // Proposal Job Journey is the durable source of truth, restored from session storage
 // after reload and polled while generating; SSE only invalidates that same read sooner.
-const useSuggestionRun = (): SuggestionRun => {
+const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
   const queryClient = useQueryClient();
-  const [jobId, setJobIdState] = useState<string | undefined>(() =>
-    typeof window === "undefined" ? undefined : (window.sessionStorage.getItem(ACTIVE_JOB_KEY) ?? undefined),
+  const [jobId, setJobIdState] = useState<string | undefined>(
+    () =>
+      initialJobId ??
+      (typeof window === "undefined"
+        ? undefined
+        : (window.sessionStorage.getItem(ACTIVE_JOB_KEY) ?? undefined)),
   );
+  // Keep the complete intent after an authorized edit clears the finished job. The form must
+  // retain constraints; its description alone is not an honest retry of the request.
+  const [intent, setIntent] = useState<Intent | undefined>();
   const [phase, setPhase] = useState<SuggestionPhase | undefined>();
   const [round, setRound] = useState<number | undefined>();
 
@@ -53,6 +60,7 @@ const useSuggestionRun = (): SuggestionRun => {
     else window.sessionStorage.removeItem(ACTIVE_JOB_KEY);
   };
   const start = (intent: Intent) => {
+    setIntent(intent);
     setPhase(undefined);
     setRound(undefined);
     submit.mutate({ data: intent }, { onSuccess: (res) => res.status === 200 && setJobId(res.data.jobId) });
@@ -63,16 +71,19 @@ const useSuggestionRun = (): SuggestionRun => {
     round,
     proposal: journey?.proposal,
     failure: journey?.failure,
+    intent: journey?.intent ?? intent,
     actions: journey?.actions ?? [],
     isRunning: jobId !== undefined && (!journey || journey.milestone === "generating"),
     failed: journey?.milestone === "failed",
     error: submit.error ?? journeyQuery.error,
     start,
     retry: () => journey && start(journey.intent),
-    reset: () => {
+    reset: (preserveIntent = false) => {
+      if (preserveIntent && journey?.intent) setIntent(journey.intent);
       setJobId(undefined);
       setPhase(undefined);
       setRound(undefined);
+      if (!preserveIntent) setIntent(undefined);
     },
   };
 };
