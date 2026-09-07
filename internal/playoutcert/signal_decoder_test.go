@@ -35,6 +35,7 @@ func TestParseAudioSignalsAcceptsSilenceSentinel(t *testing.T) {
 func TestSignalMetadataRejectsMalformedRecords(t *testing.T) {
 	cases := []string{
 		"frame:0 pts:1\nlavfi.signalstats.YAVG=1\n",
+		"frame:0 pts:1 pts_time:0\nlavfi.signalstats.YAVG=1\ntrailing malformed fragment",
 		"frame:0 pts:1 pts_time:0\nlavfi.signalstats.YAVG=1\nlavfi.signalstats.YAVG=2\n",
 		"frame:1 pts:2 pts_time:0\nlavfi.signalstats.YAVG=1\nframe:1 pts:3 pts_time:0\nlavfi.signalstats.YAVG=1\n",
 		"frame:1 pts:2 pts_time:0\nlavfi.signalstats.YAVG=1\nframe:2 pts:1 pts_time:0\nlavfi.signalstats.YAVG=1\n",
@@ -47,6 +48,17 @@ func TestSignalMetadataRejectsMalformedRecords(t *testing.T) {
 				t.Fatal("invalid metadata accepted")
 			}
 		})
+	}
+}
+
+func TestSignalMetadataRejectsMalformedAudioRecordAtEOF(t *testing.T) {
+	raw := "frame:0 pts:1 pts_time:0\n" +
+		"lavfi.astats.Overall.Number_of_samples=1024\n" +
+		"lavfi.astats.1.Zero_crossings_rate=0\n" +
+		"lavfi.astats.1.RMS_level=-20\n" +
+		"trailing malformed fragment"
+	if err := parseAudioSignals(strings.NewReader(raw), func(DecodedAudioSignal) {}); err == nil {
+		t.Fatal("malformed audio metadata accepted")
 	}
 }
 

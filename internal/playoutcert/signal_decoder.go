@@ -194,8 +194,14 @@ func scanSignalRecords(reader io.Reader, consume func(signalRecord) error) error
 			current = &signalRecord{frame: frame, pts: pts, fields: make(map[string]string)}
 			continue
 		}
-		if current == nil || !strings.Contains(line, "=") {
+		if current == nil {
 			continue // bounded FFmpeg diagnostics on stderr are not operator output.
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.Contains(line, "=") {
+			return errors.New("signal metadata record invalid")
 		}
 		key, value, _ := strings.Cut(line, "=")
 		if key == "" || len(current.fields) >= 128 {
