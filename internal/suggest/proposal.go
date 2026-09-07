@@ -63,6 +63,8 @@ type Intent struct {
 	// to the named set. It is execution-only evidence, never model data.
 	membershipKeys    map[provision.Key]bool
 	membershipSources *membershipSourceState
+	curatedTitleKey   provision.Key
+	curatedTitleSet   bool
 	// DiscoveryScopeID is internal execution context for channel-specific explicit
 	// feedback during re-curation. It never enters the API or persisted intent JSON.
 	DiscoveryScopeID string `json:"-"`

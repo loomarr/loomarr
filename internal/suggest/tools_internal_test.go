@@ -2,14 +2,59 @@ package suggest
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
+
+func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Series, Name: "Simpsons", Year: 2020, TMDBID: 9001},
+		{MediaType: provision.Series, Name: "The Simpsons", Year: 1989, TMDBID: 456},
+	}}
+	s := New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"mode": "collection", "media_type": "series",
+			"titles": []any{map[string]any{"name": "The Simpsons", "year": float64(1989)}},
+		}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+	), catalog.New(nil, corpus), nil, 10)
+
+	_, err := s.Suggest(context.Background(), Intent{Description: "Classic Simpsons"})
+	if !errors.Is(err, ErrNoGroundedTitles) {
+		t.Fatalf("model type/year steering admitted ambiguous curated subject: %v", err)
+	}
+	searches := corpus.Searches()
+	if len(searches) < 2 || searches[0].Query != "Simpsons" || searches[1].Query != "The Simpsons" {
+		t.Fatalf("source searches = %+v, want raw user subject before canonical model query", searches)
+	}
+}
+
+func TestGroundCuratedTitleSubjectTreatsDuplicateKeyRowsAsOneIdentity(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Series, Name: "The Simpsons", Year: 1989, TMDBID: 456},
+		{MediaType: provision.Series, Name: "The Simpsons", Year: 1989, TMDBID: 456},
+	}}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	intent := Intent{Description: "Classic Simpsons", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+
+	candidates, err := s.groundCuratedTitleSubject(context.Background(), &intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || intent.curatedTitleKey != provision.Key("series:tmdb:456") || len(intent.membershipKeys) != 1 {
+		t.Fatalf("duplicate-key grounding = candidates %+v intent %+v", candidates, intent)
+	}
+	if searches := corpus.Searches(); len(searches) != 1 || searches[0].Query != "Simpsons" {
+		t.Fatalf("source searches = %+v, want one raw-subject lookup", searches)
+	}
+}
 
 func TestParseDiscoveryQueryValidatesAndNormalizesScalarQualifiers(t *testing.T) {
 	got, discovery, err := parseDiscoveryQuery(map[string]any{

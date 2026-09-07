@@ -195,6 +195,8 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 		"a named Friday-night family sitcom collection",
 		"Criterion Collection lineup",
 		"Lantern Collection",
+		"Classic Simpsons",
+		"Criterion Channel classics",
 		"TGIF like the 90s, with shows from the ABC network",
 		"make a channel for FFS like the 90s",
 		"shows from NBN",
@@ -217,7 +219,6 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 		"1990s family comedies",
 		"Comedy",
 		"Science Fiction",
-		"Classic Simpsons",
 	} {
 		if requiresMembershipEvidence(Intent{Description: description}) {
 			t.Fatalf("ordinary theme request was over-gated: %q", description)

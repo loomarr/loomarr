@@ -183,6 +183,9 @@ func requiresMembershipEvidence(intent Intent) bool {
 		namedCollectionPhrasePattern.MatchString(text) {
 		return true
 	}
+	if _, found := curatedTitleSubject(intent); found {
+		return true
+	}
 	return acronymNamesSet(text) || properNamedSetPattern.MatchString(text) ||
 		bareProperNameNamesSet(intent.Description) || bareProperNameNamesSet(intent.RefineText)
 }
@@ -198,7 +201,111 @@ func bareProperNameNamesSet(text string) bool {
 		bareProperNamePattern.FindString(name) != name {
 		return false
 	}
-	return !intentRequestsCuratedEpisodes(Intent{Description: text})
+	return true
+}
+
+// curatedTitleSubject extracts a proper-name title adjacent to the existing
+// curated-episode cue vocabulary. Description and refinement are considered
+// independently so a cue in one field cannot rewrite another field's subject.
+func curatedTitleSubject(intent Intent) (string, bool) {
+	for _, field := range []string{intent.Description, intent.RefineText} {
+		if subject, found := curatedTitleSubjectInField(field); found {
+			return subject, true
+		}
+	}
+	return "", false
+}
+
+func curatedTitleSubjectInField(field string) (string, bool) {
+	words := strings.Fields(strings.Trim(strings.TrimSpace(field), ".,;:!?()[]{}\"'"))
+	if len(words) < 2 {
+		return "", false
+	}
+	if last := strings.ToLower(strings.Trim(words[len(words)-1], ".,;:!?()[]{}\"'")); last == "episode" || last == "episodes" {
+		words = words[:len(words)-1]
+	}
+	if len(words) < 2 {
+		return "", false
+	}
+	isCue := func(word string) bool {
+		word = strings.ToLower(strings.Trim(word, ".,;:!?()[]{}\"'"))
+		for _, cue := range curatedEpisodeCues {
+			if word == cue {
+				return true
+			}
+		}
+		return false
+	}
+	var subjectWords []string
+	if isCue(words[0]) {
+		subjectWords = words[1:]
+	} else if isCue(words[len(words)-1]) {
+		subjectWords = words[:len(words)-1]
+	} else {
+		return "", false
+	}
+	subject := strings.Trim(strings.Join(subjectWords, " "), ".,;:!?()[]{}\"'")
+	if subject == "" || subject == "The" || tmdb.IsKnownGenre(subject) || bareProperNamePattern.FindString(subject) != subject {
+		return "", false
+	}
+	return subject, true
+}
+
+func sameCuratedTitleSubject(candidate, subject string) bool {
+	if sameExactTitle(candidate, subject) {
+		return true
+	}
+	trimThe := func(value string) string {
+		fields := strings.Fields(value)
+		if len(fields) > 1 && strings.EqualFold(fields[0], "the") {
+			return strings.Join(fields[1:], " ")
+		}
+		return value
+	}
+	return sameExactTitle(trimThe(candidate), trimThe(subject))
+}
+
+func unambiguousCuratedTitleCandidate(candidates []catalog.Candidate, subject string) (catalog.Candidate, bool) {
+	byKey := make(map[provision.Key]catalog.Candidate)
+	for _, candidate := range candidates {
+		if !sameCuratedTitleSubject(candidate.Name, subject) {
+			continue
+		}
+		if key, err := candidate.Key(); err == nil {
+			byKey[key] = candidate
+		}
+	}
+	if len(byKey) != 1 {
+		return catalog.Candidate{}, false
+	}
+	for _, candidate := range byKey {
+		return candidate, true
+	}
+	return catalog.Candidate{}, false
+}
+
+func (s *Suggester) groundCuratedTitleSubject(ctx context.Context, intent *Intent) ([]catalog.Candidate, error) {
+	subject, found := curatedTitleSubject(*intent)
+	if !found {
+		return nil, nil
+	}
+	intent.curatedTitleSet = true
+	if intent.membershipSources.searches >= maxMembershipSourceQueries {
+		return nil, nil
+	}
+	intent.membershipSources.searches++
+	candidates, err := s.catalog.Search(ctx, subject, catalog.ScopeAll, catalogSearchLimit)
+	if err != nil {
+		return nil, fmt.Errorf("search curated title subject %q: %w", subject, err)
+	}
+	candidate, found := unambiguousCuratedTitleCandidate(candidates, subject)
+	if !found {
+		return nil, nil
+	}
+	key, _ := candidate.Key()
+	intent.curatedTitleKey = key
+	intent.membershipKeys[key] = true
+	return []catalog.Candidate{candidate}, nil
 }
 
 // positiveIntentOrReferenceNamesTitle verifies the provenance of a catalog title.

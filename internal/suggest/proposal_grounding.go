@@ -40,7 +40,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			continue // a resolved reference cannot be padded with an unrelated grounded id
 		}
 		if requiresMembershipEvidence(intent) {
-			if !intent.membershipKeys[provision.Key(key)] {
+			if !intent.membershipKeys[provision.Key(key)] || (intent.curatedTitleSet && intent.curatedTitleKey != provision.Key(key)) {
 				traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
 				continue // identity is real, but it was not explicitly enumerated as a member
 			}
@@ -149,6 +149,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 }
 
 func membershipItemRationale(intent Intent, key provision.Key) string {
+	if intent.curatedTitleSet && intent.curatedTitleKey == key {
+		return "Included because your curated-title subject resolves to this Catalog title."
+	}
 	if intent.referenceKeys[key] {
 		return "Included because the resolved public reference names this title as a constituent."
 	}

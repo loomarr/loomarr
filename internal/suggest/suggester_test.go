@@ -1554,6 +1554,10 @@ func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) 
 		{description: "Criterion Channel", query: "criterion", name: "Criterion Comedy"},
 		{description: "Lantern", query: "lantern", name: "Lantern Comedy"},
 		{description: "Lantern Parade", query: "lantern", name: "Lantern Comedy"},
+		{description: "Criterion Channel Classics", query: "criterion", name: "Criterion Comedy"},
+		{description: "Criterion Channel classics", query: "criterion", name: "Criterion Comedy"},
+		{description: "Classic Criterion Channel", query: "criterion", name: "Criterion Comedy"},
+		{description: "Lantern Parade Highlights", query: "lantern", name: "Lantern Comedy"},
 	} {
 		t.Run(tc.description, func(t *testing.T) {
 			ms := testkit.NewMediaServer(t)

@@ -186,6 +186,10 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		cause := fmt.Errorf("%w: reference titles were not found in the configured catalog", ErrNoGroundedTitles)
 		return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, cause)
 	}
+	curatedTitle, curatedTitleErr := s.groundCuratedTitleSubject(ctx, &intent)
+	if curatedTitleErr != nil {
+		return Proposal{}, curatedTitleErr
+	}
 	explicitMembers, explicitMembersErr := s.groundExplicitMembershipAnchors(ctx, &intent)
 	if explicitMembersErr != nil {
 		return Proposal{}, explicitMembersErr
@@ -214,6 +218,11 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		}
 	}
 	for _, candidate := range explicitMembers {
+		if key, err := candidate.Key(); err == nil {
+			surfaced[key] = candidate
+		}
+	}
+	for _, candidate := range curatedTitle {
 		if key, err := candidate.Key(); err == nil {
 			surfaced[key] = candidate
 		}
