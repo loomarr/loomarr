@@ -14,24 +14,28 @@ const decision = (over: Partial<FillerDecisionOverviewDTO> = {}): FillerDecision
   ...over,
 });
 
-const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO => ({
-  ready: true,
-  nextAction: "none",
-  fetch: { enabled: true, catalogClips: 25 },
-  pipeline: {
-    runnable: 0,
-    scheduled: 0,
-    inProgress: 0,
-    needsDecision: 0,
-    recoverable: 0,
-    admitted: 25,
-    rejected: 0,
-    dismissed: 0,
-  },
-  pool: { clips: 25, commercials: 20, eligible: 18, untagged: 0, channels: [] },
-  acquisitions: [],
-  ...over,
-});
+const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO => {
+  const { repairs, ...rest } = over;
+  return {
+    ready: true,
+    nextAction: "none",
+    repairs: repairs ?? { count: 0 },
+    fetch: { enabled: true, catalogClips: 25 },
+    pipeline: {
+      runnable: 0,
+      scheduled: 0,
+      inProgress: 0,
+      needsDecision: 0,
+      recoverable: 0,
+      admitted: 25,
+      rejected: 0,
+      dismissed: 0,
+    },
+    pool: { clips: 25, commercials: 20, eligible: 18, untagged: 0, channels: [] },
+    acquisitions: [],
+    ...rest,
+  };
+};
 
 const show = (overview: FillerDecisionOverviewDTO, coverage: FillerReadinessDTO = readiness()) => {
   server.use(getFillerDecisionOverviewMockHandler(overview), getFillerReadinessMockHandler(coverage));
@@ -67,7 +71,7 @@ describe("FillerOverview", () => {
     );
 
     expect(await screen.findByText("A few clips need your judgment")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Review clips" })).toHaveAttribute("href", "/filler/attention");
+    expect(screen.getByRole("link", { name: "Review clips" })).toHaveAttribute("href", "/filler/incoming");
     const summary = screen.getByRole("heading", { name: "Admission summary" }).parentElement?.parentElement;
     expect(summary).toBeTruthy();
     expect(within(summary as HTMLElement).getByText("18")).toBeInTheDocument();

@@ -16,12 +16,15 @@ import (
 
 	"github.com/loomarr/loomarr/internal/fillereval"
 	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
 
 const (
-	OpenRouterSnapshotSchemaVersion = 2
+	OpenRouterSnapshotSchemaVersion = 3
+	legacyOpenRouterSnapshotSchema  = 2
 	maxSnapshotModels               = 16
 	maxSnapshotEndpoints            = 256
+	maxSnapshotPricingOverrides     = 4
 	maxSnapshotResponseBytes        = 8 << 20
 	maxSnapshotTotalBytes           = 32 << 20
 	maxSnapshotAge                  = 24 * time.Hour
@@ -29,45 +32,16 @@ const (
 
 // OpenRouterSnapshot is the immutable capability, endpoint-price, and ZDR
 // evidence used to bind one paid certification run.
-type OpenRouterSnapshot struct {
-	SchemaVersion int                       `json:"schemaVersion"`
-	SourceBaseURL string                    `json:"sourceBaseUrl"`
-	RetrievedAt   time.Time                 `json:"retrievedAt"`
-	Requests      int                       `json:"requests"`
-	ResponseBytes int64                     `json:"responseBytes"`
-	Models        []OpenRouterModelSnapshot `json:"models"`
-}
-
-type OpenRouterModelSnapshot struct {
-	ID               string                       `json:"id"`
-	CanonicalSlug    string                       `json:"canonicalSlug"`
-	Name             string                       `json:"name"`
-	Created          int64                        `json:"created"`
-	InputModalities  []string                     `json:"inputModalities"`
-	OutputModalities []string                     `json:"outputModalities"`
-	Endpoints        []OpenRouterEndpointSnapshot `json:"endpoints"`
-}
-
-type OpenRouterEndpointSnapshot struct {
-	Name                  string            `json:"name"`
-	ModelID               string            `json:"modelId"`
-	ProviderName          string            `json:"providerName"`
-	ProviderSlug          string            `json:"providerSlug"`
-	Quantization          string            `json:"quantization"`
-	ContextLength         int64             `json:"contextLength"`
-	MaxCompletionTokens   int64             `json:"maxCompletionTokens,omitempty"`
-	MaxPromptTokens       int64             `json:"maxPromptTokens,omitempty"`
-	SupportedParameters   []string          `json:"supportedParameters"`
-	Pricing               map[string]string `json:"pricing"`
-	Status                int               `json:"status"`
-	ZDR                   bool              `json:"zdr"`
-	SupportsImplicitCache bool              `json:"supportsImplicitCaching"`
-}
+type OpenRouterSnapshot = openroutermedia.CapabilitySnapshot
+type OpenRouterModelSnapshot = openroutermedia.CapabilityModelSnapshot
+type OpenRouterEndpointSnapshot = openroutermedia.CapabilityEndpointSnapshot
+type OpenRouterPricingOverride = openroutermedia.PricingOverride
 
 type OpenRouterSnapshotConfig struct {
 	BaseURL              string
 	APIKey               string
 	Models               []string
+	OutputModality       string
 	RetrievedAt          time.Time
 	Client               *http.Client
 	AllowInsecureTestURL bool
@@ -132,7 +106,15 @@ func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfi
 	snapshot := OpenRouterSnapshot{SchemaVersion: OpenRouterSnapshotSchemaVersion, SourceBaseURL: baseURL, RetrievedAt: config.RetrievedAt.UTC()}
 	var totalBytes int64
 	var catalog openRouterModelsResponse
-	read, err := getOpenRouterJSON(ctx, client, baseURL+"/models", config.APIKey, &catalog)
+	catalogURL := baseURL + "/models"
+	if config.OutputModality != "" {
+		if !validOpenRouterCatalogModality(config.OutputModality) {
+			return OpenRouterSnapshot{}, fmt.Errorf("OpenRouter snapshot output modality %q is invalid", config.OutputModality)
+		}
+		query := url.Values{"output_modalities": []string{config.OutputModality}}
+		catalogURL += "?" + query.Encode()
+	}
+	read, err := getOpenRouterJSON(ctx, client, catalogURL, config.APIKey, &catalog)
 	if err != nil {
 		return OpenRouterSnapshot{}, fmt.Errorf("fetch OpenRouter model catalog: %w", err)
 	}
@@ -192,7 +174,7 @@ func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfi
 			return OpenRouterSnapshot{}, fmt.Errorf("OpenRouter model %q returned an invalid endpoint count", modelID)
 		}
 		for _, wire := range response.Data.Endpoints {
-			pricing, err := normalizeOpenRouterPricing(wire.Pricing)
+			pricing, pricingOverrides, err := normalizeOpenRouterEndpointPricing(wire.Pricing)
 			if err != nil {
 				return OpenRouterSnapshot{}, fmt.Errorf("OpenRouter model %q endpoint %q pricing: %w", modelID, wire.Tag, err)
 			}
@@ -201,7 +183,7 @@ func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfi
 				Name: wire.Name, ModelID: wire.ModelID, ProviderName: wire.ProviderName, ProviderSlug: wire.Tag,
 				Quantization: wire.Quantization, ContextLength: wire.ContextLength,
 				MaxCompletionTokens: wire.MaxCompletionTokens, MaxPromptTokens: wire.MaxPromptTokens,
-				SupportedParameters: sortedUnique(wire.SupportedParameters), Pricing: pricing,
+				SupportedParameters: sortedUnique(wire.SupportedParameters), Pricing: pricing, PricingOverrides: pricingOverrides,
 				Status: wire.Status, ZDR: isZDR, SupportsImplicitCache: wire.SupportsImplicitCaching,
 			})
 		}
@@ -218,6 +200,18 @@ func FetchOpenRouterSnapshot(ctx context.Context, config OpenRouterSnapshotConfi
 		return OpenRouterSnapshot{}, err
 	}
 	return snapshot, nil
+}
+
+func validOpenRouterCatalogModality(value string) bool {
+	if value == "" || len(value) > 32 {
+		return false
+	}
+	for _, r := range value {
+		if (r < 'a' || r > 'z') && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func openRouterMetadataTransport(config OpenRouterSnapshotConfig) (string, *http.Client, error) {
@@ -299,6 +293,9 @@ func openRouterEndpointKey(endpoint openRouterEndpointWire) string {
 func normalizeOpenRouterPricing(raw map[string]json.RawMessage) (map[string]string, error) {
 	pricing := make(map[string]string, len(raw))
 	for name, value := range raw {
+		if name == "overrides" {
+			continue
+		}
 		if len(name) > maxFieldBytes {
 			return nil, fmt.Errorf("price key is too long")
 		}
@@ -321,6 +318,66 @@ func normalizeOpenRouterPricing(raw map[string]json.RawMessage) (map[string]stri
 	return pricing, nil
 }
 
+func normalizeOpenRouterEndpointPricing(raw map[string]json.RawMessage) (map[string]string, []OpenRouterPricingOverride, error) {
+	pricing, err := normalizeOpenRouterPricing(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	rawOverrides, ok := raw["overrides"]
+	if !ok || bytes.Equal(bytes.TrimSpace(rawOverrides), []byte("null")) {
+		return pricing, nil, nil
+	}
+	var wireOverrides []map[string]json.RawMessage
+	if err := json.Unmarshal(rawOverrides, &wireOverrides); err != nil {
+		return nil, nil, fmt.Errorf("price overrides are not an array: %w", err)
+	}
+	if len(wireOverrides) == 0 || len(wireOverrides) > maxSnapshotPricingOverrides {
+		return nil, nil, fmt.Errorf("price overrides require between one and %d tiers", maxSnapshotPricingOverrides)
+	}
+	overrides := make([]OpenRouterPricingOverride, 0, len(wireOverrides))
+	for _, wire := range wireOverrides {
+		rawThreshold, ok := wire["min_prompt_tokens"]
+		if !ok {
+			return nil, nil, fmt.Errorf("price override lacks min_prompt_tokens")
+		}
+		delete(wire, "min_prompt_tokens")
+		var threshold json.Number
+		decoder := json.NewDecoder(bytes.NewReader(rawThreshold))
+		decoder.UseNumber()
+		if err := decoder.Decode(&threshold); err != nil {
+			return nil, nil, fmt.Errorf("price override min_prompt_tokens is not an exact integer")
+		}
+		minimumPromptTokens, err := threshold.Int64()
+		if err != nil || minimumPromptTokens <= 0 {
+			return nil, nil, fmt.Errorf("price override min_prompt_tokens must be a positive integer")
+		}
+		tierPricing, err := normalizeOpenRouterPricing(wire)
+		if err != nil {
+			return nil, nil, fmt.Errorf("price override at %d prompt tokens: %w", minimumPromptTokens, err)
+		}
+		if len(tierPricing) == 0 {
+			return nil, nil, fmt.Errorf("price override at %d prompt tokens is empty", minimumPromptTokens)
+		}
+		overrides = append(overrides, OpenRouterPricingOverride{MinimumPromptTokens: minimumPromptTokens, Pricing: tierPricing})
+	}
+	slices.SortFunc(overrides, func(left, right OpenRouterPricingOverride) int {
+		switch {
+		case left.MinimumPromptTokens < right.MinimumPromptTokens:
+			return -1
+		case left.MinimumPromptTokens > right.MinimumPromptTokens:
+			return 1
+		default:
+			return 0
+		}
+	})
+	for index := 1; index < len(overrides); index++ {
+		if overrides[index-1].MinimumPromptTokens == overrides[index].MinimumPromptTokens {
+			return nil, nil, fmt.Errorf("price overrides repeat min_prompt_tokens %d", overrides[index].MinimumPromptTokens)
+		}
+	}
+	return pricing, overrides, nil
+}
+
 func sortedUnique(values []string) []string {
 	result := append([]string(nil), values...)
 	slices.Sort(result)
@@ -337,49 +394,7 @@ func OpenRouterSnapshotSHA256(snapshot OpenRouterSnapshot) string {
 }
 
 func ValidateOpenRouterSnapshot(snapshot OpenRouterSnapshot) error {
-	parsedSource, sourceErr := url.Parse(snapshot.SourceBaseURL)
-	if snapshot.SchemaVersion != OpenRouterSnapshotSchemaVersion || sourceErr != nil || parsedSource.Host == "" || snapshot.RetrievedAt.IsZero() || snapshot.RetrievedAt.Location() != time.UTC {
-		return fmt.Errorf("OpenRouter snapshot requires schema %d and a UTC retrieval time", OpenRouterSnapshotSchemaVersion)
-	}
-	if len(snapshot.Models) == 0 || len(snapshot.Models) > maxSnapshotModels || snapshot.Requests != len(snapshot.Models)+2 || snapshot.ResponseBytes <= 0 || snapshot.ResponseBytes > maxSnapshotTotalBytes {
-		return fmt.Errorf("OpenRouter snapshot has invalid bounded request, response, or model counts")
-	}
-	modelIDs := make([]string, 0, len(snapshot.Models))
-	for _, model := range snapshot.Models {
-		modelIDs = append(modelIDs, model.ID)
-		canonicalOwner, canonicalName, canonical := strings.Cut(model.CanonicalSlug, "/")
-		if model.ID == "" || !canonical || canonicalOwner == "" || canonicalName == "" || strings.Contains(strings.ToLower(model.CanonicalSlug), "latest") || model.Name == "" || model.Created <= 0 || len(model.Endpoints) == 0 || len(model.Endpoints) > maxSnapshotEndpoints || !canonicalStrings(model.InputModalities) || !canonicalStrings(model.OutputModalities) || !slices.Contains(model.OutputModalities, "text") {
-			return fmt.Errorf("OpenRouter snapshot model %q has an invalid bounded identity or architecture", model.ID)
-		}
-		seenEndpoints := make(map[string]struct{}, len(model.Endpoints))
-		previousEndpoint := ""
-		for _, endpoint := range model.Endpoints {
-			key := endpoint.ProviderSlug + "\x00" + endpoint.Name
-			if key < previousEndpoint {
-				return fmt.Errorf("OpenRouter snapshot model %q endpoints are not canonical", model.ID)
-			}
-			previousEndpoint = key
-			if _, exists := seenEndpoints[key]; exists {
-				return fmt.Errorf("OpenRouter snapshot model %q repeats endpoint %q", model.ID, endpoint.ProviderSlug)
-			}
-			seenEndpoints[key] = struct{}{}
-			if endpoint.Name == "" || endpoint.ModelID != model.ID || endpoint.ProviderName == "" || endpoint.ProviderSlug == "" || endpoint.ContextLength <= 0 || endpoint.MaxCompletionTokens < 0 || endpoint.MaxPromptTokens < 0 || !canonicalStrings(endpoint.SupportedParameters) || len(endpoint.Pricing) == 0 || len(endpoint.Pricing) > 32 {
-				return fmt.Errorf("OpenRouter snapshot model %q has an invalid endpoint", model.ID)
-			}
-			for name, price := range endpoint.Pricing {
-				if name == "" || len(name) > maxFieldBytes || price == "" || len(price) > 128 {
-					return fmt.Errorf("OpenRouter snapshot endpoint %q has invalid bounded pricing", endpoint.ProviderSlug)
-				}
-				if _, err := fillereval.USDToNanoCeil(price); err != nil {
-					return fmt.Errorf("OpenRouter snapshot endpoint %q price %q: %w", endpoint.ProviderSlug, name, err)
-				}
-			}
-		}
-	}
-	if !canonicalStrings(modelIDs) {
-		return fmt.Errorf("OpenRouter snapshot models are not canonical")
-	}
-	return nil
+	return openroutermedia.ValidateCapabilitySnapshot(snapshot)
 }
 
 func ValidateOpenRouterRunSnapshot(run fillereval.RunIdentity, routes []Route, snapshot OpenRouterSnapshot) error {
@@ -425,18 +440,6 @@ func ValidateOpenRouterRunSnapshot(run fillereval.RunIdentity, routes []Route, s
 		}
 	}
 	return nil
-}
-
-func canonicalStrings(values []string) bool {
-	if len(values) == 0 || !slices.IsSorted(values) {
-		return false
-	}
-	for index, value := range values {
-		if value == "" || len(value) > maxFieldBytes || (index > 0 && values[index-1] == value) {
-			return false
-		}
-	}
-	return true
 }
 
 func snapshotModel(snapshot OpenRouterSnapshot, id string) (OpenRouterModelSnapshot, bool) {

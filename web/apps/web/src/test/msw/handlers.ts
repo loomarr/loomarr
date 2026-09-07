@@ -159,8 +159,6 @@ const appHandlers = (): RequestHandler[] => [
     decisionsTotal: 0,
     reels: [],
     reelsTotal: 0,
-    recentlyFiled: [],
-    recentlyFiledTotal: 0,
     rejected: [],
     rejectedTotal: 0,
     stageOrder: [],
@@ -190,6 +188,7 @@ const appHandlers = (): RequestHandler[] => [
   getFillerReadinessMockHandler({
     ready: true,
     nextAction: "none",
+    repairs: { count: 0 },
     fetch: { enabled: true, catalogClips: 0 },
     pipeline: {
       runnable: 0,

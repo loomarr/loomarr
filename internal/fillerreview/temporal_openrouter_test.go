@@ -170,6 +170,38 @@ func TestTemporalClaimSchemaUsesPortableStructuredOutputSubset(t *testing.T) {
 	}
 }
 
+func TestTemporalStructureSchemaUsesPortableStructuredOutputSubset(t *testing.T) {
+	schema := temporalStructureOpenRouterSchema(60_000)
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties = %#v", schema["properties"])
+	}
+	segments, ok := properties["segments"].(map[string]any)
+	if !ok {
+		t.Fatalf("segments = %#v", properties["segments"])
+	}
+	items, ok := segments["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("segment items = %#v", segments["items"])
+	}
+	segmentProperties, ok := items["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("segment properties = %#v", items["properties"])
+	}
+	for _, field := range []string{"decisiveAtMs"} {
+		times, ok := segmentProperties[field].(map[string]any)
+		if !ok {
+			t.Fatalf("%s = %#v", field, segmentProperties[field])
+		}
+		if _, unsupported := times["uniqueItems"]; unsupported {
+			t.Fatalf("provider-facing %s contains unsupported uniqueItems: %#v", field, times)
+		}
+		if times["maxItems"] != temporalStructureMaximumDecisiveTimes {
+			t.Fatalf("%s bounds = %#v", field, times)
+		}
+	}
+}
+
 func TestRunOpenRouterTemporalAssessmentTurnsSettledInvalidClaimIntoOperationalFailure(t *testing.T) {
 	packagePath, selectionPath := writeTemporalCalibrationFixture(t)
 	now := time.Unix(20_000, 0).UTC()

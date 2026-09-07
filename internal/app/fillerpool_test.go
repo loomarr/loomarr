@@ -245,7 +245,7 @@ func TestPool_UntaggedCountsTheCatalogNotTheReviewQueue(t *testing.T) {
 		},
 		nil,
 	)
-	if _, err := st.SetClipsHeld(ctx, []string{"held-a.mp4", "held-b.mp4"}, true, false, time.Now().UTC()); err != nil {
+	if _, err := st.HoldClips(ctx, []string{"held-a.mp4", "held-b.mp4"}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 

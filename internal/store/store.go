@@ -15,6 +15,9 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
@@ -427,13 +430,10 @@ type ClipStore interface {
 	// TaxonomyUsage is the library-accounting read model: playable overall/per-axis coverage plus
 	// direct and descendant counts for every taxon. It is computed over the whole catalog, never a UI page.
 	TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error)
-	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
-	//
-	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:
-	// UpsertClip omits both, which is what stops the folder scan filing a held clip by finding
-	// its file still on disk. `autoFiled` marks that no human looked before it became playable,
-	// and is cleared whenever a person decides.
-	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
+	// HoldClips can only remove content from rotation. Releasing playable content belongs to the
+	// applied-admission transaction; confirmed non-airable parents use ReleaseCompositeHolds.
+	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
+	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// UpdateClipClassification edits the non-taxonomy classifier facts (+ ai flag) — the tag
 	// editor (§10) and AI job. Taxonomy writes exclusively own category. suggestedEra records an UNGROUNDED
 	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
@@ -494,6 +494,11 @@ type SplitProposalStore interface {
 	// CompleteSplitConfirmation atomically transitions a fully reviewed split proposal, retained
 	// parent, replacement pipelines, and selected child generation (§10 V65).
 	CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error)
+	// Put/ListStructureSplitShadowDecisions own the immutable V67 compatibility-versus-complete-
+	// plan history. It survives proposal consumption so publication cannot erase disagreement.
+	PutStructureSplitShadowDecision(ctx context.Context, decision filler.StructureSplitShadowDecision) error
+	GetStructureSplitShadowDecision(ctx context.Context, id string) (filler.StructureSplitShadowDecision, bool, error)
+	ListStructureSplitShadowDecisions(ctx context.Context, clipHash string, limit int) ([]filler.StructureSplitShadowDecision, error)
 
 	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
 	//
@@ -547,11 +552,25 @@ type FillerPullStore interface {
 // source definition or approval decision.
 type FillerAcquisitionStore interface {
 	UpsertAcquisitionRun(ctx context.Context, run filler.AcquisitionRun) error
+	// UpsertAcquisitionArtifacts atomically records the exact downloaded-byte manifest before
+	// publication makes any artifact eligible for intake.
+	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []filler.AcquisitionArtifact) error
+	// AcquisitionArtifactForClip resolves provenance and recovery state for a discovered clip.
+	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (filler.AcquisitionArtifact, bool, error)
+	// ListRecoverableAcquisitionArtifacts exposes bounded staged/published/repair work.
+	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]filler.AcquisitionArtifact, error)
+	// ListRecoverableAcquisitionArtifactsAfter continues a stable bounded recovery scan.
+	ListRecoverableAcquisitionArtifactsAfter(ctx context.Context, after filler.AcquisitionArtifactCursor, limit int) ([]filler.AcquisitionArtifact, error)
+	// ListAcquisitionRemoteStates is the acquisition planner's exact-item high-water mark.
+	ListAcquisitionRemoteStates(ctx context.Context) (map[string]filler.ExistingRemoteState, error)
 	// RecoverInterruptedAcquisitionRuns marks work orphaned by the previous process as failed.
 	// The beta is single-replica; startup is therefore the exact ownership boundary.
 	RecoverInterruptedAcquisitionRuns(ctx context.Context, at time.Time) (int, error)
 	GetAcquisitionRun(ctx context.Context, id string, at time.Time) (filler.AcquisitionRun, error)
 	ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]filler.AcquisitionRun, error)
+	// AcquisitionRepairSummary reports all currently unresolved artifact repairs without loading
+	// the bounded acquisition history page.
+	AcquisitionRepairSummary(ctx context.Context) (filler.AcquisitionRepairSummary, error)
 }
 
 // InteractiveOperationStore is the reconnect truth for request-launched asynchronous work. It
@@ -571,10 +590,41 @@ type FillerInferenceStore interface {
 	ListInferenceEvaluations(ctx context.Context, filter InferenceEvaluationFilter) ([]InferenceEvaluation, error)
 }
 
+// FillerStructureAssessmentStore owns the structure-specific journal layered over shared filler
+// inference accounting. Duplicate requests remain visible conflicts rather than implicit retries.
+type FillerStructureAssessmentStore interface {
+	ReserveStructureAssessment(context.Context, fillerstructure.AssessmentReservation, InferenceBudget) (fillerstructure.AssessmentReservationState, error)
+	SettleStructureAssessment(context.Context, fillerstructure.AssessmentRecord) error
+	GetStructureAssessmentLedgerEntry(context.Context, string) (fillerstructure.AssessmentLedgerEntry, error)
+	ListOpenStructureAssessmentLedgerEntries(context.Context, int) ([]fillerstructure.AssessmentLedgerEntry, error)
+	ReserveStructureWindowCall(context.Context, fillerstructurewindow.CallReservation, InferenceBudget) (fillerstructurewindow.CallReservationState, error)
+	SettleStructureWindowCall(context.Context, fillerstructurewindow.CallRecord) error
+	GetStructureWindowCallLedgerEntry(context.Context, string) (fillerstructurewindow.CallLedgerEntry, error)
+	ListOpenStructureWindowCallLedgerEntries(context.Context, int) ([]fillerstructurewindow.CallLedgerEntry, error)
+}
+
 // FillerDecisionStore owns immutable V63 admission results and append-only
 // operator actions. Projection rules remain in fillerdecision.Service.
 type FillerDecisionStore interface {
 	fillerdecision.Repository
+	fillerdecision.AppliedActionRepository
+}
+
+// FillerSafetyStore owns the path-free, append-only execution ledger for the
+// spoken-safety shadow cascade. It is distinct from terminal admission policy.
+type FillerSafetyStore interface {
+	fillersafety.LedgerRepository
+	fillersafety.ExecutionRepository
+	ReserveSpokenSafetyInference(context.Context, SpokenSafetyInferenceReservation, InferenceEvaluation, InferenceBudget) (InferenceEvaluation, fillersafety.LedgerEvent, error)
+	SettleSpokenSafetyInference(context.Context, SpokenSafetyInferenceSettlement, InferenceSettlement) (InferenceEvaluation, fillersafety.LedgerEvent, error)
+	RecoverInterruptedSpokenSafetyRuns(context.Context, time.Time) (int, error)
+}
+
+// FillerRightsStore is the append-only operator-reviewed rights authority used by both rendered-
+// child screening and terminal release. Current-time interpretation remains in filler.Registry;
+// the store owns only immutable history and the atomic current-head pointer.
+type FillerRightsStore interface {
+	filler.FillerRightsGrantRepository
 }
 
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
@@ -606,9 +656,6 @@ type FillerSourceStore interface {
 	// the row keeps its licence and fetch history, and clips it already brought in stay in the
 	// catalog. It only withdraws the source from future searching and downloading.
 	SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error
-	// SetFillerSourceAutoAdmit changes only catalog admission (§10 V57). It does not authorize
-	// acquisition and cannot bypass grounding, matching, or per-channel exclusions.
-	SetFillerSourceAutoAdmit(ctx context.Context, id string, autoAdmit bool) error
 }
 
 // AiringStore records what actually went to air — written from playout only.
@@ -820,7 +867,10 @@ type Store interface {
 	FillerAcquisitionStore
 	InteractiveOperationStore
 	FillerInferenceStore
+	FillerStructureAssessmentStore
 	FillerDecisionStore
+	FillerSafetyStore
+	FillerRightsStore
 	SplitProposalStore
 	AiringStore
 	ActivityStore

@@ -20,6 +20,7 @@ import (
 // authenticated user; tag edit, sync, and the AI-tagging job require admin
 // (filler ingestion is an admin concern, §7).
 func (s *Server) registerFiller(api huma.API) {
+	s.registerFillerScreening(api)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-filler", Method: http.MethodGet, Path: "/v1/filler",
 		Summary: "List filler clips",
@@ -206,7 +207,7 @@ func (s *Server) registerFiller(api huma.API) {
 type rewindFillerClipInput struct {
 	Body struct {
 		Hash  string `json:"hash" minLength:"1"`
-		From  string `json:"from" enum:"probe,transcode,split,language,transcribe,tag,vision,admission,score"`
+		From  string `json:"from" enum:"probe,transcode,split,screen,language,transcribe,tag,vision,admission,score"`
 		Force bool   `json:"force,omitempty"`
 	}
 }
@@ -364,7 +365,7 @@ type ClipDTO struct {
 	// honest case, never a gap to fill in with a guess.
 	Brand string `json:"brand,omitempty" doc:"The advertiser, when it appears literally in a text or visual signal (§10 V44). Absent means no GROUNDED brand — never inferred."`
 	// Confidence is the grounding-capped tagging score (§10 V38), 0-100. 0 means never scored,
-	// which is not the same as scored-low: it can never clear an auto-file threshold.
+	// which is not the same as scored-low.
 	Confidence int `json:"confidence,omitempty" doc:"Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score"`
 	// Held marks a clip recorded but NOT yet in the playable catalog (§10 V38).
 	//

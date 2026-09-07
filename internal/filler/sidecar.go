@@ -56,42 +56,33 @@ func sidecarPathFor(mediaPath string) string {
 // collide with anything yt-dlp writes now or adds later.
 const (
 	loomarrKey = "loomarr"
-	// fetchedByKey marks a clip Loomarr DOWNLOADED, as opposed to one an operator dropped in.
-	//
-	// ⚠ This replaces "the sidecar exists" as the held/filed signal (V38b → V38c). That worked
-	// only while Loomarr never wrote sidecars; now that it writes tags for hand-dropped clips
-	// too, existence says nothing. An explicit field is also the better signal — an operator who
-	// copies a clip WITH its sidecar gets the honest answer, and one who tidies sidecars away no
-	// longer flips a clip's lifecycle by accident.
+	// fetchedByKey records that Loomarr downloaded the clip rather than an operator dropping it in.
+	// This is acquisition provenance only; all new clips start held regardless of origin.
 	fetchedByKey = "fetchedBy"
 	fetchedByUs  = "loomarr"
 )
 
-// SidecarFetchedMark is the `loomarr` block a DOWNLOADER writes into the info-JSON beside a clip
-// it just fetched, so the sync holds it for review instead of filing it on sight (§10 V38c).
+// SidecarFetchedMark is the `loomarr` block a downloader writes into the info-JSON beside a clip.
 //
 // ⚠ **Exported because the mark has to be written by whoever DOWNLOADED the file**, and that is
 // `clipfetch`, which must not import this package's internals. Both sides reading one definition
-// is the point: the sync's `wasFetchedByUs` looks for exactly this shape, and a second hand-rolled
+// is the point: recovery and provenance checks read exactly this shape, and a second hand-rolled
 // copy in the downloader is how the two silently stop agreeing.
 //
-// ⚠ **Nothing wrote it until V38c.8, so the approval gate never engaged for auto-fetched clips.**
-// The `fetched=true` branch of `TakeIn` had no caller: both call sites pass false, correctly, since
-// the sync cannot know who put a file in the watch folder. Only the downloader knows. Found by
-// running auto-fetch against real archive.org collections and seeing every clip land `held=false`.
+// The marker remains required for exact acquisition recovery even though it no longer decides
+// catalog eligibility.
 func SidecarFetchedMark() map[string]any {
 	return SidecarFetchedMarkFor("")
 }
 
-// SidecarFetchedMarkFor also carries the exact registered source policy responsible for the
-// acquisition (§10 V57). The empty-id form preserves the historical manual-ingest marker.
+// SidecarFetchedMarkFor also carries the exact registered source responsible for the acquisition.
 func SidecarFetchedMarkFor(sourceID string) map[string]any {
 	return SidecarFetchedMarkForAcquisition(sourceID, "")
 }
 
 // SidecarFetchedMarkForAcquisition also records the durable acquisition run responsible for the
-// fetched bytes. It is intentionally separate from SourceID: the source owns admission policy,
-// while the acquisition identifies one observable attempt that may be retried or inspected.
+// fetched bytes. It is intentionally separate from SourceID: the source identifies acquisition
+// provenance, while the acquisition identifies one observable attempt that may be retried.
 func SidecarFetchedMarkForAcquisition(sourceID, acquisitionID string) map[string]any {
 	mark := map[string]any{fetchedByKey: fetchedByUs}
 	if sourceID != "" {
@@ -170,17 +161,15 @@ type SidecarTags struct {
 	// the profile's ID — `h264-crf20-aac192` — rather than a bare `true`.
 	//
 	// ⚠ An IDEMPOTENCY MARKER like `normalizedLufs`, and here the stakes are higher: a transcode
-	// is a GENERATION OF LOSS, and the original is deleted once the re-encode is installed. A
-	// second unnecessary pass therefore degrades a file whose source no longer exists. The
-	// pipeline ladder normally prevents that, but the ladder lives in a table and this lives
-	// beside the file — so a catalog rebuild that also loses the pipeline row still cannot cause
-	// a re-encode.
+	// is a GENERATION OF LOSS. V66 retains the exact source master, but a second unnecessary pass
+	// would still waste time and could make the visible playback identity drift. The pipeline
+	// ladder normally prevents that, while this portable marker survives a catalog rebuild.
 	//
 	// ⚠ The profile ID rather than a flag, so a future profile CHANGE is expressible: a clip
 	// carrying an older id is re-encoded (from the operator's own file, once), while a bare `true`
 	// would silently pin every existing clip to whatever profile shipped first.
 	Mezzanine string `json:"mezzanine,omitempty"`
-	// MediaQuality is the content inspection measured during the mezzanine encode. A pointer is
+	// MediaQuality is the content inspection measured during the playback encode. A pointer is
 	// deliberate: nil means "not inspected yet", while a non-nil report with empty intervals is
 	// the meaningful answer "inspected and clean". Keeping it beside the bytes prevents a catalog
 	// rebuild from paying for another full decode or forgetting a prior refusal.
@@ -190,7 +179,7 @@ type SidecarTags struct {
 	// confirmation and the clip table is a rebuildable cache. Nil identifies a top-level clip.
 	ConditioningLineage *ConditioningLineage `json:"conditioningLineage,omitempty"`
 	// Conditioning carries the immutable measurements of the reviewed child before transcode and
-	// of the hidden mezzanine after transcode. It is written before the replacement is published.
+	// of the staged playback derivative after transcode. It is written before publication.
 	Conditioning *ConditioningEvidence `json:"conditioning,omitempty"`
 	// ConditioningPublication is the owner-bound quarantine record written before a conditioned
 	// target becomes visible. Sync must hold the target until this exact owner clears it after re-key.
@@ -202,6 +191,44 @@ type SidecarTags struct {
 	// Rollback may remove a visible child only while this exact token remains beside it, so a
 	// recovered confirmer cannot lose its bytes to a stale predecessor.
 	SplitPublicationToken string `json:"splitPublicationToken,omitempty"`
+	// MediaAssets binds the playable catalog rendition to the immutable source master and every
+	// reproducible derivative. It is portable authority beside the bytes, not a cache-only path hint.
+	MediaAssets *MediaAssetManifest `json:"mediaAssets,omitempty"`
+	// SegmentScreening points to the exact immutable subject and five-axis aggregate recorded for
+	// this rendered child. It is a portable locator, never release authority: terminal admission
+	// reprojects the current sidecar and replays every referenced evidence record.
+	SegmentScreening *SegmentScreeningReference `json:"segmentScreening,omitempty"`
+}
+
+const segmentScreeningReferenceSchemaVersion = 1
+
+// SegmentScreeningReference is the small durable join between portable media lineage and the
+// private content-addressed screening repository.
+type SegmentScreeningReference struct {
+	SchemaVersion  int    `json:"schemaVersion"`
+	SubjectSHA256  string `json:"subjectSha256"`
+	EvidenceSHA256 string `json:"evidenceSha256"`
+}
+
+func NewSegmentScreeningReference(subject SegmentScreeningSubject, evidence SegmentScreeningEvidence) (SegmentScreeningReference, error) {
+	if ValidateSegmentScreeningSubject(subject) != nil || ValidateSegmentScreeningEvidence(evidence) != nil {
+		return SegmentScreeningReference{}, fmt.Errorf("segment screening reference requires valid subject and aggregate evidence")
+	}
+	reference := SegmentScreeningReference{
+		SchemaVersion: segmentScreeningReferenceSchemaVersion,
+		SubjectSHA256: subject.SHA256, EvidenceSHA256: evidence.SHA256,
+	}
+	if err := reference.validate(); err != nil || evidence.SubjectSHA256 != subject.SHA256 {
+		return SegmentScreeningReference{}, fmt.Errorf("segment screening reference does not bind the subject and aggregate")
+	}
+	return reference, nil
+}
+
+func (r SegmentScreeningReference) validate() error {
+	if r.SchemaVersion != segmentScreeningReferenceSchemaVersion || !isContentHash(r.SubjectSHA256) || !isContentHash(r.EvidenceSHA256) {
+		return fmt.Errorf("segment screening reference is invalid")
+	}
+	return nil
 }
 
 type ConditioningPublication struct {
@@ -211,12 +238,19 @@ type ConditioningPublication struct {
 	TargetHash string `json:"targetHash"`
 }
 
-// ConditioningLineage is immutable provenance for one operator-reviewed split interval.
+// ConditioningLineage is immutable provenance for one reviewed split interval.
 type ConditioningLineage struct {
-	ChildHash       string `json:"childHash"`
-	ParentHash      string `json:"parentHash"`
-	IntendedStartMs int64  `json:"intendedStartMs"`
-	IntendedEndMs   int64  `json:"intendedEndMs"`
+	ChildHash               string `json:"childHash"`
+	ParentHash              string `json:"parentHash"`
+	ParentAssetRole         string `json:"parentAssetRole,omitempty"`
+	ParentAssetSHA256       string `json:"parentAssetSha256,omitempty"`
+	StructureDecisionSHA256 string `json:"structureDecisionSha256,omitempty"`
+	// StructureRole is the exact semantic role from the confirmed complete-timeline decision.
+	// It remains distinct from SidecarTags.Kind because promo is projected to the legacy
+	// interstitial catalog kind while its more precise assessment meaning must survive rebuilds.
+	StructureRole   StructureSegmentRole `json:"structureRole,omitempty"`
+	IntendedStartMs int64                `json:"intendedStartMs"`
+	IntendedEndMs   int64                `json:"intendedEndMs"`
 }
 
 // ConditioningEvidence keeps measurements separate from policy decisions and target markers.
@@ -239,14 +273,13 @@ type ConditioningEvidence struct {
 // ⚠ **This writes only `*.info.json`** — never the media file beside it.
 //
 // ⚠ That used to read "the media files themselves stay byte-for-byte untouched", full stop, and
-// V42 made the unqualified version false. V51b makes it false unconditionally: the TRANSCODE rung
-// re-encodes every clip to the mezzanine profile as it is ingested, and deletes the original once
-// the new file is installed. `Transcode` (transcode.go) is the one function that may replace a
-// media file.
+// V42 made the unqualified version false. The TRANSCODE rung now snapshots the exact source into
+// the retained master tree, builds independently verified evidence and playback derivatives, and
+// may replace only the visible playable name after durable publication. The retained master is
+// not deleted by that replacement.
 //
 // The guarantee this function keeps is unchanged — it writes `*.info.json` and nothing else. The
-// guarantee the PACKAGE keeps is now much weaker than it was, and a comment claiming otherwise
-// would be the drift the repo's do-not rules exist to catch.
+// package-level mutation and retention contracts live with the derivative publisher.
 func WriteSidecarTags(mediaPath string, tags SidecarTags, fetched bool) error {
 	path := sidecarPathFor(mediaPath)
 
@@ -353,6 +386,21 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 			!rawJSONInt64(lineageFields, "intendedStartMs") || !rawJSONInt64(lineageFields, "intendedEndMs") {
 			return SidecarTags{}, SidecarInvalid, true
 		}
+		_, hasParentAssetRole := lineageFields["parentAssetRole"]
+		_, hasParentAssetSHA := lineageFields["parentAssetSha256"]
+		if hasParentAssetRole != hasParentAssetSHA || hasParentAssetRole &&
+			(!rawJSONString(lineageFields, "parentAssetRole") || !rawJSONString(lineageFields, "parentAssetSha256")) {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+		_, hasStructureDecision := lineageFields["structureDecisionSha256"]
+		_, hasStructureRole := lineageFields["structureRole"]
+		if hasStructureDecision != hasStructureRole || hasStructureDecision &&
+			(!rawJSONString(lineageFields, "structureDecisionSha256") || !rawJSONString(lineageFields, "structureRole")) {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+		if _, present := lineageFields["segmentScreeningSha256"]; present && !rawJSONString(lineageFields, "segmentScreeningSha256") {
+			return SidecarTags{}, SidecarInvalid, true
+		}
 	}
 	if conditioningRaw, hasConditioning := fields["conditioning"]; hasConditioning {
 		var conditioningFields map[string]json.RawMessage
@@ -369,8 +417,20 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 			return SidecarTags{}, SidecarInvalid, true
 		}
 	}
+	if screeningRaw, ok := fields["segmentScreening"]; ok {
+		var screening SegmentScreeningReference
+		if string(screeningRaw) == "null" || json.Unmarshal(screeningRaw, &screening) != nil || screening.validate() != nil {
+			return SidecarTags{}, SidecarInvalid, true
+		}
+	}
 	var tags SidecarTags
 	if json.Unmarshal(ours, &tags) != nil {
+		return SidecarTags{}, SidecarInvalid, true
+	}
+	if tags.Kind != "" && !validKind(Kind(tags.Kind)) {
+		return SidecarTags{}, SidecarInvalid, true
+	}
+	if _, present := fields["mediaAssets"]; present && (tags.MediaAssets == nil || tags.MediaAssets.validate() != nil) {
 		return SidecarTags{}, SidecarInvalid, true
 	}
 	return tags, SidecarValid, true
@@ -421,8 +481,7 @@ func ReadSidecarTagsFS(fsys fs.FS, mediaPath string) (SidecarTags, bool) {
 	return tags, state == SidecarValid && present
 }
 
-// SidecarFetchedByUs reports whether Loomarr downloaded this clip (§10 V38c) — the held/filed
-// fork's signal.
+// SidecarFetchedByUs reports whether Loomarr downloaded this clip (§10 V38c).
 //
 // ⚠ Reads the FIELD, not the file's existence. See fetchedByKey.
 func SidecarFetchedByUs(mediaPath string) bool {

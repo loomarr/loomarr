@@ -19,10 +19,12 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeFiller records sync/tag calls.
 type fakeFiller struct {
+	testkit.FillerAcquisitionPlanner
 	syncs, tags, fetches int
 	fetchedSourceIDs     []string
 	rewinds              []struct {
@@ -230,7 +232,7 @@ func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, live
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
-	ff := &fakeFiller{}
+	ff := &fakeFiller{FillerAcquisitionPlanner: testkit.FillerAcquisitionPlanner{Store: st}}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
 		// ⚠ `testAuthorizer`, not `NewTokenAuthorizer(adminToken)`. The production authorizer
@@ -1295,7 +1297,7 @@ func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "filed", filler.Commercial, 1992, filler.Kids, "cereal")
 	seedClip(t, st, "waiting", filler.Commercial, 1992, filler.Kids, "cereal")
-	if _, err := st.SetClipsHeld(context.Background(), []string{"waiting"}, true, false, time.Now()); err != nil {
+	if _, err := st.HoldClips(context.Background(), []string{"waiting"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 

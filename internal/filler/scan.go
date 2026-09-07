@@ -235,6 +235,10 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			}
 		}
 
+		kind := KindFromName(heuristicName)
+		if tags.Kind != "" && validKind(Kind(tags.Kind)) {
+			kind = Kind(tags.Kind)
+		}
 		clips = append(clips, RawClip{
 			ID:               id,
 			Path:             rel,
@@ -251,7 +255,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			// clean title would silently lose filename-encoded eras. Without this a clip lands as a
 			// generic interstitial the pod assembler can never place, so filler would silently never
 			// build unless AI tagging is on.
-			Kind:            KindFromName(heuristicName),
+			Kind:            kind,
 			Era:             EraFromName(heuristicName),
 			GeographicScope: GeographicScope(tags.GeographicScope),
 			Country:         tags.Country, Market: tags.Market, Network: tags.Network,
@@ -317,13 +321,7 @@ func FFprobeNextTo(ffmpegPath string) Prober {
 // ffprobe directly, which is why the derivation is exported rather than buried
 // in the prober above.
 func FFprobePathNextTo(ffmpegPath string) string {
-	if ffmpegPath != "" && ffmpegPath != "ffmpeg" {
-		// Same directory, ffmpeg → ffprobe. Handles /opt/ffmpeg/bin/ffmpeg and a
-		// ffmpeg-with-suffix build alike, since only the basename's leading token changes.
-		dir, base := filepath.Split(ffmpegPath)
-		return filepath.Join(dir, strings.Replace(base, "ffmpeg", "ffprobe", 1))
-	}
-	return "ffprobe"
+	return mediatools.FFprobePathNextTo(ffmpegPath)
 }
 
 func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
@@ -333,7 +331,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// wrong answer. Height necessarily comes from the streams, hence both sections.
 	out, err := exec.CommandContext(ctx, bin,
 		"-v", "error",
-		"-show_entries", "format=duration:stream=width,height,codec_type",
+		"-show_entries", "format=duration:stream=width,height,codec_type,avg_frame_rate,sample_aspect_ratio,display_aspect_ratio,field_order,start_time,duration",
 		"-of", "json",
 		path,
 	).Output()
@@ -346,9 +344,15 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 			Duration string `json:"duration"`
 		} `json:"format"`
 		Streams []struct {
-			Width     int    `json:"width"`
-			Height    int    `json:"height"`
-			CodecType string `json:"codec_type"`
+			Width              int    `json:"width"`
+			Height             int    `json:"height"`
+			CodecType          string `json:"codec_type"`
+			AverageFrameRate   string `json:"avg_frame_rate"`
+			SampleAspectRatio  string `json:"sample_aspect_ratio"`
+			DisplayAspectRatio string `json:"display_aspect_ratio"`
+			FieldOrder         string `json:"field_order"`
+			StartTime          string `json:"start_time"`
+			Duration           string `json:"duration"`
 		} `json:"streams"`
 	}
 	if err := json.Unmarshal(out, &probed); err != nil {
@@ -371,25 +375,51 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// ⚠ No `break` on the video match any more: the loop now answers TWO questions, and stopping
 	// at the first video stream would report `HasAudio: false` for every file that happens to
 	// list its video track first — which is most of them. The whole stream list is cheap.
-	width, height, hasAudio, hasVideo := 0, 0, false, false
+	result := Probed{DurationMs: int64(secs * 1000)}
+	hasAudio, hasVideo, selectedAudio, selectedVideo := false, false, false, false
 	for _, s := range probed.Streams {
 		if s.CodecType == "video" {
 			hasVideo = true
-			if width == 0 && s.Width > 0 {
-				width = s.Width
-			}
-			if height == 0 && s.Height > 0 {
-				height = s.Height
+			if !selectedVideo {
+				selectedVideo = true
+				result.Width, result.Height = s.Width, s.Height
+				result.Cadence = observedFFprobeValue(s.AverageFrameRate)
+				result.SampleAspect = observedFFprobeValue(s.SampleAspectRatio)
+				result.DisplayAspect = observedFFprobeValue(s.DisplayAspectRatio)
+				result.FieldOrder = observedFFprobeValue(s.FieldOrder)
+				result.VideoStartMs, result.VideoDurationMs, result.VideoTimingKnown = parseStreamTiming(s.StartTime, s.Duration)
 			}
 		}
 		if s.CodecType == "audio" {
 			hasAudio = true
+			if !selectedAudio {
+				selectedAudio = true
+				result.AudioStartMs, result.AudioDurationMs, result.AudioTimingKnown = parseStreamTiming(s.StartTime, s.Duration)
+			}
 		}
 	}
 	// A missing height is not a probe error, because the caller owns the policy decision. ScanDir
 	// and ProbeStage both reject it as an audio-only file; keeping that decision out of FFprobe
 	// also lets callers distinguish "valid media with no video" from "could not inspect media".
-	return Probed{DurationMs: int64(secs * 1000), Width: width, Height: height, Silent: !hasAudio, NoVideo: !hasVideo}, nil
+	result.Silent, result.NoVideo = !hasAudio, !hasVideo
+	return result, nil
+}
+
+func observedFFprobeValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.EqualFold(value, "n/a") || value == "0/0" {
+		return ""
+	}
+	return value
+}
+
+func parseStreamTiming(start, duration string) (int64, int64, bool) {
+	startSeconds, startErr := strconv.ParseFloat(strings.TrimSpace(start), 64)
+	durationSeconds, durationErr := strconv.ParseFloat(strings.TrimSpace(duration), 64)
+	if startErr != nil || durationErr != nil || durationSeconds <= 0 {
+		return 0, 0, false
+	}
+	return int64(startSeconds * 1000), int64(durationSeconds * 1000), true
 }
 
 // ShardDepth is how many 2-character directory levels a clip is filed under.

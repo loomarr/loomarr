@@ -11,8 +11,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/mediatools"
-	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -227,7 +225,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 	}
 }
 
-func TestFillerConditioningJourney_ConfirmedChildBecomesTheIdentifiedAiring(t *testing.T) {
+func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testing.T) {
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 	drop := t.TempDir()
@@ -287,7 +285,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesTheIdentifiedAiring(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SetClipsHeld(ctx, []string{compPath}, true, false, time.Now().UTC()); err != nil {
+	if _, err := st.HoldClips(ctx, []string{compPath}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
@@ -323,9 +321,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesTheIdentifiedAiring(t *t
 		filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, drop, nil,
 			func() time.Duration { return 45 * time.Second }, time.Now),
 		transcode,
-		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, &filler.AutoFilePolicy{
-			Enabled: func() bool { return true }, MinConfidence: func() int { return 50 },
-		}, func() bool { return false }, time.Now),
+		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, func() bool { return false }, time.Now),
 	}, filler.Budget{}, nil, time.Now, slog.New(slog.DiscardHandler))
 	app := fillerServiceAdapter{
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st}, pipeline: pipeline,
@@ -354,8 +350,8 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesTheIdentifiedAiring(t *t
 		t.Fatalf("conditioned child = %+v", child)
 	}
 	row, found, err := st.GetClipPipeline(ctx, child.Hash)
-	if err != nil || !found || row.Disposition != filler.DispositionFiled {
-		t.Fatalf("child pipeline = (%+v, %v, %v), want filed", row, found, err)
+	if err != nil || !found || row.Disposition != filler.DispositionReview || !child.Held {
+		t.Fatalf("child readiness = row:%+v found:%v held:%v err:%v, want held review", row, found, child.Held, err)
 	}
 	if len(measured) != 2 || !measuredParentBound || len(measured[0].IntendedCuts) != 1 ||
 		measured[0].IntendedCuts[0] != (mediatools.Interval{StartMs: 10_000, EndMs: 40_000}) {
@@ -372,33 +368,4 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesTheIdentifiedAiring(t *t
 		t.Fatalf("conditioned sidecar = %+v, ok=%v", tags.Conditioning, ok)
 	}
 
-	channel := store.Channel{Channel: schedule.Channel{
-		ID: "conditioning-channel", Name: "Conditioning", Number: 63, Status: schedule.StatusLive,
-	}}
-	if _, err := st.SaveChannel(ctx, channel); err != nil {
-		t.Fatal(err)
-	}
-	pods := filler.NewPodAdapter(clipCatalogAdapter{st}, nil, func() filler.Policy {
-		return filler.Policy{PodMax: 1, BreakDurationMs: 30_000}
-	}, slog.New(slog.DiscardHandler))
-	previewer := podPreviewAdapter{store: st, pods: pods}
-	breakStart := time.Unix(1_900_000_000, 0).UTC()
-	pod, err := previewer.PreviewAt(ctx, channel.ID, breakStart.UnixMilli())
-	if err != nil || len(pod.Entries) == 0 || pod.Entries[0].Hash != child.Hash {
-		t.Fatalf("deterministic pod = %+v, %v", pod, err)
-	}
-	resolver := &playoutResolver{pods: previewer, fillerDir: drop}
-	gap := playout.Airing{
-		StartedAt: breakStart, ScheduleBlockID: "break-634", Kind: schedule.SlotFiller,
-		Offset: 5 * time.Second, Remaining: 25 * time.Second,
-	}
-	airing, source, err := resolver.airingFiller(ctx, channel.ID, gap, breakStart.Add(5*time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if airing.Identity != child.Hash || airing.Kind != schedule.SlotFiller ||
-		airing.ScheduleBlockID != "break-634" || airing.Offset != 5*time.Second ||
-		airing.Remaining != 25*time.Second || source != filepath.Join(drop, filepath.FromSlash(child.Path)) {
-		t.Fatalf("filler Airing.Identity = %+v, source=%q, child=%s", airing, source, child.Hash)
-	}
 }

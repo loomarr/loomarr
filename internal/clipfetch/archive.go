@@ -1,8 +1,11 @@
 package clipfetch
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,9 +27,8 @@ import (
 //     {server, dir, files[], metadata{mediatype, title, description}}.
 //  2. If mediatype == "collection": list member items via the advancedsearch
 //     API (q=collection:<id>) and walk each item.
-//  3. If an item: pick the smallest suitable VIDEO derivative from files[]
-//     (prefer Archive's .ia.mp4 / 512Kb over the huge original — a bumper doesn't
-//     need the 246MB master), download it to the drop-folder, and write an
+//  3. If an item: deterministically select the best declared source representation from files[],
+//     download it to the drop-folder, and write an
 //     info-JSON sidecar preserving title/description (the text signals the core's
 //     AI tagging reads, §10 — same shape yt-dlp's --write-info-json produces).
 //  4. Skip files already in the drop-folder (idempotent re-runs).
@@ -41,14 +43,6 @@ type archiveClient struct {
 	http   *http.Client
 	fs     fileSink
 	maxPer int // cap items pulled per collection per pass (density guard)
-	// preferOriginal selects the full-quality source file instead of Archive's
-	// small derivative. DEFAULT false: for FILLER (commercials/bumpers/station
-	// IDs — mostly short broadcast-era SD clips that Tunarr re-encodes at playout
-	// anyway), the ~27x-smaller derivative is the right call — the original stores
-	// grain, not detail, and a filler library of thousands of clips at hundreds of
-	// MB each is absurd. Set INGEST_PREFER_ORIGINAL=true to keep masters. (Program
-	// content wants quality, but that's the *arr pipeline, not this sidecar.)
-	preferOriginal bool
 }
 
 // fileSink abstracts writing downloaded media + sidecars (real = disk).
@@ -56,6 +50,7 @@ type fileSink interface {
 	Exists(path string) bool
 	WriteStream(path string, r io.Reader) error
 	WriteFile(path string, data []byte) error
+	Inspect(path string) (digest string, size int64, clipHash string, err error)
 }
 
 // newArchiveClient builds the walker. base defaults to https://archive.org.
@@ -114,6 +109,9 @@ type archiveFile struct {
 	// Height is the vertical resolution, as a string, and is what the Sources search renders as
 	// a quality hint (480 → "480p"). Absent alongside Length on non-video files.
 	Height string `json:"height"`
+	// Width is less consistently present than Height but participates when Archive declares it.
+	// Missing remains unknown and never becomes a fabricated square pixel count.
+	Width string `json:"width"`
 }
 
 type searchResp struct {
@@ -162,13 +160,14 @@ type searchDoc struct {
 type registeredSourceContextKey struct{}
 
 type acquisitionContext struct {
-	sourceID      string
-	acquisitionID string
+	sourceID       string
+	acquisitionID  string
+	publicationDir string
 }
 
-func withAcquisition(ctx context.Context, sourceID, acquisitionID string) context.Context {
+func withAcquisition(ctx context.Context, sourceID, acquisitionID, publicationDir string) context.Context {
 	return context.WithValue(ctx, registeredSourceContextKey{}, acquisitionContext{
-		sourceID: sourceID, acquisitionID: acquisitionID,
+		sourceID: sourceID, acquisitionID: acquisitionID, publicationDir: publicationDir,
 	})
 }
 
@@ -180,14 +179,14 @@ func acquisitionFrom(ctx context.Context) acquisitionContext {
 // walk resolves an Archive URL/id and downloads its video content. Returns
 // (fetched, skipped, error). A per-item failure inside a collection is logged by
 // the caller via the aggregate error; here a collection continues past a bad item.
-func (c *archiveClient) walk(ctx context.Context, rawURL, dropDir string) (int, int, error) {
+func (c *archiveClient) walk(ctx context.Context, rawURL, dropDir string) (int, int, []Output, error) {
 	id := archiveIDFromURL(rawURL)
 	if id == "" {
-		return 0, 0, fmt.Errorf("archive: cannot extract id from %q", rawURL)
+		return 0, 0, nil, fmt.Errorf("archive: cannot extract id from %q", rawURL)
 	}
 	meta, err := c.metadata(ctx, id)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, nil, err
 	}
 	if meta.Metadata.MediaType == "collection" {
 		return c.walkCollection(ctx, id, dropDir)
@@ -196,60 +195,76 @@ func (c *archiveClient) walk(ctx context.Context, rawURL, dropDir string) (int, 
 }
 
 // walkCollection lists a collection's member items and walks each (capped).
-func (c *archiveClient) walkCollection(ctx context.Context, collID, dropDir string) (int, int, error) {
+func (c *archiveClient) walkCollection(ctx context.Context, collID, dropDir string) (int, int, []Output, error) {
 	ids, err := c.collectionItems(ctx, collID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, nil, err
 	}
 	var fetched, skipped int
+	var outputs []Output
+	var failures error
 	for _, id := range ids {
 		select {
 		case <-ctx.Done():
-			return fetched, skipped, ctx.Err()
+			return fetched, skipped, outputs, ctx.Err()
 		default:
 		}
 		meta, err := c.metadata(ctx, id)
 		if err != nil {
+			failures = errors.Join(failures, err)
 			continue // skip a bad item, keep the collection going
 		}
-		f, s, err := c.downloadItem(ctx, id, meta, dropDir)
-		if err != nil {
-			continue
-		}
+		f, s, itemOutputs, err := c.downloadItem(ctx, id, meta, dropDir)
 		fetched += f
 		skipped += s
+		outputs = append(outputs, itemOutputs...)
+		if err != nil {
+			failures = errors.Join(failures, err)
+			continue
+		}
 	}
-	return fetched, skipped, nil
+	return fetched, skipped, outputs, failures
 }
 
 // downloadItem picks the best video derivative and downloads it + a sidecar.
-func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metadataResp, dropDir string) (int, int, error) {
-	file, ok := pickVideoFile(meta.Files, c.preferOriginal)
+func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metadataResp, dropDir string) (int, int, []Output, error) {
+	file, ok := pickVideoFile(meta.Files)
 	if !ok {
-		return 0, 0, nil // no video file (e.g. audio-only) → nothing to fetch
+		return 0, 0, nil, nil // no video file (e.g. audio-only) → nothing to fetch
 	}
 	// Target filenames in the drop-folder: "<id> - <file>" so ids don't collide.
 	base := sanitize(id + " - " + file.Name)
 	mediaPath := filepath.Join(dropDir, base)
 	sidecarPath := strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
 
-	if c.fs.Exists(mediaPath) {
-		return 0, 1, nil // idempotent: already fetched
+	acquisition := acquisitionFrom(ctx)
+	existingPath := mediaPath
+	if acquisition.publicationDir != "" {
+		existingPath = filepath.Join(acquisition.publicationDir, base)
+	}
+	if c.fs.Exists(existingPath) {
+		return 0, 1, nil, nil // idempotent: already fetched
 	}
 
 	// Download from <scheme>://<server><dir>/<url-encoded file name> (prod: https;
 	// the server host + dir come from the metadata response).
 	dlURL := c.scheme + "://" + meta.Server + meta.Dir + "/" + url.PathEscape(file.Name)
 	if err := c.fetchTo(ctx, dlURL, mediaPath); err != nil {
-		return 0, 0, fmt.Errorf("archive download %s: %w", id, err)
+		return 0, 0, nil, fmt.Errorf("archive download %s: %w", id, err)
 	}
+	digest, size, clipHash, err := c.fs.Inspect(mediaPath)
+	if err != nil {
+		return 1, 0, nil, fmt.Errorf("inspect archive download %s: %w", id, err)
+	}
+	output := Output{MediaPath: mediaPath, SidecarPath: sidecarPath, SHA256: digest, Bytes: size, ClipHash: clipHash}
 	// Write the info-JSON sidecar (title/description → AI-tagging text signals, §10).
 	fields := map[string]any{
-		"id":          id,
-		"title":       meta.Metadata.Title,
-		"description": meta.Metadata.Description,
-		"source":      "archive.org",
-		"webpage_url": c.base + "/details/" + id,
+		"id":                     id,
+		"title":                  meta.Metadata.Title,
+		"description":            meta.Metadata.Description,
+		"source":                 "archive.org",
+		"webpage_url":            c.base + "/details/" + id,
+		"archive_representation": archiveRepresentationEvidence(file),
 	}
 	// ⚠ OMITTED when Archive declares none, rather than written as "". About 92% of items
 	// carry no licence, and an empty string in a sidecar reads as "we looked and it is
@@ -258,23 +273,18 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 	if meta.Metadata.LicenseURL != "" {
 		fields["license"] = meta.Metadata.LicenseURL
 	}
-	// ⚠ **Mark it as OURS.** This is the held/filed fork's only signal (§10 V38c): a clip Loomarr
-	// downloaded waits in Incoming for a human, while one an operator dropped in is filed on
-	// sight. The downloader is the only party that knows which this is — the sync sees a file in
-	// a folder and cannot tell.
-	//
-	// Nothing wrote this until V38c.8, so every auto-fetched clip landed `held=false` and went
-	// straight to air unreviewed. Caught by running auto-fetch against real collections and
-	// reading the rows back, not by any test.
-	acquisition := acquisitionFrom(ctx)
+	// Mark it as ours and bind the exact source/acquisition for provenance and recovery. This does
+	// not decide airability; every new clip starts held.
 	fields[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMarkForAcquisition(
 		acquisition.sourceID, acquisition.acquisitionID,
 	)
 	sidecar, _ := json.MarshalIndent(fields, "", "  ")
 	if err := c.fs.WriteFile(sidecarPath, sidecar); err != nil {
-		return 1, 0, fmt.Errorf("archive sidecar %s: %w", id, err)
+		output.SidecarPath = ""
+		output.Repair = "archive sidecar could not be written: " + err.Error()
+		return 1, 0, []Output{output}, fmt.Errorf("archive sidecar %s: %w", id, err)
 	}
-	return 1, 0, nil
+	return 1, 0, []Output{output}, nil
 }
 
 func (c *archiveClient) metadata(ctx context.Context, id string) (metadataResp, error) {
@@ -332,60 +342,6 @@ func (c *archiveClient) fetchTo(ctx context.Context, u, path string) error {
 		return fmt.Errorf("GET %s: status %d", u, resp.StatusCode)
 	}
 	return c.fs.WriteStream(path, resp.Body)
-}
-
-// --- pure helpers ---
-
-// pickVideoFile chooses a VIDEO file from an item's files (§10). By default it
-// takes the SMALLEST — Archive's small derivative — which is right for filler (a
-// bumper/ad Tunarr re-encodes anyway; the original just stores grain). With
-// preferOriginal it takes the LARGEST (the full-quality master) for anyone who
-// wants to preserve source quality. Non-video files (thumbnails, torrents,
-// metadata) are ignored. Ties broken by name so the pick is deterministic.
-func pickVideoFile(files []archiveFile, preferOriginal bool) (archiveFile, bool) {
-	var best archiveFile
-	var bestSize int64 = -1
-	found := false
-	for _, f := range files {
-		if !isVideoFormat(f.Format) {
-			continue
-		}
-		size, _ := strconv.ParseInt(f.Size, 10, 64)
-		if size <= 0 {
-			// Unknown size: sorts last for smallest-pick, first for largest-pick, so
-			// a sized candidate always wins.
-			if preferOriginal {
-				size = -1
-			} else {
-				size = 1 << 62
-			}
-		}
-		better := false
-		switch {
-		case !found:
-			better = true
-		case preferOriginal:
-			better = size > bestSize || (size == bestSize && f.Name < best.Name)
-		default:
-			better = size < bestSize || (size == bestSize && f.Name < best.Name)
-		}
-		if better {
-			best, bestSize = f, size
-			found = true
-		}
-	}
-	return best, found
-}
-
-// isVideoFormat reports whether an Archive `format` is a video we can use.
-func isVideoFormat(format string) bool {
-	f := strings.ToLower(format)
-	for _, v := range []string{"mpeg4", "h.264", "matroska", "quicktime", "ogg video", "webm", "512kb", "hi-mp4"} {
-		if strings.Contains(f, v) {
-			return true
-		}
-	}
-	return false
 }
 
 // archiveIDFromURL extracts the Archive item/collection id from a URL or bare id.
@@ -449,4 +405,14 @@ func (diskSink) WriteStream(path string, r io.Reader) error {
 
 func (diskSink) WriteFile(path string, data []byte) error {
 	return os.WriteFile(path, data, 0o644)
+}
+
+func (diskSink) Inspect(path string) (string, int64, string, error) {
+	return inspectOutput(path)
+}
+
+func inspectBytes(data []byte) (string, int64, string, error) {
+	digest := sha256.Sum256(data)
+	clipHash, err := filler.ClipIDFromReaderAt(bytes.NewReader(data), int64(len(data)))
+	return fmt.Sprintf("%x", digest[:]), int64(len(data)), clipHash, err
 }

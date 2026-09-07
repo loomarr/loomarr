@@ -136,7 +136,6 @@ func TestProbeStage_OverlongClipBecomesCompositeFromDuration(t *testing.T) {
 
 type scoreMemStore struct {
 	confidence map[string]int
-	filed      []string
 }
 
 func newScoreMemStore() *scoreMemStore {
@@ -146,45 +145,6 @@ func newScoreMemStore() *scoreMemStore {
 func (m *scoreMemStore) SetClipConfidence(_ context.Context, path string, c int, _ time.Time) error {
 	m.confidence[path] = c
 	return nil
-}
-
-func (m *scoreMemStore) SetClipsHeld(_ context.Context, paths []string, held, _ bool, _ time.Time) (int, error) {
-	if !held {
-		m.filed = append(m.filed, paths...)
-	}
-	return len(paths), nil
-}
-
-func alwaysFileAt(min int) *filler.AutoFilePolicy {
-	return &filler.AutoFilePolicy{
-		Enabled:       func() bool { return true },
-		MinConfidence: func() int { return min },
-	}
-}
-
-func TestScoreStage_SourcePolicyCanOnlyReduceAutomaticAdmission(t *testing.T) {
-	st := newScoreMemStore()
-	policy := alwaysFileAt(85)
-	policy.SourceAllowed = func(_ context.Context, source string) (bool, error) {
-		return source == "trusted", nil
-	}
-	s := filler.NewScoreStage(st, policy, func() bool { return false }, nil)
-	grounded := func(source string) filler.StoreClip {
-		return heldClipWith(func(c *filler.Clip) {
-			c.Source = source
-			c.Era = 1985
-			c.Audience = filler.Kids
-			c.Category = "toys"
-			c.AITagged = true
-			c.Confidence = 90
-		})
-	}
-	if out, err := s.Run(context.Background(), grounded("review-only")); err != nil || out.Verdict != filler.VerdictReview {
-		t.Fatalf("review-only source = %+v, %v; want review", out, err)
-	}
-	if out, err := s.Run(context.Background(), grounded("trusted")); err != nil || out.Verdict != filler.VerdictContinue {
-		t.Fatalf("trusted source = %+v, %v; want filed continuation", out, err)
-	}
 }
 
 func heldClipWith(mut func(*filler.Clip)) filler.StoreClip {
@@ -202,7 +162,7 @@ func heldClipWith(mut func(*filler.Clip)) filler.StoreClip {
 func TestScoreStage_NeverRejectsAClipNothingHasLookedAt(t *testing.T) {
 	st := newScoreMemStore()
 	rejectOn := func() bool { return true }
-	s := filler.NewScoreStage(st, alwaysFileAt(85), rejectOn, nil)
+	s := filler.NewScoreStage(st, rejectOn, nil)
 
 	// Untagged AND untouched: AITagged false means the tagger never reached it.
 	out, err := s.Run(context.Background(), heldClipWith(func(c *filler.Clip) { c.AITagged = false }))
@@ -232,7 +192,7 @@ func TestScoreStage_UnidentifiedIsConfigurable(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newScoreMemStore()
-			s := filler.NewScoreStage(st, alwaysFileAt(85), func() bool { return tc.reject }, nil)
+			s := filler.NewScoreStage(st, func() bool { return tc.reject }, nil)
 
 			out, err := s.Run(context.Background(), heldClipWith(looked))
 			if err != nil {
@@ -267,7 +227,7 @@ func TestScoreStage_AnyGroundedSignalCountsAsIdentified(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newScoreMemStore()
-			s := filler.NewScoreStage(st, alwaysFileAt(85), func() bool { return true }, nil)
+			s := filler.NewScoreStage(st, func() bool { return true }, nil)
 
 			out, err := s.Run(context.Background(), heldClipWith(func(c *filler.Clip) {
 				c.AITagged = true
@@ -287,7 +247,7 @@ func TestScoreStage_AnyGroundedSignalCountsAsIdentified(t *testing.T) {
 // as grounding would make every silent clip look identified and defeat the check.
 func TestScoreStage_TheNoSpeechSentinelIsNotGrounding(t *testing.T) {
 	st := newScoreMemStore()
-	s := filler.NewScoreStage(st, alwaysFileAt(85), func() bool { return true }, nil)
+	s := filler.NewScoreStage(st, func() bool { return true }, nil)
 
 	out, err := s.Run(context.Background(), heldClipWith(func(c *filler.Clip) {
 		c.AITagged = true
@@ -301,47 +261,39 @@ func TestScoreStage_TheNoSpeechSentinelIsNotGrounding(t *testing.T) {
 	}
 }
 
-// The score is persisted for every clip, and a fully-grounded held clip files itself.
-func TestScoreStage_ScoresAndFiles(t *testing.T) {
+// The score is persisted for diagnosis, but even a perfect classification remains held until the
+// certified terminal admission module publishes it.
+func TestScoreStage_ScoresWithoutPublishing(t *testing.T) {
 	st := newScoreMemStore()
-	s := filler.NewScoreStage(st, alwaysFileAt(85), func() bool { return false }, nil)
+	s := filler.NewScoreStage(st, func() bool { return false }, nil)
 
 	clip := heldClipWith(func(c *filler.Clip) {
 		c.AITagged, c.Era, c.Audience, c.Category = true, 1987, filler.Kids, "toys"
 	})
-	if _, err := s.Run(context.Background(), clip); err != nil {
+	out, err := s.Run(context.Background(), clip)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if st.confidence[clip.Path] != 100 {
 		t.Errorf("confidence = %d, want 100 (everything grounded)", st.confidence[clip.Path])
 	}
-	if len(st.filed) != 1 || st.filed[0] != clip.Path {
-		t.Errorf("filed = %v, want the clip filed unattended", st.filed)
+	if out.Verdict != filler.VerdictReview {
+		t.Errorf("verdict = %v, want review until terminal admission", out.Verdict)
 	}
 }
 
-// ⚠ THE safety property, restated at the pipeline's own boundary: an era the model could not
-// ground caps the score strictly below every settable threshold, so it can never file itself —
-// whatever the operator sets.
-func TestScoreStage_AnUngroundedEraCanNeverFileItself(t *testing.T) {
-	for _, threshold := range []int{50, 85, 95} {
-		st := newScoreMemStore()
-		s := filler.NewScoreStage(st, alwaysFileAt(threshold), func() bool { return false }, nil)
-
-		clip := heldClipWith(func(c *filler.Clip) {
-			c.AITagged, c.Audience, c.Category = true, filler.Kids, "toys"
-			c.SuggestedEra = 1985 // proposed, never grounded
-		})
-		out, err := s.Run(context.Background(), clip)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(st.filed) != 0 {
-			t.Errorf("threshold %d: an UNGROUNDED era filed itself — a fabricated tag reached a "+
-				"live channel with nobody looking", threshold)
-		}
-		if out.Verdict != filler.VerdictReview {
-			t.Errorf("threshold %d: verdict = %v, want review", threshold, out.Verdict)
-		}
+func TestScoreStage_AnUngroundedEraRemainsDiagnostic(t *testing.T) {
+	st := newScoreMemStore()
+	s := filler.NewScoreStage(st, func() bool { return false }, nil)
+	clip := heldClipWith(func(c *filler.Clip) {
+		c.AITagged, c.Audience, c.Category = true, filler.Kids, "toys"
+		c.SuggestedEra = 1985
+	})
+	out, err := s.Run(context.Background(), clip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.confidence[clip.Path] != 40 || out.Verdict != filler.VerdictReview {
+		t.Fatalf("score/verdict = %d/%v, want diagnostic 40/review", st.confidence[clip.Path], out.Verdict)
 	}
 }

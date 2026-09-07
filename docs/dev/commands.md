@@ -96,6 +96,10 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make filler-corpus-commons` |  | freeze bounded Commons pilot and full-inventory artifacts |
 | `make filler-corpus-cdc` |  | freeze bounded CDC pilot and full-inventory artifacts |
 | `make filler-corpus-loc` |  | freeze bounded LOC pilot and full-inventory artifacts |
+| `make filler-corpus-met` |  | freeze a bounded metadata-only Met Museum inventory |
+| `make filler-corpus-met-rights-propose` |  | pre-screen frozen Met rights metadata without granting authority |
+| `make filler-corpus-met-rights-attestation` |  | prepare one pending, digest-bound Met rights attestation |
+| `make filler-corpus-met-rights-complete` |  | expand one accepted Met attestation into item-bound review rows |
 | `make filler-corpus-nasa` |  | freeze bounded NASA pilot and full-inventory artifacts |
 | `make filler-corpus-pilot` |  | lock the qualified metadata-only filler rights-yield pilot |
 | `make filler-corpus-pilot-rights-review` |  | prepare the inert five-lane pilot review packet |
@@ -105,6 +109,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make filler-corpus-direct` |  | freeze an authored local cohort with rights and provenance evidence |
 | `make filler-corpus-prepare` |  | build an unlabeled corpus draft and bounded evidence packets |
 | `make filler-corpus-download` |  | download only rights-approved corpus media under hard ceilings |
+| `make filler-visual-corpus-nomination-prepare` |  | prepare four-field visual nomination review from approved media |
+| `make filler-visual-corpus-nomination-lock` |  | lock reviewed visual nominations into a private corpus source root |
 | `make filler-corpus-rights-review` |  | prepare an inert worksheet from a frozen filler inventory |
 | `make filler-corpus-rights-lock` |  | validate completed rights review CSV into approval JSONL |
 | `make filler-corpus-lock` |  | lock two blind filler-label batches into a certification manifest |
@@ -204,7 +210,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
 | `make fe` | ✅ | biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery |
 | `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `brand-assets-verify` |
-| `make client-android-debug` |  | memory-bounded arm64 debug build (CLIENT_APP=mobile|tv) <br>*runs:* `fe-api-codegen` |
+| `make client-android-debug` | ✅ | memory-bounded arm64 debug build (CLIENT_APP=mobile|tv) <br>*runs:* `fe-api-codegen` |
 | `make shield-sideload` |  | build and inspect a signed permanent-identity Shield APK (SHIELD_VERSION=x.y.z) <br>*runs:* `fe-api-codegen` |
 | `make shield-sideload-test` |  | build with an ephemeral key, then clean-install and launch on the TV emulator <br>*runs:* `fe-api-codegen` |
 | `make client-apple-simulator` | ✅ | build and launch an Apple simulator proof (CLIENT_APP=mobile|tv; macOS) <br>*runs:* `fe-api-codegen` |
@@ -236,7 +242,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android` · `arch-docs-verify` · `ci-lint` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

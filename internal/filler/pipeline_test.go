@@ -28,7 +28,7 @@ type pipeMemStore struct {
 	holdErr   error
 }
 
-func (m *pipeMemStore) SetClipsHeld(_ context.Context, paths []string, held, _ bool, _ time.Time) (int, error) {
+func (m *pipeMemStore) HoldClips(_ context.Context, paths []string, _ time.Time) (int, error) {
 	if m.holdErr != nil {
 		return 0, m.holdErr
 	}
@@ -36,13 +36,27 @@ func (m *pipeMemStore) SetClipsHeld(_ context.Context, paths []string, held, _ b
 	for _, p := range paths {
 		for hash, c := range m.clips {
 			if c.Path == p {
-				c.Held = held
+				c.Held = true
 				m.clips[hash] = c
 				n++
 			}
 		}
 	}
 	m.held = append(m.held, paths...)
+	return n, nil
+}
+
+func (m *pipeMemStore) ReleaseCompositeHolds(_ context.Context, paths []string, _ time.Time) (int, error) {
+	n := 0
+	for _, p := range paths {
+		for hash, c := range m.clips {
+			if c.Path == p && c.IsComposite {
+				c.Held = false
+				m.clips[hash] = c
+				n++
+			}
+		}
+	}
 	return n, nil
 }
 
@@ -170,7 +184,7 @@ func (m *pipeMemStore) RetryClipPipeline(ctx context.Context, _ filler.ClipPipel
 	m.rows[p.ClipHash] = p
 	if restore {
 		c := m.clips[p.ClipHash]
-		c.RemovedAt, c.Held, c.AutoFiled = time.Time{}, true, false
+		c.RemovedAt, c.Held = time.Time{}, true
 		m.clips[p.ClipHash] = c
 	}
 	return nil
@@ -235,27 +249,31 @@ func TestPipeline_StagePanicBecomesARecoverableClipFailure(t *testing.T) {
 	}
 }
 
-func TestPipeline_AdmissionAuditFailureNeverFallsThroughToLegacyFiling(t *testing.T) {
-	st := newPipeMemStore()
-	seedEnrolled(st, "c1")
-	stages := allStages()
-	stages[filler.StageAdmission].err = errors.New("decision store unavailable")
+func TestPipeline_AuthorityFailureNeverFallsThroughToLegacyFiling(t *testing.T) {
+	for _, blockedStage := range []filler.StageID{filler.StageScreen, filler.StageAdmission} {
+		t.Run(string(blockedStage), func(t *testing.T) {
+			st := newPipeMemStore()
+			seedEnrolled(st, "c1")
+			stages := allStages()
+			stages[blockedStage].err = errors.New("authority store unavailable")
 
-	p := newPipe(st, asSlice(stages), filler.DefaultBudget())
-	for range filler.MaxAttempts + 1 {
-		if err := p.Advance(context.Background(), "c1"); err != nil {
-			t.Fatal(err)
-		}
-	}
+			p := newPipe(st, asSlice(stages), filler.DefaultBudget())
+			for range filler.MaxAttempts + 1 {
+				if err := p.Advance(context.Background(), "c1"); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	row := st.rows["c1"]
-	if row.Stage != filler.StageAdmission || row.Status != filler.StatusFailed ||
-		row.Disposition != filler.DispositionRunning || row.Attempts != filler.MaxAttempts {
-		t.Fatalf("admission failure = %q/%q disposition=%q attempts=%d",
-			row.Stage, row.Status, row.Disposition, row.Attempts)
-	}
-	if stages[filler.StageScore].runs != 0 {
-		t.Fatalf("legacy score ran %d times without a durable shadow decision", stages[filler.StageScore].runs)
+			row := st.rows["c1"]
+			if row.Stage != blockedStage || row.Status != filler.StatusFailed ||
+				row.Disposition != filler.DispositionRunning || row.Attempts != filler.MaxAttempts {
+				t.Fatalf("authority failure = %q/%q disposition=%q attempts=%d",
+					row.Stage, row.Status, row.Disposition, row.Attempts)
+			}
+			if stages[filler.StageScore].runs != 0 {
+				t.Fatalf("legacy score ran %d times without stage %q authority", stages[filler.StageScore].runs, blockedStage)
+			}
+		})
 	}
 }
 
@@ -394,7 +412,7 @@ func TestPipeline_RetryFailureRestoresTerminalExecutionFailureHeld(t *testing.T)
 	st := newPipeMemStore()
 	seedEnrolled(st, "broken-encode")
 	c := st.clips["broken-encode"]
-	c.RemovedAt, c.Held, c.AutoFiled = time.Now().UTC(), false, true
+	c.RemovedAt, c.Held = time.Now().UTC(), false
 	st.clips[c.Hash] = c
 	row := st.rows[c.Hash]
 	row.Stage, row.Status = filler.StageTranscode, filler.StatusFailed
@@ -419,8 +437,8 @@ func TestPipeline_RetryFailureRestoresTerminalExecutionFailureHeld(t *testing.T)
 		t.Fatalf("retry discarded completed upstream work: %+v", got.Stages)
 	}
 	clip := st.clips[c.Hash]
-	if !clip.RemovedAt.IsZero() || !clip.Held || clip.AutoFiled {
-		t.Fatalf("restored clip = removed:%v held:%v auto:%v, want present and held", clip.RemovedAt, clip.Held, clip.AutoFiled)
+	if !clip.RemovedAt.IsZero() || !clip.Held {
+		t.Fatalf("restored clip = removed:%v held:%v, want present and held", clip.RemovedAt, clip.Held)
 	}
 }
 

@@ -455,6 +455,9 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 		{name: "empty intended interval", mutate: func(lineage *ConditioningLineage, _ *ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
 			lineage.IntendedEndMs = lineage.IntendedStartMs
 		}},
+		{name: "invalid structure decision identity", mutate: func(lineage *ConditioningLineage, _ *ConditioningEvidence, _ *MediaQuality, _ *StoreClip) {
+			lineage.StructureDecisionSHA256 = "not-a-digest"
+		}},
 		{name: "parent is airable", mutate: func(_ *ConditioningLineage, _ *ConditioningEvidence, _ *MediaQuality, parent *StoreClip) {
 			parent.IsComposite = false
 		}},
@@ -1218,6 +1221,17 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 	}
 	if tags.Mezzanine != mediatools.DefaultMezzanine().ID() || tags.Era != in.Era || tags.Category != in.Category {
 		t.Errorf("sidecar did not carry the transform metadata: %+v", tags)
+	}
+	if tags.MediaAssets == nil || tags.MediaAssets.SourceMaster.ClipHash != oldHash {
+		t.Fatalf("playable sidecar lost source-master lineage: %+v", tags.MediaAssets)
+	}
+	masterPath := filepath.Join(dir, filepath.FromSlash(tags.MediaAssets.SourceMaster.Path))
+	masterBytes, err := os.ReadFile(masterPath)
+	if err != nil {
+		t.Fatalf("retained source master is unavailable after replacement: %v", err)
+	}
+	if !bytes.Equal(masterBytes, oldBytes) {
+		t.Fatalf("retained source master = %q, want exact input %q", masterBytes, oldBytes)
 	}
 
 	// Drive the real scanner over the transformed layout. This is the lifecycle seam that

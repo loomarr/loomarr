@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
 
 const (
 	temporalStructureOpenRouterSchemaName = "filler_temporal_structure"
-	temporalStructureOpenRouterMaxTokens  = 1024
+	temporalStructureOpenRouterMaxTokens  = 4096
 	temporalStructureOpenRouterTitle      = "Loomarr temporal structure challenge"
 )
 
@@ -28,26 +30,31 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 		return TemporalStructureAssessment{}, fmt.Errorf("verified structure video for alias %q is unavailable, drifted, or outside its byte ceiling", item.Alias)
 	}
 	started := time.Now()
-	callResult, callErr := callOpenRouterStructured(caseCtx, client, baseURL, openRouterStructuredCallConfig{
-		APIKey: config.APIKey, Model: config.Model, ResolvedModel: checkpoint.Identity.ResolvedModel,
+	authority, err := openRouterRouteAuthority(config.Snapshot, checkpoint.Identity.CapabilitySnapshotSHA256, baseURL, config.Model, checkpoint.Identity.ResolvedModel, config.UpstreamProvider, config.UpstreamProviderSlug, []string{"text", "video"}, temporalStructureOpenRouterMaxTokens, config.ReasoningMode != TemporalStructureOpenRouterReasoningDisabled, now)
+	if err != nil {
+		return TemporalStructureAssessment{}, err
+	}
+	callResult, callErr := openroutermedia.Call(caseCtx, client, baseURL, openroutermedia.Config{
+		Authority: authority, APIKey: config.APIKey, Model: config.Model, ResolvedModel: checkpoint.Identity.ResolvedModel,
 		UpstreamProvider: config.UpstreamProvider, ProviderSlug: config.UpstreamProviderSlug,
 		SchemaName: temporalStructureOpenRouterSchemaName, Schema: temporalStructureOpenRouterSchema(item.Video.DurationMS),
 		SystemPrompt: temporalStructureOpenRouterSystemPrompt, Content: temporalStructureOpenRouterContent(item.Video.DurationMS),
-		Videos:    []openRouterStructuredVideo{{MIMEType: "video/mp4", Base64: base64.StdEncoding.EncodeToString(video)}},
-		MaxTokens: temporalStructureOpenRouterMaxTokens, MaxChargeNanoUSD: config.MaxChargeNanoUSD,
+		Videos:    []openroutermedia.Video{{MIMEType: "video/mp4", Base64: base64.StdEncoding.EncodeToString(video)}},
+		MaxTokens: temporalStructureOpenRouterMaxTokens, ReservationNanoUSD: config.ReservationNanoUSD,
 		DisableReasoning: config.ReasoningMode == TemporalStructureOpenRouterReasoningDisabled,
+		EnableReasoning:  config.ReasoningMode == TemporalStructureOpenRouterReasoningRequired,
 		Title:            temporalStructureOpenRouterTitle,
 		Reserve: func(requestSHA string) error {
 			spent, spendErr := temporalStructureOpenRouterCheckpointSpend(*checkpoint)
 			if spendErr != nil {
 				return spendErr
 			}
-			if len(checkpoint.Attempts) >= config.MaxRequests || spent > config.MaxSpendNanoUSD-config.MaxChargeNanoUSD {
+			if len(checkpoint.Attempts) >= config.MaxRequests || spent > config.MaxSpendNanoUSD-config.ReservationNanoUSD {
 				return fmt.Errorf("%w before structure alias %q", errTemporalOpenRouterBudget, item.Alias)
 			}
 			checkpoint.Attempts = append(checkpoint.Attempts, TemporalStructureOpenRouterAttempt{
 				Alias: item.Alias, RequestedAt: now().UTC(), RequestSHA256: requestSHA,
-				State: temporalOpenRouterAttemptReserved, ReservedNanoUSD: config.MaxChargeNanoUSD,
+				State: temporalOpenRouterAttemptReserved, ReservedNanoUSD: config.ReservationNanoUSD,
 			})
 			return persistTemporalStructureOpenRouterCheckpoint(config.CheckpointDir, *checkpoint, selected)
 		},
@@ -55,7 +62,7 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 	latency := max(int64(0), time.Since(started).Milliseconds())
 	call := fillereval.TemporalInferenceCall{
 		Axis: "structure", Attempt: 1, ResponseSHA256: callResult.ResponseSHA256,
-		LatencyMS: latency, PromptTokens: callResult.Wire.Usage.PromptTokens, CompletionTokens: callResult.Wire.Usage.CompletionTokens,
+		LatencyMS: latency, PromptTokens: callResult.PromptTokens, CompletionTokens: callResult.CompletionTokens,
 	}
 	if callResult.ResponseSHA256 != "" {
 		relative, writeErr := writeTemporalStructureOpenRouterRawResponse(config.CheckpointDir, item.Alias, callResult.RawResponse)
@@ -66,8 +73,11 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 	}
 	var wire temporalStructureOpenRouterWire
 	if callErr == nil {
-		if decodeErr := decodeStrictReviewJSON([]byte(callResult.StructuredOutput), &wire); decodeErr != nil {
+		parsed, _, decodeErr := fillerstructure.ParseDirectVideoResponse(callResult.StructuredOutput, item.Video.DurationMS)
+		if decodeErr != nil {
 			callErr = fmt.Errorf("structure assessment JSON is invalid: %w", decodeErr)
+		} else {
+			wire = parsed
 		}
 	}
 	var failure *temporalCallError
@@ -85,12 +95,15 @@ func assessOpenRouterTemporalStructureCase(ctx context.Context, client *http.Cli
 		return TemporalStructureAssessment{}, fmt.Errorf("OpenRouter structure call for alias %q did not acquire a durable reservation: %w", item.Alias, callErr)
 	}
 	attempt := &checkpoint.Attempts[len(checkpoint.Attempts)-1]
-	attempt.ResponseSHA256, attempt.GenerationID = callResult.ResponseSHA256, callResult.Wire.ID
+	attempt.ResponseSHA256, attempt.GenerationID = callResult.ResponseSHA256, callResult.GenerationID
 	attempt.LatencyMS, attempt.PromptTokens, attempt.CompletionTokens = latency, call.PromptTokens, call.CompletionTokens
 	if callResult.ChargeKnown {
-		attempt.ChargedAmountUSD, attempt.ChargedNanoUSD = callResult.Wire.Usage.Cost.String(), callResult.ChargedNanoUSD
+		attempt.ChargedAmountUSD, attempt.ChargedNanoUSD = callResult.ChargedAmountUSD, callResult.ChargedNanoUSD
 	}
-	if failure == nil {
+	if callResult.OverReservationNanoUSD > 0 {
+		attempt.State = temporalOpenRouterAttemptOverReservation
+		attempt.OperationalFailure = fillereval.TemporalFailureProvider
+	} else if failure == nil {
 		attempt.State = temporalOpenRouterAttemptAccepted
 	} else {
 		attempt.OperationalFailure = failure.code

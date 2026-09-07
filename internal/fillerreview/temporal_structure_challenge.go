@@ -10,14 +10,24 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillereval"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
 
 const (
-	TemporalStructureChallengeSchemaVersion   = 1
-	TemporalStructureChallengeContractVersion = "filler-temporal-structure-challenge-v1"
+	TemporalStructureChallengeSchemaVersion   = 5
+	TemporalStructureChallengeContractVersion = "filler-temporal-structure-challenge-v5"
 
 	TemporalStructureSourceBoundedItem     = "independently_bounded_item"
 	TemporalStructureSourceProgrammeParent = "programme_parent"
+
+	TemporalStructureSliceTwoItemCompilation   = "two_item_compilation"
+	TemporalStructureSliceThreeItemCompilation = "three_item_compilation"
+	TemporalStructureSliceAdjacentSameRole     = "adjacent_same_role"
+	TemporalStructureSliceMixedRoleJoins       = "mixed_role_joins"
+	TemporalStructureSliceProgrammeNearStart   = "programme_near_start"
+	TemporalStructureSliceProgrammeNearEnd     = "programme_near_end"
+	TemporalStructureSliceSpotEarly            = "spot_early"
+	TemporalStructureSliceSpotLate             = "spot_late"
 )
 
 // TemporalStructureChallengeMedia is the construction seam. The builder owns
@@ -45,13 +55,14 @@ type TemporalStructureRenderedPart struct {
 }
 
 type TemporalStructureChallengeConfig struct {
-	AuthoringPath string
-	SourceRoot    string
-	OutputDir     string
-	ChallengeID   string
-	Seed          string
-	GeneratedAt   time.Time
-	Media         TemporalStructureChallengeMedia
+	AuthoringPath   string
+	PlanReceiptPath string
+	SourceRoot      string
+	OutputDir       string
+	ChallengeID     string
+	Seed            string
+	GeneratedAt     time.Time
+	Media           TemporalStructureChallengeMedia
 }
 
 // TemporalStructureChallengeAuthoring is coordinator-private construction
@@ -73,17 +84,21 @@ type TemporalStructureChallengeSource struct {
 }
 
 type TemporalStructureSourceProvenance struct {
-	Kind           string    `json:"kind"`
-	Authority      string    `json:"authority"`
-	Reference      string    `json:"reference"`
-	MetadataSHA256 string    `json:"metadataSha256"`
-	RetrievedAt    time.Time `json:"retrievedAt"`
+	Kind               string    `json:"kind"`
+	Authority          string    `json:"authority"`
+	ItemID             string    `json:"itemId,omitempty"`
+	Reference          string    `json:"reference"`
+	SourceRecordPath   string    `json:"sourceRecordPath,omitempty"`
+	SourceRecordSHA256 string    `json:"sourceRecordSha256,omitempty"`
+	MetadataSHA256     string    `json:"metadataSha256"`
+	RetrievedAt        time.Time `json:"retrievedAt"`
 }
 
 type TemporalStructureChallengeCase struct {
 	ID       string                              `json:"id"`
 	Unit     fillereval.UnitKind                 `json:"unit"`
 	Role     fillereval.TemporalRole             `json:"role,omitempty"`
+	Slices   []string                            `json:"slices,omitempty"`
 	Segments []TemporalStructureChallengeSegment `json:"segments"`
 }
 
@@ -97,29 +112,34 @@ type TemporalStructureChallengeSegment struct {
 // surface. It deliberately contains no source identity, construction class,
 // role, boundary, tool path, or authoring digest.
 type TemporalStructureChallengeManifest struct {
-	SchemaVersion              int                                    `json:"schemaVersion"`
-	ContractVersion            string                                 `json:"contractVersion"`
-	ChallengeID                string                                 `json:"challengeId"`
-	GeneratedAt                time.Time                              `json:"generatedAt"`
-	Cases                      []TemporalStructureChallengePublicCase `json:"cases"`
-	ProductionAdmissionAllowed bool                                   `json:"productionAdmissionAllowed"`
+	SchemaVersion                int                                    `json:"schemaVersion"`
+	ContractVersion              string                                 `json:"contractVersion"`
+	ChallengeID                  string                                 `json:"challengeId"`
+	GeneratedAt                  time.Time                              `json:"generatedAt"`
+	AssessmentMediaProfileSHA256 string                                 `json:"assessmentMediaProfileSha256"`
+	Cases                        []TemporalStructureChallengePublicCase `json:"cases"`
+	ProductionAdmissionAllowed   bool                                   `json:"productionAdmissionAllowed"`
 }
 
 type TemporalStructureChallengePublicCase struct {
-	Alias string                    `json:"alias"`
-	Video TemporalTruthEvidenceFile `json:"video"`
+	Alias   string                    `json:"alias"`
+	Video   TemporalTruthEvidenceFile `json:"video"`
+	Profile TemporalTruthVideoProfile `json:"profile"`
 }
 
 type TemporalStructureChallengeAuthority struct {
-	SchemaVersion        int                                       `json:"schemaVersion"`
-	ContractVersion      string                                    `json:"contractVersion"`
-	ChallengeID          string                                    `json:"challengeId"`
-	GeneratedAt          time.Time                                 `json:"generatedAt"`
-	AuthoringSHA256      string                                    `json:"authoringSha256"`
-	SeedSHA256           string                                    `json:"seedSha256"`
-	PublicManifestSHA256 string                                    `json:"publicManifestSha256"`
-	MediaTools           TemporalTruthMediaIdentity                `json:"mediaTools"`
-	Cases                []TemporalStructureChallengeAuthorityCase `json:"cases"`
+	SchemaVersion          int                                       `json:"schemaVersion"`
+	ContractVersion        string                                    `json:"contractVersion"`
+	ChallengeID            string                                    `json:"challengeId"`
+	GeneratedAt            time.Time                                 `json:"generatedAt"`
+	AuthoringSHA256        string                                    `json:"authoringSha256"`
+	PlanContractVersion    string                                    `json:"planContractVersion"`
+	PlanReceiptSHA256      string                                    `json:"planReceiptSha256"`
+	SeedSHA256             string                                    `json:"seedSha256"`
+	PublicManifestSHA256   string                                    `json:"publicManifestSha256"`
+	AssessmentMediaProfile fillerstructuremedia.Profile              `json:"assessmentMediaProfile"`
+	MediaTools             TemporalTruthMediaIdentity                `json:"mediaTools"`
+	Cases                  []TemporalStructureChallengeAuthorityCase `json:"cases"`
 }
 
 type TemporalStructureChallengeAuthorityCase struct {
@@ -127,6 +147,7 @@ type TemporalStructureChallengeAuthorityCase struct {
 	CaseID      string                                    `json:"caseId"`
 	Unit        fillereval.UnitKind                       `json:"unit"`
 	Role        fillereval.TemporalRole                   `json:"role,omitempty"`
+	Slices      []string                                  `json:"slices,omitempty"`
 	VideoSHA256 string                                    `json:"videoSha256"`
 	JoinTimesMS []int64                                   `json:"joinTimesMs,omitempty"`
 	Segments    []TemporalStructureChallengeAuthorityPart `json:"segments"`
@@ -169,16 +190,42 @@ func BuildTemporalStructureChallenge(ctx context.Context, config TemporalStructu
 	if err := validateTemporalStructureChallengeConfig(config); err != nil {
 		return TemporalStructureChallengeResult{}, err
 	}
-	authoringRaw, err := os.ReadFile(config.AuthoringPath)
+	authoringRaw, authoring, err := loadTemporalStructureChallengeAuthoring(config.AuthoringPath)
 	if err != nil {
-		return TemporalStructureChallengeResult{}, fmt.Errorf("read challenge authoring: %w", err)
+		return TemporalStructureChallengeResult{}, err
+	}
+	receiptRaw, err := os.ReadFile(config.PlanReceiptPath)
+	if err != nil {
+		return TemporalStructureChallengeResult{}, fmt.Errorf("read challenge plan receipt: %w", err)
+	}
+	receipt, err := readStrictJSON[TemporalStructureHoldoutReceipt](config.PlanReceiptPath)
+	if err != nil {
+		return TemporalStructureChallengeResult{}, fmt.Errorf("decode challenge plan receipt: %w", err)
+	}
+	if receipt.AuthoringSHA256 != hashBytes(authoringRaw) {
+		return TemporalStructureChallengeResult{}, fmt.Errorf("challenge plan receipt does not bind authoring bytes")
+	}
+	if err := validateTemporalStructureHoldoutReceipt(receipt, authoring, nil); err != nil {
+		return TemporalStructureChallengeResult{}, fmt.Errorf("validate challenge plan receipt: %w", err)
+	}
+	return buildTemporalStructureChallenge(ctx, config, authoringRaw, authoring, &receipt, hashBytes(receiptRaw), receipt.ContractVersion)
+}
+
+func loadTemporalStructureChallengeAuthoring(path string) ([]byte, TemporalStructureChallengeAuthoring, error) {
+	authoringRaw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, TemporalStructureChallengeAuthoring{}, fmt.Errorf("read challenge authoring: %w", err)
 	}
 	var authoring TemporalStructureChallengeAuthoring
 	decoder := json.NewDecoder(strings.NewReader(string(authoringRaw)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&authoring); err != nil {
-		return TemporalStructureChallengeResult{}, fmt.Errorf("decode challenge authoring: %w", err)
+		return nil, TemporalStructureChallengeAuthoring{}, fmt.Errorf("decode challenge authoring: %w", err)
 	}
+	return authoringRaw, authoring, nil
+}
+
+func buildTemporalStructureChallenge(ctx context.Context, config TemporalStructureChallengeConfig, authoringRaw []byte, authoring TemporalStructureChallengeAuthoring, receipt *TemporalStructureHoldoutReceipt, receiptSHA, planContract string) (TemporalStructureChallengeResult, error) {
 	prepared, err := prepareTemporalStructureChallenge(config, authoring)
 	if err != nil {
 		return TemporalStructureChallengeResult{}, err
@@ -203,14 +250,17 @@ func BuildTemporalStructureChallenge(ctx context.Context, config TemporalStructu
 
 	manifest := TemporalStructureChallengeManifest{
 		SchemaVersion: TemporalStructureChallengeSchemaVersion, ContractVersion: TemporalStructureChallengeContractVersion,
-		ChallengeID: config.ChallengeID, GeneratedAt: config.GeneratedAt.UTC(), ProductionAdmissionAllowed: false,
+		ChallengeID: config.ChallengeID, GeneratedAt: config.GeneratedAt.UTC(),
+		AssessmentMediaProfileSHA256: fillerstructuremedia.CanonicalProfile().SHA256, ProductionAdmissionAllowed: false,
 		Cases: make([]TemporalStructureChallengePublicCase, 0, len(prepared)),
 	}
 	authority := TemporalStructureChallengeAuthority{
 		SchemaVersion: TemporalStructureChallengeSchemaVersion, ContractVersion: TemporalStructureChallengeContractVersion,
 		ChallengeID: config.ChallengeID, GeneratedAt: config.GeneratedAt.UTC(), AuthoringSHA256: hashBytes(authoringRaw),
-		SeedSHA256: hashBytes([]byte(config.Seed)), MediaTools: config.Media.Identity(),
-		Cases: make([]TemporalStructureChallengeAuthorityCase, 0, len(prepared)),
+		PlanContractVersion: planContract, PlanReceiptSHA256: receiptSHA,
+		SeedSHA256: hashBytes([]byte(config.Seed)), AssessmentMediaProfile: fillerstructuremedia.CanonicalProfile(),
+		MediaTools: config.Media.Identity(),
+		Cases:      make([]TemporalStructureChallengeAuthorityCase, 0, len(prepared)),
 	}
 	for _, item := range prepared {
 		publicCase, authorityCase, err := buildTemporalStructureChallengeCase(ctx, config, publicRoot, item)
@@ -237,7 +287,7 @@ func BuildTemporalStructureChallenge(ctx context.Context, config TemporalStructu
 	if err := writeTemporalTruthNew(filepath.Join(privateRoot, "authority.json"), authorityRaw, 0o600); err != nil {
 		return TemporalStructureChallengeResult{}, err
 	}
-	if err := auditTemporalStructureChallengeLeakage(publicRoot, authoring); err != nil {
+	if err := auditTemporalStructureChallengeLeakage(publicRoot, authoring, receipt); err != nil {
 		return TemporalStructureChallengeResult{}, err
 	}
 	if err := stage.Publish(); err != nil {

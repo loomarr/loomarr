@@ -24,6 +24,7 @@ import (
 type fillerBuild struct {
 	service   api.FillerService
 	decisions *fillerdecision.Service
+	rights    *filler.FillerRightsRegistry
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 }
@@ -46,6 +47,12 @@ func buildFillerSubsystem(
 	var result fillerBuild
 	if st == nil {
 		return result
+	}
+	rightsRegistry, err := filler.NewFillerRightsRegistry(st)
+	if err != nil {
+		log.Error("could not construct filler rights registry", "err", err)
+	} else {
+		result.rights = rightsRegistry
 	}
 	decisionService, err := fillerdecision.New(st)
 	if err != nil {
@@ -82,6 +89,11 @@ func buildFillerSubsystem(
 	} else if n > 0 {
 		log.Info("recovered interrupted interactive operations", "operations", n)
 	}
+	if n, err := st.RecoverInterruptedSpokenSafetyRuns(recoveryCtx, time.Now().UTC()); err != nil {
+		log.Warn("could not recover interrupted spoken-safety runs", "err", err)
+	} else if n > 0 {
+		log.Info("recovered interrupted spoken-safety runs", "runs", n)
+	}
 	recoveryCancel()
 
 	if dir := layout.ClipDir(); dir != "" {
@@ -96,19 +108,30 @@ func buildFillerSubsystem(
 			}
 		}
 	}
+	artifactRecoveryCtx, artifactRecoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if recovered, err := clipfetch.RecoverAcquisitionArtifacts(artifactRecoveryCtx, layout.WatchDir(), layout.ClipDir(), st, time.Now); err != nil {
+		log.Warn("could not recover filler acquisition artifacts", "err", err)
+	} else if recovered.Published > 0 || recovered.Repair > 0 || recovered.Pending > 0 {
+		log.Info("recovered filler acquisition artifacts",
+			"published", recovered.Published, "repair", recovered.Repair, "pending", recovered.Pending)
+	}
+	artifactRecoveryCancel()
 
 	fillerProgrammer := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)
-	taggerProvider, tagger := buildTagger(st, set, layout, log, wake, metricRecorder)
-	fetcher := buildFetcher(set, layout, log)
+	taggerProvider, tagger := buildTagger(st, set, layout, log, metricRecorder)
+	fetcher := buildFetcher(set, layout, log, st)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder)
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
 		start: owner.startInteractiveOperation, operations: st,
-		sources: st, acquisitions: st, readiness: st, now: time.Now,
+		sources: st, pullPlanning: st, acquisitions: st, readiness: st, now: time.Now,
+		home: func() filler.Geography {
+			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
+		},
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 	}
 
@@ -143,6 +166,8 @@ func buildFillerSubsystem(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
 	)))
+	sourceEnumerator := registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp"))}
+	adapter.sourceEnum = sourceEnumerator
 	autoFetch := filler.NewFetcher(
 		fetchStoreAdapter{
 			st:         st,
@@ -151,7 +176,7 @@ func buildFillerSubsystem(
 				return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
 			},
 		},
-		registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp"))}, adapter, layout.ClipDir(),
+		sourceEnumerator, adapter, layout.ClipDir(),
 		filler.FetchLimits{
 			MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
 			MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },

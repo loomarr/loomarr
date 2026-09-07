@@ -69,7 +69,7 @@ type Stage interface {
 }
 
 // Budget bounds one pass. Every field is a closure so a settings change hot-applies mid-run, the
-// same contract `AutoFilePolicy` uses.
+// the same hot-apply contract as other runtime policy reads.
 //
 // ⚠ The defaults carry forward the existing per-job batch constants (LanguageBatch 25,
 // TranscribeBatch 10, VisionBatch 5, defaultSplitsPerRun 3) rather than inventing new numbers, so
@@ -183,9 +183,12 @@ var fatalStages = map[StageID]RejectReason{
 // ClipStore is the slice of the store the pipeline needs beyond PipelineStore.
 type ClipStore interface {
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
-	// SetClipsHeld keeps every review verdict out of rotation, including a hand-dropped or
-	// previously-filed clip that was not already held when a later quality check asked for help.
-	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
+	// HoldClips keeps every review verdict out of rotation, including a previously-filed clip that
+	// was not already held when a later quality check asked for help.
+	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
+	// ReleaseCompositeHolds exposes confirmed lineage containers. Its store predicate excludes
+	// playable rows; non-composite publication belongs only to applied admission.
+	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// SetClipsRemoved tombstones a refused clip. ⚠ A TOMBSTONE, not a delete: `clips` is a synced
 	// cache, so a hard delete would be undone by the next scan finding the file still on disk and
 	// the clip would air again.
@@ -221,6 +224,9 @@ type Pipeline struct {
 	// before Confirm began filing their parent row. The pipeline disposition and absence of a
 	// proposal make the old state recognizable without a schema version or a new migration.
 	legacyCompositeHoldsChecked bool
+	// legacySegmentScreeningChecked gates the one-time rewind of children created before the
+	// rendered-child safety rung existed. A completed stage record is the durable migration mark.
+	legacySegmentScreeningChecked bool
 }
 
 // NewPipeline builds a runner over the given stages. Stages absent from the list are treated as
@@ -299,6 +305,17 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 			}
 		} else {
 			p.legacyQualityChecked = true
+		}
+	}
+	if !p.legacySegmentScreeningChecked {
+		n, screeningErr := p.requeueLegacySegmentScreening(ctx)
+		res.Requeued += n
+		if screeningErr != nil {
+			if p.log != nil {
+				p.log.Warn("filler pipeline: rendered-child screening backfill failed", "err", screeningErr)
+			}
+		} else {
+			p.legacySegmentScreeningChecked = true
 		}
 	}
 	if !p.legacySplitReviewsChecked {
@@ -404,6 +421,63 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 	return res, nil
 }
 
+// requeueLegacySegmentScreening closes the upgrade gap for children whose pipeline rows had
+// already advanced beyond split before StageScreen existed. It holds the catalog row first, then
+// rewinds the durable ladder. A crash between those writes is safe: the child is non-airable and
+// the same data-selected pass retries the row after restart.
+func (p *Pipeline) requeueLegacySegmentScreening(ctx context.Context) (int, error) {
+	if p.clips == nil {
+		return 0, nil
+	}
+	rows, err := p.store.ListClipPipelines(ctx, PipelineFilter{})
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, row := range rows {
+		if StageIndex(row.Stage) <= StageIndex(StageScreen) || SegmentScreeningCompleted(row) {
+			continue
+		}
+		switch row.Disposition {
+		case DispositionRunning, DispositionReview, DispositionFiled:
+		case DispositionRejected:
+			if !row.RejectReason.Soft() {
+				continue
+			}
+		default:
+			continue
+		}
+		clip, found, err := p.clips.GetClip(ctx, row.ClipHash)
+		if err != nil {
+			return n, err
+		}
+		if !found || !clip.IsSegment() || clip.Path == "" {
+			continue
+		}
+		at := p.now().UTC()
+		if _, err := p.clips.HoldClips(ctx, []string{clip.Path}, at); err != nil {
+			return n, err
+		}
+		kept := row.Stages[:0:0]
+		for _, record := range row.Stages {
+			if index := StageIndex(record.Stage); index >= 0 && index < StageIndex(StageScreen) {
+				kept = append(kept, record)
+			}
+		}
+		row.Stages = kept
+		row.Stage, row.Status, row.Attempts, row.Progress = StageScreen, StatusQueued, 0, 0
+		row.Disposition = DispositionRunning
+		row.RejectReason, row.RejectDetail = "", ""
+		row.NextRun, row.UpdatedAt = time.Time{}, at
+		if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
+			return n, err
+		}
+		p.publish(row, clip)
+		n++
+	}
+	return n, nil
+}
+
 // repairLegacyCompositeHolds releases parent rows confirmed before full confirmation started doing
 // that itself. A filed pipeline row says the reel is terminal; no surviving proposal says there
 // are no leftover cuts awaiting a person. Both facts are required. The parent remains non-airable
@@ -439,7 +513,7 @@ func (p *Pipeline) repairLegacyCompositeHolds(ctx context.Context) (int, error) 
 		if !found || !clip.IsComposite || !clip.Held || clip.Path == "" {
 			continue
 		}
-		if _, err := p.clips.SetClipsHeld(ctx, []string{clip.Path}, false, false, p.now().UTC()); err != nil {
+		if _, err := p.clips.ReleaseCompositeHolds(ctx, []string{clip.Path}, p.now().UTC()); err != nil {
 			return n, err
 		}
 		n++
@@ -857,7 +931,7 @@ func (p *Pipeline) onFailure(row *ClipPipeline, err error) bool {
 	// Admission persistence is the fail-closed seam before V38 may file a clip. Exhausting ordinary
 	// retries cannot skip it: that would turn a store outage into publication authority. Keep the
 	// clip parked on this rung and retry at the bounded terminal backoff until the audit is durable.
-	if row.Stage == StageAdmission && row.Attempts >= MaxAttempts {
+	if (row.Stage == StageScreen || row.Stage == StageAdmission) && row.Attempts >= MaxAttempts {
 		row.Attempts = MaxAttempts
 		row.NextRun = now.Add(backoff(MaxAttempts))
 		row.Record(row.Stage, StatusFailed, err.Error(), row.Attempts, now)
@@ -1010,7 +1084,7 @@ func (p *Pipeline) save(ctx context.Context, row ClipPipeline, clip StoreClip) e
 		row.NextRun = time.Time{}
 	}
 	if row.Disposition == DispositionReview && clip.Path != "" {
-		if _, err := p.clips.SetClipsHeld(ctx, []string{clip.Path}, true, false, p.now().UTC()); err != nil {
+		if _, err := p.clips.HoldClips(ctx, []string{clip.Path}, p.now().UTC()); err != nil {
 			return fmt.Errorf("hold clip for review: %w", err)
 		}
 	}

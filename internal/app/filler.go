@@ -126,8 +126,11 @@ func (a fillerPipelineClipAdapter) CommitConditioningPublication(ctx context.Con
 func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.SetClipsRemoved(ctx, paths, at)
 }
-func (a fillerPipelineClipAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
-	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+func (a fillerPipelineClipAdapter) HoldClips(ctx context.Context, paths []string, at time.Time) (int, error) {
+	return a.st.HoldClips(ctx, paths, at)
+}
+func (a fillerPipelineClipAdapter) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
+	return a.st.ReleaseCompositeHolds(ctx, paths, at)
 }
 func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
@@ -291,10 +294,7 @@ func (w *fillerChannelWake) Run(ctx context.Context, snapshots []filler.Clip) {
 }
 
 // fillerTagStoreAdapter bridges the store → filler.TagStore (the AI-tagging job).
-type fillerTagStoreAdapter struct {
-	st   store.Store
-	wake *fillerChannelWake
-}
+type fillerTagStoreAdapter struct{ st store.Store }
 
 func (a fillerTagStoreAdapter) ListUntaggedCommercials(ctx context.Context) ([]filler.StoreClip, error) {
 	clips, err := a.st.ListUntaggedCommercials(ctx)
@@ -317,15 +317,6 @@ func (a fillerTagStoreAdapter) SetClipBrand(ctx context.Context, path, brand str
 
 func (a fillerTagStoreAdapter) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
 	return a.st.SetClipConfidence(ctx, path, confidence, at)
-}
-
-func (a fillerTagStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
-	snapshots := fillerClipsByPath(ctx, a.st, paths)
-	updated, err := a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
-	if err == nil && updated > 0 {
-		a.wake.Run(ctx, snapshots)
-	}
-	return updated, err
 }
 
 // The taxonomy path (§10 V45a): the tagger serves the vocabulary, grounds against it, and persists
@@ -470,6 +461,10 @@ func (a fetchStoreAdapter) CatalogPaths(ctx context.Context) ([]string, error) {
 	return paths, nil
 }
 
+func (a fetchStoreAdapter) ListAcquisitionRemoteStates(ctx context.Context) (map[string]filler.ExistingRemoteState, error) {
+	return a.st.ListAcquisitionRemoteStates(ctx)
+}
+
 func (a fetchStoreAdapter) MarkFetched(ctx context.Context, id string, at time.Time) error {
 	return a.st.MarkFillerSourceFetched(ctx, id, at)
 }
@@ -481,13 +476,17 @@ type registeredSourceEnumerator struct{ youtube *clipfetch.YouTubeEnumerator }
 func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]filler.DiscoveredRef, int, error) {
 	switch source.Kind {
 	case "archive":
-		res, err := clipfetch.NewArchiveDownloader(false).DiscoverCollection(ctx, source.URI, limit)
+		res, err := clipfetch.NewArchiveDownloader().EnumerateCollection(ctx, source.URI, limit)
 		if err != nil {
 			return nil, 0, err
 		}
 		out := make([]filler.DiscoveredRef, 0, len(res.Items))
 		for _, it := range res.Items {
-			out = append(out, filler.DiscoveredRef{ID: it.ID, URL: "https://archive.org/details/" + it.ID})
+			out = append(out, filler.DiscoveredRef{
+				ID: it.ID, URL: "https://archive.org/details/" + it.ID,
+				Title: it.Title, License: it.License, ObservedYear: it.Year,
+				PublishedAt: it.Date, DurationMS: it.DurationMS, Height: it.Height,
+			})
 		}
 		return out, res.Total, nil
 	case "youtube":
@@ -500,7 +499,11 @@ func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler
 		}
 		out := make([]filler.DiscoveredRef, len(items))
 		for i, item := range items {
-			out[i] = filler.DiscoveredRef{ID: item.ID, URL: item.URL}
+			out[i] = filler.DiscoveredRef{
+				ID: item.ID, URL: item.URL, Title: item.Title, License: item.License,
+				ObservedYear: item.ReleaseYear, PublishedAt: item.PublishedAt,
+				DurationMS: item.DurationMS, Height: item.Height,
+			}
 		}
 		return out, total, nil
 	default:
@@ -584,9 +587,9 @@ func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) erro
 func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
 }
-func (a fillerSplitStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+func (a fillerSplitStoreAdapter) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
 	snapshots := fillerClipsByPath(ctx, a.st, paths)
-	updated, err := a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+	updated, err := a.st.ReleaseCompositeHolds(ctx, paths, at)
 	if err == nil && updated > 0 {
 		a.wake.Run(ctx, snapshots)
 	}
@@ -676,6 +679,11 @@ type fillerServiceAdapter struct {
 	// came from. Narrow interface, not the whole store: this adapter has no other reason
 	// to reach persistence.
 	sources fillerSourceRegistry
+	// pullPlanning is the read side of candidate-level pull composition. It is separate from
+	// sources because approval history is evidence for "already queued/declined" selection.
+	pullPlanning fillerPullPlanningStore
+	sourceEnum   filler.SourceEnumerator
+	home         func() filler.Geography
 	// acquisitions is the reconnect truth for background downloads. nil is allowed only in
 	// narrow tests; production always supplies the store before any job can be accepted.
 	acquisitions fillerAcquisitionWriter
@@ -716,6 +724,7 @@ type interactiveOperationWriter interface {
 type fillerReadinessStore interface {
 	PipelineOverview(context.Context, time.Time) (filler.PipelineOverview, error)
 	ListAcquisitionRuns(context.Context, int, time.Time) ([]filler.AcquisitionRun, error)
+	AcquisitionRepairSummary(context.Context) (filler.AcquisitionRepairSummary, error)
 }
 
 // Readiness composes existing authoritative projections and delegates prioritisation to the
@@ -745,8 +754,12 @@ func (a fillerServiceAdapter) Readiness(ctx context.Context) (filler.Readiness, 
 	if err != nil {
 		return filler.Readiness{}, err
 	}
+	repairs, err := a.readiness.AcquisitionRepairSummary(ctx)
+	if err != nil {
+		return filler.Readiness{}, err
+	}
 	return filler.ProjectReadiness(filler.ReadinessInput{
-		Fetch: fetch, Pipeline: pipeline, Pool: pool, Runs: runs,
+		Fetch: fetch, Pipeline: pipeline, Pool: pool, Runs: runs, Repairs: repairs,
 	}), nil
 }
 
@@ -809,6 +822,16 @@ func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID, source
 	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, sourceKind, urls))
 }
 
+func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (string, error) {
+	targets := make([]filler.AcquisitionTarget, 0, len(items))
+	for _, item := range items {
+		targets = append(targets, filler.AcquisitionTarget{
+			SourceID: sourceID, RemoteID: item.ID, Kind: sourceKind, URL: item.URL,
+		})
+	}
+	return a.ingest(ctx, filler.AcquisitionSource, "", targets)
+}
+
 // IngestAsked downloads AND remembers the target, for the one path where an operator named it.
 func (a fillerServiceAdapter) IngestAsked(ctx context.Context, urls []string) (string, error) {
 	a.rememberSources(ctx, urls)
@@ -860,7 +883,7 @@ func (a fillerServiceAdapter) ingest(
 		}
 		sources = append(sources, clipfetch.Source{
 			ID: target.SourceID, AcquisitionID: jobID,
-			Kind: kind, URL: target.URL,
+			Kind: kind, URL: target.URL, RemoteID: target.RemoteID,
 		})
 	}
 	sourceID := commonAcquisitionSource(targets)
@@ -1290,7 +1313,7 @@ func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, s
 // see what exists — they simply cannot fetch it. Refusing the search too would hide the reason
 // the fetch is unavailable behind a second, unrelated-looking wall.
 func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit int) ([]api.DiscoveredClip, int, error) {
-	res, err := clipfetch.NewArchiveDownloader(false).Search(ctx, query, limit)
+	res, err := clipfetch.NewArchiveDownloader().Search(ctx, query, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1308,7 +1331,7 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 // `filler_sources` (V33) and the eight instances before it. Worth naming, because the
 // function looking finished is exactly what made it easy to leave unwired.
 func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
-	discoverer := clipfetch.NewArchiveDownloader(false)
+	discoverer := clipfetch.NewArchiveDownloader()
 	var (
 		res clipfetch.DiscoveryResult
 		err error
@@ -1335,7 +1358,7 @@ func (a fillerServiceAdapter) EnrichDiscovered(ctx context.Context, ids []string
 	for i, id := range ids {
 		items[i].ID = id
 	}
-	clipfetch.NewArchiveDownloader(false).Enrich(ctx, items)
+	clipfetch.NewArchiveDownloader().Enrich(ctx, items)
 	return discoveredStats(items), nil
 }
 

@@ -13,13 +13,12 @@ import (
 
 // The Incoming tab — the ingest conveyor (§10 V35).
 //
-// What has been downloaded but is not yet filed:
+// What has been downloaded but is not yet terminally admitted:
 //
 //   - **clips**: the conveyor (§10 V51e) — one row per clip, whether the machine is still
 //     preparing it or has finished and handed it over. `needsDecision` says which end it is at.
 //   - **reels**: compilations mid-split — the persisted split proposals V34 already writes.
-//   - **rejected** / **recentlyFiled**: the two audit halves — what was refused, and what was
-//     filed with nobody looking.
+//   - **rejected**: refusal history for machine decisions an operator may need to inspect.
 //
 // ⚠ **One read behind the tab, not a fan-out the client assembles.** The two halves answer one
 // question ("what is waiting on me?"), and a client that fetched them separately would render a
@@ -30,8 +29,8 @@ import (
 // recorded nothing, and rendering a number nothing measured would have been the same failure as a
 // fabricated pull estimate. V38 built the thing the rule was waiting for — a **grounding-capped**
 // score (`filler.TagSuggestion.Score`), where the model may only lower a ceiling set by what
-// could actually be verified in the clip's own text. So `confidence` is now a real measurement,
-// and `filler.autofile.*` — the knob that rule named as needing one — is registered and read.
+// could actually be verified in the clip's own text. Confidence is diagnostic only; certified
+// terminal admission never consumes it.
 //
 // ⚠ The bar the rule set still applies to everything else here: `reason` stays derived from real
 // state and is never generated prose.
@@ -56,9 +55,8 @@ type IncomingClipDTO struct {
 	Pipeline *IncomingPipelineDTO `json:"pipeline,omitempty"`
 	// Hash is the clip's identity (V45a) — used by the single-clip tag PATCH (`/v1/filler/tags`).
 	Hash string `json:"hash" doc:"Clip identity — its content hash"`
-	// Path is retained for the ARRAY-keyed ops (hold/file/remove take `paths: []` — SetClipsHeld/
-	// SetClipsRemoved are path-keyed by design, V38). Not the tag-edit identity; that is Hash.
-	Path string `json:"path" doc:"The clip's disk path — used by the array-keyed hold/file/remove ops"`
+	// Path is retained for the path-keyed hold operation. Removal and tag editing use Hash.
+	Path string `json:"path" doc:"The clip's disk path — used by the hold operation"`
 	Name string `json:"name"`
 	// From is where the clip came from, so an operator reviewing forty of them can tell which
 	// source is producing junk.
@@ -83,19 +81,12 @@ type IncomingClipDTO struct {
 	// Reason is why this clip is in the queue, in the operator's terms. Derived from real
 	// state, never generated prose.
 	Reason string `json:"reason"`
-	// Confidence (0-100) is the grounding-capped tagging score (§10 V38) — how sure Loomarr is
-	// that these tags are right, and what the auto-file threshold compares against.
+	// Confidence (0-100) is the grounding-capped diagnostic tagging score (§10 V38).
 	//
 	// ⚠ NEVER the model's self-assessment. Grounding facts cap it and the model may only lower
 	// that cap, which is why an ungrounded era sits low here however certain the model claimed
 	// to be. 0 = never scored (a clip catalogued before V38, or one the tagger has not reached).
 	Confidence int `json:"confidence,omitempty"`
-	// AutoFiled marks a clip already filed WITHOUT a human — shown so an operator who did not
-	// expect auto-filing can find what happened and send it back.
-	//
-	// ⚠ Asks are held clips, so this is false on all of them. It carries meaning on the
-	// `recentlyFiled` half below, and lives on the shared DTO so both halves render identically.
-	AutoFiled bool `json:"autoFiled,omitempty"`
 }
 
 // IncomingReelDTO is one compilation mid-split.
@@ -163,7 +154,7 @@ type IncomingStageDTO struct {
 //
 // ⚠ **Not optional, and not telemetry.** `filler.reject.unidentified` is ON by default, so clips
 // begin leaving the catalog unattended — including wordless station idents, which §10 calls some
-// of the best filler there is. The same rule the auto-file audit list is built on applies with
+// of the best filler there is. The same rule the legacy-publication audit list follows applies with
 // more force here: an unattended decision that cannot be found is not one an appliance gets to
 // make. This list is how an operator finds it and puts it back.
 type IncomingRejectDTO struct {
@@ -200,7 +191,7 @@ type fillerIncomingOutput struct {
 		DecisionsTotal int               `json:"decisionsTotal" doc:"All conveyor clips waiting on a person, including rows beyond this page"`
 		Reels          []IncomingReelDTO `json:"reels"`
 		ReelsTotal     int               `json:"reelsTotal" doc:"All reviewable reels; reels is capped to one page"`
-		// Rejected is the audit half of refusal, the sibling of RecentlyFiled.
+		// Rejected is the audit of unattended machine refusals.
 		Rejected      []IncomingRejectDTO `json:"rejected"`
 		RejectedTotal int                 `json:"rejectedTotal" doc:"All rejected audit rows; rejected is capped to one page"`
 		// StageOrder is the whole ladder, in order — the answer to "which rungs are still ahead
@@ -219,16 +210,7 @@ type fillerIncomingOutput struct {
 		// pipeline as if that were the whole of it. Applicability is per clip and re-evaluated
 		// every pass (§10 V51b); the ladder is fixed.
 		StageOrder []string `json:"stageOrder" doc:"Every pipeline stage id, in run order"`
-		// RecentlyFiled is what Loomarr filed WITHOUT asking (§10 V38) — the audit half of
-		// auto-filing.
-		//
-		// ⚠ It is not decoration and not telemetry. Auto-filing is on by default, so on an
-		// upgraded install clips begin entering the catalog unattended; an operator who did not
-		// expect that must be able to see exactly what was filed and send any of it back. An
-		// unattended decision that cannot be found is not one an appliance gets to make (§10).
-		RecentlyFiled      []IncomingClipDTO `json:"recentlyFiled"`
-		RecentlyFiledTotal int               `json:"recentlyFiledTotal" doc:"All automatically filed audit rows; recentlyFiled is capped to one page"`
-		Total              int               `json:"total" doc:"Everything waiting on a human — asks plus reels"`
+		Total      int      `json:"total" doc:"Everything waiting on a human — asks plus reels"`
 	}
 }
 
@@ -246,9 +228,9 @@ type PipelineOverviewDTO struct {
 func (s *Server) registerFillerIncoming(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-incoming", Method: http.MethodGet, Path: "/v1/filler/incoming",
-		Summary: "What has been downloaded but isn't filed yet",
+		Summary: "What has been downloaded but isn't terminally admitted",
 		Description: "Admin only (§10 V35) — the Filler page's Incoming tab. One bounded read for the clip conveyor, " +
-			"reviewable reels, rejected clips, and recently auto-filed clips. Each list carries its full total so a " +
+			"reviewable reels, and rejected clips. Each list carries its full total so a " +
 			"large import cannot make the response unbounded or make the badge report only the first page.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.fillerIncoming)
@@ -303,8 +285,8 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	// couldn't work out what this is", and again as a reel below. Two individually-correct rules
 	// collided — `pipeline.go` deliberately skips tag/vision for a composite ("a compilation is cut
 	// up rather than filed"), so `askReasonFor` correctly reports it as unidentified — and the
-	// result asked the operator to tag a container of adverts it never intends to file. It also
-	// double-counted the badge, and `onFileAllAsSuggested` would have tried to FILE the reels.
+	// result asked the operator to tag a container of adverts it never intends to publish. It also
+	// double-counted the badge.
 	//
 	// A read failure degrades honestly: `reeled` stays empty, so a composite appears as a belt row
 	// with no reel rather than vanishing from both halves.
@@ -413,27 +395,6 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		}
 	}
 
-	// The audit half: what was filed with nobody looking. ⚠ A read failure here is NOT fatal —
-	// same call as the split proposals above. Losing the whole tab because the audit list did not
-	// load would take away the queue an operator CAN act on.
-	out.Body.RecentlyFiled = make([]IncomingClipDTO, 0)
-	// ⚠ Narrowed in SQL. This loaded the WHOLE catalog and discarded all but the auto-filed rows
-	// in Go — on an install with thousands of clips, to render a handful of audit cards.
-	filedFilter := store.ClipFilter{AutoFiledOnly: true, Limit: incomingListLimit}
-	if filed, ferr := s.store.ListClips(ctx, filedFilter); ferr != nil {
-		s.log.Warn("list auto-filed clips for incoming", "err", ferr)
-	} else {
-		filedImg := s.clipArtworkResolver(ctx, filed)
-		for _, c := range filed {
-			out.Body.RecentlyFiled = append(out.Body.RecentlyFiled, incomingDTO(c, autoFiledReason(c), filedImg))
-		}
-		// Highest confidence last: the ones worth a second look are the ones Loomarr was least
-		// sure about, so they sort to the top where an operator scanning the list meets them first.
-		sort.SliceStable(out.Body.RecentlyFiled, func(i, j int) bool {
-			return out.Body.RecentlyFiled[i].Confidence < out.Body.RecentlyFiled[j].Confidence
-		})
-	}
-
 	// The audit half of refusal (§10 V51b). ⚠ Deliberately NOT on the conveyor: a refused clip has
 	// left the belt, and folding it back in would make "what is Loomarr doing" and "what did
 	// Loomarr decide without me" the same list again — the merge this phase just undid.
@@ -455,14 +416,10 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		}
 	}
 
-	// ⚠ Total counts what is WAITING, so recentlyFiled is deliberately excluded: it is an audit
-	// list, not work. Including it would put a badge on the tab that never clears, and a count
-	// that cannot reach zero stops being read.
-	//
 	// ⚠ **Clips still being PREPARED and `rejected` are excluded for the same reason, arrived at
 	// differently.** A clip mid-ingest is not waiting on a person — it is waiting on the machine,
 	// and badging it would make the tab count tick up every time a download starts. A reject is
-	// an audit row exactly like an auto-filed one. Neither is work the operator owes.
+	// an audit row, not work the operator owes.
 	//
 	// ⚠ This used to read `len(out.Body.Asks)`, which was the same number by accident and the
 	// wrong rule by construction: `asks` included clips the machine had not finished with, so the
@@ -481,7 +438,6 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	out.Body.DecisionsTotal = out.Body.Total - len(out.Body.Reels)
 	out.Body.ReelsTotal = len(out.Body.Reels)
 	out.Body.RejectedTotal = len(out.Body.Rejected)
-	out.Body.RecentlyFiledTotal = len(out.Body.RecentlyFiled)
 	if counters, ok := s.store.(interface {
 		CountIncomingConveyor(context.Context) (int, error)
 		CountIncomingDecisions(context.Context) (int, error)
@@ -502,11 +458,6 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 			out.Body.RejectedTotal = n
 		} else {
 			s.log.Warn("count rejected clips", "err", cerr)
-		}
-		if n, cerr := s.store.CountClips(ctx, filedFilter); cerr == nil {
-			out.Body.RecentlyFiledTotal = n
-		} else {
-			s.log.Warn("count auto-filed clips", "err", cerr)
 		}
 		if decisions, cerr := counters.CountIncomingDecisions(ctx); cerr == nil {
 			out.Body.DecisionsTotal = decisions
@@ -540,7 +491,7 @@ func conveyorDTO(c store.Clip, row filler.ClipPipeline, img func(string) *ImageD
 	dto := incomingDTO(c, askReasonFor(c), img)
 	// ⚠ **A compilation is never a decision.** Its handoff to a human is the REEL, and the ask
 	// row's controls are meaningless on a container of adverts: "Add tags" would tag twenty
-	// unrelated products as one clip, and "Use it" would file a 20-minute recording into a
+	// unrelated products as one clip, and a direct publication shortcut could put a 20-minute recording into a
 	// 30-second break. The reel-claims-its-clip rule above normally keeps composites off the belt
 	// entirely; this is the branch that catches one whose proposal was deleted mid-flight (a
 	// rewind, or a failed auto-confirm cleanup), which would otherwise reappear here as an
@@ -621,20 +572,12 @@ func incomingDTO(c store.Clip, reason string, img func(string) *ImageDTO) Incomi
 		Kind: string(c.Kind), Era: c.Era,
 		Audience: string(c.Audience), Category: c.Category,
 		SuggestedEra: c.SuggestedEra, Reason: reason,
-		Confidence: c.Confidence, AutoFiled: c.AutoFiled,
+		Confidence: c.Confidence,
 	}
 	if img != nil {
 		d.ThumbImage = img(c.ThumbImageHash)
 	}
 	return d
-}
-
-// autoFiledReason says why Loomarr filed this without asking, in the operator's terms.
-func autoFiledReason(c store.Clip) string {
-	if c.Confidence > 0 {
-		return "Loomarr was confident enough about these tags to file it without asking."
-	}
-	return "Filed automatically."
 }
 
 // askReasonFor reports why a HELD clip is still waiting, in the operator's terms.
@@ -646,9 +589,8 @@ func autoFiledReason(c store.Clip) string {
 // or not the tagger has reached it yet).
 //
 // ⚠ The cases stay distinct rather than collapsing into "needs tags". An ungrounded era has a
-// proposed answer to confirm or reject; an untagged commercial has nothing to confirm; a clip
-// below the auto-file bar has tags that simply were not trusted. One button on three questions
-// would be wrong for two of them.
+// proposed answer to review; an untagged commercial has nothing to confirm; a fully tagged clip
+// still awaits terminal safety and rights admission.
 func askReasonFor(c store.Clip) string {
 	if c.SuggestedEra > 0 {
 		// V34's grounding rule, in the operator's terms rather than the validator's.
@@ -661,7 +603,7 @@ func askReasonFor(c store.Clip) string {
 		return "Loomarr couldn't work out what this is, so it will only match broadly."
 	}
 	if c.Confidence > 0 {
-		return "Loomarr tagged this but wasn't sure enough to file it without checking."
+		return "Classification is ready; safety, rights, and playback admission is still required."
 	}
 	// Held, tagged, unscored — the tagger has not reached it yet. Honest about the wait rather
 	// than inventing a fault: nothing is wrong with this clip, it is simply in the queue.

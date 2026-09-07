@@ -35,6 +35,7 @@ const (
 type Record struct {
 	ID, ClipHash, EvidenceHash                      string
 	EvidenceVersion, PolicyVersion, TaxonomyVersion string
+	ScreeningEvidenceSHA256, ReleaseAuthoritySHA256 string
 	SchemaVersion                                   int
 	ApplicationMode                                 ApplicationMode
 	Result                                          filleradmission.Result
@@ -67,6 +68,15 @@ type Action struct {
 	Kind                                                  ActionKind
 	CorrectedVerdict                                      filleradmission.Verdict
 	CreatedAt                                             time.Time
+}
+
+// AppliedRightsReceipt is the exact current-grant identity observed while replaying a release.
+// It is an internal handoff, not persisted action data: the store must re-read and lock the
+// current head before it can publish.
+type AppliedRightsReceipt struct {
+	DecisionID, ClipHash, ScreeningEvidenceSHA256, ReleaseAuthoritySHA256 string
+	SourceID, AcquisitionID, SourceMasterSHA256, PolicySHA256, Use        string
+	GrantSHA256                                                           string
 }
 
 type Cursor struct {
@@ -107,6 +117,7 @@ type Counts struct {
 // Repository is the narrow persistence port. Implementations must preserve
 // canonical result bytes and validate action transitions transactionally.
 type Repository interface {
+	ActionLookup
 	PutFillerDecision(context.Context, Record) error
 	GetFillerDecision(context.Context, string) (Record, error)
 	ListFillerDecisions(context.Context, DecisionFilter) (DecisionPage, error)
@@ -116,11 +127,41 @@ type Repository interface {
 	ListFillerDecisionActivity(context.Context, Cursor, int) (ActivityPage, error)
 }
 
+// AppliedActionRepository is the catalog-publication persistence seam. Its implementation must
+// accept applied decisions only and commit the action, clip airability, and pipeline disposition
+// in one transaction. Release verification happens before this seam in AppliedActionExecutor.
+type AppliedActionRepository interface {
+	ActionLookup
+	CommitAppliedFillerDecisionAction(context.Context, Action, *AppliedRightsReceipt) error
+}
+
+// ActionLookup lets retry boundaries recognize an already committed immutable action before
+// replaying current terminal evidence. It never authorizes a different request: callers must
+// compare every request-identity field before treating a result as a retry.
+type ActionLookup interface {
+	FindFillerDecisionAction(context.Context, string) (Action, bool, error)
+}
+
+func SameAction(a, b Action) bool {
+	return a.ID == b.ID && a.DecisionID == b.DecisionID && a.Kind == b.Kind && a.ActorID == b.ActorID &&
+		a.Reason == b.Reason && a.Answer == b.Answer && a.CorrectedVerdict == b.CorrectedVerdict &&
+		a.SupersedesID == b.SupersedesID
+}
+
+// AppliedActionExecutor owns terminal evidence replay before an applied action can reach the
+// catalog-publication transaction. Service routes shadow actions around it and applied actions
+// through it, so callers have one Act interface without being able to confuse the two modes.
+type AppliedActionExecutor interface {
+	ActOnAppliedFillerDecision(context.Context, Record, Action) error
+}
+
 var (
-	ErrInvalid          = errors.New("filler decision: invalid")
-	ErrConflict         = errors.New("filler decision: conflicting immutable record")
-	ErrActionStale      = errors.New("filler decision: stale action")
-	ErrActionNotAllowed = errors.New("filler decision: action not allowed")
+	ErrInvalid            = errors.New("filler decision: invalid")
+	ErrConflict           = errors.New("filler decision: conflicting immutable record")
+	ErrActionStale        = errors.New("filler decision: stale action")
+	ErrActionNotAllowed   = errors.New("filler decision: action not allowed")
+	ErrActionMode         = errors.New("filler decision: action writer does not match application mode")
+	ErrAppliedUnavailable = errors.New("filler decision: applied terminal admission is unavailable")
 )
 
 type NextAction string
@@ -141,6 +182,7 @@ type Overview struct {
 
 type ReviewItem struct {
 	ID, ClipHash, Question string
+	ApplicationMode        ApplicationMode
 	ReasonCodes            []filleradmission.ReasonCode
 	EvidenceRefs           []string
 	Conflicts              []filleradmission.Conflict

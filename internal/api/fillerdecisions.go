@@ -39,13 +39,14 @@ type fillerDecisionPageInput struct {
 }
 
 type fillerDecisionReviewDTO struct {
-	ID           string                       `json:"id"`
-	ClipHash     string                       `json:"clipHash"`
-	Question     string                       `json:"question"`
-	ReasonCodes  []filleradmission.ReasonCode `json:"reasonCodes"`
-	EvidenceRefs []string                     `json:"evidenceRefs"`
-	Conflicts    []filleradmission.Conflict   `json:"conflicts"`
-	CreatedAt    time.Time                    `json:"createdAt"`
+	ID              string                         `json:"id"`
+	ClipHash        string                         `json:"clipHash"`
+	Question        string                         `json:"question"`
+	ApplicationMode fillerdecision.ApplicationMode `json:"applicationMode" enum:"shadow,applied"`
+	ReasonCodes     []filleradmission.ReasonCode   `json:"reasonCodes"`
+	EvidenceRefs    []string                       `json:"evidenceRefs"`
+	Conflicts       []filleradmission.Conflict     `json:"conflicts"`
+	CreatedAt       time.Time                      `json:"createdAt"`
 }
 
 type fillerDecisionReviewsOutput struct {
@@ -127,7 +128,7 @@ func (s *Server) registerFillerDecisions(api huma.API) {
 	}, RoleAdmin), s.fillerDecisionDiagnostics)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "act-on-filler-decision", Method: http.MethodPost, Path: "/v1/filler/decisions/{id}/actions",
-		Summary: "Resolve or reverse a filler decision", Description: "Admin-only append-only action. The server records the authenticated actor and rejects stale or invalid state transitions (§10 V63).", Tags: []string{"filler"},
+		Summary: "Resolve or reverse a filler decision", Description: "Admin-only append-only action. The server records the authenticated actor and rejects stale or invalid state transitions. Shadow actions are audit-only; an applied action can change the catalog only after terminal release replay and commits that effect atomically (§10 V63).", Tags: []string{"filler"},
 	}, RoleAdmin), s.actOnFillerDecision)
 }
 
@@ -163,9 +164,10 @@ func (s *Server) fillerDecisionReviews(ctx context.Context, in *fillerDecisionPa
 	for _, item := range page.Rows {
 		out.Body.Rows = append(out.Body.Rows, fillerDecisionReviewDTO{
 			ID: item.ID, ClipHash: item.ClipHash, Question: item.Question,
-			ReasonCodes:  append([]filleradmission.ReasonCode{}, item.ReasonCodes...),
-			EvidenceRefs: append([]string{}, item.EvidenceRefs...),
-			Conflicts:    append([]filleradmission.Conflict{}, item.Conflicts...), CreatedAt: item.CreatedAt,
+			ApplicationMode: item.ApplicationMode,
+			ReasonCodes:     append([]filleradmission.ReasonCode{}, item.ReasonCodes...),
+			EvidenceRefs:    append([]string{}, item.EvidenceRefs...),
+			Conflicts:       append([]filleradmission.Conflict{}, item.Conflicts...), CreatedAt: item.CreatedAt,
 		})
 	}
 	return out, nil
@@ -244,6 +246,10 @@ func fillerDecisionError(err error) error {
 		return huma.Error422UnprocessableEntity("Invalid filler decision request", err)
 	case errors.Is(err, fillerdecision.ErrConflict), errors.Is(err, fillerdecision.ErrActionStale):
 		return huma.Error409Conflict("The filler decision changed; reload before trying again.")
+	case errors.Is(err, fillerdecision.ErrActionMode):
+		return huma.Error409Conflict("That action cannot use this decision's shadow or applied writer.")
+	case errors.Is(err, fillerdecision.ErrAppliedUnavailable):
+		return huma.Error409Conflict("Applied terminal admission is not available for this decision.")
 	case errors.Is(err, fillerdecision.ErrActionNotAllowed):
 		return huma.Error409Conflict("That action is not valid for the decision's current state.")
 	default:
