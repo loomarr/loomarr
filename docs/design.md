@@ -1352,7 +1352,13 @@ Network, genre, era, adjacent recommendations, and model rationale may help disc
 prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
 rules. A member whose series premiered before a requested decade is not excluded merely by that premiere
 year. An optional model season window remains an airing selector, not evidence that dated episodes
-actually overlap the era; without episode-date evidence the proposal's era-balance score is neutral.
+actually overlap the era. For a named-set lineup containing series, absent source-backed episode dates
+make the era-balance criterion unavailable: `scores.eraBalance` is JSON `null`, and the review UI shows
+“Not assessed” instead of a percentage. Unknown evidence receives neither full nor zero credit. Overall
+omits the unavailable criterion and normalizes the remaining theme-fit and availability weights
+(`(0.5 × themeFit + 0.35 × availabilityRatio) / 0.85`). When era balance is available, the existing
+0.5/0.35/0.15 composite applies. This does not exclude a grounded continuing series based on its
+premiere or treat a model season selector as historical evidence.
 
 Identity grounding and editorial support are separate mandatory gates. A selected id must both have
 been surfaced by the Catalog and carry positive, source-backed evidence for the semantic request. The
