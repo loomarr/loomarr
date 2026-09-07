@@ -105,6 +105,56 @@ type cancelBody struct {
 
 func (b *cancelBody) Close() error { err := b.ReadCloser.Close(); b.cancel(); return err }
 
+var errResponseTooLarge = errors.New("response body exceeds size limit")
+
+// boundedReader permits at most limit bytes from body.  A read after those bytes
+// probes one additional byte so an exact-limit EOF is distinguishable from a
+// truncated prefix.  The probe byte is never returned to the caller.
+type boundedReader struct {
+	body      io.Reader
+	remaining int64
+}
+
+func newBoundedReader(body io.Reader, limit int64) *boundedReader {
+	return &boundedReader{body: body, remaining: limit}
+}
+
+func (r *boundedReader) Read(p []byte) (int, error) {
+	if r.remaining == 0 {
+		var probe [1]byte
+		n, err := r.body.Read(probe[:])
+		if n > 0 {
+			return 0, errResponseTooLarge
+		}
+		return 0, err
+	}
+	if int64(len(p)) > r.remaining {
+		p = p[:r.remaining]
+	}
+	n, err := r.body.Read(p)
+	r.remaining -= int64(n)
+	return n, err
+}
+
+func readBoundedBody(body io.Reader, limit int64) ([]byte, error) {
+	return io.ReadAll(newBoundedReader(body, limit))
+}
+
+func decodeBoundedJSON(body io.Reader, limit int64, output any) error {
+	decoder := json.NewDecoder(newBoundedReader(body, limit))
+	if err := decoder.Decode(output); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("response has trailing JSON value")
+		}
+		return err
+	}
+	return nil
+}
+
 func (e *endpoint) target(ctx context.Context, channelCount int, digest string) (Target, sessionSnapshot, error) {
 	var version struct {
 		Version string `json:"version"`
@@ -139,8 +189,7 @@ func (e *endpoint) getJSON(ctx context.Context, path string, admin bool, output 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected HTTP status %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, 2<<20))
-	if err := decoder.Decode(output); err != nil {
+	if err := decodeBoundedJSON(resp.Body, 2<<20, output); err != nil {
 		return err
 	}
 	return nil
@@ -216,8 +265,7 @@ func (e *endpoint) mint(ctx context.Context, channelID string) (*url.URL, time.D
 	var output struct {
 		RelativeURL string `json:"relativeUrl"`
 	}
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
-	if err := decoder.Decode(&output); err != nil {
+	if err := decodeBoundedJSON(resp.Body, 1<<20, &output); err != nil {
 		return nil, 0, "invalid_response"
 	}
 	signed, err := e.resolve(output.RelativeURL)
@@ -244,7 +292,7 @@ func (e *endpoint) prepared(ctx context.Context, signed *url.URL) (time.Duration
 	if resp.StatusCode != http.StatusOK {
 		return 0, false, httpClass(resp.StatusCode)
 	}
-	manifest, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	manifest, err := readBoundedBody(resp.Body, 1<<20)
 	if err != nil {
 		return 0, false, "body_failed"
 	}
@@ -303,7 +351,7 @@ func (e *endpoint) metrics(ctx context.Context) (map[string]float64, error) {
 		"go_goroutines": {}, "loomarr_http_requests_in_flight": {}, "loomarr_playout_sessions_active": {},
 	}
 	values := make(map[string]float64, len(wanted))
-	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 4<<20))
+	scanner := bufio.NewScanner(newBoundedReader(resp.Body, 4<<20))
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) != 2 {
@@ -338,7 +386,7 @@ func (e *endpoint) metricTotal(ctx context.Context, name string) (float64, error
 		return 0, fmt.Errorf("metrics HTTP status %d", resp.StatusCode)
 	}
 	total, found := 0.0, false
-	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 4<<20))
+	scanner := bufio.NewScanner(newBoundedReader(resp.Body, 4<<20))
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) != 2 || (fields[0] != name && !strings.HasPrefix(fields[0], name+"{")) {

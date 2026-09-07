@@ -19,21 +19,21 @@ import (
 // fMP4 byte stream.  It intentionally owns both playlist and asset fetching: a
 // raw programme stream is not evidence for a transition advertised elsewhere.
 type preparedHLSReader struct {
-	ctx            context.Context
-	cancel         context.CancelFunc
-	e              *endpoint
-	playlist       *url.URL
-	mu             sync.Mutex
-	closed         bool
-	seen           map[string]preparedHLSSegment
-	queue          []preparedHLSSegment
-	current        io.ReadCloser
-	currentInit    string
-	initial        bool
-	armed          bool
-	boundary       string
-	epochPending   bool
-	transition     chan bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	e            *endpoint
+	playlist     *url.URL
+	mu           sync.Mutex
+	closed       bool
+	seen         map[string]preparedHLSSegment
+	queue        []preparedHLSSegment
+	current      io.ReadCloser
+	currentInit  string
+	initial      bool
+	armed        bool
+	boundary     string
+	epochPending bool
+	transition   chan bool
 }
 
 type preparedHLSSegment struct {
@@ -64,9 +64,10 @@ func (r *preparedHLSReader) Read(p []byte) (int, error) {
 		if current != nil {
 			n, err := current.Read(p)
 			if errors.Is(err, io.EOF) {
-				_ = current.Close()
 				r.mu.Lock()
-				r.current = nil
+				if r.current == current {
+					r.current = nil
+				}
 				r.mu.Unlock()
 				if n > 0 {
 					return n, nil
@@ -83,11 +84,17 @@ func (r *preparedHLSReader) Read(p []byte) (int, error) {
 
 func (r *preparedHLSReader) Close() error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil
+	}
 	r.closed = true
+	current := r.current
+	r.current = nil
+	r.mu.Unlock()
 	r.cancel()
-	if r.current != nil {
-		return r.current.Close()
+	if current != nil {
+		return current.Close()
 	}
 	return nil
 }
@@ -176,7 +183,7 @@ func (r *preparedHLSReader) openAsset(raw string) error {
 		_ = resp.Body.Close()
 		return io.ErrClosedPipe
 	}
-	r.current = &limitedReadCloser{body: resp.Body, reader: io.LimitReader(resp.Body, 32<<20)}
+	r.current = newAssetReadCloser(resp.Body, newBoundedReader(resp.Body, 32<<20))
 	r.mu.Unlock()
 	return nil
 }
@@ -190,7 +197,7 @@ func (r *preparedHLSReader) refresh() error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("playlist status %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := readBoundedBody(resp.Body, 1<<20)
 	if err != nil {
 		return err
 	}
@@ -301,10 +308,29 @@ func mapURI(line string) string {
 	return rest[:end]
 }
 
-type limitedReadCloser struct {
+// assetReadCloser is the sole owner of an admitted asset response. An EOF and
+// a caller cancellation can overlap, but only one may close the transport.
+// This keeps request-context cancellation paired with exactly one body close.
+type assetReadCloser struct {
 	body   io.ReadCloser
 	reader io.Reader
+	once   sync.Once
+	err    error
 }
 
-func (r *limitedReadCloser) Read(p []byte) (int, error) { return r.reader.Read(p) }
-func (r *limitedReadCloser) Close() error               { return r.body.Close() }
+func newAssetReadCloser(body io.ReadCloser, reader io.Reader) *assetReadCloser {
+	return &assetReadCloser{body: body, reader: reader}
+}
+
+func (r *assetReadCloser) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if errors.Is(err, io.EOF) {
+		_ = r.Close()
+	}
+	return n, err
+}
+
+func (r *assetReadCloser) Close() error {
+	r.once.Do(func() { r.err = r.body.Close() })
+	return r.err
+}

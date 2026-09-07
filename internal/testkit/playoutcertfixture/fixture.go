@@ -31,6 +31,7 @@ type Fixture struct {
 	RetainSessions                            bool
 	MaxConcurrentRaw                          int
 	HeldProgressAfterAdmission                int
+	ResponsePadding                           map[string]string
 	mu                                        sync.Mutex
 	activeRaw, starts                         int
 	sessions                                  map[string]*session
@@ -76,6 +77,7 @@ func (f *Fixture) version(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"version": "fixture", "commit": f.Revision, "ready": true})
+	f.writePadding(w, r.URL.Path)
 }
 
 func (f *Fixture) sessionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +126,7 @@ func (f *Fixture) metrics(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "process_resident_memory_bytes 104857600\nprocess_cpu_seconds_total 2\nprocess_open_fds 12\ngo_goroutines 18\nloomarr_http_requests_in_flight 1\nloomarr_playout_sessions_active 0\nloomarr_playout_session_starts_total{result=\"success\"} %d\n", starts)
+	f.writePadding(w, "/metrics")
 }
 
 func (f *Fixture) mint(w http.ResponseWriter, r *http.Request) {
@@ -137,18 +140,28 @@ func (f *Fixture) mint(w http.ResponseWriter, r *http.Request) {
 	}
 	id := strings.Split(r.URL.Path, "/")[3]
 	_ = json.NewEncoder(w).Encode(map[string]any{"relativeUrl": "/v1/playout/hls/" + id + "/master.m3u8?exp=1&sig=signed-secret"})
+	f.writePadding(w, r.URL.Path)
 }
 
-func (*Fixture) hls(w http.ResponseWriter, r *http.Request) {
+func (f *Fixture) hls(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("sig") != "signed-secret" {
 		http.NotFound(w, r)
 		return
 	}
 	if strings.HasSuffix(r.URL.Path, "/master.m3u8") {
 		_, _ = io.WriteString(w, "#EXTM3U\n#EXTINF:2,\nsegment.m4s?exp=1&sig=signed-secret\n")
+		f.writePadding(w, r.URL.Path)
 		return
 	}
 	_, _ = w.Write([]byte("fixture-media-body"))
+	f.writePadding(w, r.URL.Path)
+}
+
+func (f *Fixture) writePadding(w http.ResponseWriter, path string) {
+	f.mu.Lock()
+	padding := f.ResponsePadding[path]
+	f.mu.Unlock()
+	_, _ = io.WriteString(w, padding)
 }
 
 func (f *Fixture) stream(w http.ResponseWriter, r *http.Request) {

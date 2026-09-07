@@ -35,6 +35,9 @@ type PreparedHLS struct {
 	// response contained its next genuine discontinuity.
 	ReleaseNext      chan<- struct{}
 	TransitionQueued <-chan struct{}
+	// AssetBodies replaces individual valid prepared-HLS assets by path. It
+	// lets callers exercise the real HTTP asset reader at size boundaries.
+	AssetBodies map[string][]byte
 
 	mode             PreparedHLSMode
 	playlists        atomic.Int32
@@ -104,6 +107,10 @@ func (f *PreparedHLS) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, preparedHLSManifest("init-a", "a", "#EXT-X-DISCONTINUITY\n#EXT-X-MAP:URI=\"init-b\"\n#EXT-X-PROGRAM-DATE-TIME:2026-09-07T12:00:01Z\n#EXTINF:1,\nb\n"))
 		return
 	case "/init-a", "/a", "/init-b", "/init-c", "/c", "/init-d":
+		if body, ok := f.AssetBodies[r.URL.Path]; ok {
+			_, _ = w.Write(body)
+			return
+		}
 		_, _ = w.Write(make([]byte, 188))
 	case "/b":
 		if f.mode == PreparedHLSQueuedTransition {

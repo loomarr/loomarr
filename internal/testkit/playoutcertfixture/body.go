@@ -27,6 +27,8 @@ type GatedTerminalBody struct {
 	Prefix   int
 	Terminal error
 	Closed   *atomic.Int32
+	// ReadStarted is notified immediately before a terminal read waits on Gate.
+	ReadStarted chan<- struct{}
 
 	mu        sync.Mutex
 	remaining int
@@ -53,6 +55,10 @@ func (b *GatedTerminalBody) Read(buffer []byte) (int, error) {
 			b.mu.Unlock()
 		}
 		return n, err
+	}
+	select {
+	case b.ReadStarted <- struct{}{}:
+	default:
 	}
 	select {
 	case <-b.Gate:
