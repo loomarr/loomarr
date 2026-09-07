@@ -33,7 +33,13 @@ const failedRun = (over: Partial<SuggestionRun> = {}): SuggestionRun => ({
   phase: "failed",
   round: undefined,
   proposal: undefined,
-  failure: { code: "generation_failed", message: "Loomarr couldn't generate this channel. Try again later." },
+  failure: {
+    code: "generation_failed",
+    message: "Loomarr couldn't generate this channel.",
+    reason: "provider_unavailable",
+    recoveryAction: "retry_later",
+    guidance: "Try again later. If this continues, ask an administrator to check AI.",
+  },
   actions: ["retry", "check_ai"],
   isRunning: false,
   failed: true,
@@ -295,6 +301,7 @@ describe("ChannelSuggestPanel", () => {
     // The failure is shown (GenerationProgress' failed step is an alert), with guidance…
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByText(/couldn't generate this channel/i)).toBeInTheDocument();
+    expect(screen.getByText(/if this continues, ask an administrator/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /check ai settings/i })).toHaveAttribute("href", "/settings/ai");
     // …and the describe form is NOT rendered underneath it (the silent-drop bug).
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();

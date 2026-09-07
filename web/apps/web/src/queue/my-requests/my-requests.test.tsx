@@ -72,17 +72,22 @@ describe("MyRequests", () => {
     stubJourneys([
       journey({
         milestone: "failed",
-        failure: { code: "no_grounded_titles", message: "No grounded titles matched this request." },
+        failure: {
+          code: "no_grounded_titles",
+          message: "No grounded titles matched this request.",
+          reason: "no_catalog_match",
+          recoveryAction: "broaden_request",
+          guidance: "Broaden the request or add examples from your library.",
+        },
         actions: ["edit", "retry"],
       }),
     ]);
     renderRequests();
     expect(await screen.findByText("Needs attention")).toBeInTheDocument();
     expect(screen.getByText("No grounded titles matched this request.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Edit and try again" })).toHaveAttribute(
-      "href",
-      "/guide?intent=90s+action+night",
-    );
+    expect(screen.getByText("Broaden the request or add examples from your library.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit and try again" })).toHaveAttribute("href", "/guide?job=j1");
+    expect(screen.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "/guide?job=j1");
   });
 
   it("renders nothing when the member has no requests", async () => {

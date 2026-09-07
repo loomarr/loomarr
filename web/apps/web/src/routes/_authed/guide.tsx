@@ -13,17 +13,19 @@ import { defaultGuideWindow } from "@/channels/guide-window";
 // with the operator wondering where their template went.
 interface GuideSearch {
   intent?: string;
+  job?: string;
 }
 
 const GuideScreen = () => {
-  const { intent } = Route.useSearch();
-  return <GuidePage initialIntent={intent} />;
+  const { intent, job } = Route.useSearch();
+  return <GuidePage initialIntent={intent} initialJobId={job} />;
 };
 
 const Route = createFileRoute("/_authed/guide")({
   component: GuideScreen,
   validateSearch: (search: Record<string, unknown>): GuideSearch => ({
     intent: typeof search.intent === "string" ? search.intent : undefined,
+    job: typeof search.job === "string" ? search.job : undefined,
   }),
   // Warm the guide before the component mounts, so arriving from the nav paints rows rather
   // than a spinner. With `defaultPreload: "intent"` this runs on HOVER, which buys the whole

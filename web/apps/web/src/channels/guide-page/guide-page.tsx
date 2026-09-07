@@ -93,7 +93,7 @@ const dayLabel = (offset: number, now: number): string => {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
-const GuidePage = ({ initialIntent }: GuidePageProps) => {
+const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -123,7 +123,7 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   // Opens on arrival when the wizard handed off a template (§13), so the operator lands on a
   // filled form rather than a bare grid wondering where their pick went. Lazy initializer:
   // read once at mount, so closing it stays closed.
-  const [adding, setAdding] = useState(() => Boolean(initialIntent));
+  const [adding, setAdding] = useState(() => Boolean(initialIntent || initialJobId));
 
   // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
   // panel with a template the operator already dismissed — and right after the wizard, on a
@@ -131,7 +131,20 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   // dismissal out of history: closing a panel is not a place you navigate back to.
   const closePanel = () => {
     setAdding(false);
-    if (initialIntent) void navigate({ to: "/guide", search: {}, replace: true });
+    if (initialIntent || initialJobId) void navigate({ to: "/guide", search: {}, replace: true });
+  };
+
+  // A recovered job is deliberately resumable from the URL, but a user who explicitly starts
+  // another channel must not resume that old job on reload. Keep the panel open while replacing
+  // only this handoff's search fields; route-owned search remains free to retain any unrelated
+  // parameters it grows in future.
+  const startFresh = () => {
+    setAdding(true);
+    void navigate({
+      to: "/guide",
+      search: (search) => ({ ...search, intent: undefined, job: undefined }),
+      replace: true,
+    });
   };
 
   // The inline panel approved a proposal, which created the channel — drop the operator on
@@ -245,7 +258,12 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
       {/* The inline create surface — describe a channel, review, approve, land on it. */}
       {adding && (
         <div className="border-border border-b bg-card px-7 py-4.5">
-          <ChannelSuggestPanel initialIntent={initialIntent} onCreated={onCreated} />
+          <ChannelSuggestPanel
+            initialIntent={initialIntent}
+            initialJobId={initialJobId}
+            onCreated={onCreated}
+            onStartFresh={startFresh}
+          />
         </div>
       )}
 

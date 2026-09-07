@@ -31,14 +31,28 @@ const RequestWithoutProposal = ({ journey }: { journey: ProposalJourneyDTO }) =>
         <p className="min-w-0 flex-1 font-medium">{journey.intent.description}</p>
         <Badge variant={status.variant}>{status.label}</Badge>
       </div>
-      {journey.failure && <p className="text-muted-foreground text-sm">{journey.failure.message}</p>}
+      {journey.failure && (
+        <div className="flex flex-col gap-1 text-muted-foreground text-sm">
+          <p>{journey.failure.message}</p>
+          <p>{journey.failure.guidance}</p>
+        </div>
+      )}
       {journey.actions.includes("edit") && (
         <Link
           to="/guide"
-          search={{ intent: journey.intent.description }}
+          search={{ job: journey.jobId }}
           className={buttonVariants({ variant: "link", size: "sm", className: "w-fit px-0" })}
         >
-          Edit and try again
+          {journey.failure?.recoveryAction === "edit_reference" ? "Edit reference" : "Edit and try again"}
+        </Link>
+      )}
+      {journey.actions.includes("retry") && (
+        <Link
+          to="/guide"
+          search={{ job: journey.jobId }}
+          className={buttonVariants({ variant: "link", size: "sm", className: "w-fit px-0" })}
+        >
+          {journey.failure?.recoveryAction === "retry_later" ? "Try again later" : "Try again"}
         </Link>
       )}
     </Card>

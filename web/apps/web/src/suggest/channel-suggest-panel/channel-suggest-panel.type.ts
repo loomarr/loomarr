@@ -7,6 +7,12 @@ type ChannelSuggestPanelProps = {
   // (§13's blank-page killer), which the Guide forwards here. It is a STARTING POINT, not a
   // controlled value — the operator edits it before anything is generated.
   initialIntent?: string;
+  // An opaque, server-authorized Journey id from My Requests. Its intent is fetched from the
+  // normal private Job endpoint rather than exposed in the URL.
+  initialJobId?: string;
+  // The Guide owns URL handoff state. A fresh start must clear it as well as this panel's
+  // session state, otherwise a reload resumes the Journey the operator discarded.
+  onStartFresh?: () => void;
   className?: string;
 };
 

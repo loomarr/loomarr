@@ -14,6 +14,9 @@ interface SuggestionRun {
   proposal?: ProposalJourneyProposalDTO;
   // Bounded, requester-safe failure guidance from the authoritative Journey.
   failure?: ProposalJourneyFailureDTO;
+  // The server-owned request. Keeping it here lets an authorized edit return to the
+  // form without throwing away constraints that were part of the failed request.
+  intent?: Intent;
   // Server-authorized actions; the UI does not reconstruct retry or settings policy.
   actions: string[];
   // True from submit until the run reaches a terminal phase.
@@ -28,7 +31,8 @@ interface SuggestionRun {
   error?: unknown;
   start: (intent: Intent) => void;
   retry: () => void;
-  reset: () => void;
+  // Authorized recovery retains the server-owned intent; a fresh start discards it.
+  reset: (preserveIntent?: boolean) => void;
 }
 
 export type { SuggestionRun };
