@@ -1866,6 +1866,24 @@ unanchored model `policy.era` cannot bypass it. New v6 model proposals use `scop
 constraints and leave `scope.era` unset; existing stored Era policies and direct operator edits keep
 their established contract. `kind: none` cannot acquire a hidden date filter from another model field.
 
+Catalog and reference source initialization occurs once per Suggest invocation, after a valid,
+non-ambiguous canonical interpretation. Local feedback reads and local reference-URL detection may
+precede inference. A tool attempt validates its complete arguments and reserves its required work
+credits before accepting an interpretation or initializing sources. A final response validates its
+complete schema and interpretation before source initialization or name grounding. Initial date
+ambiguity, true conflict, and exhausted malformed output therefore dispatch no sources, including
+for reference, curated-title, and explicit-membership requests. Existing source-grounded membership
+authority remains unchanged; model-proposed titles never establish membership by themselves.
+
+A reference request initially exposes no tools. After its first valid final response, resolve the
+submitted reference and its bounded catalog title anchors, discard the bootstrap picks, and provide
+the actual reference evidence for finalization. This continuation consumes the remaining model turns
+of the same six-turn generation; it grants no extra repair, generation, or work credits. Synthesized
+catalog history includes the accepted canonical `dateMeaning`. Source initialization is cached across
+repairs and grounding retries, so neither continuation nor repair repeats reference or membership
+lookups. Existing cancellation, reference-read, catalog-failure, and empty-reference outcomes remain
+distinct, and all existing per-source fanout and invocation limits still apply.
+
 A date union is one semantic retrieval, completed before `finalizationOnly` can be set. Each
 normalized scalar provider query returns through the existing bounded discovery machinery;
 `series_airing` never becomes a series first-air filter. Collect every intended window, deduplicate
