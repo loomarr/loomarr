@@ -14,6 +14,7 @@ type Decoder struct {
 	FrameLimit          int64
 	FailAfterFrameLimit bool
 	FailAfter           <-chan struct{}
+	CallCompleted       chan<- int
 
 	mu      sync.Mutex
 	active  int
@@ -25,6 +26,7 @@ func (d *Decoder) Decode(ctx context.Context, input io.ReadCloser, reportFrames 
 	d.mu.Lock()
 	d.active++
 	d.started++
+	call := d.started
 	d.mu.Unlock()
 	defer func() {
 		_ = input.Close()
@@ -32,6 +34,12 @@ func (d *Decoder) Decode(ctx context.Context, input io.ReadCloser, reportFrames 
 		d.active--
 		d.stopped++
 		d.mu.Unlock()
+		if d.CallCompleted != nil {
+			select {
+			case d.CallCompleted <- call:
+			default:
+			}
+		}
 	}()
 	if d.Fail {
 		return errors.New("controlled decode failure")
