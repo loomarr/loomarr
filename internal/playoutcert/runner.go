@@ -570,6 +570,9 @@ func observeProgrammeBoundary(ctx context.Context, endpoint *endpoint, config Co
 	case <-timer.C:
 	}
 	after := observer.snapshot()
+	if ctx.Err() != nil {
+		return fail("post_boundary_decode_failed")
+	}
 	if after.decoderDone || after.decoderErr != nil || after.readErr != nil {
 		return fail("post_boundary_decode_failed")
 	}
@@ -603,9 +606,14 @@ func observePreparedProgrammeBoundary(ctx context.Context, endpoint *endpoint, c
 		return fail(class)
 	}
 	reader := newPreparedHLSReader(ctx, endpoint, signed)
-	defer reader.Close()
 	observer := startDecoderObserver(ctx, config.Decoder, reader.epoch(), config.RawCaptureBytes)
 	defer func() {
+		// The shared reader owns the in-flight playlist/asset request.  Stop it
+		// before joining the decoder: an epoch reader deliberately has a no-op
+		// Close so ordinary discontinuity handoffs retain that shared session.
+		if err := reader.Close(); err != nil && result.observation.class == "ok" {
+			result.observation.class, result.evidence.Outcome = "close_failed", "close_failed"
+		}
 		if err := observer.close(); err != nil && result.observation.class == "ok" {
 			result.observation.class, result.evidence.Outcome = "close_failed", "close_failed"
 		}
@@ -634,6 +642,11 @@ func observePreparedProgrammeBoundary(ctx context.Context, endpoint *endpoint, c
 			}
 			observer = startDecoderObserver(ctx, config.Decoder, reader.epoch(), config.RawCaptureBytes)
 			if qualified {
+				snapshot, err := waitValidatedPreparedEpoch(ctx, config, observer)
+				if err != nil {
+					return fail("invalid_media")
+				}
+				result.evidence.Media, result.observation.media = snapshot, snapshot
 				goto qualifiedTransition
 			}
 		}
@@ -655,9 +668,12 @@ qualifiedTransition:
 		after, waitErr = observer.wait(ctx, func(current decoderSnapshot) bool {
 			return postBoundaryProgressed(atBoundary, current, late)
 		})
-		if waitErr != nil && !errors.Is(waitErr, context.Canceled) && !errors.Is(waitErr, context.DeadlineExceeded) {
+		if waitErr != nil {
 			return fail("post_boundary_decode_failed")
 		}
+	}
+	if ctx.Err() != nil {
+		return fail("post_boundary_decode_failed")
 	}
 	if after.decoderDone || after.decoderErr != nil || (after.readErr != nil && !errors.Is(after.readErr, context.Canceled)) {
 		return fail("post_boundary_decode_failed")
@@ -670,6 +686,32 @@ qualifiedTransition:
 	result.evidence.DecodedFrameDelta, result.evidence.ReadDelta, result.evidence.BytesDelta = after.frames-atBoundary.frames, after.reads-atBoundary.reads, after.bytes-atBoundary.bytes
 	result.observation.class, result.observation.duration = "ok", time.Since(transitionAt)
 	return result
+}
+
+// waitValidatedPreparedEpoch validates the independently decoded bytes for
+// every epoch which can qualify a prepared-HLS programme transition.  An init
+// map from a prior epoch cannot certify a changed stream map.
+func waitValidatedPreparedEpoch(ctx context.Context, config Config, observer *decoderObserver) (MediaShape, error) {
+	if err := ctx.Err(); err != nil {
+		return MediaShape{}, err
+	}
+	snapshot, err := observer.wait(ctx, func(current decoderSnapshot) bool {
+		// A short, valid epoch may end before the ordinary 256 KiB initial
+		// capture target.  It is still independently certifiable when its
+		// decoder has produced frames and its own bounded capture validates.
+		return current.frames > 0 && (len(current.capture) >= min(config.RawCaptureBytes, 32<<10) || current.decoderDone)
+	})
+	if err != nil {
+		return MediaShape{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return MediaShape{}, err
+	}
+	shape, err := config.Validator.Validate(ctx, snapshot.capture)
+	if err != nil || shape.VideoStreams != 1 || shape.AudioStreams != 1 {
+		return MediaShape{}, errors.New("invalid prepared epoch media")
+	}
+	return shape, nil
 }
 
 func postBoundaryProgressed(atBoundary, after decoderSnapshot, late time.Time) bool {
