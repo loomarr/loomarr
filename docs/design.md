@@ -1939,6 +1939,8 @@ For cases with explicit date expectations, `policy_accuracy` requires the expect
 movie-release, series-premiere, and series-airing lists and an absent model-created scalar Era;
 an explicit no-date expectation requires absent Dates and Era. The result records actual date
 scope so the score is auditable. An unsuccessful proposal cannot satisfy a date expectation.
+Expected date conflicts or ambiguity are instead scored as the required typed abstention under
+`proposal_quality`; they must not be registered as successful no-date policy expectations.
 Cases without date expectations retain their existing ceiling-only scoring, and all quality
 thresholds and historical artifact bytes remain unchanged. Required evidence includes adjacent and disjoint
 unions, true same-axis conflict with no source dispatch, different premiere/airing axes, title dates,
