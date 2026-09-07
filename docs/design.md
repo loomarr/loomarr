@@ -1823,6 +1823,16 @@ nonempty include and exclude constraints that are identical after case and white
 are contradictory. This exact conflict check does not interpret dates or other natural-language
 relationships, and invalid model interpretations continue through the existing bounded repair path.
 
+Named-set recovery derives from the existing membership grounding check. A private typed outcome
+may record that a final selection was empty solely because otherwise grounded candidate identities
+lacked the required membership evidence. Both tool-surfaced picks and direct-final exact-title
+resolution carry that outcome through the final boundary as `named_set_unproven`; a real catalog
+identity alone still cannot prove membership. Mixed rejection causes, unresolved or unsurfaced
+identities, ordinary empty searches, and catalog failures retain their own existing outcomes rather
+than acquiring a named-set explanation. The evidence is captured at the rejecting branch, not
+reconstructed from a trace string, a keyword scan, or an earlier failed attempt. It changes no search,
+repair, approval, or grounding rule and exposes no rejected identity to the requester.
+
 Date-conflict evidence must prove an empty intersection of source-anchored windows joined as
 requirements on the same semantic axis. A union and separate premiere/airing axes are not a
 contradiction. A model interpretation is a hypothesis: invalid or unanchored model claims consume
