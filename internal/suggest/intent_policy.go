@@ -78,11 +78,13 @@ func singleSeriesOnly(groups ...[]ProposalItem) bool {
 	return len(seen) == 1
 }
 
+var curatedEpisodeCues = []string{
+	"classic", "classics", "best", "greatest", "favorite", "favorites", "favourite", "favourites",
+	"rerun", "reruns", "curated", "highlight", "highlights",
+}
+
 func intentRequestsCuratedEpisodes(intent Intent) bool {
-	return intentMatchesAnyCue(intent,
-		"classic", "classics", "best", "greatest", "favorite", "favorites", "favourite", "favourites",
-		"rerun", "reruns", "curated", "highlight", "highlights",
-	)
+	return intentMatchesAnyCue(intent, curatedEpisodeCues...)
 }
 
 func intentRequestsSequential(intent Intent) bool {

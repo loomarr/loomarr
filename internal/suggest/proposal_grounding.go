@@ -40,13 +40,16 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			continue // a resolved reference cannot be padded with an unrelated grounded id
 		}
 		if requiresMembershipEvidence(intent) {
-			relevance, _ := relevanceForCandidate(decisionRankQuery(intent), cand)
-			if relevance == 0 && adjacentVotesOf(intent, provision.Key(key)) == 0 {
+			if !intent.membershipKeys[provision.Key(key)] || (intent.curatedTitleSet && intent.curatedTitleKey != provision.Key(key)) {
 				traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
-				continue // identity is real, but no source-backed fact connects it to the named set
+				continue // identity is real, but it was not explicitly enumerated as a member
 			}
 		}
-		item := fromCandidate(cand, p.Rationale, p.Confidence)
+		rationale := p.Rationale
+		if requiresMembershipEvidence(intent) {
+			rationale = membershipItemRationale(intent, provision.Key(key))
+		}
+		item := fromCandidate(cand, rationale, p.Confidence)
 		// Carry the adjacency consensus onto the pick so the approval surface can show WHY
 		// it was offered ("recommended by 5 of your films"). Zero for every other corpus.
 		//
@@ -126,6 +129,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	stampEpisodeSelection(prop.Lineup, intent)
 	stampEpisodeSelection(prop.Acquisitions, intent)
 	stampEpisodeSelection(prop.Alternates, intent)
+	if requiresMembershipEvidence(intent) {
+		prop.Rationale = membershipProposalRationale(intent, prop.Lineup, prop.Acquisitions, prop.Alternates)
+	}
 
 	// ⚠ Scored on what SURVIVED. Scoring the refused picks too would report an availability
 	// ratio and theme fit for a lineup nobody is being offered — the scorecard already half-knew
@@ -140,6 +146,41 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		prop.Trace = trace.Clone()
 	}
 	return prop, nil
+}
+
+func membershipItemRationale(intent Intent, key provision.Key) string {
+	if intent.curatedTitleSet && intent.curatedTitleKey == key {
+		return "Included because your curated-title subject resolves to this Catalog title."
+	}
+	if intent.referenceKeys[key] {
+		return "Included because the resolved public reference names this title as a constituent."
+	}
+	return "Included because you supplied this title as a constituent of the named set."
+}
+
+func membershipProposalRationale(intent Intent, groups ...[]ProposalItem) string {
+	hasUser, hasReference := false, false
+	for _, items := range groups {
+		for _, item := range items {
+			key, err := item.Key()
+			if err != nil || !intent.membershipKeys[key] {
+				continue
+			}
+			if intent.referenceKeys[key] {
+				hasReference = true
+			} else {
+				hasUser = true
+			}
+		}
+	}
+	switch {
+	case hasUser && hasReference:
+		return "Every offered title is backed by user-supplied or resolved public-reference constituent evidence."
+	case hasReference:
+		return "Every offered title is backed by resolved public-reference constituent evidence."
+	default:
+		return "Every offered title is backed by user-supplied constituent evidence."
+	}
 }
 
 func traceDecision(trace *DecisionTrace, update DecisionCandidate) {

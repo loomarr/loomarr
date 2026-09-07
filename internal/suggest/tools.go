@@ -21,6 +21,13 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil, DecisionTrace{}
 	}
 	arguments := tc.Arguments
+	if rawMode, present := arguments["mode"]; present {
+		mode, ok := rawMode.(string)
+		if !ok || strings.TrimSpace(mode) != "collection" {
+			return `{"error":"mode must be collection when provided"}`, nil, DecisionTrace{}
+		}
+		return s.runCollectionTool(ctx, arguments, intent, feedback)
+	}
 	discovery, discoveryMode, parseErr := parseDiscoveryQuery(arguments)
 	if parseErr != nil {
 		if projected, ok := projectCatalogArguments(tc.Arguments); ok {
@@ -47,6 +54,19 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	if err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
 	}
+	if !discoveryMode {
+		query := stringArg(arguments["query"])
+		for _, candidate := range cands {
+			if sameExactTitle(query, candidate.Name) {
+				cacheMembershipSourceResolution(intent, candidate.Name, cands)
+			}
+		}
+	}
+	for _, candidate := range cands {
+		if resolveErr := s.resolveMembershipSource(ctx, intent, candidate.Name); resolveErr != nil {
+			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
+		}
+	}
 	if mtArg != "" {
 		cands = filterByMediaType(cands, mtArg) // narrow to the requested type
 	}
@@ -54,6 +74,96 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	cands = ranked.Candidates
 	blob, _ := json.Marshal(toolResult(cands))
 	return string(blob), cands, ranked.Trace
+}
+
+// runCollectionTool resolves only the exact constituent titles the model names.
+// It intentionally does not use network, genre, era, or adjacent discovery as
+// membership evidence: those are thematic evidence, not a named set's roster.
+func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]any, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace) {
+	for key := range arguments {
+		if key != "mode" && key != "media_type" && key != "titles" {
+			return `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, nil, DecisionTrace{}
+		}
+	}
+	mediaType := provision.MediaType(stringArg(arguments["media_type"]))
+	if !mediaType.Valid() {
+		return `{"error":"collection mode requires media_type movie or series"}`, nil, DecisionTrace{}
+	}
+	titles, err := collectionTitleAnchors(arguments["titles"])
+	if err != nil {
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{}
+	}
+	candidates := make([]catalog.Candidate, 0, len(titles))
+	for _, title := range titles {
+		results, searchErr := s.catalog.Search(ctx, title.name, catalog.ScopeAll, catalogSearchLimit)
+		if searchErr != nil {
+			return fmt.Sprintf(`{"error":%q}`, searchErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
+		}
+		candidate, found := exactCandidateForPick(results, pick{MediaType: string(mediaType), Name: title.name, Year: title.year})
+		if !found {
+			continue
+		}
+		_, keyErr := candidate.Key()
+		if keyErr != nil {
+			continue
+		}
+		cacheMembershipSourceResolution(intent, title.name, results)
+		candidates = append(candidates, candidate)
+	}
+	if len(candidates) == 0 {
+		return `{"error":"No exact member titles matched; provide constituent titles, not a block or network name."}`, nil, DecisionTrace{}
+	}
+	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), candidates, feedback)
+	blob, _ := json.Marshal(toolResult(ranked.Candidates))
+	return string(blob), ranked.Candidates, ranked.Trace
+}
+
+type collectionTitleAnchor struct {
+	name string
+	year int
+}
+
+func collectionTitleAnchors(raw any) ([]collectionTitleAnchor, error) {
+	values, ok := raw.([]any)
+	if !ok || len(values) == 0 || len(values) > 8 {
+		return nil, fmt.Errorf("collection titles must contain 1-8 exact names")
+	}
+	seen := make(map[string]bool, len(values))
+	result := make([]collectionTitleAnchor, 0, len(values))
+	for _, rawTitle := range values {
+		name, year := "", 0
+		switch value := rawTitle.(type) {
+		case string:
+			name = strings.Join(strings.Fields(value), " ")
+		case map[string]any:
+			for key := range value {
+				if key != "name" && key != "year" {
+					return nil, fmt.Errorf("collection title objects accept only name and year")
+				}
+			}
+			rawName, valid := value["name"].(string)
+			if !valid {
+				return nil, fmt.Errorf("collection title object requires a string name")
+			}
+			name = strings.Join(strings.Fields(rawName), " ")
+			if rawYear, exists := value["year"]; exists {
+				floatYear, valid := rawYear.(float64)
+				if !valid || math.Trunc(floatYear) != floatYear || floatYear < 1870 || floatYear > 2200 {
+					return nil, fmt.Errorf("collection title year must be an integer from 1870 to 2200")
+				}
+				year = int(floatYear)
+			}
+		default:
+			return nil, fmt.Errorf("collection titles must be strings or {name,year} objects")
+		}
+		key := fmt.Sprintf("%s:%d", strings.ToLower(name), year)
+		if name == "" || len([]rune(name)) > 120 || seen[key] {
+			return nil, fmt.Errorf("collection titles must be distinct non-empty names of at most 120 characters")
+		}
+		seen[key] = true
+		result = append(result, collectionTitleAnchor{name: name, year: year})
+	}
+	return result, nil
 }
 
 const (
@@ -428,12 +538,21 @@ func catalogTool() llm.ToolSchema {
 		Name: catalogToolName,
 		Description: "Find real titles from the library + TMDB. Provide `query` to search by title, `genres` " +
 			"to discover genre/era matches, or `keywords` to discover holidays, motifs, franchises, and topics. " +
+			"For a named collection, set mode=collection with media_type and 1-8 exact constituent titles; no discovery filters are allowed. " +
 			"Discovery may also use explicitly requested country, original-language, runtime, vote, movie cast/creator, and TV network filters. " +
 			"Returns real external ids, genres, a short overview, available language/country/runtime/vote/keyword/network/person evidence, " +
 			"and an inLibrary flag. Missing fields mean unknown. This is the ONLY way to find titles.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
+				"mode": map[string]any{"type": "string", "enum": []string{"collection"}, "description": "collection requires media_type and titles; omit for ordinary title or discovery search"},
+				"titles": map[string]any{"type": "array", "minItems": 1, "maxItems": 8, "items": map[string]any{"oneOf": []any{
+					map[string]any{"type": "string", "minLength": 1, "maxLength": 120},
+					map[string]any{"type": "object", "properties": map[string]any{
+						"name": map[string]any{"type": "string", "minLength": 1, "maxLength": 120},
+						"year": map[string]any{"type": "integer", "minimum": 1870, "maximum": 2200},
+					}, "required": []string{"name"}, "additionalProperties": false},
+				}}, "description": "exact collection members as title strings or {name,year} anchors"},
 				"query":             map[string]any{"type": "string", "description": "title keywords (for a known title)"},
 				"keywords":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "TMDB thematic keywords, e.g. [\"Christmas\"] or [\"heist\"]"},
 				"genres":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "genre names to discover by, e.g. [\"Action\",\"Science Fiction\"]"},
@@ -449,6 +568,10 @@ func catalogTool() llm.ToolSchema {
 				"cast":              map[string]any{"type": "array", "minItems": 1, "maxItems": maxDiscoveryEntityTerms, "items": map[string]any{"type": "string", "maxLength": maxDiscoveryEntityRunes}, "description": "exact cast names; requires media_type=movie"},
 				"creators":          map[string]any{"type": "array", "minItems": 1, "maxItems": maxDiscoveryEntityTerms, "items": map[string]any{"type": "string", "maxLength": maxDiscoveryEntityRunes}, "description": "exact director/writer/crew names; requires media_type=movie"},
 			},
+			"allOf": []any{map[string]any{
+				"if":   map[string]any{"properties": map[string]any{"mode": map[string]any{"const": "collection"}}, "required": []string{"mode"}},
+				"then": map[string]any{"required": []string{"media_type", "titles"}},
+			}},
 		},
 	}
 }

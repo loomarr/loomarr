@@ -185,6 +185,19 @@ func TestDecisionRankQueryDoesNotTreatRequestScaffoldingAsEvidence(t *testing.T)
 
 func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *testing.T) {
 	for _, description := range []string{
+		"TGIF",
+		"Criterion",
+		"The Criterion Channel",
+		"Criterion Channel",
+		"Lantern",
+		"Lantern Parade",
+		"a channel like TGIF from the 90s",
+		"a named Friday-night family sitcom collection",
+		"Criterion Collection lineup",
+		"Lantern Collection",
+		"Classic Simpsons",
+		"Criterion Channel classics",
+		"TGIF like the 90s, with shows from the ABC network",
 		"make a channel for FFS like the 90s",
 		"shows from NBN",
 		"the XYZ programming block",
@@ -196,11 +209,42 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 	}
 	for _, description := range []string{
 		"UFO movies",
+		"shows from the ABC network",
+		"shows from network ABC",
+		"network ABC shows",
+		"ABC network shows",
+		"ABC network shows, not TGIF",
+		"movies starring Tom Hanks",
 		"feel-good sci-fi",
 		"1990s family comedies",
+		"Comedy",
+		"Science Fiction",
+		"Classic Comedy",
+		"Classic Science Fiction",
+		"Comedy Classics",
 	} {
 		if requiresMembershipEvidence(Intent{Description: description}) {
 			t.Fatalf("ordinary theme request was over-gated: %q", description)
+		}
+	}
+	for _, intent := range []Intent{
+		{Description: "Please suggest comedy"},
+		{Description: "Let us make a family comedy channel"},
+		{Description: "90s family comedies", MustInclude: []string{"The Matrix"}},
+		{Description: "family comedies, but not The Matrix"},
+	} {
+		if requiresMembershipEvidence(intent) {
+			t.Fatalf("ordinary request was over-gated: %+v", intent)
+		}
+	}
+	for _, intent := range []Intent{
+		{Description: "Criterion Channel", RefineText: "best picks"},
+		{Description: "Criterion Channel", MustInclude: []string{"Classic Simpsons"}},
+		{Description: "Criterion Collection lineup", RefineText: "best picks"},
+		{Description: "Criterion Channel", RefineText: "Classic Comedy"},
+	} {
+		if !requiresMembershipEvidence(intent) {
+			t.Fatalf("cross-field cue bypassed named-set gate: %+v", intent)
 		}
 	}
 }

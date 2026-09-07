@@ -155,10 +155,8 @@ const ProposalReview = ({
             <p className="mt-1 max-w-prose text-muted-foreground text-sm">{proposal.rationale}</p>
           )}
         </div>
-        {/* All four scores, not two. `overall` is the weighted composite that RANKS
-            proposals (0.5 theme + 0.35 ready-now + 0.15 era spread) — showing its
-            inputs while hiding the result left a reviewer able to see the parts but
-            not the conclusion. It leads, with the three components under it. */}
+        {/* Overall ranks proposals. When episode-era evidence is unavailable, its
+            theme and readiness inputs are renormalized rather than showing a made-up era percentage. */}
         {proposal.scores && (
           <dl className="shrink-0 text-right">
             <div className="flex items-baseline justify-end gap-1.5">
@@ -181,7 +179,11 @@ const ProposalReview = ({
             </div>
             <div className="flex items-baseline justify-end gap-1.5">
               <dt className="text-static-400 text-xs">Era spread</dt>
-              <dd className="font-mono text-sm text-tune">{formatPercent(proposal.scores.eraBalance)}</dd>
+              <dd className="font-mono text-sm text-tune">
+                {proposal.scores.eraBalance === null
+                  ? "Not assessed"
+                  : formatPercent(proposal.scores.eraBalance)}
+              </dd>
             </div>
           </dl>
         )}

@@ -946,7 +946,7 @@ func TestSuggest_GroundsToolFreeNamedPickThroughCatalog(t *testing.T) {
 		10,
 	)
 
-	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF"})
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF, with Full House"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -955,6 +955,73 @@ func TestSuggest_GroundsToolFreeNamedPickThroughCatalog(t *testing.T) {
 	}
 	if got := prop.Lineup[0]; got.Name != "Full House" || got.TVDBID != 762 || got.TMDBID == 12345 {
 		t.Fatalf("grounded pick = %+v, want canonical Full House identity and no invented id", got)
+	}
+}
+
+func TestSuggest_NamedSourceAmbiguitySurvivesModelDiscoveryFilters(t *testing.T) {
+	tests := []struct {
+		name      string
+		addRemake func(*testkit.TMDB)
+		discovery catalog.DiscoveryQuery
+		arguments map[string]any
+		mediaType string
+		tmdbID    int
+	}{
+		{
+			name: "media type",
+			addRemake: func(mt *testkit.TMDB) {
+				mt.AddMovie(541, "Full House", 1952, []int{35}, "A comedy with the same canonical title.")
+			},
+			discovery: catalog.DiscoveryQuery{MediaType: "series", Genres: []string{"Comedy"}},
+			arguments: map[string]any{"media_type": "series", "genres": []any{"Comedy"}},
+			mediaType: "series", tmdbID: 540,
+		},
+		{
+			name: "premiere year",
+			addRemake: func(mt *testkit.TMDB) {
+				mt.AddSeries(542, "Full House", 2020, []int{35}, "A later series with the same canonical title.")
+			},
+			discovery: catalog.DiscoveryQuery{MediaType: "series", Genres: []string{"Comedy"}, YearFrom: 1987, YearTo: 1987},
+			arguments: map[string]any{"media_type": "series", "genres": []any{"Comedy"}, "era": "1987"},
+			mediaType: "series", tmdbID: 540,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mt := testkit.NewTMDB(t)
+			mt.AddSeries(540, "Full House", 1987, []int{35}, "The original family sitcom.")
+			tt.addRemake(mt)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			discovered, err := tm.Discover(context.Background(), tt.discovery, 24)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(discovered) != 1 || discovered[0].TMDBID != 540 {
+				t.Fatalf("filtered fixture discovery = %+v, want only the model-selected identity", discovered)
+			}
+			model := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", tt.arguments),
+				testkit.FinalResponse(fmt.Sprintf(`{"picks":[{"mediaType":%q,"tmdbId":%d,"name":"Full House","year":1987}]}`, tt.mediaType, tt.tmdbID)),
+			)
+			s := suggest.New(model, catalog.New(nil, tm), tm, 10)
+
+			_, err = s.Suggest(context.Background(), suggest.Intent{Description: "A named programming block with Full House"})
+			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+				t.Fatalf("error = %v, want ambiguous source title rejected after filtered discovery", err)
+			}
+			if model.Calls != 2 {
+				t.Fatalf("model calls = %d, want promised discovery followed by finalization", model.Calls)
+			}
+			searches := 0
+			for _, request := range mt.Requests() {
+				if request.Path == "/search/multi" && strings.Contains(request.RawQuery, "query=Full+House") {
+					searches++
+				}
+			}
+			if searches != 1 {
+				t.Fatalf("exact source-title HTTP requests = %d, want one bounded Catalog.Search", searches)
+			}
+		})
 	}
 }
 
@@ -972,7 +1039,7 @@ func TestSuggest_GroundsToolFreeNamedPickAsAcquisition(t *testing.T) {
 		10,
 	)
 
-	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF"})
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF, with Full House"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1005,7 +1072,7 @@ func TestSuggest_GroundsToolFreeNamedPickBySuppliedYear(t *testing.T) {
 		10,
 	)
 
-	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF"})
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "1980s family sitcoms"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1031,7 +1098,7 @@ func TestSuggest_GroundsIndependentToolFreeNamesConcurrently(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	prop, err := s.Suggest(ctx, suggest.Intent{Description: "Something like TGIF"})
+	prop, err := s.Suggest(ctx, suggest.Intent{Description: "Something like TGIF, with Full House and Family Matters"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1053,6 +1120,14 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 		{
 			name:  "ambiguous title without year",
 			picks: `[{"mediaType":"series","tmdbId":12345,"name":"Full House"}]`,
+			items: []testkit.SearchStub{
+				{Terms: []string{"full house"}, LibraryItemID: "full-house-1987", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762},
+				{Terms: []string{"full house"}, LibraryItemID: "full-house-2020", Name: "Full House", Type: "Series", Year: 2020, TVDBID: 999762},
+			},
+		},
+		{
+			name:  "ambiguous named source with model-only year",
+			picks: `[{"mediaType":"series","tmdbId":12345,"name":"Full House","year":1987}]`,
 			items: []testkit.SearchStub{
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-1987", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762},
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-2020", Name: "Full House", Type: "Series", Year: 2020, TVDBID: 999762},
@@ -1165,7 +1240,7 @@ func TestSuggest_ToolFreeNameGroundingAcrossPromptShapes(t *testing.T) {
 		"known title":         {Description: "Full House"},
 		"conversational":      {Description: "Please build a warm family sitcom channel"},
 		"genre and era":       {Description: "1980s family sitcoms", Era: "1980s"},
-		"named concept":       {Description: "Something like TGIF"},
+		"named concept":       {Description: "Something like TGIF, with Full House"},
 		"explicit constraint": {Description: "A Friday-night comedy block", MustInclude: []string{"Full House"}},
 		"refinement": {
 			Description: "Family sitcoms", RefineText: "make it warmer",
@@ -1337,7 +1412,11 @@ func TestScoring_Deterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p1.Scores != p2.Scores {
+	if p1.Scores.ThemeFit != p2.Scores.ThemeFit ||
+		p1.Scores.AvailabilityRatio != p2.Scores.AvailabilityRatio ||
+		p1.Scores.Overall != p2.Scores.Overall ||
+		(p1.Scores.EraBalance == nil) != (p2.Scores.EraBalance == nil) ||
+		(p1.Scores.EraBalance != nil && *p1.Scores.EraBalance != *p2.Scores.EraBalance) {
 		t.Errorf("scoring not deterministic: %+v vs %+v", p1.Scores, p2.Scores)
 	}
 	if p1.Scores.Overall < 0 || p1.Scores.Overall > 1 {
@@ -1419,39 +1498,174 @@ func TestSuggest_AllFabricated_ErrNoGroundedTitles(t *testing.T) {
 	}
 }
 
-// A named programming block is a qualifier, not a bag of generic era/theme
+// A named programming block or collection is a qualifier, not a bag of generic era/theme
 // words. Catalog identity alone must not let the model claim unrelated shows
 // belong to it when Loomarr has no membership evidence.
-func TestSuggest_NamedProgrammingBlockRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
+
+func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
+	for _, description := range []string{
+		"Let's make a channel for FFS like the 90s",
+		"Criterion Collection",
+	} {
+		t.Run(description, func(t *testing.T) {
+			ms := testkit.NewMediaServer(t)
+			ms.SetSearchItems(
+				testkit.SearchStub{
+					Terms: []string{"ffs", "orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
+					Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
+					Genres: []string{"Science Fiction"},
+				},
+				testkit.SearchStub{
+					Terms: []string{"ffs", "kitchen circuit"}, LibraryItemID: "lib-kitchen-circuit",
+					Name: "Kitchen Circuit", Type: "Series", Year: 1997, TVDBID: 91002,
+					Genres: []string{"Reality"},
+				},
+			)
+			mt := testkit.NewTMDB(t)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			model := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit"}}),
+				testkit.FinalResponse(`{"picks":[
+					{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},
+					{"mediaType":"series","tvdbId":91002,"name":"Kitchen Circuit"}
+				]}`),
+			)
+			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+			prop, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+				t.Fatalf("unsubstantiated reference picks should fail closed, got error %v and trace %+v", err, prop.Trace)
+			}
+		})
+	}
+}
+
+// A bare proper-name channel concept is not a fuzzy theme. Its words may
+// lexically match an ordinary catalog candidate, but that candidate cannot be
+// admitted without user- or reference-supplied constituent evidence.
+func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) {
+	for _, tc := range []struct {
+		description string
+		query       string
+		name        string
+	}{
+		{description: "Criterion", query: "criterion", name: "Criterion Comedy"},
+		{description: "The Criterion Channel", query: "criterion", name: "Criterion Comedy"},
+		{description: "Criterion Channel", query: "criterion", name: "Criterion Comedy"},
+		{description: "Lantern", query: "lantern", name: "Lantern Comedy"},
+		{description: "Lantern Parade", query: "lantern", name: "Lantern Comedy"},
+		{description: "Criterion Channel Classics", query: "criterion", name: "Criterion Comedy"},
+		{description: "Criterion Channel classics", query: "criterion", name: "Criterion Comedy"},
+		{description: "Classic Criterion Channel", query: "criterion", name: "Criterion Comedy"},
+		{description: "Lantern Parade Highlights", query: "lantern", name: "Lantern Comedy"},
+	} {
+		t.Run(tc.description, func(t *testing.T) {
+			ms := testkit.NewMediaServer(t)
+			ms.SetSearchItems(testkit.SearchStub{
+				Terms: []string{tc.query}, LibraryItemID: "lib-ordinary-theme", Name: tc.name,
+				Type: "Movie", Year: 1999, TMDBID: 91001, Genres: []string{"Comedy"},
+			})
+			mt := testkit.NewTMDB(t)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			model := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"query": tc.query, "media_type": "movie"}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":91001,"name":"`+tc.name+`"}]}`),
+			)
+			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+			prop, err := s.Suggest(context.Background(), suggest.Intent{Description: tc.description})
+			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+				t.Fatalf("bare concept admitted lexical candidate: error=%v trace=%+v", err, prop.Trace)
+			}
+		})
+	}
+}
+
+func TestSuggest_CuratedKnownGenreRetainsOrdinaryGroundedDiscovery(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"comedy"}, LibraryItemID: "lib-fawlty", Name: "Fawlty Towers",
+		Type: "Series", Year: 1975, TMDBID: 91002, Genres: []string{"Comedy"},
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "comedy", "media_type": "series"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":91002,"name":"Fawlty Towers"}]}`),
+	)
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Classic Comedy"})
+	if err != nil {
+		t.Fatalf("curated known genre rejected ordinary grounded discovery: %v", err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].Name != "Fawlty Towers" {
+		t.Fatalf("proposal = %+v, want grounded non-lexical comedy title", prop)
+	}
+}
+
+func TestSuggest_BareProperTitleUsesExactUserAnchor(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"the matrix"}, LibraryItemID: "lib-matrix", Name: "The Matrix",
+		Type: "Movie", Year: 1999, TMDBID: 603, Genres: []string{"Science Fiction"},
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "The Matrix", "media_type": "movie"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "The Matrix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 603 {
+		t.Fatalf("exact direct title was not admitted: %+v", proposal)
+	}
+}
+
+func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	ms.SetSearchItems(
-		testkit.SearchStub{
-			Terms: []string{"ffs"}, LibraryItemID: "lib-orbital-detectives",
-			Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
-			Genres: []string{"Science Fiction"},
-		},
-		testkit.SearchStub{
-			Terms: []string{"ffs"}, LibraryItemID: "lib-kitchen-circuit",
-			Name: "Kitchen Circuit", Type: "Series", Year: 1997, TVDBID: 91002,
-			Genres: []string{"Reality"},
-		},
+		testkit.SearchStub{Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives", Name: "Orbital Detectives", Type: "Series", Year: 1988, TVDBID: 91001},
+		testkit.SearchStub{Terms: []string{"kitchen circuit"}, LibraryItemID: "lib-kitchen-circuit", Name: "Kitchen Circuit", Type: "Series", Year: 1992, TVDBID: 91002},
+		testkit.SearchStub{Terms: []string{"banished comedy"}, LibraryItemID: "lib-banished-comedy", Name: "Banished Comedy", Type: "Series", Year: 1994, TVDBID: 91003},
+		testkit.SearchStub{Terms: []string{"forbidden family"}, LibraryItemID: "lib-forbidden-family", Name: "Forbidden Family", Type: "Series", Year: 1995, TVDBID: 91004},
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	model := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "ffs"}),
-		testkit.FinalResponse(`{"picks":[
-			{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},
-			{"mediaType":"series","tvdbId":91002,"name":"Kitchen Circuit"}
+		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit", "Banished Comedy", "Forbidden Family"}}),
+		testkit.FinalResponse(`{"rationale":"both definitely aired throughout the decade","picks":[
+			{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives","rationale":"a famous block member"},
+			{"mediaType":"series","tvdbId":91002,"name":"Kitchen Circuit","rationale":"aired every Friday"},
+			{"mediaType":"series","tvdbId":91003,"name":"Banished Comedy"},
+			{"mediaType":"series","tvdbId":91004,"name":"Forbidden Family"}
 		]}`),
 	)
 	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{
-		Description: "Let's make a channel for FFS like the 90s",
+		Description: "90's FFS. Think Orbital Detectives and Kitchen Circuit, but not Banished Comedy.",
+		Era:         "1990s", MustExclude: []string{"Forbidden Family"},
 	})
-	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
-		t.Fatalf("unsubstantiated reference picks should fail closed, got error %v and trace %+v", err, prop.Trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 2 {
+		t.Fatalf("description-backed lineup = %+v, want both exact examples", prop.Lineup)
+	}
+	if !strings.Contains(prop.Rationale, "user-supplied constituent evidence") ||
+		strings.Contains(prop.Rationale, "throughout the decade") {
+		t.Fatalf("proposal rationale did not reflect admitted provenance: %q", prop.Rationale)
+	}
+	for _, item := range prop.Lineup {
+		if !strings.Contains(item.Rationale, "you supplied this title") || strings.Contains(item.Rationale, "aired") {
+			t.Fatalf("item rationale did not replace unsupported model prose: %+v", item)
+		}
 	}
 }
 
@@ -1481,12 +1695,13 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{
 		Description: "Build a 1990s channel from https://lineups.example/friday#history",
+		MustExclude: []string{"Beta Steps"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prop.Lineup) != 2 || prop.Lineup[0].TVDBID != 92001 || prop.Lineup[1].TVDBID != 92002 {
-		t.Fatalf("reference-grounded lineup = %+v", prop.Lineup)
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TVDBID != 92001 {
+		t.Fatalf("reference-grounded lineup ignored the explicit exclusion = %+v", prop.Lineup)
 	}
 	if model.Calls != 1 || len(references.Calls()) != 1 {
 		t.Fatalf("model/reference calls = %d/%d, want 1/1", model.Calls, len(references.Calls()))
@@ -1494,6 +1709,89 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 	prompt := model.Prompt()
 	if !strings.Contains(prompt, "UNTRUSTED REFERENCE DATA") || !strings.Contains(prompt, "Alpha House") {
 		t.Fatalf("bounded reference evidence was not labeled and supplied to the model: %q", prompt)
+	}
+	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != nil {
+		t.Fatalf("reference-backed membership should score as supported with episode-era overlap unassessed, got %+v", prop.Scores)
+	}
+	if !strings.Contains(prop.Rationale, "resolved public-reference constituent evidence") {
+		t.Fatalf("proposal rationale did not report reference provenance: %q", prop.Rationale)
+	}
+	for _, item := range prop.Lineup {
+		if !strings.Contains(item.Rationale, "resolved public reference") {
+			t.Fatalf("item rationale did not report reference provenance: %+v", item)
+		}
+	}
+}
+
+func TestSuggest_ReferenceTitleAmbiguityDropsOnlyAmbiguousMember(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"alpha house"}, LibraryItemID: "alpha-1991", Name: "Alpha House", Type: "Series", Year: 1991, TVDBID: 92001},
+		testkit.SearchStub{Terms: []string{"alpha house"}, LibraryItemID: "alpha-2021", Name: "Alpha House", Type: "Series", Year: 2021, TVDBID: 92003},
+		testkit.SearchStub{Terms: []string{"beta steps"}, LibraryItemID: "beta", Name: "Beta Steps", Type: "Series", Year: 1993, TVDBID: 92002},
+	)
+	references := &testkit.ReferenceResolver{Evidence: reference.Evidence{
+		URL: "https://lineups.example/friday", Title: "Friday Family Showcase",
+		TitleAnchors: []string{"Alpha House", "Beta Steps"},
+	}}
+	model := testkit.NewLLM(testkit.FinalResponse(`{"picks":[
+		{"mediaType":"series","tvdbId":92001,"name":"Alpha House"},
+		{"mediaType":"series","tvdbId":92002,"name":"Beta Steps"}
+	]}`))
+	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).WithReferences(references)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Build a block from https://lineups.example/friday"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].Name != "Beta Steps" {
+		t.Fatalf("lineup = %+v, want only unambiguous Beta Steps", prop.Lineup)
+	}
+	if len(references.Calls()) != 1 {
+		t.Fatalf("reference resolver calls = %d, want 1", len(references.Calls()))
+	}
+	if strings.Contains(prop.Rationale, "Alpha House") {
+		t.Fatalf("ambiguous member survived proposal rationale: %q", prop.Rationale)
+	}
+}
+
+func TestSuggest_OrdinaryBroadFamilyComedyRetainsGroundedNeighbors(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "full-house", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762, Genres: []string{"Comedy", "Family"}},
+		testkit.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "family-matters", Name: "Family Matters", Type: "Series", Year: 1989, TVDBID: 767, Genres: []string{"Comedy", "Family"}},
+	)
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "family comedy"}),
+		testkit.FinalResponse(`{"rationale":"warm 90s family comedies","picks":[
+		{"mediaType":"series","tvdbId":762,"name":"Full House"},
+		{"mediaType":"series","tvdbId":767,"name":"Family Matters"}
+	]}`),
+	)
+	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "90s family comedies like Full House"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 2 || prop.Lineup[0].TVDBID != 762 || prop.Lineup[1].TVDBID != 767 {
+		t.Fatalf("lineup = %+v, want Full House and Family Matters", prop.Lineup)
+	}
+	if model.Calls != 2 {
+		t.Fatalf("model calls = %d, want tool call then final response", model.Calls)
+	}
+	sawSearch := false
+	for _, req := range ms.Requests() {
+		if strings.Contains(req.RawQuery, "SearchTerm=family+comedy") {
+			sawSearch = true
+		}
+	}
+	if !sawSearch {
+		t.Fatalf("broad catalog search did not execute: %+v", ms.Requests())
+	}
+	if strings.Contains(prop.Rationale, "constituent") || strings.Contains(prop.Rationale, "member") {
+		t.Fatalf("ordinary proposal made named-set claims: %q", prop.Rationale)
 	}
 }
 
@@ -1591,25 +1889,29 @@ func TestSuggest_DiscoveryGroundsExplicitMoviePeople(t *testing.T) {
 }
 
 func TestSuggest_DiscoveryGroundsExplicitTVNetwork(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
-	mt := testkit.NewTMDB(t)
-	mt.AddNetwork(49, "HBO", "US")
-	mt.SetSeriesNetwork(1396, 49)
-	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"media_type": "series", "network": "HBO"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}]}`),
-	)
-	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
+	for _, description := range []string{"HBO series", "shows from network HBO"} {
+		t.Run(description, func(t *testing.T) {
+			ms := testkit.NewMediaServer(t)
+			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+			mt := testkit.NewTMDB(t)
+			mt.AddNetwork(49, "HBO", "US")
+			mt.SetSeriesNetwork(1396, 49)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			llmMock := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"media_type": "series", "network": "HBO"}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}]}`),
+			)
+			s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "HBO series"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
-	if len(items) != 1 || items[0].TMDBID != 1396 || !slices.Equal(items[0].Networks, []string{"HBO"}) {
-		t.Fatalf("network-grounded proposal = %+v", proposal)
+			proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+			if err != nil {
+				t.Fatal(err)
+			}
+			items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+			if len(items) != 1 || items[0].TMDBID != 1396 || !slices.Equal(items[0].Networks, []string{"HBO"}) {
+				t.Fatalf("network-grounded proposal = %+v", proposal)
+			}
+		})
 	}
 }
 
@@ -1905,5 +2207,72 @@ func TestProposal_NoCeilingRefusesNothing(t *testing.T) {
 	}
 	if len(prop.Refused) != 0 {
 		t.Fatalf("nothing may be refused with no ceiling, got %+v", prop.Refused)
+	}
+}
+
+func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"full house"}, LibraryItemID: "full-house", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762},
+		testkit.SearchStub{Terms: []string{"family matters"}, LibraryItemID: "family-matters", Name: "Family Matters", Type: "Series", Year: 1989, TVDBID: 767},
+		testkit.SearchStub{Terms: []string{"step by step"}, LibraryItemID: "step-by-step", Name: "Step by Step", Type: "Series", Year: 1991, TVDBID: 760},
+		testkit.SearchStub{Terms: []string{"full house", "sitcom"}, LibraryItemID: "neighbor", Name: "Full House Secrets", Type: "Series", Year: 2020, TVDBID: 99001},
+	)
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model := testkit.NewLLM(
+		// Explicit members are pre-grounded before inference, so the FIRST actual
+		// model tool response can surface an unrelated neighbor without requiring a
+		// forbidden second successful tool call.
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "sitcom"}),
+		testkit.FinalResponse(`{"channelName":"Friday Night","rationale":"all of these aired in the block throughout the 90s","picks":[
+			{"mediaType":"series","tvdbId":762,"name":"Full House","rationale":"premiered in the 90s"},
+			{"mediaType":"series","tvdbId":767,"name":"Family Matters"},
+			{"mediaType":"series","tvdbId":760,"name":"Step by Step"},
+			{"mediaType":"series","tvdbId":99001,"name":"Full House Secrets"}
+		]}`),
+	)
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "a named Friday-night family sitcom collection", Era: "1990s", MustInclude: []string{"Full House", "Family Matters", "Step by Step"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 3 {
+		t.Fatalf("lineup = %+v, want exactly the enumerated members", prop.Lineup)
+	}
+	for _, item := range prop.Lineup {
+		if item.TVDBID == 99001 {
+			t.Fatalf("non-member search neighbor survived: %+v", prop.Lineup)
+		}
+		if !strings.Contains(item.Rationale, "you supplied this title") {
+			t.Fatalf("member rationale lacks user provenance: %+v", item)
+		}
+	}
+	if model.Calls != 2 {
+		t.Fatalf("model calls = %d, want broad tool then final", model.Calls)
+	}
+	sawBroadSearch := false
+	for _, request := range ms.Requests() {
+		if strings.Contains(request.RawQuery, "SearchTerm=sitcom") {
+			sawBroadSearch = true
+		}
+	}
+	if !sawBroadSearch {
+		t.Fatalf("broad catalog search did not execute; requests = %+v", ms.Requests())
+	}
+	foundNeighborRejection := false
+	for _, decision := range prop.Trace.Candidates {
+		if decision.Key == "series:tvdb:99001" && decision.Disposition == "validation_dropped" && decision.Reason == "no_relevance_evidence" {
+			foundNeighborRejection = true
+		}
+	}
+	if !foundNeighborRejection {
+		t.Fatalf("trace did not preserve the surfaced neighbor's membership rejection: %+v", prop.Trace)
+	}
+	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != nil {
+		t.Fatalf("membership score/unknown episode-era balance = %+v, want supported/unassessed", prop.Scores)
+	}
+	if strings.Contains(prop.Rationale, "throughout the 90s") {
+		t.Fatalf("unsupported model history survived in proposal rationale: %q", prop.Rationale)
 	}
 }

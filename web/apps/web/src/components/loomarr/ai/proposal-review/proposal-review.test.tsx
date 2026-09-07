@@ -60,6 +60,14 @@ describe("ProposalReview", () => {
     expect(screen.getByText("88%")).toBeInTheDocument();
   });
 
+  it("shows unavailable episode-era evidence as not assessed", () => {
+    renderWithTooltip(
+      <ProposalReview proposal={{ ...proposal, scores: { ...proposal.scores, eraBalance: null } }} />,
+    );
+    expect(screen.getByText("Not assessed")).toBeInTheDocument();
+    expect(screen.queryByText("100%")).not.toBeInTheDocument();
+  });
+
   it("renders deterministic why-this and why-not evidence from the trace", () => {
     renderWithTooltip(<ProposalReview proposal={proposal} />);
     expect(screen.getByRole("heading", { name: "Why this / why not" })).toBeInTheDocument();

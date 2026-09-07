@@ -89,6 +89,7 @@ func (s *Suggester) groundPickNames(
 		if result.err != nil {
 			return nil, result.err
 		}
+		cacheMembershipSourceResolution(intent, result.query.name, result.candidates)
 		for _, proposed := range result.query.proposed {
 			candidate, found := exactCandidateForPick(result.candidates, proposed)
 			if !found {

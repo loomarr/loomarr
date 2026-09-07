@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/quality"
+	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -683,20 +684,27 @@ func classifyFailure(cause error) string {
 // IntentHash is the cache key: a stable hash of the normalized intent (§8). Field
 // order + case are normalized so semantically-identical intents collide.
 func IntentHash(i Intent) string {
+	referenceIdentity, _ := reference.URL(referenceIntentText(i))
 	norm := struct {
-		Desc, Era, Tone  string
-		Rt, Max          int
-		Include, Exclude []string
+		PlannerContract   string
+		MembershipPolicy  bool
+		ReferenceIdentity string
+		Desc, Era, Tone   string
+		Rt, Max           int
+		Include, Exclude  []string
 		// Refine inputs are part of the identity so a refine ("drop the slow ones") never
 		// collides in the 24h cache with the original suggestion or a prior refine of the
 		// same channel. The current lineup is folded in via its keys (order-independent).
 		Refine     string
 		LineupKeys []string
 	}{
-		Desc: strings.ToLower(strings.TrimSpace(i.Description)),
-		Era:  strings.ToLower(strings.TrimSpace(i.Era)),
-		Tone: strings.ToLower(strings.TrimSpace(i.Tone)),
-		Rt:   i.RuntimeTgt, Max: i.MaxAcquire,
+		PlannerContract:   PlannerPromptVersion + ":" + PlannerToolSchemaVersion,
+		MembershipPolicy:  requiresMembershipEvidence(i),
+		ReferenceIdentity: referenceIdentity,
+		Desc:              strings.ToLower(strings.TrimSpace(i.Description)),
+		Era:               strings.ToLower(strings.TrimSpace(i.Era)),
+		Tone:              strings.ToLower(strings.TrimSpace(i.Tone)),
+		Rt:                i.RuntimeTgt, Max: i.MaxAcquire,
 		Include: normSlice(i.MustInclude), Exclude: normSlice(i.MustExclude),
 		Refine:     strings.ToLower(strings.TrimSpace(i.RefineText)),
 		LineupKeys: lineupKeys(i.CurrentLineup),

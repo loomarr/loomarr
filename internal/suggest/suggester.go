@@ -161,6 +161,10 @@ const groundingRetryPrompt = `You returned no grounded picks without finding usa
 	`or keywords for a holiday, motif, franchise, or topic. Then select only ids the tool returns.`
 
 func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error) {
+	// A tool call receives Intent by value, but this map deliberately shares the
+	// exact membership evidence it adds with the final grounding chokepoint.
+	intent.membershipKeys = make(map[provision.Key]bool)
+	intent.membershipSources = newMembershipSourceState()
 	allAdjacent := intent.Adjacent
 	var feedback []FeedbackSignal
 	if s.feedback != nil {
@@ -182,6 +186,14 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		cause := fmt.Errorf("%w: reference titles were not found in the configured catalog", ErrNoGroundedTitles)
 		return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, cause)
 	}
+	curatedTitle, curatedTitleErr := s.groundCuratedTitleSubject(ctx, &intent)
+	if curatedTitleErr != nil {
+		return Proposal{}, curatedTitleErr
+	}
+	explicitMembers, explicitMembersErr := s.groundExplicitMembershipAnchors(ctx, &intent)
+	if explicitMembersErr != nil {
+		return Proposal{}, explicitMembersErr
+	}
 	messages := []llm.Message{
 		{Role: llm.System, Content: systemPrompt},
 		{Role: llm.User, Content: userPrompt(intent)},
@@ -201,6 +213,16 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	mergeDecisionTrace(&trace, &referenceSeed.trace)
 	temp := groundedTemp
 	for _, candidate := range referenceSeed.candidates {
+		if key, err := candidate.Key(); err == nil {
+			surfaced[key] = candidate
+		}
+	}
+	for _, candidate := range explicitMembers {
+		if key, err := candidate.Key(); err == nil {
+			surfaced[key] = candidate
+		}
+	}
+	for _, candidate := range curatedTitle {
 		if key, err := candidate.Key(); err == nil {
 			surfaced[key] = candidate
 		}

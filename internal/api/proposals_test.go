@@ -264,6 +264,26 @@ func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing
 	}
 }
 
+func TestGetProposalPreservesUnassessedEraBalanceAsJSONNull(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"scores":{"themeFit":1,"availabilityRatio":0.5,"eraBalance":null,"overall":0.7941176470588235}}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{ID: "era-proposal", JobID: "era-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/proposals/era-proposal", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET proposal = %d, want 200", resp.StatusCode)
+	}
+	var got api.ProposalDTO
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Proposal.Scores.EraBalance != nil {
+		t.Fatalf("era balance = %v, want nil", *got.Proposal.Scores.EraBalance)
+	}
+}
+
 // THE APPROVAL GATE (§19): approve requires admin. A member (anonymous here /
 // wrong token) gets 403 — and crucially, no title is enqueued.
 func TestApprove_RequiresAdmin_NothingEnqueued(t *testing.T) {

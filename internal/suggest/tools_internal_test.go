@@ -2,13 +2,59 @@ package suggest
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
+
+func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Series, Name: "Simpsons", Year: 2020, TMDBID: 9001},
+		{MediaType: provision.Series, Name: "The Simpsons", Year: 1989, TMDBID: 456},
+	}}
+	s := New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"mode": "collection", "media_type": "series",
+			"titles": []any{map[string]any{"name": "The Simpsons", "year": float64(1989)}},
+		}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+	), catalog.New(nil, corpus), nil, 10)
+
+	_, err := s.Suggest(context.Background(), Intent{Description: "Classic Simpsons"})
+	if !errors.Is(err, ErrNoGroundedTitles) {
+		t.Fatalf("model type/year steering admitted ambiguous curated subject: %v", err)
+	}
+	searches := corpus.Searches()
+	if len(searches) < 2 || searches[0].Query != "Simpsons" || searches[1].Query != "The Simpsons" {
+		t.Fatalf("source searches = %+v, want raw user subject before canonical model query", searches)
+	}
+}
+
+func TestGroundCuratedTitleSubjectTreatsDuplicateKeyRowsAsOneIdentity(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Series, Name: "The Simpsons", Year: 1989, TMDBID: 456},
+		{MediaType: provision.Series, Name: "The Simpsons", Year: 1989, TMDBID: 456},
+	}}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	intent := Intent{Description: "Classic Simpsons", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+
+	candidates, err := s.groundCuratedTitleSubject(context.Background(), &intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || intent.curatedTitleKey != provision.Key("series:tmdb:456") || len(intent.membershipKeys) != 1 {
+		t.Fatalf("duplicate-key grounding = candidates %+v intent %+v", candidates, intent)
+	}
+	if searches := corpus.Searches(); len(searches) != 1 || searches[0].Query != "Simpsons" {
+		t.Fatalf("source searches = %+v, want one raw-subject lookup", searches)
+	}
+}
 
 func TestParseDiscoveryQueryValidatesAndNormalizesScalarQualifiers(t *testing.T) {
 	got, discovery, err := parseDiscoveryQuery(map[string]any{
@@ -26,6 +72,67 @@ func TestParseDiscoveryQueryValidatesAndNormalizesScalarQualifiers(t *testing.T)
 	if !discovery || got.OriginalLanguage != "en" || got.OriginCountry != "GB" ||
 		got.RuntimeMin != 20 || got.RuntimeMax != 90 || got.VoteAverageMin != 7.5 || got.VoteCountMin != 100 {
 		t.Fatalf("normalized discovery query = %+v discovery=%v", got, discovery)
+	}
+}
+
+func TestCollectionTitleAnchorsAcceptsExactNamesAndRemakeYears(t *testing.T) {
+	anchors, err := collectionTitleAnchors([]any{
+		" The Thing ", map[string]any{"name": "The Thing", "year": float64(1982)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(anchors) != 2 || anchors[0].name != "The Thing" || anchors[0].year != 0 ||
+		anchors[1].name != "The Thing" || anchors[1].year != 1982 {
+		t.Fatalf("anchors = %+v", anchors)
+	}
+}
+
+func TestCollectionTitleAnchorsRejectsMalformedItems(t *testing.T) {
+	tests := []struct {
+		name  string
+		value []any
+		want  string
+	}{
+		{name: "non string", value: []any{12}, want: "strings or"},
+		{name: "missing name", value: []any{map[string]any{"year": float64(1982)}}, want: "requires a string name"},
+		{name: "unknown object member", value: []any{map[string]any{"name": "The Thing", "edition": "director's cut"}}, want: "only name and year"},
+		{name: "bad year", value: []any{map[string]any{"name": "The Thing", "year": 1982.5}}, want: "integer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := collectionTitleAnchors(tt.value); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunToolRejectsUnknownCollectionModeAndQualifiers(t *testing.T) {
+	s := &Suggester{}
+	for _, arguments := range []map[string]any{
+		{"mode": "unsupported", "query": "The Thing"},
+		{"mode": 1, "query": "The Thing"},
+		{"mode": "collection", "media_type": "movie", "titles": []any{"The Thing"}, "era": "1980s"},
+	} {
+		result, _, _ := s.runTool(context.Background(), llm.ToolCall{Name: catalogToolName, Arguments: arguments}, Intent{}, nil)
+		if !strings.Contains(result, `"error"`) {
+			t.Fatalf("arguments %v unexpectedly succeeded: %s", arguments, result)
+		}
+	}
+}
+
+func TestCatalogToolCollectionSchemaMatchesParser(t *testing.T) {
+	properties := catalogTool().Parameters["properties"].(map[string]any)
+	titles := properties["titles"].(map[string]any)
+	items := titles["items"].(map[string]any)
+	oneOf := items["oneOf"].([]any)
+	if titles["minItems"] != 1 || titles["maxItems"] != 8 || len(oneOf) != 2 {
+		t.Fatalf("titles schema = %#v", titles)
+	}
+	anchor := oneOf[1].(map[string]any)
+	if anchor["additionalProperties"] != false || anchor["required"].([]string)[0] != "name" {
+		t.Fatalf("anchor schema = %#v", anchor)
 	}
 }
 
@@ -134,6 +241,81 @@ func TestRunToolKeepsAllQualifiersOnAlreadyValidStrictCall(t *testing.T) {
 	if got.OriginalLanguage != "en" || got.RuntimeMin != 20 || got.RuntimeMax != 60 ||
 		got.VoteAverageMin != 6.5 || got.VoteCountMin != 100 {
 		t.Fatalf("strict call lost compatible qualifiers: %+v", got)
+	}
+}
+
+func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: "series", Name: "Full House", TVDBID: 762},
+		{MediaType: "series", Name: "Family Matters", TVDBID: 767},
+	}}
+	intent := Intent{
+		Description:    "90s family comedies like Full House",
+		membershipKeys: make(map[provision.Key]bool),
+	}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	_, candidates, _ := s.runTool(context.Background(), llm.ToolCall{
+		Name: catalogToolName, Arguments: map[string]any{"query": "family comedies"},
+	}, intent, nil)
+	if len(candidates) != 2 || len(corpus.Searches()) != 1 {
+		t.Fatalf("broad search = candidates %+v searches %+v", candidates, corpus.Searches())
+	}
+	if len(intent.membershipKeys) != 0 {
+		t.Fatalf("ordinary example manufactured membership proof: %+v", intent.membershipKeys)
+	}
+}
+
+func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: "series", Name: "Full House", TVDBID: 762},
+		{MediaType: "series", Name: "Full House", TVDBID: 762},
+		{MediaType: "series", Name: "Family Matters", TVDBID: 767},
+	}}
+	intent := Intent{
+		Description:    "A named programming block with Full House and Family Matters",
+		membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState(),
+	}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	call := llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"query": "family night"}}
+	_, _, _ = s.runTool(context.Background(), call, intent, nil)
+	_, _, _ = s.runTool(context.Background(), call, intent, nil)
+	searches := corpus.Searches()
+	if len(searches) != 4 || searches[0].Query != "family night" || searches[1].Query != "Full House" ||
+		searches[2].Query != "Family Matters" || searches[3].Query != "family night" {
+		t.Fatalf("catalog searches = %+v, want two base calls plus one deduplicated exact lookup per source title", searches)
+	}
+	if len(intent.membershipKeys) != 2 {
+		t.Fatalf("membership keys = %+v, want both unambiguous source identities", intent.membershipKeys)
+	}
+}
+
+func TestRunCollectionToolUsesUnfilteredSourceIdentityBeforeModelYear(t *testing.T) {
+	tests := []struct {
+		name       string
+		candidates []catalog.Candidate
+		wantKeys   int
+	}{
+		{name: "different canonical identities stay ambiguous", candidates: []catalog.Candidate{
+			{MediaType: "series", Name: "Full House", Year: 1987, TVDBID: 762},
+			{MediaType: "series", Name: "Full House", Year: 2020, TVDBID: 999762},
+		}},
+		{name: "duplicate rows for one key remain unambiguous", candidates: []catalog.Candidate{
+			{MediaType: "series", Name: "Full House", Year: 1987, TVDBID: 762},
+			{MediaType: "series", Name: "Full House", Year: 1987, TVDBID: 762},
+		}, wantKeys: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			corpus := &catalogfixture.Corpus{Candidates: tt.candidates}
+			intent := Intent{Description: "A named programming block with Full House", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+			s := New(nil, catalog.New(nil, corpus), nil, 10)
+			_, candidates, _ := s.runCollectionTool(context.Background(), map[string]any{
+				"mode": "collection", "media_type": "series", "titles": []any{map[string]any{"name": "Full House", "year": float64(1987)}},
+			}, intent, nil)
+			if len(candidates) != 1 || len(intent.membershipKeys) != tt.wantKeys || len(corpus.Searches()) != 1 {
+				t.Fatalf("candidates=%+v membership=%+v searches=%+v", candidates, intent.membershipKeys, corpus.Searches())
+			}
+		})
 	}
 }
 

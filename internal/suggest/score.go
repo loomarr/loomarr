@@ -2,6 +2,8 @@ package suggest
 
 import (
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // This file holds the DETERMINISTIC post-scoring layered on the LLM output (§8):
@@ -12,7 +14,7 @@ import (
 // configurable" — a follow-on knob, not this phase).
 
 // score computes the deterministic scores for a proposal's lineup + acquisitions.
-// All sub-scores are in [0,1].
+// Present sub-scores are in [0,1].
 func score(intent Intent, lineup, acquisitions []ProposalItem) Scores {
 	total := len(lineup) + len(acquisitions)
 	if total == 0 {
@@ -35,6 +37,13 @@ func score(intent Intent, lineup, acquisitions []ProposalItem) Scores {
 // title-substring scoring returned ~0 even on a perfect lineup; genres/overview
 // carry the actual theme.
 func themeFit(intent Intent, lineup, acquisitions []ProposalItem) float64 {
+	// For a named set, membership is the requested semantic rather than a lexical
+	// theme. The admission gate has already established every surviving key from
+	// explicit user/public-reference anchors, so those source-backed members match
+	// the request even when catalog metadata does not repeat the block's name.
+	if requiresMembershipEvidence(intent) && allItemsHaveMembershipEvidence(intent, lineup, acquisitions) {
+		return 1
+	}
 	terms := themeTerms(intent)
 	if len(terms) == 0 {
 		return 1 // no terms to fit against → neutral-max
@@ -54,6 +63,20 @@ func themeFit(intent Intent, lineup, acquisitions []ProposalItem) float64 {
 		}
 	}
 	return float64(hits) / float64(len(items))
+}
+
+func allItemsHaveMembershipEvidence(intent Intent, lineup, acquisitions []ProposalItem) bool {
+	items := append(append([]ProposalItem{}, lineup...), acquisitions...)
+	if len(items) == 0 || len(intent.membershipKeys) == 0 {
+		return false
+	}
+	for _, item := range items {
+		key, err := item.Key()
+		if err != nil || !intent.membershipKeys[key] {
+			return false
+		}
+	}
+	return true
 }
 
 // themeHaystack is the lowercased source-backed text an item is scored against:
@@ -103,10 +126,16 @@ func themeTerms(intent Intent) []string {
 // era or one item it's neutral (1). The metric: fraction of distinct decades
 // among items relative to items — higher = better spread. When the intent names
 // an era, items outside it are penalized by not counting toward the spread.
-func eraBalance(intent Intent, lineup, acquisitions []ProposalItem) float64 {
+func eraBalance(intent Intent, lineup, acquisitions []ProposalItem) *float64 {
 	items := append(append([]ProposalItem{}, lineup...), acquisitions...)
+	// A series premiere year cannot prove which of its episodes air in the
+	// requested era, and a model-authored season window is a selector rather than
+	// dated evidence. Named series sets therefore leave this criterion unassessed.
+	if requiresMembershipEvidence(intent) && allItemsHaveMembershipEvidence(intent, lineup, acquisitions) && containsSeries(items) {
+		return nil
+	}
 	if len(items) <= 1 {
-		return 1
+		return scoreValue(1)
 	}
 	decades := map[int]bool{}
 	withYear := 0
@@ -118,15 +147,26 @@ func eraBalance(intent Intent, lineup, acquisitions []ProposalItem) float64 {
 		decades[it.Year/10] = true
 	}
 	if withYear == 0 {
-		return 1 // no year info → don't penalize
+		return scoreValue(1) // no year info → don't penalize
 	}
 	// Spread = distinct decades / items-with-year, clamped to [0,1].
 	spread := float64(len(decades)) / float64(withYear)
 	if spread > 1 {
 		spread = 1
 	}
-	return spread
+	return scoreValue(spread)
 }
+
+func containsSeries(items []ProposalItem) bool {
+	for _, item := range items {
+		if item.MediaType == provision.Series {
+			return true
+		}
+	}
+	return false
+}
+
+func scoreValue(value float64) *float64 { return &value }
 
 // composite weights the sub-scores into the overall ranking score.
 //
@@ -141,7 +181,11 @@ func eraBalance(intent Intent, lineup, acquisitions []ProposalItem) float64 {
 //
 // Theme-first weighting (maintainer decision): matching the ask dominates, with
 // how-much-is-playable-now a strong second and era spread a light tiebreaker.
-// Weights sum to 1.0 so Overall stays in [0,1].
+// When era balance is unavailable, the remaining weights are normalized so Overall
+// still stays in [0,1] without inventing a score for unknown episode dates.
 func composite(s Scores) float64 {
-	return 0.5*s.ThemeFit + 0.35*s.AvailabilityRatio + 0.15*s.EraBalance
+	if s.EraBalance == nil {
+		return (0.5*s.ThemeFit + 0.35*s.AvailabilityRatio) / 0.85
+	}
+	return 0.5*s.ThemeFit + 0.35*s.AvailabilityRatio + 0.15*(*s.EraBalance)
 }
