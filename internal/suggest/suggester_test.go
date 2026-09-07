@@ -1626,6 +1626,78 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 	}
 }
 
+func TestSuggest_ReferenceTitleAmbiguityDropsOnlyAmbiguousMember(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"alpha house"}, LibraryItemID: "alpha-1991", Name: "Alpha House", Type: "Series", Year: 1991, TVDBID: 92001},
+		testkit.SearchStub{Terms: []string{"alpha house"}, LibraryItemID: "alpha-2021", Name: "Alpha House", Type: "Series", Year: 2021, TVDBID: 92003},
+		testkit.SearchStub{Terms: []string{"beta steps"}, LibraryItemID: "beta", Name: "Beta Steps", Type: "Series", Year: 1993, TVDBID: 92002},
+	)
+	references := &testkit.ReferenceResolver{Evidence: reference.Evidence{
+		URL: "https://lineups.example/friday", Title: "Friday Family Showcase",
+		TitleAnchors: []string{"Alpha House", "Beta Steps"},
+	}}
+	model := testkit.NewLLM(testkit.FinalResponse(`{"picks":[
+		{"mediaType":"series","tvdbId":92001,"name":"Alpha House"},
+		{"mediaType":"series","tvdbId":92002,"name":"Beta Steps"}
+	]}`))
+	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).WithReferences(references)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Build a block from https://lineups.example/friday"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].Name != "Beta Steps" {
+		t.Fatalf("lineup = %+v, want only unambiguous Beta Steps", prop.Lineup)
+	}
+	if len(references.Calls()) != 1 {
+		t.Fatalf("reference resolver calls = %d, want 1", len(references.Calls()))
+	}
+	if strings.Contains(prop.Rationale, "Alpha House") {
+		t.Fatalf("ambiguous member survived proposal rationale: %q", prop.Rationale)
+	}
+}
+
+func TestSuggest_OrdinaryBroadFamilyComedyRetainsGroundedNeighbors(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "full-house", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762, Genres: []string{"Comedy", "Family"}},
+		testkit.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "family-matters", Name: "Family Matters", Type: "Series", Year: 1989, TVDBID: 767, Genres: []string{"Comedy", "Family"}},
+	)
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "family comedy"}),
+		testkit.FinalResponse(`{"rationale":"warm 90s family comedies","picks":[
+		{"mediaType":"series","tvdbId":762,"name":"Full House"},
+		{"mediaType":"series","tvdbId":767,"name":"Family Matters"}
+	]}`),
+	)
+	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "90s family comedies like Full House"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 2 || prop.Lineup[0].TVDBID != 762 || prop.Lineup[1].TVDBID != 767 {
+		t.Fatalf("lineup = %+v, want Full House and Family Matters", prop.Lineup)
+	}
+	if model.Calls != 2 {
+		t.Fatalf("model calls = %d, want tool call then final response", model.Calls)
+	}
+	sawSearch := false
+	for _, req := range ms.Requests() {
+		if strings.Contains(req.RawQuery, "SearchTerm=family+comedy") {
+			sawSearch = true
+		}
+	}
+	if !sawSearch {
+		t.Fatalf("broad catalog search did not execute: %+v", ms.Requests())
+	}
+	if strings.Contains(prop.Rationale, "constituent") || strings.Contains(prop.Rationale, "member") {
+		t.Fatalf("ordinary proposal made named-set claims: %q", prop.Rationale)
+	}
+}
+
 // T1.2: a THEMED intent — the model discovers by genre+era (no title query) and
 // grounds a proposal from the discovered candidates. Proves discovery flows into
 // the surfaced map exactly like keyword search.

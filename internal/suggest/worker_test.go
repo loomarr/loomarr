@@ -205,6 +205,46 @@ func TestSubmit_DistinctCaseSensitiveReferenceURLsDoNotShareSuccess(t *testing.T
 	}
 }
 
+func TestSubmit_CaseSensitiveOrdinaryReferenceDoesNotCloneSuccess(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	svc := buildService(t, st, testkit.NewLLM())
+	sourceID, err := svc.Submit(ctx, suggest.Intent{Description: "tgif"}, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := st.GetJob(ctx, sourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job.Status = "done"
+	if err := st.UpdateJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateProposal(ctx, store.Proposal{ID: "tgif-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice", ProposalJSON: `{"lineup":[{"name":"Full House"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	newID, err := svc.Submit(ctx, suggest.Intent{Description: "TGIF"}, "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newID == sourceID {
+		t.Fatal("case-distinct ordinary reference reused successful job")
+	}
+	newJob, err := st.GetJob(ctx, newID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newJob.Status != "queued" || newJob.CreatedBy != "bob" {
+		t.Fatalf("new job = %+v, want queued job owned by bob", newJob)
+	}
+	if proposals, err := st.ListProposalsByCreator(ctx, "bob"); err != nil {
+		t.Fatal(err)
+	} else if len(proposals) != 0 {
+		t.Fatalf("new submission cloned cached proposal: %+v", proposals)
+	}
+}
+
 // A FAILED job (e.g. no grounded titles) must NOT wedge re-submits — retrying the
 // same intent re-runs generation instead of returning the failed job.
 func TestSubmit_FailedJobDoesNotCache(t *testing.T) {
