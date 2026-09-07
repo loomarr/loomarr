@@ -148,7 +148,7 @@ test("hands the native splash to the shared Loomarr launch identity", async () =
   );
 });
 
-test("ships DNS-SD and UDP LAN discovery without restoring Kotlin", async () => {
+test("ships DNS-SD plus bounded broadcast and unicast LAN discovery without restoring Kotlin", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const adapter = await readFile(
     new URL(
@@ -172,6 +172,12 @@ test("ships DNS-SD and UDP LAN discovery without restoring Kotlin", async () => 
   assert.match(nativeModule, /DatagramSocket/);
   assert.match(nativeModule, /LOOMARR_DISCOVER\/1/);
   assert.match(nativeModule, /51029/);
+  assert.match(nativeModule, /MAX_UNICAST_TARGETS = 254/);
+  assert.match(nativeModule, /UNICAST_SWEEP_INTERVAL_MS = 15_000/);
+  assert.match(nativeModule, /UNICAST_PACKET_GAP_MS = 5/);
+  assert.match(nativeModule, /localNetworkPlan/);
+  assert.match(nativeModule, /UnicastTargetPlanner/);
+  assert.doesNotMatch(nativeModule, /getUnderlyingNetworks/);
   assert.match(nativeModule, /address\.indexOf\('%'\)/);
   assert.match(nativeModule, /address\.indexOf\(':'\) >= 0/);
   assert.match(nativeModule, /"\[" \+ address \+ "\]"/);

@@ -1,6 +1,13 @@
 package media.loomarr.tv.discovery;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
+import android.os.Build;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import com.facebook.react.bridge.Arguments;
@@ -11,14 +18,17 @@ import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Enumeration;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.json.JSONObject;
@@ -27,14 +37,22 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
   private static final String SERVICE_TYPE = "_loomarr._tcp.";
   private static final String BROADCAST_REQUEST = "LOOMARR_DISCOVER/1";
   private static final int BROADCAST_PORT = 51029;
+  private static final int MAX_UNICAST_TARGETS = 254;
+  private static final long BROADCAST_INTERVAL_MS = 3_000;
+  private static final long UNICAST_SWEEP_INTERVAL_MS = 15_000;
+  private static final long UNICAST_PACKET_GAP_MS = 5;
+  private static final long NETWORK_RECHECK_INTERVAL_MS = 1_000;
   private final NsdManager manager;
+  private final ConnectivityManager connectivity;
   private NsdManager.DiscoveryListener listener;
   private volatile DatagramSocket broadcastSocket;
+  private volatile Thread broadcastWorker;
   private volatile int generation;
 
   LoomarrLanDiscoveryModule(ReactApplicationContext context) {
     super(context);
     manager = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
+    connectivity = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
   }
 
   @Override
@@ -53,12 +71,12 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
 
       @Override
       public void onStartDiscoveryFailed(String type, int code) {
-        listener = null;
+        if (activeGeneration == generation) listener = null;
       }
 
       @Override
       public void onStopDiscoveryFailed(String type, int code) {
-        listener = null;
+        if (activeGeneration == generation) listener = null;
       }
 
       @Override
@@ -75,6 +93,7 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
 
       @Override
       public void onServiceLost(NsdServiceInfo service) {
+        if (activeGeneration != generation) return;
         WritableMap payload = Arguments.createMap();
         payload.putString("id", service.getServiceName());
         emit("loomarrDiscoveryLost", payload);
@@ -83,7 +102,7 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
     try {
       manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener);
     } catch (RuntimeException error) {
-      listener = null;
+      if (activeGeneration == generation) listener = null;
     }
   }
 
@@ -93,6 +112,16 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
     DatagramSocket socket = broadcastSocket;
     broadcastSocket = null;
     if (socket != null) socket.close();
+    Thread worker = broadcastWorker;
+    broadcastWorker = null;
+    if (worker != null) {
+      worker.interrupt();
+      try {
+        worker.join(100);
+      } catch (InterruptedException ignored) {
+        Thread.currentThread().interrupt();
+      }
+    }
     NsdManager.DiscoveryListener active = listener;
     listener = null;
     if (active != null) {
@@ -113,25 +142,41 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
   private void startBroadcast(final int activeGeneration) {
     Thread worker = new Thread(() -> browseBroadcast(activeGeneration), "loomarr-lan-discovery");
     worker.setDaemon(true);
+    broadcastWorker = worker;
     worker.start();
   }
 
   private void browseBroadcast(int activeGeneration) {
-    try (DatagramSocket socket = new DatagramSocket()) {
+    UnicastRetryPolicy unicast = new UnicastRetryPolicy(
+        UNICAST_SWEEP_INTERVAL_MS, NETWORK_RECHECK_INTERVAL_MS);
+    while (activeGeneration == generation) {
+      try (DatagramSocket socket = new DatagramSocket()) {
       socket.setBroadcast(true);
       socket.setSoTimeout(1000);
       if (activeGeneration != generation) return;
       broadcastSocket = socket;
       byte[] request = BROADCAST_REQUEST.getBytes(StandardCharsets.UTF_8);
-      long nextSend = 0;
+      long nextBroadcast = 0;
+      long nextUnicastSweep = 0;
       byte[] response = new byte[1025];
       while (activeGeneration == generation && !socket.isClosed()) {
         long now = System.currentTimeMillis();
-        if (now >= nextSend) {
-          for (InetAddress target : broadcastTargets()) {
-            socket.send(new DatagramPacket(request, request.length, target, BROADCAST_PORT));
+        if (now >= nextBroadcast) {
+          sendRequest(socket, request, broadcastTargets(), 0, activeGeneration);
+          nextBroadcast = now + BROADCAST_INTERVAL_MS;
+        }
+        if (unicast.isDue(now) && now >= nextUnicastSweep) {
+          LocalNetworkPlan plan = localNetworkPlan();
+          if (plan == null || plan.targets.isEmpty()) {
+            // Do not spend either foreground sweep before Android has assigned a LAN address.
+            unicast.unavailable(now);
+            nextUnicastSweep = now + NETWORK_RECHECK_INTERVAL_MS;
+          } else {
+            plan.network.bindSocket(socket);
+            sendRequest(socket, request, plan.targets, UNICAST_PACKET_GAP_MS, activeGeneration);
+            unicast.sent(now);
+            nextUnicastSweep = now + UNICAST_SWEEP_INTERVAL_MS;
           }
-          nextSend = now + 3000;
         }
         try {
           DatagramPacket packet = new DatagramPacket(response, response.length);
@@ -141,15 +186,37 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
           // The one-second timeout keeps stop and the three-second retry bounded.
         }
       }
-    } catch (Exception ignored) {
-      // DNS-SD and UDP are independent transports. One transport failing must not stop the other.
-    } finally {
-      if (activeGeneration == generation) broadcastSocket = null;
+      } catch (Exception ignored) {
+        // A selected network can disappear while binding. Re-open the UDP transport and retry.
+        try {
+          Thread.sleep(NETWORK_RECHECK_INTERVAL_MS);
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+        }
+      } finally {
+        if (activeGeneration == generation) broadcastSocket = null;
+      }
     }
+    if (Thread.currentThread() == broadcastWorker) broadcastWorker = null;
+  }
+
+  private void sendRequest(
+      DatagramSocket socket,
+      byte[] request,
+      Set<InetAddress> targets,
+      long packetGapMs,
+      int activeGeneration)
+      throws InterruptedException {
+    UnicastSweep.send(
+        targets,
+        packetGapMs,
+        () -> activeGeneration == generation && !socket.isClosed(),
+        target -> socket.send(new DatagramPacket(request, request.length, target, BROADCAST_PORT)),
+        Thread::sleep);
   }
 
   private static Set<InetAddress> broadcastTargets() throws Exception {
-    Set<InetAddress> targets = new HashSet<>();
+    Set<InetAddress> targets = new LinkedHashSet<>();
     targets.add(InetAddress.getByName("255.255.255.255"));
     Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
     if (interfaces == null) return targets;
@@ -165,6 +232,69 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
       }
     }
     return targets;
+  }
+
+  private static final class LocalNetworkPlan {
+    final Network network;
+    final Set<InetAddress> targets;
+
+    LocalNetworkPlan(Network network, Set<InetAddress> targets) {
+      this.network = network;
+      this.targets = targets;
+    }
+  }
+
+  private LocalNetworkPlan localNetworkPlan() throws Exception {
+    Network localNetwork = selectedLocalNetwork();
+    if (localNetwork == null) return null;
+    LinkProperties properties = connectivity.getLinkProperties(localNetwork);
+    if (properties == null) return null;
+    List<UnicastTargetPlanner.Subnet> subnets = new ArrayList<>();
+    for (LinkAddress address : properties.getLinkAddresses()) {
+      if (address.getAddress() instanceof Inet4Address && address.getPrefixLength() >= 0) {
+        subnets.add(new UnicastTargetPlanner.Subnet(address.getAddress(), address.getPrefixLength()));
+      }
+    }
+    return new LocalNetworkPlan(localNetwork, UnicastTargetPlanner.targets(subnets));
+  }
+
+  private Network selectedLocalNetwork() {
+    if (connectivity == null) return null;
+    Network defaultNetwork = connectivity.getActiveNetwork();
+    if (defaultNetwork == null) return null;
+    List<LocalNetworkSelector.Candidate<Network>> candidates = new ArrayList<>();
+    NetworkCapabilities defaultCapabilities = connectivity.getNetworkCapabilities(defaultNetwork);
+    boolean defaultVpn = isVpn(defaultCapabilities);
+    candidates.add(new LocalNetworkSelector.Candidate<>(
+        defaultNetwork, true, defaultVpn, isLocalTransport(defaultCapabilities), false));
+    if (defaultVpn) {
+      // Deprecated but public: Android documents this as the underlying network info for a VPN default.
+      NetworkInfo activeInfo = connectivity.getActiveNetworkInfo();
+      int activeType = activeInfo == null ? -1 : activeInfo.getType();
+      Network[] networks = connectivity.getAllNetworks();
+      if (networks != null) {
+        for (Network network : networks) {
+          NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
+          candidates.add(new LocalNetworkSelector.Candidate<>(
+              network, false, isVpn(capabilities), isLocalTransport(capabilities),
+              activeType == ConnectivityManager.TYPE_WIFI
+                  ? capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                  : activeType == ConnectivityManager.TYPE_ETHERNET
+                      && capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)));
+        }
+      }
+    }
+    return LocalNetworkSelector.select(candidates);
+  }
+
+  private static boolean isVpn(NetworkCapabilities capabilities) {
+    return capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
+  }
+
+  private static boolean isLocalTransport(NetworkCapabilities capabilities) {
+    return capabilities != null
+        && (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+            || capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET));
   }
 
   private void emitBroadcast(byte[] bytes, int length) {
