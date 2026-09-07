@@ -289,7 +289,12 @@ type parentFaultDrill struct {
 
 func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, capacity int, sampler *phaseSampler) parentFaultDrill {
 	controller, ok := config.FaultController.(ParentFaultController)
-	if !ok || capacity < 1 || len(indexes) < capacity {
+	// The drill can observe only a selected parent and one independently
+	// admitted peer. Full-capacity qualification remains the raw_capacity and
+	// overload contract; requiring its whole cohort here would reject a valid
+	// measured capacity above two without producing stronger fault evidence.
+	requiredCohort := min(capacity, 2)
+	if !ok || requiredCohort < 1 || len(indexes) < requiredCohort {
 		return parentFaultDrill{phase: phaseFrom("parent_failure", []observation{{class: "controller_unavailable"}}), receipt: "not_observed", selected: "not_observed", peer: "not_observed", recovery: "not_observed"}
 	}
 	heldIndexes := indexes[:1]
@@ -318,16 +323,19 @@ func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, 
 	}
 	request.Generation = generation
 	receipt, err := controller.FailParent(faultCtx, request)
+	faultExpired := faultCtx.Err() != nil
 	// The controller's Stop waits for its exact owned process to exit.  The
 	// held observers then establish that the selected reader ended while its
 	// independently admitted peer continued decoding through the event.
 	held.verify(ctx)
 	held.release()
 	peerContinued := capacity < 2 || held.results[1].class == "ok"
-	if err != nil || !receipt.Exited || receipt.ChannelID != request.ChannelID || receipt.Generation != request.Generation || held.results[0].class != "held_stream_interrupted" || !peerContinued {
+	if err != nil || faultExpired || !receipt.Exited || receipt.ChannelID != request.ChannelID || receipt.Generation != request.Generation || held.results[0].class != "held_stream_interrupted" || !peerContinued {
 		receiptOutcome := "not_exited"
 		if err != nil {
 			receiptOutcome = "unavailable"
+		} else if faultExpired {
+			receiptOutcome = "fault_budget_expired"
 		}
 		if capacity >= 2 {
 			peerOutcome = held.results[1].class

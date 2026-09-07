@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -305,6 +306,101 @@ func TestRunDoesNotCertifyWhenPhaseResourceSamplingFails(t *testing.T) {
 	if report.Resources[0].Point != "baseline" || report.Resources[len(report.Resources)-1].Point != "converged" {
 		t.Fatalf("sampling must fail within a phase, not at the baseline/final checkpoints: %+v", report.Resources)
 	}
+}
+
+func TestRunMarksLateParentFaultReceiptUnavailable(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	channels := fixtureChannels(100)
+	config := fixtureConfig(fixture, channels)
+	config.FaultProfiles = []FaultProfile{FaultParentFailure}
+	config.FaultController = fixtureParentFaultController{target: playoutcertfixture.ParentFaultTarget{Fixture: fixture, Peer: channels[1].ID, WaitForExpiry: true}}
+	report, err := Run(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := parentFaultRow(t, report)
+	if row.Status != "unavailable" || row.ReceiptOutcome != "fault_budget_expired" {
+		t.Fatalf("late parent receipt qualified or lacked bounded evidence: %+v", row)
+	}
+}
+
+func TestRunParentFaultCleanupResidualRetainsFinalEvidenceButDisqualifiesOutcome(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	channels := fixtureChannels(100)
+	config := fixtureConfig(fixture, channels)
+	config.FaultProfiles = []FaultProfile{FaultParentFailure}
+	config.FaultController = fixtureParentFaultController{target: playoutcertfixture.ParentFaultTarget{Fixture: fixture, Peer: channels[1].ID, RetainAfterRecovery: true}}
+	report, err := Run(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := parentFaultRow(t, report)
+	if drill := report.PhaseMust("parent_failure"); drill.Failures != 0 || drill.Successes != 1 {
+		t.Fatalf("parent drill did not succeed before cleanup invalidation: %+v", drill)
+	}
+	if row.Baseline == nil || row.Final == nil || row.Final.Capacity == 0 || row.Final.SessionsActive <= row.Baseline.SessionsActive || row.Status != "unavailable" || row.Outcome != "cleanup_failed" || !slices.Contains(report.Failures, "cleanup_residual") {
+		t.Fatalf("Run cleanup residual fault evidence = %+v failures=%v", row, report.Failures)
+	}
+}
+
+func TestParentFailureDrillUsesOnlySelectedAndRequiredPeer(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		capacity     int
+		indexes      []int
+		wantFailures int
+		wantPeer     string
+		wantSelected string
+		wantReceipt  string
+	}{
+		{name: "capacity above two uses selected and peer", capacity: 4, indexes: []int{0, 1}, wantPeer: "continued", wantSelected: "interrupted", wantReceipt: "exited"},
+		{name: "missing required peer fails closed", capacity: 2, indexes: []int{0}, wantFailures: 1, wantPeer: "not_observed", wantSelected: "not_observed", wantReceipt: "not_observed"},
+		{name: "capacity one observes selected only", capacity: 1, indexes: []int{0}, wantPeer: "not_applicable", wantSelected: "interrupted", wantReceipt: "exited"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := playoutcertfixture.New(t, 100)
+			channels := fixtureChannels(100)
+			config := fixtureConfig(fixture, channels)
+			config.FaultController = fixtureParentFaultController{target: playoutcertfixture.ParentFaultTarget{Fixture: fixture, Peer: channels[1].ID}}
+			config = config.normalized()
+			endpoint, err := newEndpoint(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			drill := parentFailureDrill(context.Background(), endpoint, config, tc.indexes, tc.capacity, nil)
+			if drill.phase.Failures != tc.wantFailures || drill.peer != tc.wantPeer || drill.selected != tc.wantSelected || drill.receipt != tc.wantReceipt {
+				t.Fatalf("parent drill = %+v", drill)
+			}
+		})
+	}
+}
+
+type fixtureParentFaultController struct {
+	target playoutcertfixture.ParentFaultTarget
+}
+
+func (c fixtureParentFaultController) Scope() string { return "fixture-parent-fault" }
+
+func (c fixtureParentFaultController) CurrentParent(ctx context.Context, _ ParentFaultRequest) (uint64, error) {
+	return c.target.Current(ctx)
+}
+
+func (c fixtureParentFaultController) FailParent(ctx context.Context, request ParentFaultRequest) (ParentFaultReceipt, error) {
+	if err := c.target.Fail(ctx, request.ChannelID); err != nil {
+		return ParentFaultReceipt{}, err
+	}
+	return ParentFaultReceipt{ChannelID: request.ChannelID, Generation: request.Generation, Exited: true}, nil
+}
+
+func parentFaultRow(t testing.TB, report Report) FaultQualification {
+	t.Helper()
+	for _, row := range report.FaultProfiles {
+		if row.Profile == FaultParentFailure {
+			return row
+		}
+	}
+	t.Fatal("parent fault qualification missing")
+	return FaultQualification{}
 }
 
 func fixtureConfig(fixture *playoutcertfixture.Fixture, channels []Channel) Config {

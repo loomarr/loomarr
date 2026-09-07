@@ -28,6 +28,7 @@ type Fixture struct {
 	RawOpened                                 chan struct{}
 	FailMetricsAfterStart                     bool
 	FailOneMetricsAfterStart                  bool
+	RetainSessions                            bool
 	MaxConcurrentRaw                          int
 	HeldProgressAfterAdmission                int
 	mu                                        sync.Mutex
@@ -38,11 +39,16 @@ type Fixture struct {
 	interruptOnce, continueOnce, overloadOnce sync.Once
 	capacityOnce                              sync.Once
 	backlogReads                              int
+	residualAfterRecovery                     string
 }
 
 type session struct {
-	viewers   int
-	graceEnds time.Time
+	viewers      int
+	graceEnds    time.Time
+	faulted      chan struct{}
+	faultOnce    sync.Once
+	continued    chan struct{}
+	continueOnce sync.Once
 }
 
 func New(t testing.TB, channels int) *Fixture {
@@ -154,6 +160,14 @@ func (f *Fixture) stream(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.expireLocked(time.Now())
 	item := f.sessions[id]
+	if item != nil && item.viewers == 0 && sessionFaulted(item) {
+		item = newSession()
+		f.sessions[id] = item
+		f.starts++
+		if f.residualAfterRecovery == id {
+			f.RetainSessions = true
+		}
+	}
 	if item == nil && len(f.sessions) >= 4 && !f.AllowOverload {
 		f.mu.Unlock()
 		f.capacityOnce.Do(func() { close(f.capacityRejected) })
@@ -172,7 +186,7 @@ func (f *Fixture) stream(w http.ResponseWriter, r *http.Request) {
 		f.continueOnce.Do(func() { close(f.continueHeld) })
 	}
 	if item == nil {
-		item = &session{}
+		item = newSession()
 		f.sessions[id] = item
 		f.starts++
 	}
@@ -228,12 +242,46 @@ func (f *Fixture) stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	select {
+	case <-item.faulted:
+		return
+	default:
+	}
+	select {
 	case <-r.Context().Done():
+	case <-item.faulted:
+	case <-item.continued:
+		for range 1000 {
+			_, _ = w.Write(make([]byte, 188))
+			if flush, ok := w.(http.Flusher); ok {
+				flush.Flush()
+			}
+			timer := time.NewTimer(10 * time.Millisecond)
+			select {
+			case <-timer.C:
+			case <-item.faulted:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				return
+			case <-r.Context().Done():
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				return
+			}
+		}
+		<-r.Context().Done()
 	case <-f.interrupt:
 	case <-f.continueHeld:
 		// Span several client observation windows. This models continued live
 		// production, rather than a single burst released by admission.
-		for range 200 {
+		for range 1000 {
 			progress := make([]byte, 188)
 			_, _ = w.Write(progress)
 			if flush, ok := w.(http.Flusher); ok {
@@ -245,6 +293,14 @@ func (f *Fixture) stream(w http.ResponseWriter, r *http.Request) {
 			timer := time.NewTimer(10 * time.Millisecond)
 			select {
 			case <-timer.C:
+			case <-item.faulted:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				return
 			case <-r.Context().Done():
 				if !timer.Stop() {
 					select {
@@ -259,6 +315,60 @@ func (f *Fixture) stream(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 		case <-f.interrupt:
 		}
+	}
+}
+
+// FailSession ends only the named public raw stream's current viewers. It is
+// a test-target control seam; it does not expose a process identifier.
+func (f *Fixture) FailSession(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	item := f.sessions[id]
+	if item == nil {
+		return false
+	}
+	item.faultOnce.Do(func() { close(item.faulted) })
+	return true
+}
+
+// ContinueSession produces bounded post-event media for one named session.
+func (f *Fixture) ContinueSession(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	item := f.sessions[id]
+	if item == nil {
+		return false
+	}
+	item.continueOnce.Do(func() { close(item.continued) })
+	return true
+}
+
+// RetainReleasedSessions leaves the target's released-session evidence in
+// place so a Run can exercise final cleanup disqualification.
+func (f *Fixture) RetainReleasedSessions() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.RetainSessions = true
+}
+
+// RetainAfterRecovery retains only after the faulted stream is publicly
+// re-admitted, so cleanup evidence follows a successful recovery attempt.
+func (f *Fixture) RetainAfterRecovery(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.residualAfterRecovery = id
+}
+
+func newSession() *session {
+	return &session{faulted: make(chan struct{}), continued: make(chan struct{})}
+}
+
+func sessionFaulted(item *session) bool {
+	select {
+	case <-item.faulted:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -377,7 +487,17 @@ func (b *finiteBacklogBody) Close() error {
 }
 
 func (f *Fixture) expireLocked(now time.Time) {
+	if f.RetainSessions {
+		return
+	}
 	for id, item := range f.sessions {
+		// A fault target marked for post-recovery retention must survive the
+		// short warm grace long enough for its replacement admission. That
+		// replacement is what activates final residual retention; preserving it
+		// here does not retain unrelated released sessions.
+		if id == f.residualAfterRecovery && sessionFaulted(item) {
+			continue
+		}
 		if item.viewers == 0 && !item.graceEnds.IsZero() && !now.Before(item.graceEnds) {
 			delete(f.sessions, id)
 		}
