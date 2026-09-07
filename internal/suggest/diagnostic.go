@@ -15,7 +15,7 @@ import (
 const (
 	PlannerPromptVersion             = "suggester-prompt-v6"
 	PlannerToolSchemaVersion         = "catalog-search-v6"
-	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v1"
+	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v2"
 	PlannerDiagnosticToolCallID      = "planner-diagnostic-call-1"
 	plannerDiagnosticSchemaVersion   = 1
 	plannerDiagnosticIntent          = "science fiction"
@@ -63,7 +63,7 @@ type ToolFinalizationDiagnostic struct {
 func RunToolFinalizationDiagnostic(ctx context.Context, provider llm.Provider, model string) (ToolFinalizationDiagnostic, error) {
 	toolCall := llm.ToolCall{
 		ID: PlannerDiagnosticToolCallID, Name: catalogToolName,
-		Arguments: map[string]any{"genres": []any{"Science Fiction"}, "media_type": "movie"},
+		Arguments: map[string]any{"genres": []any{"Science Fiction"}, "media_type": "movie", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}},
 	}
 	candidates := []catalog.Candidate{{
 		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 1999,

@@ -348,4 +348,17 @@ for row in "${RETIRED[@]}"; do
   fi
 done
 [[ "$fail" -ne 0 ]] && exit 1
+
+# Raw model-tool/prompt schema properties are retired. Persisted/operator era
+# fields remain valid elsewhere, so keep this check limited to these two schema
+# surfaces. Map reads used to reject the property do not restore the schema.
+for path in internal/suggest/tools.go internal/suggest/prompt.go; do
+  hits="$(grep -nF '"era":' "$path" 2>/dev/null || true)"
+  if [[ -n "$hits" ]]; then
+    fail=1
+    printf '\nRETIRED MODEL SCHEMA PROPERTY STILL REFERENCED: "era":\n  %s\n\n' "$path"
+    printf '%s\n' "$hits" | sed 's/^/    /'
+  fi
+done
+[[ "$fail" -ne 0 ]] && exit 1
 printf 'retired-verify: clean (%d identifiers checked)\n' "${#RETIRED[@]}"

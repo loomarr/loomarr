@@ -43,12 +43,14 @@ type rankedCandidates struct {
 // DecisionTrace is bounded, immutable evidence from one original proposal run.
 // Callers receive value copies and must not use it as current channel evidence.
 type DecisionTrace struct {
-	Version       int                 `json:"version"`
-	Candidates    []DecisionCandidate `json:"candidates"`
-	SurfacedTotal int                 `json:"surfacedTotal"`
-	RecordedTotal int                 `json:"recordedTotal"`
-	Truncated     bool                `json:"truncated"`
-	Terminal      string              `json:"terminal,omitempty"`
+	Version                 int                 `json:"version"`
+	Candidates              []DecisionCandidate `json:"candidates"`
+	SurfacedTotal           int                 `json:"surfacedTotal"`
+	RecordedTotal           int                 `json:"recordedTotal"`
+	Truncated               bool                `json:"truncated"`
+	WindowsCompleted        int                 `json:"windowsCompleted,omitempty"`
+	SourceQueriesDispatched int                 `json:"sourceQueriesDispatched,omitempty"`
+	Terminal                string              `json:"terminal,omitempty"`
 }
 
 type DecisionCandidate struct {
