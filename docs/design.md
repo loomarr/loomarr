@@ -3225,7 +3225,21 @@ advancement, discontinuities and elapsed time alone do not prove the media trans
 preparation owns signature synthesis; the normal playout modules deliver those fixtures. An operator
 cohort needs independently qualified private media truth for this identity evidence; missing or
 ambiguous truth leaves that required lane unqualified. Signatures, source identifiers and media truth
-never enter public reports. A separately declared remote-FFmpeg lane may push MPEG-TS over TCP/Tailscale
+never enter public reports.
+
+Boundary observation has a dedicated decoded-signal port. One owned FFmpeg process maps both audio
+and video, preserves presentation timestamps and emits separate bounded video/audio metadata
+streams. Its video signal is the mean luma of the declared interior sample region; audio is normalized
+to mono 48 kHz and reports decoded sample count, presentation time, zero-crossing rate and RMS level.
+These are private observations for a qualified cohort, not general-purpose recognition truth. The
+observer uses each asset's own media timeline when excluding buffered pre-arm evidence; packet
+arrival time is insufficient. Existing raw-load and held-stream frame-progress checks retain their
+separate decoder contract. Missing streams, malformed or oversized records, invalid numeric values,
+regressing per-stream timestamps and missing required signal fields cannot yield successful decoded
+signal evidence. Cancellation closes the admitted input and joins the decoder and both metadata
+readers; no unbounded metadata buffer or free-form decoder output enters a report.
+
+A separately declared remote-FFmpeg lane may push MPEG-TS over TCP/Tailscale
 to that isolated instance, but it is reported independently and never substitutes for the real
 Loomarr HTTP route phases.
 
