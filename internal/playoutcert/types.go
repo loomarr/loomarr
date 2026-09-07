@@ -91,13 +91,8 @@ func (c Config) Validate() error {
 	if err := c.validateFaultProfiles(); err != nil {
 		return err
 	}
-	boundaryTimeout := c.ProgrammeBoundaryTimeout
-	if boundaryTimeout == 0 {
-		boundaryTimeout = 20 * time.Minute
-	}
-	lateObservation := c.ProgrammeBoundaryLateObservation
-	if lateObservation == 0 {
-		lateObservation = 3 * time.Second
+	if err := c.ValidateInputs(); err != nil {
+		return err
 	}
 	parsed, err := url.Parse(c.BaseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
@@ -117,6 +112,50 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.DeviceToken) == "" {
 		return errors.New("device playout token is required")
+	}
+	return nil
+}
+
+// ValidateInputs checks the bounded run parameters which are safe to validate
+// before binding credentials and an origin to a target.
+func (c Config) ValidateInputs() error {
+	boundaryTimeout := c.ProgrammeBoundaryTimeout
+	if boundaryTimeout == 0 {
+		boundaryTimeout = 20 * time.Minute
+	}
+	lateObservation := c.ProgrammeBoundaryLateObservation
+	if lateObservation == 0 {
+		lateObservation = 3 * time.Second
+	}
+	if c.Concurrency < 0 || c.Concurrency > 64 {
+		return errors.New("concurrency must be within 1..64")
+	}
+	if c.SurfRounds < 0 || c.SurfRounds > 100 {
+		return errors.New("surf rounds must be within 1..100")
+	}
+	if c.FanInViewers < 0 || c.FanInViewers > 64 {
+		return errors.New("fan-in viewers must be within 1..64")
+	}
+	if c.RequestTimeout < 0 || c.RequestTimeout > 30*time.Minute {
+		return errors.New("request timeout must be within (0, 30m]")
+	}
+	if c.CleanupTimeout < 0 || c.CleanupTimeout > 30*time.Minute {
+		return errors.New("cleanup timeout must be within (0, 30m]")
+	}
+	if c.CleanupPoll < 0 || c.CleanupPoll > 5*time.Second || (c.CleanupPoll > 0 && c.CleanupPoll < time.Millisecond) {
+		return errors.New("cleanup poll must be within 1ms..5s")
+	}
+	if c.WarmGrace < 0 || c.WarmGrace > time.Minute {
+		return errors.New("warm grace must be within (0, 1m]")
+	}
+	if c.RawCaptureBytes < 0 || c.RawCaptureBytes > 16<<20 || (c.RawCaptureBytes > 0 && c.RawCaptureBytes < 188) {
+		return errors.New("raw capture bytes must be within 188..16MiB")
+	}
+	if c.PreparedP95 < 0 || c.PreparedP95 > 100*time.Millisecond {
+		return errors.New("prepared HLS p95 must not exceed 100ms")
+	}
+	if c.PreparedRawP95 < 0 || c.PreparedRawP95 > 500*time.Millisecond {
+		return errors.New("prepared raw p95 must not exceed 500ms")
 	}
 	if boundaryTimeout < 2*time.Second || boundaryTimeout > 25*time.Minute {
 		return errors.New("programme boundary timeout must be within 2s..25m")
@@ -192,43 +231,34 @@ func isLoopbackHost(host string) bool {
 }
 
 func (c Config) normalized() Config {
-	if c.Concurrency <= 0 {
+	if c.Concurrency == 0 {
 		c.Concurrency = 12
 	}
-	if c.Concurrency > 64 {
-		c.Concurrency = 64
-	}
-	if c.SurfRounds <= 0 {
+	if c.SurfRounds == 0 {
 		c.SurfRounds = 1
 	}
-	if c.FanInViewers <= 0 {
+	if c.FanInViewers == 0 {
 		c.FanInViewers = 4
 	}
-	if c.RequestTimeout <= 0 {
+	if c.RequestTimeout == 0 {
 		c.RequestTimeout = 15 * time.Second
 	}
-	if c.CleanupTimeout <= 0 {
+	if c.CleanupTimeout == 0 {
 		c.CleanupTimeout = 45 * time.Second
 	}
-	if c.CleanupPoll <= 0 {
+	if c.CleanupPoll == 0 {
 		c.CleanupPoll = 250 * time.Millisecond
 	}
-	if c.WarmGrace <= 0 {
+	if c.WarmGrace == 0 {
 		c.WarmGrace = 30 * time.Second
 	}
-	if c.RawCaptureBytes <= 0 {
+	if c.RawCaptureBytes == 0 {
 		c.RawCaptureBytes = 2 << 20
 	}
-	if c.RawCaptureBytes < 188 {
-		c.RawCaptureBytes = 188
-	}
-	if c.RawCaptureBytes > 16<<20 {
-		c.RawCaptureBytes = 16 << 20
-	}
-	if c.PreparedP95 <= 0 {
+	if c.PreparedP95 == 0 {
 		c.PreparedP95 = 100 * time.Millisecond
 	}
-	if c.PreparedRawP95 <= 0 {
+	if c.PreparedRawP95 == 0 {
 		c.PreparedRawP95 = 500 * time.Millisecond
 	}
 	if c.ProgrammeBoundaryTimeout == 0 {

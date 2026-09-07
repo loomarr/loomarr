@@ -141,6 +141,48 @@ func TestReadManifestRejectsUnknownAndTrailingContent(t *testing.T) {
 	}
 }
 
+func TestReadManifestEnforcesWholeFileSizeLimit(t *testing.T) {
+	const limit = 1 << 20
+	valid := []byte(`{"schemaVersion":1,"channels":[]}`)
+	path := filepath.Join(t.TempDir(), "manifest.json")
+	if err := os.WriteFile(path, append(valid, bytes.Repeat([]byte(" "), limit-len(valid))...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readManifest(path); err != nil {
+		t.Fatalf("exactly limited manifest rejected: %v", err)
+	}
+	for _, contents := range [][]byte{
+		append(valid, bytes.Repeat([]byte(" "), limit-len(valid)+1)...),
+		append(append([]byte(nil), valid...), append(bytes.Repeat([]byte(" "), limit-len(valid)), []byte(`{}`)...)...),
+	} {
+		if err := os.WriteFile(path, contents, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readManifest(path); err == nil {
+			t.Fatal("oversized manifest was accepted")
+		}
+	}
+}
+
+func TestCommandRejectsSharedInputsBeforeSyntheticSetup(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "manifest.json")
+	if err := os.WriteFile(manifestPath, []byte(`{"schemaVersion":1,"channels":[{"id":"channel"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stderr := &bytes.Buffer{}
+	env := func(key string) string {
+		if key == "LOOMARR_ARTIFACT_DIR" {
+			return dir
+		}
+		return ""
+	}
+	code := run(context.Background(), []string{"--manifest", manifestPath, "--synthetic", "--ffmpeg", "missing-ffmpeg", "--concurrency", "65"}, env, &bytes.Buffer{}, stderr)
+	if code != 2 || !strings.Contains(stderr.String(), "resource bounds") {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
+	}
+}
+
 func TestWriteArtifactIsPrivate(t *testing.T) {
 	dir := t.TempDir()
 	output, err := openContainedOutput(dir, filepath.Join(dir, "nested", "report.json"))

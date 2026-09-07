@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -80,7 +81,23 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: unsafe fault profile selection")
 		return 2
 	}
-	if *concurrency < 1 || *concurrency > 64 || *surfRounds < 1 || *surfRounds > 100 || *fanIn < 1 || *fanIn > 64 || *requestTimeout <= 0 || *cleanupTimeout <= 0 || *warmGrace <= 0 || *warmGrace > time.Minute || *suiteTimeout <= 0 || *suiteTimeout > 30*time.Minute || *programmeBoundaryTimeout < 2*time.Second || *programmeBoundaryTimeout > 25*time.Minute || *programmeBoundaryTimeout >= *suiteTimeout || *programmeBoundaryLate < 250*time.Millisecond || *programmeBoundaryLate > 30*time.Second || *programmeBoundaryLate >= *programmeBoundaryTimeout || *syntheticCapacity < 1 || *syntheticCapacity > 64 || *syntheticGrace <= 0 || *syntheticGrace > time.Minute || *syntheticProgramme < 2*time.Second || *syntheticProgramme > 30*time.Second || *rawBytes < 188 || *rawBytes > 16<<20 {
+	if *suiteTimeout <= 0 || *suiteTimeout > 30*time.Minute || *programmeBoundaryTimeout >= *suiteTimeout || *syntheticCapacity < 1 || *syntheticCapacity > 64 || *syntheticGrace <= 0 || *syntheticGrace > time.Minute || *syntheticProgramme < 2*time.Second || *syntheticProgramme > 30*time.Second {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: resource bounds are invalid")
+		return 2
+	}
+	channels, err := readManifest(*manifestPath)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: invalid private manifest")
+		return 2
+	}
+	config := playoutcert.Config{
+		Channels: channels, Certify: *certify,
+		Concurrency: *concurrency, SurfRounds: *surfRounds, FanInViewers: *fanIn,
+		RequestTimeout: *requestTimeout, CleanupTimeout: *cleanupTimeout, WarmGrace: *warmGrace, RawCaptureBytes: *rawBytes,
+		ProgrammeBoundaryTimeout: *programmeBoundaryTimeout, ProgrammeBoundaryLateObservation: *programmeBoundaryLate,
+		FaultProfiles: faultProfiles, DisposableTarget: *disposableTarget,
+	}
+	if err := config.ValidateInputs(); err != nil {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: resource bounds are invalid")
 		return 2
 	}
@@ -99,11 +116,6 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 2
 	}
 	defer func() { _ = output.Close() }()
-	channels, err := readManifest(*manifestPath)
-	if err != nil {
-		_, _ = fmt.Fprintln(stderr, "playout-load-cert: invalid private manifest")
-		return 2
-	}
 	runCtx, cancel := context.WithTimeout(ctx, *suiteTimeout)
 	defer cancel()
 	baseURL := strings.TrimSpace(getenv("LOOMARR_PLAYOUT_CERT_BASE_URL"))
@@ -119,16 +131,10 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		}
 		baseURL, adminBearer, deviceToken = isolated.BaseURL, isolated.AdminBearer, isolated.DeviceToken
 	}
-	config := playoutcert.Config{
-		BaseURL: baseURL, AdminBearer: adminBearer, DeviceToken: deviceToken,
-		Channels: channels, Certify: *certify, RemoteAcknowledged: *remote && !*synthetic,
-		Concurrency: *concurrency, SurfRounds: *surfRounds, FanInViewers: *fanIn,
-		RequestTimeout: *requestTimeout, CleanupTimeout: *cleanupTimeout, WarmGrace: *warmGrace, RawCaptureBytes: *rawBytes,
-		ProgrammeBoundaryTimeout: *programmeBoundaryTimeout, ProgrammeBoundaryLateObservation: *programmeBoundaryLate,
-		FaultProfiles: faultProfiles, DisposableTarget: *disposableTarget,
-		Validator: playoutcert.FFprobeValidator{Path: *ffprobe},
-		Decoder:   playoutcert.FFmpegDecoder{Path: *ffmpeg},
-	}
+	config.BaseURL, config.AdminBearer, config.DeviceToken = baseURL, adminBearer, deviceToken
+	config.RemoteAcknowledged = *remote && !*synthetic
+	config.Validator = playoutcert.FFprobeValidator{Path: *ffprobe}
+	config.Decoder = playoutcert.FFmpegDecoder{Path: *ffmpeg}
 	if isolated != nil {
 		config.WarmGrace = *syntheticGrace
 		config.ProgrammeBoundaryWitness = isolated.ProgrammeBoundaryWitness()
@@ -206,7 +212,15 @@ func readManifest(path string) ([]playoutcert.Channel, error) {
 		return nil, err
 	}
 	defer func() { _ = file.Close() }()
-	decoder := json.NewDecoder(io.LimitReader(file, 1<<20))
+	const manifestLimit = 1 << 20
+	contents, err := io.ReadAll(io.LimitReader(file, manifestLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(contents) > manifestLimit {
+		return nil, errors.New("manifest exceeds size limit")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(contents))
 	decoder.DisallowUnknownFields()
 	var value manifest
 	if err := decoder.Decode(&value); err != nil {

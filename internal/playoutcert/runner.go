@@ -22,10 +22,10 @@ type observation struct {
 }
 
 func Run(ctx context.Context, config Config) (Report, error) {
-	config = config.normalized()
 	if err := config.Validate(); err != nil {
 		return Report{}, err
 	}
+	config = config.normalized()
 	endpoint, err := newEndpoint(config)
 	if err != nil {
 		return Report{}, err
