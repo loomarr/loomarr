@@ -14,6 +14,28 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit/playoutcertfixture"
 )
 
+func requireUncertifiedPublication(t *testing.T, report Report) {
+	t.Helper()
+	if report.Certified || report.AuditStatus != AuditMissing {
+		t.Fatalf("Run report certification boundary = certified=%t audit=%q, want false/missing", report.Certified, report.AuditStatus)
+	}
+	publication, _ := FinalizePublication(report)
+	if publication.Verdict() == VerdictCertified || publication.ExitStatus() == 0 {
+		t.Fatalf("failed run publication = audit=%q verdict=%q exit=%d, want non-certified/nonzero", publication.AuditStatus(), publication.Verdict(), publication.ExitStatus())
+	}
+}
+
+func requireCertifiedPublication(t *testing.T, report Report) {
+	t.Helper()
+	if report.Certified || report.AuditStatus != AuditMissing {
+		t.Fatalf("Run report certification boundary = certified=%t audit=%q, want false/missing", report.Certified, report.AuditStatus)
+	}
+	publication, err := FinalizePublication(report)
+	if err != nil || publication.AuditStatus() != AuditPassed || publication.Verdict() != VerdictCertified || publication.ExitStatus() != 0 {
+		t.Fatalf("publication = audit=%q verdict=%q exit=%d err=%v, want passed/certified/zero", publication.AuditStatus(), publication.Verdict(), publication.ExitStatus(), err)
+	}
+}
+
 func TestValidateConfigRejectsUnsafeOrNonCertifyingInputs(t *testing.T) {
 	channels := fixtureChannels(100)
 	tests := []struct {
@@ -122,8 +144,8 @@ func TestRunExercisesPublicPhasesButCannotCertifyWithoutCausalBoundaryEvidence(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Certified || !strings.Contains(strings.Join(report.Failures, ","), "programme_boundary_failed") {
-		t.Fatalf("ordinary fixture unexpectedly certified without causal boundary evidence: %+v", report.Failures)
+	if !strings.Contains(strings.Join(report.Failures, ","), "programme_boundary_failed") {
+		t.Fatalf("ordinary fixture omitted causal boundary failure: %+v", report.Failures)
 	}
 	boundary := report.PhaseMust("programme_boundary")
 	// The ordinary fixture serves no decodable prepared-HLS epoch.  It still
@@ -185,6 +207,22 @@ func TestRunExercisesPublicPhasesButCannotCertifyWithoutCausalBoundaryEvidence(t
 	if err != nil {
 		t.Fatal(err)
 	}
+	var unfinalized minimalReport
+	if err := json.Unmarshal(blob, &unfinalized); err != nil {
+		t.Fatalf("unfinalized report JSON = %s: %v", blob, err)
+	}
+	if unfinalized.SchemaVersion != SchemaVersion || unfinalized.Certified || unfinalized.AuditStatus != AuditMissing || unfinalized.AuditReason != AuditReasonNotFinalized {
+		t.Fatalf("unfinalized report boundary = %+v, want schema=%d uncertified/missing/not-finalized", unfinalized, SchemaVersion)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(blob, &fields); err != nil {
+		t.Fatalf("unfinalized report fields = %s: %v", blob, err)
+	}
+	for field := range fields {
+		if field != "schemaVersion" && field != "certified" && field != "auditStatus" && field != "auditReason" {
+			t.Fatalf("unfinalized report exposed diagnostic field %q: %s", field, blob)
+		}
+	}
 	unsafe := []string{fixture.Admin, fixture.Device, "signed-secret", "channel-private-", "Operator Library Title", fixture.Server.URL}
 	for _, value := range unsafe {
 		if strings.Contains(string(blob), value) {
@@ -194,6 +232,7 @@ func TestRunExercisesPublicPhasesButCannotCertifyWithoutCausalBoundaryEvidence(t
 	if fixture.MaxConcurrentRaw < 4 {
 		t.Fatalf("raw requests were not barrier-concurrent: peak=%d", fixture.MaxConcurrentRaw)
 	}
+	requireUncertifiedPublication(t, report)
 }
 
 func TestRunDoesNotCertifyAnInsufficientTranscodeCohort(t *testing.T) {
@@ -206,9 +245,10 @@ func TestRunDoesNotCertifyAnInsufficientTranscodeCohort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Certified || report.PhaseMust("raw_capacity").HTTPClasses["transcode_cohort_insufficient"] == 0 {
-		t.Fatalf("insufficient cohort certified: %+v", report)
+	if report.PhaseMust("raw_capacity").HTTPClasses["transcode_cohort_insufficient"] == 0 {
+		t.Fatalf("insufficient cohort omitted rejection: %+v", report)
 	}
+	requireUncertifiedPublication(t, report)
 }
 
 func TestRunDoesNotCertifyWhenOverloadIsAdmittedOrHeldViewerDrops(t *testing.T) {
@@ -227,9 +267,10 @@ func TestRunDoesNotCertifyWhenOverloadIsAdmittedOrHeldViewerDrops(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if report.Certified || report.PhaseMust("overload").HTTPClasses[tc.wantClass] == 0 {
-				t.Fatalf("unsafe overload certified: %+v", report.PhaseMust("overload"))
+			if report.PhaseMust("overload").HTTPClasses[tc.wantClass] == 0 {
+				t.Fatalf("unsafe overload omitted %q: %+v", tc.wantClass, report.PhaseMust("overload"))
 			}
+			requireUncertifiedPublication(t, report)
 		})
 	}
 }
@@ -243,9 +284,10 @@ func TestRunDoesNotTreatBufferedPreOverloadMediaAsHeldProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	phase := report.PhaseMust("overload")
-	if report.Certified || phase.HTTPClasses["held_viewer_interrupted"] == 0 {
-		t.Fatalf("buffered pre-overload data passed continuity: %+v", phase)
+	if phase.HTTPClasses["held_viewer_interrupted"] == 0 {
+		t.Fatalf("buffered pre-overload data omitted continuity failure: %+v", phase)
 	}
+	requireUncertifiedPublication(t, report)
 }
 
 func TestRunRecordsHeldDecodeFailure(t *testing.T) {
@@ -257,8 +299,8 @@ func TestRunRecordsHeldDecodeFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	phase := report.PhaseMust("overload")
-	if report.Certified || phase.HTTPClasses["held_viewer_interrupted"] == 0 {
-		t.Fatalf("held decode failure certified: %+v", phase)
+	if phase.HTTPClasses["held_viewer_interrupted"] == 0 {
+		t.Fatalf("held decode failure omitted interruption: %+v", phase)
 	}
 	if len(phase.HeldContinuity) != 4 {
 		t.Fatalf("held continuity observations = %d, want 4", len(phase.HeldContinuity))
@@ -268,6 +310,7 @@ func TestRunRecordsHeldDecodeFailure(t *testing.T) {
 			t.Fatalf("held decode evidence = %+v", held)
 		}
 	}
+	requireUncertifiedPublication(t, report)
 }
 
 func TestRunRejectsValidInitialMediaFollowedByUndecodableHeldMedia(t *testing.T) {
@@ -289,8 +332,8 @@ func TestRunRejectsValidInitialMediaFollowedByUndecodableHeldMedia(t *testing.T)
 		}
 	}
 	phase := report.PhaseMust("overload")
-	if report.Certified || phase.HTTPClasses["held_viewer_interrupted"] == 0 {
-		t.Fatalf("undecodable post-overload media certified: %+v", phase)
+	if phase.HTTPClasses["held_viewer_interrupted"] == 0 {
+		t.Fatalf("undecodable post-overload media omitted interruption: %+v", phase)
 	}
 	if len(phase.HeldContinuity) != 4 {
 		t.Fatalf("held continuity observations = %d, want 4", len(phase.HeldContinuity))
@@ -304,6 +347,7 @@ func TestRunRejectsValidInitialMediaFollowedByUndecodableHeldMedia(t *testing.T)
 	if active != 0 || started == 0 || stopped != started {
 		t.Fatalf("decoder lifecycle active=%d started=%d stopped=%d", active, started, stopped)
 	}
+	requireUncertifiedPublication(t, report)
 }
 
 func TestRunCancellationBeforeHeldVerificationJoinsAllDecoders(t *testing.T) {
@@ -317,13 +361,11 @@ func TestRunCancellationBeforeHeldVerificationJoinsAllDecoders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Certified {
-		t.Fatal("cancelled certification unexpectedly passed")
-	}
 	active, started, stopped := decoder.Counts()
 	if active != 0 || started == 0 || stopped != started {
 		t.Fatalf("decoder lifecycle active=%d started=%d stopped=%d", active, started, stopped)
 	}
+	requireUncertifiedPublication(t, report)
 }
 
 func TestRunDoesNotCertifyWhenPhaseResourceSamplingFails(t *testing.T) {
@@ -333,12 +375,13 @@ func TestRunDoesNotCertifyWhenPhaseResourceSamplingFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Certified || !strings.Contains(strings.Join(report.Failures, ","), "resource_sample_failed") {
+	if !strings.Contains(strings.Join(report.Failures, ","), "resource_sample_failed") {
 		t.Fatalf("sample failure was discarded: %+v", report.Failures)
 	}
 	if report.Resources[0].Point != "baseline" || report.Resources[len(report.Resources)-1].Point != "converged" {
 		t.Fatalf("sampling must fail within a phase, not at the baseline/final checkpoints: %+v", report.Resources)
 	}
+	requireUncertifiedPublication(t, report)
 }
 
 func TestRunMarksLateParentFaultReceiptUnavailable(t *testing.T) {
@@ -369,9 +412,10 @@ func TestRunShutdownRetainsReceiptEvidenceWhenFinalSamplingFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	row := shutdownFaultRow(t, report)
-	if report.Certified || row.Status != "unavailable" || row.ReceiptOutcome != "exited" || row.Baseline == nil || row.PhasePeak == nil || row.Final != nil || !slices.Contains(report.Failures, "final_resource_sample_failed") {
+	if row.Status != "unavailable" || row.ReceiptOutcome != "exited" || row.Baseline == nil || row.PhasePeak == nil || row.Final != nil || !slices.Contains(report.Failures, "final_resource_sample_failed") {
 		t.Fatalf("shutdown sampling failure discarded receipt evidence: row=%+v failures=%v", row, report.Failures)
 	}
+	requireUncertifiedPublication(t, report)
 }
 
 func TestRunShutdownLateReceiptCannotQualify(t *testing.T) {

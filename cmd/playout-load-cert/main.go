@@ -152,46 +152,38 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: run failed during bounded preflight")
 		return 1
 	}
-	return finalizeAfterIsolatedCleanup(output, report, *certify, isolatedTarget, *cleanupTimeout, stdout, stderr)
-}
-
-func recordIsolatedCleanupFailure(report *playoutcert.Report) {
-	report.Failures = append(report.Failures, "isolated_cleanup_failed")
-	report.Certified = false
-	for index := range report.FaultProfiles {
-		if report.FaultProfiles[index].Status == "qualified" {
-			report.FaultProfiles[index].Status = "unavailable"
-			report.FaultProfiles[index].Outcome = "cleanup_failed"
-		}
-	}
+	return finalizeAfterIsolatedCleanup(output, report, isolatedTarget, *cleanupTimeout, stdout, stderr)
 }
 
 type isolatedCloser interface {
 	Close(context.Context) error
 }
 
-func finalizeAfterIsolatedCleanup(output artifactOutput, report playoutcert.Report, certify bool, target isolatedCloser, timeout time.Duration, stdout, stderr io.Writer) int {
+func finalizeAfterIsolatedCleanup(output artifactOutput, report playoutcert.Report, target isolatedCloser, timeout time.Duration, stdout, stderr io.Writer) int {
 	if closeErr := closeIsolated(target, timeout); closeErr != nil {
-		recordIsolatedCleanupFailure(&report)
+		if err := playoutcert.DowngradePublication(&report, playoutcert.PublicationDowngradeCleanupFailed); err != nil {
+			_, _ = fmt.Fprintln(stderr, "playout-load-cert: report finalization failed")
+			return 1
+		}
 	}
-	return publishReport(output, report, certify, stdout, stderr)
+	return publishReport(output, report, stdout, stderr)
 }
 
-func publishReport(output artifactOutput, report playoutcert.Report, certify bool, stdout, stderr io.Writer) int {
-	blob, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		_, _ = fmt.Fprintln(stderr, "playout-load-cert: report encoding failed")
+func publishReport(output artifactOutput, report playoutcert.Report, stdout, stderr io.Writer) int {
+	publication, err := playoutcert.FinalizePublication(report)
+	if err != nil || !publication.Publishable() {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: report finalization failed")
 		return 1
 	}
-	if err := writeArtifact(output, append(blob, '\n')); err != nil {
+	if err := writeArtifact(output, publication.JSON()); err != nil {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: report write failed")
 		return 1
 	}
-	_, _ = io.WriteString(stdout, playoutcert.HumanSummary(report))
-	if len(report.Failures) != 0 || (certify && !report.Certified) {
+	if written, err := stdout.Write(publication.Summary()); err != nil || written != len(publication.Summary()) {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: summary write failed")
 		return 1
 	}
-	return 0
+	return publication.ExitStatus()
 }
 
 func closeIsolated(target isolatedCloser, timeout time.Duration) error {

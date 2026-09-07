@@ -21,14 +21,19 @@ type endpoint struct {
 	bearer  string
 	device  string
 	timeout time.Duration
+	audit   *auditCapsule
 }
 
-func newEndpoint(config Config) (*endpoint, error) {
+func newEndpoint(config Config, capsules ...*auditCapsule) (*endpoint, error) {
 	base, err := url.Parse(config.BaseURL)
 	if err != nil {
 		return nil, err
 	}
 	base.Path = strings.TrimRight(base.Path, "/")
+	var audit *auditCapsule
+	if len(capsules) > 0 {
+		audit = capsules[0]
+	}
 	client := *config.Client
 	priorRedirect := client.CheckRedirect
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -39,11 +44,19 @@ func newEndpoint(config Config) (*endpoint, error) {
 			return errors.New("too many redirects")
 		}
 		if priorRedirect != nil {
-			return priorRedirect(req, via)
+			if err := priorRedirect(req, via); err != nil {
+				return err
+			}
+		}
+		if !sameOrigin(base, req.URL) {
+			return errors.New("cross-origin redirect refused")
+		}
+		if audit != nil && !audit.registerRequestURL(req.URL, requestProvenancePrivate) {
+			return errors.New("publication audit unavailable")
 		}
 		return nil
 	}
-	return &endpoint{base: base, client: &client, bearer: config.AdminBearer, device: config.DeviceToken, timeout: config.RequestTimeout}, nil
+	return &endpoint{base: base, client: &client, bearer: config.AdminBearer, device: config.DeviceToken, timeout: config.RequestTimeout, audit: audit}, nil
 }
 
 func (e *endpoint) resolve(path string) (*url.URL, error) {
@@ -59,20 +72,30 @@ func (e *endpoint) resolve(path string) (*url.URL, error) {
 }
 
 func sameOrigin(a, b *url.URL) bool {
+	if a == nil || b == nil {
+		return false
+	}
 	return strings.EqualFold(a.Scheme, b.Scheme) && strings.EqualFold(a.Host, b.Host)
 }
 
 func (e *endpoint) request(ctx context.Context, method, path string, body io.Reader, admin bool) (*http.Response, error) {
-	return e.requestFor(ctx, method, path, body, admin, e.timeout)
+	return e.requestForProvenance(ctx, method, path, body, admin, e.timeout, requestProvenancePrivate)
 }
 
 // requestFor permits a caller-owned deadline for a long-lived admitted stream.
 // A zero timeout does not make the request unbounded: its supplied context must
 // already carry the phase deadline.
 func (e *endpoint) requestFor(ctx context.Context, method, path string, body io.Reader, admin bool, timeout time.Duration) (*http.Response, error) {
+	return e.requestForProvenance(ctx, method, path, body, admin, timeout, requestProvenancePrivate)
+}
+
+func (e *endpoint) requestForProvenance(ctx context.Context, method, path string, body io.Reader, admin bool, timeout time.Duration, provenance requestProvenance) (*http.Response, error) {
 	requestURL, err := e.resolve(path)
 	if err != nil {
 		return nil, err
+	}
+	if e.audit != nil && !e.audit.registerRequestURL(requestURL, provenance) {
+		return nil, errors.New("publication audit unavailable")
 	}
 	requestCtx, cancel := context.WithCancel(ctx)
 	if timeout > 0 {
@@ -181,7 +204,11 @@ func (e *endpoint) target(ctx context.Context, channelCount int, digest string) 
 }
 
 func (e *endpoint) getJSON(ctx context.Context, path string, admin bool, output any) error {
-	resp, err := e.request(ctx, http.MethodGet, path, nil, admin)
+	return e.getJSONProvenance(ctx, path, admin, output, requestProvenancePrivate)
+}
+
+func (e *endpoint) getJSONProvenance(ctx context.Context, path string, admin bool, output any, provenance requestProvenance) error {
+	resp, err := e.requestForProvenance(ctx, http.MethodGet, path, nil, admin, e.timeout, provenance)
 	if err != nil {
 		return err
 	}
@@ -271,6 +298,9 @@ func (e *endpoint) mint(ctx context.Context, channelID string) (*url.URL, time.D
 	signed, err := e.resolve(output.RelativeURL)
 	if err != nil || signed.RawQuery == "" {
 		return nil, 0, "invalid_signed_url"
+	}
+	if e.audit != nil && !e.audit.registerSignedURL(signed) {
+		return nil, 0, "audit_unavailable"
 	}
 	return signed, time.Since(started), "ok"
 }
@@ -415,7 +445,7 @@ func (e *endpoint) ffmpegRunning(ctx context.Context) (int, error) {
 			Status     string `json:"status"`
 		} `json:"items"`
 	}
-	if err := e.getJSON(ctx, "/v1/diagnostics/processes?status=running&limit=100", true, &page); err != nil {
+	if err := e.getJSONProvenance(ctx, "/v1/diagnostics/processes?status=running&limit=100", true, &page, requestProvenanceDiagnosticsFixedControls); err != nil {
 		return 0, err
 	}
 	count := 0

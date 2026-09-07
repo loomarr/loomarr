@@ -26,11 +26,12 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		return Report{}, err
 	}
 	config = config.normalized()
-	endpoint, err := newEndpoint(config)
+	audit := newAuditCapsule(config)
+	endpoint, err := newEndpoint(config, audit)
 	if err != nil {
 		return Report{}, err
 	}
-	report := Report{SchemaVersion: SchemaVersion, StartedAt: config.Now(), Phases: []Phase{}, Resources: []ResourceSample{}, Failures: []string{}}
+	report := Report{SchemaVersion: SchemaVersion, StartedAt: config.Now(), Phases: []Phase{}, Resources: []ResourceSample{}, Failures: []string{}, Certified: false, AuditStatus: AuditMissing, publication: newPublicationState(config.Certify, audit)}
 	report.FaultProfiles, report.Failures = faultQualifications(config.FaultProfiles, config.FaultController)
 	target, _, err := endpoint.target(ctx, len(config.Channels), manifestDigest(config.Channels))
 	if err != nil {
@@ -217,7 +218,7 @@ func Run(ctx context.Context, config Config) (Report, error) {
 			invalidateQualifiedFaults(&report, "run_failed")
 		}
 		report.CompletedAt = config.Now()
-		report.Certified = config.Certify && len(report.Failures) == 0
+		sealRunReport(&report, config.Certify && len(report.Failures) == 0)
 		return report, nil
 	}
 	if slices.Contains(config.FaultProfiles, FaultParentFailure) {
@@ -291,7 +292,7 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	// after the fault.
 	invalidateFaultsWithoutConvergence(&report)
 	report.CompletedAt = config.Now()
-	report.Certified = config.Certify && len(report.Failures) == 0
+	sealRunReport(&report, config.Certify && len(report.Failures) == 0)
 	return report, nil
 }
 

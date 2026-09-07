@@ -20,6 +20,7 @@ import (
 type Fixture struct {
 	Server                                    *httptest.Server
 	Admin, Device                             string
+	Version                                   string
 	Revision                                  string
 	AllowOverload, InterruptHeld              bool
 	StallHeldAfterOverload                    bool
@@ -32,6 +33,7 @@ type Fixture struct {
 	MaxConcurrentRaw                          int
 	HeldProgressAfterAdmission                int
 	ResponsePadding                           map[string]string
+	MintRelativeURL                           string
 	mu                                        sync.Mutex
 	activeRaw, starts                         int
 	sessions                                  map[string]*session
@@ -54,7 +56,7 @@ type session struct {
 
 func New(t testing.TB, channels int) *Fixture {
 	t.Helper()
-	f := &Fixture{Admin: "admin-super-secret", Device: "device-super-secret", Revision: "0123456789abcdef0123456789abcdef01234567", sessions: map[string]*session{}, interrupt: make(chan struct{}), continueHeld: make(chan struct{}), overloadRejected: make(chan struct{}), capacityRejected: make(chan struct{})}
+	f := &Fixture{Admin: "admin-super-secret", Device: "device-super-secret", Version: "fixture", Revision: "0123456789abcdef0123456789abcdef01234567", sessions: map[string]*session{}, interrupt: make(chan struct{}), continueHeld: make(chan struct{}), overloadRejected: make(chan struct{}), capacityRejected: make(chan struct{})}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/system/version", f.version)
 	mux.HandleFunc("/v1/playout/sessions", f.sessionsHandler)
@@ -76,7 +78,7 @@ func (f *Fixture) version(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no", http.StatusUnauthorized)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"version": "fixture", "commit": f.Revision, "ready": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"version": f.Version, "commit": f.Revision, "ready": true})
 	f.writePadding(w, r.URL.Path)
 }
 
@@ -139,7 +141,13 @@ func (f *Fixture) mint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := strings.Split(r.URL.Path, "/")[3]
-	_ = json.NewEncoder(w).Encode(map[string]any{"relativeUrl": "/v1/playout/hls/" + id + "/master.m3u8?exp=1&sig=signed-secret"})
+	f.mu.Lock()
+	relativeURL := f.MintRelativeURL
+	f.mu.Unlock()
+	if relativeURL == "" {
+		relativeURL = "/v1/playout/hls/" + id + "/master.m3u8?exp=1&sig=signed-secret"
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"relativeUrl": relativeURL})
 	f.writePadding(w, r.URL.Path)
 }
 

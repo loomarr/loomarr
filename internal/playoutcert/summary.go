@@ -3,47 +3,109 @@ package playoutcert
 import (
 	"fmt"
 	"sort"
-	"strings"
+	"strconv"
 )
 
 func HumanSummary(report Report) string {
-	var out strings.Builder
+	return string(minimalSummary(AuditMissing, AuditReasonNotFinalized).raw)
+}
+
+func renderReportSummary(report Report) auditDocument {
+	var out provenanceBuilder
 	verdict := "FAIL"
 	if report.Certified {
 		verdict = "PASS"
 	}
-	_, _ = fmt.Fprintf(&out, "Playout load certification: %s\n", verdict)
-	_, _ = fmt.Fprintf(&out, "Target: %s (%s), %d configured Channels, capacity %d\n",
-		report.Target.Version, shortRevision(report.Target.Revision), report.Target.ConfiguredChannels, report.Target.Capacity)
+	out.fixed("Playout load certification: ")
+	out.fixed(verdict)
+	out.fixed("\nTarget: ")
+	out.dynamic(report.Target.Version)
+	out.fixed(" (")
+	out.dynamic(shortRevision(report.Target.Revision))
+	out.fixed("), ")
+	out.dynamic(strconv.Itoa(report.Target.ConfiguredChannels))
+	out.fixed(" configured Channels, capacity ")
+	out.dynamic(strconv.Itoa(report.Target.Capacity))
+	out.fixed("\n")
 	for _, phase := range report.Phases {
-		_, _ = fmt.Fprintf(&out, "%-12s attempts=%d failures=%d p50=%.1fms p95=%.1fms p99=%.1fms",
-			phase.Name, phase.Attempts, phase.Failures, phase.P50MS, phase.P95MS, phase.P99MS)
+		out.append(fmt.Sprintf("%-12s", phase.Name), provenanceForSummary("phase", phase.Name))
+		out.fixed(" attempts=")
+		out.dynamic(strconv.Itoa(phase.Attempts))
+		out.fixed(" failures=")
+		out.dynamic(strconv.Itoa(phase.Failures))
+		out.fixed(" p50=")
+		out.dynamic(fmt.Sprintf("%.1f", phase.P50MS))
+		out.fixed("ms p95=")
+		out.dynamic(fmt.Sprintf("%.1f", phase.P95MS))
+		out.fixed("ms p99=")
+		out.dynamic(fmt.Sprintf("%.1f", phase.P99MS))
+		out.fixed("ms")
 		if phase.PreparedHits > 0 {
-			_, _ = fmt.Fprintf(&out, " prepared=%d", phase.PreparedHits)
+			out.fixed(" prepared=")
+			out.dynamic(strconv.Itoa(phase.PreparedHits))
 		}
 		if phase.FirstByte.Attempts > 0 {
-			_, _ = fmt.Fprintf(&out, " first-byte-p95=%.1fms", phase.FirstByte.P95MS)
+			out.fixed(" first-byte-p95=")
+			out.dynamic(fmt.Sprintf("%.1f", phase.FirstByte.P95MS))
+			out.fixed("ms")
 		}
 		if len(phase.HTTPClasses) > 1 || phase.Failures > 0 {
 			classes := make([]string, 0, len(phase.HTTPClasses))
-			for class, count := range phase.HTTPClasses {
-				classes = append(classes, fmt.Sprintf("%s:%d", class, count))
+			for class := range phase.HTTPClasses {
+				classes = append(classes, class)
 			}
 			sort.Strings(classes)
-			_, _ = fmt.Fprintf(&out, " classes=%s", strings.Join(classes, ","))
+			out.fixed(" classes=")
+			for index, class := range classes {
+				if index != 0 {
+					out.fixed(",")
+				}
+				out.append(class, provenanceForSummary("httpClass", class))
+				out.fixed(":")
+				out.dynamic(strconv.Itoa(phase.HTTPClasses[class]))
+			}
 		}
-		out.WriteByte('\n')
+		out.fixed("\n")
 	}
 	if len(report.FaultProfiles) > 0 {
-		_, _ = fmt.Fprintln(&out, "Fault profiles:")
+		out.fixed("Fault profiles:\n")
 		for _, qualification := range report.FaultProfiles {
-			_, _ = fmt.Fprintf(&out, "%s status=%s outcome=%s\n", qualification.Profile, qualification.Status, qualification.Outcome)
+			out.append(string(qualification.Profile), provenanceForSummary("faultProfile", string(qualification.Profile)))
+			out.fixed(" status=")
+			out.append(qualification.Status, provenanceForSummary("faultStatus", qualification.Status))
+			out.fixed(" outcome=")
+			out.append(qualification.Outcome, provenanceForSummary("faultOutcome", qualification.Outcome))
+			out.fixed("\n")
 		}
 	}
 	if len(report.Failures) > 0 {
-		_, _ = fmt.Fprintf(&out, "Failures: %s\n", strings.Join(report.Failures, ", "))
+		out.fixed("Failures: ")
+		for index, failure := range report.Failures {
+			if index > 0 {
+				out.fixed(", ")
+			}
+			out.append(failure, provenanceForSummary("failure", failure))
+		}
+		out.fixed("\n")
 	}
-	return out.String()
+	return out.document()
+}
+
+func provenanceForSummary(kind, value string) provenance {
+	if fixedSummaryValue(kind, value) {
+		return provenanceFixed
+	}
+	return provenanceDynamic
+}
+
+func minimalSummary(status AuditStatus, reason AuditReason) auditDocument {
+	var out provenanceBuilder
+	out.fixed("Playout load certification: FAIL\nAudit: ")
+	out.fixed(string(status))
+	out.fixed(" (")
+	out.fixed(string(reason))
+	out.fixed(")\n")
+	return out.document()
 }
 
 func shortRevision(revision string) string {

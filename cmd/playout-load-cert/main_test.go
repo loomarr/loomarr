@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,24 +25,30 @@ func TestCleanupFailureIsPersistedAsUncertifiedReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = output.Close() }()
-	report := playoutcert.Report{Certified: true, FaultProfiles: []playoutcert.FaultQualification{{Profile: playoutcert.FaultParentFailure, Status: "qualified", Outcome: "complete"}}}
+	report := successfulRunReport(t)
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if code := finalizeAfterIsolatedCleanup(output, report, true, playoutcertfixture.CleanupFailureTarget{Err: errors.New("cleanup failed")}, time.Second, stdout, stderr); code != 1 {
+	if code := finalizeAfterIsolatedCleanup(output, report, playoutcertfixture.CleanupFailureTarget{Err: errors.New("cleanup failed")}, time.Second, stdout, stderr); code != 1 {
 		t.Fatalf("exit code = %d, stderr=%q", code, stderr.String())
 	}
 	blob, err := os.ReadFile(filepath.Join(outputDir, "report.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var persisted playoutcert.Report
-	if err := json.Unmarshal(blob, &persisted); err != nil {
+	var published playoutcert.Report
+	if err := json.Unmarshal(blob, &published); err != nil {
 		t.Fatal(err)
 	}
-	if persisted.Certified || !strings.Contains(strings.Join(persisted.Failures, ","), "isolated_cleanup_failed") {
-		t.Fatalf("persisted cleanup failure report = %+v", persisted)
+	if !strings.Contains(strings.Join(published.Failures, ","), string(playoutcert.PublicationDowngradeCleanupFailed)) || published.Certified {
+		t.Fatalf("cleanup failure was not published as an uncertified downgrade: %+v", published)
 	}
-	if !strings.Contains(stdout.String(), "parent_failure status=unavailable outcome=cleanup_failed") {
-		t.Fatalf("summary omitted persisted fault evidence: %q", stdout.String())
+	foundDowngradedFault := false
+	for _, row := range published.FaultProfiles {
+		if row.Profile == playoutcert.FaultParentFailure {
+			foundDowngradedFault = row.Status == "unavailable" && row.Outcome == "cleanup_failed"
+		}
+	}
+	if !foundDowngradedFault || stdout.Len() == 0 || stderr.Len() != 0 {
+		t.Fatalf("cleanup downgrade publication = %+v stdout=%q stderr=%q", published, stdout.String(), stderr.String())
 	}
 }
 
@@ -54,18 +63,157 @@ func TestFinalizeWithTypedNilSyntheticTargetPublishesReport(t *testing.T) {
 	report := playoutcert.Report{Certified: true}
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
-	if code := finalizeAfterIsolatedCleanup(output, report, true, target, time.Second, stdout, stderr); code != 0 {
+	if code := finalizeAfterIsolatedCleanup(output, report, target, time.Second, stdout, stderr); code != 1 {
 		t.Fatalf("exit code = %d, stderr=%q", code, stderr.String())
 	}
 	if _, err := os.Stat(filepath.Join(outputDir, "report.json")); err != nil {
 		t.Fatalf("report artifact: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "Playout load certification: PASS") {
-		t.Fatalf("summary = %q", stdout.String())
+	if !strings.Contains(stdout.String(), "audit_capsule_missing") {
+		t.Fatalf("forged report was not reduced to the fixed minimal publication: %q", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
+}
+
+func TestPublishReportUsesActualRunPublication(t *testing.T) {
+	outputDir := t.TempDir()
+	output, err := openContainedOutput(outputDir, filepath.Join(outputDir, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = output.Close() }()
+	report := successfulRunReport(t)
+	publication, err := playoutcert.FinalizePublication(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if publication.Verdict() != playoutcert.VerdictCertified || publication.AuditStatus() != playoutcert.AuditPassed || publication.ExitStatus() != 0 {
+		t.Fatalf("successful run did not finalize as a passing certification: verdict=%q audit=%q exit=%d", publication.Verdict(), publication.AuditStatus(), publication.ExitStatus())
+	}
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := publishReport(output, report, stdout, stderr); code != 0 {
+		t.Fatalf("exit status = %d, want 0", code)
+	}
+	blob, err := os.ReadFile(filepath.Join(outputDir, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(blob, publication.JSON()) || !bytes.Equal(stdout.Bytes(), publication.Summary()) || stderr.Len() != 0 {
+		t.Fatalf("publication was not returned verbatim: artifact=%q stdout=%q stderr=%q", blob, stdout.Bytes(), stderr.Bytes())
+	}
+}
+
+func TestPublishReportPreservesExistingArtifactWhenRunAuditIsUnavailable(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 1)
+	fixture.MintRelativeURL = oversizedSignedRelativeURL()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	report, err := playoutcert.Run(ctx, playoutcert.Config{
+		BaseURL: fixture.Server.URL, AdminBearer: fixture.Admin, DeviceToken: fixture.Device,
+		Channels: []playoutcert.Channel{{ID: "prepared", Roles: []string{"prepared"}}},
+		Certify:  false, Concurrency: 1, SurfRounds: 1, FanInViewers: 1,
+		RequestTimeout: time.Second, CleanupTimeout: 50 * time.Millisecond, CleanupPoll: time.Millisecond,
+		WarmGrace: time.Millisecond, RawCaptureBytes: 188, PreparedP95: time.Millisecond,
+		PreparedRawP95: time.Millisecond, ProgrammeBoundaryTimeout: 2 * time.Second,
+		ProgrammeBoundaryLateObservation: 250 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("Run returned an error: %v", err)
+	}
+	if report.Target.Version != fixture.Version || len(report.Resources) == 0 || report.Resources[0].Point != "baseline" {
+		t.Fatalf("Run did not complete target and resource preflight: target=%+v resources=%+v", report.Target, report.Resources)
+	}
+	publication, err := playoutcert.FinalizePublication(report)
+	if err == nil || publication.Verdict() != playoutcert.VerdictUnavailable || publication.AuditStatus() != playoutcert.AuditUnavailable {
+		t.Fatalf("first finalization = verdict %q audit %q err %v", publication.Verdict(), publication.AuditStatus(), err)
+	}
+	cached, cachedErr := playoutcert.FinalizePublication(report)
+	if cachedErr == nil || cached.Verdict() != playoutcert.VerdictUnavailable || cached.AuditStatus() != playoutcert.AuditUnavailable {
+		t.Fatalf("cached finalization = verdict %q audit %q err %v", cached.Verdict(), cached.AuditStatus(), cachedErr)
+	}
+
+	outputDir := t.TempDir()
+	path := filepath.Join(outputDir, "report.json")
+	prior := []byte("prior report bytes\n")
+	if err := os.WriteFile(path, prior, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := openContainedOutput(outputDir, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = output.Close() }()
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := publishReport(output, report, stdout, stderr); code != 1 {
+		t.Fatalf("publish exit code = %d, stderr=%q", code, stderr.String())
+	}
+	actual, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(actual, prior) || stdout.Len() != 0 || stderr.String() != "playout-load-cert: report finalization failed\n" {
+		t.Fatalf("unpublishable report changed output: artifact=%q stdout=%q stderr=%q", actual, stdout.String(), stderr.String())
+	}
+}
+
+func oversizedSignedRelativeURL() string {
+	query := make(url.Values, 8195)
+	query.Set("exp", "1")
+	query.Set("sig", "ordinary-signed-secret")
+	for index := range 8193 {
+		query.Set(fmt.Sprintf("proof-%05d", index), fmt.Sprintf("dummy-secret-%05d-%s", index, strings.Repeat("x", 40)))
+	}
+	return "/v1/playout/hls/prepared/master.m3u8?" + query.Encode()
+}
+
+func successfulRunReport(t *testing.T) playoutcert.Report {
+	t.Helper()
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	ffprobe, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	channels := make([]playoutcert.Channel, 0, 105)
+	for index := range 100 {
+		channels = append(channels, playoutcert.Channel{ID: fmt.Sprintf("prepared-%03d", index+1), Roles: []string{"prepared"}})
+	}
+	for index := range 5 {
+		channels = append(channels, playoutcert.Channel{ID: fmt.Sprintf("transcode-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	target, err := playoutcert.NewSyntheticTarget(ctx, playoutcert.SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		if closeErr := target.Close(closeCtx); closeErr != nil {
+			t.Errorf("close synthetic target: %v", closeErr)
+		}
+	})
+	report, err := playoutcert.Run(ctx, playoutcert.Config{
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		Channels: channels, Certify: true, Concurrency: 12, SurfRounds: 1, FanInViewers: 4,
+		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
+		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
+		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
+		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(), FaultProfiles: []playoutcert.FaultProfile{playoutcert.FaultParentFailure}, FaultController: target,
+		Validator: playoutcert.FFprobeValidator{Path: ffprobe}, Decoder: playoutcert.FFmpegDecoder{Path: ffmpeg},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Certified || report.AuditStatus != playoutcert.AuditMissing || len(report.Failures) != 0 {
+		t.Fatalf("Run exposed a forged final verdict: %+v", report)
+	}
+	return report
 }
 
 func TestCommandRejectsMissingSecretsAndOutputEscapeWithoutEchoingValues(t *testing.T) {
@@ -242,7 +390,7 @@ func TestWriteArtifactRefusesEscapedSymlinkAndParentSwap(t *testing.T) {
 	}
 }
 
-func TestPublishReportReturnsFailureForRequiredFailureWithoutCertification(t *testing.T) {
+func TestPublishReportRefusesForgedFailureDetails(t *testing.T) {
 	outputDir := t.TempDir()
 	output, err := openContainedOutput(outputDir, filepath.Join(outputDir, "report.json"))
 	if err != nil {
@@ -255,19 +403,19 @@ func TestPublishReportReturnsFailureForRequiredFailureWithoutCertification(t *te
 		CompletedAt:   time.Now(),
 		Failures:      []string{"shutdown_failed"},
 	}
-	if code := publishReport(output, report, false, stdout, stderr); code != 1 {
+	if code := publishReport(output, report, stdout, stderr); code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
 	blob, err := os.ReadFile(filepath.Join(outputDir, "report.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(blob), `"shutdown_failed"`) || !strings.Contains(stdout.String(), "Failures: shutdown_failed") || stderr.Len() != 0 {
-		t.Fatalf("report publication lost failure: artifact=%q stdout=%q stderr=%q", blob, stdout.String(), stderr.String())
+	if strings.Contains(string(blob), "shutdown_failed") || !strings.Contains(stdout.String(), "audit_capsule_missing") || stderr.Len() != 0 {
+		t.Fatalf("forged report escaped minimal publication: artifact=%q stdout=%q stderr=%q", blob, stdout.String(), stderr.String())
 	}
 }
 
-func TestPublishReportAllowsSuccessfulDiagnosticRun(t *testing.T) {
+func TestPublishReportRefusesForgedSuccess(t *testing.T) {
 	outputDir := t.TempDir()
 	output, err := openContainedOutput(outputDir, filepath.Join(outputDir, "report.json"))
 	if err != nil {
@@ -275,15 +423,15 @@ func TestPublishReportAllowsSuccessfulDiagnosticRun(t *testing.T) {
 	}
 	defer func() { _ = output.Close() }()
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	report := playoutcert.Report{SchemaVersion: playoutcert.SchemaVersion, CompletedAt: time.Now()}
-	if code := publishReport(output, report, false, stdout, stderr); code != 0 {
-		t.Fatalf("code = %d, want 0", code)
+	report := playoutcert.Report{SchemaVersion: playoutcert.SchemaVersion, CompletedAt: time.Now(), Certified: true}
+	if code := publishReport(output, report, stdout, stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
 	}
 	if _, err := os.Stat(filepath.Join(outputDir, "report.json")); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "Playout load certification: FAIL") || stderr.Len() != 0 {
-		t.Fatalf("unexpected diagnostic publication: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	if !strings.Contains(stdout.String(), "audit_capsule_missing") || strings.Contains(stdout.String(), "PASS") || stderr.Len() != 0 {
+		t.Fatalf("forged success escaped minimal publication: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
 
@@ -296,7 +444,7 @@ func TestPublishReportRejectsUncertifiedCertification(t *testing.T) {
 	defer func() { _ = output.Close() }()
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	report := playoutcert.Report{SchemaVersion: playoutcert.SchemaVersion, CompletedAt: time.Now()}
-	if code := publishReport(output, report, true, stdout, stderr); code != 1 {
+	if code := publishReport(output, report, stdout, stderr); code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
 	if _, err := os.Stat(filepath.Join(outputDir, "report.json")); err != nil {

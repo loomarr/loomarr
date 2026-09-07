@@ -18,9 +18,9 @@ import (
 	"time"
 )
 
-// SchemaVersion 2 identifies reports whose manifestSha256 is derived from the
-// length-framed ordered channel and role declaration.
-const SchemaVersion = 2
+// SchemaVersion 3 identifies reports whose certification verdict is owned by
+// the credential-redaction publication audit.
+const SchemaVersion = 3
 
 type Channel struct {
 	ID    string   `json:"id"`
@@ -380,6 +380,9 @@ type Report struct {
 	Failures      []string             `json:"failures"`
 	FaultProfiles []FaultQualification `json:"faultProfiles"`
 	Certified     bool                 `json:"certified"`
+	AuditStatus   AuditStatus          `json:"auditStatus"`
+	AuditReason   string               `json:"auditReason,omitempty"`
+	publication   *publicationState
 }
 
 func (r Report) Phase(name string) (Phase, bool) {

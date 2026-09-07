@@ -20,8 +20,8 @@ func TestRunDoesNotTreatUnreadPreOverloadBacklogAsSustainedHeldMedia(t *testing.
 		t.Fatal(err)
 	}
 	phase := report.PhaseMust("overload")
-	if report.Certified || phase.HTTPClasses["held_viewer_interrupted"] == 0 {
-		t.Fatalf("finite pre-overload backlog certified as sustained media: %+v", phase)
+	if phase.HTTPClasses["held_viewer_interrupted"] == 0 {
+		t.Fatalf("finite pre-overload backlog omitted sustained-media failure: %+v", phase)
 	}
 	encoded, err := json.Marshal(phase)
 	if err != nil {
@@ -46,4 +46,5 @@ func TestRunDoesNotTreatUnreadPreOverloadBacklogAsSustainedHeldMedia(t *testing.
 	if active := fixture.BacklogReadsActive(); active != 0 {
 		t.Fatalf("held body reads still active after Run: %d", active)
 	}
+	requireUncertifiedPublication(t, report)
 }

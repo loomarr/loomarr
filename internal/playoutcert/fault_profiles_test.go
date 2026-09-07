@@ -93,7 +93,7 @@ func TestFaultProfileSelectionFailsClosed(t *testing.T) {
 	}
 }
 
-func TestHumanSummaryIncludesBoundedFaultQualifications(t *testing.T) {
+func TestHumanSummaryForUnfinalizedReportDoesNotLeakFaultQualifications(t *testing.T) {
 	report := Report{
 		FaultProfiles: []FaultQualification{
 			{Profile: FaultChildFailure, Status: "unqualified", Outcome: "not_selected"},
@@ -102,14 +102,12 @@ func TestHumanSummaryIncludesBoundedFaultQualifications(t *testing.T) {
 		},
 	}
 	summary := HumanSummary(report)
-	for _, want := range []string{
-		"Fault profiles:",
-		"child_failure status=unqualified outcome=not_selected",
-		"parent_failure status=qualified outcome=complete",
-		"shutdown status=unqualified outcome=not_selected",
-	} {
-		if !strings.Contains(summary, want) {
-			t.Fatalf("summary missing %q:\n%s", want, summary)
+	if summary != "Playout load certification: FAIL\nAudit: missing (publication_not_finalized)\n" {
+		t.Fatalf("unfinalized summary = %q", summary)
+	}
+	for _, leaked := range []string{"Fault profiles:", "parent_failure", "qualified"} {
+		if strings.Contains(summary, leaked) {
+			t.Fatalf("unfinalized summary leaked %q: %s", leaked, summary)
 		}
 	}
 }

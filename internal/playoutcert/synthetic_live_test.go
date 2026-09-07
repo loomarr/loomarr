@@ -55,9 +55,6 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !report.Certified {
-		t.Fatalf("certification failed: %v\n%sresources=%+v", report.Failures, HumanSummary(report), report.Resources)
-	}
 	parentFault := report.PhaseMust("parent_failure")
 	if parentFault.Failures != 0 || parentFault.Attempts != 1 || len(parentFault.Media) != 1 {
 		t.Fatalf("parent-failure recovery evidence = %+v", parentFault)
@@ -107,6 +104,7 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 			t.Fatalf("held continuity evidence = %+v", observation)
 		}
 	}
+	requireCertifiedPublication(t, report)
 }
 
 func TestSyntheticTargetShutdownCertifiesMeasuredLiveBurst(t *testing.T) {
@@ -150,9 +148,6 @@ func TestSyntheticTargetShutdownCertifiesMeasuredLiveBurst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !report.Certified {
-		t.Fatalf("shutdown certification failed: %v\n%sresources=%+v", report.Failures, HumanSummary(report), report.Resources)
-	}
 	shutdown := report.PhaseMust("shutdown")
 	if shutdown.Failures != 0 || shutdown.Resources.Samples != 1 || shutdown.Resources.Maximum.TranscodeCost < 4 || shutdown.Resources.Maximum.ViewerActive < 4 {
 		t.Fatalf("shutdown live burst evidence = %+v", shutdown)
@@ -165,6 +160,7 @@ func TestSyntheticTargetShutdownCertifiesMeasuredLiveBurst(t *testing.T) {
 	if _, err := http.Get(target.BaseURL + "/v1/playout/status"); err == nil {
 		t.Fatal("public listener remained available after shutdown")
 	}
+	requireCertifiedPublication(t, report)
 }
 
 func TestSyntheticTargetShutdownFailureCannotRetainQualification(t *testing.T) {
@@ -204,14 +200,15 @@ func TestSyntheticTargetShutdownFailureCannotRetainQualification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Certified || !strings.Contains(strings.Join(report.Failures, ","), "prepared_p95_exceeded") {
-		t.Fatalf("required phase failure did not fail the run: certified=%t failures=%v", report.Certified, report.Failures)
+	if !strings.Contains(strings.Join(report.Failures, ","), "prepared_p95_exceeded") {
+		t.Fatalf("required phase failure did not fail the run: failures=%v", report.Failures)
 	}
 	for _, row := range report.FaultProfiles {
 		if row.Profile == FaultShutdown && (row.Status != "unavailable" || row.Outcome != "run_failed" || row.Baseline == nil || row.PhasePeak == nil || row.Final == nil || row.ReceiptOutcome != "exited" || row.SelectedContinuity != "interrupted") {
 			t.Fatalf("failed run retained shutdown qualification or lost evidence: %+v", row)
 		}
 	}
+	requireUncertifiedPublication(t, report)
 }
 
 // This is deliberately independent of SyntheticTarget's raw BlockSource
@@ -314,14 +311,15 @@ func TestSyntheticTargetParentFaultCertifiesAtOneMeasuredSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !report.Certified || strings.Contains(strings.Join(report.Failures, ","), "capacity_oversubscribed") {
-		t.Fatalf("one-slot certification = failures %v resources=%+v", report.Failures, report.Resources)
+	if strings.Contains(strings.Join(report.Failures, ","), "capacity_oversubscribed") {
+		t.Fatalf("one-slot run oversubscribed capacity: failures %v resources=%+v", report.Failures, report.Resources)
 	}
 	for _, row := range report.FaultProfiles {
 		if row.Profile == FaultParentFailure && (row.Status != "qualified" || row.PeerContinuity != "not_applicable" || row.SelectedContinuity != "interrupted" || row.Recovery != "recovered") {
 			t.Fatalf("one-slot parent evidence = %+v", row)
 		}
 	}
+	requireCertifiedPublication(t, report)
 }
 
 func TestSyntheticTargetRejectsStaleParentGenerationAfterReplacement(t *testing.T) {
@@ -518,12 +516,13 @@ func TestSyntheticTargetRejectsPostOverloadCorruptHeldMedia(t *testing.T) {
 		t.Fatalf("initial raw-capacity media was not valid: %+v", rawCapacity)
 	}
 	overload := report.PhaseMust("overload")
-	if report.Certified || overload.HTTPClasses["http_503"] != 1 || len(overload.HeldContinuity) != 4 {
-		t.Fatalf("corrupt post-event run did not fail closed: %+v", overload)
+	if overload.HTTPClasses["http_503"] != 1 || len(overload.HeldContinuity) != 4 {
+		t.Fatalf("corrupt post-event run omitted failure evidence: %+v", overload)
 	}
 	for _, held := range overload.HeldContinuity {
 		if held.Outcome == "observed" || held.DecodedFrame || held.BytesObserved == 0 {
 			t.Fatalf("corrupt post-event media passed: %+v", held)
 		}
 	}
+	requireUncertifiedPublication(t, report)
 }
