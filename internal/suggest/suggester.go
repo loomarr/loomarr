@@ -164,6 +164,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// A tool call receives Intent by value, but this map deliberately shares the
 	// exact membership evidence it adds with the final grounding chokepoint.
 	intent.membershipKeys = make(map[provision.Key]bool)
+	intent.membershipSources = newMembershipSourceState()
 	allAdjacent := intent.Adjacent
 	var feedback []FeedbackSignal
 	if s.feedback != nil {

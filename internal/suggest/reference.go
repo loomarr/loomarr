@@ -16,7 +16,24 @@ import (
 	"github.com/loomarr/loomarr/internal/textmatch"
 )
 
-const maxReferenceTitleQueries = 8
+const (
+	maxReferenceTitleQueries   = 8
+	maxMembershipSourceQueries = 8
+)
+
+type membershipSourceResolution struct {
+	candidate catalog.Candidate
+	found     bool
+}
+
+type membershipSourceState struct {
+	byTitle  map[string]membershipSourceResolution
+	searches int
+}
+
+func newMembershipSourceState() *membershipSourceState {
+	return &membershipSourceState{byTitle: make(map[string]membershipSourceResolution)}
+}
 
 var (
 	namedCollectionPhrasePattern = regexp.MustCompile(`(?i:\bnamed\b.{0,80}\b(?:collection|line-?up|block)\b)`)
@@ -49,6 +66,7 @@ func (s *Suggester) groundExplicitMembershipAnchors(ctx context.Context, intent 
 		if err != nil {
 			return nil, fmt.Errorf("search explicit membership title %q: %w", title, err)
 		}
+		cacheMembershipSourceResolution(*intent, title, candidates)
 		candidate, found := unambiguousMembershipCandidate(candidates, title)
 		if !found {
 			continue // no implicit media/year choice for an ambiguous user anchor
@@ -111,6 +129,7 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 			}}},
 			llm.Message{Role: llm.Tool, ToolCallID: callID, Content: string(result)},
 		)
+		cacheMembershipSourceResolution(*intent, title, exact)
 		candidate, found := unambiguousMembershipCandidate(exact, title)
 		if !found || titleExplicitlyExcluded(*intent, candidate.Name) {
 			continue
@@ -126,6 +145,9 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 		candidates = append(candidates, candidate)
 	}
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(*intent), candidates, nil)
+	if len(ranked.Candidates) > catalogSearchLimit {
+		ranked.Candidates = ranked.Candidates[:catalogSearchLimit]
+	}
 	intent.referenceCandidates = append([]catalog.Candidate(nil), ranked.Candidates...)
 
 	return referenceGrounding{
@@ -207,14 +229,59 @@ func unambiguousMembershipCandidate(candidates []catalog.Candidate, title string
 	return catalog.Candidate{}, false
 }
 
-func promoteUnambiguousMembership(intent Intent, title string, candidates []catalog.Candidate) {
+func cacheMembershipSourceResolution(intent Intent, title string, candidates []catalog.Candidate) {
 	if !requiresMembershipEvidence(intent) || !positiveIntentOrReferenceNamesTitle(intent, title) {
 		return
 	}
-	if candidate, found := unambiguousMembershipCandidate(candidates, title); found {
+	state := intent.membershipSources
+	if state == nil {
+		state = newMembershipSourceState()
+	}
+	key := strings.ToLower(strings.Join(strings.Fields(title), " "))
+	resolution, cached := state.byTitle[key]
+	if !cached {
+		resolution.candidate, resolution.found = unambiguousMembershipCandidate(candidates, title)
+		state.byTitle[key] = resolution
+	}
+	if resolution.found {
+		candidate := resolution.candidate
 		key, _ := candidate.Key()
 		intent.membershipKeys[key] = true
 	}
+}
+
+// resolveMembershipSource binds named-set membership to an unfiltered exact-title
+// Catalog search. Model-selected discovery filters and later ranking may narrow the
+// candidates offered to the model, but cannot turn an ambiguous source title into
+// a unique identity. Each request performs at most eight additional, deduplicated
+// source lookups; exact searches elsewhere seed the same cache.
+func (s *Suggester) resolveMembershipSource(ctx context.Context, intent Intent, title string) error {
+	if !requiresMembershipEvidence(intent) || !positiveIntentOrReferenceNamesTitle(intent, title) {
+		return nil
+	}
+	state := intent.membershipSources
+	if state == nil {
+		state = newMembershipSourceState()
+		intent.membershipSources = state
+	}
+	key := strings.ToLower(strings.Join(strings.Fields(title), " "))
+	if resolution, cached := state.byTitle[key]; cached {
+		if resolution.found {
+			candidateKey, _ := resolution.candidate.Key()
+			intent.membershipKeys[candidateKey] = true
+		}
+		return nil
+	}
+	if state.searches >= maxMembershipSourceQueries {
+		return nil
+	}
+	state.searches++
+	candidates, err := s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
+	if err != nil {
+		return fmt.Errorf("resolve membership source title %q: %w", title, err)
+	}
+	cacheMembershipSourceResolution(intent, title, candidates)
+	return nil
 }
 
 func titleExplicitlyExcluded(intent Intent, title string) bool {

@@ -54,11 +54,21 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	if err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
 	}
-	if mtArg != "" {
-		cands = filterByMediaType(cands, mtArg) // narrow to the requested type
+	if !discoveryMode {
+		query := stringArg(arguments["query"])
+		for _, candidate := range cands {
+			if sameExactTitle(query, candidate.Name) {
+				cacheMembershipSourceResolution(intent, candidate.Name, cands)
+			}
+		}
 	}
 	for _, candidate := range cands {
-		promoteUnambiguousMembership(intent, candidate.Name, cands)
+		if resolveErr := s.resolveMembershipSource(ctx, intent, candidate.Name); resolveErr != nil {
+			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}
+		}
+	}
+	if mtArg != "" {
+		cands = filterByMediaType(cands, mtArg) // narrow to the requested type
 	}
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), cands, feedback)
 	cands = ranked.Candidates
@@ -97,7 +107,7 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 		if keyErr != nil {
 			continue
 		}
-		promoteUnambiguousMembership(intent, title.name, results)
+		cacheMembershipSourceResolution(intent, title.name, results)
 		candidates = append(candidates, candidate)
 	}
 	if len(candidates) == 0 {

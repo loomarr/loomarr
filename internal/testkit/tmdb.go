@@ -435,6 +435,14 @@ func sortedTitles(catalog map[int]tmdbTitle) []tmdbTitle {
 }
 
 func matchesDiscoveryQualifiers(title tmdbTitle, query url.Values) bool {
+	for _, field := range []string{"primary_release_date", "first_air_date"} {
+		if minimum := query.Get(field + ".gte"); minimum != "" && title.Date < minimum {
+			return false
+		}
+		if maximum := query.Get(field + ".lte"); maximum != "" && title.Date > maximum {
+			return false
+		}
+	}
 	if want := query.Get("with_original_language"); want != "" && !strings.EqualFold(title.OriginalLanguage, want) {
 		return false
 	}

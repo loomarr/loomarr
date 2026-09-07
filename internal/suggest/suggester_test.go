@@ -958,6 +958,73 @@ func TestSuggest_GroundsToolFreeNamedPickThroughCatalog(t *testing.T) {
 	}
 }
 
+func TestSuggest_NamedSourceAmbiguitySurvivesModelDiscoveryFilters(t *testing.T) {
+	tests := []struct {
+		name      string
+		addRemake func(*testkit.TMDB)
+		discovery catalog.DiscoveryQuery
+		arguments map[string]any
+		mediaType string
+		tmdbID    int
+	}{
+		{
+			name: "media type",
+			addRemake: func(mt *testkit.TMDB) {
+				mt.AddMovie(541, "Full House", 1952, []int{35}, "A comedy with the same canonical title.")
+			},
+			discovery: catalog.DiscoveryQuery{MediaType: "series", Genres: []string{"Comedy"}},
+			arguments: map[string]any{"media_type": "series", "genres": []any{"Comedy"}},
+			mediaType: "series", tmdbID: 540,
+		},
+		{
+			name: "premiere year",
+			addRemake: func(mt *testkit.TMDB) {
+				mt.AddSeries(542, "Full House", 2020, []int{35}, "A later series with the same canonical title.")
+			},
+			discovery: catalog.DiscoveryQuery{MediaType: "series", Genres: []string{"Comedy"}, YearFrom: 1987, YearTo: 1987},
+			arguments: map[string]any{"media_type": "series", "genres": []any{"Comedy"}, "era": "1987"},
+			mediaType: "series", tmdbID: 540,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mt := testkit.NewTMDB(t)
+			mt.AddSeries(540, "Full House", 1987, []int{35}, "The original family sitcom.")
+			tt.addRemake(mt)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			discovered, err := tm.Discover(context.Background(), tt.discovery, 24)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(discovered) != 1 || discovered[0].TMDBID != 540 {
+				t.Fatalf("filtered fixture discovery = %+v, want only the model-selected identity", discovered)
+			}
+			model := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", tt.arguments),
+				testkit.FinalResponse(fmt.Sprintf(`{"picks":[{"mediaType":%q,"tmdbId":%d,"name":"Full House","year":1987}]}`, tt.mediaType, tt.tmdbID)),
+			)
+			s := suggest.New(model, catalog.New(nil, tm), tm, 10)
+
+			_, err = s.Suggest(context.Background(), suggest.Intent{Description: "A named programming block with Full House"})
+			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+				t.Fatalf("error = %v, want ambiguous source title rejected after filtered discovery", err)
+			}
+			if model.Calls != 2 {
+				t.Fatalf("model calls = %d, want promised discovery followed by finalization", model.Calls)
+			}
+			searches := 0
+			for _, request := range mt.Requests() {
+				if request.Path == "/search/multi" && strings.Contains(request.RawQuery, "query=Full+House") {
+					searches++
+				}
+			}
+			if searches != 1 {
+				t.Fatalf("exact source-title HTTP requests = %d, want one bounded Catalog.Search", searches)
+			}
+		})
+	}
+}
+
 func TestSuggest_GroundsToolFreeNamedPickAsAcquisition(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	mt.AddSeries(540, "Full House", 1987, []int{35, 10751}, "A widowed father raises his family with help from relatives and friends.")
@@ -1005,7 +1072,7 @@ func TestSuggest_GroundsToolFreeNamedPickBySuppliedYear(t *testing.T) {
 		10,
 	)
 
-	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF, with Full House"})
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "1980s family sitcoms"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1053,6 +1120,14 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 		{
 			name:  "ambiguous title without year",
 			picks: `[{"mediaType":"series","tmdbId":12345,"name":"Full House"}]`,
+			items: []testkit.SearchStub{
+				{Terms: []string{"full house"}, LibraryItemID: "full-house-1987", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762},
+				{Terms: []string{"full house"}, LibraryItemID: "full-house-2020", Name: "Full House", Type: "Series", Year: 2020, TVDBID: 999762},
+			},
+		},
+		{
+			name:  "ambiguous named source with model-only year",
+			picks: `[{"mediaType":"series","tmdbId":12345,"name":"Full House","year":1987}]`,
 			items: []testkit.SearchStub{
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-1987", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762},
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-2020", Name: "Full House", Type: "Series", Year: 2020, TVDBID: 999762},

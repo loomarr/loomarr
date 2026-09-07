@@ -61,7 +61,8 @@ type Intent struct {
 	// public-reference title anchors. A model's collection-tool roster is a search
 	// hypothesis: catalog identity verifies that title exists, not that it belongs
 	// to the named set. It is execution-only evidence, never model data.
-	membershipKeys map[provision.Key]bool
+	membershipKeys    map[provision.Key]bool
+	membershipSources *membershipSourceState
 	// DiscoveryScopeID is internal execution context for channel-specific explicit
 	// feedback during re-curation. It never enters the API or persisted intent JSON.
 	DiscoveryScopeID string `json:"-"`

@@ -17,3 +17,11 @@ func TestIntentHashSeparatesMembershipPolicyFromNormalizedDescription(t *testing
 		t.Fatal("a named-set request must not reuse a generic cached proposal")
 	}
 }
+
+func TestIntentHashPreservesCaseSensitiveReferenceIdentity(t *testing.T) {
+	upper := Intent{Description: "Use https://example.com/RosterA for this programming block"}
+	lower := Intent{Description: "Use https://example.com/rostera for this programming block"}
+	if IntentHash(upper) == IntentHash(lower) {
+		t.Fatal("distinct case-sensitive reference resources shared a cache identity")
+	}
+}

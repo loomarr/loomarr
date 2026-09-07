@@ -220,6 +220,60 @@ func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testi
 	}
 }
 
+func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: "series", Name: "Full House", TVDBID: 762},
+		{MediaType: "series", Name: "Full House", TVDBID: 762},
+		{MediaType: "series", Name: "Family Matters", TVDBID: 767},
+	}}
+	intent := Intent{
+		Description:    "A named programming block with Full House and Family Matters",
+		membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState(),
+	}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	call := llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"query": "family night"}}
+	_, _, _ = s.runTool(context.Background(), call, intent, nil)
+	_, _, _ = s.runTool(context.Background(), call, intent, nil)
+	searches := corpus.Searches()
+	if len(searches) != 4 || searches[0].Query != "family night" || searches[1].Query != "Full House" ||
+		searches[2].Query != "Family Matters" || searches[3].Query != "family night" {
+		t.Fatalf("catalog searches = %+v, want two base calls plus one deduplicated exact lookup per source title", searches)
+	}
+	if len(intent.membershipKeys) != 2 {
+		t.Fatalf("membership keys = %+v, want both unambiguous source identities", intent.membershipKeys)
+	}
+}
+
+func TestRunCollectionToolUsesUnfilteredSourceIdentityBeforeModelYear(t *testing.T) {
+	tests := []struct {
+		name       string
+		candidates []catalog.Candidate
+		wantKeys   int
+	}{
+		{name: "different canonical identities stay ambiguous", candidates: []catalog.Candidate{
+			{MediaType: "series", Name: "Full House", Year: 1987, TVDBID: 762},
+			{MediaType: "series", Name: "Full House", Year: 2020, TVDBID: 999762},
+		}},
+		{name: "duplicate rows for one key remain unambiguous", candidates: []catalog.Candidate{
+			{MediaType: "series", Name: "Full House", Year: 1987, TVDBID: 762},
+			{MediaType: "series", Name: "Full House", Year: 1987, TVDBID: 762},
+		}, wantKeys: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			corpus := &catalogfixture.Corpus{Candidates: tt.candidates}
+			intent := Intent{Description: "A named programming block with Full House", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+			s := New(nil, catalog.New(nil, corpus), nil, 10)
+			_, candidates, _ := s.runCollectionTool(context.Background(), map[string]any{
+				"mode": "collection", "media_type": "series", "titles": []any{map[string]any{"name": "Full House", "year": float64(1987)}},
+			}, intent, nil)
+			if len(candidates) != 1 || len(intent.membershipKeys) != tt.wantKeys || len(corpus.Searches()) != 1 {
+				t.Fatalf("candidates=%+v membership=%+v searches=%+v", candidates, intent.membershipKeys, corpus.Searches())
+			}
+		})
+	}
+}
+
 func TestRunToolDoesNotProjectMalformedNonEmptyFields(t *testing.T) {
 	tests := []map[string]any{
 		{"media_type": "series", "network": 17, "genres": []any{"Drama"}},
