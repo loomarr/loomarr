@@ -66,6 +66,7 @@ type Process struct {
 
 	finishOnce sync.Once
 	ioWG       sync.WaitGroup
+	done       chan struct{}
 
 	log *slog.Logger
 
@@ -145,7 +146,7 @@ func startProcess(
 		}
 	}
 
-	p := &Process{Stdout: stdout, Stdin: stdin, log: log}
+	p := &Process{Stdout: stdout, Stdin: stdin, log: log, done: make(chan struct{})}
 	supervised, err := proctree.Start(ctx, cmd)
 	if err != nil {
 		progress.closeFailure()
@@ -180,6 +181,18 @@ func startProcess(
 		go func() { defer p.ioWG.Done(); p.readProgress(progress.reader, onProgress) }()
 		go func() { defer p.ioWG.Done(); p.readStderr(stderr) }()
 	}
+
+	// proctree owns the OS tree, while Process owns pipe draining and retained
+	// diagnostics. Bind cancellation only after the diagnostic handle and every
+	// reader have been registered: Stop may finish synchronously, and finishOnce
+	// must never observe a nil run or race a later WaitGroup.Add.
+	go func() {
+		select {
+		case <-ctx.Done():
+			p.Stop()
+		case <-p.done:
+		}
+	}()
 
 	return p, nil
 }
@@ -417,6 +430,9 @@ func (p *Process) ProcessRunID() string {
 
 func (p *Process) finish(err error) {
 	p.finishOnce.Do(func() {
+		if p.done != nil {
+			close(p.done)
+		}
 		if p.run == nil {
 			return
 		}
