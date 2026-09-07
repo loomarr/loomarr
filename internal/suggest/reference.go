@@ -198,6 +198,7 @@ func requiresMembershipEvidence(intent Intent) bool {
 func bareProperNameNamesSet(text string) bool {
 	name := strings.Trim(strings.TrimSpace(text), ".,;:!?()[]{}\"'")
 	if name == "" || name == "The" || name == strings.ToUpper(name) || tmdb.IsKnownGenre(name) ||
+		curatedKnownGenreInField(name) ||
 		bareProperNamePattern.FindString(name) != name {
 		return false
 	}
@@ -217,6 +218,21 @@ func curatedTitleSubject(intent Intent) (string, bool) {
 }
 
 func curatedTitleSubjectInField(field string) (string, bool) {
+	subject, found := curatedCueSubjectInField(field)
+	if !found || subject == "The" || tmdb.IsKnownGenre(subject) || bareProperNamePattern.FindString(subject) != subject {
+		return "", false
+	}
+	return subject, true
+}
+
+// curatedKnownGenreInField recognizes the field-local genre form of a curated
+// cue so it remains ordinary discovery rather than a named set.
+func curatedKnownGenreInField(field string) bool {
+	subject, found := curatedCueSubjectInField(field)
+	return found && tmdb.IsKnownGenre(subject)
+}
+
+func curatedCueSubjectInField(field string) (string, bool) {
 	words := strings.Fields(strings.Trim(strings.TrimSpace(field), ".,;:!?()[]{}\"'"))
 	if len(words) < 2 {
 		return "", false
@@ -245,7 +261,7 @@ func curatedTitleSubjectInField(field string) (string, bool) {
 		return "", false
 	}
 	subject := strings.Trim(strings.Join(subjectWords, " "), ".,;:!?()[]{}\"'")
-	if subject == "" || subject == "The" || tmdb.IsKnownGenre(subject) || bareProperNamePattern.FindString(subject) != subject {
+	if subject == "" {
 		return "", false
 	}
 	return subject, true

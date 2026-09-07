@@ -1581,6 +1581,29 @@ func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) 
 	}
 }
 
+func TestSuggest_CuratedKnownGenreRetainsOrdinaryGroundedDiscovery(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"comedy"}, LibraryItemID: "lib-fawlty", Name: "Fawlty Towers",
+		Type: "Series", Year: 1975, TMDBID: 91002, Genres: []string{"Comedy"},
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "comedy", "media_type": "series"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":91002,"name":"Fawlty Towers"}]}`),
+	)
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Classic Comedy"})
+	if err != nil {
+		t.Fatalf("curated known genre rejected ordinary grounded discovery: %v", err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].Name != "Fawlty Towers" {
+		t.Fatalf("proposal = %+v, want grounded non-lexical comedy title", prop)
+	}
+}
+
 func TestSuggest_BareProperTitleUsesExactUserAnchor(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	ms.SetSearchItems(testkit.SearchStub{
