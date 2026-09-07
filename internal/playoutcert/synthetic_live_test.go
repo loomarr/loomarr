@@ -109,6 +109,111 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	}
 }
 
+func TestSyntheticTargetShutdownCertifiesMeasuredLiveBurst(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	// Prepared channels are an explicit control cohort, never substitutes for
+	// the live program encoders which must exist at shutdown.
+	channels := make([]Channel, 0, 105)
+	for index := range 100 {
+		channels = append(channels, Channel{ID: fmt.Sprintf("prepared-control-%03d", index+1), Roles: []string{"prepared"}})
+	}
+	// The excess channel is required by raw_capacity and overload; the shutdown
+	// drill itself still holds exactly the four admitted viewers.
+	for index := range 5 {
+		channels = append(channels, Channel{ID: fmt.Sprintf("shutdown-live-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	target, err := NewSyntheticTarget(ctx, SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		if closeErr := target.Close(closeCtx); closeErr != nil {
+			t.Errorf("close synthetic target: %v", closeErr)
+		}
+	}()
+	report, err := Run(ctx, Config{
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		Channels: channels, Certify: true, DisposableTarget: target.Scope(), Concurrency: 12, SurfRounds: 1, FanInViewers: 4,
+		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
+		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
+		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
+		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(), FaultProfiles: []FaultProfile{FaultShutdown}, FaultController: target,
+		Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Certified {
+		t.Fatalf("shutdown certification failed: %v\n%sresources=%+v", report.Failures, HumanSummary(report), report.Resources)
+	}
+	shutdown := report.PhaseMust("shutdown")
+	if shutdown.Failures != 0 || shutdown.Resources.Samples != 1 || shutdown.Resources.Maximum.TranscodeCost < 4 || shutdown.Resources.Maximum.ViewerActive < 4 {
+		t.Fatalf("shutdown live burst evidence = %+v", shutdown)
+	}
+	for _, row := range report.FaultProfiles {
+		if row.Profile == FaultShutdown && (row.Status != "qualified" || row.Outcome != "complete" || row.Baseline == nil || row.PhasePeak == nil || row.Final == nil || row.ReceiptOutcome != "exited" || row.SelectedContinuity != "interrupted") {
+			t.Fatalf("shutdown qualification = %+v", row)
+		}
+	}
+	if _, err := http.Get(target.BaseURL + "/v1/playout/status"); err == nil {
+		t.Fatal("public listener remained available after shutdown")
+	}
+}
+
+func TestSyntheticTargetShutdownFailureCannotRetainQualification(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	channels := make([]Channel, 0, 102)
+	for index := range 100 {
+		channels = append(channels, Channel{ID: fmt.Sprintf("shutdown-control-%03d", index+1), Roles: []string{"prepared"}})
+	}
+	for index := range 2 { // capacity one plus the required overload channel
+		channels = append(channels, Channel{ID: fmt.Sprintf("shutdown-failure-live-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	target, err := NewSyntheticTarget(ctx, SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 1, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		if closeErr := target.Close(closeCtx); closeErr != nil {
+			t.Errorf("close synthetic target: %v", closeErr)
+		}
+	}()
+	report, err := Run(ctx, Config{
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		Channels: channels, Certify: true, DisposableTarget: target.Scope(), Concurrency: 12, SurfRounds: 1, FanInViewers: 1,
+		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
+		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: time.Nanosecond,
+		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
+		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(), FaultProfiles: []FaultProfile{FaultShutdown}, FaultController: target,
+		Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Certified || !strings.Contains(strings.Join(report.Failures, ","), "prepared_p95_exceeded") {
+		t.Fatalf("required phase failure did not fail the run: certified=%t failures=%v", report.Certified, report.Failures)
+	}
+	for _, row := range report.FaultProfiles {
+		if row.Profile == FaultShutdown && (row.Status != "unavailable" || row.Outcome != "run_failed" || row.Baseline == nil || row.PhasePeak == nil || row.Final == nil || row.ReceiptOutcome != "exited" || row.SelectedContinuity != "interrupted") {
+			t.Fatalf("failed run retained shutdown qualification or lost evidence: %+v", row)
+		}
+	}
+}
+
 // This is deliberately independent of SyntheticTarget's raw BlockSource
 // witness.  It proves the ordinary public prepared route can itself carry a
 // decoder across the renderer's discontinuity/map/PDT programme boundary.

@@ -77,6 +77,23 @@ type ChildFaultReceipt struct {
 	Exited           bool
 }
 
+// ShutdownFaultController owns the terminal transition of one isolated target.
+// SampleStopped is intentionally separate from ordinary public sampling: after a
+// successful shutdown the listener must be unavailable.
+type ShutdownFaultController interface {
+	FaultController
+	Shutdown(context.Context, ShutdownRequest) (ShutdownReceipt, error)
+	SampleStopped(context.Context, string) (ResourceSample, error)
+}
+
+type ShutdownRequest struct{ BaseURL string }
+
+type ShutdownReceipt struct {
+	Scope           string
+	ServingStopped  bool
+	ProcessesExited bool
+}
+
 type FaultQualification struct {
 	Profile            FaultProfile    `json:"profile"`
 	Status             string          `json:"status"`

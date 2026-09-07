@@ -3,6 +3,7 @@ package playoutcert
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -33,6 +34,38 @@ func TestValidateConfigRejectsUnsafeOrNonCertifyingInputs(t *testing.T) {
 			tc.mutate(&cfg)
 			if err := cfg.Validate(); err == nil || !strings.Contains(strings.ToLower(err.Error()), tc.want) {
 				t.Fatalf("Validate() = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestShutdownFinalizationRejectsGlobalResourceFailures(t *testing.T) {
+	baseline := ResourceSample{Point: "baseline", Capacity: 1}
+	tests := []struct {
+		name       string
+		resources  []ResourceSample
+		final      ResourceSample
+		preFailure string
+		want       string
+	}{
+		{name: "capacity oversubscribed", resources: []ResourceSample{baseline, {Point: "raw_capacity", Capacity: 1, TranscodeCost: 2}}, final: ResourceSample{Point: "shutdown_final", Capacity: 1}, want: "capacity_oversubscribed"},
+		{name: "missing final resource", resources: []ResourceSample{baseline}, preFailure: "final_resource_sample_failed", want: "final_resource_sample_failed"},
+		{name: "residual final resource", resources: []ResourceSample{baseline}, final: ResourceSample{Point: "shutdown_final", Capacity: 1, SessionsActive: 1}, want: "cleanup_residual"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			report := Report{Resources: tc.resources, Failures: []string{}, FaultProfiles: []FaultQualification{{Profile: FaultShutdown, Status: "qualified", Outcome: "complete"}}}
+			if tc.preFailure != "" {
+				report.Failures = append(report.Failures, tc.preFailure)
+			}
+			finalizeReport(&report, Config{PreparedP95: time.Second, PreparedRawP95: time.Second}, baseline, Phase{PreparedHits: 1}, Phase{}, 1, tc.final)
+			if !slices.Contains(report.Failures, tc.want) {
+				t.Fatalf("failures = %v, want %q", report.Failures, tc.want)
+			}
+			invalidateQualifiedFaults(&report, "run_failed")
+			row, ok := faultQualification(&report, FaultShutdown)
+			if !ok || row.Status != "unavailable" || row.Outcome != "run_failed" {
+				t.Fatalf("shutdown fault qualification = %+v", row)
 			}
 		})
 	}
@@ -324,6 +357,116 @@ func TestRunMarksLateParentFaultReceiptUnavailable(t *testing.T) {
 	}
 }
 
+func TestRunShutdownRetainsReceiptEvidenceWhenFinalSamplingFails(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	channels := fixtureChannels(100)
+	config := fixtureConfig(fixture, channels)
+	config.FaultProfiles = []FaultProfile{FaultShutdown}
+	config.FaultController = fixtureShutdownFaultController{target: shutdownTarget(fixture, channels, playoutcertfixture.ShutdownTarget{SampleErr: errors.New("shutdown metrics unavailable")})}
+	config.DisposableTarget = config.FaultController.Scope()
+	report, err := Run(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := shutdownFaultRow(t, report)
+	if report.Certified || row.Status != "unavailable" || row.ReceiptOutcome != "exited" || row.Baseline == nil || row.PhasePeak == nil || row.Final != nil || !slices.Contains(report.Failures, "final_resource_sample_failed") {
+		t.Fatalf("shutdown sampling failure discarded receipt evidence: row=%+v failures=%v", row, report.Failures)
+	}
+}
+
+func TestRunShutdownLateReceiptCannotQualify(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	channels := fixtureChannels(100)
+	config := fixtureConfig(fixture, channels)
+	config.RequestTimeout = 10 * time.Millisecond
+	config.FaultProfiles = []FaultProfile{FaultShutdown}
+	config.FaultController = fixtureShutdownFaultController{target: shutdownTarget(fixture, channels, playoutcertfixture.ShutdownTarget{WaitForExpiry: true})}
+	config.DisposableTarget = config.FaultController.Scope()
+	report, err := Run(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := shutdownFaultRow(t, report)
+	if row.Status != "unavailable" || row.ReceiptOutcome != "fault_budget_expired" || row.Final != nil || report.PhaseMust("shutdown").Failures == 0 {
+		t.Fatalf("late shutdown receipt qualified: row=%+v phase=%+v", row, report.PhaseMust("shutdown"))
+	}
+}
+
+func TestRunShutdownWithinBudgetRetainsObservedReceiptEligibility(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	channels := fixtureChannels(100)
+	config := fixtureConfig(fixture, channels)
+	config.FaultProfiles = []FaultProfile{FaultShutdown}
+	config.FaultController = fixtureShutdownFaultController{target: shutdownTarget(fixture, channels, playoutcertfixture.ShutdownTarget{})}
+	config.DisposableTarget = config.FaultController.Scope()
+	report, err := Run(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := shutdownFaultRow(t, report)
+	if row.ReceiptOutcome != "exited" || row.SelectedContinuity != "interrupted" || row.Status != "unavailable" || row.Outcome != "run_failed" || row.Baseline == nil || row.PhasePeak == nil || row.Final == nil {
+		t.Fatalf("within-budget shutdown evidence = %+v", row)
+	}
+}
+
+func TestRunShutdownRejectsUnavailableFinalSamples(t *testing.T) {
+	tests := []struct {
+		name   string
+		sample playoutcertfixture.StoppedResource
+	}{
+		{name: "empty nil-error sample"},
+		{name: "point-only incomplete sample", sample: playoutcertfixture.StoppedResource{Point: "shutdown_final"}},
+		{name: "mismatched measured capacity", sample: playoutcertfixture.StoppedResource{Point: "shutdown_final", Capacity: 3}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := playoutcertfixture.New(t, 100)
+			channels := fixtureChannels(100)
+			config := fixtureConfig(fixture, channels)
+			config.CleanupTimeout = 10 * time.Millisecond
+			config.FaultProfiles = []FaultProfile{FaultShutdown}
+			config.FaultController = fixtureShutdownFaultController{target: shutdownTarget(fixture, channels, playoutcertfixture.ShutdownTarget{Sample: &tc.sample})}
+			config.DisposableTarget = config.FaultController.Scope()
+			report, err := Run(context.Background(), config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			row := shutdownFaultRow(t, report)
+			if row.Status != "unavailable" || row.ReceiptOutcome != "exited" || !slices.Contains(report.Failures, "final_resource_sample_failed") || report.PhaseMust("shutdown").Failures == 0 {
+				t.Fatalf("unavailable final sample qualified: row=%+v failures=%v phase=%+v", row, report.Failures, report.PhaseMust("shutdown"))
+			}
+		})
+	}
+}
+
+func TestRunShutdownInvalidSampleRetainsPriorMeasuredResidual(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	channels := fixtureChannels(100)
+	config := fixtureConfig(fixture, channels)
+	config.CleanupTimeout = 10 * time.Millisecond
+	config.FaultProfiles = []FaultProfile{FaultShutdown}
+	index := 0
+	config.FaultController = fixtureShutdownFaultController{target: shutdownTarget(fixture, channels, playoutcertfixture.ShutdownTarget{
+		Samples: []playoutcertfixture.StoppedResource{
+			{Point: "shutdown_final", Capacity: 4, SessionsActive: 1},
+			{},
+		},
+		SampleIndex: &index,
+	})}
+	config.DisposableTarget = config.FaultController.Scope()
+	report, err := Run(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(report.Failures, "final_resource_sample_failed") || len(report.Resources) == 0 {
+		t.Fatalf("missing failed residual evidence: failures=%v resources=%+v", report.Failures, report.Resources)
+	}
+	final := report.Resources[len(report.Resources)-1]
+	if final.Point != "shutdown_final" || final.Capacity != 4 || final.SessionsActive != 1 {
+		t.Fatalf("invalid sample replaced measured residual: %+v", final)
+	}
+}
+
 func TestRunParentFaultCleanupResidualRetainsFinalEvidenceButDisqualifiesOutcome(t *testing.T) {
 	fixture := playoutcertfixture.New(t, 100)
 	channels := fixtureChannels(100)
@@ -413,6 +556,10 @@ type fixtureParentFaultController struct {
 	target playoutcertfixture.ParentFaultTarget
 }
 
+type fixtureShutdownFaultController struct {
+	target playoutcertfixture.ShutdownTarget
+}
+
 type fixtureChildFaultController struct {
 	target playoutcertfixture.ParentFaultTarget
 }
@@ -433,6 +580,30 @@ func (c fixtureChildFaultController) FailChild(ctx context.Context, request Chil
 
 func (c fixtureParentFaultController) Scope() string { return "fixture-parent-fault" }
 
+func (c fixtureShutdownFaultController) Scope() string { return "fixture-shutdown-fault" }
+
+func (c fixtureShutdownFaultController) Shutdown(ctx context.Context, _ ShutdownRequest) (ShutdownReceipt, error) {
+	err := c.target.Stop(ctx)
+	return ShutdownReceipt{Scope: c.Scope(), ServingStopped: err == nil, ProcessesExited: err == nil}, err
+}
+
+func (c fixtureShutdownFaultController) SampleStopped(ctx context.Context, point string) (ResourceSample, error) {
+	sample, err := c.target.SampleStopped(ctx, point)
+	return ResourceSample{Point: sample.Point, RSSBytes: sample.RSSBytes, CPUSeconds: sample.CPUSeconds, OpenFDs: sample.OpenFDs, Goroutines: sample.Goroutines, HTTPInFlight: sample.HTTPInFlight, SessionsActive: sample.SessionsActive, ViewerActive: sample.ViewerActive, GraceIdle: sample.GraceIdle, TranscodeCost: sample.TranscodeCost, Capacity: sample.Capacity, FFmpegRunning: sample.FFmpegRunning, PreparedChannels: sample.PreparedChannels, ReadyChannels: sample.ReadyChannels, ChannelHealth: sample.ChannelHealth, StalledChannels: sample.StalledChannels}, err
+}
+
+func shutdownTarget(fixture *playoutcertfixture.Fixture, channels []Channel, target playoutcertfixture.ShutdownTarget) playoutcertfixture.ShutdownTarget {
+	target.Fixture = fixture
+	target.Channels = make([]string, len(channels))
+	for index := range channels {
+		target.Channels[index] = channels[index].ID
+	}
+	if len(target.Samples) > 0 && target.SampleIndex == nil {
+		target.SampleIndex = new(int)
+	}
+	return target
+}
+
 func (c fixtureParentFaultController) CurrentParent(ctx context.Context, _ ParentFaultRequest) (uint64, error) {
 	return c.target.Current(ctx)
 }
@@ -452,6 +623,17 @@ func parentFaultRow(t testing.TB, report Report) FaultQualification {
 		}
 	}
 	t.Fatal("parent fault qualification missing")
+	return FaultQualification{}
+}
+
+func shutdownFaultRow(t testing.TB, report Report) FaultQualification {
+	t.Helper()
+	for _, row := range report.FaultProfiles {
+		if row.Profile == FaultShutdown {
+			return row
+		}
+	}
+	t.Fatal("shutdown fault qualification missing")
 	return FaultQualification{}
 }
 

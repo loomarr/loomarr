@@ -188,6 +188,38 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		appendSampledPhase(&report, samper, overloadPhase)
 		recordBurstSample(&report, "overload", overloadSample)
 	}
+	if slices.Contains(config.FaultProfiles, FaultShutdown) {
+		drill := shutdownDrill(ctx, endpoint, config, transcodeIndexes, target.Capacity, baseline)
+		report.Phases = append(report.Phases, drill.phase)
+		recordShutdownFaultEvidence(&report, baseline, drill.phase.Resources.Maximum, drill)
+		if drill.final.Point != "" {
+			report.Resources = append(report.Resources, drill.final)
+		}
+		if drill.sampleErr != nil {
+			report.Failures = append(report.Failures, "final_resource_sample_failed")
+			unavailableFault(&report, FaultShutdown, "final_resource_sample_failed")
+		} else {
+			if drill.phase.Failures == 0 && resourceConverged(drill.final, baseline) {
+				qualifyFault(&report, FaultShutdown, "complete")
+				recordFaultFinalResource(&report, drill.final)
+			} else {
+				unavailableFault(&report, FaultShutdown, "shutdown_failed")
+			}
+		}
+		finalizeReport(&report, config, baseline, configured, preparedRawPhase, len(preparedIndexes), drill.final)
+		// Shutdown is terminal, so it cannot perform the ordinary post-drill
+		// convergence sequence. It is nevertheless a qualification for the
+		// complete run: a successful local shutdown drill must not mask a failed
+		// required phase, sample, or coverage assertion recorded before it.
+		// Preserve its collected baseline, peak, and final evidence, but make the
+		// row unavailable whenever the overall run has failed.
+		if len(report.Failures) > 0 {
+			invalidateQualifiedFaults(&report, "run_failed")
+		}
+		report.CompletedAt = config.Now()
+		report.Certified = config.Certify && len(report.Failures) == 0
+		return report, nil
+	}
 	if slices.Contains(config.FaultProfiles, FaultParentFailure) {
 		samper.begin("parent_failure")
 		parentDrill := parentFailureDrill(ctx, endpoint, config, transcodeIndexes, target.Capacity, samper)
@@ -246,40 +278,12 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		report.Resources = append(report.Resources, finalSample)
 		recordFaultFinalResource(&report, finalSample)
 	}
-	for _, phase := range report.Phases {
-		if phase.Resources.SampleFailures > 0 || phase.Resources.Samples == 0 {
-			report.Failures = append(report.Failures, phase.Name+"_resource_sample_failed")
-			if phase.Name == "parent_failure" {
-				invalidateQualifiedFaults(&report, "phase_resource_sample_failed")
-			}
-		}
+	finalizeReport(&report, config, baseline, configured, preparedRawPhase, len(preparedIndexes), finalSample)
+	if finalSample.Capacity == 0 {
+		invalidateQualifiedFaults(&report, "final_resource_sample_failed")
 	}
-
-	for _, phase := range report.Phases {
-		if phase.Failures > 0 {
-			report.Failures = append(report.Failures, phase.Name+"_failed")
-		}
-	}
-	if configured.PreparedHits != len(preparedIndexes) {
-		report.Failures = append(report.Failures, "prepared_coverage_incomplete")
-	}
-	if time.Duration(configured.P95MS*float64(time.Millisecond)) > config.PreparedP95 {
-		report.Failures = append(report.Failures, "prepared_p95_exceeded")
-	}
-	if time.Duration(preparedRawPhase.P95MS*float64(time.Millisecond)) > config.PreparedRawP95 {
-		report.Failures = append(report.Failures, "prepared_raw_p95_exceeded")
-	}
-	for _, sample := range report.Resources {
-		if sample.Capacity > 0 && sample.TranscodeCost > sample.Capacity {
-			report.Failures = append(report.Failures, "capacity_oversubscribed")
-			break
-		}
-	}
-	if len(report.Resources) >= 2 {
-		final := report.Resources[len(report.Resources)-1]
-		if final.SessionsActive > baseline.SessionsActive || final.FFmpegRunning > baseline.FFmpegRunning || final.OpenFDs > baseline.OpenFDs+4 || final.Goroutines > baseline.Goroutines+8 {
-			report.Failures = append(report.Failures, "cleanup_residual")
-		}
+	if phase, ok := report.Phase("parent_failure"); ok && (phase.Resources.SampleFailures > 0 || phase.Resources.Samples == 0) {
+		invalidateQualifiedFaults(&report, "phase_resource_sample_failed")
 	}
 	// Parent-failure evidence is only meaningful when the target subsequently
 	// converges. Keep all successful observations in the row, but do not call a
@@ -289,6 +293,133 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	report.CompletedAt = config.Now()
 	report.Certified = config.Certify && len(report.Failures) == 0
 	return report, nil
+}
+
+// finalizeReport applies every non-drill-specific qualification requirement.
+// Shutdown is terminal and skips later lifecycle phases, but it must satisfy
+// the same completed-phase, latency, capacity, and final-resource assertions.
+func finalizeReport(report *Report, config Config, baseline ResourceSample, configured, preparedRaw Phase, preparedCount int, final ResourceSample) {
+	for _, phase := range report.Phases {
+		if phase.Resources.SampleFailures > 0 || phase.Resources.Samples == 0 {
+			report.Failures = append(report.Failures, phase.Name+"_resource_sample_failed")
+		}
+		if phase.Failures > 0 {
+			report.Failures = append(report.Failures, phase.Name+"_failed")
+		}
+	}
+	if configured.PreparedHits != preparedCount {
+		report.Failures = append(report.Failures, "prepared_coverage_incomplete")
+	}
+	if time.Duration(configured.P95MS*float64(time.Millisecond)) > config.PreparedP95 {
+		report.Failures = append(report.Failures, "prepared_p95_exceeded")
+	}
+	if time.Duration(preparedRaw.P95MS*float64(time.Millisecond)) > config.PreparedRawP95 {
+		report.Failures = append(report.Failures, "prepared_raw_p95_exceeded")
+	}
+	for _, sample := range report.Resources {
+		if sample.Capacity > 0 && sample.TranscodeCost > sample.Capacity {
+			report.Failures = append(report.Failures, "capacity_oversubscribed")
+			break
+		}
+	}
+	if final.Capacity == 0 {
+		return
+	}
+	if !resourceConverged(final, baseline) {
+		report.Failures = append(report.Failures, "cleanup_residual")
+	}
+}
+
+type shutdownDrillResult struct {
+	phase     Phase
+	final     ResourceSample
+	sampleErr error
+	receipt   string
+	selected  string
+}
+
+func shutdownDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, capacity int, baseline ResourceSample) shutdownDrillResult {
+	controller, ok := config.FaultController.(ShutdownFaultController)
+	if !ok || capacity < 1 || len(indexes) < capacity {
+		return shutdownDrillResult{phase: phaseFrom("shutdown", []observation{{class: "controller_unavailable"}}), receipt: "not_observed", selected: "not_observed"}
+	}
+	held := startHeldBurst(ctx, endpoint, config, indexes[:capacity])
+	if len(held.results) != capacity {
+		held.release()
+		return shutdownDrillResult{phase: phaseFrom("shutdown", []observation{{class: "initial_media_missing"}}), receipt: "not_observed", selected: "not_observed"}
+	}
+	for _, result := range held.results {
+		if result.class != "ok" {
+			held.release()
+			return shutdownDrillResult{phase: phaseFrom("shutdown", []observation{{class: "initial_media_missing"}}), receipt: "not_observed", selected: "not_observed"}
+		}
+	}
+	faultCtx, cancel := context.WithTimeout(ctx, config.RequestTimeout)
+	receipt, err := controller.Shutdown(faultCtx, ShutdownRequest{BaseURL: endpoint.base.String()})
+	faultExpired := faultCtx.Err() != nil
+	cancel()
+	held.verify(ctx)
+	held.release()
+	ended := true
+	for _, result := range held.results {
+		ended = ended && result.class == "held_stream_interrupted"
+	}
+	phase := phaseFrom("shutdown", []observation{{class: "shutdown_failed"}})
+	phase.Resources = PhaseResources{Samples: 1, Maximum: held.sample}
+	if err != nil || faultExpired || !receipt.ServingStopped || !receipt.ProcessesExited || receipt.Scope != controller.Scope() || !ended {
+		receiptOutcome := "unavailable"
+		if faultExpired {
+			receiptOutcome = "fault_budget_expired"
+		}
+		return shutdownDrillResult{phase: phase, receipt: receiptOutcome, selected: held.results[0].class}
+	}
+	final, sampleErr := sampleStoppedConvergence(ctx, controller, config, baseline)
+	if sampleErr != nil {
+		return shutdownDrillResult{phase: phase, final: final, sampleErr: sampleErr, receipt: "exited", selected: "interrupted"}
+	}
+	phase = phaseFrom("shutdown", []observation{{class: "ok"}})
+	phase.Resources = PhaseResources{Samples: 1, Maximum: held.sample}
+	return shutdownDrillResult{phase: phase, final: final, receipt: "exited", selected: "interrupted"}
+}
+
+func sampleStoppedConvergence(ctx context.Context, controller ShutdownFaultController, config Config, baseline ResourceSample) (ResourceSample, error) {
+	const point = "shutdown_final"
+	deadline := time.Now().Add(min(config.CleanupTimeout, config.WarmGrace+10*time.Second))
+	var last ResourceSample
+	var lastErr error
+	for time.Now().Before(deadline) {
+		sample, err := controller.SampleStopped(ctx, point)
+		if err == nil {
+			if sample.Point != point || sample.Capacity < 1 || sample.Capacity != baseline.Capacity {
+				lastErr = errors.New("shutdown final resource sample unavailable")
+				// An incomplete or mismatched reading is unavailable evidence. In
+				// particular, it must not erase a prior measured residual.
+			} else if resourceConverged(sample, baseline) {
+				return sample, nil
+			} else {
+				last = sample
+				lastErr = errors.New("shutdown resource residual")
+			}
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return last, ctx.Err()
+		case <-time.After(config.CleanupPoll):
+		}
+	}
+	return last, lastErr
+}
+
+func recordShutdownFaultEvidence(report *Report, baseline, peak ResourceSample, drill shutdownDrillResult) {
+	for index := range report.FaultProfiles {
+		row := &report.FaultProfiles[index]
+		if row.Profile == FaultShutdown {
+			row.Baseline, row.PhasePeak, row.ReceiptOutcome = &baseline, &peak, drill.receipt
+			row.SelectedContinuity, row.Recovery = drill.selected, "not_applicable"
+		}
+	}
 }
 
 type parentFaultDrill struct {

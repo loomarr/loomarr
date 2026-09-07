@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -43,13 +44,14 @@ type SyntheticTarget struct {
 	DeviceToken string
 
 	server               *http.Server
+	handler              http.Handler
 	listener             net.Listener
 	origin               *playout.Origin
 	diagnostics          *diagnostics.ProcessManager
 	store                store.Store
 	root                 string
 	boundaryWitness      *syntheticBoundaryWitness
-	closeOnce            sync.Once
+	lifecycle            syntheticLifecycle
 	scope                string
 	parentsMu            sync.Mutex
 	parents              map[string]*syntheticParent
@@ -263,6 +265,7 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 		handler.ServeHTTP(w, r)
 	})
 	target.server = &http.Server{Handler: syntheticHandler, ReadHeaderTimeout: 5 * time.Second}
+	target.handler = syntheticHandler
 	go func() { _ = target.server.Serve(listener) }()
 	return target, nil
 }
@@ -421,20 +424,13 @@ func (t *SyntheticTarget) ProgrammeBoundaryWitness() ProgrammeBoundaryWitness {
 }
 
 func (t *SyntheticTarget) Close(ctx context.Context) error {
-	var result error
-	t.closeOnce.Do(func() {
-		if t.origin != nil {
-			t.origin.Quiesce()
-		}
-		t.parentsWG.Wait()
-		t.childrenWG.Wait()
-		if t.server != nil {
-			result = t.server.Shutdown(ctx)
-		} else if t.listener != nil {
-			result = t.listener.Close()
-		}
+	if t == nil {
+		return nil
+	}
+	return t.lifecycle.close(ctx, t.stop, func() error {
+		var result error
 		if t.diagnostics != nil {
-			if err := t.diagnostics.Close(ctx); result == nil {
+			if err := t.diagnostics.Close(context.Background()); result == nil {
 				result = err
 			}
 		}
@@ -448,8 +444,198 @@ func (t *SyntheticTarget) Close(ctx context.Context) error {
 				result = err
 			}
 		}
+		return result
 	})
-	return result
+}
+
+// Shutdown performs the target's one terminal transition but leaves the
+// retained projections available to SampleStopped until Close disposes them.
+func (t *SyntheticTarget) Shutdown(ctx context.Context, request ShutdownRequest) (ShutdownReceipt, error) {
+	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
+		return ShutdownReceipt{}, errors.New("shutdown target mismatch")
+	}
+	return t.lifecycle.shutdown(ctx, t.stop)
+}
+
+func (t *SyntheticTarget) stop() (ShutdownReceipt, error) {
+	if t.origin != nil {
+		t.origin.Quiesce()
+	}
+	t.parentsWG.Wait()
+	t.childrenWG.Wait()
+	var err error
+	if t.server != nil {
+		err = t.server.Shutdown(context.Background())
+	} else if t.listener != nil {
+		err = t.listener.Close()
+	}
+	return ShutdownReceipt{Scope: t.scope, ServingStopped: err == nil, ProcessesExited: true}, err
+}
+
+func (t *SyntheticTarget) SampleStopped(ctx context.Context, point string) (ResourceSample, error) {
+	if t == nil || t.handler == nil {
+		return ResourceSample{}, errors.New("shutdown sample unavailable")
+	}
+	release, err := t.lifecycle.observe(ctx)
+	if err != nil {
+		return ResourceSample{}, err
+	}
+	defer release()
+	base, err := url.Parse(t.BaseURL)
+	if err != nil {
+		return ResourceSample{}, err
+	}
+	e := &endpoint{base: base, client: &http.Client{Transport: syntheticSamplerTransport{handler: t.handler}}, bearer: t.AdminBearer, device: t.DeviceToken, timeout: 5 * time.Second}
+	return e.sample(ctx, point)
+}
+
+// syntheticLifecycle is the owned seam for terminal work. Caller contexts
+// bound only their wait; once started, shutdown and disposal publish their
+// single actual result after all retained observations have left.
+type syntheticLifecycle struct {
+	initOnce sync.Once
+
+	shutdownOnce    sync.Once
+	shutdownDone    chan struct{}
+	shutdownReceipt ShutdownReceipt
+	shutdownErr     error
+
+	closeOnce sync.Once
+	closeDone chan struct{}
+	closeErr  error
+
+	mu               sync.Mutex
+	closing          bool
+	disposed         bool
+	observations     int
+	observationsDone chan struct{}
+}
+
+func (l *syntheticLifecycle) init() {
+	l.initOnce.Do(func() {
+		l.shutdownDone = make(chan struct{})
+		l.closeDone = make(chan struct{})
+		l.observationsDone = make(chan struct{})
+	})
+}
+
+func (l *syntheticLifecycle) shutdown(ctx context.Context, operation func() (ShutdownReceipt, error)) (ShutdownReceipt, error) {
+	l.init()
+	select {
+	case <-l.shutdownDone:
+		return l.shutdownReceipt, l.shutdownErr
+	default:
+	}
+	if err := ctx.Err(); err != nil {
+		return ShutdownReceipt{}, err
+	}
+	l.shutdownOnce.Do(func() {
+		go func() {
+			l.shutdownReceipt, l.shutdownErr = operation()
+			close(l.shutdownDone)
+		}()
+	})
+	if err := waitSyntheticLifecycle(ctx, l.shutdownDone); err != nil {
+		return ShutdownReceipt{}, err
+	}
+	return l.shutdownReceipt, l.shutdownErr
+}
+
+func (l *syntheticLifecycle) close(ctx context.Context, shutdown func() (ShutdownReceipt, error), dispose func() error) error {
+	l.init()
+	select {
+	case <-l.closeDone:
+		return l.closeErr
+	default:
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	l.closeOnce.Do(func() {
+		l.mu.Lock()
+		l.closing = true
+		if l.observations == 0 {
+			close(l.observationsDone)
+		}
+		l.mu.Unlock()
+		go func() {
+			_, result := l.shutdown(context.Background(), shutdown)
+			<-l.observationsDone
+			if err := dispose(); result == nil {
+				result = err
+			}
+			l.mu.Lock()
+			l.disposed = true
+			l.mu.Unlock()
+			l.closeErr = result
+			close(l.closeDone)
+		}()
+	})
+	if err := waitSyntheticLifecycle(ctx, l.closeDone); err != nil {
+		return err
+	}
+	return l.closeErr
+}
+
+func (l *syntheticLifecycle) observe(ctx context.Context) (func(), error) {
+	l.init()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if l.closing {
+		if l.disposed {
+			return nil, errors.New("shutdown sample unavailable after disposal")
+		}
+		return nil, errors.New("shutdown sample unavailable during disposal")
+	}
+	select {
+	case <-l.shutdownDone:
+		l.observations++
+		return l.releaseObservation, nil
+	default:
+		return nil, errors.New("shutdown sample requested before stop")
+	}
+}
+
+func (l *syntheticLifecycle) releaseObservation() {
+	l.mu.Lock()
+	l.observations--
+	if l.closing && l.observations == 0 {
+		close(l.observationsDone)
+	}
+	l.mu.Unlock()
+}
+
+func waitSyntheticLifecycle(ctx context.Context, done <-chan struct{}) error {
+	select {
+	case <-done:
+		return nil
+	default:
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		select {
+		case <-done:
+			return nil
+		default:
+			return ctx.Err()
+		}
+	}
+}
+
+type syntheticSamplerTransport struct{ handler http.Handler }
+
+func (t syntheticSamplerTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	recorder := httptest.NewRecorder()
+	t.handler.ServeHTTP(recorder, request)
+	return recorder.Result(), nil
 }
 
 type syntheticPreparedResolver struct {
