@@ -47,6 +47,9 @@ func validateMetRightsBatchInputs(inventoryRaw, worksheetRaw, prescreenRaw []byt
 		len(inventory.Cases) < worksheet.MinItems || len(inventory.Cases) > worksheet.MaxItems || len(worksheet.Cases) != len(inventory.Cases) {
 		return metRightsBatchInputs{}, fmt.Errorf("met rights batch worksheet identity, profile, coverage, or time is invalid")
 	}
+	if err := validateMetRightsBatchReportBinding(worksheet.QuarantineInspection, inventorySHA256); err != nil {
+		return metRightsBatchInputs{}, err
+	}
 	expectedRows := make([]RightsReviewRow, 0, len(inventory.Cases))
 	for _, item := range inventory.Cases {
 		expectedRows = append(expectedRows, RightsReviewRowFromCase(item))
@@ -57,6 +60,14 @@ func validateMetRightsBatchInputs(inventoryRaw, worksheetRaw, prescreenRaw []byt
 	for index, row := range worksheet.Cases {
 		expected := expectedRows[index]
 		expected.Rank, expected.InventorySHA256 = index+1, inventorySHA256
+		if row.QuarantineInspection == nil || row.QuarantineInspection.Report != *worksheet.QuarantineInspection ||
+			!IsSHA256(row.QuarantineInspection.ContentSHA256) {
+			return metRightsBatchInputs{}, fmt.Errorf("met rights batch worksheet row %q has a missing, malformed, or inconsistent quarantine inspection binding", row.CaseID)
+		}
+		// The batch aid is deliberately non-authorizing. It can preserve the
+		// worksheet projection, while the command boundary and ordinary locker
+		// independently reopen the report that proves this exact binding.
+		expected.QuarantineInspection = row.QuarantineInspection
 		if !reflect.DeepEqual(ImmutableRightsReviewRecord(row), ImmutableRightsReviewRecord(expected)) || row.Rank != index+1 ||
 			row.InventorySHA256 != inventorySHA256 || row.ReviewerID != "" || row.ReviewedAt != "" || row.Decision != "" ||
 			row.Basis != "" || row.Redistributable || row.RequiredCredit != "" || row.Restrictions == nil || len(row.Restrictions) != 0 {
@@ -94,6 +105,15 @@ func validateMetRightsBatchInputs(inventoryRaw, worksheetRaw, prescreenRaw []byt
 		inventory: inventory, worksheet: worksheet, prescreen: prescreen,
 		inventorySHA256: inventorySHA256, worksheetSHA256: InventorySHA256(worksheetRaw), prescreenSHA256: InventorySHA256(prescreenRaw),
 	}, nil
+}
+
+func validateMetRightsBatchReportBinding(binding *QuarantineInspectionBinding, inventorySHA256 string) error {
+	if binding == nil || !IsSHA256(binding.ReportSHA256) || binding.InventorySHA256 != inventorySHA256 ||
+		!IsSHA256(binding.DownloadLedgerSHA256) || !IsSHA256(binding.PriorPublicManifestSHA256) ||
+		!IsSHA256(binding.PriorAuthoritySHA256) {
+		return fmt.Errorf("met rights batch worksheet has a missing or malformed quarantine inspection binding")
+	}
+	return nil
 }
 
 func decodeMetRightsBatchJSON(raw []byte, value any) error {

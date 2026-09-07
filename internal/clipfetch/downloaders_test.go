@@ -208,7 +208,12 @@ func waitForHelperPID(t *testing.T, path string) int {
 	for time.Now().Before(deadline) {
 		raw, err := os.ReadFile(path)
 		if err == nil {
-			pid, parseErr := strconv.Atoi(strings.TrimSpace(string(raw)))
+			contents := strings.TrimSpace(string(raw))
+			if contents == "" {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			pid, parseErr := strconv.Atoi(contents)
 			if parseErr != nil {
 				t.Fatalf("parse helper pid: %v", parseErr)
 			}

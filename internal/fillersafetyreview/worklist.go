@@ -87,7 +87,7 @@ func verifyWorklist(
 			Authority: draftCase.SourceAuthority, Path: sourcePath,
 		})
 		if err != nil {
-			return fmt.Errorf("model review case %d source bytes are invalid", index+1)
+			return fmt.Errorf("model review case %d source validation failed: %w", index+1, err)
 		}
 		if err := mediaPlan.Close(); err != nil {
 			return fmt.Errorf("model review case %d source snapshot cleanup failed", index+1)

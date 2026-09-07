@@ -126,16 +126,17 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
 | `fillerbakeoff` | 8 | `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
+| `fillercorpus` | 6 | — |
 | `fillereval` | 6 | — |
 | `fillersafety` | 8 | `mediatools`, `openroutermedia` |
 | `fillerstructure` | 8 | — |
 | `fillerstructurewindow` | 6 | `fillerstructure` |
-| `fillervisualsafety` | 6 | `fillerbakeoff`, `fillereval`, `httpx`, `mediatools`, `openroutermedia` |
+| `fillervisualsafety` | 6 | `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`, `openroutermedia` |
 | `httpx` | 13 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 8 | `filler`, `httpx`, `metrics` |
 | `llm` | 6 | `httpx`, `metrics` |
-| `mediatools` | 9 | `diagnostics` |
+| `mediatools` | 11 | `diagnostics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `openroutermedia` | 7 | `fillereval` |
@@ -168,7 +169,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
-- **`fillercorpus`** · 4 importers
+- **`fillercorpus`** · 6 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 6 importers
   Owns the hermetic certification contract for filler admission.
@@ -256,14 +257,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
-- **`mediatools`** · 9 importers · → `diagnostics`, `playout`, `proctree`
+- **`mediatools`** · 11 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
 
 **Layer 5**
 
-- **`fillerreference`** · 1 importer · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
+- **`fillerreference`** · 3 importers · → `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
   Owns the deterministic pre-screen for the production-ready filler reference cohort.
 - **`fillersafety`** · 8 importers · → `mediatools`, `openroutermedia`, `proctree`
   Owns the fail-closed spoken-safety cascade and its shadow evidence.
@@ -325,7 +326,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 6 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`fillerreview`** · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillerreference`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
+- **`fillerreview`** · 2 importers · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillerreference`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
   Materializes identity-blind evidence for independent semantic review.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
@@ -333,8 +334,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
-- **`testkit`** · → `filler`, `fillerbakeoff`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
-  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/libraryfixture`** · → `library`, `schedule`
   No-network adapters for library-facing tests.
 
@@ -344,6 +343,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`devbootstrap`** · → `auth`, `store`
   Prepares an isolated agent worktree for UI development.
+- **`fillerquarantine`** · 1 importer · → `fillercorpus`, `fillerreference`, `fillerreview`, `mediatools`
+  Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
 - **`images`** · 2 importers · → `images/rustgen`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
@@ -367,6 +368,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
+- **`testkit`** · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
 **Layer 12**
 
@@ -5813,6 +5816,39 @@ grounded taxonomy requirements, the four exact-span screens, and the immutable s
 The compatibility calculation is non-authorizing measurement only. Missing complete-timeline
 evidence or materialization authority holds the proposal; it never selects the older automatic gate.
 
+Opening that comparison can invalidate inherited anchor truth without authorizing a post-hoc score
+repair. A targeted anchor-adjudication module consumes the exact public and private challenge,
+plan authoring and receipt, all locked assessment sets named by the comparison, the immutable
+comparison itself, and one reviewer submission. It first reproduces the comparison byte-for-byte.
+The review target is then exactly every construction-authority `standalone` case named by the
+comparison's diagnostic candidates: it cannot omit an inconvenient target or expand into a new
+full-corpus audit. Each target records complete-span audiovisual coverage, explicit bounded
+observations of the opening, ordered internal joins, and closing, one reviewer identity and fixed
+review time, sorted unique decisive timestamps, a bounded rationale, the original closed unit/role,
+and exactly one disposition: `confirmed_original`, `structural_disqualification`, or
+`role_correction`. A structural disqualification must replace `standalone` with a non-standalone
+unit and no role; a role correction must retain `standalone` and select a different valid role.
+Model agreement selects what receives review but never becomes truth authority by itself.
+
+The publisher preserves every original input and emits a new owner-only authority rather than
+editing the human lock, plan, challenge, model responses, locks, or comparison. It binds every input
+file hash, the plan's human-assessment and evidence-manifest hashes, the exact challenged source
+bytes and duplicate family, the review decisions, the prior receipt's complete future-training
+exclusion, and every rendered video hash exposed in a model request. Its output always declares the
+evaluated challenge burned, training false, and production
+admission false. A later holdout-plan contract must consume that authority as prior exposure: no
+source bytes, duplicate family, or programme provenance from the burned challenge may appear in a
+replacement challenge, and its future-training exclusion must be the exact cumulative union. Until
+that replacement machinery and new source inventory exist, adjudication can explain and quarantine
+the bad truth but cannot manufacture a corrected certification score. The planner makes lineage
+explicit: an invocation is either a genesis plan with no prior adjudication, or a replacement plan
+with one or more immutable prior adjudication authorities; omitting both or mixing the modes fails.
+A replacement validates every prior authority, rejects any candidate whose source bytes, duplicate
+family, or programme provenance appears in their cumulative exposure, binds their file hashes in the
+new receipt, and publishes the sorted de-duplicated union of prior and newly selected exposure. The
+genesis/replacement mode and prior-exposure set are part of the plan contract, so a caller cannot
+silently forget burned evidence while requesting a replacement.
+
 Suitability screening is repeated over every freshly rendered structure case because concatenation
 and excerpt construction create new viewing contexts. Its prompt identity binds the system prompt,
 sentinel dynamic content and schema, request title, and 4,096-token completion ceiling so mandatory
@@ -6693,20 +6729,82 @@ disagreement; adjudication cannot turn an incomplete or malformed second review 
 independent labeling.
 
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
-authority. Every `approved` row binds the inventory digest, authority-qualified case ID, source
-metadata hash, reviewer, review time, rationale, redistribution decision, attribution, and
+authority. The caller names one of three non-interchangeable profiles: `quarantine`, `development`,
+or `certification`. Every `approved` row binds the inventory digest, authority-qualified case ID,
+source metadata hash, reviewer, review time, rationale, purpose-specific authority, attribution, and
 restrictions; `held` rows remain inert. The downloader preflights aggregate item and byte ceilings
 before its first request, stays serial and identified, checks the initial URL and every redirect
 against both the case's frozen allowlist and the built-in policy for that authority, bounds each body
 by the inventoried size, verifies source checksums when present, and adds SHA-256. Query strings may
 remain when they are part of the exact frozen representation URL; credentials and fragments never
-may. For Met original images, the inventory freezes a metadata-digest cache key, and each bounded
+may. The request ceiling counts the initial request and every redirect hop before that hop is sent.
+For Met original images, the inventory freezes a metadata-digest cache key, and each bounded
 GET attempt may add its deterministic run/case/attempt cache key to avoid inconsistent CDN cache
 entries. These keys cannot change the selected host or image path, relax exact byte counts or
 available source checksums, or expand the existing request and byte ceilings. Media and its download
 ledger remain external to Git.
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
+
+`quarantine` is the narrow pre-review acquisition profile. Its schema-v5 worksheet locks a
+schema-v1 quarantine contract that must grant only local copying/storage and local technical
+inspection. Provider transfer, redistribution,
+development/certification corpus preparation, training, catalog ingestion, scheduling, and
+production admission are all present and false rather than inferred from omission. An approved
+quarantine decision may therefore retain `redistributable=false`; it is authority to obtain and
+measure an exact source locally, not a finding that the source may be published or used. The
+download ledger records the profile, and every downstream corpus-preparation profile rejects a
+quarantine contract even if its item identity and content hashes are otherwise valid. Promoting a
+surviving source requires a new development or certification rights decision against the same
+frozen inventory; a quarantine decision is never upgraded in place.
+
+`filler-corpus-quarantine-inspect` is the sole post-download quarantine gate. It consumes the exact
+schema-v4 inventory, schema-v2 quarantine download ledger, and the complete public/private authority
+pair for the named prior holdout. It strictly re-establishes those identities before opening media,
+resolves each ledger path beneath its declared root without symlink escape, and rechecks byte count,
+ledger SHA-256, and every available inventory checksum. One full-source probe and decode then records duration,
+dimensions, audio/video presence, and normalized black, silence, and freeze spans. The same complete
+decode cadence used by the production-reference duplicate audit produces visual dHash and audio-RMS
+sequences. New candidates are compared to one another and to every distinct source in the prior
+holdout authority; exact source or rendered-case hash collisions and perceptual relationships are
+reported separately. Missing prior source bytes make perceptual exposure `incomplete`, never `clear`.
+The caller supplies a positive media-processing wall-time ceiling, which is recorded in the report
+and covers candidate and prior-source hashing, probing, decoding, fingerprinting, and in-process
+fingerprint alignment. Expiration publishes no partial report.
+Missing audio or video, inventoried duration/dimension drift, unusable fingerprints, or black,
+silent, or frozen coverage at or above 95% is a technical hold; lower coverage remains measured
+evidence for later content review rather than an invented quality score.
+The immutable report binds every raw input digest, tool identity, algorithm version, observation, and
+comparison. A technically intact and exposure-clear result means only `eligible_for_rights_review`:
+provider transfer, redistribution, corpus preparation, training, catalog ingestion, scheduling, and
+production admission remain explicitly false. The command never repairs, transcodes, uploads, labels,
+or promotes media, and any failed mechanical check leaves the case held in quarantine.
+
+Development and certification rights review consume that quarantine disposition as a fail-closed
+authority input. Schema-v5 `quarantine` review remains the pre-download local-copy/inspection path
+and cannot consume a report that does not exist yet. A development or certification worksheet that
+can select any non-local case instead requires one strict schema-v1 quarantine-inspection report.
+The worksheet freezes the raw report SHA-256 and all four report input identities; development
+worksheets advance from schema v3 to v6 and certification worksheets from schema v4 to v7.
+Historical v3/v4 worksheets and their decisions remain readable evidence, but cannot authorize new
+preparation.
+
+Selection is transport-aware and deterministic: it is the union of valid direct
+`transport=local` cases and non-local cases that occur exactly once in the bound report as
+`eligible_for_rights_review` with no hold reasons. A held or absent non-local inventory case cannot
+enter the worksheet. A local-only inventory does not invent a download-ledger or inspection-report
+requirement. The rights lock independently reopens and validates the exact report, reproduces that
+selection, and attaches the report binding plus inspected content SHA-256 to every locked non-local
+decision; worksheet or CSV projections are never trusted as inspection authority.
+
+Preparation independently reopens the report before it creates a derivative staging directory or
+provider-visible packet. Every non-local approval must carry the reproduced report binding, and the
+actual local source SHA-256 must equal the inspected content SHA-256. A held or missing case, report
+drift, swapped worksheet, legacy unbound decision, or source-byte mismatch fails before output.
+Direct local media retains its inventory-bound path and is still rehashed against every available
+inventory checksum. One deep `fillerquarantine` module owns strict report decoding and validation,
+inventory/report identity, case uniqueness and disposition, transport-aware selection, and
+content-hash requirements; review, lock, and preparation commands do not reimplement that policy.
 
 A rights worksheet is a deterministic review aid, not authority. It records the digest of the exact
 frozen inventory, presents every selected source assertion and representation fact, and leaves the
@@ -6729,7 +6827,12 @@ and review time, explicitly accepts the recorded non-copyright limitations, and 
 development-corpus copying, technical transformation, and evidence extraction. The aid reconstructs
 every immutable worksheet row and fills the same decision columns for each independently identified
 item; the ordinary rights locker remains the sole producer of downloader authority and revalidates all
-rows. The attestation time must be canonical UTC and no earlier than its bound pre-screen; this
+rows. Current report-bound development worksheets retain their exact quarantine report and per-case
+content bindings through batch proposal and completion; the batch aid must not strip those bindings,
+synthesize eligibility, or reinterpret quarantine-only permission as development or redistribution
+permission. Missing, malformed, or inconsistent bindings refuse the batch. The ordinary rights locker
+independently reopens and validates the exact inspection report before producing any downloader
+authority. The attestation time must be canonical UTC and no earlier than its bound pre-screen; this
 offline development artifact has no rolling production-certificate lifetime. A held pre-screen case,
 mixed authority, incomplete coverage, stale time, changed artifact,
 unknown field, blank attestation, attribution requirement, or non-empty restriction refuses batch
@@ -6781,10 +6884,12 @@ copied into the worksheet nor accepted by the locker. The board is development e
 candidate-blind certification review, and the locker still reopens every source byte after the
 review.
 
-The certification holdout uses a distinct schema-v4 rights contract; a schema-v3 approval remains
-readable development history but cannot authorize certification acquisition or preparation. The
-caller must name the `development` or `certification` profile before either locking rights decisions
-or downloading media. Certification binds one maintainer/counsel-approved agreement identifier and
+The certification holdout uses a distinct schema-v7 worksheet and schema-v1 rights contract, while
+quarantine uses its schema-v5 worksheet and schema-v1 acquisition contract. Historical schema-v3
+development and schema-v4 certification artifacts remain readable evidence but cannot authorize new
+preparation. The caller must name
+the `quarantine`, `development`, or `certification` profile before either locking rights decisions or
+downloading media. Certification binds one maintainer/counsel-approved agreement identifier and
 SHA-256 plus one exact processor and terms-snapshot SHA-256 into the inert worksheet. Each completed
 per-master schedule then binds its own identifier and SHA-256, confirmed signer-authority evidence,
 and separate grants for commercial evaluation, copying/storage, technical transcoding, bounded

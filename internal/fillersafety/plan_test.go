@@ -127,6 +127,26 @@ func TestPlanCompleteMediaRejectsSourceIdentityDriftWithoutLeakingValues(t *test
 	}
 }
 
+func TestPlanCompleteMediaPropagatesDeadlineFromSnapshot(t *testing.T) {
+	contents := []byte("actual source bytes")
+	path := filepath.Join(t.TempDir(), "source.mp4")
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	authority := validSourceAuthority()
+	authority.SourceSHA256, authority.SourceBytes = sourceIdentity(contents)
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	cancel()
+
+	_, err := PlanCompleteMedia(ctx, SourceRequest{Authority: authority, Path: path})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err=%v", err)
+	}
+	if strings.Contains(err.Error(), path) {
+		t.Fatalf("error leaked source path: %v", err)
+	}
+}
+
 func TestPlanCompleteMediaRejectsSymlinkAndRemovesSnapshotOnClose(t *testing.T) {
 	t.Parallel()
 	contents := []byte("actual source bytes")

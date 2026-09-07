@@ -60,7 +60,7 @@ func TestRunRejectsNonPrivateArtifactsBeforeParsing(t *testing.T) {
 	if err := os.Chmod(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	paths := []string{filepath.Join(dir, "inventory.json"), filepath.Join(dir, "worksheet.json"), filepath.Join(dir, "prescreen.json")}
+	paths := []string{filepath.Join(dir, "inventory.json"), filepath.Join(dir, "worksheet.json"), filepath.Join(dir, "prescreen.json"), filepath.Join(dir, "inspection.json")}
 	for _, path := range paths {
 		if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
 			t.Fatal(err)
@@ -70,7 +70,7 @@ func TestRunRejectsNonPrivateArtifactsBeforeParsing(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--mode", "prepare", "--inventory", paths[0], "--worksheet", paths[1], "--prescreen", paths[2], "--attestation-out", filepath.Join(dir, "out.json")}, &stdout, &stderr)
+	code := run([]string{"--mode", "prepare", "--inventory", paths[0], "--worksheet", paths[1], "--prescreen", paths[2], "--quarantine-inspection", paths[3], "--attestation-out", filepath.Join(dir, "out.json")}, &stdout, &stderr)
 	if code != 1 || !strings.Contains(stderr.String(), "private regular file") {
 		t.Fatalf("run = %d, stderr = %s", code, stderr.String())
 	}

@@ -318,12 +318,14 @@ filler-corpus-met-rights-attestation: ## prepare one pending, digest-bound Met r
 	@test -n "$$LOOMARR_FILLER_CORPUS_MET_INVENTORY" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_MET_INVENTORY is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-met-rights-complete \
 	    --mode prepare \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_MET_INVENTORY" \
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" \
 	    --prescreen "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN" \
+	    --quarantine-inspection "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" \
 	    --attestation-out "$${LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-rights-attestation.json}"
 
 filler-corpus-met-rights-complete: ## expand one accepted Met attestation into item-bound review rows
@@ -331,6 +333,7 @@ filler-corpus-met-rights-complete: ## expand one accepted Met attestation into i
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-met-rights-complete \
 	    --mode complete \
@@ -338,6 +341,7 @@ filler-corpus-met-rights-complete: ## expand one accepted Met attestation into i
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" \
 	    --prescreen "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN" \
 	    --attestation "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION" \
+	    --quarantine-inspection "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" \
 	    --completed-csv-out "$${LOOMARR_FILLER_CORPUS_MET_RIGHTS_COMPLETED_CSV_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-rights-completed.csv}"
 
 filler-corpus-nasa: ## freeze bounded NASA pilot and full-inventory artifacts
@@ -456,6 +460,7 @@ filler-corpus-prepare: ## build an unlabeled corpus draft and bounded evidence p
 	    --profile "$$LOOMARR_FILLER_CORPUS_PROFILE" \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
 	    --rights-approvals "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" \
+	    --quarantine-inspection "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" \
 	    --plan "$$LOOMARR_FILLER_CORPUS_PREPARATION_PLAN" \
 	    --local-root "$$LOOMARR_FILLER_CORPUS_LOCAL_ROOT" \
 	    --remote-root "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
@@ -520,6 +525,7 @@ filler-corpus-rights-review: ## prepare an inert worksheet from a frozen filler 
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-rights-review \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	    --quarantine-inspection "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" \
 	    --out "$${LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.json}" \
 	    --csv-out "$${LOOMARR_FILLER_CORPUS_RIGHTS_CSV:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.csv}" \
 	    --prepared-at "$$LOOMARR_FILLER_CORPUS_RIGHTS_PREPARED_AT" \
@@ -538,6 +544,7 @@ filler-corpus-rights-lock: ## validate completed rights review CSV into approval
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  $(GO) run ./cmd/filler-corpus-rights-lock \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
+	    --quarantine-inspection "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" \
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET" \
 	    --completed-csv "$$LOOMARR_FILLER_CORPUS_RIGHTS_CSV" \
 	    --approvals-out "$${LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-approvals.jsonl}" \
