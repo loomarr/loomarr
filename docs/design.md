@@ -203,7 +203,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`testkit/execfixture`** · 1 importer
   Owns filesystem-backed executable test doubles without importing application packages.
-- **`testkit/httpfixture`**
+- **`testkit/httpfixture`** · 1 importer
   Shared no-network HTTP test seams without importing any application adapter.
 - **`testkit/operationfixture`**
   Cycle-free function-backed recordings for testing durable operations without importing an application package.
@@ -232,6 +232,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns immutable, reusable playout publications.
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
+- **`testkit/playoutcertfixture`** · → `testkit/httpfixture`
+  A neutral HTTP target for public playout-certification tests.
 
 **Layer 2**
 
