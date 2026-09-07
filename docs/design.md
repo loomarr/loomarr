@@ -3098,13 +3098,21 @@ exactly one expected video stream and one expected audio stream. Percentiles use
 successful observations and retain failure counts separately; a failed request never disappears
 from a latency distribution by being coerced to zero.
 
-Resource observation composes three existing public/admin projections rather than adding a
+Resource observation normally composes three existing public/admin projections rather than adding a
 benchmark-only production endpoint: `/metrics` supplies process RSS, CPU-seconds deltas, goroutines,
 file descriptors, HTTP in-flight requests, and active Playout sessions;
 `/v1/playout/sessions` supplies measured capacity, active/viewer/grace counts, and transcode cost;
 `/v1/playout/status` supplies bounded GPU/encoder health. Retained Process diagnostics supply the
 application-managed FFmpeg live/peak count. A sampler records baseline, every phase peak, and final
-state. Cancellation, idle expiry, parent/child failure, and shutdown drills are separate opt-in
+state. For the isolated `shutdown` profile only, after the owned public listener stops, the synthetic
+target takes fresh samples through an internal observation seam backed by the same live metrics,
+session, status, and retained Process-diagnostics sources. It retains those sources until bounded
+convergence and final evidence are recorded; disposal closes them afterward. This seam grants no
+production or remote control authority, reuses no pre-shutdown sample, and never infers resource
+cleanup from successful server shutdown. Serving shutdown is a single terminal operation whose
+stored result is shared by repeated callers; cancelling a caller's wait cannot fabricate a receipt
+or reopen admission. Final disposal remains separate and preserves any lifecycle error.
+Cancellation, idle expiry, parent/child failure, and shutdown drills are separate opt-in
 profiles because shutdown mutates only the explicitly named disposable instance. Fault profiles use
 the fixed names `child_failure`, `parent_failure`, and `shutdown`; omitted profiles are explicitly
 unqualified and a selected profile is required evidence, never an informational best effort. Unknown,
