@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/playoutcert"
 )
 
 func TestCommandRejectsMissingSecretsAndOutputEscapeWithoutEchoingValues(t *testing.T) {
@@ -61,5 +64,52 @@ func TestWriteArtifactIsPrivate(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %o", info.Mode().Perm())
+	}
+}
+
+func TestPublishReportReturnsFailureForRequiredFailureWithoutCertification(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "report.json")
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	report := playoutcert.Report{
+		SchemaVersion: playoutcert.SchemaVersion,
+		CompletedAt:   time.Now(),
+		Failures:      []string{"shutdown_failed"},
+	}
+	if code := publishReport(output, report, false, stdout, stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	blob, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(blob), `"shutdown_failed"`) || !strings.Contains(stdout.String(), "Failures: shutdown_failed") || stderr.Len() != 0 {
+		t.Fatalf("report publication lost failure: artifact=%q stdout=%q stderr=%q", blob, stdout.String(), stderr.String())
+	}
+}
+
+func TestPublishReportAllowsSuccessfulDiagnosticRun(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "report.json")
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	report := playoutcert.Report{SchemaVersion: playoutcert.SchemaVersion, CompletedAt: time.Now()}
+	if code := publishReport(output, report, false, stdout, stderr); code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if _, err := os.Stat(output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "Playout load certification: FAIL") || stderr.Len() != 0 {
+		t.Fatalf("unexpected diagnostic publication: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestPublishReportRejectsUncertifiedCertification(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "report.json")
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	report := playoutcert.Report{SchemaVersion: playoutcert.SchemaVersion, CompletedAt: time.Now()}
+	if code := publishReport(output, report, true, stdout, stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	if _, err := os.Stat(output); err != nil {
+		t.Fatal(err)
 	}
 }

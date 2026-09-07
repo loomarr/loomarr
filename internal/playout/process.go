@@ -160,17 +160,6 @@ func startProcess(
 		return nil, fmt.Errorf("start ffmpeg: %w", err)
 	}
 	p.proc = supervised
-	// proctree owns the OS tree, while Process owns pipe draining and retained
-	// diagnostics. Bind cancellation at this outer lifecycle too: otherwise the
-	// tree exits but a caller blocked above the process wrapper can leave its
-	// diagnostic run permanently marked running.
-	go func() {
-		select {
-		case <-ctx.Done():
-			p.Stop()
-		case <-p.done:
-		}
-	}()
 	if manager != nil {
 		if spec.Executable == "" {
 			spec.Executable = bin
@@ -192,6 +181,18 @@ func startProcess(
 		go func() { defer p.ioWG.Done(); p.readProgress(progress.reader, onProgress) }()
 		go func() { defer p.ioWG.Done(); p.readStderr(stderr) }()
 	}
+
+	// proctree owns the OS tree, while Process owns pipe draining and retained
+	// diagnostics. Bind cancellation only after the diagnostic handle and every
+	// reader have been registered: Stop may finish synchronously, and finishOnce
+	// must never observe a nil run or race a later WaitGroup.Add.
+	go func() {
+		select {
+		case <-ctx.Done():
+			p.Stop()
+		case <-p.done:
+		}
+	}()
 
 	return p, nil
 }

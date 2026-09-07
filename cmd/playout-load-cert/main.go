@@ -99,7 +99,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	}
 	report, err := playoutcert.Run(runCtx, config)
 	if err != nil {
-		closeIsolated(isolated, *cleanupTimeout)
+		if closeErr := closeIsolated(isolated, *cleanupTimeout); closeErr != nil {
+			_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated target cleanup failed")
+		}
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: run failed during bounded preflight")
 		return 1
 	}
@@ -119,17 +121,21 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		report.CompletedAt = time.Now()
 		report.Certified = *certify && len(report.Failures) == 0
 	}
+	return publishReport(resolvedOutput, report, *certify, stdout, stderr)
+}
+
+func publishReport(output string, report playoutcert.Report, certify bool, stdout, stderr io.Writer) int {
 	blob, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: report encoding failed")
 		return 1
 	}
-	if err := writeArtifact(resolvedOutput, append(blob, '\n')); err != nil {
+	if err := writeArtifact(output, append(blob, '\n')); err != nil {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: report write failed")
 		return 1
 	}
 	_, _ = io.WriteString(stdout, playoutcert.HumanSummary(report))
-	if !report.Certified && *certify {
+	if len(report.Failures) != 0 || (certify && !report.Certified) {
 		return 1
 	}
 	return 0
@@ -149,7 +155,7 @@ func readManifest(path string) ([]playoutcert.Channel, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	decoder := json.NewDecoder(io.LimitReader(file, 1<<20))
 	decoder.DisallowUnknownFields()
 	var value manifest

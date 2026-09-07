@@ -125,7 +125,7 @@ func (e *endpoint) getJSON(ctx context.Context, path string, admin bool, output 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected HTTP status %d", resp.StatusCode)
 	}
@@ -199,7 +199,7 @@ func (e *endpoint) mint(ctx context.Context, channelID string) (*url.URL, time.D
 	if err != nil {
 		return nil, 0, "request_failed"
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, 0, httpClass(resp.StatusCode)
 	}
@@ -227,7 +227,7 @@ func (e *endpoint) prepared(ctx context.Context, signed *url.URL) (time.Duration
 	if err != nil {
 		return 0, false, "request_failed"
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNoContent {
 		return time.Since(started), false, "prepared_miss"
 	}
@@ -250,7 +250,7 @@ func (e *endpoint) prepared(ctx context.Context, signed *url.URL) (time.Duration
 	if err != nil {
 		return 0, false, "request_failed"
 	}
-	defer assetResp.Body.Close()
+	defer func() { _ = assetResp.Body.Close() }()
 	if assetResp.StatusCode != http.StatusOK {
 		return 0, false, httpClass(assetResp.StatusCode)
 	}
@@ -284,7 +284,7 @@ func (e *endpoint) metrics(ctx context.Context) (map[string]float64, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("metrics HTTP status %d", resp.StatusCode)
 	}
@@ -323,7 +323,7 @@ func (e *endpoint) metricTotal(ctx context.Context, name string) (float64, error
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("metrics HTTP status %d", resp.StatusCode)
 	}
@@ -375,12 +375,12 @@ func safeIdentity(value string, limit int, hexadecimal bool) bool {
 	}
 	for _, r := range value {
 		if hexadecimal {
-			if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			if r < '0' || r > '9' && r < 'a' || r > 'f' {
 				return false
 			}
 			continue
 		}
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("._+-", r)) {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && !strings.ContainsRune("._+-", r) {
 			return false
 		}
 	}
