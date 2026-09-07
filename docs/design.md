@@ -1793,6 +1793,13 @@ not assert that the user's request caused a provider protocol error. New produce
 remain unavailable until their allowlisted typed evidence exists; generic outer codes do not invent
 that evidence.
 
+The existing `retrieval_failure` terminal covers both reference and catalog operations. It therefore
+projects as `retrieval_unavailable` with `retry_later`; it does not assert that the reference page
+was unreadable. `reference_unreadable` and `edit_reference` require a distinct typed terminal from
+the reference-read stage. A catalog lookup failure after successful reference retrieval must retain
+the retrieval-unavailable advice. Invalid-tool guidance likewise names the failed AI catalog-search
+stage rather than collapsing to an unexplained retry.
+
 Only allowlisted typed producer evidence selects a specific reason; it takes precedence over a
 less-specific stable outer code. Unknown evidence uses the bounded generic reason and cannot enter
 copy. Failure projections for the builder, My Requests, and attempt history expose no raw provider
