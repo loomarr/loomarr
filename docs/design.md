@@ -1934,7 +1934,13 @@ authority are untouched. APIs, generated clients, and editors must show the rang
 the alternative era representation when an operator replaces it.
 
 The prompt/tool contract becomes v6 and the active immutable certification corpus becomes v8;
-historical v5/v7 artifacts remain unchanged. Required evidence includes adjacent and disjoint
+historical v5/v7 artifacts remain unchanged. The v8 scorer is versioned as `planner-scorer-v3`.
+For cases with explicit date expectations, `policy_accuracy` requires the expected normalized
+movie-release, series-premiere, and series-airing lists and an absent model-created scalar Era;
+an explicit no-date expectation requires absent Dates and Era. The result records actual date
+scope so the score is auditable. An unsuccessful proposal cannot satisfy a date expectation.
+Cases without date expectations retain their existing ceiling-only scoring, and all quality
+thresholds and historical artifact bytes remain unchanged. Required evidence includes adjacent and disjoint
 unions, true same-axis conflict with no source dispatch, different premiere/airing axes, title dates,
 indexed anchors and invalid-output repair, final-only bypass prevention, aggregate failure and
 credit exhaustion across repairs, actual scheduled gap-year exclusion, unknown-year behavior,
