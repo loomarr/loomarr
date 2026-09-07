@@ -1540,6 +1540,64 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 	}
 }
 
+// A bare proper-name channel concept is not a fuzzy theme. Its words may
+// lexically match an ordinary catalog candidate, but that candidate cannot be
+// admitted without user- or reference-supplied constituent evidence.
+func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) {
+	for _, tc := range []struct {
+		description string
+		query       string
+		name        string
+	}{
+		{description: "Criterion", query: "criterion", name: "Criterion Comedy"},
+		{description: "The Criterion Channel", query: "criterion", name: "Criterion Comedy"},
+		{description: "Lantern", query: "lantern", name: "Lantern Comedy"},
+	} {
+		t.Run(tc.description, func(t *testing.T) {
+			ms := testkit.NewMediaServer(t)
+			ms.SetSearchItems(testkit.SearchStub{
+				Terms: []string{tc.query}, LibraryItemID: "lib-ordinary-theme", Name: tc.name,
+				Type: "Movie", Year: 1999, TMDBID: 91001, Genres: []string{"Comedy"},
+			})
+			mt := testkit.NewTMDB(t)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			model := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"query": tc.query, "media_type": "movie"}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":91001,"name":"`+tc.name+`"}]}`),
+			)
+			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+			prop, err := s.Suggest(context.Background(), suggest.Intent{Description: tc.description})
+			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+				t.Fatalf("bare concept admitted lexical candidate: error=%v trace=%+v", err, prop.Trace)
+			}
+		})
+	}
+}
+
+func TestSuggest_BareProperTitleUsesExactUserAnchor(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"the matrix"}, LibraryItemID: "lib-matrix", Name: "The Matrix",
+		Type: "Movie", Year: 1999, TMDBID: 603, Genres: []string{"Science Fiction"},
+	})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "The Matrix", "media_type": "movie"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "The Matrix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 603 {
+		t.Fatalf("exact direct title was not admitted: %+v", proposal)
+	}
+}
+
 func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	ms.SetSearchItems(

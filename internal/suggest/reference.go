@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/textmatch"
+	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 const (
@@ -43,6 +44,7 @@ var (
 	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?]|$)`)
 	directNetworkRoleBeforePattern = regexp.MustCompile(`(?i:\b(?:the\s+)?network\s+)$`)
 	directNetworkRolePattern       = regexp.MustCompile(`(?i:^\s+(?:the\s+)?network\b)`)
+	bareProperNamePattern          = regexp.MustCompile(`\b(?:The\s+)?[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\b`)
 )
 
 type referenceGrounding struct {
@@ -181,7 +183,23 @@ func requiresMembershipEvidence(intent Intent) bool {
 		namedCollectionPhrasePattern.MatchString(text) {
 		return true
 	}
-	return acronymNamesSet(text) || properNamedSetPattern.MatchString(text)
+	return acronymNamesSet(text) || properNamedSetPattern.MatchString(text) ||
+		bareProperNameNamesSet(intent.Description) || bareProperNameNamesSet(intent.RefineText)
+}
+
+// bareProperNameNamesSet fails closed only when the request field itself is an
+// otherwise ambiguous title-cased label. It intentionally does not scan spans:
+// title examples, exclusions, and ordinary prose remain fuzzy discovery.
+// A direct exact catalog title can still become user-supplied membership
+// evidence during grounding; a merely thematic catalog hit cannot.
+func bareProperNameNamesSet(text string) bool {
+	name := strings.Trim(strings.TrimSpace(text), ".,;:!?()[]{}\"'")
+	if name == "" || name == "The" || name == strings.ToUpper(name) || tmdb.IsKnownGenre(name) ||
+		bareProperNamePattern.FindString(name) != name {
+		return false
+	}
+	words := strings.Fields(name)
+	return len(words) == 1 || words[0] == "The"
 }
 
 // positiveIntentOrReferenceNamesTitle verifies the provenance of a catalog title.
@@ -198,6 +216,9 @@ func positiveIntentOrReferenceNamesTitle(intent Intent, title string) bool {
 		}
 	}
 	if freeformTitlePolarity(intent.Description, title) > 0 || freeformTitlePolarity(intent.RefineText, title) > 0 {
+		return true
+	}
+	if sameExactTitle(strings.TrimSpace(intent.Description), title) || sameExactTitle(strings.TrimSpace(intent.RefineText), title) {
 		return true
 	}
 	for _, referenceTitle := range intent.ReferenceTitles {

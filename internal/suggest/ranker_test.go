@@ -186,6 +186,9 @@ func TestDecisionRankQueryDoesNotTreatRequestScaffoldingAsEvidence(t *testing.T)
 func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *testing.T) {
 	for _, description := range []string{
 		"TGIF",
+		"Criterion",
+		"The Criterion Channel",
+		"Lantern",
 		"a channel like TGIF from the 90s",
 		"a named Friday-night family sitcom collection",
 		"Criterion Collection lineup",
@@ -210,9 +213,21 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 		"movies starring Tom Hanks",
 		"feel-good sci-fi",
 		"1990s family comedies",
+		"Comedy",
+		"Science Fiction",
 	} {
 		if requiresMembershipEvidence(Intent{Description: description}) {
 			t.Fatalf("ordinary theme request was over-gated: %q", description)
+		}
+	}
+	for _, intent := range []Intent{
+		{Description: "Please suggest comedy"},
+		{Description: "Let us make a family comedy channel"},
+		{Description: "90s family comedies", MustInclude: []string{"The Matrix"}},
+		{Description: "family comedies, but not The Matrix"},
+	} {
+		if requiresMembershipEvidence(intent) {
+			t.Fatalf("ordinary request was over-gated: %+v", intent)
 		}
 	}
 }
