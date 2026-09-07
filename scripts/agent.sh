@@ -607,11 +607,15 @@ EOF
 		else
 			echo "verify: affected Go packages: $package_count"
 		fi
-		# Preserve `make test`'s one universal Go-suite prerequisite. Reverse-dependency
+		# Preserve `make test`'s Rust image worker prerequisite. Reverse-dependency
 		# closures commonly include app/images/integration tests even for a narrow leaf
 		# edit, and those tests require the local Rust worker. Cargo is incremental when
 		# it already exists; a fresh worktree must build it before any Go test starts.
 		make -C "$ROOT" rust-test-worker
+		# Keep the evaluation manifest contract coupled to every executable Go scope.
+		# The production test target runs this prerequisite before its Go suite, and a
+		# focused reverse-dependency closure can exercise the same embedded manifest.
+		make -C "$ROOT" eval-contract
 		module_path="$(cd "$SCRIPT_DIR/.." && go list -m)"
 		lint_packages="$(printf '%s\n' "$packages" | awk -v module="$module_path" '
 			$0 == module { print "."; next }
