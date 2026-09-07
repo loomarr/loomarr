@@ -3215,7 +3215,17 @@ A private optional cohort manifest may assign copy, H.264/HEVC transcode,
 AAC/EAC3/AC3, expected-failure, and remote-input roles to Channel ordinals. Missing roles make that
 lane non-certifying rather than silently inventing coverage. Synthetic fixtures use deterministic
 FFmpeg sources in an isolated instance; an operator cohort may instead read real files over a
-Tailscale/shared mount. A separately declared remote-FFmpeg lane may push MPEG-TS over TCP/Tailscale
+Tailscale/shared mount. Synthetic logical programmes use distinct, known decoded-media signatures,
+and both the live resolver and prepared publication select the media matching the scheduled logical
+programme. The private cohort declares the expected signature succession before observation. A
+programme transition qualifies through the ordinary signed HLS path only when decoded media matches
+that succession and post-transition audio, video, reads and bytes continue through the late-observation
+interval. This applies to prepared and live-transcode cohorts. Schedule identity events, playlist
+advancement, discontinuities and elapsed time alone do not prove the media transition. Fixture-media
+preparation owns signature synthesis; the normal playout modules deliver those fixtures. An operator
+cohort needs independently qualified private media truth for this identity evidence; missing or
+ambiguous truth leaves that required lane unqualified. Signatures, source identifiers and media truth
+never enter public reports. A separately declared remote-FFmpeg lane may push MPEG-TS over TCP/Tailscale
 to that isolated instance, but it is reported independently and never substitutes for the real
 Loomarr HTTP route phases.
 
