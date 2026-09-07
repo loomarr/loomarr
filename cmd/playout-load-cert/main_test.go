@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,13 +12,29 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/playoutcert"
+	"github.com/loomarr/loomarr/internal/testkit/playoutcertfixture"
 )
 
 func TestCleanupFailureIsPersistedAsUncertifiedReport(t *testing.T) {
-	report := playoutcert.Report{Certified: true}
-	recordIsolatedCleanupFailure(&report)
-	if report.Certified || !strings.Contains(strings.Join(report.Failures, ","), "isolated_cleanup_failed") {
-		t.Fatalf("cleanup failure report = %+v", report)
+	output := filepath.Join(t.TempDir(), "report.json")
+	report := playoutcert.Report{Certified: true, FaultProfiles: []playoutcert.FaultQualification{{Profile: playoutcert.FaultParentFailure, Status: "qualified", Outcome: "complete"}}}
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := finalizeAfterIsolatedCleanup(output, report, true, playoutcertfixture.CleanupFailureTarget{Err: errors.New("cleanup failed")}, time.Second, stdout, stderr); code != 1 {
+		t.Fatalf("exit code = %d, stderr=%q", code, stderr.String())
+	}
+	blob, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted playoutcert.Report
+	if err := json.Unmarshal(blob, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Certified || !strings.Contains(strings.Join(persisted.Failures, ","), "isolated_cleanup_failed") {
+		t.Fatalf("persisted cleanup failure report = %+v", persisted)
+	}
+	if !strings.Contains(stdout.String(), "parent_failure status=unavailable outcome=cleanup_failed") {
+		t.Fatalf("summary omitted persisted fault evidence: %q", stdout.String())
 	}
 }
 

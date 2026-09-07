@@ -49,9 +49,16 @@ type ParentFaultReceipt struct {
 }
 
 type FaultQualification struct {
-	Profile FaultProfile `json:"profile"`
-	Status  string       `json:"status"`
-	Outcome string       `json:"outcome"`
+	Profile            FaultProfile    `json:"profile"`
+	Status             string          `json:"status"`
+	Outcome            string          `json:"outcome"`
+	Baseline           *ResourceSample `json:"baseline,omitempty"`
+	PhasePeak          *ResourceSample `json:"phasePeak,omitempty"`
+	Final              *ResourceSample `json:"final,omitempty"`
+	ReceiptOutcome     string          `json:"receiptOutcome,omitempty"`
+	SelectedContinuity string          `json:"selectedContinuity,omitempty"`
+	PeerContinuity     string          `json:"peerContinuity,omitempty"`
+	Recovery           string          `json:"recovery,omitempty"`
 }
 
 func ParseFaultProfiles(values []string) ([]FaultProfile, error) {

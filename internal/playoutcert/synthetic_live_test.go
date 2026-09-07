@@ -62,8 +62,10 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 		t.Fatalf("parent-failure recovery evidence = %+v", parentFault)
 	}
 	for _, row := range report.FaultProfiles {
-		if row.Profile == FaultParentFailure && (row.Status != "qualified" || row.Outcome != "complete") {
-			t.Fatalf("parent-failure qualification = %+v", row)
+		if row.Profile == FaultParentFailure {
+			if row.Status != "qualified" || row.Outcome != "complete" || row.Baseline == nil || row.PhasePeak == nil || row.Final == nil || row.ReceiptOutcome != "exited" || row.SelectedContinuity != "interrupted" || row.PeerContinuity != "continued" || row.Recovery != "recovered" {
+				t.Fatalf("parent-failure qualification = %+v", row)
+			}
 		}
 	}
 	if report.PhaseMust("configured").PreparedHits != 100 {

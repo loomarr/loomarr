@@ -46,3 +46,33 @@ func TestFaultProfileSelectionFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestHumanSummaryIncludesBoundedFaultQualifications(t *testing.T) {
+	report := Report{
+		FaultProfiles: []FaultQualification{
+			{Profile: FaultChildFailure, Status: "unqualified", Outcome: "not_selected"},
+			{Profile: FaultParentFailure, Status: "qualified", Outcome: "complete"},
+			{Profile: FaultShutdown, Status: "unqualified", Outcome: "not_selected"},
+		},
+	}
+	summary := HumanSummary(report)
+	for _, want := range []string{
+		"Fault profiles:",
+		"child_failure status=unqualified outcome=not_selected",
+		"parent_failure status=qualified outcome=complete",
+		"shutdown status=unqualified outcome=not_selected",
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary missing %q:\n%s", want, summary)
+		}
+	}
+}
+
+func TestMissingRequiredFaultResourceInvalidatesQualification(t *testing.T) {
+	report := Report{FaultProfiles: []FaultQualification{{Profile: FaultParentFailure, Status: "qualified", Outcome: "complete"}}}
+	invalidateQualifiedFaults(&report, "final_resource_sample_failed")
+	row := report.FaultProfiles[0]
+	if row.Status != "unavailable" || row.Outcome != "final_resource_sample_failed" {
+		t.Fatalf("fault qualification after missing resource = %+v", row)
+	}
+}

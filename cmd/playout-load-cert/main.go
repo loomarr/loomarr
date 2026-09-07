@@ -138,15 +138,29 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: run failed during bounded preflight")
 		return 1
 	}
-	if closeErr := closeIsolated(isolated, *cleanupTimeout); closeErr != nil {
-		recordIsolatedCleanupFailure(&report)
-	}
-	return publishReport(resolvedOutput, report, *certify, stdout, stderr)
+	return finalizeAfterIsolatedCleanup(resolvedOutput, report, *certify, isolated, *cleanupTimeout, stdout, stderr)
 }
 
 func recordIsolatedCleanupFailure(report *playoutcert.Report) {
 	report.Failures = append(report.Failures, "isolated_cleanup_failed")
 	report.Certified = false
+	for index := range report.FaultProfiles {
+		if report.FaultProfiles[index].Status == "qualified" {
+			report.FaultProfiles[index].Status = "unavailable"
+			report.FaultProfiles[index].Outcome = "cleanup_failed"
+		}
+	}
+}
+
+type isolatedCloser interface {
+	Close(context.Context) error
+}
+
+func finalizeAfterIsolatedCleanup(output string, report playoutcert.Report, certify bool, target isolatedCloser, timeout time.Duration, stdout, stderr io.Writer) int {
+	if closeErr := closeIsolated(target, timeout); closeErr != nil {
+		recordIsolatedCleanupFailure(&report)
+	}
+	return publishReport(output, report, certify, stdout, stderr)
 }
 
 func publishReport(output string, report playoutcert.Report, certify bool, stdout, stderr io.Writer) int {
@@ -166,7 +180,7 @@ func publishReport(output string, report playoutcert.Report, certify bool, stdou
 	return 0
 }
 
-func closeIsolated(target *playoutcert.SyntheticTarget, timeout time.Duration) error {
+func closeIsolated(target isolatedCloser, timeout time.Duration) error {
 	if target == nil {
 		return nil
 	}

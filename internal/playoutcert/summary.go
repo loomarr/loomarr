@@ -34,6 +34,12 @@ func HumanSummary(report Report) string {
 		}
 		out.WriteByte('\n')
 	}
+	if len(report.FaultProfiles) > 0 {
+		_, _ = fmt.Fprintln(&out, "Fault profiles:")
+		for _, qualification := range report.FaultProfiles {
+			_, _ = fmt.Fprintf(&out, "%s status=%s outcome=%s\n", qualification.Profile, qualification.Status, qualification.Outcome)
+		}
+	}
 	if len(report.Failures) > 0 {
 		_, _ = fmt.Fprintf(&out, "Failures: %s\n", strings.Join(report.Failures, ", "))
 	}

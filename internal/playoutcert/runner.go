@@ -190,9 +190,11 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	}
 	if slices.Contains(config.FaultProfiles, FaultParentFailure) {
 		samper.begin("parent_failure")
-		parentPhase, parentSample := parentFailureDrill(ctx, endpoint, config, transcodeIndexes, samper)
+		parentDrill := parentFailureDrill(ctx, endpoint, config, transcodeIndexes, samper)
+		parentPhase, parentSample := parentDrill.phase, parentDrill.sample
 		appendSampledPhase(&report, samper, parentPhase)
 		recordBurstSample(&report, "parent_failure", parentSample)
+		recordParentFaultEvidence(&report, baseline, report.Phases[len(report.Phases)-1].Resources.Maximum, parentDrill)
 		if parentPhase.Failures == 0 {
 			qualifyFault(&report, FaultParentFailure, "complete")
 		} else {
@@ -226,12 +228,17 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	}
 	if finalSample.Capacity == 0 {
 		report.Failures = append(report.Failures, "final_resource_sample_failed")
+		invalidateQualifiedFaults(&report, "final_resource_sample_failed")
 	} else {
 		report.Resources = append(report.Resources, finalSample)
+		recordFaultFinalResource(&report, finalSample)
 	}
 	for _, phase := range report.Phases {
 		if phase.Resources.SampleFailures > 0 || phase.Resources.Samples == 0 {
 			report.Failures = append(report.Failures, phase.Name+"_resource_sample_failed")
+			if phase.Name == "parent_failure" {
+				invalidateQualifiedFaults(&report, "phase_resource_sample_failed")
+			}
 		}
 	}
 
@@ -266,23 +273,32 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	return report, nil
 }
 
-func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, sampler *phaseSampler) (Phase, ResourceSample) {
+type parentFaultDrill struct {
+	phase    Phase
+	sample   ResourceSample
+	receipt  string
+	selected string
+	peer     string
+	recovery string
+}
+
+func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, sampler *phaseSampler) parentFaultDrill {
 	controller, ok := config.FaultController.(ParentFaultController)
 	if !ok || len(indexes) < 2 {
-		return phaseFrom("parent_failure", []observation{{class: "controller_unavailable"}}), ResourceSample{}
+		return parentFaultDrill{phase: phaseFrom("parent_failure", []observation{{class: "controller_unavailable"}}), receipt: "not_observed", selected: "not_observed", peer: "not_observed", recovery: "not_observed"}
 	}
 	// A held reader gives the controller an admitted, initially decoded parent;
 	// this is deliberately not the graceful session teardown path.
 	held := startHeldBurst(ctx, endpoint, config, indexes[:2])
 	if len(held.results) != 2 || held.results[0].class != "ok" || held.results[1].class != "ok" {
 		held.release()
-		return phaseFrom("parent_failure", []observation{{class: "initial_media_missing"}}), held.sample
+		return parentFaultDrill{phase: phaseFrom("parent_failure", []observation{{class: "initial_media_missing"}}), sample: held.sample, receipt: "not_observed", selected: "not_observed", peer: "not_observed", recovery: "not_observed"}
 	}
 	request := ParentFaultRequest{BaseURL: endpoint.base.String(), ChannelID: config.Channels[indexes[0]].ID}
 	generation, err := controller.CurrentParent(ctx, request)
 	if err != nil {
 		held.release()
-		return phaseFrom("parent_failure", []observation{{class: "generation_unavailable"}}), held.sample
+		return parentFaultDrill{phase: phaseFrom("parent_failure", []observation{{class: "generation_unavailable"}}), sample: held.sample, receipt: "not_observed", selected: "not_observed", peer: "not_observed", recovery: "not_observed"}
 	}
 	request.Generation = generation
 	receipt, err := controller.FailParent(ctx, request)
@@ -292,12 +308,50 @@ func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, 
 	held.verify(ctx)
 	held.release()
 	if err != nil || !receipt.Exited || receipt.ChannelID != request.ChannelID || receipt.Generation != request.Generation || held.results[0].class != "held_stream_interrupted" || held.results[1].class != "ok" {
-		return phaseFrom("parent_failure", []observation{{class: "fault_failed"}}), held.sample
+		receiptOutcome := "not_exited"
+		if err != nil {
+			receiptOutcome = "unavailable"
+		}
+		return parentFaultDrill{phase: phaseFrom("parent_failure", []observation{{class: "fault_failed"}}), sample: held.sample, receipt: receiptOutcome, selected: held.results[0].class, peer: held.results[1].class, recovery: "not_observed"}
 	}
 	// A fresh public admission after the owned parent exit is the recovery
 	// assertion. It is bounded by the normal request and sampling deadlines.
 	recovery, sample := rawBurst(ctx, endpoint, config, indexes[:1])
-	return phaseFrom("parent_failure", recovery), sample
+	phase := phaseFrom("parent_failure", recovery)
+	recoveryOutcome := "failed"
+	if phase.Failures == 0 {
+		recoveryOutcome = "recovered"
+	}
+	return parentFaultDrill{phase: phase, sample: sample, receipt: "exited", selected: "interrupted", peer: "continued", recovery: recoveryOutcome}
+}
+
+func recordParentFaultEvidence(report *Report, baseline, peak ResourceSample, drill parentFaultDrill) {
+	for index := range report.FaultProfiles {
+		row := &report.FaultProfiles[index]
+		if row.Profile != FaultParentFailure {
+			continue
+		}
+		row.Baseline, row.PhasePeak = &baseline, &peak
+		row.ReceiptOutcome, row.SelectedContinuity = drill.receipt, drill.selected
+		row.PeerContinuity, row.Recovery = drill.peer, drill.recovery
+	}
+}
+
+func recordFaultFinalResource(report *Report, final ResourceSample) {
+	for index := range report.FaultProfiles {
+		if report.FaultProfiles[index].Status == "qualified" {
+			report.FaultProfiles[index].Final = &final
+		}
+	}
+}
+
+func invalidateQualifiedFaults(report *Report, outcome string) {
+	for index := range report.FaultProfiles {
+		if report.FaultProfiles[index].Status == "qualified" {
+			report.FaultProfiles[index].Status = "unavailable"
+			report.FaultProfiles[index].Outcome = outcome
+		}
+	}
 }
 
 func qualifyFault(report *Report, profile FaultProfile, outcome string) {
