@@ -3158,7 +3158,13 @@ turn an ineligible workload into an eligible one; mutation after finalization ca
 
 The private capsule registers the actual administrator bearer, device token, origin, private Channel
 ids, and every successfully minted signed URL, including the credential-bearing query values and
-path/query representations actually used by requests. Matcher material and its source provenance
+path/query representations actually used by requests. Request producers may explicitly identify
+fixed public controls they construct, such as the diagnostics page limit and status filter; these
+controls are not private sources. Their complete URL and query representations remain registered.
+This declaration must come from the owning producer, not an inference from an arbitrary URL, key,
+or matching value. Unknown query values and signed capability values remain private by default;
+a control declaration never exempts the same bytes when registered from a credential, Channel id,
+or another private source. Matcher material and its source provenance
 remain unexported and never enter either output, logs, errors, fixtures containing real secrets, or
 artifacts. Registration is bounded to 8,192 derived probes and 8 MiB of matcher material; both output
 buffers together are bounded to 8 MiB, and finalization has a 30-second work deadline. Exceeding any
