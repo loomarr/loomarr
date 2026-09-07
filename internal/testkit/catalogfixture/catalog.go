@@ -3,6 +3,7 @@ package catalogfixture
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -11,10 +12,11 @@ import (
 
 // Corpus is a deterministic search/discovery corpus.
 type Corpus struct {
-	Candidates  []catalog.Candidate
-	mu          sync.Mutex
-	searches    []SearchRequest
-	discoveries []DiscoveryRequest
+	Candidates   []catalog.Candidate
+	DiscoverFunc func(context.Context, catalog.DiscoveryQuery, int) ([]catalog.Candidate, error)
+	mu           sync.Mutex
+	searches     []SearchRequest
+	discoveries  []DiscoveryRequest
 }
 
 type SearchRequest struct {
@@ -34,12 +36,19 @@ func (c *Corpus) Search(_ context.Context, query string, limit int) ([]catalog.C
 	return append([]catalog.Candidate(nil), c.Candidates...), nil
 }
 
-func (c *Corpus) Discover(_ context.Context, query catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+func (c *Corpus) Discover(ctx context.Context, query catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
 	c.mu.Lock()
 	c.discoveries = append(c.discoveries, DiscoveryRequest{Query: query, Limit: limit})
 	c.mu.Unlock()
+	if c.DiscoverFunc != nil {
+		return c.DiscoverFunc(ctx, query, limit)
+	}
 	return append([]catalog.Candidate(nil), c.Candidates...), nil
 }
+
+// DiscoverError is a shared deterministic discovery-source failure for catalog
+// tests that need to preserve errors.Is identity.
+var DiscoverError = errors.New("catalog fixture discovery failure")
 
 func (c *Corpus) Searches() []SearchRequest {
 	c.mu.Lock()

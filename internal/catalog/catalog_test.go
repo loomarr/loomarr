@@ -2,6 +2,7 @@ package catalog_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -565,5 +566,229 @@ func TestCatalogDiscoverBreaksEqualSourceRanksByCanonicalIdentity(t *testing.T) 
 	}
 	if len(got) != 2 || got[0].TMDBID != 10 || got[1].TMDBID != 20 {
 		t.Fatalf("equal-rank order = %+v, want canonical identity tie-break", got)
+	}
+}
+
+func TestCatalogDiscoverUnion_AggregatesWindowsBeforeFinalization(t *testing.T) {
+	queries := []catalog.DiscoveryQuery{
+		{MediaType: provision.Movie, YearFrom: 1990},
+		{MediaType: provision.Movie, YearFrom: 1991},
+		{MediaType: provision.Movie, YearFrom: 1992},
+	}
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+		if limit != 48 {
+			t.Fatalf("source limit = %d, want 48", limit)
+		}
+		switch q.YearFrom {
+		case 1990: // An empty window is not an error.
+			return nil, nil
+		case 1991:
+			return []catalog.Candidate{{MediaType: provision.Movie, TMDBID: 1, Name: "Shared"}}, nil
+		case 1992:
+			return []catalog.Candidate{
+				{MediaType: provision.Movie, TMDBID: 1, Name: "Shared", Overview: "merged"},
+				{MediaType: provision.Movie, TMDBID: 2, Name: "Later Window"},
+			}, nil
+		default:
+			return nil, nil
+		}
+	}}
+
+	got, err := catalog.New(nil, corpus).DiscoverUnion(context.Background(), queries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.WindowsCompleted != 3 || got.SourceQueriesDispatched != 3 {
+		t.Fatalf("counts = %+v, want three completed/dispatched", got)
+	}
+	if len(got.Candidates) != 2 || got.Candidates[0].TMDBID != 1 || got.Candidates[0].Overview != "merged" || got.Candidates[1].TMDBID != 2 {
+		t.Fatalf("union candidates = %+v, want deduplicated aggregate", got.Candidates)
+	}
+}
+
+func TestCatalogDiscoverUnion_FinalizesAggregateOnce(t *testing.T) {
+	const perWindow = 24
+	owned := make(map[int]catalog.Presence, perWindow)
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+		out := make([]catalog.Candidate, perWindow)
+		for i := range out {
+			id := i + 1
+			if q.YearFrom == 2001 {
+				id += perWindow
+			} else {
+				owned[id] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%d", id)}
+			}
+			out[i] = catalog.Candidate{MediaType: provision.Movie, TMDBID: id, Name: fmt.Sprintf("Candidate %d", id)}
+		}
+		return out, nil
+	}}
+	presence := &catalogfixture.Presence{Hits: owned}
+	got, err := catalog.New(nil, corpus).WithPresence(presence).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{
+		{MediaType: provision.Movie, YearFrom: 2000}, {MediaType: provision.Movie, YearFrom: 2001},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Candidates) != 24 {
+		t.Fatalf("candidate count = %d, want one final limit of 24", len(got.Candidates))
+	}
+	var outside int
+	for _, candidate := range got.Candidates {
+		if !candidate.InLibrary {
+			outside++
+		}
+	}
+	if outside == 0 {
+		t.Fatalf("aggregate blend omitted later-window outside candidates: %+v", got.Candidates)
+	}
+	if calls := presence.Calls(); len(calls) != 48 {
+		t.Fatalf("presence calls = %d, want aggregate pool bounded to 48", len(calls))
+	}
+}
+
+func TestCatalogDiscoverUnion_PreservesWindowPoolsUntilPresence(t *testing.T) {
+	const (
+		perWindow = 48
+		missing   = 24
+	)
+	owned := make(map[int]catalog.Presence, perWindow)
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+		if limit != perWindow {
+			t.Fatalf("source limit = %d, want %d", limit, perWindow)
+		}
+		out := make([]catalog.Candidate, perWindow)
+		for i := range out {
+			id := (q.YearFrom-2000)*perWindow + i + 1
+			if i >= missing {
+				owned[id] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%d", id)}
+			}
+			out[i] = catalog.Candidate{
+				MediaType:     provision.Movie,
+				TMDBID:        id,
+				Name:          fmt.Sprintf("Candidate %d", id),
+				RelevanceRank: i + 1,
+			}
+		}
+		return out, nil
+	}}
+	presence := &catalogfixture.Presence{Hits: owned}
+	got, err := catalog.New(nil, corpus).WithPresence(presence).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{
+		{MediaType: provision.Movie, YearFrom: 2000}, {MediaType: provision.Movie, YearFrom: 2001},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Candidates) != 24 {
+		t.Fatalf("candidate count = %d, want one final limit of 24", len(got.Candidates))
+	}
+	var inLibrary int
+	for _, candidate := range got.Candidates {
+		if candidate.InLibrary {
+			inLibrary++
+		}
+	}
+	if inLibrary == 0 {
+		t.Fatalf("union discarded every owned candidate before presence: %+v", got.Candidates)
+	}
+	if calls := presence.Calls(); len(calls) > 2*perWindow {
+		t.Fatalf("presence calls = %d, want at most %d", len(calls), 2*perWindow)
+	}
+}
+
+func TestCatalogDiscoverUnion_AssignsFallbackRanksPerWindow(t *testing.T) {
+	const perWindow = 48
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+		if limit != perWindow {
+			t.Fatalf("source limit = %d, want %d", limit, perWindow)
+		}
+		out := make([]catalog.Candidate, perWindow)
+		for i := range out {
+			id := i + 1
+			if q.YearFrom == 2000 {
+				id += 1000
+			}
+			out[i] = catalog.Candidate{MediaType: provision.Movie, TMDBID: id, Name: fmt.Sprintf("Candidate %d", id)}
+		}
+		return out, nil
+	}}
+	got, err := catalog.New(nil, corpus).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{
+		{MediaType: provision.Movie, YearFrom: 2000}, {MediaType: provision.Movie, YearFrom: 2001},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[int]bool{}
+	for _, candidate := range got.Candidates {
+		seen[candidate.TMDBID/1000] = true
+	}
+	if !seen[0] || !seen[1] {
+		t.Fatalf("unranked windows were not comparable: %+v", got.Candidates)
+	}
+}
+
+func TestCatalogDiscoverUnion_FailureAndCancellationAreAtomic(t *testing.T) {
+	t.Run("pre-cancellation dispatches nothing", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		corpus := &catalogfixture.Corpus{}
+		got, err := catalog.New(nil, corpus).DiscoverUnion(ctx, []catalog.DiscoveryQuery{{YearFrom: 2000}})
+		if !errors.Is(err, context.Canceled) || got.Candidates != nil || got.WindowsCompleted != 0 || got.SourceQueriesDispatched != 0 {
+			t.Fatalf("result = %+v, err = %v", got, err)
+		}
+		if calls := corpus.Discoveries(); len(calls) != 0 {
+			t.Fatalf("dispatches = %d, want zero", len(calls))
+		}
+	})
+
+	t.Run("source failure returns no partial candidates", func(t *testing.T) {
+		corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+			if q.YearFrom == 2001 {
+				return nil, catalogfixture.DiscoverError
+			}
+			return []catalog.Candidate{{MediaType: provision.Movie, TMDBID: q.YearFrom, Name: "partial"}}, nil
+		}}
+		got, err := catalog.New(nil, corpus).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{{YearFrom: 2000}, {YearFrom: 2001}, {YearFrom: 2002}})
+		if !errors.Is(err, catalogfixture.DiscoverError) || got.Candidates != nil || got.WindowsCompleted != 1 || got.SourceQueriesDispatched != 2 {
+			t.Fatalf("result = %+v, err = %v", got, err)
+		}
+		if calls := corpus.Discoveries(); len(calls) != 2 {
+			t.Fatalf("dispatches = %d, want no later dispatch", len(calls))
+		}
+	})
+
+	t.Run("cancellation prevents remaining dispatch", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, _ catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+			cancel()
+			return nil, nil
+		}}
+		got, err := catalog.New(nil, corpus).DiscoverUnion(ctx, []catalog.DiscoveryQuery{{YearFrom: 2000}, {YearFrom: 2001}})
+		if !errors.Is(err, context.Canceled) || got.Candidates != nil || got.WindowsCompleted != 1 || got.SourceQueriesDispatched != 1 {
+			t.Fatalf("result = %+v, err = %v", got, err)
+		}
+	})
+}
+
+func TestCatalogDiscoverUnion_OneWindowMatchesDiscover(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Movie, TMDBID: 1, Name: "One"}, {MediaType: provision.Movie, TMDBID: 2, Name: "Two"},
+	}}
+	query := catalog.DiscoveryQuery{MediaType: provision.Movie, YearFrom: 2000, YearTo: 2001}
+	want, err := catalog.New(nil, corpus).Discover(context.Background(), query, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := catalog.New(nil, corpus).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{query})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Candidates) != len(want) {
+		t.Fatalf("union length = %d, want %d", len(got.Candidates), len(want))
+	}
+	for i := range want {
+		if got.Candidates[i].TMDBID != want[i].TMDBID {
+			t.Fatalf("union[%d] = %d, want %d", i, got.Candidates[i].TMDBID, want[i].TMDBID)
+		}
 	}
 }
