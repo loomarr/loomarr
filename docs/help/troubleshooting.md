@@ -11,7 +11,9 @@ Every red check in the setup wizard links to a section here.
 
 ## Android TV cannot find Loomarr
 
-The TV app searches with DNS-SD, UDP broadcast, and a bounded local-neighbour unicast fallback. For
+The TV app searches with DNS-SD, UDP broadcast, and a bounded local-neighbour unicast fallback. It
+uses a direct Wi-Fi/Ethernet default network, or one matching public Android network when a VPN is
+the default; it waits and retries instead of guessing if the local network is absent or ambiguous. For
 the supported Docker Compose deployment, confirm that UDP port `51029` is published and allowed
 inbound from the trusted LAN. Linux Docker does not forward LAN broadcasts to a published UDP port,
 so the unicast fallback must be able to reach the Docker host directly on the TV's local IPv4 `/24`.

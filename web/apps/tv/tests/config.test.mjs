@@ -175,8 +175,9 @@ test("ships DNS-SD plus bounded broadcast and unicast LAN discovery without rest
   assert.match(nativeModule, /MAX_UNICAST_TARGETS = 254/);
   assert.match(nativeModule, /UNICAST_SWEEP_INTERVAL_MS = 15_000/);
   assert.match(nativeModule, /UNICAST_PACKET_GAP_MS = 5/);
-  assert.match(nativeModule, /subnetUnicastTargets/);
-  assert.match(nativeModule, /Math\.max\(address\.getNetworkPrefixLength\(\), 24\)/);
+  assert.match(nativeModule, /localNetworkPlan/);
+  assert.match(nativeModule, /UnicastTargetPlanner/);
+  assert.doesNotMatch(nativeModule, /getUnderlyingNetworks/);
   assert.match(nativeModule, /address\.indexOf\('%'\)/);
   assert.match(nativeModule, /address\.indexOf\(':'\) >= 0/);
   assert.match(nativeModule, /"\[" \+ address \+ "\]"/);
