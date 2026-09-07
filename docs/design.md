@@ -1773,6 +1773,33 @@ Intent, claim bounded work, complete/fail one claimed Attempt, and inspect/list 
 snapshots. The Store and the model/catalog runner are private ports inside that implementation; API,
 worker, and frontend callers do not reconstruct lifecycle rules from raw Job/Proposal/Channel reads.
 
+A failed Journey preserves its stable outer failure code and adds a closed `reason` category and
+`recoveryAction`, with fixed server-owned explanation and guidance. The reason distinguishes
+reference retrieval, no catalog match, unverified named-set membership, contradictory constraints,
+unclear date semantics, invalid tool-call exhaustion, provider timeout/unavailability, and otherwise
+unclassified generation failure. Recovery actions name the useful next step: edit the reference,
+broaden the request, provide examples, resolve constraints, clarify dates, simplify the request, or
+retry later. These describe recovery; only the Journey's existing server-authorized actions grant
+permission to edit, retry, or inspect AI settings. A member is never instructed to change an
+administrator-only setting as their required recovery step.
+
+Only allowlisted typed producer evidence selects a specific reason; it takes precedence over a
+less-specific stable outer code. Unknown evidence uses the bounded generic reason and cannot enter
+copy. Failure projections for the builder, My Requests, and attempt history expose no raw provider
+error, prompt, model response, fetched text, credential, private Library title, candidate identity,
+or arbitrary diagnostic string. Internal decision traces remain available to their existing private
+consumers; requester-facing failure traces retain only validated terminal vocabulary and aggregate
+counts. Pre-submit field validation supplies actionable local feedback without inventing a Job or
+Journey. A failed execution materializes neither a Proposal nor a Channel.
+
+Date-conflict evidence must prove an empty intersection of source-anchored windows joined as
+requirements on the same semantic axis. A union and separate premiere/airing axes are not a
+contradiction. A model interpretation is a hypothesis: invalid or unanchored model claims consume
+bounded repair capacity and cannot blame the user's request. A clarification reason requires actual
+ambiguous request evidence. Both tool execution and final Proposal construction enforce any required
+validated interpretation; omission cannot bypass it. The concrete interpretation schema and its
+immutable certification fixtures must be documented before implementing that producer.
+
 The Proposal Job id is the correlation spine, not a mega-state-machine key that steals domain
 ownership. A Proposal remains the grounded artifact and approval audit. Approval remains the only
 authority to create acquisitions and atomically materializes the intent-bound Channel. The Channel
