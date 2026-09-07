@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -17,8 +18,13 @@ import (
 
 const maxReferenceTitleQueries = 8
 
-var namedSetAcronymPattern = regexp.MustCompile(
-	`(?:(?i:\b(?:for|from|based\s+on)\s+)[A-Z][A-Z0-9&]{2,9}\b|\b[A-Z][A-Z0-9&]{2,9}(?i:\s+(?:lineup|block|channel)\b))`,
+var (
+	namedCollectionPhrasePattern = regexp.MustCompile(`(?i:\bnamed\b.{0,80}\b(?:collection|line-?up|block)\b)`)
+	properNamedSetPattern        = regexp.MustCompile(`\b[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){1,5}\s+(?i:collection|line-?up|block)\b`)
+	acronymCuePattern            = regexp.MustCompile(`(?i:\b(?:for|from|based\s+on|like)\s+)([A-Z][A-Z0-9&]{2,9})\b`)
+	acronymSetSuffixPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+(?:lineup|block|channel|like)\b)`)
+	acronymSentenceEndPattern    = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?]|$)`)
+	directNetworkRolePattern     = regexp.MustCompile(`(?i:^\s+(?:the\s+)?network\b)`)
 )
 
 type referenceGrounding struct {
@@ -36,6 +42,9 @@ func (s *Suggester) groundExplicitMembershipAnchors(ctx context.Context, intent 
 	}
 	anchored := make([]catalog.Candidate, 0, len(intent.MustInclude))
 	for _, title := range boundedReferenceTitles(intent.MustInclude) {
+		if titleExplicitlyExcluded(*intent, title) {
+			continue
+		}
 		candidates, err := s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
 		if err != nil {
 			return nil, fmt.Errorf("search explicit membership title %q: %w", title, err)
@@ -128,6 +137,9 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 	}
 	for _, candidate := range ranked.Candidates {
 		if key, keyErr := candidate.Key(); keyErr == nil {
+			if titleExplicitlyExcluded(*intent, candidate.Name) {
+				continue
+			}
 			intent.referenceKeys[key] = true
 			intent.membershipKeys[key] = true
 		}
@@ -158,10 +170,105 @@ func requiresMembershipEvidence(intent Intent) bool {
 	}
 	text := referenceIntentText(intent)
 	lower := strings.ToLower(text)
-	return namedSetAcronymPattern.MatchString(text) ||
-		strings.Contains(lower, "programming block") ||
+	if strings.Contains(lower, "programming block") ||
 		strings.Contains(lower, "lineup from") ||
-		strings.Contains(lower, "line-up from")
+		strings.Contains(lower, "line-up from") ||
+		namedCollectionPhrasePattern.MatchString(text) {
+		return true
+	}
+	return acronymNamesSet(text) || properNamedSetPattern.MatchString(text)
+}
+
+// positiveIntentOrReferenceNamesTitle verifies the provenance of a catalog title.
+// The model may hypothesize the title to drive exact catalog lookup, but only a
+// positively framed phrase actually submitted by the user or extracted from a
+// fetched reference can promote the resulting identity to membership evidence.
+func positiveIntentOrReferenceNamesTitle(intent Intent, title string) bool {
+	if titleExplicitlyExcluded(intent, title) {
+		return false
+	}
+	for _, included := range intent.MustInclude {
+		if sameExactTitle(included, title) {
+			return true
+		}
+	}
+	if freeformTitlePolarity(intent.Description, title) > 0 || freeformTitlePolarity(intent.RefineText, title) > 0 {
+		return true
+	}
+	for _, referenceTitle := range intent.ReferenceTitles {
+		if sameExactTitle(referenceTitle, title) {
+			return true
+		}
+	}
+	return false
+}
+
+func titleExplicitlyExcluded(intent Intent, title string) bool {
+	for _, excluded := range intent.MustExclude {
+		if sameExactTitle(excluded, title) || textmatch.ContainsPhrase(excluded, title) {
+			return true
+		}
+	}
+	return freeformTitlePolarity(intent.Description, title) < 0 || freeformTitlePolarity(intent.RefineText, title) < 0
+}
+
+// freeformTitlePolarity recognizes a deliberately small cue vocabulary around
+// an exact title mention. The closest cue in the preceding ten words wins, which
+// handles "think A and B" and "include A, but not B" without treating arbitrary
+// substring presence as positive intent.
+func freeformTitlePolarity(text, title string) int {
+	words := evidenceWords(text)
+	titleWords := evidenceWords(title)
+	if len(titleWords) == 0 || len(words) < len(titleWords) {
+		return 0
+	}
+	positive := map[string]bool{"add": true, "adding": true, "example": true, "examples": true, "include": true, "including": true, "keep": true, "like": true, "think": true, "want": true, "with": true}
+	negative := map[string]bool{"avoid": true, "but": true, "drop": true, "except": true, "exclude": true, "excluding": true, "no": true, "not": true, "omit": true, "remove": true, "without": true}
+	polarity := 0
+	for start := 0; start+len(titleWords) <= len(words); start++ {
+		if strings.Join(words[start:start+len(titleWords)], " ") != strings.Join(titleWords, " ") {
+			continue
+		}
+		for cue := start - 1; cue >= max(0, start-10); cue-- {
+			if negative[words[cue]] {
+				polarity = -1
+				break
+			}
+			if positive[words[cue]] || (words[cue] == "as" && cue > 0 && words[cue-1] == "such") {
+				polarity = 1
+				break
+			}
+		}
+		if polarity < 0 {
+			return polarity
+		}
+	}
+	return polarity
+}
+
+func evidenceWords(text string) []string {
+	return strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+}
+
+func acronymNamesSet(text string) bool {
+	for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymSentenceEndPattern} {
+		for _, match := range pattern.FindAllStringSubmatchIndex(text, -1) {
+			acronym := text[match[2]:match[3]]
+			if freeformTitlePolarity(text, acronym) >= 0 {
+				return true
+			}
+		}
+	}
+	for _, match := range acronymCuePattern.FindAllStringSubmatchIndex(text, -1) {
+		acronymEnd := match[3]
+		if directNetworkRolePattern.MatchString(text[acronymEnd:]) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func boundedReferenceTitles(values []string) []string {

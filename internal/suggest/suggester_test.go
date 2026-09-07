@@ -946,7 +946,7 @@ func TestSuggest_GroundsToolFreeNamedPickThroughCatalog(t *testing.T) {
 		10,
 	)
 
-	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF"})
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF, with Full House"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -972,7 +972,7 @@ func TestSuggest_GroundsToolFreeNamedPickAsAcquisition(t *testing.T) {
 		10,
 	)
 
-	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF"})
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF, with Full House"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1005,7 +1005,7 @@ func TestSuggest_GroundsToolFreeNamedPickBySuppliedYear(t *testing.T) {
 		10,
 	)
 
-	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF"})
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF, with Full House"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1031,7 +1031,7 @@ func TestSuggest_GroundsIndependentToolFreeNamesConcurrently(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	prop, err := s.Suggest(ctx, suggest.Intent{Description: "Something like TGIF"})
+	prop, err := s.Suggest(ctx, suggest.Intent{Description: "Something like TGIF, with Full House and Family Matters"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1165,7 +1165,7 @@ func TestSuggest_ToolFreeNameGroundingAcrossPromptShapes(t *testing.T) {
 		"known title":         {Description: "Full House"},
 		"conversational":      {Description: "Please build a warm family sitcom channel"},
 		"genre and era":       {Description: "1980s family sitcoms", Era: "1980s"},
-		"named concept":       {Description: "Something like TGIF"},
+		"named concept":       {Description: "Something like TGIF, with Full House"},
 		"explicit constraint": {Description: "A Friday-night comedy block", MustInclude: []string{"Full House"}},
 		"refinement": {
 			Description: "Family sitcoms", RefineText: "make it warmer",
@@ -1455,6 +1455,48 @@ func TestSuggest_NamedProgrammingBlockRejectsUnsubstantiatedGroundedPicks(t *tes
 	}
 }
 
+func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives", Name: "Orbital Detectives", Type: "Series", Year: 1988, TVDBID: 91001},
+		testkit.SearchStub{Terms: []string{"kitchen circuit"}, LibraryItemID: "lib-kitchen-circuit", Name: "Kitchen Circuit", Type: "Series", Year: 1992, TVDBID: 91002},
+		testkit.SearchStub{Terms: []string{"banished comedy"}, LibraryItemID: "lib-banished-comedy", Name: "Banished Comedy", Type: "Series", Year: 1994, TVDBID: 91003},
+		testkit.SearchStub{Terms: []string{"forbidden family"}, LibraryItemID: "lib-forbidden-family", Name: "Forbidden Family", Type: "Series", Year: 1995, TVDBID: 91004},
+	)
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit", "Banished Comedy", "Forbidden Family"}}),
+		testkit.FinalResponse(`{"rationale":"both definitely aired throughout the decade","picks":[
+			{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives","rationale":"a famous block member"},
+			{"mediaType":"series","tvdbId":91002,"name":"Kitchen Circuit","rationale":"aired every Friday"},
+			{"mediaType":"series","tvdbId":91003,"name":"Banished Comedy"},
+			{"mediaType":"series","tvdbId":91004,"name":"Forbidden Family"}
+		]}`),
+	)
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{
+		Description: "90's FFS. Think Orbital Detectives and Kitchen Circuit, but not Banished Comedy.",
+		Era:         "1990s", MustExclude: []string{"Forbidden Family"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 2 {
+		t.Fatalf("description-backed lineup = %+v, want both exact examples", prop.Lineup)
+	}
+	if !strings.Contains(prop.Rationale, "user-supplied constituent evidence") ||
+		strings.Contains(prop.Rationale, "throughout the decade") {
+		t.Fatalf("proposal rationale did not reflect admitted provenance: %q", prop.Rationale)
+	}
+	for _, item := range prop.Lineup {
+		if !strings.Contains(item.Rationale, "you supplied this title") || strings.Contains(item.Rationale, "aired") {
+			t.Fatalf("item rationale did not replace unsupported model prose: %+v", item)
+		}
+	}
+}
+
 func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	ms.SetSearchItems(
@@ -1481,12 +1523,13 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{
 		Description: "Build a 1990s channel from https://lineups.example/friday#history",
+		MustExclude: []string{"Beta Steps"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prop.Lineup) != 2 || prop.Lineup[0].TVDBID != 92001 || prop.Lineup[1].TVDBID != 92002 {
-		t.Fatalf("reference-grounded lineup = %+v", prop.Lineup)
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TVDBID != 92001 {
+		t.Fatalf("reference-grounded lineup ignored the explicit exclusion = %+v", prop.Lineup)
 	}
 	if model.Calls != 1 || len(references.Calls()) != 1 {
 		t.Fatalf("model/reference calls = %d/%d, want 1/1", model.Calls, len(references.Calls()))
@@ -1494,6 +1537,17 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 	prompt := model.Prompt()
 	if !strings.Contains(prompt, "UNTRUSTED REFERENCE DATA") || !strings.Contains(prompt, "Alpha House") {
 		t.Fatalf("bounded reference evidence was not labeled and supplied to the model: %q", prompt)
+	}
+	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != 1 {
+		t.Fatalf("reference-backed membership should score as supported with unknown episode-era overlap neutral, got %+v", prop.Scores)
+	}
+	if !strings.Contains(prop.Rationale, "resolved public-reference constituent evidence") {
+		t.Fatalf("proposal rationale did not report reference provenance: %q", prop.Rationale)
+	}
+	for _, item := range prop.Lineup {
+		if !strings.Contains(item.Rationale, "resolved public reference") {
+			t.Fatalf("item rationale did not report reference provenance: %+v", item)
+		}
 	}
 }
 
@@ -1919,13 +1973,13 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	model := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Full House", "Family Matters", "Step by Step"}}),
-		// A separate broad search surfaces a plausible neighbor. It is evidence of
-		// discovery only, never evidence that the neighbor belongs to the named set.
+		// Explicit members are pre-grounded before inference, so the FIRST actual
+		// model tool response can surface an unrelated neighbor without requiring a
+		// forbidden second successful tool call.
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "sitcom"}),
-		testkit.FinalResponse(`{"channelName":"Friday Night","picks":[
-			{"mediaType":"series","tvdbId":762,"name":"Full House","seasonMin":4,"seasonMax":8},
-			{"mediaType":"series","tvdbId":767,"name":"Family Matters","seasonMin":2,"seasonMax":6},
+		testkit.FinalResponse(`{"channelName":"Friday Night","rationale":"all of these aired in the block throughout the 90s","picks":[
+			{"mediaType":"series","tvdbId":762,"name":"Full House","rationale":"premiered in the 90s"},
+			{"mediaType":"series","tvdbId":767,"name":"Family Matters"},
 			{"mediaType":"series","tvdbId":760,"name":"Step by Step"},
 			{"mediaType":"series","tvdbId":99001,"name":"Full House Secrets"}
 		]}`),
@@ -1942,11 +1996,35 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 		if item.TVDBID == 99001 {
 			t.Fatalf("non-member search neighbor survived: %+v", prop.Lineup)
 		}
+		if !strings.Contains(item.Rationale, "you supplied this title") {
+			t.Fatalf("member rationale lacks user provenance: %+v", item)
+		}
 	}
-	if prop.Lineup[0].SeasonMin == 0 || prop.Lineup[0].SeasonMax == 0 {
-		t.Fatalf("older-premiering member lost its requested-era airing window: %+v", prop.Lineup)
+	if model.Calls != 2 {
+		t.Fatalf("model calls = %d, want broad tool then final", model.Calls)
 	}
-	if prop.Scores.ThemeFit == 0 {
-		t.Fatalf("source-backed members must not score zero solely because catalog text omits the collection name: %+v", prop.Scores)
+	sawBroadSearch := false
+	for _, request := range ms.Requests() {
+		if strings.Contains(request.RawQuery, "SearchTerm=sitcom") {
+			sawBroadSearch = true
+		}
+	}
+	if !sawBroadSearch {
+		t.Fatalf("broad catalog search did not execute; requests = %+v", ms.Requests())
+	}
+	foundNeighborRejection := false
+	for _, decision := range prop.Trace.Candidates {
+		if decision.Key == "series:tvdb:99001" && decision.Disposition == "validation_dropped" && decision.Reason == "no_relevance_evidence" {
+			foundNeighborRejection = true
+		}
+	}
+	if !foundNeighborRejection {
+		t.Fatalf("trace did not preserve the surfaced neighbor's membership rejection: %+v", prop.Trace)
+	}
+	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != 1 {
+		t.Fatalf("membership score/unknown episode-era balance = %+v, want supported/neutral", prop.Scores)
+	}
+	if strings.Contains(prop.Rationale, "throughout the 90s") {
+		t.Fatalf("unsupported model history survived in proposal rationale: %q", prop.Rationale)
 	}
 }

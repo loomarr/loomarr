@@ -185,6 +185,11 @@ func TestDecisionRankQueryDoesNotTreatRequestScaffoldingAsEvidence(t *testing.T)
 
 func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *testing.T) {
 	for _, description := range []string{
+		"TGIF",
+		"a channel like TGIF from the 90s",
+		"a named Friday-night family sitcom collection",
+		"Criterion Collection lineup",
+		"TGIF like the 90s, with shows from the ABC network",
 		"make a channel for FFS like the 90s",
 		"shows from NBN",
 		"the XYZ programming block",
@@ -196,6 +201,9 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 	}
 	for _, description := range []string{
 		"UFO movies",
+		"shows from the ABC network",
+		"ABC network shows, not TGIF",
+		"movies starring Tom Hanks",
 		"feel-good sci-fi",
 		"1990s family comedies",
 	} {

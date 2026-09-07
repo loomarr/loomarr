@@ -1334,14 +1334,25 @@ referenced host—not the complete household Intent, Library, or Proposal. Raw r
 not persisted in the Proposal trace, logs, diagnostics, evaluation artifacts, or training corpus.
 
 After reference resolution, Loomarr pre-grounds extracted title anchors as untrusted membership evidence.
+Named-set mode is selected from the request's structure rather than a registry of brands: an explicit
+programming-block phrase, `named … collection`, a proper/acronym label used with block/lineup/collection
+language, or a bare/acronym channel concept requires constituent evidence. Explicit network and person
+roles keep their ordinary discovery meaning, and lower-case genre/mood collections remain fuzzy themes.
+When a bare label's entity type is otherwise ambiguous, Loomarr fails closed through the existing
+no-grounded-title outcome if it cannot establish constituents; it does not silently reinterpret the
+label as a network, genre, or era.
+
 For a named collection or programming block, the planner may ask `catalog_search` for a bounded list
 of exact constituent titles, but that model-authored roster is a search hypothesis, not membership
 proof. Only unambiguous Catalog identities for explicit user-supplied constituent titles or resolved
 reference anchors are members; an ambiguous anchor remains unproven rather than selecting a remake.
+A model-proposed title can help resolve examples embedded in free-form description text only when its
+exact normalized title is also present in that submitted text (or in a resolved reference anchor).
 Network, genre, era, adjacent recommendations, and model rationale may help discover a theme, but never
 prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
-rules. A title from an older-premiering series remains eligible where its episodes air in the requested
-era; the era becomes an airing-season window rather than a false premiere-year exclusion.
+rules. A member whose series premiered before a requested decade is not excluded merely by that premiere
+year. An optional model season window remains an airing selector, not evidence that dated episodes
+actually overlap the era; without episode-date evidence the proposal's era-balance score is neutral.
 
 Identity grounding and editorial support are separate mandatory gates. A selected id must both have
 been surfaced by the Catalog and carry positive, source-backed evidence for the semantic request. The
@@ -1355,7 +1366,9 @@ references provide no evidence and therefore cannot silently fall back to a gene
 scoring uses the same source-backed fields and never the model's rationale, so prose cannot self-attest
 quality after the gate. For an admitted named-set member, the grounded membership evidence is the
 semantic match even when catalog metadata does not repeat the collection name; it is not a generic
-score floor and does not make model-only rosters admissible.
+score floor and does not make model-only rosters admissible. Named-set item and proposal explanations
+are generated from the same admitted provenance (user-supplied constituent or resolved public reference),
+replacing model prose that could otherwise invent membership, historical-airing, or era facts.
 
 ### Proposal decision trace v1 (#496)
 

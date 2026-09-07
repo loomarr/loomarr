@@ -102,6 +102,9 @@ func (s *Suggester) groundPickNames(
 			ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, feedback)
 			mergeDecisionTrace(trace, &ranked.Trace)
 			surfaced[key] = candidate
+			if positiveIntentOrReferenceNamesTitle(intent, candidate.Name) {
+				intent.membershipKeys[key] = true
+			}
 			proposed.MediaType = string(candidate.MediaType)
 			proposed.TMDBID = candidate.TMDBID
 			proposed.TVDBID = candidate.TVDBID

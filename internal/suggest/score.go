@@ -129,6 +129,12 @@ func eraBalance(intent Intent, lineup, acquisitions []ProposalItem) float64 {
 	if len(items) <= 1 {
 		return 1
 	}
+	// A series premiere year cannot prove which of its episodes air in the
+	// requested era, and a model-authored season window is a selector rather than
+	// dated evidence. Keep this criterion neutral for evidence-gated named sets.
+	if requiresMembershipEvidence(intent) && allItemsHaveMembershipEvidence(intent, lineup, acquisitions) {
+		return 1
+	}
 	decades := map[int]bool{}
 	withYear := 0
 	for _, it := range items {

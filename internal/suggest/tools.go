@@ -59,6 +59,13 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	}
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), cands, feedback)
 	cands = ranked.Candidates
+	for _, candidate := range cands {
+		if positiveIntentOrReferenceNamesTitle(intent, candidate.Name) {
+			if key, keyErr := candidate.Key(); keyErr == nil {
+				intent.membershipKeys[key] = true
+			}
+		}
+	}
 	blob, _ := json.Marshal(toolResult(cands))
 	return string(blob), cands, ranked.Trace
 }
@@ -93,6 +100,10 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 		_, keyErr := candidate.Key()
 		if keyErr != nil {
 			continue
+		}
+		if positiveIntentOrReferenceNamesTitle(intent, title.name) {
+			key, _ := candidate.Key()
+			intent.membershipKeys[key] = true
 		}
 		candidates = append(candidates, candidate)
 	}
