@@ -24,6 +24,7 @@ type Fixture struct {
 	StallHeldAfterOverload                    bool
 	HeldBufferedBytes                         int
 	BoundaryEarlyBurstDelay                   time.Duration
+	RawOpened                                 chan struct{}
 	FailMetricsAfterStart                     bool
 	FailOneMetricsAfterStart                  bool
 	MaxConcurrentRaw                          int
@@ -196,6 +197,12 @@ func (f *Fixture) stream(w http.ResponseWriter, r *http.Request) {
 	}
 	if flush, ok := w.(http.Flusher); ok {
 		flush.Flush()
+	}
+	if f.RawOpened != nil {
+		select {
+		case f.RawOpened <- struct{}{}:
+		default:
+		}
 	}
 	if f.BoundaryEarlyBurstDelay > 0 {
 		timer := time.NewTimer(f.BoundaryEarlyBurstDelay)

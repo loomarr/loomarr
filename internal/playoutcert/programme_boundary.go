@@ -85,7 +85,13 @@ func (s *syntheticBoundarySubscription) WaitTransition(ctx context.Context) erro
 		case <-ctx.Done():
 			return ctx.Err()
 		case event := <-s.events:
-			if event.sourceID == s.sourceID && successiveSyntheticAiring(s.initial, event.identity) {
+			if event.sourceID != s.sourceID {
+				continue
+			}
+			if !validSyntheticAiring(event.identity) {
+				return errors.New("programme boundary witness emitted invalid next identity")
+			}
+			if successiveSyntheticAiring(s.initial, event.identity) {
 				return nil
 			}
 		}

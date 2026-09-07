@@ -37,6 +37,41 @@ func TestValidateConfigRejectsUnsafeOrNonCertifyingInputs(t *testing.T) {
 	}
 }
 
+func TestValidateConfigAppliesAndEnforcesProgrammeBoundaryBounds(t *testing.T) {
+	valid := func() Config {
+		return Config{BaseURL: "http://127.0.0.1:8080", AdminBearer: "admin-secret", DeviceToken: "device-secret", Channels: fixtureChannels(100), Certify: true}
+	}
+	defaults := valid()
+	if err := defaults.Validate(); err != nil {
+		t.Fatalf("zero boundary fields rejected: %v", err)
+	}
+	defaults = defaults.normalized()
+	if defaults.ProgrammeBoundaryTimeout != 20*time.Minute || defaults.ProgrammeBoundaryLateObservation != 3*time.Second {
+		t.Fatalf("documented defaults = timeout %s late %s", defaults.ProgrammeBoundaryTimeout, defaults.ProgrammeBoundaryLateObservation)
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{name: "negative timeout", mutate: func(c *Config) { c.ProgrammeBoundaryTimeout = -time.Second }},
+		{name: "timeout below floor", mutate: func(c *Config) { c.ProgrammeBoundaryTimeout = time.Second }},
+		{name: "timeout above ceiling", mutate: func(c *Config) { c.ProgrammeBoundaryTimeout = 25*time.Minute + time.Nanosecond }},
+		{name: "late below floor", mutate: func(c *Config) { c.ProgrammeBoundaryLateObservation = 249 * time.Millisecond }},
+		{name: "late above ceiling", mutate: func(c *Config) { c.ProgrammeBoundaryLateObservation = 30*time.Second + time.Nanosecond }},
+		{name: "late equals timeout", mutate: func(c *Config) {
+			c.ProgrammeBoundaryTimeout, c.ProgrammeBoundaryLateObservation = 2*time.Second, 2*time.Second
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := valid()
+			tc.mutate(&config)
+			if err := config.Validate(); err == nil {
+				t.Fatal("invalid programme boundary bounds were accepted")
+			}
+		})
+	}
+}
+
 func TestRunExercisesPublicPhasesButCannotCertifyWithoutCausalBoundaryEvidence(t *testing.T) {
 	t.Parallel()
 	fixture := playoutcertfixture.New(t, 100)

@@ -37,6 +37,38 @@ func TestCommandRejectsMissingSecretsAndOutputEscapeWithoutEchoingValues(t *test
 	}
 }
 
+func TestCommandEnforcesProgrammeAndSuiteTimingBounds(t *testing.T) {
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	if err := os.WriteFile(manifestPath, []byte(`{"schemaVersion":1,"channels":[{"id":"private-channel"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "boundary timeout below floor", args: []string{"--programme-boundary-timeout", "1999ms"}, want: "resource bounds"},
+		{name: "boundary timeout exceeds suite", args: []string{"--programme-boundary-timeout", "30m", "--suite-timeout", "30m"}, want: "resource bounds"},
+		{name: "late observation equals soak", args: []string{"--programme-boundary-timeout", "2s", "--programme-boundary-late-observation", "2s"}, want: "resource bounds"},
+		{name: "synthetic period below floor", args: []string{"--synthetic-programme-duration", "1999ms"}, want: "resource bounds"},
+		{name: "suite exceeds ceiling", args: []string{"--suite-timeout", "30m1ns"}, want: "resource bounds"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stderr := &bytes.Buffer{}
+			args := append([]string{"--manifest", manifestPath}, tc.args...)
+			if code := run(context.Background(), args, func(string) string { return "" }, &bytes.Buffer{}, stderr); code != 2 || !strings.Contains(stderr.String(), tc.want) {
+				t.Fatalf("code=%d stderr=%q", code, stderr.String())
+			}
+		})
+	}
+	// With no timing flags the documented defaults pass flag validation and
+	// reach the next bounded preflight check.
+	stderr := &bytes.Buffer{}
+	if code := run(context.Background(), []string{"--manifest", manifestPath}, func(string) string { return "" }, &bytes.Buffer{}, stderr); code != 2 || !strings.Contains(stderr.String(), "LOOMARR_ARTIFACT_DIR is required") {
+		t.Fatalf("default timing preflight code=%d stderr=%q", code, stderr.String())
+	}
+}
+
 func TestReadManifestRejectsUnknownAndTrailingContent(t *testing.T) {
 	for _, raw := range []string{
 		`{"schemaVersion":1,"channels":[],"secret":"x"}`,
