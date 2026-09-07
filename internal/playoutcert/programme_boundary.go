@@ -9,6 +9,40 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
+// ProgrammeBoundaryRecorder is the producer-side half of the certification
+// witness. Composition code may allocate a parent source and wrap its actual
+// block bytes; consumers retain only ProgrammeBoundaryWitness.
+type ProgrammeBoundaryRecorder struct{ witness *syntheticBoundaryWitness }
+
+func NewProgrammeBoundaryRecorder() *ProgrammeBoundaryRecorder {
+	return &ProgrammeBoundaryRecorder{witness: newSyntheticBoundaryWitness()}
+}
+
+func (r *ProgrammeBoundaryRecorder) NextSource() uint64 {
+	if r == nil || r.witness == nil {
+		return 0
+	}
+	return r.witness.nextSource()
+}
+
+func (r *ProgrammeBoundaryRecorder) Witness() ProgrammeBoundaryWitness {
+	if r == nil {
+		return nil
+	}
+	return r.witness
+}
+
+// WrapBlock records only the first actual bytes observed from the parent
+// stream; it does not expose an event bus to application composition.
+func (r *ProgrammeBoundaryRecorder) WrapBlock(content io.ReadCloser, channelID string, sourceID uint64, identity playout.AiringIdentity) io.ReadCloser {
+	if r == nil || r.witness == nil {
+		return content
+	}
+	return &witnessedBlockContent{source: content, onFirst: func() {
+		r.witness.publish(channelID, syntheticBoundaryEvent{sourceID: sourceID, identity: identity})
+	}}
+}
+
 type syntheticBoundaryEvent struct {
 	sourceID uint64
 	identity playout.AiringIdentity

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/app"
 	"github.com/loomarr/loomarr/internal/playoutcert"
 )
 
@@ -120,9 +121,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	defer cancel()
 	baseURL := strings.TrimSpace(getenv("LOOMARR_PLAYOUT_CERT_BASE_URL"))
 	adminBearer, deviceToken := getenv("LOOMARR_API_TOKEN"), getenv("LOOMARR_PLAYOUT_TOKEN")
-	var isolated *playoutcert.SyntheticTarget
+	var isolated *app.PlayoutCertificationTarget
 	if *synthetic {
-		isolated, err = playoutcert.NewSyntheticTarget(runCtx, playoutcert.SyntheticConfig{
+		isolated, err = app.NewPlayoutCertificationTarget(runCtx, app.PlayoutCertificationConfig{
 			Scope: controllerScope, Channels: channels, FFmpeg: *ffmpeg, Capacity: *syntheticCapacity, Grace: *syntheticGrace, ProgrammeDuration: *syntheticProgramme,
 		})
 		if err != nil {
@@ -190,7 +191,7 @@ func closeIsolated(target isolatedCloser, timeout time.Duration) error {
 	if target == nil {
 		return nil
 	}
-	if synthetic, ok := target.(*playoutcert.SyntheticTarget); ok && synthetic == nil {
+	if synthetic, ok := target.(*app.PlayoutCertificationTarget); ok && synthetic == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)

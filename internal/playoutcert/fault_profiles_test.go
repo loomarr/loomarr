@@ -1,68 +1,11 @@
 package playoutcert
 
 import (
-	"context"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/testkit/playoutcertfixture"
 )
-
-func TestSyntheticParentFaultRefusesWrongTargetAndStaleParent(t *testing.T) {
-	target := &SyntheticTarget{BaseURL: "http://127.0.0.1:9999", parents: map[string]*syntheticParent{}}
-	if _, err := target.CurrentParent(context.Background(), ParentFaultRequest{BaseURL: "http://127.0.0.1:9998", ChannelID: "channel"}); err == nil {
-		t.Fatal("CurrentParent accepted a mismatched target")
-	}
-	if _, err := target.FailParent(context.Background(), ParentFaultRequest{BaseURL: target.BaseURL, ChannelID: "channel", Generation: 1}); err == nil {
-		t.Fatal("FailParent accepted a stale parent")
-	}
-}
-
-func TestSyntheticShutdownRefusesMismatchAndSharesOneTerminalReceipt(t *testing.T) {
-	target := &SyntheticTarget{BaseURL: "http://127.0.0.1:9999", scope: "isolated"}
-	if _, err := target.Shutdown(context.Background(), ShutdownRequest{BaseURL: "http://127.0.0.1:9998"}); err == nil {
-		t.Fatal("Shutdown accepted a mismatched target")
-	}
-	cancelled, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, err := target.Shutdown(cancelled, ShutdownRequest{BaseURL: target.BaseURL}); err == nil {
-		t.Fatal("Shutdown reported success for a cancelled caller")
-	}
-	var wg sync.WaitGroup
-	receipts := make([]ShutdownReceipt, 2)
-	errs := make([]error, 2)
-	for index := range receipts {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			receipts[index], errs[index] = target.Shutdown(context.Background(), ShutdownRequest{BaseURL: target.BaseURL})
-		}()
-	}
-	wg.Wait()
-	for index := range receipts {
-		if errs[index] != nil || receipts[index].Scope != target.scope || !receipts[index].ServingStopped || !receipts[index].ProcessesExited {
-			t.Fatalf("shutdown receipt %d = %+v, %v", index, receipts[index], errs[index])
-		}
-	}
-	if _, err := target.SampleStopped(context.Background(), "final"); err == nil {
-		t.Fatal("SampleStopped fabricated a sample without an owned retained projection")
-	}
-}
-
-func TestSyntheticCloseExecutesShutdownButDoesNotQualifyDrill(t *testing.T) {
-	target := &SyntheticTarget{BaseURL: "http://127.0.0.1:9999", scope: "isolated"}
-	if err := target.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if receipt, err := target.Shutdown(context.Background(), ShutdownRequest{BaseURL: target.BaseURL}); err != nil || !receipt.ServingStopped || !receipt.ProcessesExited {
-		t.Fatalf("Close did not preserve the terminal stop: receipt=%+v err=%v", receipt, err)
-	}
-	rows, failures := faultQualifications([]FaultProfile{FaultShutdown}, target)
-	if len(failures) != 1 || rows[2].Status != "unavailable" || rows[2].Outcome != "controller_not_exercised" {
-		t.Fatalf("ordinary Close qualified shutdown: rows=%+v failures=%v", rows, failures)
-	}
-}
 
 func TestFaultProfileSelectionFailsClosed(t *testing.T) {
 	valid := func() Config {

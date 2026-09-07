@@ -205,6 +205,10 @@ func preparedChannelIndexes(channels []Channel) []int {
 	return indexes
 }
 
+// PreparedChannelIndexes returns the configured prepared cohort, falling back
+// to the complete manifest when no explicit prepared role is present.
+func PreparedChannelIndexes(channels []Channel) []int { return preparedChannelIndexes(channels) }
+
 // strictTranscodeChannelIndexes deliberately has no fallback: capacity and
 // overload evidence is meaningless when the manifest did not provide the lane.
 func strictTranscodeChannelIndexes(channels []Channel) []int {

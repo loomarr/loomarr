@@ -1,4 +1,4 @@
-package playoutcert
+package app
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/playoutcert"
 	"github.com/loomarr/loomarr/internal/testkit/playoutcertfixture"
 )
 
@@ -16,7 +17,7 @@ func TestSyntheticCloseJoinsOneOperationAndPreservesResult(t *testing.T) {
 	terminal := errors.New("listener close failed")
 	release := make(chan struct{})
 	listener := playoutcertfixture.NewGatedListener(release, terminal)
-	target := &SyntheticTarget{BaseURL: "http://127.0.0.1:9999", scope: "isolated", listener: listener}
+	target := &PlayoutCertificationTarget{BaseURL: "http://127.0.0.1:9999", scope: "isolated", listener: listener}
 
 	const callers = 8
 	errs := make(chan error, callers)
@@ -52,7 +53,7 @@ func TestSyntheticCloseCancellationBoundsOnlyCallerWait(t *testing.T) {
 	terminal := errors.New("eventual disposal failed")
 	release := make(chan struct{})
 	listener := playoutcertfixture.NewGatedListener(release, terminal)
-	target := &SyntheticTarget{BaseURL: "http://127.0.0.1:9999", scope: "isolated", listener: listener}
+	target := &PlayoutCertificationTarget{BaseURL: "http://127.0.0.1:9999", scope: "isolated", listener: listener}
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
 	go func() { result <- target.Close(ctx) }()
@@ -70,9 +71,9 @@ func TestSyntheticCloseCancellationBoundsOnlyCallerWait(t *testing.T) {
 func TestSyntheticShutdownCancellationDoesNotResetOrFabricateReceipt(t *testing.T) {
 	release := make(chan struct{})
 	listener := playoutcertfixture.NewGatedListener(release, nil)
-	target := &SyntheticTarget{BaseURL: "http://127.0.0.1:9999", scope: "isolated", listener: listener}
-	request := ShutdownRequest{BaseURL: target.BaseURL}
-	if receipt, err := target.Shutdown(context.Background(), ShutdownRequest{BaseURL: "http://127.0.0.1:9998"}); err == nil || receipt != (ShutdownReceipt{}) {
+	target := &PlayoutCertificationTarget{BaseURL: "http://127.0.0.1:9999", scope: "isolated", listener: listener}
+	request := playoutcert.ShutdownRequest{BaseURL: target.BaseURL}
+	if receipt, err := target.Shutdown(context.Background(), playoutcert.ShutdownRequest{BaseURL: "http://127.0.0.1:9998"}); err == nil || receipt != (playoutcert.ShutdownReceipt{}) {
 		t.Fatalf("mismatched Shutdown = %+v, %v", receipt, err)
 	}
 	if got := listener.Calls.Load(); got != 0 {
@@ -81,7 +82,7 @@ func TestSyntheticShutdownCancellationDoesNotResetOrFabricateReceipt(t *testing.
 
 	ctx, cancel := context.WithCancel(context.Background())
 	type shutdownResult struct {
-		receipt ShutdownReceipt
+		receipt playoutcert.ShutdownReceipt
 		err     error
 	}
 	result := make(chan shutdownResult, 1)
@@ -92,7 +93,7 @@ func TestSyntheticShutdownCancellationDoesNotResetOrFabricateReceipt(t *testing.
 	waitSignal(t, listener.Started, "shutdown listener Close")
 	cancel()
 	got := waitValue(t, result, "cancelled Shutdown")
-	if !errors.Is(got.err, context.Canceled) || got.receipt != (ShutdownReceipt{}) {
+	if !errors.Is(got.err, context.Canceled) || got.receipt != (playoutcert.ShutdownReceipt{}) {
 		t.Fatalf("cancelled Shutdown = %+v, %v", got.receipt, got.err)
 	}
 	close(release)
@@ -118,8 +119,8 @@ func TestSyntheticStoppedSamplingHonorsLifecycleAndJoinsDisposal(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	target, err := NewSyntheticTarget(ctx, SyntheticConfig{
-		Channels: []Channel{{ID: "lifecycle-live", Roles: []string{"transcode_h264", "audio_aac"}}},
+	target, err := NewPlayoutCertificationTarget(ctx, PlayoutCertificationConfig{
+		Channels: []playoutcert.Channel{{ID: "lifecycle-live", Roles: []string{"transcode_h264", "audio_aac"}}},
 		FFmpeg:   ffmpeg, Capacity: 1, Grace: time.Second, ProgrammeDuration: 2 * time.Second,
 	})
 	if err != nil {
@@ -128,7 +129,7 @@ func TestSyntheticStoppedSamplingHonorsLifecycleAndJoinsDisposal(t *testing.T) {
 	if _, err := target.SampleStopped(context.Background(), "pre-stop"); err == nil || !strings.Contains(err.Error(), "before stop") {
 		t.Fatalf("pre-stop SampleStopped error = %v", err)
 	}
-	if _, err := target.Shutdown(ctx, ShutdownRequest{BaseURL: target.BaseURL}); err != nil {
+	if _, err := target.Shutdown(ctx, playoutcert.ShutdownRequest{BaseURL: target.BaseURL}); err != nil {
 		t.Fatal(err)
 	}
 

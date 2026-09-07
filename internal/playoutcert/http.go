@@ -24,6 +24,17 @@ type endpoint struct {
 	audit   *auditCapsule
 }
 
+// SampleResources uses the same bounded endpoint sampler as Run for a caller
+// that retains its own in-process observation transport after listener stop.
+// It deliberately accepts only the existing Config contract.
+func SampleResources(ctx context.Context, config Config, point string) (ResourceSample, error) {
+	endpoint, err := newEndpoint(config)
+	if err != nil {
+		return ResourceSample{}, err
+	}
+	return endpoint.sample(ctx, point)
+}
+
 func newEndpoint(config Config, capsules ...*auditCapsule) (*endpoint, error) {
 	base, err := url.Parse(config.BaseURL)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/app"
 	"github.com/loomarr/loomarr/internal/playoutcert"
 	"github.com/loomarr/loomarr/internal/testkit/playoutcertfixture"
 )
@@ -59,7 +60,7 @@ func TestFinalizeWithTypedNilSyntheticTargetPublishesReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = output.Close() }()
-	var target *playoutcert.SyntheticTarget
+	var target *app.PlayoutCertificationTarget
 	report := playoutcert.Report{Certified: true}
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
@@ -187,7 +188,7 @@ func successfulRunReport(t *testing.T) playoutcert.Report {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	target, err := playoutcert.NewSyntheticTarget(ctx, playoutcert.SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
+	target, err := app.NewPlayoutCertificationTarget(ctx, app.PlayoutCertificationConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

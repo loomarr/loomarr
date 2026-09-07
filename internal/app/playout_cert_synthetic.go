@@ -1,4 +1,4 @@
-package playoutcert
+package app
 
 import (
 	"context"
@@ -24,36 +24,41 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playoutcert"
 	"github.com/loomarr/loomarr/internal/prepared"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-type SyntheticConfig struct {
+// PlayoutCertificationConfig configures the disposable application-composed
+// target used by the playout certification command and integration tests.
+type PlayoutCertificationConfig struct {
 	Scope             string
-	Channels          []Channel
+	Channels          []playoutcert.Channel
 	FFmpeg            string
 	Capacity          int
 	Grace             time.Duration
 	ProgrammeDuration time.Duration
 }
 
-type SyntheticTarget struct {
+type PlayoutCertificationTarget struct {
 	BaseURL     string
 	AdminBearer string
 	DeviceToken string
 
-	server               *http.Server
-	handler              http.Handler
-	listener             net.Listener
-	origin               *playout.Origin
-	diagnostics          *diagnostics.ProcessManager
-	store                store.Store
-	root                 string
-	boundaryWitness      *syntheticBoundaryWitness
-	lifecycle            syntheticLifecycle
-	scope                string
-	parentsMu            sync.Mutex
+	server           *http.Server
+	handler          http.Handler
+	listener         net.Listener
+	origin           *playout.Origin
+	diagnostics      *diagnostics.ProcessManager
+	store            store.Store
+	root             string
+	boundaryRecorder *playoutcert.ProgrammeBoundaryRecorder
+	lifecycle        syntheticLifecycle
+	scope            string
+	parentsMu        sync.Mutex
+	// stopping closes registration admission before either WaitGroup starts waiting.
+	stopping             bool
 	parents              map[string]*syntheticParent
 	nextParentGeneration uint64
 	parentsWG            sync.WaitGroup
@@ -77,7 +82,7 @@ type syntheticChild struct {
 	faulting         bool
 }
 
-func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*SyntheticTarget, error) {
+func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificationConfig) (*PlayoutCertificationTarget, error) {
 	if len(config.Channels) == 0 || len(config.Channels) > 1000 {
 		return nil, errors.New("synthetic target requires 1..1000 Channels")
 	}
@@ -108,8 +113,11 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	if scope == "" {
 		scope = "isolated-playout-cert"
 	}
-	target := &SyntheticTarget{root: root, scope: scope, boundaryWitness: newSyntheticBoundaryWitness(), parents: make(map[string]*syntheticParent), children: make(map[string]*syntheticChild)}
-	fail := func(err error) (*SyntheticTarget, error) { _ = target.Close(context.Background()); return nil, err }
+	target := &PlayoutCertificationTarget{root: root, scope: scope, boundaryRecorder: playoutcert.NewProgrammeBoundaryRecorder(), parents: make(map[string]*syntheticParent), children: make(map[string]*syntheticChild)}
+	fail := func(err error) (*PlayoutCertificationTarget, error) {
+		_ = target.Close(context.Background())
+		return nil, err
+	}
 
 	st, err := store.Open(ctx, "sqlite://"+filepath.Join(root, "loomarr.db"), true)
 	if err != nil {
@@ -138,7 +146,7 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 		VideoBitrateKbps: 600, AudioBitrateKbps: 96, SegmentDurationMS: 1000, PackagingVersion: prepared.CurrentPackagingVersion,
 	}
 	preparedSpecs := make(map[string]prepared.Specification)
-	preparedIndexes := preparedChannelIndexes(config.Channels)
+	preparedIndexes := playoutcert.PreparedChannelIndexes(config.Channels)
 	if len(preparedIndexes) > 0 {
 		first := config.Channels[preparedIndexes[0]]
 		firstSpec := prepared.Specification{SourceFingerprint: "synthetic-" + first.ID, Rendition: rendition}
@@ -204,8 +212,8 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 
 	var manager *playout.Manager
 	spawner := func(spawnCtx context.Context, channelID string, plan playout.EncodePlan) (*playout.Process, error) {
-		sourceID := target.boundaryWitness.nextSource()
-		sourceForParent := syntheticBlockSource(target.BaseURL, device, preparedBlock, manager, target.boundaryWitness, sourceID)
+		sourceID := target.boundaryRecorder.NextSource()
+		sourceForParent := syntheticBlockSource(target.BaseURL, device, preparedBlock, manager, target.boundaryRecorder, sourceID)
 		process, spawnErr := playout.BlockSpawner(ffmpeg, sourceForParent, logger, processManager)(spawnCtx, channelID, plan)
 		if spawnErr != nil {
 			return nil, spawnErr
@@ -270,20 +278,25 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	return target, nil
 }
 
-func (t *SyntheticTarget) Scope() string {
+func (t *PlayoutCertificationTarget) Scope() string {
 	if t == nil {
 		return ""
 	}
 	return t.scope
 }
 
-func (t *SyntheticTarget) registerParent(channelID string, process *playout.Process) {
+func (t *PlayoutCertificationTarget) registerParent(channelID string, process *playout.Process) {
 	t.parentsMu.Lock()
+	if t.stopping {
+		t.parentsMu.Unlock()
+		process.Stop()
+		return
+	}
 	t.nextParentGeneration++
 	generation := t.nextParentGeneration
 	t.parents[channelID] = &syntheticParent{process: process, generation: generation}
-	t.parentsMu.Unlock()
 	t.parentsWG.Add(1)
+	t.parentsMu.Unlock()
 	go func() {
 		defer t.parentsWG.Done()
 		_ = process.Wait()
@@ -298,11 +311,16 @@ func (t *SyntheticTarget) registerParent(channelID string, process *playout.Proc
 // registerChild admits only a program encoder whose opaque parent correlation
 // still names this target's current parent for the same channel. The callback
 // is synthetic-only; diagnostics remain correlation, never control authority.
-func (t *SyntheticTarget) registerChild(spec diagnostics.ProcessSpec, process *playout.Process) {
+func (t *PlayoutCertificationTarget) registerChild(spec diagnostics.ProcessSpec, process *playout.Process) {
 	if t == nil || process == nil || spec.Purpose != "playout_program" || spec.ChannelID == "" || spec.ParentRunID == "" || spec.Target == "" {
 		return
 	}
 	t.parentsMu.Lock()
+	if t.stopping {
+		t.parentsMu.Unlock()
+		process.Stop()
+		return
+	}
 	parent := t.parents[spec.ChannelID]
 	if parent == nil || parent.process == nil || parent.faulting || parent.process.ProcessRunID() != spec.ParentRunID {
 		t.parentsMu.Unlock()
@@ -312,8 +330,8 @@ func (t *SyntheticTarget) registerChild(spec diagnostics.ProcessSpec, process *p
 	generation := t.nextChildGeneration
 	child := &syntheticChild{process: process, parentGeneration: parent.generation, generation: generation, parentRunID: spec.ParentRunID, target: spec.Target}
 	t.children[spec.ChannelID] = child
-	t.parentsMu.Unlock()
 	t.childrenWG.Add(1)
+	t.parentsMu.Unlock()
 	go func() {
 		defer t.childrenWG.Done()
 		_ = process.Wait()
@@ -327,18 +345,18 @@ func (t *SyntheticTarget) registerChild(spec diagnostics.ProcessSpec, process *p
 
 // FailParent performs the parent-failure drill only for this target's current
 // owned parent. It never resolves or signals an arbitrary PID.
-func (t *SyntheticTarget) FailParent(ctx context.Context, request ParentFaultRequest) (ParentFaultReceipt, error) {
+func (t *PlayoutCertificationTarget) FailParent(ctx context.Context, request playoutcert.ParentFaultRequest) (playoutcert.ParentFaultReceipt, error) {
 	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
-		return ParentFaultReceipt{}, errors.New("parent fault target mismatch")
+		return playoutcert.ParentFaultReceipt{}, errors.New("parent fault target mismatch")
 	}
 	if err := ctx.Err(); err != nil {
-		return ParentFaultReceipt{}, err
+		return playoutcert.ParentFaultReceipt{}, err
 	}
 	t.parentsMu.Lock()
 	parent := t.parents[request.ChannelID]
 	if parent == nil || parent.process == nil || parent.faulting || request.Generation == 0 || request.Generation != parent.generation {
 		t.parentsMu.Unlock()
-		return ParentFaultReceipt{}, errors.New("parent fault stale or already ended")
+		return playoutcert.ParentFaultReceipt{}, errors.New("parent fault stale or already ended")
 	}
 	parent.faulting = true
 	process, generation := parent.process, parent.generation
@@ -347,12 +365,12 @@ func (t *SyntheticTarget) FailParent(ctx context.Context, request ParentFaultReq
 	// Stop waits for the owned child to leave; Wait is safe concurrently and
 	// establishes that the receipt is issued after an actual exit.
 	_ = process.Wait()
-	return ParentFaultReceipt{ChannelID: request.ChannelID, Generation: generation, Exited: true}, nil
+	return playoutcert.ParentFaultReceipt{ChannelID: request.ChannelID, Generation: generation, Exited: true}, nil
 }
 
 // CurrentParent exposes the current opaque generation only after validating
 // target identity. It does not expose a process ID or any diagnostics handle.
-func (t *SyntheticTarget) CurrentParent(ctx context.Context, request ParentFaultRequest) (uint64, error) {
+func (t *PlayoutCertificationTarget) CurrentParent(ctx context.Context, request playoutcert.ParentFaultRequest) (uint64, error) {
 	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
 		return 0, errors.New("parent fault target mismatch")
 	}
@@ -370,12 +388,12 @@ func (t *SyntheticTarget) CurrentParent(ctx context.Context, request ParentFault
 
 // CurrentChild exposes the opaque current child generation only if it belongs
 // to the exact current parent for the requested isolated target.
-func (t *SyntheticTarget) CurrentChild(ctx context.Context, request ChildFaultRequest) (ChildFaultTarget, error) {
+func (t *PlayoutCertificationTarget) CurrentChild(ctx context.Context, request playoutcert.ChildFaultRequest) (playoutcert.ChildFaultTarget, error) {
 	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
-		return ChildFaultTarget{}, errors.New("child fault target mismatch")
+		return playoutcert.ChildFaultTarget{}, errors.New("child fault target mismatch")
 	}
 	if err := ctx.Err(); err != nil {
-		return ChildFaultTarget{}, err
+		return playoutcert.ChildFaultTarget{}, err
 	}
 	t.parentsMu.Lock()
 	defer t.parentsMu.Unlock()
@@ -383,19 +401,19 @@ func (t *SyntheticTarget) CurrentChild(ctx context.Context, request ChildFaultRe
 	child := t.children[request.ChannelID]
 	if parent == nil || child == nil || parent.process == nil || child.process == nil || parent.faulting || child.faulting ||
 		parent.generation != child.parentGeneration || parent.process.ProcessRunID() == "" || parent.process.ProcessRunID() != child.parentRunID || child.target == "" {
-		return ChildFaultTarget{}, errors.New("child fault stale or already ended")
+		return playoutcert.ChildFaultTarget{}, errors.New("child fault stale or already ended")
 	}
-	return ChildFaultTarget{ParentGeneration: child.parentGeneration, ChildGeneration: child.generation}, nil
+	return playoutcert.ChildFaultTarget{ParentGeneration: child.parentGeneration, ChildGeneration: child.generation}, nil
 }
 
 // FailChild stops exactly the currently registered encoder child. It rejects
 // target, parent, and child generation reuse before touching the owned handle.
-func (t *SyntheticTarget) FailChild(ctx context.Context, request ChildFaultRequest) (ChildFaultReceipt, error) {
+func (t *PlayoutCertificationTarget) FailChild(ctx context.Context, request playoutcert.ChildFaultRequest) (playoutcert.ChildFaultReceipt, error) {
 	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
-		return ChildFaultReceipt{}, errors.New("child fault target mismatch")
+		return playoutcert.ChildFaultReceipt{}, errors.New("child fault target mismatch")
 	}
 	if err := ctx.Err(); err != nil {
-		return ChildFaultReceipt{}, err
+		return playoutcert.ChildFaultReceipt{}, err
 	}
 	t.parentsMu.Lock()
 	parent := t.parents[request.ChannelID]
@@ -404,26 +422,29 @@ func (t *SyntheticTarget) FailChild(ctx context.Context, request ChildFaultReque
 		request.ParentGeneration == 0 || request.ChildGeneration == 0 || request.ParentGeneration != child.parentGeneration || request.ChildGeneration != child.generation ||
 		parent.generation != child.parentGeneration || parent.process.ProcessRunID() == "" || parent.process.ProcessRunID() != child.parentRunID || child.target == "" {
 		t.parentsMu.Unlock()
-		return ChildFaultReceipt{}, errors.New("child fault stale or already ended")
+		return playoutcert.ChildFaultReceipt{}, errors.New("child fault stale or already ended")
 	}
 	child.faulting = true
 	process := child.process
 	t.parentsMu.Unlock()
 	process.Stop()
 	_ = process.Wait()
-	return ChildFaultReceipt{ChannelID: request.ChannelID, ParentGeneration: request.ParentGeneration, ChildGeneration: request.ChildGeneration, Exited: true}, nil
+	return playoutcert.ChildFaultReceipt{ChannelID: request.ChannelID, ParentGeneration: request.ParentGeneration, ChildGeneration: request.ChildGeneration, Exited: true}, nil
 }
 
 // ProgrammeBoundaryWitness returns the isolated target's causal observation
 // seam. It is intentionally not available from ordinary production origins.
-func (t *SyntheticTarget) ProgrammeBoundaryWitness() ProgrammeBoundaryWitness {
+func (t *PlayoutCertificationTarget) ProgrammeBoundaryWitness() playoutcert.ProgrammeBoundaryWitness {
 	if t == nil {
 		return nil
 	}
-	return t.boundaryWitness
+	if t.boundaryRecorder == nil {
+		return nil
+	}
+	return t.boundaryRecorder.Witness()
 }
 
-func (t *SyntheticTarget) Close(ctx context.Context) error {
+func (t *PlayoutCertificationTarget) Close(ctx context.Context) error {
 	if t == nil {
 		return nil
 	}
@@ -450,17 +471,20 @@ func (t *SyntheticTarget) Close(ctx context.Context) error {
 
 // Shutdown performs the target's one terminal transition but leaves the
 // retained projections available to SampleStopped until Close disposes them.
-func (t *SyntheticTarget) Shutdown(ctx context.Context, request ShutdownRequest) (ShutdownReceipt, error) {
+func (t *PlayoutCertificationTarget) Shutdown(ctx context.Context, request playoutcert.ShutdownRequest) (playoutcert.ShutdownReceipt, error) {
 	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
-		return ShutdownReceipt{}, errors.New("shutdown target mismatch")
+		return playoutcert.ShutdownReceipt{}, errors.New("shutdown target mismatch")
 	}
 	return t.lifecycle.shutdown(ctx, t.stop)
 }
 
-func (t *SyntheticTarget) stop() (ShutdownReceipt, error) {
+func (t *PlayoutCertificationTarget) stop() (playoutcert.ShutdownReceipt, error) {
 	if t.origin != nil {
 		t.origin.Quiesce()
 	}
+	t.parentsMu.Lock()
+	t.stopping = true
+	t.parentsMu.Unlock()
 	t.parentsWG.Wait()
 	t.childrenWG.Wait()
 	var err error
@@ -469,24 +493,22 @@ func (t *SyntheticTarget) stop() (ShutdownReceipt, error) {
 	} else if t.listener != nil {
 		err = t.listener.Close()
 	}
-	return ShutdownReceipt{Scope: t.scope, ServingStopped: err == nil, ProcessesExited: true}, err
+	return playoutcert.ShutdownReceipt{Scope: t.scope, ServingStopped: err == nil, ProcessesExited: true}, err
 }
 
-func (t *SyntheticTarget) SampleStopped(ctx context.Context, point string) (ResourceSample, error) {
+func (t *PlayoutCertificationTarget) SampleStopped(ctx context.Context, point string) (playoutcert.ResourceSample, error) {
 	if t == nil || t.handler == nil {
-		return ResourceSample{}, errors.New("shutdown sample unavailable")
+		return playoutcert.ResourceSample{}, errors.New("shutdown sample unavailable")
 	}
 	release, err := t.lifecycle.observe(ctx)
 	if err != nil {
-		return ResourceSample{}, err
+		return playoutcert.ResourceSample{}, err
 	}
 	defer release()
-	base, err := url.Parse(t.BaseURL)
-	if err != nil {
-		return ResourceSample{}, err
-	}
-	e := &endpoint{base: base, client: &http.Client{Transport: syntheticSamplerTransport{handler: t.handler}}, bearer: t.AdminBearer, device: t.DeviceToken, timeout: 5 * time.Second}
-	return e.sample(ctx, point)
+	return playoutcert.SampleResources(ctx, playoutcert.Config{
+		BaseURL: t.BaseURL, AdminBearer: t.AdminBearer, DeviceToken: t.DeviceToken,
+		Client: &http.Client{Transport: syntheticSamplerTransport{handler: t.handler}}, RequestTimeout: 5 * time.Second,
+	}, point)
 }
 
 // syntheticLifecycle is the owned seam for terminal work. Caller contexts
@@ -497,7 +519,7 @@ type syntheticLifecycle struct {
 
 	shutdownOnce    sync.Once
 	shutdownDone    chan struct{}
-	shutdownReceipt ShutdownReceipt
+	shutdownReceipt playoutcert.ShutdownReceipt
 	shutdownErr     error
 
 	closeOnce sync.Once
@@ -519,7 +541,7 @@ func (l *syntheticLifecycle) init() {
 	})
 }
 
-func (l *syntheticLifecycle) shutdown(ctx context.Context, operation func() (ShutdownReceipt, error)) (ShutdownReceipt, error) {
+func (l *syntheticLifecycle) shutdown(ctx context.Context, operation func() (playoutcert.ShutdownReceipt, error)) (playoutcert.ShutdownReceipt, error) {
 	l.init()
 	select {
 	case <-l.shutdownDone:
@@ -527,7 +549,7 @@ func (l *syntheticLifecycle) shutdown(ctx context.Context, operation func() (Shu
 	default:
 	}
 	if err := ctx.Err(); err != nil {
-		return ShutdownReceipt{}, err
+		return playoutcert.ShutdownReceipt{}, err
 	}
 	l.shutdownOnce.Do(func() {
 		go func() {
@@ -536,12 +558,12 @@ func (l *syntheticLifecycle) shutdown(ctx context.Context, operation func() (Shu
 		}()
 	})
 	if err := waitSyntheticLifecycle(ctx, l.shutdownDone); err != nil {
-		return ShutdownReceipt{}, err
+		return playoutcert.ShutdownReceipt{}, err
 	}
 	return l.shutdownReceipt, l.shutdownErr
 }
 
-func (l *syntheticLifecycle) close(ctx context.Context, shutdown func() (ShutdownReceipt, error), dispose func() error) error {
+func (l *syntheticLifecycle) close(ctx context.Context, shutdown func() (playoutcert.ShutdownReceipt, error), dispose func() error) error {
 	l.init()
 	select {
 	case <-l.closeDone:
@@ -720,7 +742,7 @@ func (syntheticLiveResolver) PlanFor(context.Context, string, playout.EncodePlan
 }
 func (syntheticLiveResolver) ChannelCodec(context.Context, string) string { return "h264" }
 
-func syntheticBlockSource(base, device string, preparedSource playout.BlockSource, manager *playout.Manager, witness *syntheticBoundaryWitness, sourceID uint64) playout.BlockSource {
+func syntheticBlockSource(base, device string, preparedSource playout.BlockSource, manager *playout.Manager, recorder *playoutcert.ProgrammeBoundaryRecorder, sourceID uint64) playout.BlockSource {
 	var broadcast string
 	return func(ctx context.Context, channelID string, plan playout.EncodePlan) (playout.Block, error) {
 		if preparedSource != nil {
@@ -734,7 +756,7 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 				if valid && (broadcast == "" || broadcast == format.String()) {
 					broadcast = format.String()
 					block.Format = format
-					block.Content = witnessBlockContent(block.Content, witness, channelID, sourceID, block.Identity)
+					block.Content = recorder.WrapBlock(block.Content, channelID, sourceID, block.Identity)
 					return block, nil
 				}
 				_ = block.Content.Close()
@@ -778,17 +800,8 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 			_ = resp.Body.Close()
 			return playout.Block{}, errors.New("program endpoint identity missing")
 		}
-		return playout.Block{Content: witnessBlockContent(resp.Body, witness, channelID, sourceID, identity), Identity: identity, Format: format}, nil
+		return playout.Block{Content: recorder.WrapBlock(resp.Body, channelID, sourceID, identity), Identity: identity, Format: format}, nil
 	}
-}
-
-func witnessBlockContent(content io.ReadCloser, witness *syntheticBoundaryWitness, channelID string, sourceID uint64, identity playout.AiringIdentity) io.ReadCloser {
-	if witness == nil {
-		return content
-	}
-	return &witnessedBlockContent{source: content, onFirst: func() {
-		witness.publish(channelID, syntheticBoundaryEvent{sourceID: sourceID, identity: identity})
-	}}
 }
 
 func generateSyntheticSource(ctx context.Context, ffmpeg, output string) error {
