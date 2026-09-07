@@ -47,6 +47,9 @@ func PlanCompleteMedia(ctx context.Context, request SourceRequest) (CompleteMedi
 	}
 	snapshot, err := mediatools.SnapshotRegularFile(ctx, request.Path)
 	if err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return CompleteMediaPlan{}, contextErr
+		}
 		return CompleteMediaPlan{}, &AuthorityError{Code: AuthoritySourceInvalid}
 	}
 	if snapshot.SHA256() != request.Authority.SourceSHA256 || snapshot.Bytes() != request.Authority.SourceBytes {

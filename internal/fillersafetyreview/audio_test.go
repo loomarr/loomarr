@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestFFmpegAudioExtractorRejectsReplacedExecutable(t *testing.T) {
@@ -91,8 +92,24 @@ func TestRunOpenRouterCancelsMaterialPreflightBeforeToolIdentity(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, err := runOpenRouter(ctx, fixture.config, runtime)
-	if err == nil || called {
+	if !errors.Is(err, context.Canceled) || called {
 		t.Fatalf("err=%v identify=%t", err, called)
+	}
+}
+
+func TestVerifyWorklistPropagatesSnapshotCancellation(t *testing.T) {
+	fixture := newReviewFixture(t, testReviewBaseURL)
+	plan, planRaw, err := loadPlan(fixture.config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadInputs(t.Context(), fixture.config, plan, planRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = verifyWorklist(testkit.CancelAfterErrChecks(t.Context(), 1), &loaded, fixture.now, plannedKnownScriptProcessor(plan, testReviewBaseURL))
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "source validation failed") {
+		t.Fatalf("err=%v", err)
 	}
 }
 
@@ -155,7 +172,7 @@ func TestRunOpenRouterWholeDeadlineBoundsToolIdentityBeforeReview(t *testing.T) 
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err=%v", err)
 	}
-	if identityDeadline.IsZero() || identityDeadline.Sub(started) > 5100*time.Millisecond {
+	if !identityDeadline.IsZero() && identityDeadline.Sub(started) > 5100*time.Millisecond {
 		t.Fatalf("identity deadline=%v started=%v", identityDeadline, started)
 	}
 	if requests.Load() != 0 {
@@ -166,6 +183,29 @@ func TestRunOpenRouterWholeDeadlineBoundsToolIdentityBeforeReview(t *testing.T) 
 	}
 	if _, statErr := os.Stat(fixture.outputPath); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("output stat err=%v", statErr)
+	}
+}
+
+func TestRunOpenRouterPropagatesWholeDeadlineToIdentity(t *testing.T) {
+	fixture := newReviewFixture(t, testReviewBaseURL)
+	runtime := fixture.runtime(&http.Client{}, testReviewBaseURL)
+	identityObserved := errors.New("identity observed")
+	var identityDeadline time.Time
+	runtime.identify = func(ctx context.Context, _ string) (fillersafety.ToolIdentity, string, error) {
+		var ok bool
+		identityDeadline, ok = ctx.Deadline()
+		if !ok {
+			return fillersafety.ToolIdentity{}, "", fmt.Errorf("tool identity lacks whole-run deadline")
+		}
+		return fillersafety.ToolIdentity{}, "", identityObserved
+	}
+	started := time.Now()
+	_, err := runOpenRouter(context.Background(), fixture.config, runtime)
+	if !errors.Is(err, identityObserved) {
+		t.Fatalf("err=%v", err)
+	}
+	if identityDeadline.IsZero() || identityDeadline.Sub(started) > 601*time.Second {
+		t.Fatalf("identity deadline=%v started=%v", identityDeadline, started)
 	}
 }
 
