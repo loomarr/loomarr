@@ -122,7 +122,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | ---: | --- |
 | `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
-| `diagnostics` | 9 | — |
+| `diagnostics` | 8 | — |
 | `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
 | `fillerbakeoff` | 8 | `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
@@ -137,17 +137,16 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `library` | 8 | `filler`, `httpx`, `metrics` |
 | `llm` | 6 | `httpx`, `metrics` |
 | `mediatools` | 11 | `diagnostics`, `playout` |
-| `metrics` | 9 | `provision` |
+| `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `openroutermedia` | 7 | `fillereval` |
-| `playout` | 5 | `diagnostics`, `prepared`, `provision`, `schedule` |
-| `prepared` | 5 | `diagnostics` |
+| `playout` | 5 | `diagnostics`, `provision`, `schedule` |
 | `provision` | 18 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 5 | — |
-| `schedule` | 16 | `provision` |
+| `schedule` | 15 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 15 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 6 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
 
@@ -161,7 +160,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`contact`** · 5 importers
   Owns person contact-address identity and normalization (§11).
-- **`diagnostics`** · 9 importers
+- **`diagnostics`** · 8 importers
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
@@ -224,11 +223,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns Loomarr's immutable built-in holiday identities and aliases.
 - **`invitation`** · 6 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
-- **`metrics`** · 9 importers · → `images/rustgen`, `provision`
+- **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`openroutermedia`** · 7 importers · → `fillereval`
   Owns Loomarr's bounded OpenRouter structured-media transport.
-- **`prepared`** · 5 importers · → `diagnostics`, `media`
+- **`prepared`** · 4 importers · → `diagnostics`, `media`
   Owns immutable, reusable playout publications.
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
@@ -241,7 +240,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 16 importers · → `holidayvocab`, `provision`, `textmatch`
+- **`schedule`** · 15 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
@@ -263,6 +262,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`mediatools`** · 11 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
+- **`playoutcert`** · 1 importer · → `playout`
+  Drives Loomarr's public playout transports through a bounded, credential-redacted production-path certification run.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
 
@@ -317,7 +318,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 15 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 9**
@@ -380,15 +381,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 13**
 
-- **`api`** · 2 importers · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 14**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
-- **`playoutcert`** · → `api`, `diagnostics`, `metrics`, `playout`, `prepared`, `schedule`, `store`
-  Drives Loomarr's public playout transports through a bounded, credential-redacted production-path certification run.
 
 
 <!-- END GENERATED: package-map -->
