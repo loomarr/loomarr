@@ -122,12 +122,18 @@ type httpFixture struct {
 	mu               sync.Mutex
 	activeRaw        int
 	maxConcurrentRaw int
-	activeChannels   map[string]int
+	sessions         map[string]*fixtureSession
+	starts           int
+}
+
+type fixtureSession struct {
+	viewers   int
+	graceEnds time.Time
 }
 
 func newHTTPFixture(t *testing.T, channels int) *httpFixture {
 	t.Helper()
-	f := &httpFixture{admin: "admin-super-secret", device: "device-super-secret", activeChannels: map[string]int{}}
+	f := &httpFixture{admin: "admin-super-secret", device: "device-super-secret", sessions: map[string]*fixtureSession{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/system/version", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+f.admin {
@@ -142,9 +148,19 @@ func newHTTPFixture(t *testing.T, channels int) *httpFixture {
 			return
 		}
 		f.mu.Lock()
-		active := len(f.activeChannels)
+		f.expireGraceLocked(time.Now())
+		active, viewers, grace := len(f.sessions), 0, 0
+		sessions := make([]map[string]any, 0, active)
+		for channelID, session := range f.sessions {
+			if session.viewers > 0 {
+				viewers++
+			} else {
+				grace++
+			}
+			sessions = append(sessions, map[string]any{"channelId": channelID, "target": "full", "viewers": session.viewers})
+		}
 		f.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(map[string]any{"running": true, "capacity": 4, "active": active, "viewerActiveSessions": active, "graceIdleSessions": 0, "transcodeCost": min(active, 4), "sessions": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"running": true, "capacity": 4, "active": active, "viewerActiveSessions": viewers, "graceIdleSessions": grace, "transcodeCost": min(active, 4), "sessions": sessions})
 	})
 	mux.HandleFunc("/v1/playout/status", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"running": true, "gpu": map[string]any{"name": "fixture"}, "channels": []any{}, "prepared": map[string]any{"readyChannels": channels, "channels": channels}})
@@ -160,7 +176,10 @@ func newHTTPFixture(t *testing.T, channels int) *httpFixture {
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
 	})
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, "process_resident_memory_bytes 104857600\nprocess_cpu_seconds_total 2\nprocess_open_fds 12\ngo_goroutines 18\nloomarr_http_requests_in_flight 1\nloomarr_playout_sessions_active 0\n")
+		f.mu.Lock()
+		starts := f.starts
+		f.mu.Unlock()
+		_, _ = fmt.Fprintf(w, "process_resident_memory_bytes 104857600\nprocess_cpu_seconds_total 2\nprocess_open_fds 12\ngo_goroutines 18\nloomarr_http_requests_in_flight 1\nloomarr_playout_sessions_active 0\nloomarr_playout_session_starts_total{result=\"success\"} %d\n", starts)
 	})
 	mux.HandleFunc("/v1/channels/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/play-url") {
@@ -194,13 +213,20 @@ func newHTTPFixture(t *testing.T, channels int) *httpFixture {
 		}
 		channelID := strings.TrimPrefix(r.URL.Path, "/v1/playout/stream/")
 		f.mu.Lock()
-		if f.activeChannels[channelID] == 0 && len(f.activeChannels) >= 4 {
+		f.expireGraceLocked(time.Now())
+		session := f.sessions[channelID]
+		if session == nil && len(f.sessions) >= 4 {
 			f.mu.Unlock()
 			http.Error(w, "capacity", http.StatusServiceUnavailable)
 			return
 		}
+		if session == nil {
+			session = &fixtureSession{}
+			f.sessions[channelID] = session
+			f.starts++
+		}
 		f.activeRaw++
-		f.activeChannels[channelID]++
+		session.viewers++
 		if f.activeRaw > f.maxConcurrentRaw {
 			f.maxConcurrentRaw = f.activeRaw
 		}
@@ -208,9 +234,9 @@ func newHTTPFixture(t *testing.T, channels int) *httpFixture {
 		defer func() {
 			f.mu.Lock()
 			f.activeRaw--
-			f.activeChannels[channelID]--
-			if f.activeChannels[channelID] == 0 {
-				delete(f.activeChannels, channelID)
+			session.viewers--
+			if session.viewers == 0 {
+				session.graceEnds = time.Now().Add(20 * time.Millisecond)
 			}
 			f.mu.Unlock()
 		}()
@@ -225,6 +251,14 @@ func newHTTPFixture(t *testing.T, channels int) *httpFixture {
 	f.server = httptest.NewServer(mux)
 	t.Cleanup(f.server.Close)
 	return f
+}
+
+func (f *httpFixture) expireGraceLocked(now time.Time) {
+	for channelID, session := range f.sessions {
+		if session.viewers == 0 && !session.graceEnds.IsZero() && !now.Before(session.graceEnds) {
+			delete(f.sessions, channelID)
+		}
+	}
 }
 
 func fixtureChannels(n int) []Channel {

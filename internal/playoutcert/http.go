@@ -137,13 +137,31 @@ func (e *endpoint) getJSON(ctx context.Context, path string, admin bool, output 
 }
 
 type sessionSnapshot struct {
-	Running       bool              `json:"running"`
-	Capacity      int               `json:"capacity"`
-	Active        int               `json:"active"`
-	ViewerActive  int               `json:"viewerActiveSessions"`
-	GraceIdle     int               `json:"graceIdleSessions"`
-	TranscodeCost int               `json:"transcodeCost"`
-	Sessions      []json.RawMessage `json:"sessions"`
+	Running       bool           `json:"running"`
+	Capacity      int            `json:"capacity"`
+	Active        int            `json:"active"`
+	ViewerActive  int            `json:"viewerActiveSessions"`
+	GraceIdle     int            `json:"graceIdleSessions"`
+	TranscodeCost int            `json:"transcodeCost"`
+	Sessions      []sessionState `json:"sessions"`
+}
+
+// sessionState is the existing per-(Channel, plan) telemetry projection.  Lifecycle
+// evidence must name the raw tuner audience it exercised; aggregate totals can be
+// affected by an unrelated Channel.
+type sessionState struct {
+	ChannelID string `json:"channelId"`
+	Target    string `json:"target"`
+	Viewers   int    `json:"viewers"`
+}
+
+func (s sessionSnapshot) session(channelID, target string) (sessionState, bool) {
+	for _, item := range s.Sessions {
+		if item.ChannelID == channelID && item.Target == target {
+			return item, true
+		}
+	}
+	return sessionState{}, false
 }
 
 type playoutStatusSnapshot struct {
@@ -298,6 +316,38 @@ func (e *endpoint) metrics(ctx context.Context) (map[string]float64, error) {
 		}
 	}
 	return values, nil
+}
+
+func (e *endpoint) metricTotal(ctx context.Context, name string) (float64, error) {
+	resp, err := e.request(ctx, http.MethodGet, "/metrics", nil, false)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("metrics HTTP status %d", resp.StatusCode)
+	}
+	total, found := 0.0, false
+	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 4<<20))
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) != 2 || (fields[0] != name && !strings.HasPrefix(fields[0], name+"{")) {
+			continue
+		}
+		value, parseErr := strconv.ParseFloat(fields[1], 64)
+		if parseErr != nil {
+			return 0, errors.New("metric value is invalid")
+		}
+		total += value
+		found = true
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, err
+	}
+	if !found {
+		return 0, errors.New("metric family is missing")
+	}
+	return total, nil
 }
 
 func (e *endpoint) ffmpegRunning(ctx context.Context) (int, error) {

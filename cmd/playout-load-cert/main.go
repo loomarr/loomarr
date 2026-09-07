@@ -37,6 +37,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	fanIn := flags.Int("fan-in", 4, "same-Channel simultaneous viewers")
 	requestTimeout := flags.Duration("request-timeout", 15*time.Second, "per-request deadline")
 	cleanupTimeout := flags.Duration("cleanup-timeout", 45*time.Second, "cleanup convergence deadline")
+	warmGrace := flags.Duration("warm-grace", 30*time.Second, "target warm-session grace")
 	suiteTimeout := flags.Duration("suite-timeout", 10*time.Minute, "whole-suite deadline (maximum 30m)")
 	rawBytes := flags.Int("raw-capture-bytes", 2<<20, "bounded bytes retained in memory per raw stream")
 	ffprobe := flags.String("ffprobe", "ffprobe", "ffprobe executable")
@@ -48,7 +49,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: --manifest is required and positional arguments are refused")
 		return 2
 	}
-	if *concurrency < 1 || *concurrency > 64 || *surfRounds < 1 || *surfRounds > 100 || *fanIn < 1 || *fanIn > 64 || *requestTimeout <= 0 || *cleanupTimeout <= 0 || *suiteTimeout <= 0 || *suiteTimeout > 30*time.Minute || *syntheticCapacity < 1 || *syntheticCapacity > 64 || *syntheticGrace <= 0 || *syntheticGrace > time.Minute || *rawBytes < 188 || *rawBytes > 16<<20 {
+	if *concurrency < 1 || *concurrency > 64 || *surfRounds < 1 || *surfRounds > 100 || *fanIn < 1 || *fanIn > 64 || *requestTimeout <= 0 || *cleanupTimeout <= 0 || *warmGrace <= 0 || *warmGrace > time.Minute || *suiteTimeout <= 0 || *suiteTimeout > 30*time.Minute || *syntheticCapacity < 1 || *syntheticCapacity > 64 || *syntheticGrace <= 0 || *syntheticGrace > time.Minute || *rawBytes < 188 || *rawBytes > 16<<20 {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: resource bounds are invalid")
 		return 2
 	}
@@ -89,9 +90,12 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		BaseURL: baseURL, AdminBearer: adminBearer, DeviceToken: deviceToken,
 		Channels: channels, Certify: *certify, RemoteAcknowledged: *remote && !*synthetic,
 		Concurrency: *concurrency, SurfRounds: *surfRounds, FanInViewers: *fanIn,
-		RequestTimeout: *requestTimeout, CleanupTimeout: *cleanupTimeout, RawCaptureBytes: *rawBytes,
+		RequestTimeout: *requestTimeout, CleanupTimeout: *cleanupTimeout, WarmGrace: *warmGrace, RawCaptureBytes: *rawBytes,
 		Validator: playoutcert.FFprobeValidator{Path: *ffprobe},
 		Decoder:   playoutcert.FFmpegDecoder{Path: *ffmpeg},
+	}
+	if isolated != nil {
+		config.WarmGrace = *syntheticGrace
 	}
 	report, err := playoutcert.Run(runCtx, config)
 	if err != nil {

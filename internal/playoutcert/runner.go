@@ -125,6 +125,17 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	if overloadSample.Capacity > 0 {
 		report.Resources = append(report.Resources, overloadSample)
 	}
+	if len(transcodeIndexes) > 0 {
+		// The overload probe intentionally leaves warm parents behind.  Lifecycle
+		// evidence starts only from the recorded baseline, otherwise its first raw
+		// request can correctly reuse an overload parent and look like a failed start.
+		lifecycleBaseline, _ := waitForConvergence(ctx, endpoint, config, baseline, min(config.CleanupTimeout, config.WarmGrace+10*time.Second))
+		report.Phases = append(report.Phases, lifecycleDrill(ctx, endpoint, config, transcodeIndexes[0], baseline, lifecycleBaseline.class)...)
+	} else {
+		for _, name := range []string{"cancellation", "warm_reuse", "grace_expiry"} {
+			report.Phases = append(report.Phases, phaseFrom(name, []observation{{class: "cohort_missing"}}))
+		}
+	}
 
 	cleanupObs, finalSample := waitForConvergence(ctx, endpoint, config, baseline, config.CleanupTimeout)
 	report.Phases = append(report.Phases, phaseFrom("cleanup", []observation{cleanupObs}))
@@ -169,6 +180,127 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	report.CompletedAt = config.Now()
 	report.Certified = config.Certify && len(report.Failures) == 0
 	return report, nil
+}
+
+type rawConnection struct {
+	body      io.ReadCloser
+	startedAt time.Time
+	firstByte time.Duration
+}
+
+func openRaw(ctx context.Context, endpoint *endpoint, config Config, channelIndex int) (*rawConnection, string) {
+	started := time.Now()
+	path := "/v1/playout/stream/" + url.PathEscape(config.Channels[channelIndex].ID) + "?token=" + url.QueryEscape(endpoint.device)
+	resp, err := endpoint.request(ctx, http.MethodGet, path, nil, false)
+	if err != nil {
+		return nil, "request_failed"
+	}
+	if resp.StatusCode != http.StatusOK {
+		class := httpClass(resp.StatusCode)
+		_ = resp.Body.Close()
+		return nil, class
+	}
+	var first [1]byte
+	if _, err := io.ReadFull(resp.Body, first[:]); err != nil {
+		_ = resp.Body.Close()
+		return nil, "body_failed"
+	}
+	return &rawConnection{body: resp.Body, startedAt: started, firstByte: time.Since(started)}, "ok"
+}
+
+func lifecycleDrill(ctx context.Context, endpoint *endpoint, config Config, channelIndex int, baseline ResourceSample, precondition string) []Phase {
+	const startsMetric = "loomarr_playout_session_starts_total"
+	if precondition != "ok" {
+		failure := phaseFrom("cancellation", []observation{{class: "baseline_not_converged"}})
+		return []Phase{failure, phaseFrom("warm_reuse", []observation{{class: "dependency_failed"}}), phaseFrom("grace_expiry", []observation{{class: "dependency_failed"}})}
+	}
+	channelID, target := config.Channels[channelIndex].ID, "full"
+	before, err := endpoint.metricTotal(ctx, startsMetric)
+	if err != nil {
+		failure := phaseFrom("cancellation", []observation{{class: "metric_failed"}})
+		return []Phase{failure, phaseFrom("warm_reuse", []observation{{class: "dependency_failed"}}), phaseFrom("grace_expiry", []observation{{class: "dependency_failed"}})}
+	}
+	first, class := openRaw(ctx, endpoint, config, channelIndex)
+	if class != "ok" {
+		failure := phaseFrom("cancellation", []observation{{class: class}})
+		return []Phase{failure, phaseFrom("warm_reuse", []observation{{class: "dependency_failed"}}), phaseFrom("grace_expiry", []observation{{class: "dependency_failed"}})}
+	}
+	afterFirst, metricErr := endpoint.metricTotal(ctx, startsMetric)
+	firstState := waitForSessionState(ctx, endpoint, config, config.RequestTimeout, func(snapshot sessionSnapshot) bool {
+		session, found := snapshot.session(channelID, target)
+		return found && session.Viewers > 0
+	})
+	_ = first.body.Close()
+	cancelStarted := time.Now()
+	cancelClass := waitForSessionState(ctx, endpoint, config, config.RequestTimeout, func(snapshot sessionSnapshot) bool {
+		session, found := snapshot.session(channelID, target)
+		return found && session.Viewers == 0
+	})
+	if firstState != "ok" {
+		cancelClass = "session_identity_failed"
+	}
+	cancellation := phaseFrom("cancellation", []observation{{duration: time.Since(cancelStarted), firstByte: first.firstByte, class: cancelClass}})
+
+	second, warmClass := openRaw(ctx, endpoint, config, channelIndex)
+	if warmClass == "ok" {
+		afterSecond, totalErr := endpoint.metricTotal(ctx, startsMetric)
+		warmState := waitForSessionState(ctx, endpoint, config, config.RequestTimeout, func(snapshot sessionSnapshot) bool {
+			session, found := snapshot.session(channelID, target)
+			return found && session.Viewers > 0
+		})
+		if metricErr != nil || totalErr != nil || afterFirst <= before || afterSecond != afterFirst || warmState != "ok" {
+			warmClass = "parent_not_reused"
+		}
+	}
+	warmDuration, warmFirstByte := time.Duration(0), time.Duration(0)
+	if second != nil {
+		warmDuration, warmFirstByte = time.Since(second.startedAt), second.firstByte
+		_ = second.body.Close()
+	}
+	warm := phaseFrom("warm_reuse", []observation{{duration: warmDuration, firstByte: warmFirstByte, class: warmClass}})
+
+	expiryStarted := time.Now()
+	expiryClass := waitForSessionState(ctx, endpoint, config, min(config.CleanupTimeout, config.WarmGrace+10*time.Second), func(snapshot sessionSnapshot) bool {
+		_, found := snapshot.session(channelID, target)
+		return !found
+	})
+	beforeRestart, totalErr := endpoint.metricTotal(ctx, startsMetric)
+	third, restartClass := openRaw(ctx, endpoint, config, channelIndex)
+	if expiryClass == "ok" && restartClass == "ok" {
+		afterRestart, restartErr := endpoint.metricTotal(ctx, startsMetric)
+		restartState := waitForSessionState(ctx, endpoint, config, config.RequestTimeout, func(snapshot sessionSnapshot) bool {
+			session, found := snapshot.session(channelID, target)
+			return found && session.Viewers > 0
+		})
+		if totalErr != nil || restartErr != nil || afterRestart <= beforeRestart || restartState != "ok" {
+			expiryClass = "parent_not_restarted"
+		}
+	} else if expiryClass == "ok" {
+		expiryClass = restartClass
+	}
+	restartFirstByte := time.Duration(0)
+	if third != nil {
+		restartFirstByte = third.firstByte
+		_ = third.body.Close()
+	}
+	expiry := phaseFrom("grace_expiry", []observation{{duration: time.Since(expiryStarted), firstByte: restartFirstByte, class: expiryClass}})
+	return []Phase{cancellation, warm, expiry}
+}
+
+func waitForSessionState(ctx context.Context, endpoint *endpoint, config Config, timeout time.Duration, accept func(sessionSnapshot) bool) string {
+	started := time.Now()
+	for time.Since(started) <= timeout {
+		snapshot, err := endpoint.sessions(ctx)
+		if err == nil && accept(snapshot) {
+			return "ok"
+		}
+		select {
+		case <-ctx.Done():
+			return "cancelled"
+		case <-time.After(config.CleanupPoll):
+		}
+	}
+	return "state_timeout"
 }
 
 func waitForConvergence(ctx context.Context, endpoint *endpoint, config Config, baseline ResourceSample, timeout time.Duration) (observation, ResourceSample) {
