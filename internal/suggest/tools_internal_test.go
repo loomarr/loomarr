@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
 
@@ -195,6 +196,27 @@ func TestRunToolKeepsAllQualifiersOnAlreadyValidStrictCall(t *testing.T) {
 	if got.OriginalLanguage != "en" || got.RuntimeMin != 20 || got.RuntimeMax != 60 ||
 		got.VoteAverageMin != 6.5 || got.VoteCountMin != 100 {
 		t.Fatalf("strict call lost compatible qualifiers: %+v", got)
+	}
+}
+
+func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: "series", Name: "Full House", TVDBID: 762},
+		{MediaType: "series", Name: "Family Matters", TVDBID: 767},
+	}}
+	intent := Intent{
+		Description:    "90s family comedies like Full House",
+		membershipKeys: make(map[provision.Key]bool),
+	}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	_, candidates, _ := s.runTool(context.Background(), llm.ToolCall{
+		Name: catalogToolName, Arguments: map[string]any{"query": "family comedies"},
+	}, intent, nil)
+	if len(candidates) != 2 || len(corpus.Searches()) != 1 {
+		t.Fatalf("broad search = candidates %+v searches %+v", candidates, corpus.Searches())
+	}
+	if len(intent.membershipKeys) != 0 {
+		t.Fatalf("ordinary example manufactured membership proof: %+v", intent.membershipKeys)
 	}
 }
 

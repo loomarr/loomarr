@@ -11,3 +11,9 @@ func TestIntentHashInvalidatesPriorPlannerContract(t *testing.T) {
 		t.Fatal("planner contract change reused the prior cache identity")
 	}
 }
+
+func TestIntentHashSeparatesMembershipPolicyFromNormalizedDescription(t *testing.T) {
+	if IntentHash(Intent{Description: "tgif"}) == IntentHash(Intent{Description: "TGIF"}) {
+		t.Fatal("a named-set request must not reuse a generic cached proposal")
+	}
+}

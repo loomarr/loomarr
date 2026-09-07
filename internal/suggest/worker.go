@@ -685,6 +685,7 @@ func classifyFailure(cause error) string {
 func IntentHash(i Intent) string {
 	norm := struct {
 		PlannerContract  string
+		MembershipPolicy bool
 		Desc, Era, Tone  string
 		Rt, Max          int
 		Include, Exclude []string
@@ -694,11 +695,12 @@ func IntentHash(i Intent) string {
 		Refine     string
 		LineupKeys []string
 	}{
-		PlannerContract: PlannerPromptVersion + ":" + PlannerToolSchemaVersion,
-		Desc:            strings.ToLower(strings.TrimSpace(i.Description)),
-		Era:             strings.ToLower(strings.TrimSpace(i.Era)),
-		Tone:            strings.ToLower(strings.TrimSpace(i.Tone)),
-		Rt:              i.RuntimeTgt, Max: i.MaxAcquire,
+		PlannerContract:  PlannerPromptVersion + ":" + PlannerToolSchemaVersion,
+		MembershipPolicy: requiresMembershipEvidence(i),
+		Desc:             strings.ToLower(strings.TrimSpace(i.Description)),
+		Era:              strings.ToLower(strings.TrimSpace(i.Era)),
+		Tone:             strings.ToLower(strings.TrimSpace(i.Tone)),
+		Rt:               i.RuntimeTgt, Max: i.MaxAcquire,
 		Include: normSlice(i.MustInclude), Exclude: normSlice(i.MustExclude),
 		Refine:     strings.ToLower(strings.TrimSpace(i.RefineText)),
 		LineupKeys: lineupKeys(i.CurrentLineup),

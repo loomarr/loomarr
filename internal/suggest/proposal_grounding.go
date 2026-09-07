@@ -39,14 +39,14 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
 			continue // a resolved reference cannot be padded with an unrelated grounded id
 		}
-		if requiresMembershipEvidence(intent) || len(intent.membershipKeys) > 0 {
+		if requiresMembershipEvidence(intent) {
 			if !intent.membershipKeys[provision.Key(key)] {
 				traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
 				continue // identity is real, but it was not explicitly enumerated as a member
 			}
 		}
 		rationale := p.Rationale
-		if requiresMembershipEvidence(intent) || len(intent.membershipKeys) > 0 {
+		if requiresMembershipEvidence(intent) {
 			rationale = membershipItemRationale(intent, provision.Key(key))
 		}
 		item := fromCandidate(cand, rationale, p.Confidence)
@@ -129,7 +129,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	stampEpisodeSelection(prop.Lineup, intent)
 	stampEpisodeSelection(prop.Acquisitions, intent)
 	stampEpisodeSelection(prop.Alternates, intent)
-	if requiresMembershipEvidence(intent) || len(intent.membershipKeys) > 0 {
+	if requiresMembershipEvidence(intent) {
 		prop.Rationale = membershipProposalRationale(intent, prop.Lineup, prop.Acquisitions, prop.Alternates)
 	}
 

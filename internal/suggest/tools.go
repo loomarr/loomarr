@@ -57,15 +57,11 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	if mtArg != "" {
 		cands = filterByMediaType(cands, mtArg) // narrow to the requested type
 	}
+	for _, candidate := range cands {
+		promoteUnambiguousMembership(intent, candidate.Name, cands)
+	}
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), cands, feedback)
 	cands = ranked.Candidates
-	for _, candidate := range cands {
-		if positiveIntentOrReferenceNamesTitle(intent, candidate.Name) {
-			if key, keyErr := candidate.Key(); keyErr == nil {
-				intent.membershipKeys[key] = true
-			}
-		}
-	}
 	blob, _ := json.Marshal(toolResult(cands))
 	return string(blob), cands, ranked.Trace
 }
@@ -101,10 +97,7 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 		if keyErr != nil {
 			continue
 		}
-		if positiveIntentOrReferenceNamesTitle(intent, title.name) {
-			key, _ := candidate.Key()
-			intent.membershipKeys[key] = true
-		}
+		promoteUnambiguousMembership(intent, title.name, results)
 		candidates = append(candidates, candidate)
 	}
 	if len(candidates) == 0 {

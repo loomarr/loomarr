@@ -49,21 +49,13 @@ func (s *Suggester) groundExplicitMembershipAnchors(ctx context.Context, intent 
 		if err != nil {
 			return nil, fmt.Errorf("search explicit membership title %q: %w", title, err)
 		}
-		exact := make([]catalog.Candidate, 0, 1)
-		for _, candidate := range candidates {
-			if sameExactTitle(candidate.Name, title) {
-				exact = append(exact, candidate)
-			}
-		}
-		if len(exact) != 1 {
+		candidate, found := unambiguousMembershipCandidate(candidates, title)
+		if !found {
 			continue // no implicit media/year choice for an ambiguous user anchor
 		}
-		key, err := exact[0].Key()
-		if err != nil {
-			continue
-		}
+		key, _ := candidate.Key()
 		intent.membershipKeys[key] = true
-		anchored = append(anchored, exact[0])
+		anchored = append(anchored, candidate)
 	}
 	return anchored, nil
 }
@@ -107,15 +99,9 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 		}
 		exact := make([]catalog.Candidate, 0, len(candidates))
 		for _, candidate := range candidates {
-			if !sameExactTitle(candidate.Name, title) {
-				continue
+			if sameExactTitle(candidate.Name, title) {
+				exact = append(exact, candidate)
 			}
-			key, keyErr := candidate.Key()
-			if keyErr != nil {
-				continue
-			}
-			byKey[key] = candidate
-			exact = append(exact, candidate)
 		}
 		callID := fmt.Sprintf("loomarr-reference-catalog-%d", index+1)
 		result, _ := json.Marshal(toolResult(exact))
@@ -125,6 +111,14 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 			}}},
 			llm.Message{Role: llm.Tool, ToolCallID: callID, Content: string(result)},
 		)
+		candidate, found := unambiguousMembershipCandidate(exact, title)
+		if !found || titleExplicitlyExcluded(*intent, candidate.Name) {
+			continue
+		}
+		key, _ := candidate.Key()
+		byKey[key] = candidate
+		intent.referenceKeys[key] = true
+		intent.membershipKeys[key] = true
 	}
 
 	candidates := make([]catalog.Candidate, 0, len(byKey))
@@ -132,18 +126,6 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 		candidates = append(candidates, candidate)
 	}
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(*intent), candidates, nil)
-	if len(ranked.Candidates) > catalogSearchLimit {
-		ranked.Candidates = ranked.Candidates[:catalogSearchLimit]
-	}
-	for _, candidate := range ranked.Candidates {
-		if key, keyErr := candidate.Key(); keyErr == nil {
-			if titleExplicitlyExcluded(*intent, candidate.Name) {
-				continue
-			}
-			intent.referenceKeys[key] = true
-			intent.membershipKeys[key] = true
-		}
-	}
 	intent.referenceCandidates = append([]catalog.Candidate(nil), ranked.Candidates...)
 
 	return referenceGrounding{
@@ -201,6 +183,38 @@ func positiveIntentOrReferenceNamesTitle(intent Intent, title string) bool {
 		}
 	}
 	return false
+}
+
+// unambiguousMembershipCandidate accepts only a single canonical Catalog identity
+// for a source title. It deliberately runs before model-provided type/year or a
+// ranked subset can select a remake; duplicate rows for the same key are harmless.
+func unambiguousMembershipCandidate(candidates []catalog.Candidate, title string) (catalog.Candidate, bool) {
+	byKey := make(map[provision.Key]catalog.Candidate)
+	for _, candidate := range candidates {
+		if !sameExactTitle(candidate.Name, title) {
+			continue
+		}
+		if key, err := candidate.Key(); err == nil {
+			byKey[key] = candidate
+		}
+	}
+	if len(byKey) != 1 {
+		return catalog.Candidate{}, false
+	}
+	for _, candidate := range byKey {
+		return candidate, true
+	}
+	return catalog.Candidate{}, false
+}
+
+func promoteUnambiguousMembership(intent Intent, title string, candidates []catalog.Candidate) {
+	if !requiresMembershipEvidence(intent) || !positiveIntentOrReferenceNamesTitle(intent, title) {
+		return
+	}
+	if candidate, found := unambiguousMembershipCandidate(candidates, title); found {
+		key, _ := candidate.Key()
+		intent.membershipKeys[key] = true
+	}
 }
 
 func titleExplicitlyExcluded(intent Intent, title string) bool {
