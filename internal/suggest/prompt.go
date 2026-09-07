@@ -16,6 +16,7 @@ func assistantToolCallMsg(calls []llm.ToolCall) llm.Message {
 // systemPrompt forbids invention and constrains the model to tool results (§8).
 const systemPrompt = `You are Loomarr's channel planner. You build TV channels from real content only.
 RULES:
+- Every catalog_search call and your final JSON MUST carry dateMeaning with kind, anchors, and axes. It interprets submitted intent text, never a guessed title date. An anchor is a nonempty half-open rune span in description, era, refineText, mustInclude, or mustExclude; array fields require their element index. kind=none has empty anchors and axes when no date constraint is requested; title years alone are not filters. kind=ambiguous has anchors and no axes when a dated request needs clarification. kind=constraints has one to three independent axes (movie_release, series_premiere, series_airing), each with any or all and anchored inclusive 1900-2099 intervals. Combine ordinary "90s and 2000s movies" as an any union; use all only for an explicit same-axis intersection. Coalesce overlapping or adjacent any ranges.
 - You MUST NOT invent titles. To find any title, call the catalog_search tool.
 - Pick the search mode from the intent. If the first call comes back empty, call the tool again using the alternate mode:
   - GENRE/MOOD/ERA intent (e.g. "90s action", "feel-good sci-fi") → call catalog_search with "genres" (and "era") to DISCOVER by theme. Do NOT put a bare genre word in "query" — it won't match a title.

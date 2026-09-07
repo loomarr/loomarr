@@ -298,12 +298,38 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	groundingRetried := false
 	finalizationOnly := hasReference
 	emptyRetrievals := 0
+	var acceptedMeaning *ValidatedDateMeaning
 	for {
-		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, intent, feedback, &finalizationOnly, &emptyRetrievals)
+		final, err := s.generate(ctx, &messages, tools, surfaced, &trace, temp, intent, feedback, &finalizationOnly, &emptyRetrievals, &acceptedMeaning)
 		if err != nil {
+			if errors.Is(err, errDateSemanticsUnclear) {
+				trace.Terminal = TerminalDateSemanticsUnclear
+				return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, err)
+			}
+			if errors.Is(err, errDateConstraintsConflict) {
+				trace.Terminal = TerminalConstraintsConflict
+				return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, err)
+			}
 			return Proposal{}, err
 		}
 		out, perr := parsePicks(final)
+		if perr == nil {
+			meaning, meaningErr := ValidateDateMeaning(intent, out.DateMeaning)
+			if meaningErr != nil {
+				if acceptedMeaning == nil && isDateMeaningConflict(meaningErr) {
+					trace.Terminal = TerminalConstraintsConflict
+					return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, errDateConstraintsConflict)
+				}
+				perr = meaningErr
+			} else if acceptedMeaning != nil && !acceptedMeaning.Equal(meaning) {
+				perr = errors.New("dateMeaning does not match accepted tool interpretation")
+			} else if meaning.DateMeaning().Kind == DateMeaningAmbiguous {
+				trace.Terminal = TerminalDateSemanticsUnclear
+				return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, errDateSemanticsUnclear)
+			} else {
+				acceptedMeaning = &meaning
+			}
+		}
 		if perr == nil {
 			if len(surfaced) == 0 && len(out.Picks) > 0 {
 				out.Picks, out.nameGroundingIncomplete, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
@@ -317,7 +343,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 				}
 			}
 			reportProgress(ctx, PhaseScoring, 0)
-			prop, buildErr := s.buildProposal(ctx, intent, out, surfaced, &trace)
+			prop, buildErr := s.buildProposal(ctx, intent, out, surfaced, &trace, *acceptedMeaning)
 			if errors.Is(buildErr, ErrNoGroundedTitles) && len(surfaced) == 0 && !groundingRetried {
 				groundingRetried = true
 				messages = append(messages, llm.Message{Role: llm.User, Content: groundingRetryPrompt})
@@ -353,7 +379,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 // turn, appending assistant/tool messages to *messages and recording surfaced
 // candidates for grounding. Returns the final content (possibly empty — the
 // caller's repair loop handles that).
-func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, temp float64, intent Intent, feedback []FeedbackSignal, finalizationOnly *bool, emptyRetrievals *int) (string, error) {
+func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, temp float64, intent Intent, feedback []FeedbackSignal, finalizationOnly *bool, emptyRetrievals *int, acceptedMeaning **ValidatedDateMeaning) (string, error) {
 	if *finalizationOnly {
 		tools = nil
 	}
@@ -396,7 +422,22 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 			toolCalls := resp.ToolCalls[:1]
 			*messages = append(*messages, assistantToolCallMsg(toolCalls))
 			for _, tc := range toolCalls {
-				result, cands, rankedTrace, valid := s.runTool(ctx, tc, intent, feedback)
+				result, cands, rankedTrace, valid, meaning := s.runToolWithDateMeaning(ctx, tc, intent, feedback, *acceptedMeaning)
+				if rankedTrace.Terminal == TerminalConstraintsConflict {
+					return "", errDateConstraintsConflict
+				}
+				if meaning != nil && meaning.DateMeaning().Kind == DateMeaningAmbiguous {
+					return "", errDateSemanticsUnclear
+				}
+				if valid && meaning != nil {
+					if *acceptedMeaning == nil {
+						*acceptedMeaning = meaning
+					} else if !(*acceptedMeaning).Equal(*meaning) {
+						result = `{"error":"dateMeaning does not match accepted tool interpretation"}`
+						valid = false
+						cands = nil
+					}
+				}
 				if !valid {
 					invalidRounds++
 				}
@@ -469,3 +510,6 @@ func normalizeConstraint(value string) string {
 // the intent surfaced no themed, real content. The worker fails the job with this
 // (a clear operator-facing reason), and it is NOT cached, so a re-submit re-runs.
 var ErrNoGroundedTitles = errors.New("suggester: no grounded titles found for this intent")
+
+var errDateSemanticsUnclear = errors.New("clarify_dates")
+var errDateConstraintsConflict = errors.New("constraints_conflict")

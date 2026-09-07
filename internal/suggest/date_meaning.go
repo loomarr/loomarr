@@ -2,18 +2,180 @@ package suggest
 
 import (
 	"cmp"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
+
+	"github.com/loomarr/loomarr/internal/schedule"
 )
+
+// decodeDateMeaning preserves JSON presence and type information until every
+// required coordinate has been checked. json.Unmarshal alone treats omitted and
+// null numeric fields as their Go zero value, which would let a malformed anchor
+// masquerade as a valid offset at the validator boundary.
+func decodeDateMeaning(raw []byte) (DateMeaning, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+		return DateMeaning{}, fmt.Errorf("must be an object")
+	}
+	if err := requireJSONFields(object, "kind", "anchors", "axes"); err != nil {
+		return DateMeaning{}, err
+	}
+	if err := rejectUnknownJSONFields(object, "kind", "anchors", "axes"); err != nil {
+		return DateMeaning{}, err
+	}
+	var meaning DateMeaning
+	if err := json.Unmarshal(raw, &meaning); err != nil {
+		return DateMeaning{}, err
+	}
+	var anchors []json.RawMessage
+	if err := json.Unmarshal(object["anchors"], &anchors); err != nil || anchors == nil {
+		return DateMeaning{}, fmt.Errorf("anchors must be an array")
+	}
+	for i, anchor := range anchors {
+		if err := validateJSONAnchor(anchor); err != nil {
+			return DateMeaning{}, fmt.Errorf("anchors[%d]: %w", i, err)
+		}
+	}
+	var axes []json.RawMessage
+	if err := json.Unmarshal(object["axes"], &axes); err != nil || axes == nil {
+		return DateMeaning{}, fmt.Errorf("axes must be an array")
+	}
+	for i, axis := range axes {
+		if err := validateJSONAxis(axis); err != nil {
+			return DateMeaning{}, fmt.Errorf("axes[%d]: %w", i, err)
+		}
+	}
+	return meaning, nil
+}
+
+func validateJSONAnchor(raw json.RawMessage) error {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+		return fmt.Errorf("must be an object")
+	}
+	if err := requireJSONFields(object, "field", "start", "end"); err != nil {
+		return err
+	}
+	if err := rejectUnknownJSONFields(object, "field", "index", "start", "end"); err != nil {
+		return err
+	}
+	return requireJSONTypes(object, map[string]string{"field": "string", "start": "number", "end": "number", "index": "number"})
+}
+
+func validateJSONAxis(raw json.RawMessage) error {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+		return fmt.Errorf("must be an object")
+	}
+	if err := requireJSONFields(object, "kind", "combine", "intervals"); err != nil {
+		return err
+	}
+	if err := rejectUnknownJSONFields(object, "kind", "combine", "intervals"); err != nil {
+		return err
+	}
+	if err := requireJSONTypes(object, map[string]string{"kind": "string", "combine": "string", "intervals": "array"}); err != nil {
+		return err
+	}
+	var intervals []json.RawMessage
+	if err := json.Unmarshal(object["intervals"], &intervals); err != nil || intervals == nil {
+		return fmt.Errorf("intervals must be an array")
+	}
+	for i, interval := range intervals {
+		var value map[string]json.RawMessage
+		if err := json.Unmarshal(interval, &value); err != nil || value == nil {
+			return fmt.Errorf("intervals[%d] must be an object", i)
+		}
+		if err := requireJSONFields(value, "anchor", "start", "end"); err != nil {
+			return fmt.Errorf("intervals[%d]: %w", i, err)
+		}
+		if err := rejectUnknownJSONFields(value, "anchor", "start", "end"); err != nil {
+			return fmt.Errorf("intervals[%d]: %w", i, err)
+		}
+		if err := requireJSONTypes(value, map[string]string{"anchor": "number", "start": "number", "end": "number"}); err != nil {
+			return fmt.Errorf("intervals[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func requireJSONFields(object map[string]json.RawMessage, fields ...string) error {
+	for _, field := range fields {
+		if raw, ok := object[field]; !ok || string(raw) == "null" {
+			return fmt.Errorf("%s is required", field)
+		}
+	}
+	return nil
+}
+func rejectUnknownJSONFields(object map[string]json.RawMessage, allowed ...string) error {
+	for field := range object {
+		if !slices.Contains(allowed, field) {
+			return fmt.Errorf("unknown field %q", field)
+		}
+	}
+	return nil
+}
+func requireJSONTypes(object map[string]json.RawMessage, types map[string]string) error {
+	for field, kind := range types {
+		raw, ok := object[field]
+		if !ok {
+			continue
+		}
+		if string(raw) == "null" {
+			return fmt.Errorf("%s must not be null", field)
+		}
+		switch kind {
+		case "string":
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return fmt.Errorf("%s must be a string", field)
+			}
+		case "array":
+			var value []json.RawMessage
+			if err := json.Unmarshal(raw, &value); err != nil || value == nil {
+				return fmt.Errorf("%s must be an array", field)
+			}
+		case "number":
+			var value int
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return fmt.Errorf("%s must be an integer", field)
+			}
+		}
+	}
+	return nil
+}
+
+// dateScope is the single producer mapping canonical execution windows to the
+// persisted schedule vocabulary. Series-airing remains its own axis: it must
+// never become a first-air-date provider filter.
+func dateScope(meaning ValidatedDateMeaning) *schedule.DateScope {
+	scope := &schedule.DateScope{}
+	for _, axis := range meaning.ExecutionWindows() {
+		ranges := make([]schedule.Range, len(axis.Windows))
+		for i, window := range axis.Windows {
+			ranges[i] = schedule.Range{From: window.Start, To: window.End}
+		}
+		switch axis.Kind {
+		case DateAxisMovieRelease:
+			scope.MovieRelease = ranges
+		case DateAxisSeriesPremiere:
+			scope.SeriesPremiere = ranges
+		case DateAxisSeriesAiring:
+			scope.SeriesAiring = ranges
+		}
+	}
+	return scope
+}
 
 // DateMeaning is the untrusted, model-facing date interpretation. It deliberately
 // contains only references into the submitted Intent; it does not infer dates from
 // its text.
 type DateMeaning struct {
 	Kind    DateMeaningKind `json:"kind"`
-	Anchors []DateAnchor    `json:"anchors,omitempty"`
-	Axes    []DateAxis      `json:"axes,omitempty"`
+	Anchors []DateAnchor    `json:"anchors"`
+	Axes    []DateAxis      `json:"axes"`
 }
 
 type DateMeaningKind string
@@ -89,6 +251,11 @@ func (e *DateMeaningError) Error() string {
 }
 
 const DateMeaningConstraintsConflict = "constraints_conflict"
+
+func isDateMeaningConflict(err error) bool {
+	var meaningErr *DateMeaningError
+	return errors.As(err, &meaningErr) && meaningErr.Code == DateMeaningConstraintsConflict
+}
 
 // ValidatedDateMeaning is an immutable canonical interpretation. DateMeaning
 // returns a deep copy of its lossless, canonical source clauses. ExecutionWindows
@@ -358,16 +525,16 @@ func dateYearRanges(intervals []DateInterval) []DateYearRange {
 }
 
 func cloneDateMeaning(m DateMeaning) DateMeaning {
-	m.Anchors = append([]DateAnchor(nil), m.Anchors...)
+	m.Anchors = append([]DateAnchor{}, m.Anchors...)
 	for i := range m.Anchors {
 		if m.Anchors[i].Index != nil {
 			n := *m.Anchors[i].Index
 			m.Anchors[i].Index = &n
 		}
 	}
-	m.Axes = append([]DateAxis(nil), m.Axes...)
+	m.Axes = append([]DateAxis{}, m.Axes...)
 	for i := range m.Axes {
-		m.Axes[i].Intervals = append([]DateInterval(nil), m.Axes[i].Intervals...)
+		m.Axes[i].Intervals = append([]DateInterval{}, m.Axes[i].Intervals...)
 	}
 	return m
 }

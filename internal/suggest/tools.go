@@ -17,16 +17,39 @@ import (
 // inventing a tool). Returns the JSON result string AND the candidates (so the
 // suggester can track what was surfaced for grounding).
 func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
+	result, candidates, trace, valid, _ := s.runToolWithDateMeaning(ctx, tc, intent, feedback, nil)
+	return result, candidates, trace, valid
+}
+
+// runToolWithDateMeaning is the one tool boundary that decodes model JSON and
+// returns its canonical interpretation to the invocation state. Keeping the
+// accepted value out of the untrusted map prevents a later final response from
+// silently changing what the earlier retrieval meant.
+func (s *Suggester) runToolWithDateMeaning(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal, accepted *ValidatedDateMeaning) (string, []catalog.Candidate, DecisionTrace, bool, *ValidatedDateMeaning) {
 	if tc.Name != catalogToolName {
-		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil, DecisionTrace{}, false
+		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil, DecisionTrace{}, false, nil
 	}
 	arguments := tc.Arguments
+	meaning, dateErr := validatedToolDateMeaning(intent, arguments)
+	if dateErr != nil {
+		if accepted == nil && isDateMeaningConflict(dateErr) {
+			return fmt.Sprintf(`{"error":%q}`, dateErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalConstraintsConflict}, true, nil
+		}
+		return fmt.Sprintf(`{"error":%q}`, dateErr.Error()), nil, DecisionTrace{}, false, nil
+	}
+	if accepted != nil && !accepted.Equal(meaning) {
+		return `{"error":"dateMeaning does not match accepted tool interpretation"}`, nil, DecisionTrace{}, false, nil
+	}
+	if meaning.DateMeaning().Kind == DateMeaningAmbiguous {
+		return `{"error":"clarify_dates"}`, nil, DecisionTrace{}, true, &meaning
+	}
 	if rawMode, present := arguments["mode"]; present {
 		mode, ok := rawMode.(string)
 		if !ok || strings.TrimSpace(mode) != "collection" {
-			return `{"error":"mode must be collection when provided"}`, nil, DecisionTrace{}, false
+			return `{"error":"mode must be collection when provided"}`, nil, DecisionTrace{}, false, nil
 		}
-		return s.runCollectionTool(ctx, arguments, intent, feedback)
+		result, candidates, trace, valid := s.runCollectionTool(ctx, arguments, intent, feedback)
+		return result, candidates, trace, valid, &meaning
 	}
 	discovery, discoveryMode, parseErr := parseDiscoveryQuery(arguments)
 	if parseErr != nil {
@@ -36,7 +59,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 		}
 	}
 	if parseErr != nil {
-		return fmt.Sprintf(`{"error":%q}`, parseErr.Error()), nil, DecisionTrace{}, false
+		return fmt.Sprintf(`{"error":%q}`, parseErr.Error()), nil, DecisionTrace{}, false, nil
 	}
 	mtArg, _ := arguments["media_type"].(string)
 
@@ -52,7 +75,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 		cands, err = s.catalog.Search(ctx, stringArg(arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
 	}
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true, &meaning
 	}
 	if !discoveryMode {
 		query := stringArg(arguments["query"])
@@ -64,7 +87,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	}
 	for _, candidate := range cands {
 		if resolveErr := s.resolveMembershipSource(ctx, intent, candidate.Name); resolveErr != nil {
-			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
+			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true, &meaning
 		}
 	}
 	if mtArg != "" {
@@ -73,7 +96,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), cands, feedback)
 	cands = ranked.Candidates
 	blob, _ := json.Marshal(toolResult(cands))
-	return string(blob), cands, ranked.Trace, true
+	return string(blob), cands, ranked.Trace, true, &meaning
 }
 
 // runCollectionTool resolves only the exact constituent titles the model names.
@@ -81,7 +104,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 // membership evidence: those are thematic evidence, not a named set's roster.
 func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]any, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
 	for key := range arguments {
-		if key != "mode" && key != "media_type" && key != "titles" {
+		if key != "mode" && key != "media_type" && key != "titles" && key != "dateMeaning" {
 			return `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, nil, DecisionTrace{}, false
 		}
 	}
@@ -116,6 +139,25 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), candidates, feedback)
 	blob, _ := json.Marshal(toolResult(ranked.Candidates))
 	return string(blob), ranked.Candidates, ranked.Trace, true
+}
+
+// validatedToolDateMeaning deliberately round-trips the JSON-shaped tool
+// arguments before validation. Tool calls arrive as map[string]any, whereas the
+// canonical validator owns all semantic and anchor checks.
+func validatedToolDateMeaning(intent Intent, arguments map[string]any) (ValidatedDateMeaning, error) {
+	raw, present := arguments["dateMeaning"]
+	if !present {
+		return ValidatedDateMeaning{}, fmt.Errorf("dateMeaning is required")
+	}
+	blob, err := json.Marshal(raw)
+	if err != nil {
+		return ValidatedDateMeaning{}, fmt.Errorf("dateMeaning: %w", err)
+	}
+	meaning, err := decodeDateMeaning(blob)
+	if err != nil {
+		return ValidatedDateMeaning{}, fmt.Errorf("dateMeaning: %w", err)
+	}
+	return ValidateDateMeaning(intent, &meaning)
 }
 
 type collectionTitleAnchor struct {
@@ -543,9 +585,11 @@ func catalogTool() llm.ToolSchema {
 			"Returns real external ids, genres, a short overview, available language/country/runtime/vote/keyword/network/person evidence, " +
 			"and an inLibrary flag. Missing fields mean unknown. This is the ONLY way to find titles.",
 		Parameters: map[string]any{
-			"type": "object",
+			"type":     "object",
+			"required": []string{"dateMeaning"},
 			"properties": map[string]any{
-				"mode": map[string]any{"type": "string", "enum": []string{"collection"}, "description": "collection requires media_type and titles; omit for ordinary title or discovery search"},
+				"dateMeaning": dateMeaningSchema(),
+				"mode":        map[string]any{"type": "string", "enum": []string{"collection"}, "description": "collection requires media_type and titles; omit for ordinary title or discovery search"},
 				"titles": map[string]any{"type": "array", "minItems": 1, "maxItems": 8, "items": map[string]any{"oneOf": []any{
 					map[string]any{"type": "string", "minLength": 1, "maxLength": 120},
 					map[string]any{"type": "object", "properties": map[string]any{
@@ -573,6 +617,54 @@ func catalogTool() llm.ToolSchema {
 				"then": map[string]any{"required": []string{"media_type", "titles"}},
 			}},
 		},
+	}
+}
+
+func dateMeaningSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "required": []string{"kind", "anchors", "axes"}, "additionalProperties": false,
+		"properties": map[string]any{
+			"kind":    map[string]any{"type": "string", "enum": []string{"none", "constraints", "ambiguous"}},
+			"anchors": map[string]any{"type": "array", "items": dateAnchorSchema()},
+			"axes":    map[string]any{"type": "array", "items": dateAxisSchema()},
+		},
+	}
+}
+
+func dateAnchorSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "required": []string{"field", "start", "end"},
+		"properties": map[string]any{
+			"field": map[string]any{"type": "string", "enum": []string{"description", "era", "refineText", "mustInclude", "mustExclude"}},
+			"index": map[string]any{"type": "integer", "minimum": 0},
+			"start": map[string]any{"type": "integer", "minimum": 0},
+			"end":   map[string]any{"type": "integer", "minimum": 1},
+		},
+		"additionalProperties": false,
+	}
+}
+
+func dateAxisSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "required": []string{"kind", "combine", "intervals"},
+		"properties": map[string]any{
+			"kind":      map[string]any{"type": "string", "enum": []string{"movie_release", "series_premiere", "series_airing"}},
+			"combine":   map[string]any{"type": "string", "enum": []string{"any", "all"}},
+			"intervals": map[string]any{"type": "array", "minItems": 1, "maxItems": 4, "items": dateIntervalSchema()},
+		},
+		"additionalProperties": false,
+	}
+}
+
+func dateIntervalSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "required": []string{"anchor", "start", "end"},
+		"properties": map[string]any{
+			"anchor": map[string]any{"type": "integer", "minimum": 0},
+			"start":  map[string]any{"type": "integer", "minimum": 1900, "maximum": 2099},
+			"end":    map[string]any{"type": "integer", "minimum": 1900, "maximum": 2099},
+		},
+		"additionalProperties": false,
 	}
 }
 

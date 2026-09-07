@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	PlannerPromptVersion             = "suggester-prompt-v5"
-	PlannerToolSchemaVersion         = "catalog-search-v5"
+	PlannerPromptVersion             = "suggester-prompt-v6"
+	PlannerToolSchemaVersion         = "catalog-search-v6"
 	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v1"
 	PlannerDiagnosticToolCallID      = "planner-diagnostic-call-1"
 	plannerDiagnosticSchemaVersion   = 1

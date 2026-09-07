@@ -1,6 +1,7 @@
 package suggest
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -170,6 +171,28 @@ func TestValidateDateMeaningCanonicalBoundaryAndEquality(t *testing.T) {
 	}
 	if after := whole.ExecutionWindows(); after[0].Windows[0].Start != 1990 {
 		t.Fatal("execution windows mutate validated state")
+	}
+}
+
+func TestDateMeaningNoneMarshalsAsStrictEmptyArrays(t *testing.T) {
+	validated, err := ValidateDateMeaning(Intent{}, &DateMeaning{Kind: DateMeaningNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(validated.DateMeaning())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) != `{"kind":"none","anchors":[],"axes":[]}` {
+		t.Fatalf("JSON = %s", encoded)
+	}
+	decoded, err := decodeDateMeaning(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTrip, err := ValidateDateMeaning(Intent{}, &decoded)
+	if err != nil || !validated.Equal(roundTrip) {
+		t.Fatalf("round trip = %#v, %v", roundTrip, err)
 	}
 }
 
