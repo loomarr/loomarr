@@ -30,6 +30,7 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		return Report{}, err
 	}
 	report := Report{SchemaVersion: SchemaVersion, StartedAt: config.Now(), Phases: []Phase{}, Resources: []ResourceSample{}, Failures: []string{}}
+	report.FaultProfiles, report.Failures = faultQualifications(config.FaultProfiles, config.FaultController)
 	target, _, err := endpoint.target(ctx, len(config.Channels), manifestDigest(config.Channels))
 	if err != nil {
 		return Report{}, fmt.Errorf("target preflight failed")

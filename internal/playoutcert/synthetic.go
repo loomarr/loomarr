@@ -29,6 +29,7 @@ import (
 )
 
 type SyntheticConfig struct {
+	Scope             string
 	Channels          []Channel
 	FFmpeg            string
 	Capacity          int
@@ -49,6 +50,7 @@ type SyntheticTarget struct {
 	root            string
 	boundaryWitness *syntheticBoundaryWitness
 	closeOnce       sync.Once
+	scope           string
 }
 
 func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*SyntheticTarget, error) {
@@ -78,7 +80,11 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	if err != nil {
 		return nil, err
 	}
-	target := &SyntheticTarget{root: root, boundaryWitness: newSyntheticBoundaryWitness()}
+	scope := strings.TrimSpace(config.Scope)
+	if scope == "" {
+		scope = "isolated-playout-cert"
+	}
+	target := &SyntheticTarget{root: root, scope: scope, boundaryWitness: newSyntheticBoundaryWitness()}
 	fail := func(err error) (*SyntheticTarget, error) { _ = target.Close(context.Background()); return nil, err }
 
 	st, err := store.Open(ctx, "sqlite://"+filepath.Join(root, "loomarr.db"), true)
@@ -227,6 +233,13 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	target.server = &http.Server{Handler: syntheticHandler, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = target.server.Serve(listener) }()
 	return target, nil
+}
+
+func (t *SyntheticTarget) Scope() string {
+	if t == nil {
+		return ""
+	}
+	return t.scope
 }
 
 // ProgrammeBoundaryWitness returns the isolated target's causal observation

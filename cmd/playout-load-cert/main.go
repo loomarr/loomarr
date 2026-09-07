@@ -20,6 +20,11 @@ type manifest struct {
 	Channels      []playoutcert.Channel `json:"channels"`
 }
 
+type repeatedFlag []string
+
+func (f *repeatedFlag) String() string { return strings.Join(*f, ",") }
+func (f *repeatedFlag) Set(value string) error { *f = append(*f, value); return nil }
+
 func main() { os.Exit(run(context.Background(), os.Args[1:], os.Getenv, os.Stdout, os.Stderr)) }
 
 func run(ctx context.Context, args []string, getenv func(string) string, stdout, stderr io.Writer) int {
@@ -29,6 +34,10 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	outPath := flags.String("out", "", "machine report path under LOOMARR_ARTIFACT_DIR")
 	certify := flags.Bool("certify", false, "enforce the 100-Channel certification contract")
 	synthetic := flags.Bool("synthetic", false, "start an isolated deterministic Loomarr target")
+	syntheticScope := flags.String("synthetic-scope", "isolated-playout-cert", "stable name for the isolated disposable target")
+	disposableTarget := flags.String("disposable-target", "", "exact synthetic scope acknowledged for a shutdown drill")
+	var faultNames repeatedFlag
+	flags.Var(&faultNames, "fault-profile", "selected fault profile (repeatable)")
 	syntheticCapacity := flags.Int("synthetic-capacity", 4, "isolated target transcode capacity (1..64)")
 	syntheticGrace := flags.Duration("synthetic-grace", 2*time.Second, "isolated target warm-session grace")
 	syntheticProgramme := flags.Duration("synthetic-programme-duration", 6*time.Second, "isolated recurring programme duration (2s..30s)")
@@ -50,6 +59,21 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	}
 	if flags.NArg() != 0 || strings.TrimSpace(*manifestPath) == "" {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: --manifest is required and positional arguments are refused")
+		return 2
+	}
+	faultProfiles, err := playoutcert.ParseFaultProfiles(faultNames)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: invalid fault profile selection")
+		return 2
+	}
+	controllerScope := ""
+	if *synthetic { controllerScope = strings.TrimSpace(*syntheticScope) }
+	if *synthetic && controllerScope == "" {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: synthetic scope is required")
+		return 2
+	}
+	if err := playoutcert.ValidateFaultSelection(faultProfiles, controllerScope, *disposableTarget); err != nil {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: unsafe fault profile selection")
 		return 2
 	}
 	if *concurrency < 1 || *concurrency > 64 || *surfRounds < 1 || *surfRounds > 100 || *fanIn < 1 || *fanIn > 64 || *requestTimeout <= 0 || *cleanupTimeout <= 0 || *warmGrace <= 0 || *warmGrace > time.Minute || *suiteTimeout <= 0 || *suiteTimeout > 30*time.Minute || *programmeBoundaryTimeout < 2*time.Second || *programmeBoundaryTimeout > 25*time.Minute || *programmeBoundaryTimeout >= *suiteTimeout || *programmeBoundaryLate < 250*time.Millisecond || *programmeBoundaryLate > 30*time.Second || *programmeBoundaryLate >= *programmeBoundaryTimeout || *syntheticCapacity < 1 || *syntheticCapacity > 64 || *syntheticGrace <= 0 || *syntheticGrace > time.Minute || *syntheticProgramme < 2*time.Second || *syntheticProgramme > 30*time.Second || *rawBytes < 188 || *rawBytes > 16<<20 {
@@ -81,7 +105,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	var isolated *playoutcert.SyntheticTarget
 	if *synthetic {
 		isolated, err = playoutcert.NewSyntheticTarget(runCtx, playoutcert.SyntheticConfig{
-			Channels: channels, FFmpeg: *ffmpeg, Capacity: *syntheticCapacity, Grace: *syntheticGrace, ProgrammeDuration: *syntheticProgramme,
+			Scope: controllerScope, Channels: channels, FFmpeg: *ffmpeg, Capacity: *syntheticCapacity, Grace: *syntheticGrace, ProgrammeDuration: *syntheticProgramme,
 		})
 		if err != nil {
 			_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated target setup failed")
@@ -95,12 +119,14 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		Concurrency: *concurrency, SurfRounds: *surfRounds, FanInViewers: *fanIn,
 		RequestTimeout: *requestTimeout, CleanupTimeout: *cleanupTimeout, WarmGrace: *warmGrace, RawCaptureBytes: *rawBytes,
 		ProgrammeBoundaryTimeout: *programmeBoundaryTimeout, ProgrammeBoundaryLateObservation: *programmeBoundaryLate,
+		FaultProfiles: faultProfiles, DisposableTarget: *disposableTarget,
 		Validator: playoutcert.FFprobeValidator{Path: *ffprobe},
 		Decoder:   playoutcert.FFmpegDecoder{Path: *ffmpeg},
 	}
 	if isolated != nil {
 		config.WarmGrace = *syntheticGrace
 		config.ProgrammeBoundaryWitness = isolated.ProgrammeBoundaryWitness()
+		config.FaultController = isolated
 	}
 	report, err := playoutcert.Run(runCtx, config)
 	if err != nil {
@@ -110,21 +136,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: run failed during bounded preflight")
 		return 1
 	}
-	if isolated != nil {
-		started := time.Now()
-		closeErr := closeIsolated(isolated, *cleanupTimeout)
-		elapsedMS := float64(time.Since(started).Microseconds()) / 1000
-		phase := playoutcert.Phase{Name: "shutdown", HTTPClasses: map[string]int{"ok": 1}}
-		phase.Attempts, phase.Successes = 1, 1
-		phase.P50MS, phase.P95MS, phase.P99MS = elapsedMS, elapsedMS, elapsedMS
-		if closeErr != nil {
-			phase.Successes, phase.Failures = 0, 1
-			phase.HTTPClasses = map[string]int{"shutdown_failed": 1}
-			report.Failures = append(report.Failures, "shutdown_failed")
-		}
-		report.Phases = append(report.Phases, phase)
-		report.CompletedAt = time.Now()
-		report.Certified = *certify && len(report.Failures) == 0
+	if closeErr := closeIsolated(isolated, *cleanupTimeout); closeErr != nil {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated target cleanup failed")
+		return 1
 	}
 	return publishReport(resolvedOutput, report, *certify, stdout, stderr)
 }

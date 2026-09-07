@@ -75,6 +75,9 @@ type Config struct {
 	ProgrammeBoundaryTimeout         time.Duration
 	ProgrammeBoundaryLateObservation time.Duration
 	ProgrammeBoundaryWitness         ProgrammeBoundaryWitness
+	FaultProfiles                    []FaultProfile
+	FaultController                  FaultController
+	DisposableTarget                 string
 	Client                           *http.Client
 	Validator                        Validator
 	Decoder                          Decoder
@@ -82,6 +85,9 @@ type Config struct {
 }
 
 func (c Config) Validate() error {
+	if err := c.validateFaultProfiles(); err != nil {
+		return err
+	}
 	boundaryTimeout := c.ProgrammeBoundaryTimeout
 	if boundaryTimeout == 0 {
 		boundaryTimeout = 20 * time.Minute
@@ -332,14 +338,15 @@ type ResourceSample struct {
 }
 
 type Report struct {
-	SchemaVersion int              `json:"schemaVersion"`
-	StartedAt     time.Time        `json:"startedAt"`
-	CompletedAt   time.Time        `json:"completedAt"`
-	Target        Target           `json:"target"`
-	Phases        []Phase          `json:"phases"`
-	Resources     []ResourceSample `json:"resources"`
-	Failures      []string         `json:"failures"`
-	Certified     bool             `json:"certified"`
+	SchemaVersion int                  `json:"schemaVersion"`
+	StartedAt     time.Time            `json:"startedAt"`
+	CompletedAt   time.Time            `json:"completedAt"`
+	Target        Target               `json:"target"`
+	Phases        []Phase              `json:"phases"`
+	Resources     []ResourceSample     `json:"resources"`
+	Failures      []string             `json:"failures"`
+	FaultProfiles []FaultQualification `json:"faultProfiles"`
+	Certified     bool                 `json:"certified"`
 }
 
 func (r Report) Phase(name string) (Phase, bool) {

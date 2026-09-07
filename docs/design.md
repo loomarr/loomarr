@@ -3105,7 +3105,14 @@ file descriptors, HTTP in-flight requests, and active Playout sessions;
 `/v1/playout/status` supplies bounded GPU/encoder health. Retained Process diagnostics supply the
 application-managed FFmpeg live/peak count. A sampler records baseline, every phase peak, and final
 state. Cancellation, idle expiry, parent/child failure, and shutdown drills are separate opt-in
-profiles because shutdown mutates only the explicitly named disposable instance.
+profiles because shutdown mutates only the explicitly named disposable instance. Fault profiles use
+the fixed names `child_failure`, `parent_failure`, and `shutdown`; omitted profiles are explicitly
+unqualified and a selected profile is required evidence, never an informational best effort. Unknown,
+duplicate, and conflicting terminal selections fail before target creation. Shutdown additionally
+requires a named disposable-target acknowledgement that exactly matches the isolated target's bound
+scope. Remote acknowledgement does not grant shutdown authority, and normal resource teardown is
+never reported as a shutdown drill. Ordinary origins without a supported fault controller report a
+selected profile unavailable and cannot certify it.
 
 Certification requires 100 or more configured Channels to complete mint and surf with bounded
 failure and resource growth; every admitted stream at measured capacity to yield valid media without
