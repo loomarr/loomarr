@@ -521,6 +521,12 @@ func observeProgrammeBoundary(ctx context.Context, endpoint *endpoint, config Co
 	if lane.channelIndex < 0 {
 		return fail("cohort_missing")
 	}
+	// Synthetic raw witnesses remain the causal proof for their own parent
+	// stream.  An ordinary prepared origin has no such injected seam, so its
+	// public playlist is consumed directly when no witness is supplied.
+	if lane.name == "prepared" && config.ProgrammeBoundaryWitness == nil {
+		return observePreparedProgrammeBoundary(ctx, endpoint, config, lane)
+	}
 	if config.ProgrammeBoundaryWitness == nil {
 		return fail("evidence_unavailable")
 	}
@@ -579,6 +585,70 @@ func observeProgrammeBoundary(ctx context.Context, endpoint *endpoint, config Co
 	result.observation.class = "ok"
 	result.observation.duration = time.Since(connection.startedAt)
 	result.observation.firstByte = connection.firstByte
+	return result
+}
+
+func observePreparedProgrammeBoundary(ctx context.Context, endpoint *endpoint, config Config, lane boundaryLane) (result boundaryLaneResult) {
+	result = boundaryLaneResult{evidence: ProgrammeBoundaryObservation{Lane: lane.name}}
+	fail := func(class string) boundaryLaneResult {
+		result.observation.class = class
+		result.evidence.Outcome = class
+		return result
+	}
+	if lane.channelIndex < 0 {
+		return fail("cohort_missing")
+	}
+	signed, _, class := endpoint.mint(ctx, config.Channels[lane.channelIndex].ID)
+	if class != "ok" {
+		return fail(class)
+	}
+	reader := newPreparedHLSReader(ctx, endpoint, signed)
+	observer := startDecoderObserver(ctx, config.Decoder, reader, config.RawCaptureBytes)
+	defer func() {
+		if err := observer.close(); err != nil && result.observation.class == "ok" {
+			result.observation.class, result.evidence.Outcome = "close_failed", "close_failed"
+		}
+	}()
+	initialCtx, cancel := context.WithTimeout(ctx, config.RequestTimeout)
+	defer cancel()
+	snapshot, err := observer.wait(initialCtx, func(current decoderSnapshot) bool {
+		return current.frames > 0 && len(current.capture) >= min(config.RawCaptureBytes, 256<<10)
+	})
+	if err != nil {
+		return fail("decode_failed")
+	}
+	shape, err := config.Validator.Validate(initialCtx, snapshot.capture)
+	if err != nil || shape.VideoStreams != 1 || shape.AudioStreams != 1 {
+		return fail("invalid_media")
+	}
+	result.evidence.Media, result.observation.media = shape, shape
+	reader.arm()
+	select {
+	case <-ctx.Done():
+		return fail("transition_timeout")
+	case <-reader.transition:
+	}
+	transitionAt := time.Now()
+	atBoundary := observer.snapshot()
+	late := transitionAt.Add(3 * config.ProgrammeBoundaryLateObservation / 4)
+	timer := time.NewTimer(config.ProgrammeBoundaryLateObservation)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return fail("late_observation_timeout")
+	case <-timer.C:
+	}
+	after := observer.snapshot()
+	if after.decoderDone || after.decoderErr != nil || (after.readErr != nil && !errors.Is(after.readErr, context.Canceled)) {
+		return fail("post_boundary_decode_failed")
+	}
+	if !postBoundaryProgressed(atBoundary, after, late) {
+		return fail("post_boundary_stalled")
+	}
+	result.evidence.Outcome, result.evidence.Transitions = "ok", 1
+	result.evidence.ObservationMS = float64(time.Since(transitionAt).Microseconds()) / 1000
+	result.evidence.DecodedFrameDelta, result.evidence.ReadDelta, result.evidence.BytesDelta = after.frames-atBoundary.frames, after.reads-atBoundary.reads, after.bytes-atBoundary.bytes
+	result.observation.class, result.observation.duration = "ok", time.Since(transitionAt)
 	return result
 }
 
