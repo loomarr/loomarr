@@ -31,6 +31,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	synthetic := flags.Bool("synthetic", false, "start an isolated deterministic Loomarr target")
 	syntheticCapacity := flags.Int("synthetic-capacity", 4, "isolated target transcode capacity (1..64)")
 	syntheticGrace := flags.Duration("synthetic-grace", 2*time.Second, "isolated target warm-session grace")
+	syntheticProgramme := flags.Duration("synthetic-programme-duration", 6*time.Second, "isolated recurring programme duration (2s..30s)")
 	remote := flags.Bool("remote-ok", false, "acknowledge that the named origin is not loopback")
 	concurrency := flags.Int("concurrency", 12, "bounded HTTP concurrency (1..64)")
 	surfRounds := flags.Int("surf-rounds", 1, "complete catalog surf passes")
@@ -38,7 +39,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	requestTimeout := flags.Duration("request-timeout", 15*time.Second, "per-request deadline")
 	cleanupTimeout := flags.Duration("cleanup-timeout", 45*time.Second, "cleanup convergence deadline")
 	warmGrace := flags.Duration("warm-grace", 30*time.Second, "target warm-session grace")
-	suiteTimeout := flags.Duration("suite-timeout", 10*time.Minute, "whole-suite deadline (maximum 30m)")
+	programmeBoundaryTimeout := flags.Duration("programme-boundary-timeout", 20*time.Minute, "deadline for observing an actual programme transition (2s..25m)")
+	programmeBoundaryLate := flags.Duration("programme-boundary-late-observation", 3*time.Second, "post-transition decoded-media observation (250ms..30s)")
+	suiteTimeout := flags.Duration("suite-timeout", 30*time.Minute, "whole-suite deadline (maximum 30m)")
 	rawBytes := flags.Int("raw-capture-bytes", 2<<20, "bounded bytes retained in memory per raw stream")
 	ffprobe := flags.String("ffprobe", "ffprobe", "ffprobe executable")
 	ffmpeg := flags.String("ffmpeg", "ffmpeg", "ffmpeg executable used for first-frame decode")
@@ -49,7 +52,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: --manifest is required and positional arguments are refused")
 		return 2
 	}
-	if *concurrency < 1 || *concurrency > 64 || *surfRounds < 1 || *surfRounds > 100 || *fanIn < 1 || *fanIn > 64 || *requestTimeout <= 0 || *cleanupTimeout <= 0 || *warmGrace <= 0 || *warmGrace > time.Minute || *suiteTimeout <= 0 || *suiteTimeout > 30*time.Minute || *syntheticCapacity < 1 || *syntheticCapacity > 64 || *syntheticGrace <= 0 || *syntheticGrace > time.Minute || *rawBytes < 188 || *rawBytes > 16<<20 {
+	if *concurrency < 1 || *concurrency > 64 || *surfRounds < 1 || *surfRounds > 100 || *fanIn < 1 || *fanIn > 64 || *requestTimeout <= 0 || *cleanupTimeout <= 0 || *warmGrace <= 0 || *warmGrace > time.Minute || *suiteTimeout <= 0 || *suiteTimeout > 30*time.Minute || *programmeBoundaryTimeout < 2*time.Second || *programmeBoundaryTimeout > 25*time.Minute || *programmeBoundaryTimeout >= *suiteTimeout || *programmeBoundaryLate < 250*time.Millisecond || *programmeBoundaryLate > 30*time.Second || *programmeBoundaryLate >= *programmeBoundaryTimeout || *syntheticCapacity < 1 || *syntheticCapacity > 64 || *syntheticGrace <= 0 || *syntheticGrace > time.Minute || *syntheticProgramme < 2*time.Second || *syntheticProgramme > 30*time.Second || *rawBytes < 188 || *rawBytes > 16<<20 {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: resource bounds are invalid")
 		return 2
 	}
@@ -78,7 +81,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	var isolated *playoutcert.SyntheticTarget
 	if *synthetic {
 		isolated, err = playoutcert.NewSyntheticTarget(runCtx, playoutcert.SyntheticConfig{
-			Channels: channels, FFmpeg: *ffmpeg, Capacity: *syntheticCapacity, Grace: *syntheticGrace,
+			Channels: channels, FFmpeg: *ffmpeg, Capacity: *syntheticCapacity, Grace: *syntheticGrace, ProgrammeDuration: *syntheticProgramme,
 		})
 		if err != nil {
 			_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated target setup failed")
@@ -91,11 +94,13 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		Channels: channels, Certify: *certify, RemoteAcknowledged: *remote && !*synthetic,
 		Concurrency: *concurrency, SurfRounds: *surfRounds, FanInViewers: *fanIn,
 		RequestTimeout: *requestTimeout, CleanupTimeout: *cleanupTimeout, WarmGrace: *warmGrace, RawCaptureBytes: *rawBytes,
+		ProgrammeBoundaryTimeout: *programmeBoundaryTimeout, ProgrammeBoundaryLateObservation: *programmeBoundaryLate,
 		Validator: playoutcert.FFprobeValidator{Path: *ffprobe},
 		Decoder:   playoutcert.FFmpegDecoder{Path: *ffmpeg},
 	}
 	if isolated != nil {
 		config.WarmGrace = *syntheticGrace
+		config.ProgrammeBoundaryWitness = isolated.ProgrammeBoundaryWitness()
 	}
 	report, err := playoutcert.Run(runCtx, config)
 	if err != nil {

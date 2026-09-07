@@ -29,10 +29,11 @@ import (
 )
 
 type SyntheticConfig struct {
-	Channels []Channel
-	FFmpeg   string
-	Capacity int
-	Grace    time.Duration
+	Channels          []Channel
+	FFmpeg            string
+	Capacity          int
+	Grace             time.Duration
+	ProgrammeDuration time.Duration
 }
 
 type SyntheticTarget struct {
@@ -40,13 +41,14 @@ type SyntheticTarget struct {
 	AdminBearer string
 	DeviceToken string
 
-	server      *http.Server
-	listener    net.Listener
-	origin      *playout.Origin
-	diagnostics *diagnostics.ProcessManager
-	store       store.Store
-	root        string
-	closeOnce   sync.Once
+	server          *http.Server
+	listener        net.Listener
+	origin          *playout.Origin
+	diagnostics     *diagnostics.ProcessManager
+	store           store.Store
+	root            string
+	boundaryWitness *syntheticBoundaryWitness
+	closeOnce       sync.Once
 }
 
 func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*SyntheticTarget, error) {
@@ -59,6 +61,12 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	if config.Grace <= 0 {
 		config.Grace = 2 * time.Second
 	}
+	if config.ProgrammeDuration <= 0 {
+		config.ProgrammeDuration = 4 * time.Second
+	}
+	if config.ProgrammeDuration < 2*time.Second || config.ProgrammeDuration > 30*time.Second {
+		return nil, errors.New("synthetic programme duration must be within 2s..30s")
+	}
 	ffmpeg := strings.TrimSpace(config.FFmpeg)
 	if ffmpeg == "" {
 		ffmpeg = "ffmpeg"
@@ -70,7 +78,7 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	if err != nil {
 		return nil, err
 	}
-	target := &SyntheticTarget{root: root}
+	target := &SyntheticTarget{root: root, boundaryWitness: newSyntheticBoundaryWitness()}
 	fail := func(err error) (*SyntheticTarget, error) { _ = target.Close(context.Background()); return nil, err }
 
 	st, err := store.Open(ctx, "sqlite://"+filepath.Join(root, "loomarr.db"), true)
@@ -155,16 +163,19 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	})
 	target.diagnostics = processManager
 	processLog := diagnostics.NewProcessLog(st, diagnostics.ProcessReadOptions{OutputDir: filepath.Join(root, "diagnostics")})
-	preparedResolver := syntheticPreparedResolver{specs: preparedSpecs, started: time.Now().Add(-2 * time.Second)}
+	scheduleEpoch := time.Now().UTC().Add(-config.ProgrammeDuration / 2)
+	programmeSchedule := syntheticProgrammeSchedule{epoch: scheduleEpoch, duration: config.ProgrammeDuration}
+	preparedResolver := syntheticPreparedResolver{specs: preparedSpecs, schedule: programmeSchedule}
 	preparedCount := len(preparedIndexes)
 	preparedStatus := syntheticPreparedStatus{count: preparedCount}
 	preparedOrigin := playout.NewPreparedOrigin(library, preparedResolver)
 	preparedBlock := preparedOrigin.MPEGTSBlockSource(ffmpeg, logger, processManager)
-	liveResolver := syntheticLiveResolver{source: source}
+	liveResolver := syntheticLiveResolver{source: source, schedule: programmeSchedule}
 
 	var manager *playout.Manager
 	spawner := func(spawnCtx context.Context, channelID string, plan playout.EncodePlan) (*playout.Process, error) {
-		sourceForParent := syntheticBlockSource(target.BaseURL, device, preparedBlock, manager)
+		sourceID := target.boundaryWitness.nextSource()
+		sourceForParent := syntheticBlockSource(target.BaseURL, device, preparedBlock, manager, target.boundaryWitness, sourceID)
 		return playout.BlockSpawner(ffmpeg, sourceForParent, logger, processManager)(spawnCtx, channelID, plan)
 	}
 	manager = playout.NewManager(spawner, func() int { return config.Capacity }, config.Grace, logger).
@@ -218,6 +229,15 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	return target, nil
 }
 
+// ProgrammeBoundaryWitness returns the isolated target's causal observation
+// seam. It is intentionally not available from ordinary production origins.
+func (t *SyntheticTarget) ProgrammeBoundaryWitness() ProgrammeBoundaryWitness {
+	if t == nil {
+		return nil
+	}
+	return t.boundaryWitness
+}
+
 func (t *SyntheticTarget) Close(ctx context.Context) error {
 	var result error
 	t.closeOnce.Do(func() {
@@ -249,8 +269,8 @@ func (t *SyntheticTarget) Close(ctx context.Context) error {
 }
 
 type syntheticPreparedResolver struct {
-	specs   map[string]prepared.Specification
-	started time.Time
+	specs    map[string]prepared.Specification
+	schedule syntheticProgrammeSchedule
 }
 
 type syntheticPreparedStatus struct{ count int }
@@ -270,23 +290,47 @@ func (r syntheticPreparedResolver) ResolvePrepared(_ context.Context, request pl
 	if !ok {
 		return playout.PreparedWindow{}, false, nil
 	}
-	now := time.Now()
-	offset := now.Sub(r.started)
-	ends := r.started.Add(60 * time.Second)
-	if offset < 0 || !now.Before(ends) {
-		return playout.PreparedWindow{}, false, nil
-	}
+	now := time.Now().UTC()
+	identity, _, offset := r.schedule.airings(now, request.ChannelID)
 	return playout.PreparedWindow{Current: playout.PreparedAiring{
-		Specification: spec, StartedAt: r.started, Offset: offset,
-		Identity: playout.AiringIdentity{StartedAt: r.started, EndsAt: ends, Kind: schedule.SlotProgram, ContentID: request.ChannelID, ScheduleBlockID: "synthetic-block"},
+		Specification: spec, StartedAt: identity.StartedAt, Offset: offset,
+		Identity: identity, DiscontinuitySequence: r.schedule.ordinal(now),
 	}}, true, nil
 }
 
-type syntheticLiveResolver struct{ source string }
+type syntheticProgrammeSchedule struct {
+	epoch    time.Time
+	duration time.Duration
+}
+
+func (s syntheticProgrammeSchedule) ordinal(now time.Time) int64 {
+	if now.Before(s.epoch) {
+		return 0
+	}
+	return int64(now.Sub(s.epoch) / s.duration)
+}
+
+func (s syntheticProgrammeSchedule) airings(now time.Time, channelID string) (playout.AiringIdentity, playout.AiringIdentity, time.Duration) {
+	ordinal := s.ordinal(now)
+	started := s.epoch.Add(time.Duration(ordinal) * s.duration)
+	makeIdentity := func(index int64, start time.Time) playout.AiringIdentity {
+		return playout.AiringIdentity{
+			StartedAt: start, EndsAt: start.Add(s.duration), Kind: schedule.SlotProgram,
+			ContentID:       fmt.Sprintf("%s-programme-%d", channelID, index%2),
+			ScheduleBlockID: fmt.Sprintf("synthetic-block-%d", index),
+		}
+	}
+	return makeIdentity(ordinal, started), makeIdentity(ordinal+1, started.Add(s.duration)), now.Sub(started)
+}
+
+type syntheticLiveResolver struct {
+	source   string
+	schedule syntheticProgrammeSchedule
+}
 
 func (r syntheticLiveResolver) AiringNow(_ context.Context, channelID string) (playout.Airing, string, error) {
-	started := time.Now().Add(-time.Second)
-	return playout.Airing{StartedAt: started, Identity: "live-" + channelID, Kind: schedule.SlotProgram, LibraryItemID: channelID, Title: "Synthetic", Remaining: 50 * time.Second}, r.source, nil
+	identity, _, _ := r.schedule.airings(time.Now().UTC(), channelID)
+	return playout.Airing{StartedAt: identity.StartedAt, Identity: identity.ContentID, ScheduleBlockID: identity.ScheduleBlockID, Kind: identity.Kind, LibraryItemID: channelID, Title: "Synthetic", Remaining: time.Until(identity.EndsAt)}, r.source, nil
 }
 func (syntheticLiveResolver) Profile(context.Context) playout.Profile {
 	p := playout.DefaultProfile()
@@ -306,7 +350,7 @@ func (syntheticLiveResolver) PlanFor(context.Context, string, playout.EncodePlan
 }
 func (syntheticLiveResolver) ChannelCodec(context.Context, string) string { return "h264" }
 
-func syntheticBlockSource(base, device string, preparedSource playout.BlockSource, manager *playout.Manager) playout.BlockSource {
+func syntheticBlockSource(base, device string, preparedSource playout.BlockSource, manager *playout.Manager, witness *syntheticBoundaryWitness, sourceID uint64) playout.BlockSource {
 	var broadcast string
 	return func(ctx context.Context, channelID string, plan playout.EncodePlan) (playout.Block, error) {
 		if preparedSource != nil {
@@ -320,6 +364,7 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 				if valid && (broadcast == "" || broadcast == format.String()) {
 					broadcast = format.String()
 					block.Format = format
+					block.Content = witnessBlockContent(block.Content, witness, channelID, sourceID, block.Identity)
 					return block, nil
 				}
 				_ = block.Content.Close()
@@ -360,8 +405,17 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 			_ = resp.Body.Close()
 			return playout.Block{}, errors.New("program endpoint identity missing")
 		}
-		return playout.Block{Content: resp.Body, Identity: identity, Format: format}, nil
+		return playout.Block{Content: witnessBlockContent(resp.Body, witness, channelID, sourceID, identity), Identity: identity, Format: format}, nil
 	}
+}
+
+func witnessBlockContent(content io.ReadCloser, witness *syntheticBoundaryWitness, channelID string, sourceID uint64, identity playout.AiringIdentity) io.ReadCloser {
+	if witness == nil {
+		return content
+	}
+	return &witnessedBlockContent{source: content, onFirst: func() {
+		witness.publish(channelID, syntheticBoundaryEvent{sourceID: sourceID, identity: identity})
+	}}
 }
 
 func generateSyntheticSource(ctx context.Context, ffmpeg, output string) error {

@@ -36,33 +36,60 @@ type Validator interface {
 }
 
 type Decoder interface {
-	FirstFrame(context.Context, io.Reader, int) ([]byte, error)
+	// Decode owns input until it returns. It reports the cumulative number of
+	// decoded video frames while preserving one decoder lifecycle for the whole
+	// admitted response body.
+	Decode(context.Context, io.ReadCloser, func(int64)) error
+}
+
+// ProgrammeBoundaryWitness binds a certification observation to the actual
+// finite-block source feeding one admitted parent stream. Production targets do
+// not currently expose this causal seam; the isolated synthetic target does.
+type ProgrammeBoundaryWitness interface {
+	Subscribe(channelID string) (ProgrammeBoundarySubscription, error)
+}
+
+type ProgrammeBoundarySubscription interface {
+	WaitInitial(context.Context) error
+	WaitTransition(context.Context) error
+	Close()
 }
 
 type Config struct {
-	BaseURL            string
-	AdminBearer        string
-	DeviceToken        string
-	Channels           []Channel
-	Certify            bool
-	RemoteAcknowledged bool
-	Concurrency        int
-	SurfRounds         int
-	FanInViewers       int
-	RequestTimeout     time.Duration
-	CleanupTimeout     time.Duration
-	CleanupPoll        time.Duration
-	WarmGrace          time.Duration
-	RawCaptureBytes    int
-	PreparedP95        time.Duration
-	PreparedRawP95     time.Duration
-	Client             *http.Client
-	Validator          Validator
-	Decoder            Decoder
-	Now                func() time.Time
+	BaseURL                          string
+	AdminBearer                      string
+	DeviceToken                      string
+	Channels                         []Channel
+	Certify                          bool
+	RemoteAcknowledged               bool
+	Concurrency                      int
+	SurfRounds                       int
+	FanInViewers                     int
+	RequestTimeout                   time.Duration
+	CleanupTimeout                   time.Duration
+	CleanupPoll                      time.Duration
+	WarmGrace                        time.Duration
+	RawCaptureBytes                  int
+	PreparedP95                      time.Duration
+	PreparedRawP95                   time.Duration
+	ProgrammeBoundaryTimeout         time.Duration
+	ProgrammeBoundaryLateObservation time.Duration
+	ProgrammeBoundaryWitness         ProgrammeBoundaryWitness
+	Client                           *http.Client
+	Validator                        Validator
+	Decoder                          Decoder
+	Now                              func() time.Time
 }
 
 func (c Config) Validate() error {
+	boundaryTimeout := c.ProgrammeBoundaryTimeout
+	if boundaryTimeout == 0 {
+		boundaryTimeout = 20 * time.Minute
+	}
+	lateObservation := c.ProgrammeBoundaryLateObservation
+	if lateObservation == 0 {
+		lateObservation = 3 * time.Second
+	}
 	parsed, err := url.Parse(c.BaseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return errors.New("base URL must be an absolute HTTP origin")
@@ -82,8 +109,14 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.DeviceToken) == "" {
 		return errors.New("device playout token is required")
 	}
-	if c.Certify && len(preparedChannelIndexes(c.Channels)) < 100 {
-		return fmt.Errorf("certification requires at least 100 prepared Channels, got %d", len(preparedChannelIndexes(c.Channels)))
+	if boundaryTimeout < 2*time.Second || boundaryTimeout > 25*time.Minute {
+		return errors.New("programme boundary timeout must be within 2s..25m")
+	}
+	if lateObservation < 250*time.Millisecond || lateObservation > 30*time.Second || lateObservation >= boundaryTimeout {
+		return errors.New("programme boundary late observation must be within 250ms..30s and shorter than the boundary timeout")
+	}
+	if c.Certify && len(c.Channels) < 100 {
+		return fmt.Errorf("certification requires at least 100 configured Channels, got %d", len(c.Channels))
 	}
 	if len(c.Channels) == 0 || len(c.Channels) > 1000 {
 		return fmt.Errorf("channel count must be within 1..1000")
@@ -124,17 +157,16 @@ func preparedChannelIndexes(channels []Channel) []int {
 	return indexes
 }
 
-func transcodeChannelIndexes(channels []Channel) []int {
+// strictTranscodeChannelIndexes deliberately has no fallback: capacity and
+// overload evidence is meaningless when the manifest did not provide the lane.
+func strictTranscodeChannelIndexes(channels []Channel) []int {
 	indexes := []int{}
 	for index, channel := range channels {
 		if slices.Contains(channel.Roles, "transcode_h264") || slices.Contains(channel.Roles, "transcode_hevc") {
 			indexes = append(indexes, index)
 		}
 	}
-	if len(indexes) > 0 {
-		return indexes
-	}
-	return preparedChannelIndexes(channels)
+	return indexes
 }
 
 var knownRoles = []string{
@@ -190,6 +222,12 @@ func (c Config) normalized() Config {
 	if c.PreparedRawP95 <= 0 {
 		c.PreparedRawP95 = 500 * time.Millisecond
 	}
+	if c.ProgrammeBoundaryTimeout == 0 {
+		c.ProgrammeBoundaryTimeout = 20 * time.Minute
+	}
+	if c.ProgrammeBoundaryLateObservation == 0 {
+		c.ProgrammeBoundaryLateObservation = 3 * time.Second
+	}
 	if c.Client == nil {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.MaxIdleConns = 128
@@ -228,10 +266,47 @@ type LatencySummary struct {
 type Phase struct {
 	Name string `json:"name"`
 	LatencySummary
-	FirstByte    LatencySummary `json:"firstByte"`
-	PreparedHits int            `json:"preparedHits,omitempty"`
-	HTTPClasses  map[string]int `json:"httpClasses,omitempty"`
-	Media        []MediaShape   `json:"media,omitempty"`
+	FirstByte           LatencySummary                 `json:"firstByte"`
+	PreparedHits        int                            `json:"preparedHits,omitempty"`
+	HTTPClasses         map[string]int                 `json:"httpClasses,omitempty"`
+	Media               []MediaShape                   `json:"media,omitempty"`
+	HeldContinuity      []HeldContinuityObservation    `json:"heldContinuity,omitempty"`
+	ProgrammeBoundaries []ProgrammeBoundaryObservation `json:"programmeBoundaries,omitempty"`
+	Resources           PhaseResources                 `json:"resources"`
+}
+
+// ProgrammeBoundaryObservation contains only bounded, run-local evidence. The
+// scheduler identities used to prove the transition are deliberately omitted.
+type ProgrammeBoundaryObservation struct {
+	Lane              string     `json:"lane"`
+	Outcome           string     `json:"outcome"`
+	Transitions       int        `json:"transitions"`
+	ObservationMS     float64    `json:"observationMs"`
+	DecodedFrameDelta int64      `json:"decodedFrameDelta"`
+	ReadDelta         int        `json:"readDelta"`
+	BytesDelta        int        `json:"bytesDelta"`
+	Media             MediaShape `json:"media"`
+}
+
+// HeldContinuityObservation is bounded viewer-side evidence collected after
+// overload admission. It makes no producer-liveness claim behind buffers.
+type HeldContinuityObservation struct {
+	Outcome        string     `json:"outcome"`
+	ObservationMS  float64    `json:"observationMs"`
+	AdvancingReads int        `json:"advancingReads"`
+	BytesObserved  int        `json:"bytesObserved"`
+	DecodedFrame   bool       `json:"decodedFrame"`
+	Media          MediaShape `json:"media"`
+}
+
+// PhaseResources records bounded periodic observations. Maxima are maxima of
+// these samples, not a claim of continuous hardware telemetry.
+type PhaseResources struct {
+	Samples         int            `json:"samples"`
+	SampleFailures  int            `json:"sampleFailures"`
+	IntervalMS      float64        `json:"intervalMs"`
+	CPUSecondsDelta float64        `json:"cpuSecondsDelta"`
+	Maximum         ResourceSample `json:"maximum"`
 }
 
 type ResourceSample struct {

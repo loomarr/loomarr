@@ -63,11 +63,21 @@ func sameOrigin(a, b *url.URL) bool {
 }
 
 func (e *endpoint) request(ctx context.Context, method, path string, body io.Reader, admin bool) (*http.Response, error) {
+	return e.requestFor(ctx, method, path, body, admin, e.timeout)
+}
+
+// requestFor permits a caller-owned deadline for a long-lived admitted stream.
+// A zero timeout does not make the request unbounded: its supplied context must
+// already carry the phase deadline.
+func (e *endpoint) requestFor(ctx context.Context, method, path string, body io.Reader, admin bool, timeout time.Duration) (*http.Response, error) {
 	requestURL, err := e.resolve(path)
 	if err != nil {
 		return nil, err
 	}
-	requestCtx, cancel := context.WithTimeout(ctx, e.timeout)
+	requestCtx, cancel := context.WithCancel(ctx)
+	if timeout > 0 {
+		requestCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
 	req, err := http.NewRequestWithContext(requestCtx, method, requestURL.String(), body)
 	if err != nil {
 		cancel()

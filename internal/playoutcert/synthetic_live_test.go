@@ -5,9 +5,12 @@ package playoutcert
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/testkit/playoutcertfixture"
 )
 
 func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst(t *testing.T) {
@@ -24,7 +27,7 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	target, err := NewSyntheticTarget(ctx, SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second})
+	target, err := NewSyntheticTarget(ctx, SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +44,9 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace:       time.Second,
 		RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
-		Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{},
+		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
+		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(),
+		Validator:                FFprobeValidator{}, Decoder: FFmpegDecoder{},
 	}
 	report, err := Run(ctx, config)
 	if err != nil {
@@ -52,6 +57,18 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	}
 	if report.PhaseMust("configured").PreparedHits != 100 {
 		t.Fatalf("prepared hits = %d", report.PhaseMust("configured").PreparedHits)
+	}
+	if configured := report.PhaseMust("configured"); configured.Attempts != len(channels) || configured.HTTPClasses["prepared_miss"] != 5 {
+		t.Fatalf("configured catalog/cold outcomes = %+v", configured)
+	}
+	boundary := report.PhaseMust("programme_boundary")
+	if boundary.Attempts != 2 || boundary.Failures != 0 || len(boundary.ProgrammeBoundaries) != 2 {
+		t.Fatalf("programme boundary phase = %+v", boundary)
+	}
+	for _, evidence := range boundary.ProgrammeBoundaries {
+		if evidence.Outcome != "ok" || evidence.Transitions != 1 || evidence.DecodedFrameDelta <= 0 || evidence.ReadDelta <= 0 || evidence.BytesDelta <= 0 || evidence.Media.VideoStreams != 1 || evidence.Media.AudioStreams != 1 {
+			t.Fatalf("programme boundary evidence = %+v", evidence)
+		}
 	}
 	if preparedRaw := report.PhaseMust("prepared_raw"); preparedRaw.Attempts != 4 || preparedRaw.Failures != 0 || preparedRaw.P95MS > 500 {
 		t.Fatalf("prepared raw phase = %+v", preparedRaw)
@@ -66,5 +83,73 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	}
 	if report.PhaseMust("overload").HTTPClasses["http_503"] == 0 {
 		t.Fatalf("overload was not bounded: %+v", report.PhaseMust("overload"))
+	}
+	held := report.PhaseMust("overload").HeldContinuity
+	if len(held) != 4 {
+		t.Fatalf("held continuity observations = %d, want 4", len(held))
+	}
+	for _, observation := range held {
+		if observation.Outcome != "observed" || !observation.DecodedFrame || observation.Media.VideoStreams != 1 || observation.Media.AudioStreams != 1 {
+			t.Fatalf("held continuity evidence = %+v", observation)
+		}
+	}
+}
+
+func TestSyntheticTargetRejectsPostOverloadCorruptHeldMedia(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	channels := make([]Channel, 0, 105)
+	for index := range 100 {
+		channels = append(channels, Channel{ID: fmt.Sprintf("prepared-%03d", index+1), Roles: []string{"prepared"}})
+	}
+	for index := range 5 {
+		channels = append(channels, Channel{ID: fmt.Sprintf("transcode-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	heldStreams := make([]string, 4)
+	for index := range heldStreams {
+		heldStreams[index] = fmt.Sprintf("transcode-%03d", index+1)
+	}
+	target, err := NewSyntheticTarget(ctx, SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		if closeErr := target.Close(closeCtx); closeErr != nil {
+			t.Errorf("close synthetic target: %v", closeErr)
+		}
+	}()
+	config := Config{
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		Channels: channels, Certify: true, Concurrency: 12, SurfRounds: 1, FanInViewers: 4,
+		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
+		WarmGrace:       time.Second,
+		RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
+		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
+		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(),
+		Validator:                FFprobeValidator{}, Decoder: FFmpegDecoder{},
+		Client: playoutcertfixture.PostEventCorruptClient(http.DefaultTransport.(*http.Transport).Clone(), heldStreams),
+	}
+	report, err := Run(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawCapacity := report.PhaseMust("raw_capacity")
+	if rawCapacity.Failures != 0 || len(rawCapacity.Media) != 4 {
+		t.Fatalf("initial raw-capacity media was not valid: %+v", rawCapacity)
+	}
+	overload := report.PhaseMust("overload")
+	if report.Certified || overload.HTTPClasses["http_503"] != 1 || len(overload.HeldContinuity) != 4 {
+		t.Fatalf("corrupt post-event run did not fail closed: %+v", overload)
+	}
+	for _, held := range overload.HeldContinuity {
+		if held.Outcome == "observed" || held.DecodedFrame || held.BytesObserved == 0 {
+			t.Fatalf("corrupt post-event media passed: %+v", held)
+		}
 	}
 }

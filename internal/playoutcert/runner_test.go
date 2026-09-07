@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/testkit/playoutcertfixture"
 )
 
 func TestValidateConfigRejectsUnsafeOrNonCertifyingInputs(t *testing.T) {
@@ -38,23 +37,28 @@ func TestValidateConfigRejectsUnsafeOrNonCertifyingInputs(t *testing.T) {
 	}
 }
 
-func TestRunExercisesSignedPreparedSurfRawAndCleanupWithoutLeakingPrivateInputs(t *testing.T) {
+func TestRunExercisesPublicPhasesButCannotCertifyWithoutCausalBoundaryEvidence(t *testing.T) {
 	t.Parallel()
-	fixture := newHTTPFixture(t, 100)
+	fixture := playoutcertfixture.New(t, 100)
 	validator := &recordingValidator{}
+	decoder := &playoutcertfixture.Decoder{}
 	cfg := Config{
-		BaseURL: fixture.server.URL, AdminBearer: fixture.admin, DeviceToken: fixture.device,
+		BaseURL: fixture.Server.URL, AdminBearer: fixture.Admin, DeviceToken: fixture.Device,
 		Channels: fixtureChannels(100), Certify: true, RemoteAcknowledged: true,
 		Concurrency: 12, SurfRounds: 1, FanInViewers: 4, RequestTimeout: time.Second,
 		CleanupTimeout: time.Second, CleanupPoll: time.Millisecond, RawCaptureBytes: 188,
-		Validator: validator, Decoder: validator,
+		Validator: validator, Decoder: decoder,
 	}
 	report, err := Run(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !report.Certified {
-		t.Fatalf("report not certified: %+v", report.Failures)
+	if report.Certified || !strings.Contains(strings.Join(report.Failures, ","), "programme_boundary_failed") {
+		t.Fatalf("ordinary fixture unexpectedly certified without causal boundary evidence: %+v", report.Failures)
+	}
+	boundary := report.PhaseMust("programme_boundary")
+	if boundary.HTTPClasses["evidence_unavailable"] != 1 || boundary.HTTPClasses["cohort_missing"] != 1 {
+		t.Fatalf("programme boundary evidence limit = %+v", boundary)
 	}
 	if report.Target.ConfiguredChannels != 100 || report.Target.Capacity != 4 {
 		t.Fatalf("target = %+v", report.Target)
@@ -74,19 +78,204 @@ func TestRunExercisesSignedPreparedSurfRawAndCleanupWithoutLeakingPrivateInputs(
 	if validator.calls < 5 {
 		t.Fatalf("validator calls = %d, want raw capacity plus overload", validator.calls)
 	}
+	if fixture.HeldProgressAfterAdmission < 16 {
+		t.Fatalf("held viewers made no meaningful post-admission progress: %d bytes", fixture.HeldProgressAfterAdmission)
+	}
+	heldContinuity := report.PhaseMust("overload").HeldContinuity
+	if len(heldContinuity) != 4 {
+		t.Fatalf("held continuity observations = %d, want 4", len(heldContinuity))
+	}
+	for _, held := range heldContinuity {
+		if held.Outcome != "observed" || held.ObservationMS < 500 || held.AdvancingReads == 0 || held.BytesObserved == 0 || !held.DecodedFrame || held.Media.VideoStreams != 1 || held.Media.AudioStreams != 1 {
+			t.Fatalf("held continuity evidence = %+v", held)
+		}
+	}
+	var capacitySample *ResourceSample
+	for index := range report.Resources {
+		sample := &report.Resources[index]
+		if sample.Point == "raw_capacity_in_phase" {
+			capacitySample = sample
+		}
+	}
+	if capacitySample == nil || capacitySample.TranscodeCost != capacitySample.Capacity || capacitySample.ViewerActive < capacitySample.Capacity {
+		t.Fatalf("capacity was not observed while the full cohort was held: %+v", capacitySample)
+	}
+	for _, phase := range report.Phases {
+		if phase.Resources.Samples == 0 || phase.Resources.SampleFailures != 0 {
+			t.Fatalf("phase %q has no usable sampled resource evidence: %+v", phase.Name, phase.Resources)
+		}
+	}
+	capacity := report.PhaseMust("raw_capacity").Resources.Maximum
+	if capacity.TranscodeCost < report.Target.Capacity || capacity.ViewerActive < report.Target.Capacity {
+		t.Fatalf("raw capacity sampled maximum = %+v", capacity)
+	}
 	blob, err := json.Marshal(report)
 	if err != nil {
 		t.Fatal(err)
 	}
-	unsafe := []string{fixture.admin, fixture.device, "signed-secret", "channel-private-", "Operator Library Title", fixture.server.URL}
+	unsafe := []string{fixture.Admin, fixture.Device, "signed-secret", "channel-private-", "Operator Library Title", fixture.Server.URL}
 	for _, value := range unsafe {
 		if strings.Contains(string(blob), value) {
 			t.Fatalf("report leaked %q: %s", value, blob)
 		}
 	}
-	if fixture.maxConcurrentRaw < 4 {
-		t.Fatalf("raw requests were not barrier-concurrent: peak=%d", fixture.maxConcurrentRaw)
+	if fixture.MaxConcurrentRaw < 4 {
+		t.Fatalf("raw requests were not barrier-concurrent: peak=%d", fixture.MaxConcurrentRaw)
 	}
+}
+
+func TestRunDoesNotCertifyAnInsufficientTranscodeCohort(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	channels := fixtureChannels(100)
+	for i := 1; i < len(channels); i++ {
+		channels[i].Roles = []string{"prepared"}
+	}
+	report, err := Run(context.Background(), fixtureConfig(fixture, channels))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Certified || report.PhaseMust("raw_capacity").HTTPClasses["transcode_cohort_insufficient"] == 0 {
+		t.Fatalf("insufficient cohort certified: %+v", report)
+	}
+}
+
+func TestRunDoesNotCertifyWhenOverloadIsAdmittedOrHeldViewerDrops(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		set       func(*playoutcertfixture.Fixture)
+		wantClass string
+	}{
+		{name: "admitted", set: func(f *playoutcertfixture.Fixture) { f.AllowOverload = true }, wantClass: "admission_outcome_missing"},
+		{name: "held viewer interrupted", set: func(f *playoutcertfixture.Fixture) { f.InterruptHeld = true }, wantClass: "held_viewer_interrupted"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := playoutcertfixture.New(t, 100)
+			tc.set(fixture)
+			report, err := Run(context.Background(), fixtureConfig(fixture, fixtureChannels(100)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.Certified || report.PhaseMust("overload").HTTPClasses[tc.wantClass] == 0 {
+				t.Fatalf("unsafe overload certified: %+v", report.PhaseMust("overload"))
+			}
+		})
+	}
+}
+
+func TestRunDoesNotTreatBufferedPreOverloadMediaAsHeldProgress(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	fixture.HeldBufferedBytes = 64 << 10
+	fixture.StallHeldAfterOverload = true
+	report, err := Run(context.Background(), fixtureConfig(fixture, fixtureChannels(100)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	phase := report.PhaseMust("overload")
+	if report.Certified || phase.HTTPClasses["held_viewer_interrupted"] == 0 {
+		t.Fatalf("buffered pre-overload data passed continuity: %+v", phase)
+	}
+}
+
+func TestRunRecordsHeldDecodeFailure(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	config := fixtureConfig(fixture, fixtureChannels(100))
+	config.Decoder = &playoutcertfixture.Decoder{Fail: true}
+	report, err := Run(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	phase := report.PhaseMust("overload")
+	if report.Certified || phase.HTTPClasses["held_viewer_interrupted"] == 0 {
+		t.Fatalf("held decode failure certified: %+v", phase)
+	}
+	if len(phase.HeldContinuity) != 4 {
+		t.Fatalf("held continuity observations = %d, want 4", len(phase.HeldContinuity))
+	}
+	for _, held := range phase.HeldContinuity {
+		if held.Outcome != "decode_failed" || held.DecodedFrame {
+			t.Fatalf("held decode evidence = %+v", held)
+		}
+	}
+}
+
+func TestRunRejectsValidInitialMediaFollowedByUndecodableHeldMedia(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	decoder := &playoutcertfixture.Decoder{FailAfter: fixture.CapacityRejected()}
+	config := fixtureConfig(fixture, fixtureChannels(100))
+	config.Decoder = decoder
+	report, err := Run(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawCapacity := report.PhaseMust("raw_capacity")
+	if rawCapacity.Attempts != 4 || rawCapacity.Failures != 0 || len(rawCapacity.Media) != 4 {
+		t.Fatalf("initial raw-capacity media was not validated: %+v", rawCapacity)
+	}
+	for _, media := range rawCapacity.Media {
+		if media.VideoStreams != 1 || media.AudioStreams != 1 {
+			t.Fatalf("initial raw-capacity media = %+v", media)
+		}
+	}
+	phase := report.PhaseMust("overload")
+	if report.Certified || phase.HTTPClasses["held_viewer_interrupted"] == 0 {
+		t.Fatalf("undecodable post-overload media certified: %+v", phase)
+	}
+	if len(phase.HeldContinuity) != 4 {
+		t.Fatalf("held continuity observations = %d, want 4", len(phase.HeldContinuity))
+	}
+	for _, held := range phase.HeldContinuity {
+		if held.Outcome != "decode_failed" || held.DecodedFrame {
+			t.Fatalf("post-overload decode evidence = %+v", held)
+		}
+	}
+	active, started, stopped := decoder.Counts()
+	if active != 0 || started == 0 || stopped != started {
+		t.Fatalf("decoder lifecycle active=%d started=%d stopped=%d", active, started, stopped)
+	}
+}
+
+func TestRunCancellationBeforeHeldVerificationJoinsAllDecoders(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	decoder := &playoutcertfixture.Decoder{}
+	ctx, cancel := context.WithCancel(context.Background())
+	config := fixtureConfig(fixture, fixtureChannels(100))
+	config.Decoder = decoder
+	config.Client = fixture.CancelOnRejectedOverloadClient(cancel)
+	report, err := Run(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Certified {
+		t.Fatal("cancelled certification unexpectedly passed")
+	}
+	active, started, stopped := decoder.Counts()
+	if active != 0 || started == 0 || stopped != started {
+		t.Fatalf("decoder lifecycle active=%d started=%d stopped=%d", active, started, stopped)
+	}
+}
+
+func TestRunDoesNotCertifyWhenPhaseResourceSamplingFails(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	fixture.FailOneMetricsAfterStart = true
+	report, err := Run(context.Background(), fixtureConfig(fixture, fixtureChannels(100)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Certified || !strings.Contains(strings.Join(report.Failures, ","), "resource_sample_failed") {
+		t.Fatalf("sample failure was discarded: %+v", report.Failures)
+	}
+	if report.Resources[0].Point != "baseline" || report.Resources[len(report.Resources)-1].Point != "converged" {
+		t.Fatalf("sampling must fail within a phase, not at the baseline/final checkpoints: %+v", report.Resources)
+	}
+}
+
+func fixtureConfig(fixture *playoutcertfixture.Fixture, channels []Channel) Config {
+	validator := &recordingValidator{}
+	decoder := &playoutcertfixture.Decoder{}
+	return Config{BaseURL: fixture.Server.URL, AdminBearer: fixture.Admin, DeviceToken: fixture.Device,
+		Channels: channels, Certify: true, RemoteAcknowledged: true, Concurrency: 12, SurfRounds: 1,
+		FanInViewers: 4, RequestTimeout: time.Second, CleanupTimeout: time.Second, CleanupPoll: time.Millisecond,
+		RawCaptureBytes: 188, Validator: validator, Decoder: decoder}
 }
 
 func TestNearestRankPercentilesKeepFailuresSeparate(t *testing.T) {
@@ -111,160 +300,13 @@ func (v *recordingValidator) Validate(_ context.Context, body []byte) (MediaShap
 	return MediaShape{VideoStreams: 1, AudioStreams: 1, VideoCodec: "h264", AudioCodec: "aac"}, nil
 }
 
-func (v *recordingValidator) FirstFrame(_ context.Context, input io.Reader, maxBytes int) ([]byte, error) {
-	return io.ReadAll(io.LimitReader(input, int64(maxBytes)))
-}
-
-type httpFixture struct {
-	server           *httptest.Server
-	admin            string
-	device           string
-	mu               sync.Mutex
-	activeRaw        int
-	maxConcurrentRaw int
-	sessions         map[string]*fixtureSession
-	starts           int
-}
-
-type fixtureSession struct {
-	viewers   int
-	graceEnds time.Time
-}
-
-func newHTTPFixture(t *testing.T, channels int) *httpFixture {
-	t.Helper()
-	f := &httpFixture{admin: "admin-super-secret", device: "device-super-secret", sessions: map[string]*fixtureSession{}}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/system/version", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+f.admin {
-			http.Error(w, "no", http.StatusUnauthorized)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": "fixture", "commit": "0123456789abcdef", "ready": true})
-	})
-	mux.HandleFunc("/v1/playout/sessions", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+f.admin {
-			http.Error(w, "no", http.StatusUnauthorized)
-			return
-		}
-		f.mu.Lock()
-		f.expireGraceLocked(time.Now())
-		active, viewers, grace := len(f.sessions), 0, 0
-		sessions := make([]map[string]any, 0, active)
-		for channelID, session := range f.sessions {
-			if session.viewers > 0 {
-				viewers++
-			} else {
-				grace++
-			}
-			sessions = append(sessions, map[string]any{"channelId": channelID, "target": "full", "viewers": session.viewers})
-		}
-		f.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(map[string]any{"running": true, "capacity": 4, "active": active, "viewerActiveSessions": viewers, "graceIdleSessions": grace, "transcodeCost": min(active, 4), "sessions": sessions})
-	})
-	mux.HandleFunc("/v1/playout/status", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"running": true, "gpu": map[string]any{"name": "fixture"}, "channels": []any{}, "prepared": map[string]any{"readyChannels": channels, "channels": channels}})
-	})
-	mux.HandleFunc("/v1/diagnostics/processes", func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		active := f.activeRaw
-		f.mu.Unlock()
-		items := make([]map[string]any, active)
-		for i := range items {
-			items[i] = map[string]any{"id": fmt.Sprintf("run-%d", i), "purpose": "playout_channel", "executable": "ffmpeg", "status": "running"}
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
-	})
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
-		f.mu.Lock()
-		starts := f.starts
-		f.mu.Unlock()
-		_, _ = fmt.Fprintf(w, "process_resident_memory_bytes 104857600\nprocess_cpu_seconds_total 2\nprocess_open_fds 12\ngo_goroutines 18\nloomarr_http_requests_in_flight 1\nloomarr_playout_sessions_active 0\nloomarr_playout_session_starts_total{result=\"success\"} %d\n", starts)
-	})
-	mux.HandleFunc("/v1/channels/", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(r.URL.Path, "/play-url") {
-			http.NotFound(w, r)
-			return
-		}
-		if r.Header.Get("Authorization") != "Bearer "+f.admin {
-			http.Error(w, "no", http.StatusUnauthorized)
-			return
-		}
-		parts := strings.Split(r.URL.Path, "/")
-		id := parts[3]
-		_ = json.NewEncoder(w).Encode(map[string]any{"relativeUrl": "/v1/playout/hls/" + id + "/master.m3u8?exp=1&sig=signed-secret"})
-	})
-	mux.HandleFunc("/v1/playout/hls/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("sig") != "signed-secret" {
-			http.NotFound(w, r)
-			return
-		}
-		if strings.HasSuffix(r.URL.Path, "/master.m3u8") {
-			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-			_, _ = io.WriteString(w, "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4?exp=1&sig=signed-secret\"\n#EXTINF:2,\nsegment-000001.m4s?exp=1&sig=signed-secret\n")
-			return
-		}
-		_, _ = w.Write([]byte("fixture-media-body"))
-	})
-	mux.HandleFunc("/v1/playout/stream/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("token") != f.device {
-			http.NotFound(w, r)
-			return
-		}
-		channelID := strings.TrimPrefix(r.URL.Path, "/v1/playout/stream/")
-		f.mu.Lock()
-		f.expireGraceLocked(time.Now())
-		session := f.sessions[channelID]
-		if session == nil && len(f.sessions) >= 4 {
-			f.mu.Unlock()
-			http.Error(w, "capacity", http.StatusServiceUnavailable)
-			return
-		}
-		if session == nil {
-			session = &fixtureSession{}
-			f.sessions[channelID] = session
-			f.starts++
-		}
-		f.activeRaw++
-		session.viewers++
-		if f.activeRaw > f.maxConcurrentRaw {
-			f.maxConcurrentRaw = f.activeRaw
-		}
-		f.mu.Unlock()
-		defer func() {
-			f.mu.Lock()
-			f.activeRaw--
-			session.viewers--
-			if session.viewers == 0 {
-				session.graceEnds = time.Now().Add(20 * time.Millisecond)
-			}
-			f.mu.Unlock()
-		}()
-		w.Header().Set("Content-Type", "video/mp2t")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(make([]byte, 188))
-		if flusher, ok := w.(http.Flusher); ok {
-			flusher.Flush()
-		}
-		<-r.Context().Done()
-	})
-	f.server = httptest.NewServer(mux)
-	t.Cleanup(f.server.Close)
-	return f
-}
-
-func (f *httpFixture) expireGraceLocked(now time.Time) {
-	for channelID, session := range f.sessions {
-		if session.viewers == 0 && !session.graceEnds.IsZero() && !now.Before(session.graceEnds) {
-			delete(f.sessions, channelID)
-		}
-	}
-}
-
 func fixtureChannels(n int) []Channel {
 	out := make([]Channel, n)
 	for i := range out {
 		out[i] = Channel{ID: fmt.Sprintf("channel-private-%03d", i+1), Roles: []string{"prepared"}}
+	}
+	for i := range min(n, 5) {
+		out[i].Roles = append(out[i].Roles, "transcode_h264", "audio_aac")
 	}
 	return out
 }

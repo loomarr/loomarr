@@ -1,6 +1,7 @@
 package playoutcert
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -16,42 +18,75 @@ type FFprobeValidator struct {
 }
 
 type FFmpegDecoder struct {
-	Path string
+	Path    string
+	command func(context.Context, string, ...string) *exec.Cmd
 }
 
-func (d FFmpegDecoder) FirstFrame(ctx context.Context, input io.Reader, maxBytes int) ([]byte, error) {
+func (d FFmpegDecoder) Decode(ctx context.Context, input io.ReadCloser, reportFrames func(int64)) error {
 	path := strings.TrimSpace(d.Path)
 	if path == "" {
 		path = "ffmpeg"
 	}
-	var capture bytes.Buffer
-	limited := io.LimitReader(input, int64(maxBytes))
-	cmd := exec.CommandContext(ctx, path,
-		"-hide_banner", "-loglevel", "error",
+	command := d.command
+	if command == nil {
+		command = exec.CommandContext
+	}
+	cmd := command(ctx, path,
+		"-hide_banner", "-loglevel", "error", "-nostdin",
+		"-stats_period", "0.05",
 		"-probesize", "256k", "-analyzeduration", "500000",
-		"-i", "pipe:0", "-map", "0:v:0", "-frames:v", "1", "-f", "null", "-")
+		"-i", "pipe:0", "-map", "0:v:0", "-f", "null", "-",
+		"-progress", "pipe:1", "-nostats")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, errors.New("ffmpeg decoder stdin unavailable")
+		_ = input.Close()
+		return errors.New("ffmpeg decoder stdin unavailable")
+	}
+	progress, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = input.Close()
+		return errors.New("ffmpeg decoder progress unavailable")
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, errors.New("ffmpeg decoder did not start")
+		_ = input.Close()
+		return errors.New("ffmpeg decoder did not start")
 	}
-	copyDone := make(chan struct{})
+	copyDone := make(chan error, 1)
 	go func() {
-		_, _ = io.Copy(stdin, io.TeeReader(limited, &capture))
-		_ = stdin.Close()
-		close(copyDone)
+		_, copyErr := io.Copy(stdin, input)
+		if closeErr := stdin.Close(); copyErr == nil {
+			copyErr = closeErr
+		}
+		copyDone <- copyErr
 	}()
+	progressDone := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(progress)
+		var previous int64
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "frame=") {
+				continue
+			}
+			frames, parseErr := strconv.ParseInt(strings.TrimSpace(strings.TrimPrefix(line, "frame=")), 10, 64)
+			if parseErr == nil && frames > previous {
+				previous = frames
+				reportFrames(frames)
+			}
+		}
+		progressDone <- scanner.Err()
+	}()
+	// StdoutPipe requires its reader to reach EOF before Wait closes the pipe.
+	// The child closing progress at exit supplies that EOF; only then may Wait
+	// reap the process.
+	progressErr := <-progressDone
 	waitErr := cmd.Wait()
-	<-copyDone
-	if waitErr != nil {
-		return capture.Bytes(), errors.New("ffmpeg did not decode a first video frame")
+	_ = input.Close()
+	copyErr := <-copyDone
+	if waitErr != nil || copyErr != nil || progressErr != nil {
+		return errors.New("ffmpeg decoder failed")
 	}
-	if capture.Len() == 0 {
-		return nil, errors.New("decoder consumed no transport bytes")
-	}
-	return append([]byte(nil), capture.Bytes()...), nil
+	return nil
 }
 
 func (v FFprobeValidator) Validate(ctx context.Context, body []byte) (MediaShape, error) {

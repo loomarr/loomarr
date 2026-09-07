@@ -269,6 +269,64 @@ func TestStartObservedEarlyCancellationFinishesDiagnostics(t *testing.T) {
 	}
 }
 
+func TestStartObservedCancellationFinishesRecordedDiagnostics(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sink := &processDiagnosticsSink{}
+	recorder := diagnostics.New(sink, diagnostics.Options{FlushInterval: time.Millisecond})
+	manager := diagnostics.NewProcessManager(sink, recorder, diagnostics.ProcessOptions{
+		OutputDir: t.TempDir(), FlushInterval: time.Millisecond,
+		Version: func(context.Context, string) string { return "test ffmpeg version" },
+	})
+	proc, err := StartObserved(ctx, os.Args[0], []string{
+		"-test.run=^TestProcessTreeHelper$", "--", "parent", filepath.Join(t.TempDir(), "child.pid"),
+	}, nil, nil, manager, diagnostics.ProcessSpec{Purpose: "playout_program"})
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cancel()
+		proc.Stop()
+		_ = proc.Wait()
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer closeCancel()
+		if err := manager.Close(closeCtx); err != nil {
+			t.Error(err)
+		}
+		if err := recorder.Close(closeCtx); err != nil {
+			t.Error(err)
+		}
+	})
+
+	runID := proc.ProcessRunID()
+	waitForObservedRun(t, sink, runID, func(run diagnostics.ProcessRun) bool { return run.ID != "" })
+	cancel()
+	waitForObservedRun(t, sink, runID, func(run diagnostics.ProcessRun) bool {
+		return run.Status == diagnostics.ProcessCancelled
+	})
+}
+
+func waitForObservedRun(t *testing.T, sink *processDiagnosticsSink, runID string, ready func(diagnostics.ProcessRun) bool) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		sink.mu.Lock()
+		run := sink.runs[runID]
+		sink.mu.Unlock()
+		if ready(run) {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatalf("process diagnostic %q did not reach the expected state: %#v", runID, run)
+		case <-tick.C:
+		}
+	}
+}
+
 // TestProcessTreeHelper is re-executed by TestProcessTreeLifecycle. The parent
 // spawns one descendant and waits forever; cancelling the supervised parent must
 // remove both, on Unix through a process group and on Windows through a Job Object.
