@@ -119,7 +119,7 @@ func runOpenRouter(ctx context.Context, config Config, runtime reviewRuntime) (r
 		})
 		if err != nil {
 			caseCancel()
-			return Result{}, fmt.Errorf("model review case %d source bytes changed", caseIndex+1)
+			return Result{}, fmt.Errorf("model review case %d source validation failed: %w", caseIndex+1, err)
 		}
 		wav, extractErr := runtime.extract.Extract(caseCtx, ffmpegPath, ffmpeg, &mediaPlan, loaded.plan.MaximumAudioBytes)
 		closeErr := mediaPlan.Close()
