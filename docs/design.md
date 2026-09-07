@@ -3060,6 +3060,17 @@ environment. The command refuses an unbounded run, a non-loopback origin unless 
 explicitly acknowledged, fewer than 100 Channels for a certifying run, duplicate ids, URL/query
 credentials, and output paths outside the worktree artifact directory.
 
+The command and the `playoutcert.Run` library entry point share the same input bounds, checked
+before target observation or process creation. An omitted zero value selects its documented default;
+a nonzero value outside the bounds is rejected rather than silently clamped. Concurrency and fan-in
+are within 1..64, surf rounds within 1..100, raw capture within 188 bytes..16 MiB, and warm grace
+within (0, 1 minute]. Request and cleanup timeouts are positive and at most 30 minutes; cleanup
+polling is within 1 millisecond..5 seconds. Existing programme-boundary timing bounds remain shared.
+A certifying caller may tighten the prepared latency thresholds but cannot raise them above 100 ms
+for HLS or 500 ms for raw prepared media. Private JSON manifests are at most 1 MiB including
+whitespace; readers detect bytes beyond that limit and reject trailing content instead of accepting
+an artificial EOF from a truncated reader. No invalid input may start a target or issue a request.
+
 The harness first mints a short-lived signed HLS URL for every Channel through
 `POST /v1/channels/{id}/play-url`; the device token is used only for the raw MPEG-TS route. It records
 Channels by stable run-local ordinal, never by id. A signed URL, bearer, token, media path, Library
