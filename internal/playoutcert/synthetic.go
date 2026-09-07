@@ -55,12 +55,24 @@ type SyntheticTarget struct {
 	parents              map[string]*syntheticParent
 	nextParentGeneration uint64
 	parentsWG            sync.WaitGroup
+	children             map[string]*syntheticChild
+	nextChildGeneration  uint64
+	childrenWG           sync.WaitGroup
 }
 
 type syntheticParent struct {
 	process    *playout.Process
 	generation uint64
 	faulting   bool
+}
+
+type syntheticChild struct {
+	process          *playout.Process
+	parentGeneration uint64
+	generation       uint64
+	parentRunID      string
+	target           string
+	faulting         bool
 }
 
 func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*SyntheticTarget, error) {
@@ -94,7 +106,7 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 	if scope == "" {
 		scope = "isolated-playout-cert"
 	}
-	target := &SyntheticTarget{root: root, scope: scope, boundaryWitness: newSyntheticBoundaryWitness(), parents: make(map[string]*syntheticParent)}
+	target := &SyntheticTarget{root: root, scope: scope, boundaryWitness: newSyntheticBoundaryWitness(), parents: make(map[string]*syntheticParent), children: make(map[string]*syntheticChild)}
 	fail := func(err error) (*SyntheticTarget, error) { _ = target.Close(context.Background()); return nil, err }
 
 	st, err := store.Open(ctx, "sqlite://"+filepath.Join(root, "loomarr.db"), true)
@@ -218,7 +230,12 @@ func NewSyntheticTarget(ctx context.Context, config SyntheticConfig) (*Synthetic
 		PlayoutResolver:  liveResolver,
 		PlayoutEncoder: func(encodeCtx context.Context, args []string, progress func(playout.Progress)) (*playout.Process, error) {
 			spec, _ := diagnostics.ProcessSpecFromContext(encodeCtx)
-			return playout.StartObserved(encodeCtx, ffmpeg, args, logger, progress, processManager, spec)
+			process, spawnErr := playout.StartObserved(encodeCtx, ffmpeg, args, logger, progress, processManager, spec)
+			if spawnErr != nil {
+				return nil, spawnErr
+			}
+			target.registerChild(spec, process)
+			return process, nil
 		},
 		DiagnosticProcesses: processLog,
 		LiveConfig: func(key string) string {
@@ -275,6 +292,36 @@ func (t *SyntheticTarget) registerParent(channelID string, process *playout.Proc
 	}()
 }
 
+// registerChild admits only a program encoder whose opaque parent correlation
+// still names this target's current parent for the same channel. The callback
+// is synthetic-only; diagnostics remain correlation, never control authority.
+func (t *SyntheticTarget) registerChild(spec diagnostics.ProcessSpec, process *playout.Process) {
+	if t == nil || process == nil || spec.Purpose != "playout_program" || spec.ChannelID == "" || spec.ParentRunID == "" || spec.Target == "" {
+		return
+	}
+	t.parentsMu.Lock()
+	parent := t.parents[spec.ChannelID]
+	if parent == nil || parent.process == nil || parent.faulting || parent.process.ProcessRunID() != spec.ParentRunID {
+		t.parentsMu.Unlock()
+		return
+	}
+	t.nextChildGeneration++
+	generation := t.nextChildGeneration
+	child := &syntheticChild{process: process, parentGeneration: parent.generation, generation: generation, parentRunID: spec.ParentRunID, target: spec.Target}
+	t.children[spec.ChannelID] = child
+	t.parentsMu.Unlock()
+	t.childrenWG.Add(1)
+	go func() {
+		defer t.childrenWG.Done()
+		_ = process.Wait()
+		t.parentsMu.Lock()
+		if current := t.children[spec.ChannelID]; current == child {
+			delete(t.children, spec.ChannelID)
+		}
+		t.parentsMu.Unlock()
+	}()
+}
+
 // FailParent performs the parent-failure drill only for this target's current
 // owned parent. It never resolves or signals an arbitrary PID.
 func (t *SyntheticTarget) FailParent(ctx context.Context, request ParentFaultRequest) (ParentFaultReceipt, error) {
@@ -318,6 +365,52 @@ func (t *SyntheticTarget) CurrentParent(ctx context.Context, request ParentFault
 	return parent.generation, nil
 }
 
+// CurrentChild exposes the opaque current child generation only if it belongs
+// to the exact current parent for the requested isolated target.
+func (t *SyntheticTarget) CurrentChild(ctx context.Context, request ChildFaultRequest) (ChildFaultTarget, error) {
+	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
+		return ChildFaultTarget{}, errors.New("child fault target mismatch")
+	}
+	if err := ctx.Err(); err != nil {
+		return ChildFaultTarget{}, err
+	}
+	t.parentsMu.Lock()
+	defer t.parentsMu.Unlock()
+	parent := t.parents[request.ChannelID]
+	child := t.children[request.ChannelID]
+	if parent == nil || child == nil || parent.process == nil || child.process == nil || parent.faulting || child.faulting ||
+		parent.generation != child.parentGeneration || parent.process.ProcessRunID() == "" || parent.process.ProcessRunID() != child.parentRunID || child.target == "" {
+		return ChildFaultTarget{}, errors.New("child fault stale or already ended")
+	}
+	return ChildFaultTarget{ParentGeneration: child.parentGeneration, ChildGeneration: child.generation}, nil
+}
+
+// FailChild stops exactly the currently registered encoder child. It rejects
+// target, parent, and child generation reuse before touching the owned handle.
+func (t *SyntheticTarget) FailChild(ctx context.Context, request ChildFaultRequest) (ChildFaultReceipt, error) {
+	if t == nil || strings.TrimSpace(request.BaseURL) != t.BaseURL {
+		return ChildFaultReceipt{}, errors.New("child fault target mismatch")
+	}
+	if err := ctx.Err(); err != nil {
+		return ChildFaultReceipt{}, err
+	}
+	t.parentsMu.Lock()
+	parent := t.parents[request.ChannelID]
+	child := t.children[request.ChannelID]
+	if parent == nil || child == nil || parent.process == nil || child.process == nil || parent.faulting || child.faulting ||
+		request.ParentGeneration == 0 || request.ChildGeneration == 0 || request.ParentGeneration != child.parentGeneration || request.ChildGeneration != child.generation ||
+		parent.generation != child.parentGeneration || parent.process.ProcessRunID() == "" || parent.process.ProcessRunID() != child.parentRunID || child.target == "" {
+		t.parentsMu.Unlock()
+		return ChildFaultReceipt{}, errors.New("child fault stale or already ended")
+	}
+	child.faulting = true
+	process := child.process
+	t.parentsMu.Unlock()
+	process.Stop()
+	_ = process.Wait()
+	return ChildFaultReceipt{ChannelID: request.ChannelID, ParentGeneration: request.ParentGeneration, ChildGeneration: request.ChildGeneration, Exited: true}, nil
+}
+
 // ProgrammeBoundaryWitness returns the isolated target's causal observation
 // seam. It is intentionally not available from ordinary production origins.
 func (t *SyntheticTarget) ProgrammeBoundaryWitness() ProgrammeBoundaryWitness {
@@ -334,6 +427,7 @@ func (t *SyntheticTarget) Close(ctx context.Context) error {
 			t.origin.Quiesce()
 		}
 		t.parentsWG.Wait()
+		t.childrenWG.Wait()
 		if t.server != nil {
 			result = t.server.Shutdown(ctx)
 		} else if t.listener != nil {
@@ -470,6 +564,9 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/playout/program/"+url.PathEscape(channelID)+"?"+query.Encode(), nil)
 		if err != nil {
 			return playout.Block{}, err
+		}
+		if spec, ok := diagnostics.ProcessSpecFromContext(ctx); ok && spec.ParentRunID != "" {
+			req.Header.Set(api.PlayoutParentProcessRunHeader, spec.ParentRunID)
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

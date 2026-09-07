@@ -343,6 +343,40 @@ func TestRunParentFaultCleanupResidualRetainsFinalEvidenceButDisqualifiesOutcome
 	}
 }
 
+func TestRunChildFaultCleanupResidualRetainsFinalEvidenceButDisqualifiesOutcome(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	channels := fixtureChannels(100)
+	config := fixtureConfig(fixture, channels)
+	config.FaultProfiles = []FaultProfile{FaultChildFailure}
+	config.FaultController = fixtureChildFaultController{target: playoutcertfixture.ParentFaultTarget{Fixture: fixture, Peer: channels[1].ID, RetainAfterRecovery: true}}
+	report, err := Run(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := childFaultRow(t, report)
+	if drill := report.PhaseMust("child_failure"); drill.Failures != 0 || drill.Successes != 1 {
+		t.Fatalf("child drill did not succeed before cleanup invalidation: %+v", drill)
+	}
+	if row.Baseline == nil || row.Final == nil || row.Final.Capacity == 0 || row.Final.SessionsActive <= row.Baseline.SessionsActive || row.Status != "unavailable" || row.Outcome != "cleanup_failed" || !slices.Contains(report.Failures, "cleanup_residual") {
+		t.Fatalf("Run child cleanup residual fault evidence = %+v failures=%v", row, report.Failures)
+	}
+}
+
+func TestChildFailureDrillRefusesUnsupportedController(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 100)
+	config := fixtureConfig(fixture, fixtureChannels(100))
+	config.FaultController = playoutcertfixture.ScopedFaultController{ScopeName: "fixture-without-child-authority"}
+	config = config.normalized()
+	endpoint, err := newEndpoint(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drill := childFailureDrill(context.Background(), endpoint, config, []int{0, 1}, 2, nil)
+	if drill.phase.Failures != 1 || drill.receipt != "not_observed" || drill.selected != "not_observed" || drill.peer != "not_observed" || drill.recovery != "not_observed" {
+		t.Fatalf("unsupported controller qualified a child drill: %+v", drill)
+	}
+}
+
 func TestParentFailureDrillUsesOnlySelectedAndRequiredPeer(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -379,6 +413,24 @@ type fixtureParentFaultController struct {
 	target playoutcertfixture.ParentFaultTarget
 }
 
+type fixtureChildFaultController struct {
+	target playoutcertfixture.ParentFaultTarget
+}
+
+func (c fixtureChildFaultController) Scope() string { return "fixture-child-fault" }
+
+func (c fixtureChildFaultController) CurrentChild(ctx context.Context, _ ChildFaultRequest) (ChildFaultTarget, error) {
+	generation, err := c.target.Current(ctx)
+	return ChildFaultTarget{ParentGeneration: generation, ChildGeneration: generation}, err
+}
+
+func (c fixtureChildFaultController) FailChild(ctx context.Context, request ChildFaultRequest) (ChildFaultReceipt, error) {
+	if err := c.target.Fail(ctx, request.ChannelID); err != nil {
+		return ChildFaultReceipt{}, err
+	}
+	return ChildFaultReceipt{ChannelID: request.ChannelID, ParentGeneration: request.ParentGeneration, ChildGeneration: request.ChildGeneration, Exited: true}, nil
+}
+
 func (c fixtureParentFaultController) Scope() string { return "fixture-parent-fault" }
 
 func (c fixtureParentFaultController) CurrentParent(ctx context.Context, _ ParentFaultRequest) (uint64, error) {
@@ -400,6 +452,17 @@ func parentFaultRow(t testing.TB, report Report) FaultQualification {
 		}
 	}
 	t.Fatal("parent fault qualification missing")
+	return FaultQualification{}
+}
+
+func childFaultRow(t testing.TB, report Report) FaultQualification {
+	t.Helper()
+	for _, row := range report.FaultProfiles {
+		if row.Profile == FaultChildFailure {
+			return row
+		}
+	}
+	t.Fatal("child fault qualification missing")
 	return FaultQualification{}
 }
 

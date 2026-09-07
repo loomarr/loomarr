@@ -48,6 +48,35 @@ type ParentFaultReceipt struct {
 	Exited     bool
 }
 
+// ChildFaultController can stop only a currently registered program encoder
+// belonging to this target's current owned parent. It deliberately exchanges
+// opaque generations instead of diagnostics handles or process IDs.
+type ChildFaultController interface {
+	FaultController
+	CurrentChild(context.Context, ChildFaultRequest) (ChildFaultTarget, error)
+	FailChild(context.Context, ChildFaultRequest) (ChildFaultReceipt, error)
+}
+
+type ChildFaultRequest struct {
+	BaseURL          string
+	ChannelID        string
+	ParentGeneration uint64
+	ChildGeneration  uint64
+}
+
+type ChildFaultTarget struct {
+	ParentGeneration uint64
+	ChildGeneration  uint64
+}
+
+// ChildFaultReceipt contains only causal, non-secret evidence.
+type ChildFaultReceipt struct {
+	ChannelID        string
+	ParentGeneration uint64
+	ChildGeneration  uint64
+	Exited           bool
+}
+
 type FaultQualification struct {
 	Profile            FaultProfile    `json:"profile"`
 	Status             string          `json:"status"`

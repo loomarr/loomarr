@@ -284,6 +284,86 @@ func TestSyntheticTargetRejectsStaleParentGenerationAfterReplacement(t *testing.
 	}
 }
 
+func TestSyntheticTargetChildFaultDrillExitsOwnedEncoderAndRecoversPeer(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	channels := []Channel{
+		{ID: "transcode-selected", Roles: []string{"transcode_h264", "audio_aac"}},
+		{ID: "transcode-peer", Roles: []string{"transcode_h264", "audio_aac"}},
+		// Marking a separate prepared control prevents NewSyntheticTarget from
+		// treating the two transcode channels as the implicit prepared cohort.
+		{ID: "prepared-control", Roles: []string{"prepared"}},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
+	defer cancel()
+	target, err := NewSyntheticTarget(ctx, SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 2, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		if closeErr := target.Close(closeCtx); closeErr != nil {
+			t.Errorf("close synthetic target: %v", closeErr)
+		}
+	}()
+	config := Config{
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels,
+		RequestTimeout: 15 * time.Second, RawCaptureBytes: 2 << 20, CleanupPoll: 25 * time.Millisecond,
+		Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{}, FaultController: target,
+	}.normalized()
+	endpoint, err := newEndpoint(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, initialSample := rawBurst(ctx, endpoint, config, []int{0, 1})
+	if len(initial) != 2 || initial[0].class != "ok" || initial[1].class != "ok" || initialSample.PreparedChannels != 1 || initialSample.TranscodeCost < 2 {
+		t.Fatalf("selected/peer did not enter the live transcode cohort: observations=%+v sample=%+v", initial, initialSample)
+	}
+	stale, err := target.CurrentChild(ctx, ChildFaultRequest{BaseURL: target.BaseURL, ChannelID: channels[0].ID})
+	if err != nil {
+		t.Fatalf("current selected live child before drill: %v", err)
+	}
+	if _, err := target.CurrentChild(ctx, ChildFaultRequest{BaseURL: target.BaseURL + "/wrong", ChannelID: channels[0].ID}); err == nil {
+		t.Fatal("mismatched child target exposed an owned encoder")
+	}
+	cancelled, cancelCurrent := context.WithCancel(ctx)
+	cancelCurrent()
+	if _, err := target.CurrentChild(cancelled, ChildFaultRequest{BaseURL: target.BaseURL, ChannelID: channels[0].ID}); err == nil {
+		t.Fatal("cancelled child lookup exposed an owned encoder")
+	}
+	if _, err := target.FailChild(ctx, ChildFaultRequest{BaseURL: target.BaseURL, ChannelID: channels[0].ID, ParentGeneration: stale.ParentGeneration + 1, ChildGeneration: stale.ChildGeneration}); err == nil {
+		t.Fatal("reused parent generation signalled the current child")
+	}
+	drill := childFailureDrill(ctx, endpoint, config, []int{0, 1}, 2, nil)
+	if drill.phase.Failures != 0 || drill.receipt != "exited" || drill.peer != "continued" || drill.recovery != "recovered" {
+		t.Fatalf("child fault drill did not prove owned exit and peer recovery: %+v", drill)
+	}
+	if drill.selected == "" || drill.selected == "not_observed" {
+		t.Fatalf("child fault drill did not record selected stream outcome: %+v", drill)
+	}
+	replacement, replacementSample := rawBurst(ctx, endpoint, config, []int{0})
+	if len(replacement) != 1 || replacement[0].class != "ok" || replacementSample.TranscodeCost < 1 {
+		t.Fatalf("selected public replacement was not live media: observations=%+v sample=%+v", replacement, replacementSample)
+	}
+	held := startHeldBurst(ctx, endpoint, config, []int{0})
+	if len(held.results) != 1 || held.results[0].class != "ok" {
+		held.release()
+		t.Fatalf("replacement held media = %+v", held.results)
+	}
+	if _, err := target.FailChild(ctx, ChildFaultRequest{BaseURL: target.BaseURL, ChannelID: channels[0].ID, ParentGeneration: stale.ParentGeneration, ChildGeneration: stale.ChildGeneration}); err == nil {
+		held.release()
+		t.Fatal("stale child request signalled the replacement")
+	}
+	held.verify(ctx)
+	held.release()
+	if held.results[0].class != "ok" {
+		t.Fatalf("replacement was affected by stale child refusal: %+v", held.results[0])
+	}
+}
+
 func TestSyntheticTargetRejectsPostOverloadCorruptHeldMedia(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {

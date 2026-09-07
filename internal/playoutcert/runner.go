@@ -201,6 +201,19 @@ func Run(ctx context.Context, config Config) (Report, error) {
 			unavailableFault(&report, FaultParentFailure, "drill_failed")
 		}
 	}
+	if slices.Contains(config.FaultProfiles, FaultChildFailure) {
+		samper.begin("child_failure")
+		childDrill := childFailureDrill(ctx, endpoint, config, transcodeIndexes, target.Capacity, samper)
+		childPhase, childSample := childDrill.phase, childDrill.sample
+		appendSampledPhase(&report, samper, childPhase)
+		recordBurstSample(&report, "child_failure", childSample)
+		recordChildFaultEvidence(&report, baseline, report.Phases[len(report.Phases)-1].Resources.Maximum, childDrill)
+		if childPhase.Failures == 0 {
+			qualifyFault(&report, FaultChildFailure, "complete")
+		} else {
+			unavailableFault(&report, FaultChildFailure, "drill_failed")
+		}
+	}
 	samper.begin("capacity_recovery")
 	recoveryObs, recoverySample := waitForConvergence(ctx, endpoint, config, baseline, min(config.CleanupTimeout, config.WarmGrace+10*time.Second))
 	appendSampledPhase(&report, samper, phaseFrom("capacity_recovery", []observation{recoveryObs}))
@@ -272,7 +285,7 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	// converges. Keep all successful observations in the row, but do not call a
 	// drill qualified if recovery, final cleanup, or capacity accounting failed
 	// after the fault.
-	invalidateParentFaultWithoutConvergence(&report)
+	invalidateFaultsWithoutConvergence(&report)
 	report.CompletedAt = config.Now()
 	report.Certified = config.Certify && len(report.Failures) == 0
 	return report, nil
@@ -285,6 +298,73 @@ type parentFaultDrill struct {
 	selected string
 	peer     string
 	recovery string
+}
+
+type childFaultDrill struct {
+	phase    Phase
+	sample   ResourceSample
+	receipt  string
+	selected string
+	peer     string
+	recovery string
+}
+
+func childFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, capacity int, sampler *phaseSampler) childFaultDrill {
+	controller, ok := config.FaultController.(ChildFaultController)
+	requiredCohort := min(capacity, 2)
+	if !ok || requiredCohort < 1 || len(indexes) < requiredCohort {
+		return childFaultDrill{phase: phaseFrom("child_failure", []observation{{class: "controller_unavailable"}}), receipt: "not_observed", selected: "not_observed", peer: "not_observed", recovery: "not_observed"}
+	}
+	heldIndexes := indexes[:1]
+	peerOutcome := "not_applicable"
+	if capacity >= 2 {
+		heldIndexes = indexes[:2]
+		peerOutcome = "not_observed"
+	}
+	held := startHeldBurst(ctx, endpoint, config, heldIndexes)
+	if len(held.results) != len(heldIndexes) || held.results[0].class != "ok" || (capacity >= 2 && held.results[1].class != "ok") {
+		held.release()
+		return childFaultDrill{phase: phaseFrom("child_failure", []observation{{class: "initial_media_missing"}}), sample: held.sample, receipt: "not_observed", selected: "not_observed", peer: peerOutcome, recovery: "not_observed"}
+	}
+	faultCtx, cancel := context.WithTimeout(ctx, config.RequestTimeout)
+	defer cancel()
+	request := ChildFaultRequest{BaseURL: endpoint.base.String(), ChannelID: config.Channels[indexes[0]].ID}
+	current, err := controller.CurrentChild(faultCtx, request)
+	if err != nil {
+		held.release()
+		return childFaultDrill{phase: phaseFrom("child_failure", []observation{{class: "generation_unavailable"}}), sample: held.sample, receipt: "not_observed", selected: "not_observed", peer: peerOutcome, recovery: "not_observed"}
+	}
+	request.ParentGeneration, request.ChildGeneration = current.ParentGeneration, current.ChildGeneration
+	receipt, err := controller.FailChild(faultCtx, request)
+	faultExpired := faultCtx.Err() != nil
+	// Child failure is not assumed to end its parent. The held selected stream
+	// records the actual outcome while an independently admitted peer must keep
+	// producing fresh media through the owned child's observed exit.
+	held.verify(ctx)
+	held.release()
+	peerContinued := capacity < 2 || held.results[1].class == "ok"
+	if err != nil || faultExpired || !receipt.Exited || receipt.ChannelID != request.ChannelID || receipt.ParentGeneration != request.ParentGeneration || receipt.ChildGeneration != request.ChildGeneration || !peerContinued {
+		receiptOutcome := "not_exited"
+		if err != nil {
+			receiptOutcome = "unavailable"
+		} else if faultExpired {
+			receiptOutcome = "fault_budget_expired"
+		}
+		if capacity >= 2 {
+			peerOutcome = held.results[1].class
+		}
+		return childFaultDrill{phase: phaseFrom("child_failure", []observation{{class: "fault_failed"}}), sample: held.sample, receipt: receiptOutcome, selected: held.results[0].class, peer: peerOutcome, recovery: "not_observed"}
+	}
+	recovery, sample := rawBurst(ctx, endpoint, config, indexes[:1])
+	phase := phaseFrom("child_failure", recovery)
+	recoveryOutcome := "failed"
+	if phase.Failures == 0 {
+		recoveryOutcome = "recovered"
+	}
+	if capacity >= 2 {
+		peerOutcome = "continued"
+	}
+	return childFaultDrill{phase: phase, sample: sample, receipt: "exited", selected: held.results[0].class, peer: peerOutcome, recovery: recoveryOutcome}
 }
 
 func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, capacity int, sampler *phaseSampler) parentFaultDrill {
@@ -356,20 +436,31 @@ func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, 
 	return parentFaultDrill{phase: phase, sample: sample, receipt: "exited", selected: "interrupted", peer: peerOutcome, recovery: recoveryOutcome}
 }
 
-func invalidateParentFaultWithoutConvergence(report *Report) {
+func invalidateFaultsWithoutConvergence(report *Report) {
 	if slices.Contains(report.Failures, "cleanup_residual") {
 		invalidateQualifiedFault(report, FaultParentFailure, "cleanup_failed")
+		invalidateQualifiedFault(report, FaultChildFailure, "cleanup_failed")
 		return
 	}
 	if slices.Contains(report.Failures, "capacity_oversubscribed") {
 		invalidateQualifiedFault(report, FaultParentFailure, "capacity_oversubscribed")
+		invalidateQualifiedFault(report, FaultChildFailure, "capacity_oversubscribed")
 		return
 	}
-	for _, name := range []string{"parent_failure", "capacity_recovery", "cleanup"} {
+	for _, name := range []string{"capacity_recovery", "cleanup"} {
 		phase, ok := report.Phase(name)
 		if !ok || phase.Failures > 0 || phase.Resources.Samples == 0 || phase.Resources.SampleFailures > 0 {
 			invalidateQualifiedFault(report, FaultParentFailure, name+"_failed")
+			invalidateQualifiedFault(report, FaultChildFailure, name+"_failed")
 			return
+		}
+	}
+	for _, profile := range []FaultProfile{FaultParentFailure, FaultChildFailure} {
+		if row, ok := faultQualification(report, profile); ok && row.Status == "qualified" {
+			phase, phaseOK := report.Phase(string(profile))
+			if !phaseOK || phase.Failures > 0 || phase.Resources.Samples == 0 || phase.Resources.SampleFailures > 0 {
+				invalidateQualifiedFault(report, profile, string(profile)+"_failed")
+			}
 		}
 	}
 }
@@ -384,6 +475,27 @@ func recordParentFaultEvidence(report *Report, baseline, peak ResourceSample, dr
 		row.ReceiptOutcome, row.SelectedContinuity = drill.receipt, drill.selected
 		row.PeerContinuity, row.Recovery = drill.peer, drill.recovery
 	}
+}
+
+func recordChildFaultEvidence(report *Report, baseline, peak ResourceSample, drill childFaultDrill) {
+	for index := range report.FaultProfiles {
+		row := &report.FaultProfiles[index]
+		if row.Profile != FaultChildFailure {
+			continue
+		}
+		row.Baseline, row.PhasePeak = &baseline, &peak
+		row.ReceiptOutcome, row.SelectedContinuity = drill.receipt, drill.selected
+		row.PeerContinuity, row.Recovery = drill.peer, drill.recovery
+	}
+}
+
+func faultQualification(report *Report, profile FaultProfile) (FaultQualification, bool) {
+	for _, row := range report.FaultProfiles {
+		if row.Profile == profile {
+			return row, true
+		}
+	}
+	return FaultQualification{}, false
 }
 
 func recordFaultFinalResource(report *Report, final ResourceSample) {
