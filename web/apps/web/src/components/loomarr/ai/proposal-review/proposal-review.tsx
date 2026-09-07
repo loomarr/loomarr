@@ -180,7 +180,9 @@ const ProposalReview = ({
             <div className="flex items-baseline justify-end gap-1.5">
               <dt className="text-static-400 text-xs">Era spread</dt>
               <dd className="font-mono text-sm text-tune">
-                {proposal.scores.eraBalance === null ? "Not assessed" : formatPercent(proposal.scores.eraBalance)}
+                {proposal.scores.eraBalance === null
+                  ? "Not assessed"
+                  : formatPercent(proposal.scores.eraBalance)}
               </dd>
             </div>
           </dl>

@@ -11,7 +11,15 @@ describe("native Android unicast planning", () => {
   it("executes deterministic bounded target planning and paced cancellation", () => {
     const output = mkdtempSync(join(tmpdir(), "loomarr-unicast-test-"));
     try {
-      execFileSync("javac", ["-d", output, source("LocalNetworkSelector.java"), source("UnicastTargetPlanner.java"), source("UnicastRetryPolicy.java"), source("UnicastSweep.java"), new URL("native/UnicastTargetPlannerTest.java", import.meta.url).pathname]);
+      execFileSync("javac", [
+        "-d",
+        output,
+        source("LocalNetworkSelector.java"),
+        source("UnicastTargetPlanner.java"),
+        source("UnicastRetryPolicy.java"),
+        source("UnicastSweep.java"),
+        new URL("native/UnicastTargetPlannerTest.java", import.meta.url).pathname,
+      ]);
       execFileSync("java", ["-cp", output, "media.loomarr.tv.discovery.UnicastTargetPlannerTest"]);
     } finally {
       rmSync(output, { recursive: true, force: true });

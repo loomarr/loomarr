@@ -61,7 +61,9 @@ describe("ProposalReview", () => {
   });
 
   it("shows unavailable episode-era evidence as not assessed", () => {
-    renderWithTooltip(<ProposalReview proposal={{ ...proposal, scores: { ...proposal.scores, eraBalance: null } }} />);
+    renderWithTooltip(
+      <ProposalReview proposal={{ ...proposal, scores: { ...proposal.scores, eraBalance: null } }} />,
+    );
     expect(screen.getByText("Not assessed")).toBeInTheDocument();
     expect(screen.queryByText("100%")).not.toBeInTheDocument();
   });
