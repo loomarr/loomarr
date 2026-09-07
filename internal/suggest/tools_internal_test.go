@@ -115,7 +115,7 @@ func TestRunToolRejectsUnknownCollectionModeAndQualifiers(t *testing.T) {
 		{"mode": 1, "query": "The Thing"},
 		{"mode": "collection", "media_type": "movie", "titles": []any{"The Thing"}, "era": "1980s"},
 	} {
-		result, _, _ := s.runTool(context.Background(), llm.ToolCall{Name: catalogToolName, Arguments: arguments}, Intent{}, nil)
+		result, _, _, _ := s.runTool(context.Background(), llm.ToolCall{Name: catalogToolName, Arguments: arguments}, Intent{}, nil)
 		if !strings.Contains(result, `"error"`) {
 			t.Fatalf("arguments %v unexpectedly succeeded: %s", arguments, result)
 		}
@@ -224,7 +224,7 @@ func TestProjectCatalogArgumentsRejectsMalformedDiscardedFieldsAndOtherRoutes(t 
 func TestRunToolKeepsAllQualifiersOnAlreadyValidStrictCall(t *testing.T) {
 	corpus := &catalogfixture.Corpus{}
 	s := New(nil, catalog.New(nil, corpus), nil, 10)
-	_, _, _ = s.runTool(context.Background(), llm.ToolCall{
+	_, _, _, _ = s.runTool(context.Background(), llm.ToolCall{
 		Name: catalogToolName,
 		Arguments: map[string]any{
 			"media_type": "series", "network": "ABC", "genres": []any{"Comedy"},
@@ -254,7 +254,7 @@ func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testi
 		membershipKeys: make(map[provision.Key]bool),
 	}
 	s := New(nil, catalog.New(nil, corpus), nil, 10)
-	_, candidates, _ := s.runTool(context.Background(), llm.ToolCall{
+	_, candidates, _, _ := s.runTool(context.Background(), llm.ToolCall{
 		Name: catalogToolName, Arguments: map[string]any{"query": "family comedies"},
 	}, intent, nil)
 	if len(candidates) != 2 || len(corpus.Searches()) != 1 {
@@ -277,8 +277,8 @@ func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T)
 	}
 	s := New(nil, catalog.New(nil, corpus), nil, 10)
 	call := llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"query": "family night"}}
-	_, _, _ = s.runTool(context.Background(), call, intent, nil)
-	_, _, _ = s.runTool(context.Background(), call, intent, nil)
+	_, _, _, _ = s.runTool(context.Background(), call, intent, nil)
+	_, _, _, _ = s.runTool(context.Background(), call, intent, nil)
 	searches := corpus.Searches()
 	if len(searches) != 4 || searches[0].Query != "family night" || searches[1].Query != "Full House" ||
 		searches[2].Query != "Family Matters" || searches[3].Query != "family night" {
@@ -309,7 +309,7 @@ func TestRunCollectionToolUsesUnfilteredSourceIdentityBeforeModelYear(t *testing
 			corpus := &catalogfixture.Corpus{Candidates: tt.candidates}
 			intent := Intent{Description: "A named programming block with Full House", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
 			s := New(nil, catalog.New(nil, corpus), nil, 10)
-			_, candidates, _ := s.runCollectionTool(context.Background(), map[string]any{
+			_, candidates, _, _ := s.runCollectionTool(context.Background(), map[string]any{
 				"mode": "collection", "media_type": "series", "titles": []any{map[string]any{"name": "Full House", "year": float64(1987)}},
 			}, intent, nil)
 			if len(candidates) != 1 || len(intent.membershipKeys) != tt.wantKeys || len(corpus.Searches()) != 1 {
@@ -335,7 +335,7 @@ func TestRunToolDoesNotProjectMalformedNonEmptyFields(t *testing.T) {
 	for _, arguments := range tests {
 		corpus := &catalogfixture.Corpus{}
 		s := New(nil, catalog.New(nil, corpus), nil, 10)
-		result, candidates, _ := s.runTool(context.Background(), llm.ToolCall{
+		result, candidates, _, _ := s.runTool(context.Background(), llm.ToolCall{
 			Name: catalogToolName, Arguments: arguments,
 		}, Intent{}, nil)
 		if !strings.Contains(result, `"error"`) || len(candidates) != 0 {
