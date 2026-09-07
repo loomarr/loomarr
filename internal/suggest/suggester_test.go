@@ -1498,39 +1498,45 @@ func TestSuggest_AllFabricated_ErrNoGroundedTitles(t *testing.T) {
 	}
 }
 
-// A named programming block is a qualifier, not a bag of generic era/theme
+// A named programming block or collection is a qualifier, not a bag of generic era/theme
 // words. Catalog identity alone must not let the model claim unrelated shows
 // belong to it when Loomarr has no membership evidence.
-func TestSuggest_NamedProgrammingBlockRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{
-			Terms: []string{"ffs", "orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
-			Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
-			Genres: []string{"Science Fiction"},
-		},
-		testkit.SearchStub{
-			Terms: []string{"ffs", "kitchen circuit"}, LibraryItemID: "lib-kitchen-circuit",
-			Name: "Kitchen Circuit", Type: "Series", Year: 1997, TVDBID: 91002,
-			Genres: []string{"Reality"},
-		},
-	)
-	mt := testkit.NewTMDB(t)
-	tm := tmdb.NewWithBase(mt.URL, "key")
-	model := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit"}}),
-		testkit.FinalResponse(`{"picks":[
-			{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},
-			{"mediaType":"series","tvdbId":91002,"name":"Kitchen Circuit"}
-		]}`),
-	)
-	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
-	prop, err := s.Suggest(context.Background(), suggest.Intent{
-		Description: "Let's make a channel for FFS like the 90s",
-	})
-	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
-		t.Fatalf("unsubstantiated reference picks should fail closed, got error %v and trace %+v", err, prop.Trace)
+func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
+	for _, description := range []string{
+		"Let's make a channel for FFS like the 90s",
+		"Criterion Collection",
+	} {
+		t.Run(description, func(t *testing.T) {
+			ms := testkit.NewMediaServer(t)
+			ms.SetSearchItems(
+				testkit.SearchStub{
+					Terms: []string{"ffs", "orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
+					Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
+					Genres: []string{"Science Fiction"},
+				},
+				testkit.SearchStub{
+					Terms: []string{"ffs", "kitchen circuit"}, LibraryItemID: "lib-kitchen-circuit",
+					Name: "Kitchen Circuit", Type: "Series", Year: 1997, TVDBID: 91002,
+					Genres: []string{"Reality"},
+				},
+			)
+			mt := testkit.NewTMDB(t)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			model := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit"}}),
+				testkit.FinalResponse(`{"picks":[
+					{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},
+					{"mediaType":"series","tvdbId":91002,"name":"Kitchen Circuit"}
+				]}`),
+			)
+			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+
+			prop, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+				t.Fatalf("unsubstantiated reference picks should fail closed, got error %v and trace %+v", err, prop.Trace)
+			}
+		})
 	}
 }
 
@@ -1796,25 +1802,29 @@ func TestSuggest_DiscoveryGroundsExplicitMoviePeople(t *testing.T) {
 }
 
 func TestSuggest_DiscoveryGroundsExplicitTVNetwork(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
-	mt := testkit.NewTMDB(t)
-	mt.AddNetwork(49, "HBO", "US")
-	mt.SetSeriesNetwork(1396, 49)
-	tm := tmdb.NewWithBase(mt.URL, "key")
-	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"media_type": "series", "network": "HBO"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}]}`),
-	)
-	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
+	for _, description := range []string{"HBO series", "shows from network HBO"} {
+		t.Run(description, func(t *testing.T) {
+			ms := testkit.NewMediaServer(t)
+			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+			mt := testkit.NewTMDB(t)
+			mt.AddNetwork(49, "HBO", "US")
+			mt.SetSeriesNetwork(1396, 49)
+			tm := tmdb.NewWithBase(mt.URL, "key")
+			llmMock := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"media_type": "series", "network": "HBO"}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}]}`),
+			)
+			s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "HBO series"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
-	if len(items) != 1 || items[0].TMDBID != 1396 || !slices.Equal(items[0].Networks, []string{"HBO"}) {
-		t.Fatalf("network-grounded proposal = %+v", proposal)
+			proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+			if err != nil {
+				t.Fatal(err)
+			}
+			items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+			if len(items) != 1 || items[0].TMDBID != 1396 || !slices.Equal(items[0].Networks, []string{"HBO"}) {
+				t.Fatalf("network-grounded proposal = %+v", proposal)
+			}
+		})
 	}
 }
 

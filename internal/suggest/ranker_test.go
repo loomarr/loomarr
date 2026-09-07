@@ -189,6 +189,7 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 		"a channel like TGIF from the 90s",
 		"a named Friday-night family sitcom collection",
 		"Criterion Collection lineup",
+		"Lantern Collection",
 		"TGIF like the 90s, with shows from the ABC network",
 		"make a channel for FFS like the 90s",
 		"shows from NBN",
@@ -202,6 +203,9 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 	for _, description := range []string{
 		"UFO movies",
 		"shows from the ABC network",
+		"shows from network ABC",
+		"network ABC shows",
+		"ABC network shows",
 		"ABC network shows, not TGIF",
 		"movies starring Tom Hanks",
 		"feel-good sci-fi",

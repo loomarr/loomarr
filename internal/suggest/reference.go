@@ -36,12 +36,13 @@ func newMembershipSourceState() *membershipSourceState {
 }
 
 var (
-	namedCollectionPhrasePattern = regexp.MustCompile(`(?i:\bnamed\b.{0,80}\b(?:collection|line-?up|block)\b)`)
-	properNamedSetPattern        = regexp.MustCompile(`\b[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){1,5}\s+(?i:collection|line-?up|block)\b`)
-	acronymCuePattern            = regexp.MustCompile(`(?i:\b(?:for|from|based\s+on|like)\s+)([A-Z][A-Z0-9&]{2,9})\b`)
-	acronymSetSuffixPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+(?:lineup|block|channel|like)\b)`)
-	acronymSentenceEndPattern    = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?]|$)`)
-	directNetworkRolePattern     = regexp.MustCompile(`(?i:^\s+(?:the\s+)?network\b)`)
+	namedCollectionPhrasePattern   = regexp.MustCompile(`(?i:\bnamed\b.{0,80}\b(?:collection|line-?up|block)\b)`)
+	properNamedSetPattern          = regexp.MustCompile(`\b[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\s+(?i:collection|line-?up|block)\b`)
+	acronymCuePattern              = regexp.MustCompile(`(?i:\b(?:for|from|based\s+on|like)\s+)([A-Z][A-Z0-9&]{2,9})\b`)
+	acronymSetSuffixPattern        = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+(?:lineup|block|channel|like)\b)`)
+	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?]|$)`)
+	directNetworkRoleBeforePattern = regexp.MustCompile(`(?i:\b(?:the\s+)?network\s+)$`)
+	directNetworkRolePattern       = regexp.MustCompile(`(?i:^\s+(?:the\s+)?network\b)`)
 )
 
 type referenceGrounding struct {
@@ -337,6 +338,10 @@ func acronymNamesSet(text string) bool {
 	for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymSentenceEndPattern} {
 		for _, match := range pattern.FindAllStringSubmatchIndex(text, -1) {
 			acronym := text[match[2]:match[3]]
+			if directNetworkRoleBeforePattern.MatchString(text[:match[2]]) ||
+				directNetworkRolePattern.MatchString(text[match[3]:]) {
+				continue
+			}
 			if freeformTitlePolarity(text, acronym) >= 0 {
 				return true
 			}
