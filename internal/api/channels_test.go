@@ -1167,6 +1167,51 @@ func TestUpdateChannel_InvalidPolicyRejected(t *testing.T) {
 	}
 }
 
+func TestUpdateChannel_PersistsDateScopeAndDisjointFillerEraWindows(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1", `{
+		"policy": {
+			"scope":{"dates":{"seriesAiring":[{"from":1970,"to":1979},{"from":1990,"to":1999}]}},
+			"filler":{"eraWindows":[{"from":1970,"to":1979},{"from":1990,"to":1999}]}
+		}
+	}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("policy patch → %d, want 200", resp.StatusCode)
+	}
+	ch, err := st.GetChannel(context.Background(), "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ch.Policy.Scope.Dates.SeriesAiring; len(got) != 2 || got[0] != (schedule.Range{From: 1970, To: 1979}) || got[1] != (schedule.Range{From: 1990, To: 1999}) {
+		t.Fatalf("persisted scope.dates.seriesAiring = %+v, want disjoint windows", got)
+	}
+	if ch.Policy.Filler == nil {
+		t.Fatal("persisted filler = nil, want era windows")
+	}
+	if got := ch.Policy.Filler.EraWindows; len(got) != 2 || got[0] != (schedule.Range{From: 1970, To: 1979}) || got[1] != (schedule.Range{From: 1990, To: 1999}) {
+		t.Fatalf("persisted filler.eraWindows = %+v, want disjoint windows", got)
+	}
+}
+
+func TestUpdateChannel_RejectsMalformedDateScopes(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+
+	for _, body := range []string{
+		`{"policy":{"scope":{"dates":{}}}}`,
+		`{"policy":{"scope":{"dates":{"movieRelease":[{"from":1995,"to":1999},{"from":1990,"to":1994}]}}}}`,
+		`{"policy":{"rules":[{"what":{"dates":{"seriesAiring":[{"from":1990,"to":1994},{"from":1994,"to":1999}]}}}]}}`,
+		`{"policy":{"filler":{"era":{"from":0,"to":0},"eraWindows":[{"from":1990,"to":1999}]}}}`,
+	} {
+		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1", body))
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("invalid policy %s → %d, want 422", body, resp.StatusCode)
+		}
+	}
+}
+
 func TestUpdateChannel_PauseAndResume(t *testing.T) {
 	srv, st, chSvc, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "A", 5)

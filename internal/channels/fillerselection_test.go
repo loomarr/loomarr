@@ -53,7 +53,7 @@ func TestSelectionFrom_EraHasThreeStates(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := channels.SelectionFrom(tc.sel, scope).Era
+			got := channels.SelectionFrom(tc.sel, schedule.ScopePolicy{Era: scope}).Era
 			if got != tc.want {
 				t.Errorf("era = %+v, want %+v", got, tc.want)
 			}
@@ -64,7 +64,7 @@ func TestSelectionFrom_EraHasThreeStates(t *testing.T) {
 // A channel with no programming era of its own has nothing to inherit, so an unset filler era is
 // simply "any" — the additive default an empty policy has always promised.
 func TestSelectionFrom_NoScopeEraLeavesTheRangeOpen(t *testing.T) {
-	if got := channels.SelectionFrom(nil, nil).Era; !got.Any() {
+	if got := channels.SelectionFrom(nil, schedule.ScopePolicy{}).Era; !got.Any() {
 		t.Errorf("era = %+v, want the open range", got)
 	}
 }

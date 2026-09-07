@@ -101,6 +101,19 @@ func TestCandidatePools_AnyEraFillsEveryRung(t *testing.T) {
 	}
 }
 
+func TestCandidatePools_EraWindowUnionKeepsGapAtEveryRung(t *testing.T) {
+	catalog := []Clip{commercial("old", 1975, Kids), commercial("gap", 1985, Kids), commercial("new", 1995, Kids)}
+	pools := candidatePools(catalog, Window{EraWindows: []EraRange{{From: 1970, To: 1975}, {From: 1990, To: 1995}}, Audience: Kids}, Policy{})
+	if len(pools[0].clips) != 2 || len(pools[1].clips) != 3 {
+		t.Fatalf("exact/widened clips = %#v / %#v", pools[0].clips, pools[1].clips)
+	}
+	for _, c := range pools[0].clips {
+		if c.Era == 1985 {
+			t.Fatal("disjoint exact windows filled their gap")
+		}
+	}
+}
+
 // ⚠ A clip whose era Loomarr could not ground (year 0) satisfies NO range — the same shape as the
 // audience rule, and for the same reason: "we could not tell" must never quietly count as "yes".
 // It still reaches the audience rung, so it is not invisible, just not claimed as era-accurate.

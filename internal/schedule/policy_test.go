@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -176,6 +177,13 @@ func TestValidate(t *testing.T) {
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Audience: "nobody"}}},                // unknown audience
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Kinds: []string{"advert"}}}},         // unknown kind
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}}, // inverted era range
+		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{}}}},
+		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{MovieRelease: []Range{{From: 1899, To: 1990}}}}}},
+		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{MovieRelease: []Range{{From: 2000, To: 1990}}}}}},
+		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{MovieRelease: []Range{{From: 1995, To: 1999}, {From: 1990, To: 1994}}}}}},
+		{ProposalPolicy: ProposalPolicy{Rules: []SchedulingRule{{What: &ScopePolicy{Dates: &DateScope{}}}}}},
+		{ProposalPolicy: ProposalPolicy{Rules: []SchedulingRule{{What: &ScopePolicy{Dates: &DateScope{SeriesAiring: []Range{{From: 1990, To: 1994}, {From: 1994, To: 1999}}}}}}}},
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{}, EraWindows: []Range{{From: 1990, To: 1999}}}}},
 		// ⚠ NOTE (§10 V45a): an unknown CATEGORY is no longer rejected here. Categories became taxonomy
 		// slugs — an open, operator-editable set this pure domain package cannot know — so they are
 		// opaque like Pinned/Excluded ids (a stale slug matches nothing at assembly). The API layer,
@@ -187,6 +195,61 @@ func TestValidate(t *testing.T) {
 		if err := p.Validate(); err == nil {
 			t.Errorf("bad policy %d should have been rejected", i)
 		}
+	}
+}
+
+func TestValidate_FillerEraKeepsLegacyScalarSemantics(t *testing.T) {
+	for _, era := range []Range{
+		{From: 1800, To: 1899}, // existing operator policies are not newly year-bounded
+		{From: 1800},
+		{To: 1800},
+		{}, // explicitly any
+	} {
+		policy := ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &era}}}
+		if err := policy.Validate(); err != nil {
+			t.Errorf("legacy scalar era %+v was rejected: %v", era, err)
+		}
+	}
+	if err := (ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}}).Validate(); err == nil {
+		t.Fatal("inverted legacy scalar era was accepted")
+	}
+}
+
+func TestValidate_FillerEraWindowsRequirePresentNormalizedList(t *testing.T) {
+	var fromJSON ChannelPolicy
+	if err := json.Unmarshal([]byte(`{"filler":{"eraWindows":[]}}`), &fromJSON); err != nil {
+		t.Fatal(err)
+	}
+	if err := fromJSON.Validate(); err == nil {
+		t.Fatal("an explicitly empty eraWindows list was accepted")
+	}
+
+	bad := []FillerSelection{
+		{Era: &Range{}, EraWindows: []Range{}},
+		{Era: &Range{}, EraWindows: []Range{{From: 1990, To: 1999}}},
+		{EraWindows: []Range{{From: 1990, To: 1999}, {From: 1970, To: 1979}}},
+		{EraWindows: []Range{{From: 1970, To: 1979}, {From: 1979, To: 1989}}},
+	}
+	for i, f := range bad {
+		if err := (ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &f}}).Validate(); err == nil {
+			t.Errorf("bad eraWindows case %d was accepted", i)
+		}
+	}
+	valid := ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{EraWindows: []Range{{From: 1970, To: 1979}, {From: 1990, To: 1999}}}}}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("normalized eraWindows was rejected: %v", err)
+	}
+}
+
+func TestSeedFillerSelectionPreservesDateWindowGaps(t *testing.T) {
+	p := ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{MovieRelease: []Range{{From: 1970, To: 1975}}, SeriesAiring: []Range{{From: 1990, To: 1992}}}}}
+	got := SeedFillerSelection(p)
+	if got.Era != nil || !reflect.DeepEqual(got.EraWindows, []Range{{From: 1970, To: 1975}, {From: 1990, To: 1992}}) {
+		t.Fatalf("seed = %+v", got)
+	}
+	got.EraWindows[0].From = 1
+	if p.Scope.Dates.MovieRelease[0].From != 1970 {
+		t.Fatal("seed aliases date windows")
 	}
 }
 

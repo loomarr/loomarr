@@ -147,9 +147,9 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	// It is a candidate. Which rung? The same order candidatePools builds them in, so a fit
 	// note cannot claim a tighter rung than the pool the clip actually lands in.
 	switch {
-	case len(filterEra(one, w.Era)) > 0:
+	case len(filterEraWindows(one, w.eraWindows())) > 0:
 		fit.Level = MatchExact
-	case len(filterEra(one, w.Era.Widened())) > 0:
+	case len(filterEraWindows(one, widenEraWindows(w.eraWindows()))) > 0:
 		fit.Level = MatchWidened
 	default:
 		fit.Level = MatchAudience
