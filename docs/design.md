@@ -3064,7 +3064,16 @@ One run uses an explicit start barrier and per-request deadlines. Its fixed phas
 prepared-only lookup over the whole configured catalog; rapid latest-request-wins surf churn; a
 same-Channel viewer fan-in; a cold burst up to the server-reported active transcode capacity; one
 bounded overload attempt; cancellation and warm-grace reuse; grace expiry and recovery; and a
-programme-boundary soak. A private optional cohort manifest may assign copy, H.264/HEVC transcode,
+programme-boundary soak. Every configured Channel is minted, probed, and surfed; prepared readiness
+and cold transcode capacity remain separate cohorts within that complete catalog. A declared
+`prepared` Channel must return a prepared hit. A deliberately cold, explicitly declared transcode
+Channel may return the documented prepared-only `204` miss, which is retained as an expected probe
+outcome and must not silently start an encoder. The prepared latency and media assertions still
+apply to prepared hits, while the cold Channel must supply its real media and capacity evidence in
+the transcode lane. A missing prepared hit for a declared prepared Channel remains a failure; when
+no prepared roles are declared, the full catalog is the prepared cohort. Probe attempt counts
+always cover the full catalog, including retained misses, and never collapse to a ready subset.
+A private optional cohort manifest may assign copy, H.264/HEVC transcode,
 AAC/EAC3/AC3, expected-failure, and remote-input roles to Channel ordinals. Missing roles make that
 lane non-certifying rather than silently inventing coverage. Synthetic fixtures use deterministic
 FFmpeg sources in an isolated instance; an operator cohort may instead read real files over a
