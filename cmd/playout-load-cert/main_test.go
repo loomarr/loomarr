@@ -16,13 +16,18 @@ import (
 )
 
 func TestCleanupFailureIsPersistedAsUncertifiedReport(t *testing.T) {
-	output := filepath.Join(t.TempDir(), "report.json")
+	outputDir := t.TempDir()
+	output, err := openContainedOutput(outputDir, filepath.Join(outputDir, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = output.Close() }()
 	report := playoutcert.Report{Certified: true, FaultProfiles: []playoutcert.FaultQualification{{Profile: playoutcert.FaultParentFailure, Status: "qualified", Outcome: "complete"}}}
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	if code := finalizeAfterIsolatedCleanup(output, report, true, playoutcertfixture.CleanupFailureTarget{Err: errors.New("cleanup failed")}, time.Second, stdout, stderr); code != 1 {
 		t.Fatalf("exit code = %d, stderr=%q", code, stderr.String())
 	}
-	blob, err := os.ReadFile(output)
+	blob, err := os.ReadFile(filepath.Join(outputDir, "report.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +44,12 @@ func TestCleanupFailureIsPersistedAsUncertifiedReport(t *testing.T) {
 }
 
 func TestFinalizeWithTypedNilSyntheticTargetPublishesReport(t *testing.T) {
-	output := filepath.Join(t.TempDir(), "report.json")
+	outputDir := t.TempDir()
+	output, err := openContainedOutput(outputDir, filepath.Join(outputDir, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = output.Close() }()
 	var target *playoutcert.SyntheticTarget
 	report := playoutcert.Report{Certified: true}
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -47,7 +57,7 @@ func TestFinalizeWithTypedNilSyntheticTargetPublishesReport(t *testing.T) {
 	if code := finalizeAfterIsolatedCleanup(output, report, true, target, time.Second, stdout, stderr); code != 0 {
 		t.Fatalf("exit code = %d, stderr=%q", code, stderr.String())
 	}
-	if _, err := os.Stat(output); err != nil {
+	if _, err := os.Stat(filepath.Join(outputDir, "report.json")); err != nil {
 		t.Fatalf("report artifact: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "Playout load certification: PASS") {
@@ -132,11 +142,16 @@ func TestReadManifestRejectsUnknownAndTrailingContent(t *testing.T) {
 }
 
 func TestWriteArtifactIsPrivate(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nested", "report.json")
-	if err := writeArtifact(path, []byte("{}\n")); err != nil {
+	dir := t.TempDir()
+	output, err := openContainedOutput(dir, filepath.Join(dir, "nested", "report.json"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(path)
+	defer func() { _ = output.Close() }()
+	if err := writeArtifact(output, []byte("{}\n")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dir, "nested", "report.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,8 +160,53 @@ func TestWriteArtifactIsPrivate(t *testing.T) {
 	}
 }
 
+func TestWriteArtifactRefusesEscapedSymlinkAndParentSwap(t *testing.T) {
+	rootDir := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(rootDir, "escaped")); err != nil {
+		t.Fatal(err)
+	}
+	output, err := openContainedOutput(rootDir, filepath.Join(rootDir, "escaped", "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = output.Close() }()
+	if err := writeArtifact(output, []byte("{}\n")); err == nil {
+		t.Fatal("symlink escape was published")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "report.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("outside artifact stat = %v", err)
+	}
+
+	safe, err := openContainedOutput(rootDir, filepath.Join(rootDir, "nested", "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = safe.Close() }()
+	if err := os.Mkdir(filepath.Join(rootDir, "nested"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(rootDir, "nested"), filepath.Join(rootDir, "nested-original")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(rootDir, "nested")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeArtifact(safe, []byte("{}\n")); err == nil {
+		t.Fatal("swapped parent was published outside root")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "report.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("outside artifact after swap stat = %v", err)
+	}
+}
+
 func TestPublishReportReturnsFailureForRequiredFailureWithoutCertification(t *testing.T) {
-	output := filepath.Join(t.TempDir(), "report.json")
+	outputDir := t.TempDir()
+	output, err := openContainedOutput(outputDir, filepath.Join(outputDir, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = output.Close() }()
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	report := playoutcert.Report{
 		SchemaVersion: playoutcert.SchemaVersion,
@@ -156,7 +216,7 @@ func TestPublishReportReturnsFailureForRequiredFailureWithoutCertification(t *te
 	if code := publishReport(output, report, false, stdout, stderr); code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
-	blob, err := os.ReadFile(output)
+	blob, err := os.ReadFile(filepath.Join(outputDir, "report.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,13 +226,18 @@ func TestPublishReportReturnsFailureForRequiredFailureWithoutCertification(t *te
 }
 
 func TestPublishReportAllowsSuccessfulDiagnosticRun(t *testing.T) {
-	output := filepath.Join(t.TempDir(), "report.json")
+	outputDir := t.TempDir()
+	output, err := openContainedOutput(outputDir, filepath.Join(outputDir, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = output.Close() }()
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	report := playoutcert.Report{SchemaVersion: playoutcert.SchemaVersion, CompletedAt: time.Now()}
 	if code := publishReport(output, report, false, stdout, stderr); code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
-	if _, err := os.Stat(output); err != nil {
+	if _, err := os.Stat(filepath.Join(outputDir, "report.json")); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "Playout load certification: FAIL") || stderr.Len() != 0 {
@@ -181,13 +246,18 @@ func TestPublishReportAllowsSuccessfulDiagnosticRun(t *testing.T) {
 }
 
 func TestPublishReportRejectsUncertifiedCertification(t *testing.T) {
-	output := filepath.Join(t.TempDir(), "report.json")
+	outputDir := t.TempDir()
+	output, err := openContainedOutput(outputDir, filepath.Join(outputDir, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = output.Close() }()
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	report := playoutcert.Report{SchemaVersion: playoutcert.SchemaVersion, CompletedAt: time.Now()}
 	if code := publishReport(output, report, true, stdout, stderr); code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
-	if _, err := os.Stat(output); err != nil {
+	if _, err := os.Stat(filepath.Join(outputDir, "report.json")); err != nil {
 		t.Fatal(err)
 	}
 }

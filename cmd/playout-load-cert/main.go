@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -91,10 +93,12 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	if resolvedOutput == "" {
 		resolvedOutput = filepath.Join(artifactDir, "playout-load-cert.json")
 	}
-	if err := requireContainedOutput(artifactDir, resolvedOutput); err != nil {
+	output, err := openContainedOutput(artifactDir, resolvedOutput)
+	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "playout-load-cert: %v\n", err)
 		return 2
 	}
+	defer func() { _ = output.Close() }()
 	channels, err := readManifest(*manifestPath)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: invalid private manifest")
@@ -142,7 +146,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: run failed during bounded preflight")
 		return 1
 	}
-	return finalizeAfterIsolatedCleanup(resolvedOutput, report, *certify, isolatedTarget, *cleanupTimeout, stdout, stderr)
+	return finalizeAfterIsolatedCleanup(output, report, *certify, isolatedTarget, *cleanupTimeout, stdout, stderr)
 }
 
 func recordIsolatedCleanupFailure(report *playoutcert.Report) {
@@ -160,14 +164,14 @@ type isolatedCloser interface {
 	Close(context.Context) error
 }
 
-func finalizeAfterIsolatedCleanup(output string, report playoutcert.Report, certify bool, target isolatedCloser, timeout time.Duration, stdout, stderr io.Writer) int {
+func finalizeAfterIsolatedCleanup(output artifactOutput, report playoutcert.Report, certify bool, target isolatedCloser, timeout time.Duration, stdout, stderr io.Writer) int {
 	if closeErr := closeIsolated(target, timeout); closeErr != nil {
 		recordIsolatedCleanupFailure(&report)
 	}
 	return publishReport(output, report, certify, stdout, stderr)
 }
 
-func publishReport(output string, report playoutcert.Report, certify bool, stdout, stderr io.Writer) int {
+func publishReport(output artifactOutput, report playoutcert.Report, certify bool, stdout, stderr io.Writer) int {
 	blob, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: report encoding failed")
@@ -217,41 +221,61 @@ func readManifest(path string) ([]playoutcert.Channel, error) {
 	return value.Channels, nil
 }
 
-func requireContainedOutput(root, output string) error {
+type artifactOutput struct {
+	root *os.Root
+	path string
+}
+
+func (output artifactOutput) Close() error { return output.root.Close() }
+
+func openContainedOutput(root, output string) (artifactOutput, error) {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
-		return errors.New("artifact directory is invalid")
+		return artifactOutput{}, errors.New("artifact directory is invalid")
 	}
 	outputAbs, err := filepath.Abs(output)
 	if err != nil {
-		return errors.New("output path is invalid")
+		return artifactOutput{}, errors.New("output path is invalid")
 	}
 	rel, err := filepath.Rel(rootAbs, outputAbs)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return errors.New("output must remain under LOOMARR_ARTIFACT_DIR")
+		return artifactOutput{}, errors.New("output must remain under LOOMARR_ARTIFACT_DIR")
 	}
-	return nil
+	boundRoot, err := os.OpenRoot(root)
+	if err != nil {
+		return artifactOutput{}, errors.New("artifact directory is invalid")
+	}
+	return artifactOutput{root: boundRoot, path: rel}, nil
 }
 
-func writeArtifact(path string, blob []byte) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+func writeArtifact(output artifactOutput, blob []byte) error {
+	dir := filepath.Dir(output.path)
+	if err := output.root.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	temporary, err := os.CreateTemp(dir, ".playout-load-cert-*")
-	if err != nil {
-		return err
+	var random [16]byte
+	for range 10 {
+		if _, err := rand.Read(random[:]); err != nil {
+			return err
+		}
+		temporaryPath := filepath.Join(dir, ".playout-load-cert-"+hex.EncodeToString(random[:]))
+		temporary, err := output.root.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		defer func() { _ = output.root.Remove(temporaryPath) }()
+		if _, err = temporary.Write(blob); err == nil {
+			err = temporary.Close()
+		} else {
+			_ = temporary.Close()
+		}
+		if err != nil {
+			return err
+		}
+		return output.root.Rename(temporaryPath, output.path)
 	}
-	temporaryPath := temporary.Name()
-	defer func() { _ = os.Remove(temporaryPath) }()
-	if _, err = temporary.Write(blob); err == nil {
-		err = temporary.Chmod(0o600)
-	}
-	if closeErr := temporary.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	return os.Rename(temporaryPath, path)
+	return errors.New("artifact temporary name collision")
 }

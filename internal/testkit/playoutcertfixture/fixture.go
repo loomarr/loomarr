@@ -20,6 +20,7 @@ import (
 type Fixture struct {
 	Server                                    *httptest.Server
 	Admin, Device                             string
+	Revision                                  string
 	AllowOverload, InterruptHeld              bool
 	StallHeldAfterOverload                    bool
 	HeldBufferedBytes                         int
@@ -46,7 +47,7 @@ type session struct {
 
 func New(t testing.TB, channels int) *Fixture {
 	t.Helper()
-	f := &Fixture{Admin: "admin-super-secret", Device: "device-super-secret", sessions: map[string]*session{}, interrupt: make(chan struct{}), continueHeld: make(chan struct{}), overloadRejected: make(chan struct{}), capacityRejected: make(chan struct{})}
+	f := &Fixture{Admin: "admin-super-secret", Device: "device-super-secret", Revision: "0123456789abcdef0123456789abcdef01234567", sessions: map[string]*session{}, interrupt: make(chan struct{}), continueHeld: make(chan struct{}), overloadRejected: make(chan struct{}), capacityRejected: make(chan struct{})}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/system/version", f.version)
 	mux.HandleFunc("/v1/playout/sessions", f.sessionsHandler)
@@ -68,7 +69,7 @@ func (f *Fixture) version(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no", http.StatusUnauthorized)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"version": "fixture", "commit": "0123456789abcdef", "ready": true})
+	_ = json.NewEncoder(w).Encode(map[string]any{"version": "fixture", "commit": f.Revision, "ready": true})
 }
 
 func (f *Fixture) sessionsHandler(w http.ResponseWriter, r *http.Request) {

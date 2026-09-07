@@ -5,6 +5,7 @@ package playoutcert
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,7 +18,9 @@ import (
 	"time"
 )
 
-const SchemaVersion = 1
+// SchemaVersion 2 identifies reports whose manifestSha256 is derived from the
+// length-framed ordered channel and role declaration.
+const SchemaVersion = 2
 
 type Channel struct {
 	ID    string   `json:"id"`
@@ -365,12 +368,20 @@ func (r Report) PhaseMust(name string) Phase {
 
 func manifestDigest(channels []Channel) string {
 	h := sha256.New()
+	var length [8]byte
+	writeString := func(value string) {
+		binary.BigEndian.PutUint64(length[:], uint64(len(value)))
+		_, _ = h.Write(length[:])
+		_, _ = h.Write([]byte(value))
+	}
+	binary.BigEndian.PutUint64(length[:], uint64(len(channels)))
+	_, _ = h.Write(length[:])
 	for _, channel := range channels {
-		_, _ = h.Write([]byte(channel.ID))
-		_, _ = h.Write([]byte{0})
+		writeString(channel.ID)
+		binary.BigEndian.PutUint64(length[:], uint64(len(channel.Roles)))
+		_, _ = h.Write(length[:])
 		for _, role := range channel.Roles {
-			_, _ = h.Write([]byte(role))
-			_, _ = h.Write([]byte{0})
+			writeString(role)
 		}
 	}
 	return hex.EncodeToString(h.Sum(nil))

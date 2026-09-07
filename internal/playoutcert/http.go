@@ -117,7 +117,7 @@ func (e *endpoint) target(ctx context.Context, channelCount int, digest string) 
 	if !version.Ready {
 		return Target{}, sessionSnapshot{}, errors.New("target is not ready")
 	}
-	if !safeIdentity(version.Version, 64, false) || !safeIdentity(version.Commit, 64, true) {
+	if !safeIdentity(version.Version, 64, false) || !safeIdentity(version.Commit, 40, true) {
 		return Target{}, sessionSnapshot{}, errors.New("target build identity is invalid")
 	}
 	sessions, err := e.sessions(ctx)
@@ -394,7 +394,7 @@ func safeIdentity(value string, limit int, hexadecimal bool) bool {
 			return false
 		}
 	}
-	return !hexadecimal || len(value) >= 7
+	return !hexadecimal || len(value) == limit
 }
 
 func (e *endpoint) sample(ctx context.Context, point string) (ResourceSample, error) {
