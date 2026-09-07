@@ -185,6 +185,10 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		cause := fmt.Errorf("%w: reference titles were not found in the configured catalog", ErrNoGroundedTitles)
 		return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, cause)
 	}
+	explicitMembers, explicitMembersErr := s.groundExplicitMembershipAnchors(ctx, &intent)
+	if explicitMembersErr != nil {
+		return Proposal{}, explicitMembersErr
+	}
 	messages := []llm.Message{
 		{Role: llm.System, Content: systemPrompt},
 		{Role: llm.User, Content: userPrompt(intent)},
@@ -204,6 +208,11 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	mergeDecisionTrace(&trace, &referenceSeed.trace)
 	temp := groundedTemp
 	for _, candidate := range referenceSeed.candidates {
+		if key, err := candidate.Key(); err == nil {
+			surfaced[key] = candidate
+		}
+	}
+	for _, candidate := range explicitMembers {
 		if key, err := candidate.Key(); err == nil {
 			surfaced[key] = candidate
 		}

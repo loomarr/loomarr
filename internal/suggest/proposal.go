@@ -57,8 +57,10 @@ type Intent struct {
 	referenceEvidence   reference.Evidence
 	referenceKeys       map[provision.Key]bool
 	referenceCandidates []catalog.Candidate
-	// membershipKeys contains only Catalog identities resolved from an explicitly
-	// enumerated named collection. It is execution-only evidence, never model data.
+	// membershipKeys contains only Catalog identities grounded from explicit user or
+	// public-reference title anchors. A model's collection-tool roster is a search
+	// hypothesis: catalog identity verifies that title exists, not that it belongs
+	// to the named set. It is execution-only evidence, never model data.
 	membershipKeys map[provision.Key]bool
 	// DiscoveryScopeID is internal execution context for channel-specific explicit
 	// feedback during re-curation. It never enters the API or persisted intent JSON.

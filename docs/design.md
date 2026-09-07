@@ -1333,9 +1333,11 @@ change tools, quotas, policy, authorization, or identity. Only the submitted URL
 referenced host—not the complete household Intent, Library, or Proposal. Raw reference content is
 not persisted in the Proposal trace, logs, diagnostics, evaluation artifacts, or training corpus.
 
-After reference resolution, Loomarr treats extracted title anchors as untrusted membership evidence.
-For a named collection or programming block, the planner must ask `catalog_search` for a bounded list
-of exact constituent titles; only Catalog-resolved identities for those enumerated titles are members.
+After reference resolution, Loomarr pre-grounds extracted title anchors as untrusted membership evidence.
+For a named collection or programming block, the planner may ask `catalog_search` for a bounded list
+of exact constituent titles, but that model-authored roster is a search hypothesis, not membership
+proof. Only unambiguous Catalog identities for explicit user-supplied constituent titles or resolved
+reference anchors are members; an ambiguous anchor remains unproven rather than selecting a remake.
 Network, genre, era, adjacent recommendations, and model rationale may help discover a theme, but never
 prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
 rules. A title from an older-premiering series remains eligible where its episodes air in the requested
@@ -1351,7 +1353,9 @@ with no qualifying evidence is deterministically dropped with a closed trace rea
 with no surviving picks returns the existing no-grounded-title failure. Unsupported or unresolved
 references provide no evidence and therefore cannot silently fall back to a generic lineup. Theme-fit
 scoring uses the same source-backed fields and never the model's rationale, so prose cannot self-attest
-quality after the gate.
+quality after the gate. For an admitted named-set member, the grounded membership evidence is the
+semantic match even when catalog metadata does not repeat the collection name; it is not a generic
+score floor and does not make model-only rosters admissible.
 
 ### Proposal decision trace v1 (#496)
 

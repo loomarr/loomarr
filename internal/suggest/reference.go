@@ -27,6 +27,38 @@ type referenceGrounding struct {
 	messages   []llm.Message
 }
 
+// groundExplicitMembershipAnchors accepts user-supplied constituent titles only
+// when Catalog resolves exactly one identity. Model-proposed collection rosters
+// never reach this path: existence is not evidence of membership.
+func (s *Suggester) groundExplicitMembershipAnchors(ctx context.Context, intent *Intent) ([]catalog.Candidate, error) {
+	if !requiresMembershipEvidence(*intent) {
+		return nil, nil
+	}
+	anchored := make([]catalog.Candidate, 0, len(intent.MustInclude))
+	for _, title := range boundedReferenceTitles(intent.MustInclude) {
+		candidates, err := s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
+		if err != nil {
+			return nil, fmt.Errorf("search explicit membership title %q: %w", title, err)
+		}
+		exact := make([]catalog.Candidate, 0, 1)
+		for _, candidate := range candidates {
+			if sameExactTitle(candidate.Name, title) {
+				exact = append(exact, candidate)
+			}
+		}
+		if len(exact) != 1 {
+			continue // no implicit media/year choice for an ambiguous user anchor
+		}
+		key, err := exact[0].Key()
+		if err != nil {
+			continue
+		}
+		intent.membershipKeys[key] = true
+		anchored = append(anchored, exact[0])
+	}
+	return anchored, nil
+}
+
 // groundReference resolves a pasted public page before inference and
 // exact-searches a bounded set of its title anchors. The synthesized assistant
 // tool-call/result pair is an honest record of catalog work Loomarr already did;

@@ -76,9 +76,6 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 	if err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{}
 	}
-	if intent.membershipKeys == nil {
-		intent.membershipKeys = make(map[provision.Key]bool)
-	}
 	candidates := make([]catalog.Candidate, 0, len(titles))
 	for _, title := range titles {
 		results, searchErr := s.catalog.Search(ctx, title.name, catalog.ScopeAll, catalogSearchLimit)
@@ -89,11 +86,10 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 		if !found {
 			continue
 		}
-		key, keyErr := candidate.Key()
+		_, keyErr := candidate.Key()
 		if keyErr != nil {
 			continue
 		}
-		intent.membershipKeys[key] = true
 		candidates = append(candidates, candidate)
 	}
 	if len(candidates) == 0 {
@@ -104,7 +100,10 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 	return string(blob), ranked.Candidates, ranked.Trace
 }
 
-type collectionTitleAnchor struct{ name string; year int }
+type collectionTitleAnchor struct {
+	name string
+	year int
+}
 
 func collectionTitleAnchors(raw any) ([]collectionTitleAnchor, error) {
 	values, ok := raw.([]any)

@@ -1426,12 +1426,12 @@ func TestSuggest_NamedProgrammingBlockRejectsUnsubstantiatedGroundedPicks(t *tes
 	ms := testkit.NewMediaServer(t)
 	ms.SetSearchItems(
 		testkit.SearchStub{
-			Terms: []string{"ffs"}, LibraryItemID: "lib-orbital-detectives",
+			Terms: []string{"ffs", "orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
 			Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
 			Genres: []string{"Science Fiction"},
 		},
 		testkit.SearchStub{
-			Terms: []string{"ffs"}, LibraryItemID: "lib-kitchen-circuit",
+			Terms: []string{"ffs", "kitchen circuit"}, LibraryItemID: "lib-kitchen-circuit",
 			Name: "Kitchen Circuit", Type: "Series", Year: 1997, TVDBID: 91002,
 			Genres: []string{"Reality"},
 		},
@@ -1439,7 +1439,7 @@ func TestSuggest_NamedProgrammingBlockRejectsUnsubstantiatedGroundedPicks(t *tes
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	model := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "ffs"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit"}}),
 		testkit.FinalResponse(`{"picks":[
 			{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},
 			{"mediaType":"series","tvdbId":91002,"name":"Kitchen Circuit"}
@@ -1914,12 +1914,15 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 		testkit.SearchStub{Terms: []string{"full house"}, LibraryItemID: "full-house", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762},
 		testkit.SearchStub{Terms: []string{"family matters"}, LibraryItemID: "family-matters", Name: "Family Matters", Type: "Series", Year: 1989, TVDBID: 767},
 		testkit.SearchStub{Terms: []string{"step by step"}, LibraryItemID: "step-by-step", Name: "Step by Step", Type: "Series", Year: 1991, TVDBID: 760},
-		testkit.SearchStub{Terms: []string{"full house"}, LibraryItemID: "neighbor", Name: "Full House Secrets", Type: "Series", Year: 2020, TVDBID: 99001},
+		testkit.SearchStub{Terms: []string{"full house", "sitcom"}, LibraryItemID: "neighbor", Name: "Full House Secrets", Type: "Series", Year: 2020, TVDBID: 99001},
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Full House", "Family Matters", "Step by Step"}}),
+		// A separate broad search surfaces a plausible neighbor. It is evidence of
+		// discovery only, never evidence that the neighbor belongs to the named set.
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "sitcom"}),
 		testkit.FinalResponse(`{"channelName":"Friday Night","picks":[
 			{"mediaType":"series","tvdbId":762,"name":"Full House","seasonMin":4,"seasonMax":8},
 			{"mediaType":"series","tvdbId":767,"name":"Family Matters","seasonMin":2,"seasonMax":6},
@@ -1928,7 +1931,7 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 		]}`),
 	)
 	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
-	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "a named Friday-night family sitcom collection", Era: "1990s"})
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "a named Friday-night family sitcom collection", Era: "1990s", MustInclude: []string{"Full House", "Family Matters", "Step by Step"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1942,5 +1945,8 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 	}
 	if prop.Lineup[0].SeasonMin == 0 || prop.Lineup[0].SeasonMax == 0 {
 		t.Fatalf("older-premiering member lost its requested-era airing window: %+v", prop.Lineup)
+	}
+	if prop.Scores.ThemeFit == 0 {
+		t.Fatalf("source-backed members must not score zero solely because catalog text omits the collection name: %+v", prop.Scores)
 	}
 }

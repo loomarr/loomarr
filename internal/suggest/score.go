@@ -35,6 +35,13 @@ func score(intent Intent, lineup, acquisitions []ProposalItem) Scores {
 // title-substring scoring returned ~0 even on a perfect lineup; genres/overview
 // carry the actual theme.
 func themeFit(intent Intent, lineup, acquisitions []ProposalItem) float64 {
+	// For a named set, membership is the requested semantic rather than a lexical
+	// theme. The admission gate has already established every surviving key from
+	// explicit user/public-reference anchors, so those source-backed members match
+	// the request even when catalog metadata does not repeat the block's name.
+	if requiresMembershipEvidence(intent) && allItemsHaveMembershipEvidence(intent, lineup, acquisitions) {
+		return 1
+	}
 	terms := themeTerms(intent)
 	if len(terms) == 0 {
 		return 1 // no terms to fit against → neutral-max
@@ -54,6 +61,20 @@ func themeFit(intent Intent, lineup, acquisitions []ProposalItem) float64 {
 		}
 	}
 	return float64(hits) / float64(len(items))
+}
+
+func allItemsHaveMembershipEvidence(intent Intent, lineup, acquisitions []ProposalItem) bool {
+	items := append(append([]ProposalItem{}, lineup...), acquisitions...)
+	if len(items) == 0 || len(intent.membershipKeys) == 0 {
+		return false
+	}
+	for _, item := range items {
+		key, err := item.Key()
+		if err != nil || !intent.membershipKeys[key] {
+			return false
+		}
+	}
+	return true
 }
 
 // themeHaystack is the lowercased source-backed text an item is scored against:
