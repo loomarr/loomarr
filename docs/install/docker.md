@@ -40,9 +40,13 @@ Set `LOOMARR_HTTP_PORT` in `.env` if the host must publish a different port, and
 in `SERVER_PUBLIC_URL`.
 
 The Compose stack also publishes UDP port `51029` so Android TV clients can find Loomarr across
-Docker Desktop's network boundary. Allow inbound UDP `51029` from the trusted LAN in the Docker
-host firewall. Discovery announces `SERVER_PUBLIC_URL`, so that URL must use an address the TV can
-reach; do not set it to `localhost` or a container-only hostname.
+Docker bridge networking. The client uses DNS-SD and broadcast first, then a bounded local-neighbour
+unicast fallback for Linux Docker hosts, which do not forward LAN broadcasts to published UDP
+ports. Its Android search binds one observed Wi-Fi/Ethernet network and retries while that LAN is
+unavailable or ambiguous, rather than selecting an arbitrary interface. Allow inbound UDP `51029`
+from the trusted LAN in the Docker host firewall. Discovery
+announces `SERVER_PUBLIC_URL`, so that URL must use an address the TV can reach; do not set it to
+`localhost` or a container-only hostname.
 
 The default Traefik entrypoint is plain HTTP for the trusted-LAN deployment model in
 [`SECURITY.md`](../../SECURITY.md). It is not an internet-facing TLS configuration. Keep the Docker

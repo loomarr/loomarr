@@ -10,6 +10,7 @@
     },
     "test": {
       "dependsOn": ["typecheck", "^test"],
+      "env": ["JAVA_HOME"],
       "outputs": []
     },
     "bundle": {
