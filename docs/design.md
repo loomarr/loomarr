@@ -3060,6 +3060,14 @@ environment. The command refuses an unbounded run, a non-loopback origin unless 
 explicitly acknowledged, fewer than 100 Channels for a certifying run, duplicate ids, URL/query
 credentials, and output paths outside the worktree artifact directory.
 
+The disposable synthetic target is composed in `internal/app`, using the real API router and
+production playout modules. `internal/playoutcert` owns the outbound workload, report and fault
+contracts; it never imports the inbound API adapter or HTTP server framework. The command wires
+the app-owned target to those contracts. Observed programme-boundary recording and bounded
+resource sampling may expose small operational ports needed by this composition; private test
+access belongs in test-only files. Moving the target preserves real-route coverage, lifecycle
+ownership, and the existing admission, cleanup and certification requirements.
+
 The command and the `playoutcert.Run` library entry point share the same input bounds, checked
 before target observation or process creation. An omitted zero value selects its documented default;
 a nonzero value outside the bounds is rejected rather than silently clamped. Concurrency and fan-in
