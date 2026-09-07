@@ -76,3 +76,20 @@ func TestMissingRequiredFaultResourceInvalidatesQualification(t *testing.T) {
 		t.Fatalf("fault qualification after missing resource = %+v", row)
 	}
 }
+
+func TestParentFaultCleanupResidualRetainsFinalEvidenceButDisqualifiesOutcome(t *testing.T) {
+	sample := ResourceSample{Point: "final", Capacity: 1}
+	report := Report{
+		FaultProfiles: []FaultQualification{{Profile: FaultParentFailure, Status: "qualified", Outcome: "complete", Final: &sample, ReceiptOutcome: "exited", SelectedContinuity: "interrupted", Recovery: "recovered"}},
+		Phases: []Phase{
+			{Name: "parent_failure", LatencySummary: LatencySummary{Attempts: 1, Successes: 1}, Resources: PhaseResources{Samples: 1}},
+			{Name: "capacity_recovery", LatencySummary: LatencySummary{Attempts: 1, Successes: 1}, Resources: PhaseResources{Samples: 1}},
+			{Name: "cleanup", LatencySummary: LatencySummary{Attempts: 1, Failures: 1}, Resources: PhaseResources{Samples: 1}},
+		},
+	}
+	invalidateParentFaultWithoutConvergence(&report)
+	row := report.FaultProfiles[0]
+	if row.Status != "unavailable" || row.Outcome != "cleanup_failed" || row.Final == nil || row.Final.Capacity != 1 {
+		t.Fatalf("cleanup residual qualification = %+v", row)
+	}
+}

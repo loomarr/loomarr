@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,6 +106,117 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 		if observation.Outcome != "observed" || !observation.DecodedFrame || observation.Media.VideoStreams != 1 || observation.Media.AudioStreams != 1 {
 			t.Fatalf("held continuity evidence = %+v", observation)
 		}
+	}
+}
+
+func TestSyntheticTargetParentFaultCertifiesAtOneMeasuredSlot(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	channels := make([]Channel, 0, 101)
+	for index := range 99 {
+		channels = append(channels, Channel{ID: fmt.Sprintf("prepared-%03d", index+1), Roles: []string{"prepared"}})
+	}
+	for index := range 2 {
+		channels = append(channels, Channel{ID: fmt.Sprintf("transcode-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	target, err := NewSyntheticTarget(ctx, SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 1, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		if closeErr := target.Close(closeCtx); closeErr != nil {
+			t.Errorf("close synthetic target: %v", closeErr)
+		}
+	}()
+	report, err := Run(ctx, Config{
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		Channels: channels, Certify: true, Concurrency: 12, SurfRounds: 1, FanInViewers: 1,
+		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
+		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
+		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
+		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(), FaultProfiles: []FaultProfile{FaultParentFailure}, FaultController: target,
+		Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Certified || strings.Contains(strings.Join(report.Failures, ","), "capacity_oversubscribed") {
+		t.Fatalf("one-slot certification = failures %v resources=%+v", report.Failures, report.Resources)
+	}
+	for _, row := range report.FaultProfiles {
+		if row.Profile == FaultParentFailure && (row.Status != "qualified" || row.PeerContinuity != "not_applicable" || row.SelectedContinuity != "interrupted" || row.Recovery != "recovered") {
+			t.Fatalf("one-slot parent evidence = %+v", row)
+		}
+	}
+}
+
+func TestSyntheticTargetRejectsStaleParentGenerationAfterReplacement(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	channel := Channel{ID: "transcode", Roles: []string{"transcode_h264", "audio_aac"}}
+	target, err := NewSyntheticTarget(ctx, SyntheticConfig{Channels: []Channel{channel}, FFmpeg: ffmpeg, Capacity: 1, Grace: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		if closeErr := target.Close(closeCtx); closeErr != nil {
+			t.Errorf("close synthetic target: %v", closeErr)
+		}
+	}()
+	config := Config{BaseURL: target.BaseURL, DeviceToken: target.DeviceToken, Channels: []Channel{channel}, RequestTimeout: 15 * time.Second, RawCaptureBytes: 2 << 20, Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{}}
+	endpoint, err := newEndpoint(config.normalized())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, sample := rawBurst(ctx, endpoint, config, []int{0})
+	if len(first) != 1 || first[0].class != "ok" || sample.Capacity == 0 {
+		t.Fatalf("initial public media = observations %+v sample=%+v", first, sample)
+	}
+	request := ParentFaultRequest{BaseURL: target.BaseURL, ChannelID: channel.ID}
+	generation, err := target.CurrentParent(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Generation = generation
+	if receipt, err := target.FailParent(ctx, request); err != nil || !receipt.Exited {
+		t.Fatalf("retire current parent = receipt %+v err=%v", receipt, err)
+	}
+	replacement, _ := rawBurst(ctx, endpoint, config, []int{0})
+	if len(replacement) != 1 || replacement[0].class != "ok" {
+		t.Fatalf("replacement public decoded media = %+v", replacement)
+	}
+	newGeneration, err := target.CurrentParent(ctx, ParentFaultRequest{BaseURL: target.BaseURL, ChannelID: channel.ID})
+	if err != nil || newGeneration == generation {
+		t.Fatalf("replacement generation = %d (old %d), err=%v", newGeneration, generation, err)
+	}
+	// Keep an admitted replacement reader open through stale refusal: a new
+	// tune after the refusal could otherwise hide a wrongly killed replacement.
+	held := startHeldBurst(ctx, endpoint, config, []int{0})
+	if len(held.results) != 1 || held.results[0].class != "ok" {
+		held.release()
+		t.Fatalf("replacement held media = %+v", held.results)
+	}
+	if _, err := target.FailParent(ctx, request); err == nil {
+		held.release()
+		t.Fatal("stale parent request retired replacement")
+	}
+	held.verify(ctx)
+	continuingGeneration, generationErr := target.CurrentParent(ctx, ParentFaultRequest{BaseURL: target.BaseURL, ChannelID: channel.ID})
+	held.release()
+	if held.results[0].class != "ok" || generationErr != nil || continuingGeneration != newGeneration {
+		t.Fatalf("replacement was affected by stale refusal: held=%+v generation=%d err=%v", held.results[0], continuingGeneration, generationErr)
 	}
 }
 
