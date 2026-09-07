@@ -632,58 +632,106 @@ func observePreparedProgrammeBoundary(ctx context.Context, endpoint *endpoint, c
 	}
 	result.evidence.Media, result.observation.media = shape, shape
 	reader.arm()
+	var transitionAt time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return fail("transition_timeout")
 		case qualified := <-reader.transition:
+			if qualified {
+				transitionAt = time.Now()
+			}
 			if err := observer.close(); err != nil {
 				return fail("decode_failed")
 			}
 			observer = startDecoderObserver(ctx, config.Decoder, reader.epoch(), config.RawCaptureBytes)
 			if qualified {
-				snapshot, err := waitValidatedPreparedEpoch(ctx, config, observer)
+				epochShape, err := waitValidatedPreparedEpoch(ctx, config, observer)
 				if err != nil {
 					return fail("invalid_media")
 				}
-				result.evidence.Media, result.observation.media = snapshot, snapshot
+				result.evidence.Media, result.observation.media = epochShape, epochShape
 				goto qualifiedTransition
 			}
 		}
 	}
 qualifiedTransition:
-	transitionAt := time.Now()
-	atBoundary := observer.snapshot()
 	late := transitionAt.Add(3 * config.ProgrammeBoundaryLateObservation / 4)
-	timer := time.NewTimer(config.ProgrammeBoundaryLateObservation)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return fail("late_observation_timeout")
-	case <-timer.C:
+	observationEnds := transitionAt.Add(config.ProgrammeBoundaryLateObservation)
+	transitions := 1
+	completed := decoderSnapshot{}
+	advanceEpoch := func(qualified bool) string {
+		if ctx.Err() != nil {
+			return "post_boundary_decode_failed"
+		}
+		if err := observer.close(); err != nil {
+			return "post_boundary_decode_failed"
+		}
+		finished := observer.snapshot()
+		completed.frames += finished.frames
+		completed.reads += finished.reads
+		completed.bytes += finished.bytes
+		observer = startDecoderObserver(ctx, config.Decoder, reader.epoch(), config.RawCaptureBytes)
+		epochShape, err := waitValidatedPreparedEpoch(ctx, config, observer)
+		if err != nil {
+			return "invalid_media"
+		}
+		result.evidence.Media, result.observation.media = epochShape, epochShape
+		if qualified {
+			transitions++
+		}
+		return ""
 	}
-	after := observer.snapshot()
-	if !postBoundaryProgressed(atBoundary, after, late) && !after.decoderDone && after.decoderErr == nil && (after.readErr == nil || errors.Is(after.readErr, context.Canceled)) {
-		var waitErr error
-		after, waitErr = observer.wait(ctx, func(current decoderSnapshot) bool {
-			return postBoundaryProgressed(atBoundary, current, late)
+	observationElapsed := false
+	for {
+		if !observationElapsed {
+			remaining := time.Until(observationEnds)
+			if remaining <= 0 {
+				observationElapsed = true
+				continue
+			}
+			timer := time.NewTimer(remaining)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return fail("late_observation_timeout")
+			case qualified := <-reader.transition:
+				timer.Stop()
+				if class := advanceEpoch(qualified); class != "" {
+					return fail(class)
+				}
+				continue
+			case <-timer.C:
+				observationElapsed = true
+				continue
+			}
+		}
+
+		after, waitErr := observer.wait(ctx, func(current decoderSnapshot) bool {
+			return postBoundaryProgressed(decoderSnapshot{}, current, late)
 		})
-		if waitErr != nil {
+		if ctx.Err() != nil {
 			return fail("post_boundary_decode_failed")
 		}
+		select {
+		case qualified := <-reader.transition:
+			if class := advanceEpoch(qualified); class != "" {
+				return fail(class)
+			}
+			continue
+		default:
+		}
+		if waitErr != nil || after.decoderDone || after.decoderErr != nil || after.readErr != nil {
+			return fail("post_boundary_decode_failed")
+		}
+		completed.frames += after.frames
+		completed.reads += after.reads
+		completed.bytes += after.bytes
+		break
 	}
-	if ctx.Err() != nil {
-		return fail("post_boundary_decode_failed")
-	}
-	if after.decoderDone || after.decoderErr != nil || (after.readErr != nil && !errors.Is(after.readErr, context.Canceled)) {
-		return fail("post_boundary_decode_failed")
-	}
-	if !postBoundaryProgressed(atBoundary, after, late) {
-		return fail("post_boundary_stalled")
-	}
-	result.evidence.Outcome, result.evidence.Transitions = "ok", 1
+	result.evidence.Outcome, result.evidence.Transitions = "ok", transitions
 	result.evidence.ObservationMS = float64(time.Since(transitionAt).Microseconds()) / 1000
-	result.evidence.DecodedFrameDelta, result.evidence.ReadDelta, result.evidence.BytesDelta = after.frames-atBoundary.frames, after.reads-atBoundary.reads, after.bytes-atBoundary.bytes
+	result.evidence.DecodedFrameDelta, result.evidence.ReadDelta, result.evidence.BytesDelta = completed.frames, completed.reads, completed.bytes
 	result.observation.class, result.observation.duration = "ok", time.Since(transitionAt)
 	return result
 }

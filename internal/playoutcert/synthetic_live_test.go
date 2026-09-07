@@ -142,6 +142,36 @@ func TestSyntheticPreparedPublicHLSWitnessesProgrammeBoundaryWithoutRawWitness(t
 	}
 }
 
+func TestSyntheticPreparedPublicHLSContinuesAcrossFurtherProgrammeEpochs(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	channels := []Channel{{ID: "prepared-continuous-epochs", Roles: []string{"prepared"}}}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	target, err := NewSyntheticTarget(ctx, SyntheticConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 1, Grace: time.Second, ProgrammeDuration: 4 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		if err := target.Close(closeCtx); err != nil {
+			t.Error(err)
+		}
+	}()
+	config := Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 6 * time.Second, Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{}}
+	endpoint, err := newEndpoint(config.normalized())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := observeProgrammeBoundary(ctx, endpoint, config.normalized(), boundaryLane{name: "prepared", channelIndex: 0})
+	if result.observation.class != "ok" || result.evidence.Transitions < 2 || result.evidence.DecodedFrameDelta <= 0 || result.evidence.ReadDelta <= 0 || result.evidence.BytesDelta <= 0 {
+		t.Fatalf("prepared public continuous epochs=%+v", result)
+	}
+}
+
 func TestSyntheticTargetParentFaultCertifiesAtOneMeasuredSlot(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
