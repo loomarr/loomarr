@@ -1345,6 +1345,19 @@ When a bare label's entity type is otherwise ambiguous, Loomarr fails closed thr
 no-grounded-title outcome if it cannot establish constituents; it does not silently reinterpret the
 label as a network, genre, or era.
 
+Curated-episode wording does not disable named-set grounding. For an explicit curated-title
+request such as “Classic Simpsons”, Loomarr may extract the title subject from the existing
+leading or trailing episode-selection cue vocabulary. The subject is user-supplied title evidence,
+not a model-authored collection roster. This path alone permits one optional leading “The” in
+matching the subject to a Catalog title; it does not remove other words or change the general
+exact-title matcher. Resolve the original extracted subject through an unfiltered Catalog search
+and consider every matching canonical identity across media types and years before admission.
+A canonical-name search, model filter, or ranked subset cannot substitute for that subject lookup.
+Duplicate rows for one key are harmless; multiple keys or no matching key leave the subject
+unproven. A resolved subject admits only that canonical Title, never other titles said to belong
+to a similarly named channel. Known genre/mood discovery and explicit network/person roles keep
+their ordinary behavior; curated cues inside another field cannot alter the subject's evidence.
+
 For a named collection or programming block, the planner may ask `catalog_search` for a bounded list
 of exact constituent titles, but that model-authored roster is a search hypothesis, not membership
 proof. Only unambiguous Catalog identities for explicit user-supplied constituent titles or resolved
