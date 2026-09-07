@@ -1809,6 +1809,20 @@ consumers; requester-facing failure traces retain only validated terminal vocabu
 counts. Pre-submit field validation supplies actionable local feedback without inventing a Job or
 Journey. A failed execution materializes neither a Proposal nor a Channel.
 
+Failure producers preserve the existing discovery, repair, and source-query budgets. A tool round
+has a typed validity outcome: unsupported tools and rejected argument shapes are invalid; valid
+empty searches and retrieval failures are distinct outcomes. Exhaustion reports `invalid_tool_calls`
+only when every consumed tool round was invalid; mixed rounds retain the general discovery-budget
+reason. Malformed final JSON remains a separate terminal. Only an actual provider-turn deadline
+selects `provider_timeout`; catalog/reference deadlines do not become provider failures. A failed
+public-page read can select `reference_unreadable`, while catalog failure after a successful read
+continues to select retrieval unavailability. A missing resolver is infrastructure unavailability,
+not evidence that the supplied page is bad. Named-set failure requires existing typed membership
+rejection evidence, never a broad-match count or a newly inferred keyword rule. Before inference,
+nonempty include and exclude constraints that are identical after case and whitespace normalization
+are contradictory. This exact conflict check does not interpret dates or other natural-language
+relationships, and invalid model interpretations continue through the existing bounded repair path.
+
 Date-conflict evidence must prove an empty intersection of source-anchored windows joined as
 requirements on the same semantic axis. A union and separate premiere/airing axes are not a
 contradiction. A model interpretation is a hypothesis: invalid or unanchored model claims consume
