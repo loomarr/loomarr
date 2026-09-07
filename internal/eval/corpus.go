@@ -16,6 +16,7 @@ package eval
 
 import (
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -79,7 +80,12 @@ type Case struct {
 	// ExpectedPolicyCeiling and ExpectedProposalKeys are frozen quality answers,
 	// not hard gates. ExpectedProposalAbstention requires a clean, explicit
 	// no-grounded-title outcome instead of an empty malformed Proposal.
-	ExpectedPolicyCeiling      string
+	ExpectedPolicyCeiling string
+	// ExpectedDateScope is optional quality evidence for the canonical date policy.
+	// nil leaves dates unscored; a non-nil empty scope explicitly expects no date
+	// policy. Non-empty axes must use normalized, disjoint schedule ranges. Date
+	// expectations also require that the legacy scalar Era is absent.
+	ExpectedDateScope          *schedule.DateScope
 	ExpectedProposalKeys       []provision.Key
 	ExpectedProposalAbstention bool
 	// RecoveryExpected marks an injected failure the candidate must recover from.

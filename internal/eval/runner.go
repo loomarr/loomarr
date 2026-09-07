@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -281,7 +282,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				Case: c.Name, Trial: trial,
 				GroundedCompletionExpected: c.ExpectGroundedCompletion,
 				ToolOperationExpected:      c.ExpectedToolOperation != "",
-				PolicyAccuracyExpected:     c.ExpectedPolicyCeiling != "",
+				PolicyAccuracyExpected:     c.ExpectedPolicyCeiling != "" || c.ExpectedDateScope != nil,
 				ProposalQualityExpected:    len(c.ExpectedProposalKeys) > 0 || c.ExpectedProposalAbstention,
 				RecoveryExpected:           c.RecoveryExpected,
 				GeneratorCalls:             make([]InferenceCall, 0), JudgeCalls: make([]InferenceCall, 0),
@@ -315,7 +316,9 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				result.GroundedCompletion = result.Lineup+result.Acquisitions > 0
 				result.SchemaValid = err == nil || errors.Is(err, suggest.ErrNoGroundedTitles)
 				result.Ceiling = string(prop.Policy.Audience.Ceiling)
-				result.PolicyAccurate = c.ExpectedPolicyCeiling == "" || result.Ceiling == c.ExpectedPolicyCeiling
+				result.DateScope = cloneDateScope(prop.Policy.Scope.Dates)
+				result.ScalarEra = cloneRange(prop.Policy.Scope.Era)
+				result.PolicyAccurate = policyAccuracyMatches(c, result, err)
 				result.ProposalQuality = proposalQualityMatches(c, prop, err)
 				result.ThemeFit = prop.Scores.ThemeFit
 				result.Failures = deterministicChecks(c, prop, err)
@@ -483,6 +486,70 @@ func maxResourceMeasurement(current, sample ResourceMeasurement) ResourceMeasure
 		current.PeakVRAMBytes = sample.PeakVRAMBytes
 	}
 	return current
+}
+
+// policyAccuracyMatches keeps policy scoring advisory while requiring every
+// declared policy dimension to be correct. A date expectation is intentionally
+// stricter than an omitted expectation: even explicit `none` requires the
+// proposal to omit both date axes and the retired scalar era representation.
+func policyAccuracyMatches(c Case, result Result, suggestErr error) bool {
+	if c.ExpectedPolicyCeiling != "" && result.Ceiling != c.ExpectedPolicyCeiling {
+		return false
+	}
+	if c.ExpectedDateScope == nil {
+		return true
+	}
+	if suggestErr != nil || result.ScalarEra != nil {
+		return false
+	}
+	if dateScopeEmpty(c.ExpectedDateScope) {
+		return result.DateScope == nil
+	}
+	return normalizedDateScope(c.ExpectedDateScope) && dateScopesEqual(c.ExpectedDateScope, result.DateScope)
+}
+
+func dateScopeEmpty(scope *schedule.DateScope) bool {
+	return scope != nil && len(scope.MovieRelease) == 0 && len(scope.SeriesPremiere) == 0 && len(scope.SeriesAiring) == 0
+}
+
+func normalizedDateScope(scope *schedule.DateScope) bool {
+	if scope == nil {
+		return false
+	}
+	for _, ranges := range [][]schedule.Range{scope.MovieRelease, scope.SeriesPremiere, scope.SeriesAiring} {
+		if !slices.Equal(ranges, schedule.NormalizeRanges(ranges)) {
+			return false
+		}
+	}
+	return true
+}
+
+func dateScopesEqual(expected, actual *schedule.DateScope) bool {
+	if expected == nil || actual == nil {
+		return expected == actual
+	}
+	return slices.Equal(expected.MovieRelease, actual.MovieRelease) &&
+		slices.Equal(expected.SeriesPremiere, actual.SeriesPremiere) &&
+		slices.Equal(expected.SeriesAiring, actual.SeriesAiring)
+}
+
+func cloneDateScope(scope *schedule.DateScope) *schedule.DateScope {
+	if scope == nil {
+		return nil
+	}
+	return &schedule.DateScope{
+		MovieRelease:   slices.Clone(scope.MovieRelease),
+		SeriesPremiere: slices.Clone(scope.SeriesPremiere),
+		SeriesAiring:   slices.Clone(scope.SeriesAiring),
+	}
+}
+
+func cloneRange(value *schedule.Range) *schedule.Range {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }
 
 func assessCertification(results []Result, thresholds CertificationThresholds, measurement ResourceMeasurement) CertificationAssessment {
