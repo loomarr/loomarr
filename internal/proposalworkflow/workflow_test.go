@@ -73,6 +73,100 @@ func TestJourneyTraceClonesDoNotAliasRepositoryEvidence(t *testing.T) {
 	}
 }
 
+func TestSafeFailureMapsKnownTerminalEvidenceAndRemovesPrivateTrace(t *testing.T) {
+	t.Parallel()
+
+	privateTrace := suggest.DecisionTrace{
+		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Terminal: suggest.TerminalMalformedExhausted,
+		Candidates: []suggest.DecisionCandidate{{
+			Key: "movie:tmdb:603", Name: "private-library-title", Ownership: "library",
+			Rank: suggest.RankTuple{TieKey: "movie:tmdb:603"}, Disposition: suggest.DispositionSelected, Reason: "selected",
+		}},
+	}
+	failure := safeFailure(FailureBudgetExhausted, privateTrace)
+	if failure.Code != FailureBudgetExhausted || failure.Reason != FailureReasonProviderResponseInvalid || failure.RecoveryAction != RecoveryActionRetryLater {
+		t.Fatalf("safe failure = %+v", failure)
+	}
+	if len(failure.Trace.Candidates) != 0 || failure.Trace.Terminal != suggest.TerminalMalformedExhausted || failure.Trace.RecordedTotal != 1 {
+		t.Fatalf("public trace leaked private evidence: %+v", failure.Trace)
+	}
+}
+
+func TestSafeFailureUnknownEvidenceIsBoundedGeneric(t *testing.T) {
+	t.Parallel()
+
+	failure := safeFailure(FailureCode("unknown"), suggest.DecisionTrace{Terminal: "private-provider-detail"})
+	if failure.Code != FailureGenerationFailed || failure.Reason != FailureReasonGenerationFailed || failure.RecoveryAction != RecoveryActionRetryLater {
+		t.Fatalf("unknown failure = %+v", failure)
+	}
+	if failure.Trace.Version != 0 || failure.Trace.Terminal != "" || len(failure.Trace.Candidates) != 0 {
+		t.Fatalf("unknown trace = %+v, want empty", failure.Trace)
+	}
+}
+
+func TestWorkflowInspectFailedMapsAllowlistedTerminals(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		terminal string
+		reason   FailureReason
+		action   RecoveryAction
+	}{
+		{"retrieval failure", suggest.TerminalRetrievalFailure, FailureReasonRetrievalUnavailable, RecoveryActionRetryLater},
+		{"reference unreadable", suggest.TerminalReferenceUnreadable, FailureReasonReferenceUnreadable, RecoveryActionEditReference},
+		{"retrieval empty", suggest.ReasonRetrievalEmpty, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
+		{"selection empty", suggest.FailureSelectionEmpty, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
+		{"named set", suggest.TerminalNamedSetUnproven, FailureReasonNamedSetUnproven, RecoveryActionProvideExamples},
+		{"constraints", suggest.TerminalConstraintsConflict, FailureReasonConstraintsConflict, RecoveryActionResolveConstraints},
+		{"dates", suggest.TerminalDateSemanticsUnclear, FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates},
+		{"invalid tool", suggest.TerminalInvalidToolCalls, FailureReasonInvalidToolCalls, RecoveryActionRetryLater},
+		{"provider timeout", suggest.TerminalProviderTimeout, FailureReasonProviderTimeout, RecoveryActionRetryLater},
+		{"provider unavailable", suggest.TerminalProviderFailure, FailureReasonProviderUnavailable, RecoveryActionRetryLater},
+		{"malformed final json", suggest.TerminalMalformedExhausted, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
+		{"generation", suggest.TerminalGenerationFailure, FailureReasonGenerationFailed, RecoveryActionRetryLater},
+		{"budget", suggest.FailureBudgetExhausted, FailureReasonDiscoveryBudgetExhausted, RecoveryActionSimplifyRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: tt.terminal}
+			if err := suggest.ValidateDecisionTrace(trace); err != nil {
+				t.Fatalf("trace must be valid: %v", err)
+			}
+			workflow := newWorkflow(&recordingRepository{record: Record{
+				Version: WorkflowVersion1, JobID: "job-failed", OwnerID: "member-1", Status: JobFailed,
+				FailureCode: FailureBudgetExhausted, FailureTrace: trace,
+				Attempts: []Attempt{{Version: WorkflowVersion1, Number: 1, Status: AttemptFailed, Failure: &Failure{Code: FailureBudgetExhausted, Trace: trace}}},
+			}})
+			journey, err := workflow.Inspect(context.Background(), Viewer{UserID: "member-1"}, "job-failed")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if journey.Failure == nil || journey.Failure.Code != FailureBudgetExhausted || journey.Failure.Reason != tt.reason || journey.Failure.RecoveryAction != tt.action {
+				t.Fatalf("failure = %+v", journey.Failure)
+			}
+			assertFailureCopy(t, tt.terminal, journey.Failure)
+			if len(journey.Failure.Trace.Candidates) != 0 || journey.Failure.Trace.Terminal != tt.terminal {
+				t.Fatalf("public trace = %+v", journey.Failure.Trace)
+			}
+		})
+	}
+}
+
+func assertFailureCopy(t *testing.T, terminal string, failure *Failure) {
+	t.Helper()
+	want := map[string][2]string{
+		suggest.TerminalRetrievalFailure:    {"Loomarr couldn't retrieve the catalog information needed for this request.", "Try again later; ask an administrator to check AI settings if this keeps happening."},
+		suggest.TerminalReferenceUnreadable: {"Loomarr couldn't read a reference for this request.", "Check that the reference is a public page that does not require sign-in, or provide a few example titles and try again."},
+		suggest.TerminalInvalidToolCalls:    {"The AI provider did not produce a usable catalog-search instruction.", "Try again later; ask an administrator to check AI settings if this keeps happening."},
+	}[terminal]
+	if want != [2]string{} && (failure.Message != want[0] || failure.Guidance != want[1]) {
+		t.Fatalf("failure copy = %+v", failure)
+	}
+}
+
 func TestWorkflowInspectAwaitingApprovalDerivesRoleSafeActions(t *testing.T) {
 	t.Parallel()
 

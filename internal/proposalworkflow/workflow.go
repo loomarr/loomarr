@@ -71,10 +71,44 @@ const (
 	FailureBudgetExhausted  FailureCode = "budget_exhausted"
 )
 
+// FailureReason is a closed, requester-facing category for a failed Journey.
+// It is selected only from validated, typed terminal evidence.
+type FailureReason string
+
+const (
+	FailureReasonRetrievalUnavailable     FailureReason = "retrieval_unavailable"
+	FailureReasonReferenceUnreadable      FailureReason = "reference_unreadable"
+	FailureReasonNoCatalogMatch           FailureReason = "no_catalog_match"
+	FailureReasonNamedSetUnproven         FailureReason = "named_set_unproven"
+	FailureReasonConstraintsConflict      FailureReason = "constraints_conflict"
+	FailureReasonDateSemanticsUnclear     FailureReason = "date_semantics_unclear"
+	FailureReasonInvalidToolCalls         FailureReason = "invalid_tool_calls"
+	FailureReasonProviderTimeout          FailureReason = "provider_timeout"
+	FailureReasonProviderUnavailable      FailureReason = "provider_unavailable"
+	FailureReasonProviderResponseInvalid  FailureReason = "provider_response_invalid"
+	FailureReasonDiscoveryBudgetExhausted FailureReason = "discovery_budget_exhausted"
+	FailureReasonGenerationFailed         FailureReason = "generation_failed"
+)
+
+type RecoveryAction string
+
+const (
+	RecoveryActionEditReference      RecoveryAction = "edit_reference"
+	RecoveryActionBroadenRequest     RecoveryAction = "broaden_request"
+	RecoveryActionProvideExamples    RecoveryAction = "provide_examples"
+	RecoveryActionResolveConstraints RecoveryAction = "resolve_constraints"
+	RecoveryActionClarifyDates       RecoveryAction = "clarify_dates"
+	RecoveryActionSimplifyRequest    RecoveryAction = "simplify_request"
+	RecoveryActionRetryLater         RecoveryAction = "retry_later"
+)
+
 type Failure struct {
-	Code    FailureCode
-	Message string
-	Trace   suggest.DecisionTrace
+	Code           FailureCode
+	Reason         FailureReason
+	RecoveryAction RecoveryAction
+	Message        string
+	Guidance       string
+	Trace          suggest.DecisionTrace
 }
 
 type ProposalStatus string
@@ -297,21 +331,69 @@ func safeFailure(code FailureCode, traces ...suggest.DecisionTrace) Failure {
 	if len(traces) > 0 {
 		trace = traces[0]
 	}
-	if code == FailureNoGroundedTitles || code == FailureSelectionEmpty || code == FailureBudgetExhausted {
-		message := "No grounded titles matched this request. Try again, or edit its description and constraints."
-		if code == FailureBudgetExhausted {
-			message = "This request exceeded the bounded discovery budget. Try again with narrower constraints."
-		}
-		return Failure{
-			Code:    code,
-			Message: message,
-			Trace:   trace,
+	if !isFailureCode(code) {
+		code = FailureGenerationFailed
+	}
+	reason, action, message, guidance := failureDetails(code, trace)
+	return Failure{Code: code, Reason: reason, RecoveryAction: action, Message: message, Guidance: guidance, Trace: PublicFailureTrace(trace)}
+}
+
+func isFailureCode(code FailureCode) bool {
+	return code == FailureNoGroundedTitles || code == FailureSelectionEmpty || code == FailureBudgetExhausted || code == FailureGenerationFailed
+}
+
+func failureDetails(code FailureCode, trace suggest.DecisionTrace) (FailureReason, RecoveryAction, string, string) {
+	if suggest.ValidateDecisionTrace(trace) == nil {
+		switch trace.Terminal {
+		case suggest.TerminalRetrievalFailure:
+			return FailureReasonRetrievalUnavailable, RecoveryActionRetryLater, "Loomarr couldn't retrieve the catalog information needed for this request.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+		case suggest.TerminalReferenceUnreadable:
+			return FailureReasonReferenceUnreadable, RecoveryActionEditReference, "Loomarr couldn't read a reference for this request.", "Check that the reference is a public page that does not require sign-in, or provide a few example titles and try again."
+		case suggest.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty:
+			return FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest, "No grounded titles matched this request. Try again, or edit its description and constraints.", "Broaden the request or add a few examples."
+		case suggest.TerminalNamedSetUnproven:
+			return FailureReasonNamedSetUnproven, RecoveryActionProvideExamples, "Loomarr couldn't verify the requested set.", "Provide a few examples and try again."
+		case suggest.TerminalConstraintsConflict:
+			return FailureReasonConstraintsConflict, RecoveryActionResolveConstraints, "This request has conflicting constraints.", "Resolve the conflicting constraints and try again."
+		case suggest.TerminalDateSemanticsUnclear:
+			return FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates, "Loomarr couldn't determine the requested date range.", "Clarify the date range and try again."
+		case suggest.TerminalInvalidToolCalls:
+			return FailureReasonInvalidToolCalls, RecoveryActionRetryLater, "The AI provider did not produce a usable catalog-search instruction.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+		case suggest.TerminalProviderTimeout:
+			return FailureReasonProviderTimeout, RecoveryActionRetryLater, "The AI provider timed out.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+		case suggest.TerminalProviderFailure:
+			return FailureReasonProviderUnavailable, RecoveryActionRetryLater, "The AI provider is unavailable.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+		case suggest.TerminalMalformedExhausted:
+			return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "The AI provider returned an invalid response.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+		case suggest.TerminalGenerationFailure:
+			return FailureReasonGenerationFailed, RecoveryActionRetryLater, "Loomarr couldn't generate this channel.", "Try again later."
 		}
 	}
-	return Failure{
-		Code:    FailureGenerationFailed,
-		Message: "Loomarr couldn't generate this channel. Try again later.",
-		Trace:   trace,
+	if code == FailureBudgetExhausted {
+		return FailureReasonDiscoveryBudgetExhausted, RecoveryActionSimplifyRequest, "This request exceeded the bounded discovery budget. Try again with narrower constraints.", "Simplify the request and try again."
+	}
+	if code == FailureNoGroundedTitles || code == FailureSelectionEmpty {
+		return FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest, "No grounded titles matched this request. Try again, or edit its description and constraints.", "Broaden the request or add a few examples."
+	}
+	return FailureReasonGenerationFailed, RecoveryActionRetryLater, "Loomarr couldn't generate this channel. Try again later.", "Try again later."
+}
+
+// PublicFailureTrace returns the bounded requester-facing portion of a private
+// decision trace. Persisted traces retain their full evidence for workers and
+// evaluations; callers of Journey and API projections must use this copy.
+func PublicFailureTrace(trace suggest.DecisionTrace) suggest.DecisionTrace {
+	if suggest.ValidateDecisionTrace(trace) != nil || !publicTerminal(trace.Terminal) {
+		return suggest.DecisionTrace{}
+	}
+	return suggest.DecisionTrace{Version: trace.Version, SurfacedTotal: trace.SurfacedTotal, RecordedTotal: trace.RecordedTotal, Truncated: trace.Truncated, Terminal: trace.Terminal}
+}
+
+func publicTerminal(terminal string) bool {
+	switch terminal {
+	case suggest.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty, suggest.FailureBudgetExhausted, suggest.TerminalProviderFailure, suggest.TerminalRetrievalFailure, suggest.TerminalReferenceUnreadable, suggest.TerminalGenerationFailure, suggest.TerminalMalformedExhausted, suggest.TerminalNamedSetUnproven, suggest.TerminalConstraintsConflict, suggest.TerminalDateSemanticsUnclear, suggest.TerminalInvalidToolCalls, suggest.TerminalProviderTimeout:
+		return true
+	default:
+		return false
 	}
 }
 
