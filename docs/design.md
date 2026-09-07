@@ -3145,6 +3145,41 @@ Every run writes one schema-versioned JSON report atomically plus a concise summ
 sample, media validation, cleanup assertion, exact target identity, or credential-redaction audit is
 missing.
 
+Playout report schema version 3 makes the credential-redaction audit executable and part of the
+publication verdict. `Run` retains private workload eligibility and a bounded private audit capsule;
+it returns an uncertified report until publication. Exported fields cannot supply or forge audit
+proof. A single library finalizer owns the exact serialized JSON, exact human summary, audit status,
+and exit verdict, returning immutable publication bytes through copy-returning accessors. Direct
+report JSON/summary rendering without that finalization emits a minimal uncertified/missing form.
+The CLI first finishes isolated cleanup and records any fixed-vocabulary cleanup downgrade, then
+finalizes once, atomically writes the returned JSON bytes, and prints the returned summary bytes.
+A cleanup failure invalidates certification and qualified fault rows. Public-field mutation cannot
+turn an ineligible workload into an eligible one; mutation after finalization cannot change its bytes.
+
+The private capsule registers the actual administrator bearer, device token, origin, private Channel
+ids, and every successfully minted signed URL, including the credential-bearing query values and
+path/query representations actually used by requests. Matcher material and its source provenance
+remain unexported and never enter either output, logs, errors, fixtures containing real secrets, or
+artifacts. Registration is bounded to 8,192 derived probes and 8 MiB of matcher material; both output
+buffers together are bounded to 8 MiB, and finalization has a 30-second work deadline. Exceeding any
+bound makes the audit unavailable; it never silently drops a probe or raises an authentication minimum.
+Only the transformations used by the request and report encoders are required: raw UTF-8,
+path/query escaping and URL serialization, and JSON string escaping. The audit examines the actual
+rendered bytes, decoded JSON string tokens, and the raw summary, with renderer-owned provenance
+that distinguishes fixed schema/vocabulary from dynamic values. Missing provenance fails closed.
+
+Short probes are never ignored. A match derived from the sensitive source is a leak; a match in an
+independent dynamic value is an unresolved collision and cannot certify. A match wholly inside
+validated fixed schema or vocabulary is safe by provenance, so a Channel id such as `prepared`
+does not fail solely because the fixed phase name is also `prepared`. Arbitrary dynamic text cannot
+be declared fixed merely because it resembles an allowed value. A missing capsule, unsupported
+encoding, collision, audit error, or leak prevents certification. The candidate is discarded, and a
+minimal fixed-vocabulary artifact and summary are audited again before publication; they contain
+only schema version, uncertified status, audit status, and a bounded reason, never the matched bytes
+or original report fields. If even this audit cannot finish safely, no artifact replacement or stdout
+output occurs; the command emits only a fixed stderr error and exits unsuccessfully. An existing
+artifact remains untouched in that case, and the failing exit status never presents it as a new run.
+
 ### Playout status — one place that answers "why is this channel black?" (V47)
 
 Playout has several ways to fail that all present identically to a viewer (a black frame) but have
