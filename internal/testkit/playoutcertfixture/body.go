@@ -13,6 +13,42 @@ type CountingReadCloser struct {
 	Closed *atomic.Int32
 }
 
+// BlockingReadCloser waits until Close before finishing Read. It is useful for
+// asserting that a process lifecycle releases an admitted streaming body.
+type BlockingReadCloser struct {
+	Closed      *atomic.Int32
+	Terminal    error
+	closed      chan struct{}
+	closeOnce   sync.Once
+	ReadStarted chan<- struct{}
+}
+
+func NewBlockingReadCloser(closed *atomic.Int32) *BlockingReadCloser {
+	return &BlockingReadCloser{Closed: closed, closed: make(chan struct{})}
+}
+
+func (b *BlockingReadCloser) Read([]byte) (int, error) {
+	select {
+	case b.ReadStarted <- struct{}{}:
+	default:
+	}
+	<-b.closed
+	if b.Terminal != nil {
+		return 0, b.Terminal
+	}
+	return 0, io.ErrClosedPipe
+}
+
+func (b *BlockingReadCloser) Close() error {
+	b.closeOnce.Do(func() {
+		close(b.closed)
+		if b.Closed != nil {
+			b.Closed.Add(1)
+		}
+	})
+	return nil
+}
+
 func (r *CountingReadCloser) Close() error {
 	r.Closed.Add(1)
 	return r.ReadCloser.Close()
