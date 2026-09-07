@@ -29,7 +29,7 @@ func TestRunToolFinalizationDiagnosticUsesFrozenPostResultContract(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.PromptVersion != "suggester-prompt-v4" || report.ToolSchemaVersion != "catalog-search-v4" || report.MessageTemplateVersion != "planner-tool-result-finalization-v1" {
+	if report.PromptVersion != "suggester-prompt-v5" || report.ToolSchemaVersion != "catalog-search-v5" || report.MessageTemplateVersion != "planner-tool-result-finalization-v1" {
 		t.Fatalf("contract identity = %+v", report)
 	}
 	if len(report.SystemPromptSHA256) != 64 || len(report.UserPromptSHA256) != 64 || len(report.MessagesSHA256) != 64 || len(report.ToolSchemaSHA256) != 64 {

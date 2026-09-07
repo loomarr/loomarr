@@ -39,11 +39,10 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
 			continue // a resolved reference cannot be padded with an unrelated grounded id
 		}
-		if requiresMembershipEvidence(intent) {
-			relevance, _ := relevanceForCandidate(decisionRankQuery(intent), cand)
-			if relevance == 0 && adjacentVotesOf(intent, provision.Key(key)) == 0 {
+		if requiresMembershipEvidence(intent) || len(intent.membershipKeys) > 0 {
+			if !intent.membershipKeys[provision.Key(key)] {
 				traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
-				continue // identity is real, but no source-backed fact connects it to the named set
+				continue // identity is real, but it was not explicitly enumerated as a member
 			}
 		}
 		item := fromCandidate(cand, p.Rationale, p.Confidence)

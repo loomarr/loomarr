@@ -1333,13 +1333,13 @@ change tools, quotas, policy, authorization, or identity. Only the submitted URL
 referenced host—not the complete household Intent, Library, or Proposal. Raw reference content is
 not persisted in the Proposal trace, logs, diagnostics, evaluation artifacts, or training corpus.
 
-After reference resolution, Loomarr runs the existing federated `catalog_search` internally for at
-most eight extracted title anchors, keeps only normalized exact-title matches, deduplicates by
-canonical provisioning key, and appends those actual bounded tool results to the planner conversation.
-The model therefore finalizes in one turn from ids that genuinely passed the existing catalog contract;
-the public tool schema and sequential model tool-call budget do not change. An extracted title is
-evidence only when an exact catalog identity exists. Explicit titles/examples written directly by the
-operator may later use the same pre-grounding path without needing a URL.
+After reference resolution, Loomarr treats extracted title anchors as untrusted membership evidence.
+For a named collection or programming block, the planner must ask `catalog_search` for a bounded list
+of exact constituent titles; only Catalog-resolved identities for those enumerated titles are members.
+Network, genre, era, adjacent recommendations, and model rationale may help discover a theme, but never
+prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
+rules. A title from an older-premiering series remains eligible where its episodes air in the requested
+era; the era becomes an airing-season window rather than a false premiere-year exclusion.
 
 Identity grounding and editorial support are separate mandatory gates. A selected id must both have
 been surfaced by the Catalog and carry positive, source-backed evidence for the semantic request. The

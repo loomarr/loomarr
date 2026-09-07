@@ -1907,3 +1907,40 @@ func TestProposal_NoCeilingRefusesNothing(t *testing.T) {
 		t.Fatalf("nothing may be refused with no ceiling, got %+v", prop.Refused)
 	}
 }
+
+func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"full house"}, LibraryItemID: "full-house", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762},
+		testkit.SearchStub{Terms: []string{"family matters"}, LibraryItemID: "family-matters", Name: "Family Matters", Type: "Series", Year: 1989, TVDBID: 767},
+		testkit.SearchStub{Terms: []string{"step by step"}, LibraryItemID: "step-by-step", Name: "Step by Step", Type: "Series", Year: 1991, TVDBID: 760},
+		testkit.SearchStub{Terms: []string{"full house"}, LibraryItemID: "neighbor", Name: "Full House Secrets", Type: "Series", Year: 2020, TVDBID: 99001},
+	)
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Full House", "Family Matters", "Step by Step"}}),
+		testkit.FinalResponse(`{"channelName":"Friday Night","picks":[
+			{"mediaType":"series","tvdbId":762,"name":"Full House","seasonMin":4,"seasonMax":8},
+			{"mediaType":"series","tvdbId":767,"name":"Family Matters","seasonMin":2,"seasonMax":6},
+			{"mediaType":"series","tvdbId":760,"name":"Step by Step"},
+			{"mediaType":"series","tvdbId":99001,"name":"Full House Secrets"}
+		]}`),
+	)
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "a named Friday-night family sitcom collection", Era: "1990s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 3 {
+		t.Fatalf("lineup = %+v, want exactly the enumerated members", prop.Lineup)
+	}
+	for _, item := range prop.Lineup {
+		if item.TVDBID == 99001 {
+			t.Fatalf("non-member search neighbor survived: %+v", prop.Lineup)
+		}
+	}
+	if prop.Lineup[0].SeasonMin == 0 || prop.Lineup[0].SeasonMax == 0 {
+		t.Fatalf("older-premiering member lost its requested-era airing window: %+v", prop.Lineup)
+	}
+}

@@ -53,6 +53,9 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 	intent.ReferenceTitles = titles
 	intent.referenceEvidence = evidence
 	intent.referenceKeys = make(map[provision.Key]bool)
+	if intent.membershipKeys == nil {
+		intent.membershipKeys = make(map[provision.Key]bool)
+	}
 
 	byKey := make(map[provision.Key]catalog.Candidate)
 	messages := make([]llm.Message, 0, len(titles)*2)
@@ -94,6 +97,7 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 	for _, candidate := range ranked.Candidates {
 		if key, keyErr := candidate.Key(); keyErr == nil {
 			intent.referenceKeys[key] = true
+			intent.membershipKeys[key] = true
 		}
 	}
 	intent.referenceCandidates = append([]catalog.Candidate(nil), ranked.Candidates...)
