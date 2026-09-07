@@ -603,7 +603,8 @@ func observePreparedProgrammeBoundary(ctx context.Context, endpoint *endpoint, c
 		return fail(class)
 	}
 	reader := newPreparedHLSReader(ctx, endpoint, signed)
-	observer := startDecoderObserver(ctx, config.Decoder, reader, config.RawCaptureBytes)
+	defer reader.Close()
+	observer := startDecoderObserver(ctx, config.Decoder, reader.epoch(), config.RawCaptureBytes)
 	defer func() {
 		if err := observer.close(); err != nil && result.observation.class == "ok" {
 			result.observation.class, result.evidence.Outcome = "close_failed", "close_failed"
@@ -623,11 +624,21 @@ func observePreparedProgrammeBoundary(ctx context.Context, endpoint *endpoint, c
 	}
 	result.evidence.Media, result.observation.media = shape, shape
 	reader.arm()
-	select {
-	case <-ctx.Done():
-		return fail("transition_timeout")
-	case <-reader.transition:
+	for {
+		select {
+		case <-ctx.Done():
+			return fail("transition_timeout")
+		case qualified := <-reader.transition:
+			if err := observer.close(); err != nil {
+				return fail("decode_failed")
+			}
+			observer = startDecoderObserver(ctx, config.Decoder, reader.epoch(), config.RawCaptureBytes)
+			if qualified {
+				goto qualifiedTransition
+			}
+		}
 	}
+qualifiedTransition:
 	transitionAt := time.Now()
 	atBoundary := observer.snapshot()
 	late := transitionAt.Add(3 * config.ProgrammeBoundaryLateObservation / 4)
@@ -639,6 +650,15 @@ func observePreparedProgrammeBoundary(ctx context.Context, endpoint *endpoint, c
 	case <-timer.C:
 	}
 	after := observer.snapshot()
+	if !postBoundaryProgressed(atBoundary, after, late) && !after.decoderDone && after.decoderErr == nil && (after.readErr == nil || errors.Is(after.readErr, context.Canceled)) {
+		var waitErr error
+		after, waitErr = observer.wait(ctx, func(current decoderSnapshot) bool {
+			return postBoundaryProgressed(atBoundary, current, late)
+		})
+		if waitErr != nil && !errors.Is(waitErr, context.Canceled) && !errors.Is(waitErr, context.DeadlineExceeded) {
+			return fail("post_boundary_decode_failed")
+		}
+	}
 	if after.decoderDone || after.decoderErr != nil || (after.readErr != nil && !errors.Is(after.readErr, context.Canceled)) {
 		return fail("post_boundary_decode_failed")
 	}

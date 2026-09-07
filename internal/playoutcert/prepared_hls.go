@@ -32,11 +32,16 @@ type preparedHLSReader struct {
 	initial        bool
 	armed          bool
 	boundary       string
-	transition     chan struct{}
-	transitionOnce sync.Once
+	epochPending   bool
+	transition     chan bool
 }
 
-type preparedHLSSegment struct{ uri, init, id, boundary string }
+type preparedHLSSegment struct {
+	uri, init, id, boundary string
+	postArm                 bool
+}
+
+var errPreparedHLSEpoch = errors.New("prepared HLS decode epoch ended")
 
 func newPreparedHLSReader(ctx context.Context, e *endpoint, signed *url.URL) *preparedHLSReader {
 	p := *signed
@@ -44,7 +49,7 @@ func newPreparedHLSReader(ctx context.Context, e *endpoint, signed *url.URL) *pr
 	q.Set("mode", "prepared")
 	p.RawQuery = q.Encode()
 	owned, cancel := context.WithCancel(ctx)
-	return &preparedHLSReader{ctx: owned, cancel: cancel, e: e, playlist: &p, seen: map[string]preparedHLSSegment{}, transition: make(chan struct{})}
+	return &preparedHLSReader{ctx: owned, cancel: cancel, e: e, playlist: &p, seen: map[string]preparedHLSSegment{}, transition: make(chan bool, 1)}
 }
 
 func (r *preparedHLSReader) Read(p []byte) (int, error) {
@@ -101,26 +106,22 @@ func (r *preparedHLSReader) openNext() error {
 		}
 	}
 	seg := r.queue[0]
-	r.queue = r.queue[1:]
 	if r.boundary == "" {
 		r.boundary = seg.boundary
 	}
 	if seg.boundary != r.boundary && r.initial {
-		// Do not let a boundary already buffered in the initial playlist race
-		// ahead of validation and become retrospective proof.
-		for !r.isArmed() {
-			select {
-			case <-r.ctx.Done():
-				return r.ctx.Err()
-			case <-time.After(5 * time.Millisecond):
-			}
+		if !r.epochPending {
+			r.epochPending = true
+			r.transition <- seg.postArm
+			return errPreparedHLSEpoch
 		}
+		r.epochPending = false
 		r.boundary = seg.boundary
 		// A discontinuity starts a new fMP4 decode epoch even where the
 		// publication happens to reuse byte-identical initialization media.
 		r.currentInit = ""
-		r.transitionOnce.Do(func() { close(r.transition) })
 	}
+	r.queue = r.queue[1:]
 	if seg.init != r.currentInit {
 		if err := r.openAsset(seg.init); err != nil {
 			return err
@@ -141,6 +142,20 @@ func (r *preparedHLSReader) openNext() error {
 // a subsequently fetched boundary can be post-validation evidence.
 func (r *preparedHLSReader) arm()          { r.mu.Lock(); r.armed = true; r.mu.Unlock() }
 func (r *preparedHLSReader) isArmed() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.armed }
+
+type preparedHLSEpochReader struct{ reader *preparedHLSReader }
+
+func (r preparedHLSEpochReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if errors.Is(err, errPreparedHLSEpoch) {
+		err = io.EOF
+	}
+	return n, err
+}
+
+func (preparedHLSEpochReader) Close() error { return nil }
+
+func (r *preparedHLSReader) epoch() io.ReadCloser { return preparedHLSEpochReader{reader: r} }
 
 func (r *preparedHLSReader) openAsset(raw string) error {
 	u, err := r.playlist.Parse(raw)
@@ -193,6 +208,7 @@ func (r *preparedHLSReader) refresh() error {
 		if len(r.seen) >= 4096 || len(r.queue) >= 512 {
 			return errors.New("hls_limit_exceeded")
 		}
+		seg.postArm = r.isArmed()
 		r.seen[seg.id] = seg
 		r.queue = append(r.queue, seg)
 	}

@@ -131,7 +131,7 @@ func TestSyntheticPreparedPublicHLSWitnessesProgrammeBoundaryWithoutRawWitness(t
 			t.Error(err)
 		}
 	}()
-	config := Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: time.Second, Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{}}
+	config := Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 3 * time.Second, Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{}}
 	endpoint, err := newEndpoint(config.normalized())
 	if err != nil {
 		t.Fatal(err)
