@@ -38,6 +38,26 @@ func TestCleanupFailureIsPersistedAsUncertifiedReport(t *testing.T) {
 	}
 }
 
+func TestFinalizeWithTypedNilSyntheticTargetPublishesReport(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "report.json")
+	var target *playoutcert.SyntheticTarget
+	report := playoutcert.Report{Certified: true}
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+	if code := finalizeAfterIsolatedCleanup(output, report, true, target, time.Second, stdout, stderr); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%q", code, stderr.String())
+	}
+	if _, err := os.Stat(output); err != nil {
+		t.Fatalf("report artifact: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Playout load certification: PASS") {
+		t.Fatalf("summary = %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
 func TestCommandRejectsMissingSecretsAndOutputEscapeWithoutEchoingValues(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := filepath.Join(dir, "manifest.json")

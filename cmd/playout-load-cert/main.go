@@ -130,15 +130,19 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		config.ProgrammeBoundaryWitness = isolated.ProgrammeBoundaryWitness()
 		config.FaultController = isolated
 	}
+	var isolatedTarget isolatedCloser
+	if isolated != nil {
+		isolatedTarget = isolated
+	}
 	report, err := playoutcert.Run(runCtx, config)
 	if err != nil {
-		if closeErr := closeIsolated(isolated, *cleanupTimeout); closeErr != nil {
+		if closeErr := closeIsolated(isolatedTarget, *cleanupTimeout); closeErr != nil {
 			_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated target cleanup failed")
 		}
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: run failed during bounded preflight")
 		return 1
 	}
-	return finalizeAfterIsolatedCleanup(resolvedOutput, report, *certify, isolated, *cleanupTimeout, stdout, stderr)
+	return finalizeAfterIsolatedCleanup(resolvedOutput, report, *certify, isolatedTarget, *cleanupTimeout, stdout, stderr)
 }
 
 func recordIsolatedCleanupFailure(report *playoutcert.Report) {
@@ -182,6 +186,9 @@ func publishReport(output string, report playoutcert.Report, certify bool, stdou
 
 func closeIsolated(target isolatedCloser, timeout time.Duration) error {
 	if target == nil {
+		return nil
+	}
+	if synthetic, ok := target.(*playoutcert.SyntheticTarget); ok && synthetic == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
