@@ -104,7 +104,7 @@ overrides:
   # uuid 11.1.1 exposes a Node `require` entry and preserves that API; keep the
   # override exact to xcode's currently resolved vulnerable dependency.
   "uuid@7.0.3": "11.1.1"
-  # GHSA-vcc3-ghjq-m6fr (high): query-string 7.1.3 is a CommonJS consumer, while
+  # GHSA-vcc3-ghjq-m6fr (medium): query-string 7.1.3 is a CommonJS consumer, while
   # the fixed 0.5.0 decoder is ESM-only. Patch only its module packaging so the
   # complete fixed upstream algorithm remains callable from query-string.
   "decode-uri-component@0.2.2": "0.5.0"
