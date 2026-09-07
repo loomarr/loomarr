@@ -1412,7 +1412,11 @@ func TestScoring_Deterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p1.Scores != p2.Scores {
+	if p1.Scores.ThemeFit != p2.Scores.ThemeFit ||
+		p1.Scores.AvailabilityRatio != p2.Scores.AvailabilityRatio ||
+		p1.Scores.Overall != p2.Scores.Overall ||
+		(p1.Scores.EraBalance == nil) != (p2.Scores.EraBalance == nil) ||
+		(p1.Scores.EraBalance != nil && *p1.Scores.EraBalance != *p2.Scores.EraBalance) {
 		t.Errorf("scoring not deterministic: %+v vs %+v", p1.Scores, p2.Scores)
 	}
 	if p1.Scores.Overall < 0 || p1.Scores.Overall > 1 {
@@ -1613,8 +1617,8 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 	if !strings.Contains(prompt, "UNTRUSTED REFERENCE DATA") || !strings.Contains(prompt, "Alpha House") {
 		t.Fatalf("bounded reference evidence was not labeled and supplied to the model: %q", prompt)
 	}
-	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != 1 {
-		t.Fatalf("reference-backed membership should score as supported with unknown episode-era overlap neutral, got %+v", prop.Scores)
+	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != nil {
+		t.Fatalf("reference-backed membership should score as supported with episode-era overlap unassessed, got %+v", prop.Scores)
 	}
 	if !strings.Contains(prop.Rationale, "resolved public-reference constituent evidence") {
 		t.Fatalf("proposal rationale did not report reference provenance: %q", prop.Rationale)
@@ -2168,8 +2172,8 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 	if !foundNeighborRejection {
 		t.Fatalf("trace did not preserve the surfaced neighbor's membership rejection: %+v", prop.Trace)
 	}
-	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != 1 {
-		t.Fatalf("membership score/unknown episode-era balance = %+v, want supported/neutral", prop.Scores)
+	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != nil {
+		t.Fatalf("membership score/unknown episode-era balance = %+v, want supported/unassessed", prop.Scores)
 	}
 	if strings.Contains(prop.Rationale, "throughout the 90s") {
 		t.Fatalf("unsupported model history survived in proposal rationale: %q", prop.Rationale)

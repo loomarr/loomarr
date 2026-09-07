@@ -238,6 +238,8 @@ type RefusedPick struct {
 type Scores struct {
 	ThemeFit          float64 `json:"themeFit"`          // how well items match the intent terms
 	AvailabilityRatio float64 `json:"availabilityRatio"` // in-library / total (live-now readiness)
-	EraBalance        float64 `json:"eraBalance"`        // spread across the target era/years
-	Overall           float64 `json:"overall"`           // weighted composite
+	// EraBalance is nil when a named lineup includes a series whose episode dates
+	// are unavailable; a premiere year or model season selector cannot establish it.
+	EraBalance *float64 `json:"eraBalance"` // spread across the target era/years, when assessed
+	Overall    float64  `json:"overall"`    // weighted composite
 }

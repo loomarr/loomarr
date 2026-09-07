@@ -18,7 +18,7 @@ func ThemeFitForTest(intent Intent, lineup, acquisitions []ProposalItem) float64
 
 // EraBalanceForTest exposes eraBalance().
 func EraBalanceForTest(intent Intent, lineup, acquisitions []ProposalItem) float64 {
-	return eraBalance(intent, lineup, acquisitions)
+	return *eraBalance(intent, lineup, acquisitions)
 }
 
 // CompositeForTest exposes composite().

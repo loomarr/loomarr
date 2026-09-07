@@ -7905,7 +7905,9 @@ components:
           type: number
         eraBalance:
           format: double
-          type: number
+          type:
+            - number
+            - "null"
         overall:
           format: double
           type: number
