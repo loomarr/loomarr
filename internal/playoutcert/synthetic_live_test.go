@@ -175,8 +175,9 @@ func TestSyntheticTargetRejectsStaleParentGenerationAfterReplacement(t *testing.
 			t.Errorf("close synthetic target: %v", closeErr)
 		}
 	}()
-	config := Config{BaseURL: target.BaseURL, DeviceToken: target.DeviceToken, Channels: []Channel{channel}, RequestTimeout: 15 * time.Second, RawCaptureBytes: 2 << 20, Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{}}
-	endpoint, err := newEndpoint(config.normalized())
+	config := Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: []Channel{channel}, RequestTimeout: 15 * time.Second, RawCaptureBytes: 2 << 20, Validator: FFprobeValidator{}, Decoder: FFmpegDecoder{}}
+	config = config.normalized()
+	endpoint, err := newEndpoint(config)
 	if err != nil {
 		t.Fatal(err)
 	}
