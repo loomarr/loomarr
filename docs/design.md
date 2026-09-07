@@ -1585,10 +1585,14 @@ The retained `planner-certification-v2` expands those 25 auditable semantic fami
 frozen alternative phrasings apiece: exactly 150 unique Intents in
 the `certification` split, each bound to its family's case in the digest-pinned
 `planner-catalog-v1` fixture. Retained v3-v5 contracts layer their scoring answers over those
-unchanged v2 Intent bytes rather than rewriting the frozen holdout. Active
-`planner-certification-v6` instead digest-pins a new immutable base and `planner-catalog-v2`
+unchanged v2 Intent bytes rather than rewriting the frozen holdout. Retained
+`planner-certification-v6` digest-pins a new immutable base and `planner-catalog-v2`
 fixture: it preserves all 25 families and adds separate network, cast, and creator routing
-families with five frozen phrasings apiece, for exactly 168 Intents. Their synthetic candidates
+families with five frozen phrasings apiece, for exactly 168 Intents. Active
+`planner-certification-v7` retains those exact Intent, catalog, threshold, and scoring bytes while
+binding the named-set planner's `suggester-prompt-v5` and `catalog-search-v5` identities. Historical
+manifests remain immutable, and older scorecards cannot establish certification for the new
+prompt/tool contract. The hermetic contract suite checks this binding without invoking a provider. Their synthetic candidates
 carry the exact resolved network/person evidence that production returns. The structural observer
 records those three operations independently, so a generic genre call or a call that mixes cast
 and creator fields cannot receive correct-route credit.
