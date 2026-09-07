@@ -132,9 +132,11 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 		}
 	}
 
-	source := filepath.Join(root, "source.mp4")
-	if err := generateSyntheticSource(ctx, ffmpeg, source); err != nil {
-		return fail(err)
+	sources := [2]string{filepath.Join(root, "source-0.mp4"), filepath.Join(root, "source-1.mp4")}
+	for variant, source := range sources {
+		if err := generateSyntheticSource(ctx, ffmpeg, source, variant); err != nil {
+			return fail(err)
+		}
 	}
 	library, err := prepared.NewLibrary(filepath.Join(root, "prepared"))
 	if err != nil {
@@ -145,37 +147,46 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 		AudioCodec: "aac", AudioLayout: "stereo", Width: 320, Height: 180, FrameRate: 25,
 		VideoBitrateKbps: 600, AudioBitrateKbps: 96, SegmentDurationMS: 1000, PackagingVersion: prepared.CurrentPackagingVersion,
 	}
-	preparedSpecs := make(map[string]prepared.Specification)
+	preparedSpecs := make(map[string][2]prepared.Specification)
 	preparedIndexes := playoutcert.PreparedChannelIndexes(config.Channels)
 	if len(preparedIndexes) > 0 {
 		first := config.Channels[preparedIndexes[0]]
-		firstSpec := prepared.Specification{SourceFingerprint: "synthetic-" + first.ID, Rendition: rendition}
 		packager := prepared.NewFFmpegPackager(ffmpeg)
-		template, publishErr := library.Publish(ctx, firstSpec, func(buildCtx context.Context, workspace string) (prepared.Output, error) {
-			return packager.Package(buildCtx, workspace, prepared.LocalInput(source), 0, rendition)
-		})
-		if publishErr != nil {
-			return fail(publishErr)
-		}
-		preparedSpecs[first.ID] = firstSpec
-		for _, index := range preparedIndexes[1:] {
-			channel := config.Channels[index]
-			spec := prepared.Specification{SourceFingerprint: "synthetic-" + channel.ID, Rendition: rendition}
-			_, publishErr = library.Publish(ctx, spec, func(_ context.Context, workspace string) (prepared.Output, error) {
-				for _, name := range template.Files {
-					from, to := filepath.Join(template.Directory, name), filepath.Join(workspace, name)
-					if linkErr := os.Link(from, to); linkErr != nil {
-						if copyErr := copyRegularFile(from, to); copyErr != nil {
-							return prepared.Output{}, copyErr
-						}
-					}
-				}
-				return prepared.Output{Files: append([]string(nil), template.Files...)}, nil
+		var templates [2]prepared.Publication
+		var firstSpecs [2]prepared.Specification
+		for variant, source := range sources {
+			spec := syntheticPreparedSpecification(first.ID, variant, rendition)
+			template, publishErr := library.Publish(ctx, spec, func(buildCtx context.Context, workspace string) (prepared.Output, error) {
+				return packager.Package(buildCtx, workspace, prepared.LocalInput(source), 0, rendition)
 			})
 			if publishErr != nil {
 				return fail(publishErr)
 			}
-			preparedSpecs[channel.ID] = spec
+			firstSpecs[variant], templates[variant] = spec, template
+		}
+		preparedSpecs[first.ID] = firstSpecs
+		for _, index := range preparedIndexes[1:] {
+			channel := config.Channels[index]
+			var specs [2]prepared.Specification
+			for variant, template := range templates {
+				spec := syntheticPreparedSpecification(channel.ID, variant, rendition)
+				_, publishErr := library.Publish(ctx, spec, func(_ context.Context, workspace string) (prepared.Output, error) {
+					for _, name := range template.Files {
+						from, to := filepath.Join(template.Directory, name), filepath.Join(workspace, name)
+						if linkErr := os.Link(from, to); linkErr != nil {
+							if copyErr := copyRegularFile(from, to); copyErr != nil {
+								return prepared.Output{}, copyErr
+							}
+						}
+					}
+					return prepared.Output{Files: append([]string(nil), template.Files...)}, nil
+				})
+				if publishErr != nil {
+					return fail(publishErr)
+				}
+				specs[variant] = spec
+			}
+			preparedSpecs[channel.ID] = specs
 		}
 	}
 
@@ -208,7 +219,7 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	preparedStatus := syntheticPreparedStatus{count: preparedCount}
 	preparedOrigin := playout.NewPreparedOrigin(library, preparedResolver)
 	preparedBlock := preparedOrigin.MPEGTSBlockSource(ffmpeg, logger, processManager)
-	liveResolver := syntheticLiveResolver{source: source, schedule: programmeSchedule}
+	liveResolver := syntheticLiveResolver{sources: sources, schedule: programmeSchedule}
 
 	var manager *playout.Manager
 	spawner := func(spawnCtx context.Context, channelID string, plan playout.EncodePlan) (*playout.Process, error) {
@@ -661,8 +672,9 @@ func (t syntheticSamplerTransport) RoundTrip(request *http.Request) (*http.Respo
 }
 
 type syntheticPreparedResolver struct {
-	specs    map[string]prepared.Specification
+	specs    map[string][2]prepared.Specification
 	schedule syntheticProgrammeSchedule
+	now      func() time.Time
 }
 
 type syntheticPreparedStatus struct{ count int }
@@ -678,16 +690,24 @@ func (s syntheticPreparedStatus) Status() prepared.PlannerStatus {
 }
 
 func (r syntheticPreparedResolver) ResolvePrepared(_ context.Context, request playout.TuneRequest) (playout.PreparedWindow, bool, error) {
-	spec, ok := r.specs[request.ChannelID]
+	specs, ok := r.specs[request.ChannelID]
 	if !ok {
 		return playout.PreparedWindow{}, false, nil
 	}
-	now := time.Now().UTC()
+	now := r.currentTime()
 	identity, _, offset := r.schedule.airings(now, request.ChannelID)
+	spec := specs[r.schedule.variant(now)]
 	return playout.PreparedWindow{Current: playout.PreparedAiring{
 		Specification: spec, StartedAt: identity.StartedAt, Offset: offset,
 		Identity: identity, DiscontinuitySequence: r.schedule.ordinal(now),
 	}}, true, nil
+}
+
+func (r syntheticPreparedResolver) currentTime() time.Time {
+	if r.now != nil {
+		return r.now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 type syntheticProgrammeSchedule struct {
@@ -716,13 +736,21 @@ func (s syntheticProgrammeSchedule) airings(now time.Time, channelID string) (pl
 }
 
 type syntheticLiveResolver struct {
-	source   string
+	sources  [2]string
 	schedule syntheticProgrammeSchedule
+	now      func() time.Time
 }
 
 func (r syntheticLiveResolver) AiringNow(_ context.Context, channelID string) (playout.Airing, string, error) {
-	identity, _, _ := r.schedule.airings(time.Now().UTC(), channelID)
-	return playout.Airing{StartedAt: identity.StartedAt, Identity: identity.ContentID, ScheduleBlockID: identity.ScheduleBlockID, Kind: identity.Kind, LibraryItemID: channelID, Title: "Synthetic", Remaining: time.Until(identity.EndsAt)}, r.source, nil
+	now := r.currentTime()
+	identity, _, _ := r.schedule.airings(now, channelID)
+	return playout.Airing{StartedAt: identity.StartedAt, Identity: identity.ContentID, ScheduleBlockID: identity.ScheduleBlockID, Kind: identity.Kind, LibraryItemID: channelID, Title: "Synthetic", Remaining: identity.EndsAt.Sub(now)}, r.sources[r.schedule.variant(now)], nil
+}
+func (r syntheticLiveResolver) currentTime() time.Time {
+	if r.now != nil {
+		return r.now().UTC()
+	}
+	return time.Now().UTC()
 }
 func (syntheticLiveResolver) Profile(context.Context) playout.Profile {
 	p := playout.DefaultProfile()
@@ -804,8 +832,21 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 	}
 }
 
-func generateSyntheticSource(ctx context.Context, ffmpeg, output string) error {
-	cmd := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25:duration=60", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=60", "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", "25", "-c:a", "aac", "-b:a", "96k", output)
+func syntheticPreparedSpecification(channelID string, variant int, rendition prepared.RenditionContract) prepared.Specification {
+	return prepared.Specification{SourceFingerprint: fmt.Sprintf("synthetic-%s-programme-%d", channelID, variant), Rendition: rendition}
+}
+
+func (s syntheticProgrammeSchedule) variant(now time.Time) int {
+	return int(s.ordinal(now) % 2)
+}
+
+func generateSyntheticSource(ctx context.Context, ffmpeg, output string, variant int) error {
+	colour, frequency := "black", "440"
+	if variant == 1 {
+		colour, frequency = "white", "880"
+	}
+	filter := fmt.Sprintf("testsrc2=size=320x180:rate=25:duration=60,drawbox=x=0:y=0:w=64:h=64:color=%s:t=fill", colour)
+	cmd := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", filter, "-f", "lavfi", "-i", "sine=frequency="+frequency+":sample_rate=48000:duration=60", "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", "25", "-c:a", "aac", "-b:a", "96k", output)
 	if err := cmd.Run(); err != nil {
 		return errors.New("generate deterministic synthetic media")
 	}
