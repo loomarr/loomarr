@@ -71,12 +71,12 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
 
       @Override
       public void onStartDiscoveryFailed(String type, int code) {
-        listener = null;
+        if (activeGeneration == generation) listener = null;
       }
 
       @Override
       public void onStopDiscoveryFailed(String type, int code) {
-        listener = null;
+        if (activeGeneration == generation) listener = null;
       }
 
       @Override
@@ -93,6 +93,7 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
 
       @Override
       public void onServiceLost(NsdServiceInfo service) {
+        if (activeGeneration != generation) return;
         WritableMap payload = Arguments.createMap();
         payload.putString("id", service.getServiceName());
         emit("loomarrDiscoveryLost", payload);
@@ -101,7 +102,7 @@ public final class LoomarrLanDiscoveryModule extends ReactContextBaseJavaModule 
     try {
       manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener);
     } catch (RuntimeException error) {
-      listener = null;
+      if (activeGeneration == generation) listener = null;
     }
   }
 
