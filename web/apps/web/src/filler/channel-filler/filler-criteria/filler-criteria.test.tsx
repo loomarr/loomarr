@@ -2,7 +2,7 @@ import { getListTaxonomyMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { FillerCriteria } from "./filler-criteria";
@@ -26,6 +26,28 @@ const renderCriteria = (ui: ReactElement) => {
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 };
 
+const CriteriaHarness = ({
+  initial,
+  onChange,
+  programmingDates,
+}: {
+  initial: Parameters<typeof FillerCriteria>[0]["selection"];
+  onChange: (selection: Parameters<typeof FillerCriteria>[0]["selection"]) => void;
+  programmingDates?: Parameters<typeof FillerCriteria>[0]["programmingDates"];
+}) => {
+  const [selection, setSelection] = useState(initial);
+  return (
+    <FillerCriteria
+      selection={selection}
+      programmingDates={programmingDates}
+      onChange={(next) => {
+        onChange(next);
+        setSelection(next);
+      }}
+    />
+  );
+};
+
 const SCOPE = { from: 1990, to: 1999 };
 
 // The three states of a filler era (§10 V51f).
@@ -37,11 +59,170 @@ const SCOPE = { from: 1990, to: 1999 };
 // say so: clearing the fields simply re-inherited. Presence is now the opt-in, and these tests
 // assert the two escapes that make the third state reachable.
 describe("FillerCriteria era", () => {
+  it("keeps disjoint explicit windows and rejects an invalid edit", async () => {
+    const onChange = vi.fn();
+    renderCriteria(
+      <CriteriaHarness initial={{ eraWindows: [{ from: 1990, to: 1999 }] }} onChange={onChange} />,
+    );
+
+    await userEvent.type(screen.getByLabelText("New date range from"), "2005");
+    await userEvent.type(screen.getByLabelText("New date range to"), "2009");
+    await userEvent.click(screen.getByRole("button", { name: "Add range" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      eraWindows: [
+        { from: 1990, to: 1999 },
+        { from: 2005, to: 2009 },
+      ],
+    });
+
+    const from = screen.getAllByLabelText("From year")[0]!;
+    await userEvent.clear(from);
+    await userEvent.type(from, "2001");
+    await userEvent.tab();
+    expect(screen.getByRole("alert")).toHaveTextContent("From no later than To");
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("commits a recovered date pair without widening the range after an invalid From edit", async () => {
+    const onChange = vi.fn();
+    renderCriteria(
+      <CriteriaHarness
+        initial={{
+          eraWindows: [
+            { from: 1990, to: 1999 },
+            { from: 2011, to: 2014 },
+          ],
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    const from = screen.getAllByLabelText("From year")[0]!;
+    const to = screen.getAllByLabelText("To year")[0]!;
+    await userEvent.clear(from);
+    await userEvent.type(from, "2005");
+    await userEvent.tab();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("From no later than To");
+    expect(onChange).not.toHaveBeenCalled();
+
+    await userEvent.clear(to);
+    await userEvent.type(to, "2009");
+    await userEvent.tab();
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      eraWindows: [
+        { from: 2005, to: 2009 },
+        { from: 2011, to: 2014 },
+      ],
+    });
+    expect(screen.getAllByLabelText("From year")[0]).toHaveValue(2005);
+    expect(screen.getAllByLabelText("To year")[0]).toHaveValue(2009);
+  });
+
+  it("commits a recovered date pair after an invalid To edit", async () => {
+    const onChange = vi.fn();
+    renderCriteria(
+      <CriteriaHarness initial={{ eraWindows: [{ from: 1990, to: 1999 }] }} onChange={onChange} />,
+    );
+
+    const from = screen.getAllByLabelText("From year")[0]!;
+    const to = screen.getAllByLabelText("To year")[0]!;
+    await userEvent.clear(to);
+    await userEvent.type(to, "1985");
+    await userEvent.tab();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("From no later than To");
+    expect(onChange).not.toHaveBeenCalled();
+
+    await userEvent.clear(from);
+    await userEvent.type(from, "1980");
+    await userEvent.tab();
+
+    expect(onChange).toHaveBeenLastCalledWith({ eraWindows: [{ from: 1980, to: 1985 }] });
+  });
+
+  it("uses any and inheritance without retaining era windows", async () => {
+    const onChange = vi.fn();
+    renderCriteria(
+      <CriteriaHarness
+        initial={{ audience: "kids", eraWindows: [{ from: 1990, to: 1999 }] }}
+        programmingDates={{
+          movieRelease: [{ from: 1990, to: 1999 }],
+          seriesAiring: [{ from: 2005, to: 2009 }],
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Use any era" }));
+    expect(onChange).toHaveBeenLastCalledWith({ audience: "kids", era: {} });
+    await userEvent.click(screen.getByRole("button", { name: /Follow the channel’s era/ }));
+    expect(onChange).toHaveBeenLastCalledWith({ audience: "kids" });
+  });
+
+  it("labels the movie-release and airing union, with premiere only as the fallback", () => {
+    const { rerender } = renderCriteria(
+      <FillerCriteria
+        selection={{}}
+        programmingDates={{
+          movieRelease: [{ from: 1990, to: 1999 }],
+          seriesPremiere: [{ from: 1980, to: 1989 }],
+          seriesAiring: [{ from: 2005, to: 2009 }],
+        }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("era-inherited")).toHaveTextContent("1990–1999, 2005–2009");
+
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <FillerCriteria
+          selection={{}}
+          programmingDates={{
+            movieRelease: [{ from: 1990, to: 1999 }],
+            seriesPremiere: [{ from: 1980, to: 1989 }],
+          }}
+          onChange={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByTestId("era-inherited")).toHaveTextContent("1980–1999");
+  });
+
+  it("hides the range-adder once all eight windows are present", () => {
+    renderCriteria(
+      <FillerCriteria
+        selection={{
+          eraWindows: Array.from({ length: 8 }, (_, index) => ({
+            from: 1900 + index * 10,
+            to: 1905 + index * 10,
+          })),
+        }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText("New date range from")).not.toBeInTheDocument();
+  });
   it("says which era a blank field is following, rather than looking like 'any'", () => {
     renderCriteria(<FillerCriteria selection={{}} onChange={vi.fn()} scopeEra={SCOPE} />);
     // ⚠ The typographic apostrophe (’), because the component renders `&rsquo;`. A straight quote
     // here fails on a string a human reading the screen would call identical.
     expect(screen.getByTestId("era-inherited")).toHaveTextContent("Following the channel’s era (1990–1999)");
+  });
+
+  it.each([
+    ["From only", { from: 1990 }, "1990"],
+    ["To only", { to: 1999 }, "1999"],
+  ])("keeps a one-sided channel era visible for inheritance (%s)", async (_name, scopeEra, label) => {
+    const onChange = vi.fn();
+    renderCriteria(
+      <FillerCriteria selection={{ audience: "kids" }} onChange={onChange} scopeEra={scopeEra} />,
+    );
+
+    expect(screen.getByTestId("era-inherited")).toHaveTextContent(`Following the channel’s era (${label})`);
+    await userEvent.click(screen.getByRole("button", { name: "Use any era" }));
+    expect(onChange).toHaveBeenCalledWith({ audience: "kids", era: {} });
   });
 
   // ⚠ An EMPTY range, not a removed key. Presence is what tells the server the operator ANSWERED

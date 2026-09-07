@@ -95,9 +95,9 @@ afterEach(() => {
 });
 
 describe("canonicalize", () => {
-  it("folds empty-means-any: [] and undefined and 0-field era all read identical", () => {
+  it("folds empty lists while preserving explicit-any as a distinct meaning", () => {
     expect(canonicalize({})).toBe(canonicalize({ categories: [], kinds: [], pinned: [], excluded: [] }));
-    expect(canonicalize({})).toBe(canonicalize({ audience: "", era: {} }));
+    expect(canonicalize({})).not.toBe(canonicalize({ audience: "", era: {} }));
   });
   it("is order-insensitive within a list (membership, not order, is identity)", () => {
     expect(canonicalize({ pinned: ["a", "b"] })).toBe(canonicalize({ pinned: ["b", "a"] }));
@@ -184,6 +184,50 @@ describe("useChannelFillerDraft", () => {
 
     await waitFor(() => expect(result.current.preview?.entries).toHaveLength(1));
     expect(previews.at(-1)).toMatchObject({ filler: { audience: "kids", categories: ["toys"] } });
+  });
+
+  it("preserves explicit-any in preview and apply", async () => {
+    const { previews, saves } = stubDraft();
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.setDraft({ era: {} }));
+    expect(result.current.isDirty).toBe(true);
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    await waitFor(() => expect(previews.at(-1)).toMatchObject({ filler: { era: {} } }));
+
+    act(() => result.current.apply());
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ policy: { filler: { era: {} } } }));
+  });
+
+  it("uses the same normalized date windows and geography for preview and apply", async () => {
+    const { previews, saves } = stubDraft();
+    const draft = {
+      eraWindows: [
+        { from: 2005, to: 2009 },
+        { from: 1990, to: 1999 },
+      ],
+      geography: { country: "US", market: "New York" },
+    };
+    const selection = {
+      eraWindows: [
+        { from: 1990, to: 1999 },
+        { from: 2005, to: 2009 },
+      ],
+      geography: { country: "US", market: "New York" },
+    };
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.setDraft(draft));
+    expect(result.current.isDirty).toBe(true);
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    await waitFor(() => expect(previews.at(-1)).toMatchObject({ filler: selection }));
+
+    act(() => result.current.apply());
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ policy: { filler: selection } }));
   });
 
   it("coalesces a burst of edits into a single preview POST", async () => {

@@ -14,6 +14,44 @@ import type { ChannelFillerDraft, FillerDraft } from "./use-channel-filler-draft
 // the timeline from flickering as you tick several categories in a row.
 const PREVIEW_DEBOUNCE_MS = 300;
 
+const YEAR_MIN = 1900;
+const YEAR_MAX = 2099;
+
+const isValidWindow = (window: NonNullable<FillerSelection["eraWindows"]>[number]): boolean =>
+  Number.isInteger(window.from) &&
+  Number.isInteger(window.to) &&
+  window.from !== undefined &&
+  window.to !== undefined &&
+  window.from >= YEAR_MIN &&
+  window.from <= YEAR_MAX &&
+  window.to >= YEAR_MIN &&
+  window.to <= YEAR_MAX &&
+  window.from <= window.to;
+
+// Invalid wire data must remain visible to the backend validator. Filtering it here would turn
+// a malformed restricted selection into a broader valid one without the operator's consent.
+const canonicalWindows = (windows: FillerSelection["eraWindows"]): FillerSelection["eraWindows"] => {
+  if (windows === undefined) return undefined;
+  if (!windows.every(isValidWindow)) return windows.map((window) => ({ ...window }));
+  return [...windows]
+    .sort((a, b) => a.from! - b.from! || a.to! - b.to!)
+    .reduce<NonNullable<FillerSelection["eraWindows"]>>((merged, window) => {
+      const previous = merged.at(-1);
+      if (previous && window.from! <= previous.to! + 1) previous.to = Math.max(previous.to!, window.to!);
+      else merged.push({ from: window.from, to: window.to });
+      return merged;
+    }, []);
+};
+
+const previewSelection = (selection: FillerDraft): FillerSelection => ({
+  ...selection,
+  categories: selection.categories?.length ? [...selection.categories] : undefined,
+  kinds: selection.kinds?.length ? [...selection.kinds] : undefined,
+  pinned: selection.pinned?.length ? [...selection.pinned] : undefined,
+  excluded: selection.excluded?.length ? [...selection.excluded] : undefined,
+  eraWindows: canonicalWindows(selection.eraWindows),
+});
+
 // canonicalize — a stable string identity for a selection, used for BOTH the dirty check
 // and the debounce key. It folds the "empty means any" equivalences so clearing a list to
 // [] reads identical to never having set it (undefined), and sorts the id/tag arrays so a
@@ -21,14 +59,17 @@ const PREVIEW_DEBOUNCE_MS = 300;
 // is fixed here, not by object-key order, so the output is deterministic.
 const canonicalize = (s: FillerDraft): string => {
   const list = (v?: string[] | null): string[] => [...(v ?? [])].sort();
-  const era = s.era && (s.era.from != null || s.era.to != null) ? s.era : undefined;
+  const era = s.era === undefined ? undefined : { from: s.era.from ?? null, to: s.era.to ?? null };
+  const eraWindows = canonicalWindows(s.eraWindows);
   return JSON.stringify({
-    era: era ? { from: era.from ?? null, to: era.to ?? null } : null,
+    era: era ?? null,
+    eraWindows: eraWindows ?? null,
     audience: s.audience || null,
     categories: list(s.categories),
     kinds: list(s.kinds),
     pinned: list(s.pinned),
     excluded: list(s.excluded),
+    geography: s.geography ? { country: s.geography.country, market: s.geography.market ?? null } : null,
   });
 };
 
@@ -76,6 +117,7 @@ const useChannelFillerDraft = (
 
   const preview = channelsApi.usePreviewDraftChannelPods();
   const draftKey = canonicalize(draft);
+  const selection = previewSelection(draft);
 
   // Debounced re-assemble: fire a preview whenever the canonical draft settles. Keying the
   // effect on `draftKey` (not the object) means editing a field to the same value, or a
@@ -88,7 +130,7 @@ const useChannelFillerDraft = (
     const t = setTimeout(() => {
       preview.mutate({
         id: channelId,
-        data: { filler: JSON.parse(draftKey) as FillerSelection, breakDuration },
+        data: { filler: selection, breakDuration },
       });
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(t);
@@ -138,7 +180,7 @@ const useChannelFillerDraft = (
     apply: () =>
       update.mutate({
         id: channelId,
-        data: { revision, policy: { ...policy, filler: draft, breaksPerHour, breakDuration } },
+        data: { revision, policy: { ...policy, filler: selection, breaksPerHour, breakDuration } },
       }),
     isApplying: update.isPending,
     discard: () => {

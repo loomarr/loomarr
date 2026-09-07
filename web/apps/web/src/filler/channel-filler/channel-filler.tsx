@@ -334,6 +334,7 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
           onChange={setDraft}
           disabled={isApplying}
           scopeEra={policy?.scope?.era ?? undefined}
+          programmingDates={policy?.scope?.dates}
           installationGeography={{ country: homeCountry, market: homeMarket }}
         />
       </section>
