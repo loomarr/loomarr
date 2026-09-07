@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -24,8 +25,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v6" {
-		t.Fatalf("corpus version = %q, want planner-certification-v6", corpus.Version)
+	if corpus.Version != "planner-certification-v7" {
+		t.Fatalf("corpus version = %q, want planner-certification-v7", corpus.Version)
 	}
 	if corpus.SchemaVersion != 6 {
 		t.Fatalf("corpus schema version = %d, want 6", corpus.SchemaVersion)
@@ -83,6 +84,34 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	}
 	if corpus.Selection.QualityMargin != 0.02 || validateSelection(corpus.Selection) != nil {
 		t.Fatalf("certification selection contract drifted: %+v", corpus.Selection)
+	}
+}
+
+func TestV7ManifestChangesFrozenV6OnlyForProductionIdentityBinding(t *testing.T) {
+	load := func(path string) map[string]any {
+		t.Helper()
+		blob, err := certificationFiles.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var manifest map[string]any
+		if err := json.Unmarshal(blob, &manifest); err != nil {
+			t.Fatal(err)
+		}
+		return manifest
+	}
+	v6, v7 := load("testdata/planner-certification-v6.json"), load("testdata/planner-certification-v7.json")
+	if v7["version"] != "planner-certification-v7" || v7["promptVersion"] != suggest.PlannerPromptVersion || v7["toolSchemaVersion"] != suggest.PlannerToolSchemaVersion {
+		t.Fatalf("v7 identity = version %q, prompt/tool %q/%q", v7["version"], v7["promptVersion"], v7["toolSchemaVersion"])
+	}
+	delete(v6, "version")
+	delete(v6, "promptVersion")
+	delete(v6, "toolSchemaVersion")
+	delete(v7, "version")
+	delete(v7, "promptVersion")
+	delete(v7, "toolSchemaVersion")
+	if !reflect.DeepEqual(v6, v7) {
+		t.Fatalf("v7 manifest changed frozen v6 contract beyond its identity binding")
 	}
 }
 
@@ -201,7 +230,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v6" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v7" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)
