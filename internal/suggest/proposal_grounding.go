@@ -2,6 +2,7 @@ package suggest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,12 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
+// errNamedSetMembershipUnproven is private causal evidence from the grounding
+// chokepoint. It is deliberately not derived from a decision trace: only this
+// branch knows that otherwise grounded identities were rejected solely because
+// the named-set membership proof was absent.
+var errNamedSetMembershipUnproven = errors.New("suggester: named-set membership unproven")
+
 // buildProposal turns the model's picks into a validated, grounded, scored
 // Proposal. This is the grounding chokepoint: a pick survives ONLY if it matches
 // a candidate a Catalog operation actually surfaced (real id), and acquisitions must also
@@ -19,6 +26,8 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	prop := Proposal{Intent: intent, ChannelName: strings.TrimSpace(out.ChannelName), Rationale: out.Rationale}
 	picks := out.Picks
 	acqCount := 0
+	membershipRejected := false
+	otherRejection := out.nameGroundingIncomplete
 	maxAcq := s.maxAcq
 	if intent.MaxAcquire > 0 && intent.MaxAcquire < maxAcq {
 		maxAcq = intent.MaxAcquire
@@ -28,20 +37,24 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		key := p.key()
 		if key == "" {
 			traceDecision(trace, DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
+			otherRejection = true
 			continue // no usable id → not grounded, drop
 		}
 		cand, ok := surfaced[provision.Key(key)]
 		if !ok {
 			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNotSurfaced})
+			otherRejection = true
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		}
 		if intent.ReferenceResolved && !intent.referenceKeys[provision.Key(key)] {
 			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
+			otherRejection = true
 			continue // a resolved reference cannot be padded with an unrelated grounded id
 		}
 		if requiresMembershipEvidence(intent) {
 			if !intent.membershipKeys[provision.Key(key)] || (intent.curatedTitleSet && intent.curatedTitleKey != provision.Key(key)) {
 				traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
+				membershipRejected = true
 				continue // identity is real, but it was not explicitly enumerated as a member
 			}
 		}
@@ -82,6 +95,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		}
 		if !exists {
 			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonValidationDropped})
+			otherRejection = true
 			continue // fabricated/withdrawn id → drop
 		}
 		// Enrich the rating from TMDB (§389): the library can't rate a title it doesn't
@@ -105,6 +119,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// failure both silent and sticky). Grounding is unaffected: this only decides
 	// what a legitimately-empty result does.
 	if len(prop.Lineup)+len(prop.Acquisitions)+len(prop.Alternates) == 0 {
+		if membershipRejected && !otherRejection {
+			return Proposal{}, fmt.Errorf("%w: %w", ErrNoGroundedTitles, errNamedSetMembershipUnproven)
+		}
 		return Proposal{}, ErrNoGroundedTitles
 	}
 

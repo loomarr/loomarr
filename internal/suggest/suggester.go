@@ -306,7 +306,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		out, perr := parsePicks(final)
 		if perr == nil {
 			if len(surfaced) == 0 && len(out.Picks) > 0 {
-				out.Picks, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
+				out.Picks, out.nameGroundingIncomplete, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
 				if err != nil {
 					trace.Terminal = TerminalRetrievalFailure
 					return Proposal{}, NewFailure(FailureProvider, trace, err)
@@ -326,7 +326,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 			}
 			if buildErr != nil {
 				if errors.Is(buildErr, ErrNoGroundedTitles) {
-					if trace.Terminal == "" {
+					if errors.Is(buildErr, errNamedSetMembershipUnproven) {
+						trace.Terminal = TerminalNamedSetUnproven
+					} else if trace.Terminal == "" {
 						trace.Terminal = FailureSelectionEmpty
 					}
 					return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, buildErr)

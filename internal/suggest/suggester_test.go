@@ -1693,6 +1693,71 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
 				t.Fatalf("unsubstantiated reference picks should fail closed, got error %v and trace %+v", err, prop.Trace)
 			}
+			var failure *suggest.Failure
+			if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.TerminalNamedSetUnproven {
+				t.Fatalf("unsubstantiated members = %#v, want named-set recovery terminal", err)
+			}
+		})
+	}
+}
+
+func TestSuggest_NamedSetDirectFinalExactIdentityWithoutMembershipIsRecoverable(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
+		Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
+	})
+	s := suggest.New(
+		testkit.NewLLM(testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"}]}`)),
+		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil), nil, 10,
+	)
+
+	_, err := s.Suggest(context.Background(), suggest.Intent{Description: "Criterion Collection"})
+	var failure *suggest.Failure
+	if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || failure.Trace.Terminal != suggest.TerminalNamedSetUnproven {
+		t.Fatalf("direct final unproven member = %#v, want named-set recovery terminal", err)
+	}
+}
+
+func TestSuggest_NamedSetMembershipIsNotAppliedToMixedOrOrdinaryEmptyFailures(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{
+		Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
+		Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
+	})
+	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
+	for _, tc := range []struct {
+		name, description string
+		responses         []llm.Response
+	}{
+		{
+			name: "mixed membership and unsurfaced identity", description: "Criterion Collection",
+			responses: []llm.Response{
+				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives"}}),
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},{"mediaType":"series","tvdbId":99999,"name":"Invented"}]}`),
+			},
+		},
+		{
+			name: "direct final mixed membership and unresolved title", description: "Criterion Collection",
+			responses: []llm.Response{
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},{"mediaType":"series","tvdbId":99999,"name":"Missing Title"}]}`),
+			},
+		},
+		{
+			name: "ordinary empty exact-title search", description: "family comedy",
+			responses: []llm.Response{
+				testkit.FinalResponse(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Missing Title"}]}`),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			model := testkit.NewLLM(tc.responses...)
+			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+			_, err := s.Suggest(context.Background(), suggest.Intent{Description: tc.description})
+			var failure *suggest.Failure
+			if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalNamedSetUnproven {
+				t.Fatalf("failure = %#v, must retain its non-membership classification", err)
+			}
 		})
 	}
 }
