@@ -2,6 +2,7 @@ import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -26,10 +27,17 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // One expanding surface over useSuggestionRun's three states: idle → describe form; running →
 // live phases; a landed proposal → review with Approve/Deny. A successful approve or "Start
 // another" resets back to the form.
-const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSuggestPanelProps) => {
+const ChannelSuggestPanel = ({
+  onCreated,
+  initialIntent,
+  initialJobId,
+  onStartFresh,
+  className,
+}: ChannelSuggestPanelProps) => {
   const { isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
-  const run = useSuggestionRun();
+  const [startedFresh, setStartedFresh] = useState(false);
+  const run = useSuggestionRun(initialJobId);
   const elapsed = useElapsed(run.isRunning);
   const runProblem = run.error == null ? undefined : toProblem(run.error);
   const aiUnconfigured = runProblem?.type === "feature_not_configured";
@@ -57,6 +65,11 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
   });
 
   const proposal = run.proposal;
+  const startFresh = () => {
+    run.reset();
+    setStartedFresh(true);
+    onStartFresh?.();
+  };
 
   return (
     <section className={cn("flex flex-col gap-4 rounded-lg border border-border p-4", className)}>
@@ -72,7 +85,12 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
           flight OR has failed: a failed run shows the failure below with its own way back,
           so falling through to a blank form here would swallow the error the user needs. */}
       {!run.isRunning && !run.failed && !proposal && (
-        <IntentForm initialDescription={initialIntent} onSubmit={run.start} submitting={run.isRunning} />
+        <IntentForm
+          initialDescription={startedFresh ? undefined : initialIntent}
+          initialIntent={run.intent}
+          onSubmit={run.start}
+          submitting={run.isRunning}
+        />
       )}
 
       {run.error != null &&
@@ -99,25 +117,24 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
         <GenerationProgress phase={run.phase ?? "reasoning"} round={run.round} elapsedSeconds={elapsed} />
       )}
 
-      {/* Failed — the job started but errored mid-flight (e.g. the AI provider is
-          unreachable). GenerationProgress renders the failed step; we add the way back the
-          component itself has no opinion on. Most failures here are an unconfigured/unreachable
-          AI provider, so the hint points there. */}
+      {/* Failed — recovery copy is fixed by the authoritative Journey. Actions remain
+          independently authorized by that Journey; guidance never grants a capability. */}
       {run.failed && (
         <div className="flex flex-col gap-3">
           <GenerationProgress phase="failed" round={run.round} elapsedSeconds={elapsed} />
-          <p className="text-muted-foreground text-sm">
-            {run.failure?.message ?? "The run didn't finish. Try again in a moment."}
-          </p>
+          <div className="flex flex-col gap-1 text-sm">
+            <p className="text-muted-foreground">{run.failure?.message ?? "The run didn't finish."}</p>
+            {run.failure?.guidance && <p className="text-muted-foreground">{run.failure.guidance}</p>}
+          </div>
           <div>
             {run.actions.includes("retry") && (
               <Button variant="outline" size="sm" onClick={run.retry}>
-                Try again
+                {run.failure?.recoveryAction === "retry_later" ? "Try again later" : "Try again"}
               </Button>
             )}
             {run.actions.includes("edit") && (
-              <Button variant="ghost" size="sm" onClick={run.reset}>
-                Edit request
+              <Button variant="ghost" size="sm" onClick={() => run.reset(true)}>
+                {run.failure?.recoveryAction === "edit_reference" ? "Edit reference" : "Edit request"}
               </Button>
             )}
             {run.actions.includes("check_ai") && (
@@ -151,12 +168,12 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
                   ? "Automatically approved using your account setting. The channel has already been created."
                   : "This proposal is already approved. The channel has already been created."}
               </p>
-              <Button variant="outline" size="sm" onClick={run.reset}>
+              <Button variant="outline" size="sm" onClick={startFresh}>
                 Create another
               </Button>
             </div>
           ) : (
-            <Button variant="outline" size="sm" className="w-fit" onClick={run.reset}>
+            <Button variant="outline" size="sm" className="w-fit" onClick={startFresh}>
               Start over
             </Button>
           )}

@@ -12,6 +12,7 @@ package suggest_test
 
 import (
 	"math/rand"
+	"reflect"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/provision"
@@ -86,6 +87,8 @@ const propIters = 2000
 
 func in01(v float64) bool { return v >= 0 && v <= 1 }
 
+func scorePtr(v float64) *float64 { return &v }
+
 // TestScore_AllSubScoresInUnitInterval: for arbitrary intents + lineup/acquisition
 // sets, every sub-score AND Overall stays within [0,1]. A score outside the unit
 // interval breaks ranking comparability (§8) and downstream weighting.
@@ -105,8 +108,8 @@ func TestScore_AllSubScoresInUnitInterval(t *testing.T) {
 		if !in01(s.AvailabilityRatio) {
 			t.Fatalf("iter %d: AvailabilityRatio out of [0,1]: %v", i, s.AvailabilityRatio)
 		}
-		if !in01(s.EraBalance) {
-			t.Fatalf("iter %d: EraBalance out of [0,1]: %v", i, s.EraBalance)
+		if s.EraBalance != nil && !in01(*s.EraBalance) {
+			t.Fatalf("iter %d: EraBalance out of [0,1]: %v", i, *s.EraBalance)
 		}
 		if !in01(s.Overall) {
 			t.Fatalf("iter %d: Overall out of [0,1]: %v (scores=%+v)", i, s.Overall, s)
@@ -126,7 +129,7 @@ func TestScore_Deterministic(t *testing.T) {
 
 		a := suggest.ScoreForTest(intent, lineup, acq)
 		b := suggest.ScoreForTest(intent, lineup, acq)
-		if a != b {
+		if !reflect.DeepEqual(a, b) {
 			t.Fatalf("iter %d: scoring not deterministic: %+v vs %+v", i, a, b)
 		}
 		// Sub-functions are individually deterministic too.
@@ -201,7 +204,7 @@ func TestThemeFitDoesNotUseModelRationaleAsEvidence(t *testing.T) {
 // 1.0 so Overall stays in [0,1]") via the constants' observable behavior.
 func TestComposite_WeightsSumToOne(t *testing.T) {
 	// Known-max input: every sub-score at 1.0 ⇒ Overall must be exactly 1.0.
-	if got := suggest.CompositeForTest(suggest.Scores{ThemeFit: 1, AvailabilityRatio: 1, EraBalance: 1}); got != 1.0 {
+	if got := suggest.CompositeForTest(suggest.Scores{ThemeFit: 1, AvailabilityRatio: 1, EraBalance: scorePtr(1)}); got != 1.0 {
 		t.Fatalf("all-max sub-scores should composite to exactly 1.0 (weights must sum to 1); got %v", got)
 	}
 	// Known-min input: all zero ⇒ 0.0.
@@ -210,9 +213,9 @@ func TestComposite_WeightsSumToOne(t *testing.T) {
 	}
 	// Isolating each weight: a single sub-score at 1.0 (others 0) reveals that
 	// weight; the three revealed weights must sum to exactly 1.0.
-	wTheme := suggest.CompositeForTest(suggest.Scores{ThemeFit: 1})
-	wAvail := suggest.CompositeForTest(suggest.Scores{AvailabilityRatio: 1})
-	wEra := suggest.CompositeForTest(suggest.Scores{EraBalance: 1})
+	wTheme := suggest.CompositeForTest(suggest.Scores{ThemeFit: 1, EraBalance: scorePtr(0)})
+	wAvail := suggest.CompositeForTest(suggest.Scores{AvailabilityRatio: 1, EraBalance: scorePtr(0)})
+	wEra := suggest.CompositeForTest(suggest.Scores{EraBalance: scorePtr(1)})
 	if wTheme+wAvail+wEra != 1.0 {
 		t.Fatalf("isolated weights must sum to exactly 1.0; got theme=%v avail=%v era=%v sum=%v",
 			wTheme, wAvail, wEra, wTheme+wAvail+wEra)
@@ -234,7 +237,7 @@ func TestComposite_BoundedForRandomSubScores(t *testing.T) {
 		s := suggest.Scores{
 			ThemeFit:          r.Float64(),
 			AvailabilityRatio: r.Float64(),
-			EraBalance:        r.Float64(),
+			EraBalance:        scorePtr(r.Float64()),
 		}
 		got := suggest.CompositeForTest(s)
 		if !in01(got) {
@@ -242,7 +245,7 @@ func TestComposite_BoundedForRandomSubScores(t *testing.T) {
 		}
 		// Convexity: result lies within [min, max] of the three sub-scores.
 		lo, hi := s.ThemeFit, s.ThemeFit
-		for _, v := range []float64{s.AvailabilityRatio, s.EraBalance} {
+		for _, v := range []float64{s.AvailabilityRatio, *s.EraBalance} {
 			if v < lo {
 				lo = v
 			}
@@ -309,7 +312,11 @@ func FuzzScore_Invariants(f *testing.F) {
 		acq := randItems(r, nAcq)
 
 		s := suggest.ScoreForTest(intent, lineup, acq)
-		for _, v := range []float64{s.ThemeFit, s.AvailabilityRatio, s.EraBalance, s.Overall} {
+		values := []float64{s.ThemeFit, s.AvailabilityRatio, s.Overall}
+		if s.EraBalance != nil {
+			values = append(values, *s.EraBalance)
+		}
+		for _, v := range values {
 			if !in01(v) {
 				t.Fatalf("score out of [0,1]: %+v (seed=%d)", s, seed)
 			}
@@ -324,7 +331,7 @@ func FuzzScore_Invariants(f *testing.F) {
 				t.Fatalf("AvailabilityRatio = %v, want %v (seed=%d)", s.AvailabilityRatio, want, seed)
 			}
 		}
-		if again := suggest.ScoreForTest(intent, lineup, acq); again != s {
+		if again := suggest.ScoreForTest(intent, lineup, acq); !reflect.DeepEqual(again, s) {
 			t.Fatalf("non-deterministic: %+v vs %+v (seed=%d)", s, again, seed)
 		}
 	})

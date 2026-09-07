@@ -109,8 +109,14 @@ const (
 	ReasonNotSelected            = "not_selected"
 	TerminalProviderFailure      = "provider_failure"
 	TerminalRetrievalFailure     = "retrieval_failure"
+	TerminalReferenceUnreadable  = "reference_unreadable"
 	TerminalGenerationFailure    = "generation_failure"
 	TerminalMalformedExhausted   = "malformed_exhausted"
+	TerminalNamedSetUnproven     = "named_set_unproven"
+	TerminalConstraintsConflict  = "constraints_conflict"
+	TerminalDateSemanticsUnclear = "date_semantics_unclear"
+	TerminalInvalidToolCalls     = "invalid_tool_calls"
+	TerminalProviderTimeout      = "provider_timeout"
 )
 
 func (t DecisionTrace) Clone() DecisionTrace {

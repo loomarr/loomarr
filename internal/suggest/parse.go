@@ -92,6 +92,12 @@ type finalOutput struct {
 	Rationale   string      `json:"rationale"`
 	Picks       []pick      `json:"picks"`
 	Policy      *pickPolicy `json:"policy,omitempty"`
+
+	// nameGroundingIncomplete is private provenance from direct-final name
+	// grounding. It records that at least one submitted pick was not carried to
+	// the proposal grounding chokepoint, so a later membership rejection cannot
+	// explain an otherwise mixed empty result as membership-only.
+	nameGroundingIncomplete bool
 }
 
 // parsePicks parses the model's final JSON. A malformed final output is an error

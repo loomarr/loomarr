@@ -33,12 +33,14 @@ func (s *Suggester) groundPickNames(
 	picks []pick,
 	surfaced map[provision.Key]catalog.Candidate,
 	trace *DecisionTrace,
-) ([]pick, error) {
+) ([]pick, bool, error) {
 	queries := make([]nameGroundingQuery, 0, min(len(picks), maxPickNameQueries))
+	incomplete := false
 	for _, proposed := range picks {
 		mediaType := provision.MediaType(proposed.MediaType)
 		name := strings.Join(strings.Fields(proposed.Name), " ")
 		if !mediaType.Valid() || name == "" {
+			incomplete = true
 			continue
 		}
 		queryIndex := -1
@@ -51,6 +53,7 @@ func (s *Suggester) groundPickNames(
 		proposed.Name = name
 		if queryIndex < 0 {
 			if len(queries) == maxPickNameQueries {
+				incomplete = true
 				continue
 			}
 			queries = append(queries, nameGroundingQuery{name: name, proposed: []pick{proposed}})
@@ -87,11 +90,13 @@ func (s *Suggester) groundPickNames(
 	groundedKeys := make(map[provision.Key]bool)
 	for _, result := range results {
 		if result.err != nil {
-			return nil, result.err
+			return nil, incomplete, result.err
 		}
+		cacheMembershipSourceResolution(intent, result.query.name, result.candidates)
 		for _, proposed := range result.query.proposed {
 			candidate, found := exactCandidateForPick(result.candidates, proposed)
 			if !found {
+				incomplete = true
 				continue
 			}
 			key, _ := candidate.Key()
@@ -109,7 +114,7 @@ func (s *Suggester) groundPickNames(
 			grounded = append(grounded, proposed)
 		}
 	}
-	return grounded, nil
+	return grounded, incomplete, nil
 }
 
 func exactCandidateForPick(candidates []catalog.Candidate, proposed pick) (catalog.Candidate, bool) {

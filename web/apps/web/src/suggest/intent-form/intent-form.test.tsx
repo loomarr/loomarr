@@ -21,6 +21,48 @@ describe("IntentForm", () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ description: "90s action movies" }));
   });
 
+  it("explains a blank or invalid description without submitting a job", () => {
+    const onSubmit = vi.fn();
+    render(<IntentForm onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Describe the channel you want");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("restores every failed-request constraint for an authorized edit", () => {
+    const onSubmit = vi.fn();
+    render(
+      <IntentForm
+        initialIntent={{
+          description: "90s action movies",
+          era: "1990s",
+          tone: "high-energy",
+          runtimeTargetMin: 180,
+          maxAcquisitions: 10,
+          mustInclude: ["Heat"],
+          mustExclude: ["Clowns"],
+        }}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    openConstraints();
+    fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        era: "1990s",
+        tone: "high-energy",
+        runtimeTargetMin: 180,
+        maxAcquisitions: 10,
+        mustInclude: ["Heat"],
+        mustExclude: ["Clowns"],
+      }),
+    );
+  });
+
   it("carries mustInclude and mustExclude to the server", () => {
     const onSubmit = vi.fn();
     render(<IntentForm onSubmit={onSubmit} />);

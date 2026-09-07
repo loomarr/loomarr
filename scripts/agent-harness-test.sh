@@ -315,9 +315,12 @@ grep -q 'make -C .* fmt tags-verify' "$verify_log"
 grep -q 'make -C .* lint PKG=.*internal/app.*internal/suggest' "$verify_log"
 grep -q 'go test -race .*internal/app.*internal/suggest' "$verify_log"
 worker_line="$(grep -n 'make -C .* rust-test-worker' "$verify_log" | head -1 | cut -d: -f1)"
+eval_line="$(grep -n 'make -C .* eval-contract' "$verify_log" | head -1 | cut -d: -f1)"
+lint_line="$(grep -n 'make -C .* lint PKG=' "$verify_log" | head -1 | cut -d: -f1)"
 test_line="$(grep -n 'go test ' "$verify_log" | head -1 | cut -d: -f1)"
-if [ -z "$worker_line" ] || [ -z "$test_line" ] || [ "$worker_line" -ge "$test_line" ]; then
-	echo 'agent-harness-test: scoped Go tests ran without their Rust image worker prerequisite' >&2
+if [ -z "$worker_line" ] || [ -z "$eval_line" ] || [ -z "$lint_line" ] || [ -z "$test_line" ] || \
+	[ "$worker_line" -ge "$eval_line" ] || [ "$eval_line" -ge "$lint_line" ] || [ "$lint_line" -ge "$test_line" ]; then
+	echo 'agent-harness-test: scoped Go tests did not run universal prerequisites before lint and tests' >&2
 	exit 1
 fi
 
@@ -332,6 +335,28 @@ if PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
 	exit 1
 fi
 grep -q 'errcheck' "$TMP-wt/verify-failure"
+# shellcheck disable=SC2016 # VERIFY_LOG expands when the generated fixture executes.
+printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' > "$verify_bin/make"
+chmod +x "$verify_bin/make"
+
+# Evaluation-contract validation is an executable Go-scope prerequisite: a failure must reach the
+# caller before linting or any Go test can make a focused verdict look green.
+step 'evaluation contract precedes scoped Go verification'
+: > "$verify_log"
+# shellcheck disable=SC2016 # VERIFY_LOG expands when the generated fixture executes.
+printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' \
+	'case " $* " in *" eval-contract "*) echo "evaluation contract failed" >&2; exit 1;; esac' > "$verify_bin/make"
+if PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
+	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify >/dev/null 2>"$TMP-wt/eval-contract-failure"; then
+	echo 'agent-harness-test: scoped verification ignored an evaluation-contract failure' >&2
+	exit 1
+fi
+grep -q 'evaluation contract failed' "$TMP-wt/eval-contract-failure"
+grep -q 'make -C .* eval-contract' "$verify_log"
+if grep -qE 'make -C .* lint PKG=|go test ' "$verify_log"; then
+	echo 'agent-harness-test: scoped verification continued after an evaluation-contract failure' >&2
+	exit 1
+fi
 # shellcheck disable=SC2016 # VERIFY_LOG expands when the generated fixture executes.
 printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' > "$verify_bin/make"
 chmod +x "$verify_bin/make"
@@ -372,6 +397,10 @@ printf '%s\n' "$verify_output" | grep -q 'local gates: clients'
 printf '%s\n' "$verify_output" | grep -q 'protected gates: apple_mobile,expo_android_mobile'
 printf '%s\n' "$verify_output" | grep -q 'completed local gates: clients'
 grep -q 'make -C .* clients' "$verify_log"
+if grep -q 'make -C .* eval-contract' "$verify_log"; then
+	echo 'agent-harness-test: client verification ran the Go evaluation-contract prerequisite' >&2
+	exit 1
+fi
 rm -rf "$TMP/web"
 
 # Policy-only changes run policy validation without expanding into the complete repository audit.
@@ -386,7 +415,7 @@ printf '%s\n' "$verify_output" | grep -q 'CI impact gates: policy'
 printf '%s\n' "$verify_output" | grep -q 'local gates: policy'
 printf '%s\n' "$verify_output" | grep -q 'completed local gates: policy'
 grep -q 'make -C .* ci-lint release-verify' "$verify_log"
-if grep -qE 'make -C .* (verify .*SCOPE=all|check-static|test)($| )|agent.sh verify-all' "$verify_log"; then
+if grep -qE 'make -C .* (eval-contract|verify .*SCOPE=all|check-static|test)($| )|agent.sh verify-all' "$verify_log"; then
 	echo 'agent-harness-test: policy verification expanded into the complete audit' >&2
 	exit 1
 fi

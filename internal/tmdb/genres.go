@@ -89,3 +89,11 @@ func canonGenre(s string) string {
 	s = strings.ReplaceAll(s, "-", " ")
 	return s
 }
+
+// IsKnownGenre reports whether a request term is one of TMDB's canonical genres
+// or its supported aliases. Callers use this to keep genre requests in fuzzy
+// discovery rather than treating capitalization as a named-set signal.
+func IsKnownGenre(s string) bool {
+	_, ok := genreIDByName[canonGenre(s)]
+	return ok
+}

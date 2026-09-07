@@ -90,12 +90,24 @@ overrides:
   # (CVE-2026-59870), a newer DoS than the merge-key one and NOT backported to 4.2.x —
   # affects >=4.0.0 <4.3.1, patched in 4.3.1. Bumped from the prior `^4.2.0` pin.
   js-yaml: "^4.3.1"
-  # GHSA-7p8r-x3mc-p8w7 (high): fast-uri host confusion via a backslash authority
-  # introducer — a follow-on to the earlier 3.1.3 delimiter bug, now affecting
-  # >=3.0.0 <3.1.5; patched in 3.1.5 (was 3.1.4). Arrives transitively through ajv@8
+  # GHSA-jqff-g426-hqxp, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, and
+  # GHSA-5jgf-p345-68v8 (high): four fast-uri parser advisories, patched in 3.1.6.
+  # Arrives transitively through ajv@8
   # (JSON-schema validation in the codegen/OpenAPI chain). Range-scoped so it only
   # rewrites the vulnerable versions, not a future fast-uri major ajv might ask for.
-  "fast-uri@>=3.0.0 <3.1.5": "3.1.5"
+  "fast-uri@>=3.0.0 <3.1.6": "3.1.6"
+  # GHSA-4mjr-xmp4-gh2g and GHSA-x5fp-wj9c-mxmx (medium): qs 6.15.3 is used
+  # only by union ← http-server in development tooling. union's ^6.4.0 accepts
+  # this same-major patch.
+  "qs@6.15.3": "6.16.0"
+  # GHSA-w5hq-g745-h8pq (medium): xcode 3.0.1 is CommonJS and calls uuid.v4().
+  # uuid 11.1.1 exposes a Node `require` entry and preserves that API; keep the
+  # override exact to xcode's currently resolved vulnerable dependency.
+  "uuid@7.0.3": "11.1.1"
+  # GHSA-vcc3-ghjq-m6fr (medium): query-string 7.1.3 is a CommonJS consumer, while
+  # the fixed 0.5.0 decoder is ESM-only. Patch only its module packaging so the
+  # complete fixed upstream algorithm remains callable from query-string.
+  "decode-uri-component@0.2.2": "0.5.0"
   # GHSA-rgw5-rvv9-x895 (high): unbounded intermediate arrays in brace-expansion — a DoS
   # that BYPASSES the earlier CVE-2026-14257 mitigation, so 5.0.8 is no longer enough;
   # affects >=4.0.0 <5.0.9, patched in 5.0.9 (was 5.0.8). Arrives via minimatch from
@@ -122,3 +134,6 @@ overrides:
   # absent from the shipped SPA — but "unreachable" is a reason to fix it calmly, not a
   # reason to leave a known-vulnerable version pinned when the patch is free.
   "brace-expansion@>=1.0.0 <1.1.18": "1.1.18"
+
+patchedDependencies:
+  decode-uri-component@0.5.0: patches/decode-uri-component@0.5.0.patch

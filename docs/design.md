@@ -355,14 +355,19 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Provisioning backstop (design §4, §7, §18).
 - **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `recovery`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
-- **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`
-  Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`testkit/catalogfixture`** · → `catalog`, `provision`
   Shared no-network adapters for catalog tests.
-- **`tmdb`** · 2 importers · → `catalog`, `httpx`, `metrics`, `provision`
+- **`tmdb`** · 3 importers · → `catalog`, `httpx`, `metrics`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
 **Layer 11**
+
+- **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
+  Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
+- **`testkit`** · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
+
+**Layer 12**
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
@@ -372,15 +377,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
-- **`testkit`** · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
-  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 
-**Layer 12**
+**Layer 13**
 
 - **`api`** · 2 importers · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
-**Layer 13**
+**Layer 14**
 
 - **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
@@ -1339,13 +1342,45 @@ change tools, quotas, policy, authorization, or identity. Only the submitted URL
 referenced host—not the complete household Intent, Library, or Proposal. Raw reference content is
 not persisted in the Proposal trace, logs, diagnostics, evaluation artifacts, or training corpus.
 
-After reference resolution, Loomarr runs the existing federated `catalog_search` internally for at
-most eight extracted title anchors, keeps only normalized exact-title matches, deduplicates by
-canonical provisioning key, and appends those actual bounded tool results to the planner conversation.
-The model therefore finalizes in one turn from ids that genuinely passed the existing catalog contract;
-the public tool schema and sequential model tool-call budget do not change. An extracted title is
-evidence only when an exact catalog identity exists. Explicit titles/examples written directly by the
-operator may later use the same pre-grounding path without needing a URL.
+After reference resolution, Loomarr pre-grounds extracted title anchors as untrusted membership evidence.
+Named-set mode is selected from the request's structure rather than a registry of brands: an explicit
+programming-block phrase, `named … collection`, a proper/acronym label used with block/lineup/collection
+language, or a bare/acronym channel concept requires constituent evidence. Explicit network and person
+roles keep their ordinary discovery meaning, and lower-case genre/mood collections remain fuzzy themes.
+When a bare label's entity type is otherwise ambiguous, Loomarr fails closed through the existing
+no-grounded-title outcome if it cannot establish constituents; it does not silently reinterpret the
+label as a network, genre, or era.
+
+Curated-episode wording does not disable named-set grounding. For an explicit curated-title
+request such as “Classic Simpsons”, Loomarr may extract the title subject from the existing
+leading or trailing episode-selection cue vocabulary. The subject is user-supplied title evidence,
+not a model-authored collection roster. This path alone permits one optional leading “The” in
+matching the subject to a Catalog title; it does not remove other words or change the general
+exact-title matcher. Resolve the original extracted subject through an unfiltered Catalog search
+and consider every matching canonical identity across media types and years before admission.
+A canonical-name search, model filter, or ranked subset cannot substitute for that subject lookup.
+Duplicate rows for one key are harmless; multiple keys or no matching key leave the subject
+unproven. A resolved subject admits only that canonical Title, never other titles said to belong
+to a similarly named channel. Known genre/mood discovery and explicit network/person roles keep
+their ordinary behavior; curated cues inside another field cannot alter the subject's evidence.
+
+For a named collection or programming block, the planner may ask `catalog_search` for a bounded list
+of exact constituent titles, but that model-authored roster is a search hypothesis, not membership
+proof. Only unambiguous Catalog identities for explicit user-supplied constituent titles or resolved
+reference anchors are members; an ambiguous anchor remains unproven rather than selecting a remake.
+A model-proposed title can help resolve examples embedded in free-form description text only when its
+exact normalized title is also present in that submitted text (or in a resolved reference anchor).
+Network, genre, era, adjacent recommendations, and model rationale may help discover a theme, but never
+prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
+rules. A member whose series premiered before a requested decade is not excluded merely by that premiere
+year. An optional model season window remains an airing selector, not evidence that dated episodes
+actually overlap the era. For a named-set lineup containing series, absent source-backed episode dates
+make the era-balance criterion unavailable: `scores.eraBalance` is JSON `null`, and the review UI shows
+“Not assessed” instead of a percentage. Unknown evidence receives neither full nor zero credit. Overall
+omits the unavailable criterion and normalizes the remaining theme-fit and availability weights
+(`(0.5 × themeFit + 0.35 × availabilityRatio) / 0.85`). When era balance is available, the existing
+0.5/0.35/0.15 composite applies. This does not exclude a grounded continuing series based on its
+premiere or treat a model season selector as historical evidence.
 
 Identity grounding and editorial support are separate mandatory gates. A selected id must both have
 been surfaced by the Catalog and carry positive, source-backed evidence for the semantic request. The
@@ -1357,7 +1392,11 @@ with no qualifying evidence is deterministically dropped with a closed trace rea
 with no surviving picks returns the existing no-grounded-title failure. Unsupported or unresolved
 references provide no evidence and therefore cannot silently fall back to a generic lineup. Theme-fit
 scoring uses the same source-backed fields and never the model's rationale, so prose cannot self-attest
-quality after the gate.
+quality after the gate. For an admitted named-set member, the grounded membership evidence is the
+semantic match even when catalog metadata does not repeat the collection name; it is not a generic
+score floor and does not make model-only rosters admissible. Named-set item and proposal explanations
+are generated from the same admitted provenance (user-supplied constituent or resolved public reference),
+replacing model prose that could otherwise invent membership, historical-airing, or era facts.
 
 ### Proposal decision trace v1 (#496)
 
@@ -1552,10 +1591,14 @@ The retained `planner-certification-v2` expands those 25 auditable semantic fami
 frozen alternative phrasings apiece: exactly 150 unique Intents in
 the `certification` split, each bound to its family's case in the digest-pinned
 `planner-catalog-v1` fixture. Retained v3-v5 contracts layer their scoring answers over those
-unchanged v2 Intent bytes rather than rewriting the frozen holdout. Active
-`planner-certification-v6` instead digest-pins a new immutable base and `planner-catalog-v2`
+unchanged v2 Intent bytes rather than rewriting the frozen holdout. Retained
+`planner-certification-v6` digest-pins a new immutable base and `planner-catalog-v2`
 fixture: it preserves all 25 families and adds separate network, cast, and creator routing
-families with five frozen phrasings apiece, for exactly 168 Intents. Their synthetic candidates
+families with five frozen phrasings apiece, for exactly 168 Intents. Active
+`planner-certification-v7` retains those exact Intent, catalog, threshold, and scoring bytes while
+binding the named-set planner's `suggester-prompt-v5` and `catalog-search-v5` identities. Historical
+manifests remain immutable, and older scorecards cannot establish certification for the new
+prompt/tool contract. The hermetic contract suite checks this binding without invoking a provider. Their synthetic candidates
 carry the exact resolved network/person evidence that production returns. The structural observer
 records those three operations independently, so a generic genre call or a call that mixes cast
 and creator fields cannot receive correct-route credit.
@@ -1735,6 +1778,74 @@ First-channel Journey projection. Its external interface is intentionally small:
 Intent, claim bounded work, complete/fail one claimed Attempt, and inspect/list authoritative Journey
 snapshots. The Store and the model/catalog runner are private ports inside that implementation; API,
 worker, and frontend callers do not reconstruct lifecycle rules from raw Job/Proposal/Channel reads.
+
+A failed Journey preserves its stable outer failure code and adds a closed `reason` category and
+`recoveryAction`, with fixed server-owned explanation and guidance. The reason distinguishes
+reference retrieval, no catalog match, unverified named-set membership, contradictory constraints,
+unclear date semantics, invalid tool-call exhaustion, provider timeout/unavailability, and otherwise
+unclassified generation failure. Recovery actions name the useful next step: edit the reference,
+broaden the request, provide examples, resolve constraints, clarify dates, simplify the request, or
+retry later. These describe recovery; only the Journey's existing server-authorized actions grant
+permission to edit, retry, or inspect AI settings. A member is never instructed to change an
+administrator-only setting as their required recovery step.
+
+The fixed projection keeps malformed final JSON separate from invalid tool arguments: the former
+uses `provider_response_invalid` with `retry_later`; only an explicit invalid-tool terminal uses
+`invalid_tool_calls` with `retry_later`. Ordinary exhausted discovery without that terminal uses
+`discovery_budget_exhausted` with `simplify_request`. Provider timeout and provider unavailability
+remain distinct reasons with `retry_later`. Retry guidance explains the failed provider stage and,
+if it repeats, points to the existing authorized AI-check action or asking an administrator; it does
+not assert that the user's request caused a provider protocol error. New producer-specific reasons
+remain unavailable until their allowlisted typed evidence exists; generic outer codes do not invent
+that evidence.
+
+The existing `retrieval_failure` terminal covers both reference and catalog operations. It therefore
+projects as `retrieval_unavailable` with `retry_later`; it does not assert that the reference page
+was unreadable. `reference_unreadable` and `edit_reference` require a distinct typed terminal from
+the reference-read stage. A catalog lookup failure after successful reference retrieval must retain
+the retrieval-unavailable advice. Invalid-tool guidance likewise names the failed AI catalog-search
+stage rather than collapsing to an unexplained retry.
+
+Only allowlisted typed producer evidence selects a specific reason; it takes precedence over a
+less-specific stable outer code. Unknown evidence uses the bounded generic reason and cannot enter
+copy. Failure projections for the builder, My Requests, and attempt history expose no raw provider
+error, prompt, model response, fetched text, credential, private Library title, candidate identity,
+or arbitrary diagnostic string. Internal decision traces remain available to their existing private
+consumers; requester-facing failure traces retain only validated terminal vocabulary and aggregate
+counts. Pre-submit field validation supplies actionable local feedback without inventing a Job or
+Journey. A failed execution materializes neither a Proposal nor a Channel.
+
+Failure producers preserve the existing discovery, repair, and source-query budgets. A tool round
+has a typed validity outcome: unsupported tools and rejected argument shapes are invalid; valid
+empty searches and retrieval failures are distinct outcomes. Exhaustion reports `invalid_tool_calls`
+only when every consumed tool round was invalid; mixed rounds retain the general discovery-budget
+reason. Malformed final JSON remains a separate terminal. Only an actual provider-turn deadline
+selects `provider_timeout`; catalog/reference deadlines do not become provider failures. A failed
+public-page read can select `reference_unreadable`, while catalog failure after a successful read
+continues to select retrieval unavailability. A missing resolver is infrastructure unavailability,
+not evidence that the supplied page is bad. Named-set failure requires existing typed membership
+rejection evidence, never a broad-match count or a newly inferred keyword rule. Before inference,
+nonempty include and exclude constraints that are identical after case and whitespace normalization
+are contradictory. This exact conflict check does not interpret dates or other natural-language
+relationships, and invalid model interpretations continue through the existing bounded repair path.
+
+Named-set recovery derives from the existing membership grounding check. A private typed outcome
+may record that a final selection was empty solely because otherwise grounded candidate identities
+lacked the required membership evidence. Both tool-surfaced picks and direct-final exact-title
+resolution carry that outcome through the final boundary as `named_set_unproven`; a real catalog
+identity alone still cannot prove membership. Mixed rejection causes, unresolved or unsurfaced
+identities, ordinary empty searches, and catalog failures retain their own existing outcomes rather
+than acquiring a named-set explanation. The evidence is captured at the rejecting branch, not
+reconstructed from a trace string, a keyword scan, or an earlier failed attempt. It changes no search,
+repair, approval, or grounding rule and exposes no rejected identity to the requester.
+
+Date-conflict evidence must prove an empty intersection of source-anchored windows joined as
+requirements on the same semantic axis. A union and separate premiere/airing axes are not a
+contradiction. A model interpretation is a hypothesis: invalid or unanchored model claims consume
+bounded repair capacity and cannot blame the user's request. A clarification reason requires actual
+ambiguous request evidence. Both tool execution and final Proposal construction enforce any required
+validated interpretation; omission cannot bypass it. The concrete interpretation schema and its
+immutable certification fixtures must be documented before implementing that producer.
 
 The Proposal Job id is the correlation spine, not a mega-state-machine key that steals domain
 ownership. A Proposal remains the grounded artifact and approval audit. Approval remains the only

@@ -7,7 +7,7 @@ import type { IntentInputProps } from "./intent-input.type";
 // `suggest` magenta focus ring (§2.1, the AI color), with template chips that kill
 // the blank page (§6). Controlled, so a page wraps it in TanStack Form against
 // intentSchema (packages/core) and the gallery drives every state deterministically.
-// ⌘/Ctrl-Enter submits; the button stays disabled until there's a describable intent.
+// ⌘/Ctrl-Enter submits; the form owns validation so an invalid attempt can explain what to fix.
 const IntentInput = ({
   value,
   onValueChange,
@@ -17,7 +17,7 @@ const IntentInput = ({
   placeholder = "Describe a channel: 90s action movies, high energy, keep it PG-13",
   className,
 }: IntentInputProps) => {
-  const canSubmit = value.trim().length >= 3 && !submitting;
+  const canSubmit = !submitting;
   const submit = () => {
     if (canSubmit) onSubmit?.();
   };

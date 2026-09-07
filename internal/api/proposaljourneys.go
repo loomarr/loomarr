@@ -44,9 +44,12 @@ type ProposalJobAttemptDTO struct {
 }
 
 type ProposalJourneyFailureDTO struct {
-	Code    string                `json:"code" enum:"no_grounded_titles,selection_empty,budget_exhausted,generation_failed"`
-	Message string                `json:"message"`
-	Trace   suggest.DecisionTrace `json:"trace,omitempty"`
+	Code           string                `json:"code" enum:"no_grounded_titles,selection_empty,budget_exhausted,generation_failed"`
+	Reason         string                `json:"reason" enum:"retrieval_unavailable,reference_unreadable,no_catalog_match,named_set_unproven,constraints_conflict,date_semantics_unclear,invalid_tool_calls,provider_timeout,provider_unavailable,provider_response_invalid,discovery_budget_exhausted,generation_failed"`
+	RecoveryAction string                `json:"recoveryAction" enum:"edit_reference,broaden_request,provide_examples,resolve_constraints,clarify_dates,simplify_request,retry_later"`
+	Message        string                `json:"message"`
+	Guidance       string                `json:"guidance"`
+	Trace          suggest.DecisionTrace `json:"trace,omitempty"`
 }
 
 type ProposalJourneyProposalDTO struct {
@@ -185,5 +188,5 @@ func proposalJourneyFailureDTO(failure *proposalworkflow.Failure) *ProposalJourn
 	if failure == nil {
 		return nil
 	}
-	return &ProposalJourneyFailureDTO{Code: string(failure.Code), Message: failure.Message, Trace: failure.Trace}
+	return &ProposalJourneyFailureDTO{Code: string(failure.Code), Reason: string(failure.Reason), RecoveryAction: string(failure.RecoveryAction), Message: failure.Message, Guidance: failure.Guidance, Trace: proposalworkflow.PublicFailureTrace(failure.Trace)}
 }

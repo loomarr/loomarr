@@ -27,6 +27,12 @@ interface MockOptions {
   // The gate's interesting case is an admin acting on SOMEONE ELSE'S work — that is the
   // only path from a proposal to spent resources (§7).
   pendingProposal?: boolean;
+  // Make each submitted builder request finish as an authoritative failed Journey. This is
+  // opt-in because the normal proposal/approval smoke deliberately exercises a different
+  // terminal path.
+  failedProposalJourney?: boolean;
+  // Return a persisted, reviewable Journey for fresh-start route recovery coverage.
+  proposalJourney?: boolean;
   // Which setup/status checks are green before the operator does anything. The two
   // REQUIRED ones default green so the flow can reach the wiring steps.
   checks?: Record<string, boolean>;
@@ -44,6 +50,13 @@ interface MockBackend {
     // gate test exists to catch.
     enqueued: string[];
     proposals: Array<{ id: string; status: string }>;
+    // Exact bodies sent to the real proposal-submission endpoint. Recovery specs use this
+    // as their outcome proof: an edit/retry must submit every intent constraint again.
+    proposalJobRequests: Record<string, unknown>[];
+    // Mutation telemetry is deliberately request-level: no UI assertion can prove that a
+    // failed Journey did not try a forbidden channel write before rendering its recovery.
+    channelCreationRequests: Record<string, unknown>[];
+    approvalRequests: string[];
   };
 }
 
@@ -58,6 +71,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     imported: [] as string[],
     edits: {} as Record<string, string>,
     enqueued: [] as string[],
+    proposalJobRequests: [] as Record<string, unknown>[],
+    channelCreationRequests: [] as Record<string, unknown>[],
+    approvalRequests: [] as string[],
     proposals: (opts.pendingProposal ? [{ id: "prop-1", status: "submitted" }] : []) as Array<{
       id: string;
       status: string;
@@ -173,9 +189,80 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     // mock enforces the same rule the server does, so the smoke proves the UI honors a
     // real 403 rather than a hand-waved one.
     if (path === "/v1/proposals" && method === "POST") {
+      if (opts.failedProposalJourney || opts.proposalJourney) {
+        const intent = body();
+        const prefix = opts.failedProposalJourney ? "failed-job" : "proposal-job";
+        const jobId = `${prefix}-${state.proposalJobRequests.length + 1}`;
+        state.proposalJobRequests.push(intent);
+        return json(route, { jobId });
+      }
       const id = `prop-${state.proposals.length + 1}`;
       state.proposals.push({ id, status: "submitted" });
       return json(route, { jobId: `job-${id}` });
+    }
+    if (path.startsWith("/v1/proposal-jobs/") && method === "GET") {
+      const jobId = path.split("/").at(-1) ?? "";
+      const submission = state.proposalJobRequests[Number(jobId.split("-").at(-1)) - 1];
+      if (opts.failedProposalJourney && submission) {
+        return json(route, {
+          version: 1,
+          jobId,
+          milestone: "failed",
+          intent: submission,
+          attempts: [
+            {
+              version: 1,
+              number: 1,
+              status: "failed",
+              startedAt: "2026-09-07T12:00:00Z",
+              completedAt: "2026-09-07T12:00:01Z",
+            },
+          ],
+          failure: {
+            code: "no_grounded_titles",
+            reason: "no_catalog_match",
+            recoveryAction: "broaden_request",
+            message: "No grounded titles matched this request.",
+            guidance: "Broaden the request or add examples from your library.",
+          },
+          actions: ["edit", "retry"],
+          createdAt: "2026-09-07T12:00:00Z",
+          updatedAt: "2026-09-07T12:00:01Z",
+        });
+      }
+      if (opts.proposalJourney && submission) {
+        return json(route, {
+          version: 1,
+          jobId,
+          milestone: "awaiting_approval",
+          intent: submission,
+          attempts: [
+            {
+              version: 1,
+              number: 1,
+              status: "succeeded",
+              startedAt: "2026-09-07T12:00:00Z",
+              completedAt: "2026-09-07T12:00:01Z",
+            },
+          ],
+          proposal: {
+            id: `proposal-${jobId}`,
+            status: "submitted",
+            proposal: {
+              intent: submission,
+              rationale: "Grounded against your library.",
+              lineup: [{ name: "Heat", year: 1995, mediaType: "movie", inLibrary: true }],
+              acquisitions: [],
+              alternates: [],
+              scores: { themeFit: 1, availabilityRatio: 1, eraBalance: 1, overall: 1 },
+              trace: { version: 1, surfacedTotal: 1, recordedTotal: 1, truncated: false, candidates: [] },
+            },
+          },
+          actions: ["review"],
+          createdAt: "2026-09-07T12:00:00Z",
+          updatedAt: "2026-09-07T12:00:01Z",
+        });
+      }
     }
     if (path === "/v1/proposals" && method === "GET") {
       // Shaped as the real ProposalDTO (`proposal.intent.description`, `.rationale`,
@@ -201,14 +288,22 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         }));
       return json(route, { proposals: rows });
     }
+    if (path === "/v1/channels" && method === "POST") {
+      state.channelCreationRequests.push(body());
+      if (state.role !== "admin") {
+        return json(route, { title: "Forbidden", detail: "Creating channels is an admin action." }, 403);
+      }
+      return json(route, { id: `ch-${state.channelCreationRequests.length}` }, 201);
+    }
     if (path === "/v1/discovery/feedback" && method === "GET") {
       return json(route, []);
     }
     if (path.endsWith("/approve") && method === "POST") {
+      const id = path.split("/").at(-2) ?? "";
+      state.approvalRequests.push(id);
       if (state.role !== "admin") {
         return json(route, { title: "Forbidden", detail: "Approving is an admin action." }, 403);
       }
-      const id = path.split("/").at(-2) ?? "";
       const found = state.proposals.find((p) => p.id === id);
       if (found) found.status = "approved";
       // Only the not-in-library item becomes an acquisition — the in-library one is

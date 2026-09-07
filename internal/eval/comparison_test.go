@@ -134,3 +134,23 @@ func TestComparePlannerModelsRejectsDifferentMetricContracts(t *testing.T) {
 		t.Fatalf("missing schema-v12 snapshot error = %v", err)
 	}
 }
+
+func TestComparePlannerModelsRejectsHistoricalScorecardsForCurrentContract(t *testing.T) {
+	selection := CertificationSelection{QualityMargin: 0.02, Weights: CertificationQualityWeights{
+		GroundedCompletion: 0.20, CorrectToolOperation: 0.20, SchemaValidity: 0.10,
+		PolicyAccuracy: 0.15, ProposalQuality: 0.25, Recovery: 0.10,
+	}}
+	card := func(corpusVersion string) Scorecard {
+		return Scorecard{
+			SchemaVersion: 10, CorpusVersion: corpusVersion, Certified: true,
+			Generator: ModelIdentity{Provider: "ollama", Model: corpusVersion},
+			Contract: &CertificationContract{CorpusVersion: corpusVersion, CatalogFixtureSHA256: "fixture",
+				PromptVersion: "prompt", ToolSchemaVersion: "tool", ScorerVersion: "scorer", Selection: selection},
+			Assessment: &CertificationAssessment{Passed: true, GroundedCompletionRate: 1, CorrectToolOperationRate: 1,
+				SchemaValidityRate: 1, PolicyAccuracyRate: 1, ProposalQualityRate: 1, RecoveryRate: 1},
+		}
+	}
+	if _, err := ComparePlannerModels([]Scorecard{card("planner-certification-v6"), card("planner-certification-v7")}); err == nil || !strings.Contains(err.Error(), "frozen certification identity") {
+		t.Fatalf("mixed historical/current comparison error = %v", err)
+	}
+}

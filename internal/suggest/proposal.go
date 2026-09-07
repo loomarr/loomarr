@@ -57,6 +57,14 @@ type Intent struct {
 	referenceEvidence   reference.Evidence
 	referenceKeys       map[provision.Key]bool
 	referenceCandidates []catalog.Candidate
+	// membershipKeys contains only Catalog identities grounded from explicit user or
+	// public-reference title anchors. A model's collection-tool roster is a search
+	// hypothesis: catalog identity verifies that title exists, not that it belongs
+	// to the named set. It is execution-only evidence, never model data.
+	membershipKeys    map[provision.Key]bool
+	membershipSources *membershipSourceState
+	curatedTitleKey   provision.Key
+	curatedTitleSet   bool
 	// DiscoveryScopeID is internal execution context for channel-specific explicit
 	// feedback during re-curation. It never enters the API or persisted intent JSON.
 	DiscoveryScopeID string `json:"-"`
@@ -232,6 +240,8 @@ type RefusedPick struct {
 type Scores struct {
 	ThemeFit          float64 `json:"themeFit"`          // how well items match the intent terms
 	AvailabilityRatio float64 `json:"availabilityRatio"` // in-library / total (live-now readiness)
-	EraBalance        float64 `json:"eraBalance"`        // spread across the target era/years
-	Overall           float64 `json:"overall"`           // weighted composite
+	// EraBalance is nil when a named lineup includes a series whose episode dates
+	// are unavailable; a premiere year or model season selector cannot establish it.
+	EraBalance *float64 `json:"eraBalance"` // spread across the target era/years, when assessed
+	Overall    float64  `json:"overall"`    // weighted composite
 }
