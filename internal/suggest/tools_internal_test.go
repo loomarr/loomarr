@@ -29,6 +29,67 @@ func TestParseDiscoveryQueryValidatesAndNormalizesScalarQualifiers(t *testing.T)
 	}
 }
 
+func TestCollectionTitleAnchorsAcceptsExactNamesAndRemakeYears(t *testing.T) {
+	anchors, err := collectionTitleAnchors([]any{
+		" The Thing ", map[string]any{"name": "The Thing", "year": float64(1982)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(anchors) != 2 || anchors[0].name != "The Thing" || anchors[0].year != 0 ||
+		anchors[1].name != "The Thing" || anchors[1].year != 1982 {
+		t.Fatalf("anchors = %+v", anchors)
+	}
+}
+
+func TestCollectionTitleAnchorsRejectsMalformedItems(t *testing.T) {
+	tests := []struct {
+		name  string
+		value []any
+		want  string
+	}{
+		{name: "non string", value: []any{12}, want: "strings or"},
+		{name: "missing name", value: []any{map[string]any{"year": float64(1982)}}, want: "requires a string name"},
+		{name: "unknown object member", value: []any{map[string]any{"name": "The Thing", "edition": "director's cut"}}, want: "only name and year"},
+		{name: "bad year", value: []any{map[string]any{"name": "The Thing", "year": 1982.5}}, want: "integer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := collectionTitleAnchors(tt.value); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunToolRejectsUnknownCollectionModeAndQualifiers(t *testing.T) {
+	s := &Suggester{}
+	for _, arguments := range []map[string]any{
+		{"mode": "unsupported", "query": "The Thing"},
+		{"mode": 1, "query": "The Thing"},
+		{"mode": "collection", "media_type": "movie", "titles": []any{"The Thing"}, "era": "1980s"},
+	} {
+		result, _, _ := s.runTool(context.Background(), llm.ToolCall{Name: catalogToolName, Arguments: arguments}, Intent{}, nil)
+		if !strings.Contains(result, `"error"`) {
+			t.Fatalf("arguments %v unexpectedly succeeded: %s", arguments, result)
+		}
+	}
+}
+
+func TestCatalogToolCollectionSchemaMatchesParser(t *testing.T) {
+	properties := catalogTool().Parameters["properties"].(map[string]any)
+	titles := properties["titles"].(map[string]any)
+	items := titles["items"].(map[string]any)
+	oneOf := items["oneOf"].([]any)
+	if titles["minItems"] != 1 || titles["maxItems"] != 8 || len(oneOf) != 2 {
+		t.Fatalf("titles schema = %#v", titles)
+	}
+	anchor := oneOf[1].(map[string]any)
+	if anchor["additionalProperties"] != false || anchor["required"].([]string)[0] != "name" {
+		t.Fatalf("anchor schema = %#v", anchor)
+	}
+}
+
 func TestParseDiscoveryQueryValidatesAndNormalizesGroundedEntityQualifiers(t *testing.T) {
 	movie, discovery, err := parseDiscoveryQuery(map[string]any{
 		"media_type": "movie",

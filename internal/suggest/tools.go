@@ -21,7 +21,11 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil, DecisionTrace{}
 	}
 	arguments := tc.Arguments
-	if strings.TrimSpace(stringArg(arguments["mode"])) == "collection" {
+	if rawMode, present := arguments["mode"]; present {
+		mode, ok := rawMode.(string)
+		if !ok || strings.TrimSpace(mode) != "collection" {
+			return `{"error":"mode must be collection when provided"}`, nil, DecisionTrace{}
+		}
 		return s.runCollectionTool(ctx, arguments, intent, feedback)
 	}
 	discovery, discoveryMode, parseErr := parseDiscoveryQuery(arguments)
@@ -118,7 +122,16 @@ func collectionTitleAnchors(raw any) ([]collectionTitleAnchor, error) {
 		case string:
 			name = strings.Join(strings.Fields(value), " ")
 		case map[string]any:
-			name = strings.Join(strings.Fields(stringArg(value["name"])), " ")
+			for key := range value {
+				if key != "name" && key != "year" {
+					return nil, fmt.Errorf("collection title objects accept only name and year")
+				}
+			}
+			rawName, valid := value["name"].(string)
+			if !valid {
+				return nil, fmt.Errorf("collection title object requires a string name")
+			}
+			name = strings.Join(strings.Fields(rawName), " ")
 			if rawYear, exists := value["year"]; exists {
 				floatYear, valid := rawYear.(float64)
 				if !valid || math.Trunc(floatYear) != floatYear || floatYear < 1870 || floatYear > 2200 {
@@ -518,8 +531,14 @@ func catalogTool() llm.ToolSchema {
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"mode":              map[string]any{"type": "string", "enum": []string{"collection"}, "description": "collection requires media_type and titles; omit for ordinary title or discovery search"},
-				"titles":            map[string]any{"type": "array", "minItems": 1, "maxItems": 8, "description": "exact collection members as title strings or {name,year} anchors"},
+				"mode": map[string]any{"type": "string", "enum": []string{"collection"}, "description": "collection requires media_type and titles; omit for ordinary title or discovery search"},
+				"titles": map[string]any{"type": "array", "minItems": 1, "maxItems": 8, "items": map[string]any{"oneOf": []any{
+					map[string]any{"type": "string", "minLength": 1, "maxLength": 120},
+					map[string]any{"type": "object", "properties": map[string]any{
+						"name": map[string]any{"type": "string", "minLength": 1, "maxLength": 120},
+						"year": map[string]any{"type": "integer", "minimum": 1870, "maximum": 2200},
+					}, "required": []string{"name"}, "additionalProperties": false},
+				}}, "description": "exact collection members as title strings or {name,year} anchors"},
 				"query":             map[string]any{"type": "string", "description": "title keywords (for a known title)"},
 				"keywords":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "TMDB thematic keywords, e.g. [\"Christmas\"] or [\"heist\"]"},
 				"genres":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "genre names to discover by, e.g. [\"Action\",\"Science Fiction\"]"},
@@ -535,6 +554,10 @@ func catalogTool() llm.ToolSchema {
 				"cast":              map[string]any{"type": "array", "minItems": 1, "maxItems": maxDiscoveryEntityTerms, "items": map[string]any{"type": "string", "maxLength": maxDiscoveryEntityRunes}, "description": "exact cast names; requires media_type=movie"},
 				"creators":          map[string]any{"type": "array", "minItems": 1, "maxItems": maxDiscoveryEntityTerms, "items": map[string]any{"type": "string", "maxLength": maxDiscoveryEntityRunes}, "description": "exact director/writer/crew names; requires media_type=movie"},
 			},
+			"allOf": []any{map[string]any{
+				"if":   map[string]any{"properties": map[string]any{"mode": map[string]any{"const": "collection"}}, "required": []string{"mode"}},
+				"then": map[string]any{"required": []string{"media_type", "titles"}},
+			}},
 		},
 	}
 }
