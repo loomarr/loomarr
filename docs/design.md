@@ -1783,6 +1783,16 @@ retry later. These describe recovery; only the Journey's existing server-authori
 permission to edit, retry, or inspect AI settings. A member is never instructed to change an
 administrator-only setting as their required recovery step.
 
+The fixed projection keeps malformed final JSON separate from invalid tool arguments: the former
+uses `provider_response_invalid` with `retry_later`; only an explicit invalid-tool terminal uses
+`invalid_tool_calls` with `retry_later`. Ordinary exhausted discovery without that terminal uses
+`discovery_budget_exhausted` with `simplify_request`. Provider timeout and provider unavailability
+remain distinct reasons with `retry_later`. Retry guidance explains the failed provider stage and,
+if it repeats, points to the existing authorized AI-check action or asking an administrator; it does
+not assert that the user's request caused a provider protocol error. New producer-specific reasons
+remain unavailable until their allowlisted typed evidence exists; generic outer codes do not invent
+that evidence.
+
 Only allowlisted typed producer evidence selects a specific reason; it takes precedence over a
 less-specific stable outer code. Unknown evidence uses the bounded generic reason and cannot enter
 copy. Failure projections for the builder, My Requests, and attempt history expose no raw provider
