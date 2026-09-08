@@ -3235,6 +3235,10 @@ the app-owned target to those contracts. Observed programme-boundary recording a
 resource sampling may expose small operational ports needed by this composition; private test
 access belongs in test-only files. Moving the target preserves real-route coverage, lifecycle
 ownership, and the existing admission, cleanup and certification requirements.
+The target includes the production live HLS manager beside prepared delivery and live sessions,
+using the same observed process owner and an isolated scratch directory. An explicitly cold cohort
+must miss prepared-only delivery and reach the ordinary signed HLS remux. Terminal shutdown joins
+that remux through the origin before retained resource sampling; final disposal removes its scratch.
 
 The command and the `playoutcert.Run` library entry point share the same input bounds, checked
 before target observation or process creation. An omitted zero value selects its documented default;

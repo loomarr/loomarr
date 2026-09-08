@@ -242,7 +242,13 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 		})
 	recorder := metrics.New(metrics.Options{Version: "synthetic", Revision: "synthetic", Database: "sqlite"})
 	manager.WithObserver(recorder)
-	origin := playout.NewOrigin(playout.OriginDependencies{Prepared: preparedOrigin, LiveSessions: manager, Observer: recorder})
+	liveHLS, err := playout.NewHLSManager(manager, ffmpeg, filepath.Join(root, "hls"), config.Grace, logger, processManager)
+	if err != nil {
+		return fail(err)
+	}
+	// Origin quiescence joins remuxes before session shutdown. Their scratch
+	// remains inside the target root, which Close disposes after final sampling.
+	origin := playout.NewOrigin(playout.OriginDependencies{Prepared: preparedOrigin, LiveSessions: manager, LiveHLS: liveHLS, Observer: recorder})
 	target.origin = origin
 	handler := api.Router(logger, api.Options{
 		Store: st, Auth: api.NewTokenAuthorizer(admin), Log: logger, Metrics: recorder,
