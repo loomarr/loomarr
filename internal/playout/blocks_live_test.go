@@ -24,6 +24,7 @@ type muxPacket struct {
 	DTS      json.Number `json:"dts"`
 	Duration json.Number `json:"duration"`
 	Hash     string      `json:"data_hash"`
+	Size     json.Number `json:"size"`
 }
 
 type muxStream struct {
@@ -39,7 +40,7 @@ type muxProbe struct {
 
 func probeMuxPackets(t *testing.T, ctx context.Context, probe, path string) muxProbe {
 	t.Helper()
-	out, err := exec.CommandContext(ctx, probe, "-v", "error", "-show_packets", "-show_data_hash", "sha256", "-show_entries", "stream=index,codec_type,time_base:packet=stream_index,pts,dts,duration,data_hash", "-of", "json", path).Output()
+	out, err := exec.CommandContext(ctx, probe, "-v", "error", "-show_packets", "-show_data_hash", "sha256", "-show_entries", "stream=index,codec_type,time_base:packet=stream_index,pts,dts,duration,data_hash,size", "-of", "json", path).Output()
 	if err != nil {
 		t.Fatalf("ffprobe %s: %v", path, err)
 	}

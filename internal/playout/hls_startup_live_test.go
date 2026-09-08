@@ -16,11 +16,15 @@ import (
 
 func TestLive_HLSStartsBeforeFiniteInputCloses(t *testing.T) {
 	for _, test := range []struct {
-		name, encoder string
-		plan          EncodePlan
+		name, encoder, size, audioOffset string
+		plan                             EncodePlan
+		largeKeyframe                    bool
 	}{
-		{"h264", "libx264", PlanBaseline},
-		{"hevc", "libx265", PlanHEVC8},
+		{"h264", "libx264", "320x180", "0", PlanBaseline, false},
+		{"hevc", "libx265", "320x180", "0", PlanHEVC8, false},
+		{"h264_delayed_audio", "libx264", "320x180", "3", PlanBaseline, false},
+		{"hevc_delayed_audio", "libx265", "320x180", "3", PlanHEVC8, false},
+		{"h264_large_keyframe", "libx264", "3840x2160", "0.2", PlanBaseline, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			bin, probe := ffmpegBin(t), ffprobeBin(t)
@@ -28,13 +32,28 @@ func TestLive_HLSStartsBeforeFiniteInputCloses(t *testing.T) {
 			defer cancel()
 			dir := t.TempDir()
 			source := filepath.Join(dir, "source.ts")
-			args := []string{"-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=duration=4.6:size=320x180:rate=25", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4.6", "-c:v", test.encoder, "-preset", "ultrafast", "-g", "25", "-bf", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "2", "-ar", "48000", "-muxdelay", "0"}
+			args := []string{"-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=duration=4.6:size=" + test.size + ":rate=25", "-itsoffset", test.audioOffset, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4.6", "-c:v", test.encoder, "-preset", "ultrafast", "-g", "25", "-bf", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "2", "-ar", "48000", "-muxdelay", "0"}
+			if test.largeKeyframe {
+				args = append(args, "-crf", "0", "-threads", "2")
+			}
 			if test.encoder == "libx265" {
 				args = append(args, "-x265-params", "pools=1:frame-threads=1:log-level=error")
 			}
 			args = append(args, "-f", "mpegts", source)
 			if output, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
 				t.Fatalf("source encode: %v: %s", err, output)
+			}
+			if test.largeKeyframe {
+				packets := probeMuxPackets(t, ctx, probe, source)
+				if len(packets.Packets) == 0 {
+					t.Fatal("large-keyframe fixture has no packets")
+				}
+				first := packets.Packets[0]
+				size, err := first.Size.Int64()
+				if err != nil || first.Stream != 0 || size <= 256_000 {
+					t.Fatalf("first video packet must exceed rejected 256k probe: stream=%d size=%s err=%v", first.Stream, first.Size, err)
+				}
+				t.Logf("initial video packet is %d bytes", size)
 			}
 			media, err := os.ReadFile(source)
 			if err != nil {
@@ -62,7 +81,8 @@ func TestLive_HLSStartsBeforeFiniteInputCloses(t *testing.T) {
 			select {
 			case <-written:
 				if writeErr != nil {
-					t.Fatalf("feed fixture: %v", writeErr)
+					<-done
+					t.Fatalf("feed fixture: %v: %s", writeErr, stderr.String())
 				}
 			case <-ctx.Done():
 				t.Fatal("HLS did not consume the fixture")

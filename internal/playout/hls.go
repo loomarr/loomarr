@@ -857,11 +857,12 @@ func hlsTerminationReason(stopped bool) string {
 func hlsArgs(dir string, plan EncodePlan) []string {
 	base := []string{
 		"-hide_banner", "-loglevel", "error",
-		// This shared input already has the session's stable video/audio shape. Naming MPEG-TS
-		// avoids format detection, but stream analysis needs separate bounds or FFmpeg can
-		// retain a complete first segment until several more seconds of live media arrive.
-		"-probesize", "256k", "-analyzeduration", "500000",
+		// Naming MPEG-TS skips format detection, not stream analysis. Bound analysis to one
+		// segment without shrinking the byte probe: a large keyframe or delayed audio must
+		// not disappear merely to publish earlier. Both normalized streams are required.
+		"-analyzeduration", strconv.Itoa(hlsSegmentDuration * 1_000_000),
 		"-f", "mpegts", "-i", "pipe:0",
+		"-map", "0:v:0", "-map", "0:a:0",
 		"-c", "copy",
 		"-f", "hls",
 		"-hls_time", strconv.Itoa(hlsSegmentDuration),
