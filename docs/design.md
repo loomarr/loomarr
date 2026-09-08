@@ -2665,6 +2665,13 @@ that bound fails and rebuilds only the remux rather than discarding MPEG-TS pack
 without limit. Only the current and two adjacent hot-set Channels create these queues, so the memory
 bound is independent of the full Guide size.
 
+The HLS remux reads the already normalized shared MPEG-TS stream with at most 256 KiB of initial
+probing and a 500 ms stream-analysis window. Naming the input container alone does not bound
+FFmpeg's stream analysis. A complete segment must become available while the live input remains
+open, without waiting for source EOF or the default multi-second analysis window. This applies to
+both H.264 MPEG-TS and HEVC fMP4 delivery; it does not shorten the segment cadence or alter copied
+media. FFmpeg's generated programme-date-time is not proof of the original schedule timestamp.
+
 The MPEG-TS HLS remux preserves packet payloads and a common audio/video timestamp shift, including
 spacing across source gaps. It flushes transport output without mux delay so an AAC payload group
 cannot interpolate new-programme packets across an earlier gap. This preserves source timing; it

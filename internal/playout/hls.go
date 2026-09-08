@@ -857,8 +857,10 @@ func hlsTerminationReason(stopped bool) string {
 func hlsArgs(dir string, plan EncodePlan) []string {
 	base := []string{
 		"-hide_banner", "-loglevel", "error",
-		// Input is the raw MPEG-TS on stdin. `-f mpegts` names it explicitly rather than making
-		// ffmpeg probe a pipe it cannot seek.
+		// This shared input already has the session's stable video/audio shape. Naming MPEG-TS
+		// avoids format detection, but stream analysis needs separate bounds or FFmpeg can
+		// retain a complete first segment until several more seconds of live media arrive.
+		"-probesize", "256k", "-analyzeduration", "500000",
 		"-f", "mpegts", "-i", "pipe:0",
 		"-c", "copy",
 		"-f", "hls",

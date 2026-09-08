@@ -488,7 +488,10 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 
 	manifestPath := hlsDir + "/" + hlsPlaylistName
 	var manifest []byte
-	deadline := time.Now().Add(10 * time.Second)
+	// The real parent now paces at 1x. Observe the fixture's fifteen seconds of
+	// media plus one segment cadence; a ten-second wait cannot contain three
+	// complete four-second segments, even when delivery has no startup delay.
+	deadline := time.Now().Add(time.Duration(len(blocks)*5+hlsSegmentDuration) * time.Second)
 	for time.Now().Before(deadline) {
 		manifest, _ = os.ReadFile(manifestPath)
 		if strings.Count(string(manifest), "#EXTINF:") >= 3 && opened.Load() >= 3 {
