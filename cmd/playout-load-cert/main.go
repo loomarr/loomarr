@@ -38,8 +38,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	outPath := flags.String("out", "", "machine report path under LOOMARR_ARTIFACT_DIR")
 	certify := flags.Bool("certify", false, "enforce the 100-Channel certification contract")
 	synthetic := flags.Bool("synthetic", false, "start an isolated deterministic Loomarr target")
+	operatorPath := flags.String("operator-cohort", "", "private source/signature manifest for an isolated target")
 	syntheticScope := flags.String("synthetic-scope", "isolated-playout-cert", "stable name for the isolated disposable target")
-	disposableTarget := flags.String("disposable-target", "", "exact synthetic scope acknowledged for a shutdown drill")
+	disposableTarget := flags.String("disposable-target", "", "exact isolated scope acknowledged for a shutdown drill")
 	var faultNames repeatedFlag
 	flags.Var(&faultNames, "fault-profile", "selected fault profile (repeatable)")
 	syntheticCapacity := flags.Int("synthetic-capacity", 4, "isolated target transcode capacity (1..64)")
@@ -57,7 +58,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	suiteTimeout := flags.Duration("suite-timeout", 30*time.Minute, "whole-suite deadline (maximum 30m)")
 	rawBytes := flags.Int("raw-capture-bytes", 2<<20, "bounded bytes retained in memory per raw stream")
 	ffprobe := flags.String("ffprobe", "ffprobe", "ffprobe executable")
-	ffmpeg := flags.String("ffmpeg", "ffmpeg", "ffmpeg executable used for first-frame decode")
+	ffmpeg := flags.String("ffmpeg", "ffmpeg", "FFmpeg executable for preparation and media observation")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -65,17 +66,28 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: --manifest is required and positional arguments are refused")
 		return 2
 	}
+	operatorSelected := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "operator-cohort" {
+			operatorSelected = true
+		}
+	})
+	if operatorSelected && (*synthetic || strings.TrimSpace(*operatorPath) == "") {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: select either synthetic or a nonempty operator cohort")
+		return 2
+	}
+	isolatedMode := *synthetic || operatorSelected
 	faultProfiles, err := playoutcert.ParseFaultProfiles(faultNames)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: invalid fault profile selection")
 		return 2
 	}
 	controllerScope := ""
-	if *synthetic {
+	if isolatedMode {
 		controllerScope = strings.TrimSpace(*syntheticScope)
 	}
-	if *synthetic && controllerScope == "" {
-		_, _ = fmt.Fprintln(stderr, "playout-load-cert: synthetic scope is required")
+	if isolatedMode && controllerScope == "" {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated scope is required")
 		return 2
 	}
 	if err := playoutcert.ValidateFaultSelection(faultProfiles, controllerScope, *disposableTarget); err != nil {
@@ -102,6 +114,21 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: resource bounds are invalid")
 		return 2
 	}
+	runCtx, cancel := context.WithTimeout(ctx, *suiteTimeout)
+	defer cancel()
+	var cohort *playoutcert.OperatorCohort
+	if operatorSelected {
+		cohort, err = playoutcert.LoadOperatorCohort(runCtx, *operatorPath, channels)
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, "playout-load-cert: invalid private operator cohort")
+			return 2
+		}
+		defer func() {
+			if cohort != nil {
+				_ = cohort.Close()
+			}
+		}()
+	}
 	artifactDir := strings.TrimSpace(getenv("LOOMARR_ARTIFACT_DIR"))
 	if artifactDir == "" {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: LOOMARR_ARTIFACT_DIR is required")
@@ -117,28 +144,39 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 2
 	}
 	defer func() { _ = output.Close() }()
-	runCtx, cancel := context.WithTimeout(ctx, *suiteTimeout)
-	defer cancel()
 	baseURL := strings.TrimSpace(getenv("LOOMARR_PLAYOUT_CERT_BASE_URL"))
 	adminBearer, deviceToken := getenv("LOOMARR_API_TOKEN"), getenv("LOOMARR_PLAYOUT_TOKEN")
 	var isolated *app.PlayoutCertificationTarget
-	if *synthetic {
+	if isolatedMode {
 		isolated, err = app.NewPlayoutCertificationTarget(runCtx, app.PlayoutCertificationConfig{
 			Scope: controllerScope, Channels: channels, FFmpeg: *ffmpeg, Capacity: *syntheticCapacity, Grace: *syntheticGrace, ProgrammeDuration: *syntheticProgramme,
+			Cohort: cohort,
 		})
 		if err != nil {
 			_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated target setup failed")
 			return 1
 		}
+		if cohort != nil {
+			closeErr := cohort.Close()
+			cohort = nil
+			if closeErr != nil {
+				if err := closeIsolated(isolated, *cleanupTimeout); err != nil {
+					_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated target cleanup failed")
+				}
+				_, _ = fmt.Fprintln(stderr, "playout-load-cert: operator input cleanup failed")
+				return 1
+			}
+		}
 		baseURL, adminBearer, deviceToken = isolated.BaseURL, isolated.AdminBearer, isolated.DeviceToken
 	}
 	config.BaseURL, config.AdminBearer, config.DeviceToken = baseURL, adminBearer, deviceToken
-	config.RemoteAcknowledged = *remote && !*synthetic
+	config.RemoteAcknowledged = *remote && !isolatedMode
 	config.Validator = playoutcert.FFprobeValidator{Path: *ffprobe}
 	config.Decoder = playoutcert.FFmpegDecoder{Path: *ffmpeg}
+	config.SignalDecoder = playoutcert.FFmpegSignalDecoder{Path: *ffmpeg}
 	if isolated != nil {
 		config.WarmGrace = *syntheticGrace
-		config.ProgrammeBoundaryWitness = isolated.ProgrammeBoundaryWitness()
+		config.ProgrammeEvidence = isolated.ProgrammeEvidence()
 		config.FaultController = isolated
 	}
 	var isolatedTarget isolatedCloser

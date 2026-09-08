@@ -148,10 +148,9 @@ func TestRunExercisesPublicPhasesButCannotCertifyWithoutCausalBoundaryEvidence(t
 		t.Fatalf("ordinary fixture omitted causal boundary failure: %+v", report.Failures)
 	}
 	boundary := report.PhaseMust("programme_boundary")
-	// The ordinary fixture serves no decodable prepared-HLS epoch.  It still
-	// cannot certify without causal boundary evidence, but the public attempt
-	// now reaches the decoder rather than being classified as unavailable.
-	if boundary.HTTPClasses["decode_failed"] != 1 || boundary.HTTPClasses["cohort_missing"] != 1 {
+	// The fixture has no independent programme truth. The prepared lane fails
+	// before a media observation; the absent cold cohort remains separately missing.
+	if boundary.HTTPClasses["evidence_unavailable"] != 1 || boundary.HTTPClasses["cohort_missing"] != 1 {
 		t.Fatalf("programme boundary evidence limit = %+v", boundary)
 	}
 	if report.Target.ConfiguredChannels != 100 || report.Target.Capacity != 4 {

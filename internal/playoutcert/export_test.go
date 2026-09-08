@@ -23,17 +23,20 @@ type ProgrammeBoundaryResultForTest struct {
 }
 
 func ObserveProgrammeBoundaryForTest(ctx context.Context, endpoint *EndpointForTest, config Config, laneName string, channelIndex int) ProgrammeBoundaryResultForTest {
-	result := observeProgrammeBoundary(ctx, endpoint, config, boundaryLane{name: laneName, channelIndex: channelIndex})
+	result := observeProgrammeSignals(ctx, endpoint, config, boundaryLane{name: laneName, channelIndex: channelIndex})
 	return ProgrammeBoundaryResultForTest{Class: result.observation.class, Evidence: result.evidence}
 }
 
-type RawObservationForTest struct{ Class string }
+type RawObservationForTest struct {
+	Class string
+	Media MediaShape
+}
 
 func RawBurstForTest(ctx context.Context, endpoint *EndpointForTest, config Config, indexes []int) ([]RawObservationForTest, ResourceSample) {
 	observations, sample := rawBurst(ctx, endpoint, config, indexes)
 	projected := make([]RawObservationForTest, len(observations))
 	for index, observation := range observations {
-		projected[index] = RawObservationForTest{Class: observation.class}
+		projected[index] = RawObservationForTest{Class: observation.class, Media: observation.media}
 	}
 	return projected, sample
 }
@@ -47,13 +50,18 @@ func StartHeldBurstForTest(ctx context.Context, endpoint *EndpointForTest, confi
 func (b *HeldBurstForTest) Results() []RawObservationForTest {
 	projected := make([]RawObservationForTest, len(b.burst.results))
 	for index, observation := range b.burst.results {
-		projected[index] = RawObservationForTest{Class: observation.class}
+		projected[index] = RawObservationForTest{Class: observation.class, Media: observation.media}
 	}
 	return projected
 }
 
 func (b *HeldBurstForTest) Verify(ctx context.Context) { b.burst.verify(ctx) }
 func (b *HeldBurstForTest) Release()                   { b.burst.release() }
+
+func WaitForConvergenceForTest(ctx context.Context, endpoint *EndpointForTest, config Config, baseline ResourceSample) (string, ResourceSample) {
+	observation, sample := waitForConvergence(ctx, endpoint, config, baseline, config.CleanupTimeout)
+	return observation.class, sample
+}
 
 type ChildFaultDrillForTest struct {
 	Phase    Phase
@@ -90,4 +98,14 @@ func ColdHLSStreamForTest(ctx context.Context, config Config, channel string) (i
 		return nil, fmt.Errorf("expected cold cohort: %s", class)
 	}
 	return newLiveHLSReader(ctx, e, signed), nil
+}
+
+func ObserveProgrammeSignalsForTest(ctx context.Context, config Config, laneName string, channelIndex int) (ProgrammeBoundaryResultForTest, error) {
+	config = config.normalized()
+	e, err := newEndpoint(config)
+	if err != nil {
+		return ProgrammeBoundaryResultForTest{}, err
+	}
+	result := observeProgrammeSignals(ctx, e, config, boundaryLane{name: laneName, channelIndex: channelIndex})
+	return ProgrammeBoundaryResultForTest{Class: result.observation.class, Evidence: result.evidence}, nil
 }

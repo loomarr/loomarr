@@ -37,7 +37,8 @@ type fakeResolver struct {
 	// test is specifically about track discovery.
 	tracks playout.MediaTracks
 	// plan is what PlanFor returns — zero value (transcode both) unless a test is about direct play.
-	plan playout.CopyPlan
+	plan            playout.CopyPlan
+	copyStartDenied bool
 	// sourceFormat is the probe PlanFor returns alongside the plan. Zero unless a test is about
 	// something the probe learned about the SOURCE (as opposed to the copy decision derived from
 	// it) — HDR is the first such thing.
@@ -97,6 +98,10 @@ func (f *fakeResolver) Tracks(context.Context, string) (playout.MediaTracks, err
 // probe learned (HDR is the first), which reads as "not probed": SDR, unknown geometry.
 func (f *fakeResolver) PlanFor(context.Context, string, playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat) {
 	return f.plan, f.sourceFormat
+}
+
+func (f *fakeResolver) CopyVideoStart(_ context.Context, _ string, offset, _ time.Duration, _ float64) (time.Duration, bool) {
+	return offset, !f.copyStartDenied
 }
 
 func (f *fakeResolver) ChannelCodec(context.Context, string) string {
@@ -1173,6 +1178,43 @@ func TestPlayoutProgramPartialFailureIsNotCleanHTTPCompletion(t *testing.T) {
 			}
 			if starts.Load() != 1 {
 				t.Fatalf("child starts = %d; a committed partial response must not retry or append another programme", starts.Load())
+			}
+		})
+	}
+}
+
+func TestPlayoutProgramUnsafeCopyStartUsesAtomicTranscodeAdmission(t *testing.T) {
+	for _, mode := range []string{"proven copy", "unsafe seek", "unsafe seek at capacity"} {
+		t.Run(mode, func(t *testing.T) {
+			profile := playout.DefaultProfile()
+			profile.Encoder, profile.Width, profile.Height = playout.EncoderSoftware, 320, 180
+			unsafe := mode != "proven copy"
+			resolver := &fakeResolver{airing: playableAiring(11*time.Second, time.Second), url: "http://emby/long-gop", plan: playout.CopyPlan{CopyVideo: true, CopyAudio: true}, copyStartDenied: unsafe, profile: profile, sourceFormat: playout.MediaFormat{VideoCodec: "h264", Width: 320, Height: 180, FrameRate: float64(profile.Framerate), PixelFormat: "yuv420p", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000}}
+			encoder := &fakeEncoder{output: "programme"}
+			sessions := &fakePlayoutSessions{denyProgram: mode == "unsafe seek at capacity"}
+			server := newProgramServer(t, programOpts{resolver: resolver, encoder: encoder.start, sessions: sessions})
+			response := getPlayout(t, server, "/v1/playout/program/ch1?token="+playoutToken)
+			_, _ = io.Copy(io.Discard, response.Body)
+			if len(sessions.programCosts) == 0 {
+				t.Fatalf("copy decision did not reach atomic admission: %v", sessions.programCosts)
+			}
+			for _, cost := range sessions.programCosts {
+				if cost != unsafe {
+					t.Fatalf("unsafe source or offline card bypassed video accounting: %v", sessions.programCosts)
+				}
+			}
+			if mode == "unsafe seek at capacity" {
+				if response.StatusCode != http.StatusBadGateway || encoder.args() != nil {
+					t.Fatalf("unsafe copy bypassed video capacity: status=%d args=%v", response.StatusCode, encoder.args())
+				}
+				return
+			}
+			want := "-c:v copy"
+			if unsafe {
+				want = "-c:v libx264"
+			}
+			if response.StatusCode != http.StatusOK || !strings.Contains(strings.Join(encoder.args(), " "), want) {
+				t.Fatalf("wrong playback plan: status=%d args=%v", response.StatusCode, encoder.args())
 			}
 		})
 	}

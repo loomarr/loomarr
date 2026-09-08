@@ -28,6 +28,7 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	for index := range 5 {
 		channels = append(channels, playoutcert.Channel{ID: fmt.Sprintf("transcode-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
 	}
+	channels = append(channels, playoutcert.Channel{ID: "copy-private", Roles: []string{"copy", "audio_aac"}})
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	target, err := app.NewPlayoutCertificationTarget(ctx, app.PlayoutCertificationConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
@@ -48,15 +49,16 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 		WarmGrace:       time.Second,
 		RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
 		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
-		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(),
-		FaultProfiles:            []playoutcert.FaultProfile{playoutcert.FaultParentFailure},
-		FaultController:          target,
-		Validator:                playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{},
+		ProgrammeEvidence: target.ProgrammeEvidence(),
+		FaultProfiles:     []playoutcert.FaultProfile{playoutcert.FaultParentFailure},
+		FaultController:   target,
+		Validator:         playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{},
 	}
 	report, err := playoutcert.Run(ctx, config)
 	if err != nil {
 		t.Fatal(err)
 	}
+	requireGeneratedCopyCoverage(t, report)
 	parentFault := report.PhaseMust("parent_failure")
 	if parentFault.Failures != 0 || parentFault.Attempts != 1 || len(parentFault.Media) != 1 {
 		t.Fatalf("parent-failure recovery evidence = %+v", parentFault)
@@ -71,7 +73,7 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 	if report.PhaseMust("configured").PreparedHits != 100 {
 		t.Fatalf("prepared hits = %d", report.PhaseMust("configured").PreparedHits)
 	}
-	if configured := report.PhaseMust("configured"); configured.Attempts != len(channels) || configured.HTTPClasses["prepared_miss"] != 5 {
+	if configured := report.PhaseMust("configured"); configured.Attempts != len(channels) || configured.HTTPClasses["prepared_miss"] != 6 {
 		t.Fatalf("configured catalog/cold outcomes = %+v", configured)
 	}
 	boundary := report.PhaseMust("programme_boundary")
@@ -125,6 +127,7 @@ func TestSyntheticTargetShutdownCertifiesMeasuredLiveBurst(t *testing.T) {
 	for index := range 5 {
 		channels = append(channels, playoutcert.Channel{ID: fmt.Sprintf("shutdown-live-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
 	}
+	channels = append(channels, playoutcert.Channel{ID: "copy-private", Roles: []string{"copy", "audio_aac"}})
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	target, err := app.NewPlayoutCertificationTarget(ctx, app.PlayoutCertificationConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
@@ -144,12 +147,13 @@ func TestSyntheticTargetShutdownCertifiesMeasuredLiveBurst(t *testing.T) {
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
 		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
-		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(), FaultProfiles: []playoutcert.FaultProfile{playoutcert.FaultShutdown}, FaultController: target,
+		ProgrammeEvidence: target.ProgrammeEvidence(), FaultProfiles: []playoutcert.FaultProfile{playoutcert.FaultShutdown}, FaultController: target,
 		Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	requireGeneratedCopyCoverage(t, report)
 	shutdown := report.PhaseMust("shutdown")
 	if shutdown.Failures != 0 || shutdown.Resources.Samples != 1 || shutdown.Resources.Maximum.TranscodeCost < 4 || shutdown.Resources.Maximum.ViewerActive < 4 {
 		t.Fatalf("shutdown live burst evidence = %+v", shutdown)
@@ -196,7 +200,7 @@ func TestSyntheticTargetShutdownFailureCannotRetainQualification(t *testing.T) {
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: time.Nanosecond,
 		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
-		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(), FaultProfiles: []playoutcert.FaultProfile{playoutcert.FaultShutdown}, FaultController: target,
+		ProgrammeEvidence: target.ProgrammeEvidence(), FaultProfiles: []playoutcert.FaultProfile{playoutcert.FaultShutdown}, FaultController: target,
 		Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{},
 	})
 	if err != nil {
@@ -216,7 +220,7 @@ func TestSyntheticTargetShutdownFailureCannotRetainQualification(t *testing.T) {
 // This is deliberately independent of SyntheticTarget's raw BlockSource
 // witness.  It proves the ordinary public prepared route can itself carry a
 // decoder across the renderer's discontinuity/map/PDT programme boundary.
-func TestSyntheticPreparedPublicHLSWitnessesProgrammeBoundaryWithoutRawWitness(t *testing.T) {
+func TestSyntheticPreparedPublicHLSChecksProgrammeSignals(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Skip("ffmpeg unavailable")
@@ -235,7 +239,7 @@ func TestSyntheticPreparedPublicHLSWitnessesProgrammeBoundaryWithoutRawWitness(t
 			t.Error(err)
 		}
 	}()
-	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 3 * time.Second, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
+	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, ProgrammeEvidence: target.ProgrammeEvidence(), RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 3 * time.Second, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
 	endpoint, err := playoutcert.NewEndpointForTest(playoutcert.NormalizeConfigForTest(config))
 	if err != nil {
 		t.Fatal(err)
@@ -265,7 +269,7 @@ func TestSyntheticPreparedPublicHLSContinuesAcrossFurtherProgrammeEpochs(t *test
 			t.Error(err)
 		}
 	}()
-	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 6 * time.Second, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
+	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, ProgrammeEvidence: target.ProgrammeEvidence(), RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 6 * time.Second, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
 	endpoint, err := playoutcert.NewEndpointForTest(playoutcert.NormalizeConfigForTest(config))
 	if err != nil {
 		t.Fatal(err)
@@ -288,6 +292,7 @@ func TestSyntheticTargetParentFaultCertifiesAtOneMeasuredSlot(t *testing.T) {
 	for index := range 2 {
 		channels = append(channels, playoutcert.Channel{ID: fmt.Sprintf("transcode-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
 	}
+	channels = append(channels, playoutcert.Channel{ID: "copy-private", Roles: []string{"copy", "audio_aac"}})
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	target, err := app.NewPlayoutCertificationTarget(ctx, app.PlayoutCertificationConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 1, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
@@ -307,12 +312,13 @@ func TestSyntheticTargetParentFaultCertifiesAtOneMeasuredSlot(t *testing.T) {
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
 		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
-		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(), FaultProfiles: []playoutcert.FaultProfile{playoutcert.FaultParentFailure}, FaultController: target,
+		ProgrammeEvidence: target.ProgrammeEvidence(), FaultProfiles: []playoutcert.FaultProfile{playoutcert.FaultParentFailure}, FaultController: target,
 		Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	requireGeneratedCopyCoverage(t, report)
 	if strings.Contains(strings.Join(report.Failures, ","), "capacity_oversubscribed") {
 		t.Fatalf("one-slot run oversubscribed capacity: failures %v resources=%+v", report.Failures, report.Resources)
 	}
@@ -506,8 +512,8 @@ func TestSyntheticTargetRejectsPostOverloadCorruptHeldMedia(t *testing.T) {
 		WarmGrace:       time.Second,
 		RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
 		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
-		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(),
-		Validator:                playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{},
+		ProgrammeEvidence: target.ProgrammeEvidence(),
+		Validator:         playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{},
 		Client: playoutcertfixture.PostEventCorruptClient(http.DefaultTransport.(*http.Transport).Clone(), heldStreams),
 	}
 	report, err := playoutcert.Run(ctx, config)

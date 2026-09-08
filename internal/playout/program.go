@@ -45,8 +45,11 @@ const tuneInBurstThreshold = time.Duration(readrateInitialBurst) * time.Second
 // is a first-class field, not a seventh positional, and adding the next knob widens a struct instead
 // of forking another function.
 type ProgramSpec struct {
-	Clock   ProgramClock
-	Profile Profile
+	// VideoCopySeek is a seek-local keyframe proof supplied by ordinary source planning.
+	// Prepared publications already own their copy-start contract and leave this nil.
+	VideoCopySeek *time.Duration
+	Clock         ProgramClock
+	Profile       Profile
 	// Input is the ffmpeg input — a local file path (direct play) or an HTTP URL (fallback). The
 	// input-option branch (reconnect flags) keys on isHTTP, so both are handled from the one field.
 	Input         string
@@ -111,6 +114,14 @@ func (s ProgramSpec) tonemapStep() string {
 //   - else the video transcodes to the Profile (the exception path, unchanged from before).
 //   - Plan.CopyAudio ⇒ `-c:a copy`; else the audio alone transcodes to AAC.
 func ProgramArgs(spec ProgramSpec) []string {
+	clock := spec.Clock
+	provenCopySeek := spec.Plan.CopyVideo && spec.VideoCopySeek != nil && *spec.VideoCopySeek >= 0 && *spec.VideoCopySeek <= spec.Offset
+	if provenCopySeek && !clock.active() {
+		// Standalone output begins at the requested source point. Preserve source
+		// coordinates for trimming, then shift them onto that zero-based output.
+		start := time.Unix(0, 0)
+		clock = ProgramClock{Origin: start.Add(spec.Offset), StartedAt: start}
+	}
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-progress", progressPipeArg(), "-nostats",
@@ -160,6 +171,11 @@ func ProgramArgs(spec ProgramSpec) []string {
 		// live as commercials arriving and leaving about ten seconds late.
 		if offset >= tuneInBurstThreshold && limit > tuneInBurstThreshold {
 			args = append(args, "-readrate_initial_burst", strconv.Itoa(readrateInitialBurst))
+		} else {
+			// FFmpeg treats both omission and zero as its 0.5-second default.
+			// Its pacing clock uses microseconds: the smallest positive value
+			// prevents every short child from finishing half a second early.
+			args = append(args, "-readrate_initial_burst", "0.000001")
 		}
 	}
 
@@ -198,8 +214,11 @@ func ProgramArgs(spec ProgramSpec) []string {
 	// seek. Discard it at the output as well; ProgramClock restores the resulting timestamp
 	// subtraction equally for audio and video. Never add an output seek at offset zero.
 	var outputSeek time.Duration
-	if spec.Clock.active() && offset > 0 && (spec.Plan.CopyVideo || spec.Plan.CopyAudio) {
+	if clock.active() && offset > 0 && (spec.Plan.CopyVideo || spec.Plan.CopyAudio) {
 		outputSeek = offset
+		if provenCopySeek {
+			outputSeek = *spec.VideoCopySeek
+		}
 		args = append(args, "-ss", seconds(outputSeek))
 	}
 
@@ -209,7 +228,7 @@ func ProgramArgs(spec ProgramSpec) []string {
 	// gives an item less time than its full duration (a rolling window, or a slot the
 	// scheduler trimmed).
 	if limit > 0 {
-		if spec.Clock.active() {
+		if clock.active() {
 			args = append(args, "-to", seconds(offset+limit))
 		} else {
 			args = append(args, "-t", seconds(limit))
@@ -245,7 +264,7 @@ func ProgramArgs(spec ProgramSpec) []string {
 	args = append(args,
 		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1",
 	)
-	return spec.Clock.apply(args, outputSeek)
+	return clock.apply(args, outputSeek)
 }
 
 // scaleFilterArgs normalizes any input geometry to the profile's.

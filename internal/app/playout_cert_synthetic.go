@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -39,6 +40,7 @@ type PlayoutCertificationConfig struct {
 	Capacity          int
 	Grace             time.Duration
 	ProgrammeDuration time.Duration
+	Cohort            *playoutcert.OperatorCohort
 }
 
 type PlayoutCertificationTarget struct {
@@ -46,17 +48,18 @@ type PlayoutCertificationTarget struct {
 	AdminBearer string
 	DeviceToken string
 
-	server           *http.Server
-	handler          http.Handler
-	listener         net.Listener
-	origin           *playout.Origin
-	diagnostics      *diagnostics.ProcessManager
-	store            store.Store
-	root             string
-	boundaryRecorder *playoutcert.ProgrammeBoundaryRecorder
-	lifecycle        syntheticLifecycle
-	scope            string
-	parentsMu        sync.Mutex
+	server            *http.Server
+	handler           http.Handler
+	listener          net.Listener
+	origin            *playout.Origin
+	diagnostics       *diagnostics.ProcessManager
+	store             store.Store
+	root              string
+	nextSourceID      atomic.Uint64
+	programmeEvidence *syntheticProgrammeEvidence
+	lifecycle         syntheticLifecycle
+	scope             string
+	parentsMu         sync.Mutex
 	// stopping closes registration admission before either WaitGroup starts waiting.
 	stopping             bool
 	parents              map[string]*syntheticParent
@@ -113,7 +116,11 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	if scope == "" {
 		scope = "isolated-playout-cert"
 	}
-	target := &PlayoutCertificationTarget{root: root, scope: scope, boundaryRecorder: playoutcert.NewProgrammeBoundaryRecorder(), parents: make(map[string]*syntheticParent), children: make(map[string]*syntheticChild)}
+	target := &PlayoutCertificationTarget{root: root, scope: scope, parents: make(map[string]*syntheticParent), children: make(map[string]*syntheticChild)}
+	target.programmeEvidence = &syntheticProgrammeEvidence{prepared: make(map[string]bool), assets: make(map[string][2]map[string]syntheticAssetTruth), clocks: make(map[string]syntheticLiveClock)}
+	for _, channel := range config.Channels {
+		target.programmeEvidence.prepared[channel.ID] = false
+	}
 	fail := func(err error) (*PlayoutCertificationTarget, error) {
 		_ = target.Close(context.Background())
 		return nil, err
@@ -132,12 +139,13 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 		}
 	}
 
-	sources := [2]string{filepath.Join(root, "source-0.mp4"), filepath.Join(root, "source-1.mp4")}
-	for variant, source := range sources {
-		if err := generateSyntheticSource(ctx, ffmpeg, source, variant); err != nil {
-			return fail(err)
-		}
+	sources, err := prepareCertificationSources(ctx, config, root, ffmpeg)
+	if err != nil {
+		return fail(err)
 	}
+	target.programmeEvidence.privateInputs = sources.private
+	target.programmeEvidence.cohortManifestSHA256 = config.Cohort.ManifestSHA256()
+	target.programmeEvidence.signatures = sources.signatures
 	library, err := prepared.NewLibrary(filepath.Join(root, "prepared"))
 	if err != nil {
 		return fail(err)
@@ -149,45 +157,48 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	}
 	preparedSpecs := make(map[string][2]prepared.Specification)
 	preparedIndexes := playoutcert.PreparedChannelIndexes(config.Channels)
-	if len(preparedIndexes) > 0 {
-		first := config.Channels[preparedIndexes[0]]
-		packager := prepared.NewFFmpegPackager(ffmpeg)
-		var templates [2]prepared.Publication
-		var firstSpecs [2]prepared.Specification
-		for variant, source := range sources {
-			spec := syntheticPreparedSpecification(first.ID, variant, rendition)
-			template, publishErr := library.Publish(ctx, spec, func(buildCtx context.Context, workspace string) (prepared.Output, error) {
-				return packager.Package(buildCtx, workspace, prepared.LocalInput(source), 0, rendition)
+	packager := prepared.NewFFmpegPackager(ffmpeg)
+	type sourceTemplate struct {
+		publication prepared.Publication
+		truth       map[string]syntheticAssetTruth
+	}
+	templates := make(map[string]sourceTemplate)
+	for _, index := range preparedIndexes {
+		channel := config.Channels[index]
+		var specs [2]prepared.Specification
+		var truths [2]map[string]syntheticAssetTruth
+		for variant, source := range sources.paths[channel.ID] {
+			spec := syntheticPreparedSpecification(channel.ID, variant, rendition)
+			cached, exists := templates[source]
+			publication, publishErr := library.Publish(ctx, spec, func(buildCtx context.Context, workspace string) (prepared.Output, error) {
+				if !exists {
+					return packager.Package(buildCtx, workspace, prepared.LocalInput(source), 0, rendition)
+				}
+				for _, name := range cached.publication.Files {
+					from, to := filepath.Join(cached.publication.Directory, name), filepath.Join(workspace, name)
+					if err := os.Link(from, to); err != nil {
+						if err := copyRegularFile(from, to); err != nil {
+							return prepared.Output{}, err
+						}
+					}
+				}
+				return prepared.Output{Files: append([]string(nil), cached.publication.Files...)}, nil
 			})
 			if publishErr != nil {
 				return fail(publishErr)
 			}
-			firstSpecs[variant], templates[variant] = spec, template
-		}
-		preparedSpecs[first.ID] = firstSpecs
-		for _, index := range preparedIndexes[1:] {
-			channel := config.Channels[index]
-			var specs [2]prepared.Specification
-			for variant, template := range templates {
-				spec := syntheticPreparedSpecification(channel.ID, variant, rendition)
-				_, publishErr := library.Publish(ctx, spec, func(_ context.Context, workspace string) (prepared.Output, error) {
-					for _, name := range template.Files {
-						from, to := filepath.Join(template.Directory, name), filepath.Join(workspace, name)
-						if linkErr := os.Link(from, to); linkErr != nil {
-							if copyErr := copyRegularFile(from, to); copyErr != nil {
-								return prepared.Output{}, copyErr
-							}
-						}
-					}
-					return prepared.Output{Files: append([]string(nil), template.Files...)}, nil
-				})
-				if publishErr != nil {
-					return fail(publishErr)
+			if !exists {
+				truth, err := readCertificationPublicationTruth(ctx, ffmpeg, publication)
+				if err != nil {
+					return fail(err)
 				}
-				specs[variant] = spec
+				cached = sourceTemplate{publication: publication, truth: truth}
+				templates[source] = cached
 			}
-			preparedSpecs[channel.ID] = specs
+			specs[variant], truths[variant] = spec, cached.truth
 		}
+		preparedSpecs[channel.ID] = specs
+		target.programmeEvidence.assets[channel.ID] = truths
 	}
 
 	admin, err := randomCredential()
@@ -218,17 +229,35 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	preparedCount := len(preparedIndexes)
 	preparedStatus := syntheticPreparedStatus{count: preparedCount}
 	preparedOrigin := playout.NewPreparedOrigin(library, preparedResolver)
+	target.programmeEvidence.schedule = programmeSchedule
+	target.programmeEvidence.origin = preparedOrigin
+	for channel := range preparedSpecs {
+		target.programmeEvidence.prepared[channel] = true
+	}
 	preparedBlock := preparedOrigin.MPEGTSBlockSource(ffmpeg, logger, processManager)
-	liveResolver := syntheticLiveResolver{sources: sources, schedule: programmeSchedule}
+	liveResolver := syntheticLiveResolver{channels: st, sources: sources.paths, formats: sources.formats, tracks: sources.tracks, schedule: programmeSchedule, copyStart: playout.FFprobeCopyStartNextTo(ffmpeg, processManager)}
 
 	var manager *playout.Manager
 	spawner := func(spawnCtx context.Context, channelID string, plan playout.EncodePlan) (*playout.Process, error) {
-		sourceID := target.boundaryRecorder.NextSource()
-		sourceForParent := syntheticBlockSource(target.BaseURL, device, preparedBlock, manager, target.boundaryRecorder, sourceID)
-		process, spawnErr := playout.BlockSpawner(ffmpeg, sourceForParent, logger, processManager)(spawnCtx, channelID, plan)
+		sourceID := target.nextSourceID.Add(1)
+		var process *playout.Process
+		processReady := make(chan struct{})
+		sourceForParent := syntheticBlockSource(target.BaseURL, device, preparedBlock, manager)
+		clockedSource := func(ctx context.Context, request playout.BlockRequest) (playout.Block, error) {
+			select {
+			case <-processReady:
+			case <-ctx.Done():
+				return playout.Block{}, ctx.Err()
+			}
+			target.programmeEvidence.recordClock(spawnCtx, channelID, process, sourceID, request.TimelineOrigin)
+			return sourceForParent(ctx, request)
+		}
+		var spawnErr error
+		process, spawnErr = playout.BlockSpawner(ffmpeg, clockedSource, logger, processManager)(spawnCtx, channelID, plan)
 		if spawnErr != nil {
 			return nil, spawnErr
 		}
+		close(processReady)
 		target.registerParent(channelID, process)
 		return process, nil
 	}
@@ -246,6 +275,7 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	if err != nil {
 		return fail(err)
 	}
+	target.programmeEvidence.live = liveHLS
 	// Origin quiescence joins remuxes before session shutdown. Their scratch
 	// remains inside the target root, which Close disposes after final sampling.
 	origin := playout.NewOrigin(playout.OriginDependencies{Prepared: preparedOrigin, LiveSessions: manager, LiveHLS: liveHLS, Observer: recorder})
@@ -447,18 +477,6 @@ func (t *PlayoutCertificationTarget) FailChild(ctx context.Context, request play
 	process.Stop()
 	_ = process.Wait()
 	return playoutcert.ChildFaultReceipt{ChannelID: request.ChannelID, ParentGeneration: request.ParentGeneration, ChildGeneration: request.ChildGeneration, Exited: true}, nil
-}
-
-// ProgrammeBoundaryWitness returns the isolated target's causal observation
-// seam. It is intentionally not available from ordinary production origins.
-func (t *PlayoutCertificationTarget) ProgrammeBoundaryWitness() playoutcert.ProgrammeBoundaryWitness {
-	if t == nil {
-		return nil
-	}
-	if t.boundaryRecorder == nil {
-		return nil
-	}
-	return t.boundaryRecorder.Witness()
 }
 
 func (t *PlayoutCertificationTarget) Close(ctx context.Context) error {
@@ -745,15 +763,23 @@ func (s syntheticProgrammeSchedule) airings(now time.Time, channelID string) (pl
 }
 
 type syntheticLiveResolver struct {
-	sources  [2]string
-	schedule syntheticProgrammeSchedule
-	now      func() time.Time
+	channels  channelReader
+	copyStart playout.CopyStartProber
+	sources   map[string][2]string
+	formats   map[string]playout.MediaFormat
+	tracks    map[string]playout.MediaTracks
+	schedule  syntheticProgrammeSchedule
+	now       func() time.Time
 }
 
 func (r syntheticLiveResolver) AiringNow(_ context.Context, channelID string) (playout.Airing, string, error) {
+	paths, ok := r.sources[channelID]
+	if !ok {
+		return playout.Airing{}, "", errors.New("unknown certification channel")
+	}
 	now := r.currentTime()
 	identity, _, offset := r.schedule.airings(now, channelID)
-	return playout.Airing{StartedAt: identity.StartedAt, Identity: identity.ContentID, ScheduleBlockID: identity.ScheduleBlockID, Kind: identity.Kind, LibraryItemID: channelID, Title: "Synthetic", Offset: offset, Remaining: identity.EndsAt.Sub(now)}, r.sources[r.schedule.variant(now)], nil
+	return playout.Airing{StartedAt: identity.StartedAt, Identity: identity.ContentID, ScheduleBlockID: identity.ScheduleBlockID, Kind: identity.Kind, LibraryItemID: channelID, Title: "Synthetic", Offset: offset, Remaining: identity.EndsAt.Sub(now)}, paths[r.schedule.variant(now)], nil
 }
 func (r syntheticLiveResolver) currentTime() time.Time {
 	if r.now != nil {
@@ -771,15 +797,35 @@ func (syntheticLiveResolver) Profile(context.Context) playout.Profile {
 	return p
 }
 func (syntheticLiveResolver) AudioTrackFor(context.Context, string, string, string) int { return 0 }
-func (syntheticLiveResolver) Tracks(context.Context, string) (playout.MediaTracks, error) {
-	return playout.MediaTracks{}, nil
+func (r syntheticLiveResolver) Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error) {
+	_, source, err := r.AiringNow(ctx, channelID)
+	if err != nil {
+		return playout.MediaTracks{}, err
+	}
+	tracks := r.tracks[source]
+	tracks.Audio = append([]playout.Track(nil), tracks.Audio...)
+	tracks.Subtitles = append([]playout.Track(nil), tracks.Subtitles...)
+	return tracks, nil
 }
-func (syntheticLiveResolver) PlanFor(context.Context, string, playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat) {
-	return playout.CopyPlan{}, playout.MediaFormat{}
+func (r syntheticLiveResolver) PlanFor(_ context.Context, source string, plan playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat) {
+	format, measured := r.formats[source]
+	if !measured {
+		return playout.CopyPlan{}, playout.MediaFormat{}
+	} // Generated fixtures deliberately exercise cold transcode.
+	return playout.PlanCopy(format, plan), format
 }
-func (syntheticLiveResolver) ChannelCodec(context.Context, string) string { return "h264" }
+func (r syntheticLiveResolver) ChannelCodec(ctx context.Context, channelID string) string {
+	return (&playoutResolver{channels: r.channels}).ChannelCodec(ctx, channelID)
+}
 
-func syntheticBlockSource(base, device string, preparedSource playout.BlockSource, manager *playout.Manager, recorder *playoutcert.ProgrammeBoundaryRecorder, sourceID uint64) playout.BlockSource {
+func (r syntheticLiveResolver) CopyVideoStart(ctx context.Context, input string, offset, limit time.Duration, fps float64) (time.Duration, bool) {
+	if r.copyStart == nil {
+		return 0, false
+	}
+	return r.copyStart(ctx, input, offset, limit, fps)
+}
+
+func syntheticBlockSource(base, device string, preparedSource playout.BlockSource, manager *playout.Manager) playout.BlockSource {
 	var broadcast string
 	return func(ctx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
 		channelID := blockRequest.ChannelID
@@ -795,7 +841,6 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 				if valid && (broadcast == "" || broadcast == format.String()) {
 					broadcast = format.String()
 					block.Format = format
-					block.Content = recorder.WrapBlock(block.Content, channelID, sourceID, block.Identity)
 					return block, nil
 				}
 				_ = block.Content.Close()
@@ -845,7 +890,7 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 			_ = resp.Body.Close()
 			return playout.Block{}, errors.New("program endpoint identity missing")
 		}
-		return playout.Block{Content: recorder.WrapBlock(resp.Body, channelID, sourceID, identity), Identity: identity, Format: format}, nil
+		return playout.Block{Content: resp.Body, Identity: identity, Format: format}, nil
 	}
 }
 
@@ -857,13 +902,18 @@ func (s syntheticProgrammeSchedule) variant(now time.Time) int {
 	return int(s.ordinal(now) % 2)
 }
 
-func generateSyntheticSource(ctx context.Context, ffmpeg, output string, variant int) error {
+type syntheticSourceProfile struct {
+	keyframeInterval int
+	audioChannels    int
+}
+
+func generateSyntheticSource(ctx context.Context, ffmpeg, output string, variant int, profile syntheticSourceProfile) error {
 	colour, frequency := "black", "440"
 	if variant == 1 {
 		colour, frequency = "white", "880"
 	}
 	filter := fmt.Sprintf("testsrc2=size=320x180:rate=25:duration=60,drawbox=x=0:y=0:w=64:h=64:color=%s:t=fill", colour)
-	cmd := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", filter, "-f", "lavfi", "-i", "sine=frequency="+frequency+":sample_rate=48000:duration=60", "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", "25", "-c:a", "aac", "-b:a", "96k", output)
+	cmd := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", filter, "-f", "lavfi", "-i", "sine=frequency="+frequency+":sample_rate=48000:duration=60", "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", fmt.Sprint(profile.keyframeInterval), "-c:a", "aac", "-ac", fmt.Sprint(profile.audioChannels), "-b:a", "96k", output)
 	if err := cmd.Run(); err != nil {
 		return errors.New("generate deterministic synthetic media")
 	}

@@ -63,6 +63,11 @@ func TestSyntheticTargetServesOrdinaryHLSAndJoinsRemux(t *testing.T) {
 		}
 		return resp.StatusCode, body
 	}
+	frozenAt := time.Now()
+	evidence, err := target.ProgrammeEvidence().Freeze("cold-hls", frozenAt, frozenAt.Add(45*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
 	status, body := request(http.MethodPost, target.BaseURL+"/v1/channels/cold-hls/play-url", true)
 	var signed struct {
 		RelativeURL string `json:"relativeUrl"`
@@ -105,9 +110,16 @@ func TestSyntheticTargetServesOrdinaryHLSAndJoinsRemux(t *testing.T) {
 	if segment == nil {
 		t.Fatal("ordinary HLS has no segment")
 	}
+	proof, err := evidence.ResolveAsset(ctx, playoutcert.ProgrammeAsset{Reference: segment.Path})
+	if err != nil || len(proof.Media) == 0 || proof.Validate == nil || proof.Validate() != nil {
+		t.Fatalf("private live reference unavailable: %v", err)
+	}
 	status, media := request(http.MethodGet, segment.String(), false)
 	if status != http.StatusOK {
 		t.Fatalf("HLS segment response=%d", status)
+	}
+	if !bytes.Equal(media, proof.Media) {
+		t.Fatal("private reference differs from the signed response")
 	}
 	shape, err := (playoutcert.FFprobeValidator{}).Validate(ctx, media)
 	if err != nil || shape.VideoStreams != 1 || shape.AudioStreams != 1 {
@@ -119,6 +131,34 @@ func TestSyntheticTargetServesOrdinaryHLSAndJoinsRemux(t *testing.T) {
 	}, "before_shutdown")
 	if err != nil || before.SessionsActive != 1 || before.FFmpegRunning < 2 {
 		t.Fatalf("live remux/session resources=%+v error=%v", before, err)
+	}
+	target.origin.StopChannel("cold-hls")
+	if proof.Validate() == nil {
+		t.Fatal("stopped source still validates its reference")
+	}
+	if _, err := evidence.ResolveAsset(ctx, playoutcert.ProgrammeAsset{Reference: segment.Path}); err == nil {
+		t.Fatal("retired asset resolved without a live remux")
+	}
+	if status, _ := request(http.MethodGet, playlist.String(), false); status != http.StatusOK {
+		t.Fatalf("replacement HLS response=%d", status)
+	}
+	// Segment filenames are reused by the replacement remux. An existing
+	// observation must not inherit its clock, even when the name is identical.
+	if _, err := evidence.ResolveAsset(ctx, playoutcert.ProgrammeAsset{Reference: segment.Path}); err == nil {
+		t.Fatal("existing observation accepted a replacement source")
+	}
+	restartedAt := time.Now()
+	fresh, err := target.ProgrammeEvidence().Freeze("cold-hls", restartedAt, restartedAt.Add(20*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := fresh.ResolveAsset(ctx, playoutcert.ProgrammeAsset{Reference: segment.Path})
+	if err != nil || replacement.Clock.Generation == proof.Clock.Generation || replacement.Validate == nil || replacement.Validate() != nil {
+		t.Fatalf("fresh observation failed to bind replacement: %v", err)
+	}
+	status, media = request(http.MethodGet, segment.String(), false)
+	if status != http.StatusOK || !bytes.Equal(media, replacement.Media) {
+		t.Fatal("replacement signed response differs from its own reference")
 	}
 	receipt, err := target.Shutdown(ctx, playoutcert.ShutdownRequest{BaseURL: target.BaseURL})
 	if err != nil || !receipt.ServingStopped || !receipt.ProcessesExited {

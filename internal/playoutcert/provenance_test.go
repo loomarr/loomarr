@@ -3,10 +3,12 @@ package playoutcert
 import (
 	"context"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
+	"github.com/loomarr/loomarr/internal/testkit/playoutcertfixture"
 )
 
 func TestProvenanceFixedVocabularyDoesNotImplySourceLeak(t *testing.T) {
@@ -142,5 +144,52 @@ func TestProvenanceFallbackFixedValidationIsSafe(t *testing.T) {
 	}
 	if status, reason := auditDocuments(workCapsule("secret", probeSecret), time.Now().Add(time.Second), unknown); status != AuditUnavailable || reason != AuditReasonDynamicCollision {
 		t.Fatalf("unknown fallback audit = %q, %q; want unavailable dynamic collision", status, reason)
+	}
+}
+
+func TestProvenanceProgrammeSignalVocabularyIsScoped(t *testing.T) {
+	for _, word := range []string{"asset_clock_mismatch", "programme_observation_timeout", "unexpected_media_eof", "invalid_media_clock", "media_outside_truth", "invalid_video_signal", "invalid_audio_signal", "video_time_regressed", "audio_time_regressed", "programme_video_mismatch", "programme_audio_mismatch"} {
+		for _, raw := range []string{`{"phases":[{"httpClasses":{"` + word + `":1}}]}`, `{"phases":[{"programmeBoundaries":[{"outcome":"` + word + `","decodedAudioSamplesDelta":2048}]}]}`} {
+			doc, reason, ok := parseJSONProvenance([]byte(raw), false, newAuditWork(time.Now().Add(time.Second)))
+			if !ok {
+				t.Fatalf("parse: %s", reason)
+			}
+			if status, reason := auditDocuments(workCapsule(word, probeCollision), time.Now().Add(time.Second), doc); status != AuditPassed {
+				t.Fatalf("fixed signal vocabulary %s: %s %s", word, status, reason)
+			}
+		}
+		doc, reason, ok := parseJSONProvenance([]byte(`{"target":{"version":"`+word+`"}}`), false, newAuditWork(time.Now().Add(time.Second)))
+		if !ok {
+			t.Fatalf("parse: %s", reason)
+		}
+		if status, reason := auditDocuments(workCapsule(word, probeCollision), time.Now().Add(time.Second), doc); status != AuditUnavailable || reason != AuditReasonDynamicCollision {
+			t.Fatalf("dynamic signal-word collision %s: %s %s", word, status, reason)
+		}
+	}
+}
+
+func TestProgrammePrivateInputsParticipateInPublicationAudit(t *testing.T) {
+	source := &playoutcertfixture.ProgrammeEvidence[ProgrammeEvidence]{Private: []string{"/private-corpus/sensitive-title.mov"}}
+	capsule := newAuditCapsule(Config{BaseURL: "http://127.0.0.1", AdminBearer: "private-admin", DeviceToken: "private-device", ProgrammeEvidence: source})
+	document, reason, ok := parseJSONProvenance([]byte(`{"target":{"version":"/private-corpus/sensitive-title.mov"}}`), false, newAuditWork(time.Now().Add(time.Second)))
+	if !ok {
+		t.Fatal(reason)
+	}
+	if status, reason := auditDocuments(capsule, time.Now().Add(time.Second), document); status != AuditUnavailable || reason != AuditReasonDynamicCollision {
+		t.Fatalf("private cohort input escaped audit: %s %s", status, reason)
+	}
+}
+
+func TestCohortDigestRemainsDynamicPublicationData(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	document, reason, ok := parseJSONProvenance([]byte(`{"target":{"cohortManifestSha256":"`+digest+`"}}`), false, newAuditWork(time.Now().Add(time.Second)))
+	if !ok {
+		t.Fatal(reason)
+	}
+	if status, reason := auditDocuments(workCapsule(digest, probeCollision), time.Now().Add(time.Second), document); status != AuditUnavailable || reason != AuditReasonDynamicCollision {
+		t.Fatalf("digest collision bypassed audit: %s %s", status, reason)
+	}
+	if status, reason := auditDocuments(workCapsule("unrelated private value", probeCollision), time.Now().Add(time.Second), document); status != AuditPassed {
+		t.Fatalf("independent digest failed audit: %s %s", status, reason)
 	}
 }

@@ -28,6 +28,7 @@ func TestCommandSyntheticCertifiesWithoutExternalCredentials(t *testing.T) {
 	for index := range 5 {
 		channels = append(channels, playoutcert.Channel{ID: fmt.Sprintf("transcode-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
 	}
+	channels = append(channels, playoutcert.Channel{ID: "copy-private", Roles: []string{"copy", "audio_aac"}})
 	manifestPath := filepath.Join(dir, "manifest.json")
 	manifestBody, err := json.Marshal(manifest{SchemaVersion: 1, Channels: channels})
 	if err != nil {
@@ -60,7 +61,10 @@ func TestCommandSyntheticCertifiesWithoutExternalCredentials(t *testing.T) {
 	if err := json.Unmarshal(artifact, &report); err != nil {
 		t.Fatal(err)
 	}
-	if !report.Certified || report.Target.ConfiguredChannels != 105 {
+	if phase := report.PhaseMust("copy_raw"); phase.Attempts != 1 || phase.Failures != 0 || len(phase.HeldContinuity) != 1 || !phase.HeldContinuity[0].DecodedFrame {
+		t.Fatalf("copy coverage: %+v", phase)
+	}
+	if !report.Certified || report.Target.ConfiguredChannels != 106 {
 		t.Fatalf("report certified=%t configured=%d failures=%v", report.Certified, report.Target.ConfiguredChannels, report.Failures)
 	}
 }

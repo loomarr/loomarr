@@ -3,6 +3,7 @@ package playoutcert
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,16 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		return Report{}, err
 	}
 	config = config.normalized()
+	cohortDigest := ""
+	if config.ProgrammeEvidence != nil {
+		cohortDigest = config.ProgrammeEvidence.CohortManifestSHA256()
+		if cohortDigest != "" {
+			decoded, err := hex.DecodeString(cohortDigest)
+			if err != nil || len(decoded) != 32 || hex.EncodeToString(decoded) != cohortDigest {
+				return Report{}, errors.New("invalid operator cohort identity")
+			}
+		}
+	}
 	audit := newAuditCapsule(config)
 	endpoint, err := newEndpoint(config, audit)
 	if err != nil {
@@ -38,6 +49,7 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		return Report{}, fmt.Errorf("target preflight failed")
 	}
 	report.Target = target
+	report.Target.CohortManifestSHA256 = cohortDigest
 	baseline, err := endpoint.sample(ctx, "baseline")
 	if err != nil {
 		return Report{}, fmt.Errorf("resource preflight failed")
@@ -53,6 +65,11 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	}
 	preparedIndexes := preparedChannelIndexes(config.Channels)
 	transcodeIndexes := strictTranscodeChannelIndexes(config.Channels)
+	copyIndexes := copyChannelIndexes(config.Channels)
+	expectedPreparedMiss := func(index int) bool {
+		return !containsIndex(preparedIndexes, index) &&
+			(containsIndex(transcodeIndexes, index) || containsIndex(copyIndexes, index))
+	}
 
 	signed := make([]*url.URL, len(config.Channels))
 	samper.begin("mint")
@@ -74,10 +91,10 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		return observation{duration: elapsed, hit: hit, class: class}
 	})
 	configured := phaseFrom("configured", configuredObs)
-	// A 204 prepared miss is expected only for an explicitly cold transcode
-	// channel. Preserve its class while counting the catalog lookup as complete.
+	// Ordinary copy and transcode channels may lack prepared media. Membership
+	// in the prepared cohort still requires a hit, even with additional roles.
 	for index, obs := range configuredObs {
-		if obs.class == "prepared_miss" && containsIndex(transcodeIndexes, index) {
+		if obs.class == "prepared_miss" && expectedPreparedMiss(index) {
 			configured.Failures--
 			configured.Successes++
 		}
@@ -109,12 +126,26 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	surf := phaseFrom("surf", surfObs)
 	for iteration, obs := range surfObs {
 		index := configuredIndexes[iteration%len(configuredIndexes)]
-		if obs.class == "prepared_miss" && containsIndex(transcodeIndexes, index) {
+		if obs.class == "prepared_miss" && expectedPreparedMiss(index) {
 			surf.Failures--
 			surf.Successes++
 		}
 	}
 	appendSampledPhase(&report, samper, surf)
+
+	samper.begin("copy_raw")
+	copyPhase, copySamples := copyWorkload(ctx, endpoint, config, copyIndexes, configuredObs, baseline)
+	appendSampledPhase(&report, samper, copyPhase)
+	for _, sample := range copySamples {
+		switch sample.Point {
+		case "converged":
+			recordConvergenceSample(&report, "copy_raw", sample)
+		case "copy_raw_held":
+			report.Resources = append(report.Resources, sample)
+		default:
+			recordBurstSample(&report, "copy_raw", sample)
+		}
+	}
 
 	samper.begin("programme_boundary")
 	appendSampledPhase(&report, samper, programmeBoundarySoak(ctx, endpoint, config, preparedIndexes, coldIndexes))
@@ -748,7 +779,7 @@ func programmeBoundarySoak(ctx context.Context, endpoint *endpoint, config Confi
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[index] = observeProgrammeBoundary(phaseCtx, endpoint, config, lane)
+			results[index] = observeProgrammeSignals(phaseCtx, endpoint, config, lane)
 		}()
 	}
 	wg.Wait()
@@ -761,271 +792,6 @@ func programmeBoundarySoak(ctx context.Context, endpoint *endpoint, config Confi
 	phase := phaseFrom("programme_boundary", observations)
 	phase.ProgrammeBoundaries = evidence
 	return phase
-}
-
-func observeProgrammeBoundary(ctx context.Context, endpoint *endpoint, config Config, lane boundaryLane) (result boundaryLaneResult) {
-	result = boundaryLaneResult{evidence: ProgrammeBoundaryObservation{Lane: lane.name}}
-	fail := func(class string) boundaryLaneResult {
-		result.observation.class = class
-		result.evidence.Outcome = class
-		return result
-	}
-	if lane.channelIndex < 0 {
-		return fail("cohort_missing")
-	}
-	// Synthetic raw witnesses remain the causal proof for their own parent
-	// stream.  An ordinary prepared origin has no such injected seam, so its
-	// public playlist is consumed directly when no witness is supplied.
-	if lane.name == "prepared" && config.ProgrammeBoundaryWitness == nil {
-		return observePreparedProgrammeBoundary(ctx, endpoint, config, lane)
-	}
-	if config.ProgrammeBoundaryWitness == nil {
-		return fail("evidence_unavailable")
-	}
-	subscription, err := config.ProgrammeBoundaryWitness.Subscribe(config.Channels[lane.channelIndex].ID)
-	if err != nil || subscription == nil {
-		return fail("witness_failed")
-	}
-	defer subscription.Close()
-	connection, class := openRawFor(ctx, endpoint, config, lane.channelIndex, 0)
-	if class != "ok" {
-		return fail(class)
-	}
-	observer, shape, _, class := startValidatedObserver(ctx, config, connection)
-	if class != "ok" {
-		return fail(class)
-	}
-	defer func() {
-		if closeErr := observer.close(); closeErr != nil && result.observation.class == "ok" {
-			result.observation.class = "close_failed"
-			result.evidence.Outcome = "close_failed"
-		}
-	}()
-	result.evidence.Media = shape
-	result.observation.media = shape
-	if err := subscription.WaitInitial(ctx); err != nil {
-		return fail(boundaryWaitClass("initial_witness", err))
-	}
-	if err := subscription.WaitTransition(ctx); err != nil {
-		return fail(boundaryWaitClass("transition", err))
-	}
-	transitionAt := time.Now()
-	atBoundary := observer.snapshot()
-	// A post-transition burst is not continuity. The same admitted reader and
-	// decoder must still advance during the late part of the observation.
-	late := transitionAt.Add(3 * config.ProgrammeBoundaryLateObservation / 4)
-	timer := time.NewTimer(config.ProgrammeBoundaryLateObservation)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return fail("late_observation_timeout")
-	case <-timer.C:
-	}
-	after := observer.snapshot()
-	if ctx.Err() != nil {
-		return fail("post_boundary_decode_failed")
-	}
-	if after.decoderDone || after.decoderErr != nil || after.readErr != nil {
-		return fail("post_boundary_decode_failed")
-	}
-	if !postBoundaryProgressed(atBoundary, after, late) {
-		return fail("post_boundary_stalled")
-	}
-	result.evidence.Outcome = "ok"
-	result.evidence.Transitions = 1
-	result.evidence.ObservationMS = float64(time.Since(transitionAt).Microseconds()) / 1000
-	result.evidence.DecodedFrameDelta = after.frames - atBoundary.frames
-	result.evidence.ReadDelta = after.reads - atBoundary.reads
-	result.evidence.BytesDelta = after.bytes - atBoundary.bytes
-	result.observation.class = "ok"
-	result.observation.duration = time.Since(connection.startedAt)
-	result.observation.firstByte = connection.firstByte
-	return result
-}
-
-func observePreparedProgrammeBoundary(ctx context.Context, endpoint *endpoint, config Config, lane boundaryLane) (result boundaryLaneResult) {
-	result = boundaryLaneResult{evidence: ProgrammeBoundaryObservation{Lane: lane.name}}
-	fail := func(class string) boundaryLaneResult {
-		result.observation.class = class
-		result.evidence.Outcome = class
-		return result
-	}
-	if lane.channelIndex < 0 {
-		return fail("cohort_missing")
-	}
-	signed, _, class := endpoint.mint(ctx, config.Channels[lane.channelIndex].ID)
-	if class != "ok" {
-		return fail(class)
-	}
-	reader := newPreparedHLSReader(ctx, endpoint, signed)
-	observer := startDecoderObserver(ctx, config.Decoder, reader.epoch(), config.RawCaptureBytes)
-	defer func() {
-		// The shared reader owns the in-flight playlist/asset request.  Stop it
-		// before joining the decoder: an epoch reader deliberately has a no-op
-		// Close so ordinary discontinuity handoffs retain that shared session.
-		if err := reader.Close(); err != nil && result.observation.class == "ok" {
-			result.observation.class, result.evidence.Outcome = "close_failed", "close_failed"
-		}
-		if err := observer.close(); err != nil && result.observation.class == "ok" {
-			result.observation.class, result.evidence.Outcome = "close_failed", "close_failed"
-		}
-	}()
-	initialCtx, cancel := context.WithTimeout(ctx, config.RequestTimeout)
-	defer cancel()
-	snapshot, err := observer.wait(initialCtx, func(current decoderSnapshot) bool {
-		return current.frames > 0 && len(current.capture) >= min(config.RawCaptureBytes, 256<<10)
-	})
-	if err != nil {
-		return fail("decode_failed")
-	}
-	shape, err := config.Validator.Validate(initialCtx, snapshot.capture)
-	if err != nil || shape.VideoStreams != 1 || shape.AudioStreams != 1 {
-		return fail("invalid_media")
-	}
-	result.evidence.Media, result.observation.media = shape, shape
-	reader.arm()
-	var transitionAt time.Time
-	for {
-		select {
-		case <-ctx.Done():
-			return fail("transition_timeout")
-		case qualified := <-reader.transition:
-			if qualified {
-				transitionAt = time.Now()
-			}
-			if err := observer.close(); err != nil {
-				return fail("decode_failed")
-			}
-			observer = startDecoderObserver(ctx, config.Decoder, reader.epoch(), config.RawCaptureBytes)
-			if qualified {
-				epochShape, err := waitValidatedPreparedEpoch(ctx, config, observer)
-				if err != nil {
-					return fail("invalid_media")
-				}
-				result.evidence.Media, result.observation.media = epochShape, epochShape
-				goto qualifiedTransition
-			}
-		}
-	}
-qualifiedTransition:
-	late := transitionAt.Add(3 * config.ProgrammeBoundaryLateObservation / 4)
-	observationEnds := transitionAt.Add(config.ProgrammeBoundaryLateObservation)
-	transitions := 1
-	completed := decoderSnapshot{}
-	advanceEpoch := func(qualified bool) string {
-		if ctx.Err() != nil {
-			return "post_boundary_decode_failed"
-		}
-		if err := observer.close(); err != nil {
-			return "post_boundary_decode_failed"
-		}
-		finished := observer.snapshot()
-		completed.frames += finished.frames
-		completed.reads += finished.reads
-		completed.bytes += finished.bytes
-		observer = startDecoderObserver(ctx, config.Decoder, reader.epoch(), config.RawCaptureBytes)
-		epochShape, err := waitValidatedPreparedEpoch(ctx, config, observer)
-		if err != nil {
-			return "invalid_media"
-		}
-		result.evidence.Media, result.observation.media = epochShape, epochShape
-		if qualified {
-			transitions++
-		}
-		return ""
-	}
-	observationElapsed := false
-	for {
-		if !observationElapsed {
-			remaining := time.Until(observationEnds)
-			if remaining <= 0 {
-				observationElapsed = true
-				continue
-			}
-			timer := time.NewTimer(remaining)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return fail("late_observation_timeout")
-			case qualified := <-reader.transition:
-				timer.Stop()
-				if class := advanceEpoch(qualified); class != "" {
-					return fail(class)
-				}
-				continue
-			case <-timer.C:
-				observationElapsed = true
-				continue
-			}
-		}
-
-		after, waitErr := observer.wait(ctx, func(current decoderSnapshot) bool {
-			return postBoundaryProgressed(decoderSnapshot{}, current, late)
-		})
-		if ctx.Err() != nil {
-			return fail("post_boundary_decode_failed")
-		}
-		select {
-		case qualified := <-reader.transition:
-			if class := advanceEpoch(qualified); class != "" {
-				return fail(class)
-			}
-			continue
-		default:
-		}
-		if waitErr != nil || after.decoderDone || after.decoderErr != nil || after.readErr != nil {
-			return fail("post_boundary_decode_failed")
-		}
-		completed.frames += after.frames
-		completed.reads += after.reads
-		completed.bytes += after.bytes
-		break
-	}
-	result.evidence.Outcome, result.evidence.Transitions = "ok", transitions
-	result.evidence.ObservationMS = float64(time.Since(transitionAt).Microseconds()) / 1000
-	result.evidence.DecodedFrameDelta, result.evidence.ReadDelta, result.evidence.BytesDelta = completed.frames, completed.reads, completed.bytes
-	result.observation.class, result.observation.duration = "ok", time.Since(transitionAt)
-	return result
-}
-
-// waitValidatedPreparedEpoch validates the independently decoded bytes for
-// every epoch which can qualify a prepared-HLS programme transition.  An init
-// map from a prior epoch cannot certify a changed stream map.
-func waitValidatedPreparedEpoch(ctx context.Context, config Config, observer *decoderObserver) (MediaShape, error) {
-	if err := ctx.Err(); err != nil {
-		return MediaShape{}, err
-	}
-	snapshot, err := observer.wait(ctx, func(current decoderSnapshot) bool {
-		// A short, valid epoch may end before the ordinary 256 KiB initial
-		// capture target.  It is still independently certifiable when its
-		// decoder has produced frames and its own bounded capture validates.
-		return current.frames > 0 && (len(current.capture) >= min(config.RawCaptureBytes, 32<<10) || current.decoderDone)
-	})
-	if err != nil {
-		return MediaShape{}, err
-	}
-	if err := ctx.Err(); err != nil {
-		return MediaShape{}, err
-	}
-	shape, err := config.Validator.Validate(ctx, snapshot.capture)
-	if err != nil || shape.VideoStreams != 1 || shape.AudioStreams != 1 {
-		return MediaShape{}, errors.New("invalid prepared epoch media")
-	}
-	return shape, nil
-}
-
-func postBoundaryProgressed(atBoundary, after decoderSnapshot, late time.Time) bool {
-	return after.frames > atBoundary.frames && after.reads > atBoundary.reads && after.bytes > atBoundary.bytes && !after.lastRead.Before(late) && !after.lastFrame.Before(late)
-}
-
-func boundaryWaitClass(stage string, err error) string {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return stage + "_timeout"
-	}
-	if errors.Is(err, context.Canceled) {
-		return stage + "_cancelled"
-	}
-	return stage + "_failed"
 }
 
 func startValidatedObserver(ctx context.Context, config Config, connection *rawConnection) (*decoderObserver, MediaShape, time.Duration, string) {

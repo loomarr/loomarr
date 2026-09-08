@@ -10,53 +10,29 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
-// PreparedHLSMode selects the bounded public HLS behaviour used by prepared
-// programme-boundary regressions.
+// PreparedHLSMode selects transport metadata for reader and size-bound tests.
+// Programme qualification uses independently declared signal fixtures instead.
 type PreparedHLSMode uint8
 
 const (
 	PreparedHLSReplacement PreparedHLSMode = iota
-	PreparedHLSBlockedRefresh
-	PreparedHLSQueuedTransition
-	PreparedHLSBlockedAfterQualified
 	PreparedHLSChangedTime
 	PreparedHLSChangedDuration
 )
 
-// PreparedHLS is a public mint/HLS fixture. Its second playlist either
-// advertises a replacement epoch or remains live until the client cancels it.
 type PreparedHLS struct {
-	Server   *httptest.Server
-	Admin    string
-	Blocked  <-chan struct{}
-	Canceled <-chan struct{}
-	// ReleaseNext lets the qualified live epoch finish after the observation
-	// window. TransitionQueued reports that the reader's subsequent playlist
-	// response contained its next genuine discontinuity.
-	ReleaseNext      chan<- struct{}
-	TransitionQueued <-chan struct{}
-	// AssetBodies replaces individual valid prepared-HLS assets by path. It
-	// lets callers exercise the real HTTP asset reader at size boundaries.
+	Server      *httptest.Server
+	Admin       string
 	AssetBodies map[string][]byte
-
-	mode             PreparedHLSMode
-	playlists        atomic.Int32
-	blocked          chan struct{}
-	canceled         chan struct{}
-	releaseNext      chan struct{}
-	transitionQueued chan struct{}
+	mode        PreparedHLSMode
+	playlists   atomic.Int32
 }
 
 func NewPreparedHLS(t testing.TB, mode PreparedHLSMode) *PreparedHLS {
 	t.Helper()
-	f := &PreparedHLS{Admin: "admin", mode: mode, blocked: make(chan struct{}), canceled: make(chan struct{}), releaseNext: make(chan struct{}), transitionQueued: make(chan struct{})}
-	f.Blocked = f.blocked
-	f.Canceled = f.canceled
-	f.ReleaseNext = f.releaseNext
-	f.TransitionQueued = f.transitionQueued
+	f := &PreparedHLS{Admin: "admin", mode: mode}
 	f.Server = httptest.NewServer(http.HandlerFunc(f.serveHTTP))
 	t.Cleanup(f.Server.Close)
 	return f
@@ -75,137 +51,27 @@ func (f *PreparedHLS) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		playlist := f.playlists.Add(1)
-		if playlist == 1 {
-			_, _ = io.WriteString(w, preparedHLSManifest("init-a", "a", ""))
-			return
-		}
-		if f.mode == PreparedHLSChangedTime || f.mode == PreparedHLSChangedDuration {
-			body := preparedHLSManifest("init-a", "a", "")
-			if f.mode == PreparedHLSChangedTime {
-				body = strings.ReplaceAll(body, "12:00:00Z", "12:00:01Z")
-			} else {
-				body = strings.ReplaceAll(body, "#EXTINF:1,", "#EXTINF:2,")
-			}
-			_, _ = io.WriteString(w, body)
-			return
-		}
-		if f.mode == PreparedHLSBlockedRefresh {
-			select {
-			case <-f.blocked:
-			default:
-				close(f.blocked)
-			}
-			<-r.Context().Done()
-			select {
-			case <-f.canceled:
-			default:
-				close(f.canceled)
-			}
-			return
-		}
-		if playlist == 3 {
+		body := "#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-MAP:URI=\"init-a\"\n#EXT-X-PROGRAM-DATE-TIME:2026-09-07T12:00:00Z\n#EXTINF:1,\na\n"
+		if f.playlists.Add(1) > 1 {
 			switch f.mode {
-			case PreparedHLSQueuedTransition:
-				f.signalTransitionQueued()
-				_, _ = io.WriteString(w, preparedHLSQueuedTransitionManifest())
-				return
-			case PreparedHLSBlockedAfterQualified:
-				f.signalBlocked()
-				<-r.Context().Done()
-				f.signalCanceled()
-				return
+			case PreparedHLSChangedTime:
+				body = strings.ReplaceAll(body, "12:00:00Z", "12:00:01Z")
+			case PreparedHLSChangedDuration:
+				body = strings.ReplaceAll(body, "#EXTINF:1,", "#EXTINF:2,")
+			case PreparedHLSReplacement:
+				body += "#EXT-X-DISCONTINUITY\n#EXT-X-MAP:URI=\"init-b\"\n#EXT-X-PROGRAM-DATE-TIME:2026-09-07T12:00:01Z\n#EXTINF:1,\nb\n"
 			}
 		}
-		_, _ = io.WriteString(w, preparedHLSManifest("init-a", "a", "#EXT-X-DISCONTINUITY\n#EXT-X-MAP:URI=\"init-b\"\n#EXT-X-PROGRAM-DATE-TIME:2026-09-07T12:00:01Z\n#EXTINF:1,\nb\n"))
-		return
-	case "/init-a", "/a", "/init-b", "/init-c", "/c", "/init-d":
-		if body, ok := f.AssetBodies[r.URL.Path]; ok {
-			_, _ = w.Write(body)
-			return
+		_, _ = io.WriteString(w, body)
+	case "/init-a", "/a", "/init-b", "/b":
+		body, ok := f.AssetBodies[r.URL.Path]
+		if !ok {
+			body = make([]byte, 188)
 		}
-		_, _ = w.Write(make([]byte, 188))
-	case "/b":
-		if f.mode == PreparedHLSQueuedTransition {
-			f.serveQueuedEpochAsset(w, r)
-			return
-		}
-		_, _ = w.Write(make([]byte, 188))
-	case "/d":
-		if f.mode == PreparedHLSQueuedTransition {
-			f.serveFinalEpochAsset(w, r)
-			return
-		}
-		_, _ = w.Write(make([]byte, 188))
+		_, _ = w.Write(body)
 	default:
 		http.NotFound(w, r)
 	}
-}
-
-func (f *PreparedHLS) signalBlocked() {
-	select {
-	case <-f.blocked:
-	default:
-		close(f.blocked)
-	}
-}
-
-func (f *PreparedHLS) signalCanceled() {
-	select {
-	case <-f.canceled:
-	default:
-		close(f.canceled)
-	}
-}
-
-func (f *PreparedHLS) signalTransitionQueued() {
-	select {
-	case <-f.transitionQueued:
-	default:
-		close(f.transitionQueued)
-	}
-}
-
-func (f *PreparedHLS) serveQueuedEpochAsset(w http.ResponseWriter, r *http.Request) {
-	_, _ = w.Write(make([]byte, 188))
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
-	}
-	select {
-	case <-f.releaseNext:
-		_, _ = w.Write(make([]byte, 188))
-	case <-r.Context().Done():
-		f.signalCanceled()
-	}
-}
-
-func (f *PreparedHLS) serveFinalEpochAsset(w http.ResponseWriter, r *http.Request) {
-	flusher, _ := w.(http.Flusher)
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		_, _ = w.Write(make([]byte, 188))
-		if flusher != nil {
-			flusher.Flush()
-		}
-		select {
-		case <-r.Context().Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
-func preparedHLSManifest(init, media, suffix string) string {
-	return preparedHLSManifestAt(0, init, media, suffix)
-}
-
-func preparedHLSManifestAt(sequence int, init, media, suffix string) string {
-	return fmt.Sprintf("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:%d\n#EXT-X-MAP:URI=\"%s\"\n#EXT-X-PROGRAM-DATE-TIME:2026-09-07T12:00:00Z\n#EXTINF:1,\n%s\n%s", sequence, init, media, suffix)
-}
-
-func preparedHLSQueuedTransitionManifest() string {
-	return "#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:2\n#EXT-X-DISCONTINUITY-SEQUENCE:1\n#EXT-X-MAP:URI=\"init-c\"\n#EXT-X-PROGRAM-DATE-TIME:2026-09-07T12:00:02Z\n#EXTINF:1,\nc\n#EXT-X-DISCONTINUITY\n#EXT-X-MAP:URI=\"init-d\"\n#EXT-X-PROGRAM-DATE-TIME:2026-09-07T12:00:03Z\n#EXTINF:1,\nd\n"
 }
 
 // ShapeValidator is a generic validator double. Callers provide their local

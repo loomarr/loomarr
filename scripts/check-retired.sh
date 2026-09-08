@@ -294,6 +294,12 @@ RETIRED=(
 	# application partition recreated unattended split materialization whenever certified runtime
 	# wiring was absent.
 	'return legacy, legacy|retired: automatic split materialization requires the certified complete-plan gate'
+  'ProgrammeBoundaryWitness|retired: private scheduled signatures and source clocks own programme qualification'
+  'ProgrammeBoundaryRecorder|retired: producer byte events cannot certify decoded programme identity'
+  'syntheticBoundaryWitness|retired: producer identity subscriptions are replaced by private media truth'
+  'observeProgrammeBoundary|retired: programme qualification uses the signed-HLS signal observer'
+  'observePreparedProgrammeBoundary|retired: playlist discontinuities alone are not programme truth'
+
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
 # chosen. A migration that CREATES a table names it, and §16 makes applied migrations immutable —

@@ -205,7 +205,7 @@ func successfulRunReport(t *testing.T) playoutcert.Report {
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
 		ProgrammeBoundaryTimeout: 15 * time.Second, ProgrammeBoundaryLateObservation: time.Second,
-		ProgrammeBoundaryWitness: target.ProgrammeBoundaryWitness(), FaultProfiles: []playoutcert.FaultProfile{playoutcert.FaultParentFailure}, FaultController: target,
+		ProgrammeEvidence: target.ProgrammeEvidence(), FaultProfiles: []playoutcert.FaultProfile{playoutcert.FaultParentFailure}, FaultController: target,
 		Validator: playoutcert.FFprobeValidator{Path: ffprobe}, Decoder: playoutcert.FFmpegDecoder{Path: ffmpeg},
 	})
 	if err != nil {
@@ -450,5 +450,24 @@ func TestPublishReportRejectsUncertifiedCertification(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outputDir, "report.json")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCommandOperatorInputRejectsBeforeOutputOrTargetSetup(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "channels.json")
+	if err := os.WriteFile(manifestPath, []byte(`{"schemaVersion":1,"channels":[{"id":"channel"}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, selection := range [][]string{{"--operator-cohort", ""}, {"--operator-cohort", "private-corpus.json", "--synthetic"}, {"--operator-cohort", filepath.Join(dir, "private-missing.json")}} {
+		stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+		args := append([]string{"--manifest", manifestPath, "--ffmpeg", "missing-ffmpeg"}, selection...)
+		code := run(t.Context(), args, func(string) string {
+			t.Error("environment accessed before rejecting operator selection/input")
+			return ""
+		}, stdout, stderr)
+		if code != 2 || stdout.Len() != 0 || strings.Contains(stderr.String(), "private-") || strings.Contains(stderr.String(), "setup failed") {
+			t.Fatalf("unsafe operator rejection code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+		}
 	}
 }

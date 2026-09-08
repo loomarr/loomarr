@@ -3860,3 +3860,424 @@ Evidence is retained in `delivery-evidence-2026-09-06/source-clock-7a048cd7`, in
 failures, final captures, packet comparisons, overlays and gate logs. Retaining PTS is a prerequisite:
 private binding to the owning session origin and each prepared asset, expected-signature comparison,
 late A/V/read/byte qualification, source gaps, remaining cohorts and independent review remain open.
+
+
+### Playout source-clock checkpoint before private-consumer integration (2026-09-08)
+
+Source-clock repair `7a048cd7` passes `make verify BASE=7f53c395627b27b2e50b118c73562985a818bb6d` (Go, docs, policy) without retry. The parent and HLS preserve the child session clock; live fMP4 uses a 90 kHz movie timescale to avoid audio-origin rounding. Shared-clock regressions fail on the old arguments and pass after correction: exact parent origin (5.67s) and five H.264/HEVC HLS startup/clock cases (3.40s), including delayed audio and a large keyframe. Existing decoded RBR, packet gaps, prepared startup/rollover and eight child codec/copy combinations pass. Final signed-HLS continuation passes (20.41s); the existing 100-prepared-channel/bounded-transcode workload passes (40.81s). This does not establish private programme identity. Binding decoded observations to the owning session origin and each prepared asset, implementing the expected-signature/late-A/V consumer, repairing source gaps, mixed transitions, remaining cohorts and independent review remain required. Prior startup failures, fixture corrections and detailed evidence remain in the progress journal. No operator, hardware, provider or wider-beta qualification is claimed.
+
+
+### Programme-observer retirement and replacement coverage (2026-09-08)
+
+The local replacement removes the producer-event recorder, subscription interfaces and both obsolete
+programme observers. HLS discontinuities now notify decoder lifecycle only; the private expected
+schedule and decoded audio/video own transition qualification. The source-generation counter remains
+in the isolated target, independent of producer-event recording. The retirement guard adds the five
+removed implementation identifiers. This is uncommitted work on published `4d1e9edf`, not a gate waiver
+or a completed playback certificate.
+
+| Retired regression obligation | Replacement evidence |
+| --- | --- |
+| Producer identity must advance within the same source; malformed and stale events cannot qualify | `TestProgrammeSignalsRejectWrongSignalsAndSourceReplacement`, `TestProgrammeTruthRequiresCompleteUnambiguousContiguousSequence`, `TestProgrammeSignalCheckCannotChooseSequenceFromObservedProgrammes` and immutable frozen-truth coverage replace event trust with actual expected media and bound source clocks. |
+| Buffered pre-arm bytes cannot establish the initial programme | `TestProgrammeSignalCheckExcludesBufferedPreArmMedia` and epoch-reset coverage preserve arm time and expected succession. |
+| An early burst or missing initial/next programme cannot pass while input remains open | `TestProgrammeSignalsRequireLateAudioVideoAndTransport` includes healthy, early-burst, audio-stop, video-stop, no-transition, no-initial-audio, transport-error and blocked-body controls. |
+| Natural EOF or transport/decoder error must join resources and fail qualification | `TestProgrammeSignalsCleanDecoderEOFWithoutDiscontinuityRejects` covers first and replacement decoder EOF; the wrong-signal/source suite and late-media suite retain decoder/transport error controls. |
+| Cancellation after initial or later validation must join the input and decoder | `TestProgrammeSignalsCancellationAfterInitialValidation` and `TestProgrammeSignalsCancellationAfterValidationJoinsEpochs` assert terminal decoder counts and input closure. |
+| A blocked playlist refresh must cancel before observer join | `TestProgrammeSignalsBlockedRefreshCancelsBeforeJoin` retains the deliberately blocked refresh plus invalid initial shape. |
+| Every replacement decoder must independently validate its media shape | `TestProgrammeSignalsValidateEachDecoderEpoch` covers healthy and missing-audio replacements. |
+| A queued discontinuity after observation expiry must be consumed, validated and continued | `TestProgrammeSignalsQueuedEpochAfterLateWindowCanContinue` qualifies two actual expected transitions with late A/V/transport; `TestProgrammeSignalsQueuedEpochAfterLateWindowStillRequiresValidation` rejects invalid third-epoch shape. |
+| Changed replay coordinates and bounded asset/body ownership remain invalid | The original replay-coordinate test remains; reader/response-bound tests continue to use the reduced neutral HLS fixture. |
+
+Mapping the old stall tests exposed a test-window weakness: the new scheduled late point was about
+512.5 ms after arm, but the negative control timed out at 400 ms. Its deadline is now one second and
+an otherwise identical healthy control must pass. Isolated overlays disabling only the audio-arrival
+or video-arrival predicate both fail the corresponding stopped-stream test at about 522 ms. The normal
+implementation passes. This changes test timing only; signature bands, the 100 ms boundary guard and
+prepared latency requirements are unchanged.
+
+Replacement controls passed before removal (8.777s); retained reader/control checks passed afterward
+(10.884s). The complete certification and fixture package race runs passed (59.312s and 1.187s).
+Migrated actual prepared HLS passed one boundary (10.05s) and further epochs (13.00s). The prior actual
+live check still failed `programme_audio_mismatch`; normal audio ownership remains held for the
+maintainer's explicit prepared MPEG-TS copy-contract decision. Operator private truth, live initial
+asset/source binding negatives, independent transport-versus-decoder progress controls, mixed and
+remaining qualification cohorts, the affected full gate and independent review are still required.
+
+The final retirement-tree live recheck also fails `programme_audio_mismatch` (12.72s total / 5.85s
+observation). Scoped guarded lint reports zero issues and `make docs-lint` passes. No full affected
+verification or protected merge evidence is claimed for this unpublished checkpoint.
+
+
+### 2026-09-08 — Independent transport freshness and initial asset binding probe
+
+The shared scripted signal decoder can now prefetch bounded batches and pace its decoded callbacks
+independently from input reads. `TestProgrammeSignalsBufferedOutputCannotReplaceLateTransport`
+checks identical one-second healthy and buffered cases. Five initial bytes establish the transition;
+35 more arrive before the late interval, then continue producing audio/video callbacks. The observer
+rejects this buffered case while accepting the healthy one, closes both bodies and joins its decoder.
+The focused race check passes (2.838s). An isolated overlay disabling only `lastRead` freshness causes
+the negative to fail with an incorrect success at 522.549ms, despite 35 post-boundary reads/bytes and
+15 late decoded video frames. Thus fresh decoded callbacks and positive read deltas cannot substitute
+for reads during the late interval. Production observer logic and media assertions are unchanged.
+
+A separate scratch-only application probe exercises the concrete synthetic truth source. Given a
+current channel clock, its first `ResolveClock` accepts a nonexistent segment with a retired epoch
+and an hour-old advertised time. The expected rejection fails (0.454s), confirming that the current
+live resolver binds its clock to a channel lookup rather than asset ownership. This is an unresolved
+adapter defect, not evidence that a full stale-media observation qualifies: the complete observer has
+additional signal, timeline and transport checks. The repair must bind the admitted asset and source
+generation, including replacement between clock resolution and fetching; checking the current channel
+clock or path alone cannot settle that race. Prepared immutable publication truth uses a different
+binding path. No production audio-contract change, worker-budget exception or operator qualification
+is inferred from these local checks.
+
+The complete certification and shared-fixture race suites pass (60.784s / 1.176s); scoped pinned
+lint reports zero issues, docs lint and `git diff --check` pass. No production media code changed
+in this follow-up, so prior pinned prepared successes and the live audio failure remain the latest
+real-media evidence; they were not rerun. This is still unpublished WIP without a full affected gate.
+
+
+### 2026-09-08 — Bind private references to admitted media and live source lifetime
+
+The initial-asset defect is repaired locally. `HLSManager.OpenAssetSource` opens the asset from a
+single remux and returns the exact process retained by its sink lease. It cannot substitute the
+channel's latest process for the asset's original supplier. Synthetic live truth checks that handle
+against its current source clock and freezes bounded private bytes. Retired or canceled block
+requests cannot overwrite a newer recorded generation. The observer compares signed HTTP bytes
+against the reference as each read arrives, before decoding, and checks source lifetime both on
+reads and before success. Private reference reads do not contribute to transport progress. Prepared
+truth also checks the independently qualified initialization-map digest, then verifies its signed
+bytes. This replaces the unpublished clock-only resolver; there is no optional clock-only path for
+programme qualification.
+
+New controls cover changed, short and additional response content, mismatched initialization,
+retired sources, exact opened-file/source ownership across replacement, and stale source registration.
+The replacement byte intentionally decodes to the same signal as the original. An isolated overlay
+removing only byte comparison incorrectly qualifies it at 521.515ms; the test fails as required.
+Another overlay removing final source validation incorrectly qualifies buffered callbacks after
+source retirement at 513.322ms. Normal controls pass. The existing independent transport freshness,
+expected sequence, per-epoch validation and cancellation tests continue to pass.
+
+- Full certification / shared fixture / playout race suites: PASS 62.272s / 1.196s / 10.563s.
+- Application synthetic lifecycle/truth and command rejection/finalization controls: PASS 14.935s /
+  1.416s; these are not full command certification acceptance.
+- Real signed-HLS restart, reused segment name, fresh-observation binding and original shutdown /
+  cleanup assertions: PASS 19.625s with race detection and host FFmpeg 9.0.1.
+- The attempt to run that app test in the pinned container stopped in package startup because its
+  required Rust image worker and Cargo were absent. No test ran there and no startup gate was bypassed.
+- Separate pinned observer media tests did run: prepared one-boundary PASS 10.24s, further epochs PASS
+  12.99s; live remains FAIL `programme_audio_mismatch` (14.06s total / 5.82s observation).
+- Scoped pinned lint reports zero issues; generated architecture docs, docs lint and the prior
+  173-identifier retirement guard pass. The later app test additions also pass scoped lint.
+
+The existing AAC join and source-gap findings remain unresolved. This source-binding repair changes
+neither audio ownership nor signature ranges. Operator truth, remaining fault and mixed/codec/capacity
+cohorts, the affected full gate and independent review remain required. The audio-contract and
+worker-budget exception questions remain unanswered. Nothing in this unpublished checkpoint is a
+merge, operator qualification or beta-readiness claim.
+
+
+### 2026-09-08 — Preserve earlier HLS asset close failures
+
+Extending `TestProgrammeSignalsCloseFailureCannotQualify` to the first asset reproduced a false
+success at 521.395ms. The asset wrapper discarded the close error at EOF, and successful cleanup of
+the later asset could no longer recover it. The HLS reader now owns EOF closure, retains close
+failures across advancement and returns them during final cleanup. A decoder failure caused by
+this close is classified as `close_failed`; other media failures remain failures. Both first-asset
+and final-asset controls require rejection and exactly one underlying close.
+
+The initial regression is retained as RED (1.333s total); focused corrected controls pass (1.873s).
+After simplifying closure to one reader owner, the complete certification and shared-fixture race
+suites pass (62.403s / 1.190s), and scoped pinned lint has zero issues. No real-media run was repeated:
+this follow-up changes transport error handling, and the previous pinned prepared successes and
+live audio mismatch remain the latest actual media evidence. The affected full gate has not run.
+
+A fresh read of #1037 confirms that operator-supplied media is an optional codec-diversity cohort in
+the same harness, not a second capacity harness. The current isolated target generates two shared
+H.264/AAC sources, packages one fixed prepared rendition, reports H.264 and supplies empty live
+track/format/copy metadata. The command has no external `ProgrammeEvidenceSource` input. Therefore
+adding a manifest of expected signatures alone would not implement real codec diversity or bind
+live source lifetime. The next operator-cohort change must accept byte-verified source media and
+independently predeclared signal expectations, feed actual media profiles through the normal
+resolver/packager, and reuse the existing source-bound evidence port. Caller role labels must not
+stand in for measured codecs or establish qualification. No operator schema, source exporter,
+real-media qualification, provider/hardware access or new authority is claimed in this checkpoint.
+
+The audio-contract and worker-budget exception decisions are still unanswered. Both draft PR heads
+remain unchanged; this is local unpublished work with required qualification and review outstanding.
+
+
+### 2026-09-08 — Operator cohort declaration and staging preflight
+
+The private schema-v1 loader validates an ordered full-Channel mapping, exactly two programme sources
+per Channel, explicit disjoint signal ranges, canonical source hashes and declared byte lengths.
+Before touching source content it enforces the 1 MiB manifest, 64-source, 256 MiB per-source and
+1 GiB aggregate bounds. It uses a directory handle for corpus containment and rejects source or
+manifest FIFOs without waiting for a writer on Unix. No process or network request is part of this
+preflight. Staging reopens each input through the same contained root and checks its bytes while
+copying into a new private directory; identical declarations share one copy. Failed staging removes
+partial output and surfaces removal failure. Original media remains read-only. The module exposes
+private source values for later audit registration; registration and runtime integration are not
+implemented by this checkpoint.
+
+Controls cover a valid shared corpus, exact manifest-size acceptance, unknown/duplicate/case-colliding
+JSON keys, missing range endpoints and silence truth, ambiguous signatures, Channel order and
+coverage, source/count/aggregate bounds, hash and length mismatch, escaped paths, symlink replacement,
+manifest/source/replacement FIFOs, canceled or unloaded input, immutable staged copies and cleanup
+after an earlier source has already copied. Disabling only digest comparison in a scratch overlay
+makes both before-load and after-load same-size mutation controls fail: the altered sources are
+incorrectly admitted/staged (expected RED 0.245s). Normal focused controls pass (1.327s), and final
+controls after adding explicit cleanup-error reporting pass (1.328s). Scoped pinned lint has zero
+issues. The complete certification/fixture race suites pass (62.694s / 1.154s); that run preceded the
+small cleanup-error reporting follow-up, which is covered by the final focused controls and lint.
+
+Windows production-library compilation passes. Windows test compilation fails in unchanged
+`signal_decoder_test.go` references to the POSIX-only `execfixture.POSIX`; no test was skipped or
+changed to bypass that failure, and no Windows runtime acceptance is claimed. Actual media tests
+were not repeated because this input module is not connected to media execution yet. The previous
+pinned prepared successes and live audio mismatch remain current evidence.
+
+Next integration must stage the corpus before target startup, probe actual source profiles and
+bounded durations, feed them through normal resolver/packager selection, apply the predeclared
+signatures per Channel, and register private input/staging values in publication auditing. The
+command must not accept an operator flag that silently runs generated fixtures. No operator cohort
+has been qualified, no new command option is available, and the audio-contract/worker-budget
+exceptions are still unanswered. This remains unpublished WIP without a full affected gate or final
+independent review.
+
+The same operator-input controls also pass in the pinned Linux/ARM64 container with networking
+disabled, including all FIFO and symlink-replacement cases. These are filesystem/input controls,
+not FFmpeg media qualification.
+
+
+### 2026-09-08 — Operator cohort isolated-target integration
+
+The isolated target now takes the loaded private corpus explicitly, checks the frozen Channel
+mapping, stages hash-verified private copies and probes each distinct source. Measured formats and
+tracks feed the normal copy planner; generated fixtures retain their intentional cold-transcode
+workload. Sources must have exactly one video and audio stream, usable format facts and a duration
+covering the programme within the 90-second bound. Output remains the declared baseline H.264
+policy. This does not infer codec or capacity qualification from caller-supplied role labels.
+
+Source pairs and expected signatures are selected per Channel. Prepared output is shared only for
+the same source and rendition, and its private asset truth remains scoped to Channel and programme
+variant. Missing Channel truth rejects instead of inheriting generated expectations. Private corpus
+and staged paths plus observed stream titles participate in publication auditing; a dynamic report
+value containing an input path makes publication unavailable.
+
+The real media integration test loads two fixture files through the operator-input API, prepares two
+Channels with opposite source orders, deletes the originals, and checks both expected transitions
+through ordinary signed HLS. Pinned Linux/ARM64 with networking disabled passes in 13.35s (6.09s and
+6.00s observations). Existing generated prepared checks pass in 9.90s and 12.90s. Live transcode still
+fails `programme_audio_mismatch` in 12.67s total / 5.84s observation; no assertion or signature was
+relaxed. These fixtures prove routing and private staging, not real operator corpus qualification.
+The pinned test binary preceded only removal of an unused target getter and a stronger Channel-map
+unit assertion; final source behaviour is covered by the host checks below.
+
+Final certification race tests pass in 62.526s; the shared fixture suite is cached green. Focused
+application profile, resolver and truth controls pass in 1.440s. Scoped pinned lint reports zero
+issues. Architecture documentation was regenerated. This remains uncommitted work on published
+head `4d1e9edf`, without a full affected gate or final independent review.
+
+Next: connect the command to explicit operator input without silent synthetic fallback, bind report
+provenance to the exact corpus declaration, and complete codec/mixed/capacity/fault qualification.
+The audio contract and worker-budget exception are still awaiting decisions; no workers launched,
+operator files accessed, provider/model/hardware qualification run, or live stack touched.
+
+
+### 2026-09-08 — Operator command and corpus provenance
+
+`--operator-cohort PATH` now selects the explicit isolated operator target. It rejects an empty
+selection or combination with `--synthetic`, validates all private input before output setup, and
+includes loading/staging in the suite context. The corpus directory handle closes after target
+preparation and before the run; a close failure aborts publication and cleans the target. Failure
+paths retain their input cleanup. Existing isolated bounds and explicit fault-scope checks apply.
+
+The loaded cohort freezes SHA-256 of the exact admitted document. The isolated evidence source
+carries that identity after its input handle closes, and `Run` publishes optional
+`target.cohortManifestSha256` beside the existing ordered Channel/role manifest hash. The new schema-v3
+field is canonical lowercase SHA-256 and audited dynamic data. Invalid values reject before target
+access; private-input collisions remain unavailable. Generated fixtures have no operator digest.
+Changing the manifest file after loading cannot change the admitted identity.
+
+The maintained command test builds two media fixtures in reversed order from the built-in sources,
+loads them through the operator option, observes the declared prepared programme transition and
+checks the exact published digest and exclusion of private input paths/names. It also requires the
+missing transcode lane to remain `cohort_missing` and the report to stay uncertified. Pinned
+Linux/ARM64 with networking disabled passes in 17.74s. Its initial 17.46s run correctly observed
+prepared media and published the hash, but the new test incorrectly expected zero phase failures
+for a prepared-only corpus; the final assertion explicitly checks both prepared success and absent
+transcode refusal. No production condition or existing test was relaxed.
+
+Final certification race tests pass in 62.466s; shared fixture tests are cached green. Input/digest
+controls pass (1.301s), and final application/command controls pass (1.429s / 1.381s). Scoped pinned
+lint reports zero issues and architecture docs were regenerated. This step does not alter the live
+pipeline; the preceding pinned `programme_audio_mismatch` remains unresolved. No real operator
+corpus, codec diversity, mixed transitions or capacity qualification is claimed. The full affected
+gate and independent review remain required before publication of this local WIP.
+
+Both open PRs were rechecked: #1157 remains draft at `4d1e9edf`; #1158 remains a clean draft at
+`d13a797c`. No code commit, push, merge, worker launch or worktree cleanup occurred. The audio-contract
+and worker-budget decisions remain unanswered. Next work is real codec/mixed/capacity and remaining
+fault qualification plus the held audio/source-gap repair, followed by complete delivery gates.
+
+
+### 2026-09-08 — Real-codec capacity check exposes unsafe copied seeks
+
+The #1037 acceptance recheck confirms that declared codec labels and forced-transcode scale
+fixtures do not prove actual copy/audio-conversion coexistence at capacity. A new guarded test
+creates and probes real H.264/AAC, H.264/EAC3, HEVC/AC3 and different-resolution H.264/AAC sources,
+loads the operator corpus, and uses the existing held-viewer, raw-burst, resource-sampling and
+convergence machinery. It requires video-copy and audio-only conversion to leave the video budget
+free, a video transcode to consume the single declared slot, excess demand to receive HTTP 503,
+held viewers to keep decoding, and capacity/cleanup to recover after release. This is a bounded
+software-profile check, not measured hardware or whole-suite certification.
+
+That test is RED: the first H.264/AAC copy stream starts with zero transcode cost, but the following
+H.264/EAC3 stream returns HTTP 502 (33.33s total). The remaining overload/recovery assertions have
+not been reached. The EAC3-only minimized overlay passes (12.24s); retaining just the two initial
+Channels reproduces HTTP 502 (31.97s). Existing process diagnostics show the preferred parent
+cannot discover codec parameters, followed by a baseline retry that also fails startup. This is
+not evidence that EAC3 decoding itself is broken.
+
+A scratch overlay captures the actual EAC3 child argument vectors and copies only generated fixture
+media. The first two children seek to 22.076s and 27.087s within a programme ending at 30s. Source
+video keyframes are at 0, 10, 20 and 30 seconds. Replaying those finite children with pacing removed
+for packet inspection exits successfully but produces **zero video packets**, alongside 373 and
+138 AAC packets. FFprobe still lists a video stream from transport metadata; it does not prove
+video payload exists. The next child seeks to 0.001s, discards the opening keyframe, and emits only
+500 of the programme's 750 video frames: its first video packet is about ten seconds late.
+The signed/raw HTTP failure and finite packet proof are both retained.
+
+The cause is eligibility for copied video at the requested seek, not just codec compatibility.
+The branch's output seek correctly excludes preceding-keyframe payloads but can discard every
+usable keyframe before the slot end, or the opening keyframe after a small scheduling delay.
+The current format-only copy plan does not supply a safe startup proof. The replay preserves all
+captured arguments except input pacing and the progress pipe, and does not claim live latency.
+No production fix, keyframe tolerance, fixture-shortening workaround or relaxed assertion has
+been applied. The new regression remains red; the existing AAC decoder-join defect is separate.
+
+Only the guarded capacity test and its test-only observation/convergence accessors were added in
+this checkpoint. Scoped lint reports zero issues. No full affected gate ran; prior race/command
+successes remain historical evidence for the preceding source state. Debug instrumentation exists
+only in clearly named scratch overlays, with none in repository source. This defect is on the
+playout PR branch; current main lacks the branch's output-seek change, so no new current-main bug
+issue was filed. It remains tracked by #1037/#1116 and draft #1157.
+
+Next: preserve the long-keyframe regression and establish copy eligibility from the requested
+source interval, including tiny initial offsets and end-of-programme seeks. Retain complete media,
+no-preroll/timestamp assertions and atomic admission accounting. Then rerun the full codec/capacity
+scenario and connect explicit copy-role coverage into the command's report: roles are currently
+accepted, but the full-catalog prepared-miss path recognizes only explicit transcode roles.
+Audio ownership and worker-budget decisions are still unanswered. No code commit, push, merge,
+worker launch, operator-media access or live-stack action occurred.
+
+
+### 2026-09-08 — Copy-start proof and atomic admission repair
+
+Ordinary-source copying now requires both format compatibility and a keyframe proof for the requested
+finite interval. The shared ffprobe model reads at most 256 video packets under a one-second context
+and 1 MiB output bound. A non-discard keyframe must lie within one source frame of the requested
+point and before programme end. Missing, malformed or unavailable proof removes video-copy
+eligibility. The API makes that decision before the existing atomic `AdmitProgram` call; denied
+video capacity cannot start either the source encoder or the fallback card. Audio compatibility
+remains independent, and prepared-publication playback keeps its existing copy contract.
+
+A proven frame covering a sub-frame offset supplies the output seek. Its millisecond rendering
+rounds down so a fractional keyframe cannot be discarded by argument rounding. Parent output keeps
+the shared source clock; a standalone proven copy uses the same trim at its own output origin.
+Pure controls reject preceding GOPs, keys beyond the finite end, discard/nonkey packets, malformed
+PTS/origin/rates, and validate fractional starts. Process controls retain valid evidence, cancel a
+blocked process, and reject oversized output even when it is valid JSON plus trailing whitespace.
+The bounded writer does not embed `bytes.Buffer`: a scratch mutation restoring its promoted
+`ReadFrom` bypasses `Write` via `io.Copy` and falsely grants proof to oversized output (expected RED
+0.198s). The final bounded implementation passes (2.294s with race detection).
+
+The maintained sparse-keyframe packet regression now passes for both parent and standalone output
+(0.41s pinned Linux/ARM64): a one-millisecond offset retains the opening frame; an eleven-second seek
+in a twelve-second source has no safe keyframe and transcodes instead. Each one-second result must
+contain at least 24 video packets and 40 audio packets, with the first video within one frame of the
+required parent time or initial standalone audio. An initial new standalone-late assertion wrongly
+assumed MPEG-TS had a fixed zero mux origin; its replacement checks initial A/V alignment and retains
+the complete packet-count requirement. Existing common-clock payload/seek/end tests for all four
+copy combinations across H.264/HEVC, and prepared MPEG-TS audio/video-copy assertions, pass unchanged.
+
+Capacity coverage retains the original long-GOP H.264/AAC and H.264/EAC3 media in its own ordinary
+HTTP test: both now start, remain decodable and correctly consume two video slots (14.45s). A
+separate all-intra source pair supplies actual zero-video-cost copy and EAC3-to-AAC coverage. Alongside
+HEVC/AC3 conversion at the single video slot, the full scenario proves H.264 overload refusal, held
+viewer decoding, release convergence, subsequent H.264 admission and final convergence (38.45s).
+This separates proven copy eligibility from codec labels while retaining the original failure
+sources. It does not qualify arbitrary operator media or measured hardware.
+
+Full unguarded playout race coverage passes (11.857s). Focused API/program/admission coverage passes
+(6.108s), including negative proof and full-capacity refusal; application controls pass (1.411s).
+Scoped lint reports zero issues. The capacity binary predates only standalone-output handling and
+bounded-writer hardening; final packet/process controls and host race checks cover those follow-ups.
+Architecture docs were regenerated. No affected full gate or independent review is claimed.
+
+The AAC decoder-join issue remains separate and unresolved. Explicit copy-role coverage still needs
+to reach `Run`'s configured/surf handling and report phases. Source-gap/mixed/fault qualification and
+full delivery gates remain. The audio-ownership and worker-budget exceptions are unanswered; no
+worker was launched, no operator/provider/hardware access was used, and no code commit/push/merge
+occurred. The draft remains on published head `4d1e9edf`; this is local WIP.
+
+### 2026-09-08 — Explicit copy workload reaches the certification report
+
+Tracking #1037 / #1116; delivery remains draft #1157 at published `4d1e9edf`. This checkpoint is uncommitted.
+
+- Full-catalog lookup and surf now accept a prepared-only miss for an explicit ordinary copy or transcode Channel outside the prepared cohort. Prepared membership still requires a hit, including contradictory additional roles; audio labels alone do not excuse missing prepared media. Every catalog attempt and its original HTTP class remain.
+- `copy_raw` runs every declared copy Channel in concurrency-bounded batches. It requires a cold source, validates initial A/V, holds viewers through later transport/frame progress, samples actual sessions/cost, and converges between batches. An absent copy cohort explicitly remains unqualified. Role labels cannot turn video encoding into copy coverage.
+- The first real-media report exposed a distinction from the earlier single-sample capacity test: the documented conservative cold-start reservation appears in the overall phase maximum, even for a programme that proves copy. The first draft incorrectly rejected that allowed reservation (copy control RED; sparse-keyframe control PASS). The final report retains the startup peak and records a separate `copy_raw_held` maximum over the complete sampled held-playback interval. It rejects initial or later held cost and unavailable measurements. No production admission rule or budget was relaxed.
+- Pinned Linux/ARM64 `TestOperatorCopyReportObservesActualAdmission` passes **50.63s** (copy **24.48s**, sparse-keyframe **26.14s**). Both use actual H.264/EAC3 operator inputs and the complete `Run` route. Copy produces baseline H.264/AAC with held cost zero; sparse keyframes decode but retain held cost one and `copy_raw_failed`. Both publish audited, uncertified reports preserving missing transcode coverage and the deliberately insufficient boundary observation interval. This is report/codec-admission evidence, not full programme-boundary certification.
+- `go test -race ./internal/playoutcert ./internal/testkit/playoutcertfixture -count=1` passes **70.320s / 1.236s**. New controls cover six copy Channels in two batches, prepared/copy/transcode role combinations, missing lanes, fixed-vocabulary versus dynamic publication collisions, and a cost transition after initial media. Scoped pinned lint reports zero issues.
+- The generic HTTP fixture uses `exp=1`; its publication audit correctly refuses collisions with numeric output. A diagnostic overlay established the exact synthetic collision. The audit was not relaxed; fixed-vocabulary tests and the real target separately prove publishability. An initial Docker launch retained the image's application entrypoint, so it supplied no test evidence; that isolated, network-disabled container was stopped and removed. All reported pinned tests explicitly override the entrypoint.
+
+The generated hundred-Channel cohort still lacks explicit copy coverage, so its new copy phase cannot certify until a real copy workload is supplied; its original assertions remain. General source codec coverage and mixed/fault scenarios remain distinct from these measured report controls. Live AAC join/source-gap failure, pending audio-contract decision, full affected verification, final independent review and publication of WIP remain outstanding. No real operator, provider, hardware or beta acceptance is claimed.
+
+### 2026-09-08 — Generated copy coverage and short-child pacing
+
+Tracking #1037 / #1116; draft #1157 remains published at `4d1e9edf`, with this checkpoint uncommitted.
+
+Generated copy Channels now receive their own H.264/AAC stereo source pair with a keyframe at every frame. The target probes actual formats/tracks through the operator source-profile validator and uses ordinary seek-local proof and atomic admission. Prepared/transcode Channels retain their original one-second-GOP, mono source pair and deliberate transcode plan. Every pair retains its predeclared two-programme signals and private-input auditing. The three existing certifying target tests and the command fixture add one copy Channel without removing prepared/transcode viewers or weakening boundary, capacity, cleanup or fault assertions. The main case now contains 100 prepared, five transcode and one copy Channel.
+
+The generated-copy report first passed with thirty-second programmes (pinned, **14.00s**), but the 106-Channel six-second case failed its held copy progress (**50.25s** overall). A two-Channel six-second reproduction retained the failure (**16.12s**), with its last read/frame about 428/426 ms before the end of the held window. Child arguments and frame/read timing were captured only through scratch overlays.
+
+The short child omitted `readrate_initial_burst`. [FFmpeg's upstream demuxer](https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/fftools/ffmpeg_demux.c) selects its half-second default for both omission and explicit zero; see also the [original upstream change](https://ffmpeg.org/pipermail/ffmpeg-devel/2023-May/309117.html). A zero-valued overlay remained RED (**16.16s**, last read/frame 433/411 ms old). The same reproduction with `0.000001` seconds, the smallest positive microsecond value, passed (**14.18s**, last read/frame 29/24 ms old). This avoids the unintended default while retaining the ten-second tune-in burst for sufficiently long mid-programme starts. Prepared children retain their unpaced input and shared-mux authority. The argument tests now check the effective value rather than treating option absence as no burst. No acceptance interval, signature range or admission budget changed.
+
+Final validation without diagnostic overlays:
+
+- Pinned Linux/ARM64 generated-copy `Run`/publication cases: **27.80s** total; six-second **14.21s**, thirty-second **13.58s**. Both require real H.264/AAC, zero held video cost, continuing decoded frames/reads and cleanup. They retain deliberate missing-transcode/boundary refusals, so neither claims whole-suite certification.
+- Full original workload plus copy: **57.61s RED**. Copy coverage, 106 catalog attempts, 100 prepared hits, six documented misses and parent-failure phase/qualification assertions pass before the existing boundary assertion rejects live `programme_audio_mismatch`. Prepared boundary evidence passes. Assertions after that failure are not claimed as executed. The audio-ownership proposal remains unanswered and unchanged.
+- Host real-source selection/conformance/keyframe proof test: **3.360s PASS**. This verifies both variants, ordinary/copy source separation, private inputs and initial/fractional/later seek proofs. The Linux application-test binary could not initialize its unrelated Rust image-worker prerequisite in the old pinned runtime image; its bootstrap/preflight logs are not passing test evidence. The complete pinned report cases above exercise the actual generated target separately.
+- `go test -race ./internal/playout -count=1`: **11.852s PASS**. API programme controls: **6.135s PASS**. Focused application/command controls: **17.654s / 1.384s PASS**. Scoped pinned lint reports zero issues.
+- Pinned existing parent/standalone copy-start controls **0.39s**, all eight H.264/HEVC common-clock/seek/end copy combinations **1.76s**, and prepared MPEG-TS publication copy **0.01s**, all PASS.
+
+Generated copy coverage is implemented; full qualification is still incomplete. Broader actual source-codec and mixed/fault coverage, live audio/source-gap repair, full affected verification, independent review and code publication remain. No operator installation, provider, hardware or beta acceptance is inferred.
+
+### 2026-09-08 — Codec declarations require measured source evidence
+
+Tracking #1037 / #1116; unpublished checkpoint under draft #1157 at `4d1e9edf`. The tracking issue explicitly requires real codec diversity, so role labels alone cannot establish the declared input cohort.
+
+The isolated target now checks `transcode_h264`, `transcode_hevc`, `audio_aac`, `audio_ac3` and `audio_eac3` against the actual measured codecs of that Channel's two programme sources before opening its listener. Every declared codec role must have a matching source in the pair. Mixed pairs can supply several roles, but another Channel's files cannot satisfy a declaration. Mismatches abort setup with a fixed error; no report, source path, title or free-form probe error is published.
+
+The operator path reuses its existing per-file probe results. The generated ordinary pair is now probed once per source for declaration validation; those facts remain separate from the copy-planning map so the deliberate cold transcode workload stays intact. Generated copy paths reuse their measured facts. No new evidence interface, public schema field, dependency or operator access was added. This is source-codec membership validation, not proof that every source played or that a HEVC output encoder was qualified. Runtime capacity, decoded succession, mixed-codec handoffs and the exact hardware/profile remain separate evidence.
+
+Validation:
+
+- Eleven application contract cases cover all five codec roles, both source positions, mixed pairs, mismatches, unknown facts and all-role requirements. `go test -race ./internal/app -run '^TestCertification' -count=1` passes **1.482s**.
+- Pinned Linux/ARM64 real-codec negative: **3.17s PASS**, operator **1.05s**, generated **2.12s**. An AAC Channel falsely labelled EAC3 is rejected even with a genuine EAC3 peer present. Both constructors return no target and the same fixed error.
+- The existing valid mixed-copy/H.264/HEVC/AAC/EAC3/AC3 source capacity scenario passes **38.70s**, retaining initial media, admission cost, overload refusal, held decoding and cleanup/recovery assertions. This remains a baseline H.264 output test.
+- Pinned generated-copy reports pass **27.94s**, six-second **14.31s** and thirty-second **13.62s**. Their absent capacity/boundary evidence remains unqualified.
+- Host real-source separation/conformance/seek-proof control passes **3.391s**, demonstrating that the new ordinary-source probes do not enable video copy for the deliberate transcode lane. Scoped pinned lint has zero issues; architecture generation and diff checks pass.
+
+The latest full 106-Channel result remains the preceding checkpoint's **57.61s RED** at live `programme_audio_mismatch`; it was not rerun for this isolated input-validation change. Audio ownership and the final worker-review budget decisions remain unanswered. No full affected gate, independent review, code publication, merge, operator/hardware/provider qualification or beta acceptance is claimed.
+
+
+### 2026-09-08 — Stored broadcast codec reaches certification programme routing
+
+Tracking #1037 / #1116, draft #1157. The target persisted Channel codec and play-URL negotiation used the real store, but its programme resolver returned H.264 unconditionally. A real-media regression persisted HEVC on an isolated generated-source Channel and proved that native tuner output still contained H.264/AAC (**10.533s RED**). Source roles continue to describe inputs; this test uses H.264 sources so native HEVC output requires an actual encoder.
+
+The certification resolver now delegates its stored codec read to the existing production resolver. No source label changes the output policy; initial target Channels still default to H.264. The final host FFmpeg 9.0.1 test passes under race detection (**20.128s**): native tuner HEVC/AAC decodes 97 video frames and 186,368 audio samples, signed native HEVC/fMP4 decodes 100 frames and 194,560 samples, and an incapable client's signed baseline H.264/TS decodes 100 frames and 194,560 samples. All captures have exactly one video and audio stream. An intermediate test incorrectly expected an explicit baseline query; the API intentionally omits it, and the test now checks that documented representation. Scoped pinned application lint reports zero issues.
+
+This is maintained real-route encoding/decoding evidence on the host, not pinned Linux, complete report codec coverage, mixed-boundary acceptance or hardware qualification. The command still initializes its baseline policy and default HLS client; broader native-profile report scenarios remain required. The latest full 106-Channel result is still RED at live programme_audio_mismatch, and the audio ownership decision remains pending. Accumulated implementation is being checkpointed for affected verification and review in the draft PR; neither merge nor final independent review is claimed.

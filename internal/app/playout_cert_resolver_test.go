@@ -32,7 +32,7 @@ func TestSyntheticResolversSelectDistinctStableProgrammeVariants(t *testing.T) {
 			if err != nil || !ok {
 				t.Fatalf("ResolvePrepared() ok=%t err=%v", ok, err)
 			}
-			liveResolver := syntheticLiveResolver{sources: [2]string{"source-0.mp4", "source-1.mp4"}, schedule: schedule, now: func() time.Time { return test.now }}
+			liveResolver := syntheticLiveResolver{sources: map[string][2]string{"channel-a": {"source-0.mp4", "source-1.mp4"}}, schedule: schedule, now: func() time.Time { return test.now }}
 			live, source, err := liveResolver.AiringNow(context.Background(), "channel-a")
 			if err != nil {
 				t.Fatalf("AiringNow() error = %v", err)

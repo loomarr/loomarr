@@ -34,6 +34,9 @@ type Fixture struct {
 	HeldProgressAfterAdmission                int
 	ResponsePadding                           map[string]string
 	MintRelativeURL                           string
+	PreparedMissChannels                      map[string]bool
+	ZeroCostChannels                          map[string]bool
+	ContinuousRawChannels                     map[string]bool
 	mu                                        sync.Mutex
 	activeRaw, starts                         int
 	sessions                                  map[string]*session
@@ -100,7 +103,28 @@ func (f *Fixture) sessionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, map[string]any{"channelId": id, "target": "full", "viewers": item.viewers})
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"running": true, "capacity": 4, "active": active, "viewerActiveSessions": viewers, "graceIdleSessions": grace, "transcodeCost": min(active, 4), "sessions": items})
+	_ = json.NewEncoder(w).Encode(map[string]any{"running": true, "capacity": 4, "active": active, "viewerActiveSessions": viewers, "graceIdleSessions": grace, "transcodeCost": min(f.transcodeCostLocked(), 4), "sessions": items})
+}
+
+func (f *Fixture) transcodeCostLocked() int {
+	cost := 0
+	for id := range f.sessions {
+		if !f.ZeroCostChannels[id] {
+			cost++
+		}
+	}
+	return cost
+}
+
+// SetZeroCost changes one Channel's observed admission cost under the same
+// lock as resource snapshots, for tests of cost changes during held playback.
+func (f *Fixture) SetZeroCost(channelID string, zero bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ZeroCostChannels == nil {
+		f.ZeroCostChannels = map[string]bool{}
+	}
+	f.ZeroCostChannels[channelID] = zero
 }
 
 func (f *Fixture) processes(w http.ResponseWriter, _ *http.Request) {
@@ -157,6 +181,11 @@ func (f *Fixture) hls(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.HasSuffix(r.URL.Path, "/master.m3u8") {
+		id := strings.Split(r.URL.Path, "/")[4]
+		if r.URL.Query().Get("mode") == "prepared" && f.PreparedMissChannels[id] {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		_, _ = io.WriteString(w, "#EXTM3U\n#EXTINF:2,\nsegment.m4s?exp=1&sig=signed-secret\n")
 		f.writePadding(w, r.URL.Path)
 		return
@@ -189,7 +218,7 @@ func (f *Fixture) stream(w http.ResponseWriter, r *http.Request) {
 			f.RetainSessions = true
 		}
 	}
-	if item == nil && len(f.sessions) >= 4 && !f.AllowOverload {
+	if item == nil && !f.ZeroCostChannels[id] && f.transcodeCostLocked() >= 4 && !f.AllowOverload {
 		f.mu.Unlock()
 		f.capacityOnce.Do(func() { close(f.capacityRejected) })
 		if f.InterruptHeld {
@@ -203,13 +232,16 @@ func (f *Fixture) stream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "capacity", http.StatusServiceUnavailable)
 		return
 	}
-	if item == nil && len(f.sessions) >= 4 && f.AllowOverload {
+	if item == nil && !f.ZeroCostChannels[id] && f.transcodeCostLocked() >= 4 && f.AllowOverload {
 		f.continueOnce.Do(func() { close(f.continueHeld) })
 	}
 	if item == nil {
 		item = newSession()
 		f.sessions[id] = item
 		f.starts++
+	}
+	if f.ContinuousRawChannels[id] {
+		item.continueOnce.Do(func() { close(item.continued) })
 	}
 	f.activeRaw++
 	item.viewers++

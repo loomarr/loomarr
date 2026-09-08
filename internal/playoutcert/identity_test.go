@@ -66,3 +66,13 @@ func TestTargetRevisionRequiresFullGitRevision(t *testing.T) {
 		})
 	}
 }
+
+func TestRunRejectsMalformedCohortIdentityBeforeTargetAccess(t *testing.T) {
+	for _, digest := range []string{"private path", strings.Repeat("a", 63), strings.Repeat("A", 64), strings.Repeat("g", 64)} {
+		source := &playoutcertfixture.ProgrammeEvidence[ProgrammeEvidence]{ManifestSHA256: digest}
+		_, err := Run(t.Context(), Config{BaseURL: "http://127.0.0.1:1", AdminBearer: "admin", DeviceToken: "device", Channels: []Channel{{ID: "channel"}}, ProgrammeEvidence: source})
+		if err == nil || err.Error() != "invalid operator cohort identity" {
+			t.Fatalf("invalid identity was not rejected before target access: %v", err)
+		}
+	}
+}

@@ -77,17 +77,21 @@ func fixedObservationClass(value string) bool {
 	return oneOf(value,
 		"ok", "request_failed", "invalid_response", "invalid_signed_url", "audit_unavailable", "prepared_miss", "body_failed", "invalid_hls", "empty_asset",
 		"mint_failed", "fanout_split", "transcode_cohort_insufficient", "admission_outcome_missing", "held_viewer_interrupted", "cohort_missing", "controller_unavailable", "initial_media_missing", "shutdown_failed", "generation_unavailable", "fault_failed",
+		"copy_cost_mismatch", "copy_session_missing", "copy_source_prepared",
+		"asset_clock_mismatch", "programme_observation_timeout", "unexpected_media_eof",
+		"invalid_media_clock", "media_outside_truth", "invalid_video_signal", "invalid_audio_signal",
+		"video_time_regressed", "audio_time_regressed", "programme_video_mismatch", "programme_audio_mismatch",
 		"evidence_unavailable", "witness_failed", "close_failed", "initial_witness_timeout", "initial_witness_cancelled", "initial_witness_failed", "transition_timeout", "transition_cancelled", "transition_failed", "late_observation_timeout", "post_boundary_decode_failed", "post_boundary_stalled", "decode_failed", "invalid_media",
 		"baseline_not_converged", "metric_failed", "dependency_failed", "cancelled", "state_timeout", "no_capacity", "held_stream_interrupted", "admission_failed", "released", "http_503",
 	)
 }
 
 func fixedPhaseName(value string) bool {
-	return oneOf(value, "mint", "configured", "surf", "prepared_fan_in", "fan_in", "prepared_raw", "raw_capacity", "overload", "capacity_recovery", "cleanup", "shutdown", "child_failure", "parent_failure", "programme_boundary", "cancellation", "warm_reuse", "grace_expiry")
+	return oneOf(value, "mint", "configured", "surf", "copy_raw", "prepared_fan_in", "fan_in", "prepared_raw", "raw_capacity", "overload", "capacity_recovery", "cleanup", "shutdown", "child_failure", "parent_failure", "programme_boundary", "cancellation", "warm_reuse", "grace_expiry")
 }
 
 func fixedSamplePoint(value string) bool {
-	if oneOf(value, "baseline", "final", "converged", "raw_capacity", "burst") {
+	if oneOf(value, "baseline", "final", "converged", "raw_capacity", "burst", "copy_raw_held") {
 		return true
 	}
 	for _, suffix := range []string{"_sample", "_in_phase", "_converged"} {
@@ -125,7 +129,7 @@ func jsonObjectFields(path string) []string {
 	case "":
 		return []string{"schemaVersion", "startedAt", "completedAt", "target", "phases", "resources", "failures", "faultProfiles", "certified", "auditStatus", "auditReason"}
 	case "target":
-		return []string{"version", "revision", "manifestSha256", "configuredChannels", "capacity"}
+		return []string{"version", "revision", "manifestSha256", "cohortManifestSha256", "configuredChannels", "capacity"}
 	case "phases.*":
 		return []string{"name", "attempts", "successes", "failures", "p50Ms", "p95Ms", "p99Ms", "firstByte", "preparedHits", "httpClasses", "media", "heldContinuity", "programmeBoundaries", "resources"}
 	case "phases.*.firstByte":
@@ -133,7 +137,7 @@ func jsonObjectFields(path string) []string {
 	case "phases.*.media.*", "phases.*.programmeBoundaries.*.media", "phases.*.heldContinuity.*.media":
 		return []string{"videoStreams", "audioStreams", "videoCodec", "audioCodec"}
 	case "phases.*.programmeBoundaries.*":
-		return []string{"lane", "outcome", "transitions", "observationMs", "decodedFrameDelta", "readDelta", "bytesDelta", "media"}
+		return []string{"lane", "outcome", "transitions", "observationMs", "decodedFrameDelta", "decodedAudioSamplesDelta", "readDelta", "bytesDelta", "media"}
 	case "phases.*.heldContinuity.*":
 		return []string{"outcome", "observationMs", "advancingReads", "bytesObserved", "decodedFrame", "media"}
 	case "phases.*.resources":

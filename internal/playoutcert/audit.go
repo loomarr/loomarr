@@ -59,6 +59,11 @@ func newAuditCapsule(config Config) *auditCapsule {
 	for _, channel := range config.Channels {
 		capsule.registerSource(channel.ID, probeCollision)
 	}
+	if config.ProgrammeEvidence != nil {
+		for _, input := range config.ProgrammeEvidence.PrivateInputs() {
+			capsule.registerSource(input, probeCollision)
+		}
+	}
 	return capsule
 }
 

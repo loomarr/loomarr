@@ -213,6 +213,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		probeSource:        playout.FFprobeSourceNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		probeTracks:        playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		probeFormat:        playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		probeCopyStart:     playout.FFprobeCopyStartNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		processDiagnostics: deps.processDiagnostics,
 		// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
 		// applies without a restart — the same hot-apply posture as audioLanguage.

@@ -1,6 +1,7 @@
 package playoutcert
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,27 +17,31 @@ import (
 // or MPEG-TS byte stream.  It intentionally owns both playlist and asset fetching: a
 // raw programme stream is not evidence for a transition advertised elsewhere.
 type preparedHLSReader struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
-	e            *endpoint
-	playlist     *url.URL
-	mu           sync.Mutex
-	closed       bool
-	seen         map[string]preparedHLSSegment
-	queue        []preparedHLSSegment
-	current      io.ReadCloser
-	currentInit  string
-	initial      bool
-	armed        bool
-	boundary     string
-	epochPending bool
-	requireMap   bool
-	transition   chan bool
+	ctx              context.Context
+	cancel           context.CancelFunc
+	e                *endpoint
+	playlist         *url.URL
+	mu               sync.Mutex
+	closed           bool
+	closeErr         error
+	seen             map[string]preparedHLSSegment
+	queue            []preparedHLSSegment
+	current          io.ReadCloser
+	currentInit      string
+	initial          bool
+	boundary         string
+	epochPending     bool
+	requireMap       bool
+	transition       chan struct{}
+	onSegment        func(preparedHLSSegment) (ProgrammeAssetEvidence, error)
+	onAssetMismatch  func()
+	pendingProof     *ProgrammeAssetEvidence
+	currentInitProof []byte
+	validateSource   func() error
 }
 
 type preparedHLSSegment struct {
 	uri, init, id, boundary string
-	postArm                 bool
 	startedAt               time.Time
 	duration                time.Duration
 }
@@ -49,7 +54,7 @@ func newPreparedHLSReader(ctx context.Context, e *endpoint, signed *url.URL) *pr
 	q.Set("mode", "prepared")
 	p.RawQuery = q.Encode()
 	owned, cancel := context.WithCancel(ctx)
-	return &preparedHLSReader{ctx: owned, cancel: cancel, e: e, playlist: &p, seen: map[string]preparedHLSSegment{}, transition: make(chan bool, 1), requireMap: true}
+	return &preparedHLSReader{ctx: owned, cancel: cancel, e: e, playlist: &p, seen: map[string]preparedHLSSegment{}, transition: make(chan struct{}, 1), requireMap: true}
 }
 
 // newLiveHLSReader follows ordinary signed HLS, including MPEG-TS playlists
@@ -75,11 +80,16 @@ func (r *preparedHLSReader) Read(p []byte) (int, error) {
 		if current != nil {
 			n, err := current.Read(p)
 			if errors.Is(err, io.EOF) {
+				closeErr := current.Close()
 				r.mu.Lock()
+				r.closeErr = errors.Join(r.closeErr, closeErr)
 				if r.current == current {
 					r.current = nil
 				}
 				r.mu.Unlock()
+				if closeErr != nil {
+					return n, closeErr
+				}
 				if n > 0 {
 					return n, nil
 				}
@@ -96,18 +106,24 @@ func (r *preparedHLSReader) Read(p []byte) (int, error) {
 func (r *preparedHLSReader) Close() error {
 	r.mu.Lock()
 	if r.closed {
+		err := r.closeErr
 		r.mu.Unlock()
-		return nil
+		return err
 	}
 	r.closed = true
 	current := r.current
 	r.current = nil
 	r.mu.Unlock()
 	r.cancel()
+	var closeErr error
 	if current != nil {
-		return current.Close()
+		closeErr = current.Close()
 	}
-	return nil
+	r.mu.Lock()
+	r.closeErr = errors.Join(r.closeErr, closeErr)
+	err := r.closeErr
+	r.mu.Unlock()
+	return err
 }
 
 func (r *preparedHLSReader) openNext() error {
@@ -130,7 +146,7 @@ func (r *preparedHLSReader) openNext() error {
 	if seg.boundary != r.boundary && r.initial {
 		if !r.epochPending {
 			r.epochPending = true
-			r.transition <- seg.postArm
+			r.transition <- struct{}{}
 			return errPreparedHLSEpoch
 		}
 		r.epochPending = false
@@ -138,28 +154,50 @@ func (r *preparedHLSReader) openNext() error {
 		// A discontinuity starts a new fMP4 decode epoch even where the
 		// publication happens to reuse byte-identical initialization media.
 		r.currentInit = ""
+		r.currentInitProof = nil
 	}
 	r.queue = r.queue[1:]
+	proof := r.pendingProof
+	r.pendingProof = nil
+	if proof == nil && r.onSegment != nil {
+		resolved, err := r.onSegment(seg)
+		if err != nil {
+			return err
+		}
+		proof = &resolved
+	}
+	if proof != nil {
+		r.validateSource = proof.Validate
+	}
 	if seg.init != r.currentInit {
-		if err := r.openAsset(seg.init); err != nil {
+		var expected []byte
+		if proof != nil {
+			expected = proof.Init
+		}
+		if err := r.openAsset(seg.init, expected, proof != nil); err != nil {
 			return err
 		}
 		r.currentInit = seg.init
+		r.currentInitProof = expected
+		r.pendingProof = proof
 		// Deliver an initialization map before its first media fragment.
 		r.queue = append([]preparedHLSSegment{seg}, r.queue...)
 		return nil
 	}
-	err := r.openAsset(seg.uri)
+	var expected []byte
+	if proof != nil {
+		if !bytes.Equal(proof.Init, r.currentInitProof) {
+			r.onAssetMismatch()
+			return errors.New("asset_clock_mismatch")
+		}
+		expected = proof.Media
+	}
+	err := r.openAsset(seg.uri, expected, proof != nil)
 	if err == nil {
 		r.initial = true
 	}
 	return err
 }
-
-// arm excludes a discontinuity already buffered in the first playlist.  Only
-// a subsequently fetched boundary can be post-validation evidence.
-func (r *preparedHLSReader) arm()          { r.mu.Lock(); r.armed = true; r.mu.Unlock() }
-func (r *preparedHLSReader) isArmed() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.armed }
 
 type preparedHLSEpochReader struct{ reader *preparedHLSReader }
 
@@ -175,7 +213,7 @@ func (preparedHLSEpochReader) Close() error { return nil }
 
 func (r *preparedHLSReader) epoch() io.ReadCloser { return preparedHLSEpochReader{reader: r} }
 
-func (r *preparedHLSReader) openAsset(raw string) error {
+func (r *preparedHLSReader) openAsset(raw string, expected []byte, verify bool) error {
 	u, err := r.playlist.Parse(raw)
 	if err != nil || !sameOrigin(r.e.base, u) {
 		return errors.New("invalid_hls")
@@ -194,9 +232,33 @@ func (r *preparedHLSReader) openAsset(raw string) error {
 		_ = resp.Body.Close()
 		return io.ErrClosedPipe
 	}
-	r.current = newAssetReadCloser(resp.Body, newBoundedReader(resp.Body, 32<<20))
+	var content io.Reader = newBoundedReader(resp.Body, 32<<20)
+	if verify {
+		content = &assetReferenceReader{source: content, expected: expected, validate: r.validateSource, mismatch: r.onAssetMismatch}
+	}
+	r.current = newAssetReadCloser(resp.Body, content)
 	r.mu.Unlock()
 	return nil
+}
+
+// assetReferenceReader admits only bytes matching the independent reference.
+// It never reads ahead or manufactures transport progress from a private copy.
+type assetReferenceReader struct {
+	source   io.Reader
+	expected []byte
+	mismatch func()
+	validate func() error
+}
+
+func (r *assetReferenceReader) Read(p []byte) (int, error) {
+	n, err := r.source.Read(p)
+	if (r.validate != nil && r.validate() != nil) || n > len(r.expected) || !bytes.Equal(p[:n], r.expected[:min(n, len(r.expected))]) ||
+		(errors.Is(err, io.EOF) && n != len(r.expected)) {
+		r.mismatch()
+		return 0, errors.New("asset_clock_mismatch")
+	}
+	r.expected = r.expected[n:]
+	return n, err
 }
 
 func (r *preparedHLSReader) refresh() error {
@@ -226,7 +288,6 @@ func (r *preparedHLSReader) refresh() error {
 		if len(r.seen) >= 4096 || len(r.queue) >= 512 {
 			return errors.New("hls_limit_exceeded")
 		}
-		seg.postArm = r.isArmed()
 		r.seen[seg.id] = seg
 		r.queue = append(r.queue, seg)
 	}
@@ -262,11 +323,7 @@ func newAssetReadCloser(body io.ReadCloser, reader io.Reader) *assetReadCloser {
 }
 
 func (r *assetReadCloser) Read(p []byte) (int, error) {
-	n, err := r.reader.Read(p)
-	if errors.Is(err, io.EOF) {
-		_ = r.Close()
-	}
-	return n, err
+	return r.reader.Read(p)
 }
 
 func (r *assetReadCloser) Close() error {

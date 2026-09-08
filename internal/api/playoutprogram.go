@@ -58,6 +58,7 @@ type PlayoutResolver interface {
 	// Tone-mapping is the first caller; the zero value means "not probed", which every consumer
 	// must treat as unknown rather than as a positive claim.
 	PlanFor(ctx context.Context, input string, target playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat)
+	CopyVideoStart(ctx context.Context, input string, offset, limit time.Duration, fps float64) (time.Duration, bool)
 	// ChannelCodec returns the persisted codec the Channel's live timeline normalizes to. It is
 	// needed only to turn the broad tuner capability plan into one stable output codec.
 	ChannelCodec(ctx context.Context, channelID string) string
@@ -285,6 +286,15 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// boundary — the one moment continuity is most fragile.
 	plan, source := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
 	plan = playout.ConformCopyPlan(source, plan, profile, broadcastCodec)
+	var videoCopySeek *time.Duration
+	if plan.CopyVideo {
+		seek, proven := s.playoutResolver.CopyVideoStart(r.Context(), streamURL, airing.Offset, airing.Remaining, source.FrameRate)
+		if !proven || seek < 0 || seek > airing.Offset {
+			plan.CopyVideo = false
+		} else {
+			videoCopySeek = &seek
+		}
+	}
 
 	// ⚠ Keep an HEVC-plan session's stream UNIFORMLY HEVC (§9.1 V49). An hevc8/hevc10 client watches
 	// over fMP4, which binds ONE decoder from its init segment and cannot survive a mid-stream codec
@@ -293,15 +303,16 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// never switches codec. A source already matching the complete HEVC session format still copies;
 	// every mismatch normalizes to HEVC. For a baseline (h264/TS) session this is a no-op.
 	spec := playout.ProgramSpec{
-		Clock:      playout.ProgramClock{Origin: origin, StartedAt: airing.StartedAt},
-		Profile:    profile,
-		Input:      streamURL,
-		Offset:     airing.Offset,
-		Limit:      airing.Remaining,
-		AudioTrack: audioTrack,
-		TargetLUFS: targetLUFS,
-		Plan:       plan,
-		Source:     source,
+		VideoCopySeek: videoCopySeek,
+		Clock:         playout.ProgramClock{Origin: origin, StartedAt: airing.StartedAt},
+		Profile:       profile,
+		Input:         streamURL,
+		Offset:        airing.Offset,
+		Limit:         airing.Remaining,
+		AudioTrack:    audioTrack,
+		TargetLUFS:    targetLUFS,
+		Plan:          plan,
+		Source:        source,
 		// Whether this BUILD can tone-map, asked once per process by the composition root. Nil
 		// here means "no" — the same fail-safe direction as playoutFont: a missing filter emitted
 		// anyway fails at graph-init and kills the channel, so an unknown answer must never be

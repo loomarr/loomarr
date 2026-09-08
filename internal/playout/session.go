@@ -354,6 +354,7 @@ func (m *Manager) AttachSink(ctx context.Context, channelID string, plan EncodeP
 // sinkLease lets an in-process delivery adapter distinguish retained warmth from current viewer
 // demand without exposing Session lifecycle machinery. A plain byte-stream viewer is always active.
 type sinkLease struct {
+	source    *Process
 	release   func()
 	setActive func(bool) bool
 }
@@ -797,6 +798,7 @@ func (s *Session) addSink(sink sessionSink) (sinkLease, bool) {
 	var once sync.Once
 	detach := func() { once.Do(func() { s.removeViewer(id) }) }
 	lease := sinkLease{
+		source:    s.proc,
 		release:   detach,
 		setActive: func(active bool) bool { return s.setViewerActive(id, active) },
 	}

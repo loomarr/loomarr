@@ -270,7 +270,7 @@ func TestProgramArgs_PacesRealtimeWithATuneInBurst(t *testing.T) {
 	if v, ok := argsAfter(args, "-readrate"); !ok || v != "1.0" {
 		t.Errorf("-readrate = %q, want 1.0 — without pacing we race ahead of wall-clock", v)
 	}
-	if v, ok := argsAfter(args, "-readrate_initial_burst"); !ok || v == "0" {
+	if v, ok := argsAfter(args, "-readrate_initial_burst"); !ok || v != "10" {
 		t.Errorf("-readrate_initial_burst = %q, want a burst so tune-in is not slow", v)
 	}
 	// Pacing must be an INPUT option (before -i) or it applies to nothing.
@@ -286,7 +286,7 @@ func TestProgramArgs_PacesRealtimeWithATuneInBurst(t *testing.T) {
 func TestProgramArgs_DoesNotBurstAtAProgrammeBoundary(t *testing.T) {
 	for _, offset := range []time.Duration{0, time.Second, 9 * time.Second} {
 		args := transcodeArgs(DefaultProfile(), testStreamURL, offset, time.Hour)
-		if v, ok := argsAfter(args, "-readrate_initial_burst"); ok {
+		if v, ok := argsAfter(args, "-readrate_initial_burst"); !ok || v != "0.000001" {
 			t.Errorf("offset %s: -readrate_initial_burst = %q; a boundary child must stay on wall clock", offset, v)
 		}
 	}
@@ -297,7 +297,7 @@ func TestProgramArgs_DoesNotBurstAtAProgrammeBoundary(t *testing.T) {
 // short tail again turns one early finish into a replay loop.
 func TestProgramArgs_DoesNotBurstTheShortTailBeforeABoundary(t *testing.T) {
 	args := transcodeArgs(DefaultProfile(), testStreamURL, 40*time.Minute, 9*time.Second)
-	if v, ok := argsAfter(args, "-readrate_initial_burst"); ok {
+	if v, ok := argsAfter(args, "-readrate_initial_burst"); !ok || v != "0.000001" {
 		t.Errorf("-readrate_initial_burst = %q; a tail shorter than the burst must play at wall-clock pace", v)
 	}
 }

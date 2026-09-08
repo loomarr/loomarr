@@ -260,6 +260,27 @@ func (m *HLSManager) AssetPath(channelID string, plan EncodePlan, rel string) (s
 	return full, true
 }
 
+// OpenAssetSource opens a private snapshot from one remux and returns the exact
+// session process supplying that remux. The handle remains tied to that source
+// even if the channel is replaced before the caller finishes reading it.
+// Source handles are in-process provenance, never HTTP or report metadata.
+func (m *HLSManager) OpenAssetSource(channelID string, plan EncodePlan, rel string) (*os.File, *Process, error) {
+	if rel == "" || filepath.Base(rel) != rel || rel == "." || rel == ".." {
+		return nil, nil, fmt.Errorf("hls: invalid asset name")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r := m.remuxes[remuxKey{channel: channelID, plan: plan}]
+	if r == nil || r.source == nil {
+		return nil, nil, fmt.Errorf("hls: asset source unavailable")
+	}
+	f, err := os.Open(filepath.Join(r.dir, rel))
+	if err != nil {
+		return nil, nil, err
+	}
+	return f, r.source, nil
+}
+
 // start launches a remux for a channel at one EncodePlan. Caller holds m.mu.
 func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error) {
 	dir, err := os.MkdirTemp(m.root, "ch-")
@@ -297,6 +318,7 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 
 	key := remuxKey{channel: channelID, plan: plan}
 	r := &hlsRemux{
+		source:    sessLease.source,
 		channelID: channelID, dir: dir,
 		playlist: filepath.Join(dir, hlsPlaylistName),
 		cancel:   cancel, sessDetach: sessLease.Release,
@@ -403,6 +425,7 @@ func (m *HLSManager) readyWait() time.Duration {
 // hlsRemux is one channel's HLS repackaging: a `-c copy -f hls` ffmpeg fed by the session's
 // bytes, writing segments a browser reads. Its viewer refcount mirrors Session's.
 type hlsRemux struct {
+	source    *Process
 	channelID string
 	dir       string
 	playlist  string

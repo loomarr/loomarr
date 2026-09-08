@@ -45,19 +45,6 @@ type Decoder interface {
 	Decode(context.Context, io.ReadCloser, func(int64)) error
 }
 
-// ProgrammeBoundaryWitness binds a certification observation to the actual
-// finite-block source feeding one admitted parent stream. Production targets do
-// not currently expose this causal seam; the isolated synthetic target does.
-type ProgrammeBoundaryWitness interface {
-	Subscribe(channelID string) (ProgrammeBoundarySubscription, error)
-}
-
-type ProgrammeBoundarySubscription interface {
-	WaitInitial(context.Context) error
-	WaitTransition(context.Context) error
-	Close()
-}
-
 type Config struct {
 	BaseURL                          string
 	AdminBearer                      string
@@ -77,7 +64,8 @@ type Config struct {
 	PreparedRawP95                   time.Duration
 	ProgrammeBoundaryTimeout         time.Duration
 	ProgrammeBoundaryLateObservation time.Duration
-	ProgrammeBoundaryWitness         ProgrammeBoundaryWitness
+	ProgrammeEvidence                ProgrammeEvidenceSource
+	SignalDecoder                    SignalDecoder
 	FaultProfiles                    []FaultProfile
 	FaultController                  FaultController
 	DisposableTarget                 string
@@ -221,6 +209,16 @@ func strictTranscodeChannelIndexes(channels []Channel) []int {
 	return indexes
 }
 
+func copyChannelIndexes(channels []Channel) []int {
+	indexes := []int{}
+	for index, channel := range channels {
+		if slices.Contains(channel.Roles, "copy") {
+			indexes = append(indexes, index)
+		}
+	}
+	return indexes
+}
+
 var knownRoles = []string{
 	"prepared", "copy", "transcode_h264", "transcode_hevc",
 	"audio_aac", "audio_ac3", "audio_eac3", "expected_failure", "remote_input",
@@ -290,11 +288,12 @@ func (c Config) normalized() Config {
 }
 
 type Target struct {
-	Version            string `json:"version"`
-	Revision           string `json:"revision"`
-	ManifestSHA256     string `json:"manifestSha256"`
-	ConfiguredChannels int    `json:"configuredChannels"`
-	Capacity           int    `json:"capacity"`
+	CohortManifestSHA256 string `json:"cohortManifestSha256,omitempty"`
+	Version              string `json:"version"`
+	Revision             string `json:"revision"`
+	ManifestSHA256       string `json:"manifestSha256"`
+	ConfiguredChannels   int    `json:"configuredChannels"`
+	Capacity             int    `json:"capacity"`
 }
 
 type LatencySummary struct {
@@ -319,16 +318,17 @@ type Phase struct {
 }
 
 // ProgrammeBoundaryObservation contains only bounded, run-local evidence. The
-// scheduler identities used to prove the transition are deliberately omitted.
+// private expected signatures and source-clock identities are deliberately omitted.
 type ProgrammeBoundaryObservation struct {
-	Lane              string     `json:"lane"`
-	Outcome           string     `json:"outcome"`
-	Transitions       int        `json:"transitions"`
-	ObservationMS     float64    `json:"observationMs"`
-	DecodedFrameDelta int64      `json:"decodedFrameDelta"`
-	ReadDelta         int        `json:"readDelta"`
-	BytesDelta        int        `json:"bytesDelta"`
-	Media             MediaShape `json:"media"`
+	Lane                     string     `json:"lane"`
+	Outcome                  string     `json:"outcome"`
+	Transitions              int        `json:"transitions"`
+	ObservationMS            float64    `json:"observationMs"`
+	DecodedAudioSamplesDelta int64      `json:"decodedAudioSamplesDelta"`
+	DecodedFrameDelta        int64      `json:"decodedFrameDelta"`
+	ReadDelta                int        `json:"readDelta"`
+	BytesDelta               int        `json:"bytesDelta"`
+	Media                    MediaShape `json:"media"`
 }
 
 // HeldContinuityObservation is bounded viewer-side evidence collected after
