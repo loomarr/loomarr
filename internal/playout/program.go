@@ -45,6 +45,7 @@ const tuneInBurstThreshold = time.Duration(readrateInitialBurst) * time.Second
 // is a first-class field, not a seventh positional, and adding the next knob widens a struct instead
 // of forking another function.
 type ProgramSpec struct {
+	Clock   ProgramClock
 	Profile Profile
 	// Input is the ffmpeg input — a local file path (direct play) or an HTTP URL (fallback). The
 	// input-option branch (reconnect flags) keys on isHTTP, so both are handled from the one field.
@@ -193,12 +194,26 @@ func ProgramArgs(spec ProgramSpec) []string {
 	// because a varying track count breaks `-c copy` as surely as a varying resolution.
 	args = append(args, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack))
 
-	// `-t` bounds the child to its slot. This is what makes the child exit at the program
+	// With preserved input timestamps, stream copy retains the preceding GOP after an input
+	// seek. Discard it at the output as well; ProgramClock restores the resulting timestamp
+	// subtraction equally for audio and video. Never add an output seek at offset zero.
+	var outputSeek time.Duration
+	if spec.Clock.active() && offset > 0 && (spec.Plan.CopyVideo || spec.Plan.CopyAudio) {
+		outputSeek = offset
+		args = append(args, "-ss", seconds(outputSeek))
+	}
+
+	// The duration (or absolute source end with copyts) bounds the child to its slot.
+	// This is what makes the child exit at the program
 	// boundary rather than playing to the end of the file — which matters when the lineup
 	// gives an item less time than its full duration (a rolling window, or a slot the
 	// scheduler trimmed).
 	if limit > 0 {
-		args = append(args, "-t", seconds(limit))
+		if spec.Clock.active() {
+			args = append(args, "-to", seconds(offset+limit))
+		} else {
+			args = append(args, "-t", seconds(limit))
+		}
 	}
 
 	// VIDEO: copy (direct play — the fast path) or transcode to the Profile (the exception).
@@ -227,9 +242,10 @@ func ProgramArgs(spec ProgramSpec) []string {
 	// `+initial_discontinuity` tells the downstream demuxer the first timestamps are not
 	// necessarily zero — true for anything joining a live stream mid-flight, and true here
 	// because we seeked.
-	return append(args,
+	args = append(args,
 		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1",
 	)
+	return spec.Clock.apply(args, outputSeek)
 }
 
 // scaleFilterArgs normalizes any input geometry to the profile's.

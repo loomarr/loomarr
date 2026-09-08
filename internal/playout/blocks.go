@@ -29,10 +29,19 @@ type Block struct {
 	Format BroadcastFormat
 }
 
-// BlockSource opens the finite MPEG-TS block that belongs on a Channel now. EOF is an Airing
-// boundary: the supervisor closes that body, resolves again from the authoritative wall clock, and
-// opens the next programme, Clip or fallback card.
-type BlockSource func(context.Context, string, EncodePlan) (Block, error)
+// BlockRequest carries finite-source timing inside the shared playout session.
+// AiringAt is zero for an ordinary current-time resolution. A nonzero instant is
+// a prepared-only prospective lookup; it must never invoke live source effects.
+type BlockRequest struct {
+	ChannelID      string
+	Plan           EncodePlan
+	TimelineOrigin time.Time
+	AiringAt       time.Time
+}
+
+// BlockSource opens one finite MPEG-TS source through the Channel's existing
+// composition, admission and format checks. AiringAt permits prepared lookup only.
+type BlockSource func(context.Context, BlockRequest) (Block, error)
 
 // BlockSpawner builds the production session spawner around finite, explicit blocks. One long-lived
 // copy mux keeps output timestamps monotonic; Go owns the EOF-and-advance loop so an Airing boundary
@@ -58,8 +67,8 @@ func BlockSpawner(ffmpeg string, source BlockSource, log *slog.Logger, observers
 }
 
 // BlockMuxArgs builds the one continuous transport mux fed by the block supervisor. Children have
-// already copied or encoded into the session's stable broadcast format; this process only rebases
-// their finite timestamp domains onto one monotonic MPEG-TS timeline.
+// already copied or encoded into the session's stable broadcast format and shared media clock;
+// this process paces and muxes those bytes onto one continuous MPEG-TS timeline.
 func BlockMuxArgs() []string {
 	return []string{
 		"-hide_banner", "-loglevel", "error",
@@ -74,7 +83,7 @@ func BlockMuxArgs() []string {
 		"-probesize", "256k", "-analyzeduration", "500000",
 		"-f", "mpegts", "-i", "pipe:0",
 		"-map", "0:v:0", "-map", "0:a:0",
-		"-c", "copy",
+		"-c", "copy", "-muxdelay", "0",
 		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1",
 	}
 }
@@ -84,18 +93,39 @@ func pumpBlocks(
 	channelID string, plan EncodePlan, log *slog.Logger,
 ) {
 	defer func() { _ = dst.Close() }()
+	// Leave positive transport-coordinate headroom at tune-in. This changes neither the
+	// authoritative schedule instant nor the strict deadline for prospective opening.
+	origin := time.Now().Add(-10 * time.Second)
 	var previous AiringIdentity
 	previousFinishedCleanly := false
 	for ctx.Err() == nil {
-		// A genuine mid-Airing tune-in may use a finite read-rate burst to fill the viewer's
-		// startup buffer. That child can consequently reach EOF before the wall-clock boundary.
-		// Its bytes already cover the Airing through EndsAt, so resolving again before then would
-		// return and replay the same outgoing tail.
-		if previousFinishedCleanly && !waitForAiringBoundary(ctx, previous.EndsAt) {
-			return
-		}
 		openStarted := time.Now()
-		block, err := source(ctx, channelID, plan)
+		request := BlockRequest{ChannelID: channelID, Plan: plan, TimelineOrigin: origin}
+		var block Block
+		var err error
+		if previousFinishedCleanly && time.Now().Before(previous.EndsAt) {
+			request.AiringAt = previous.EndsAt
+			block, err = openBlockBefore(ctx, previous.EndsAt, func(openCtx context.Context) (Block, error) {
+				return source(openCtx, request)
+			})
+			if err == nil && !block.Identity.StartedAt.Equal(previous.EndsAt) {
+				_ = block.Content.Close()
+				err = ErrPreparedUnavailable
+			}
+			if err != nil {
+				if !waitForAiringBoundary(ctx, previous.EndsAt) {
+					return
+				}
+				request.AiringAt = time.Time{}
+				block, err = source(ctx, request)
+			}
+		} else {
+			if previousFinishedCleanly && !waitForAiringBoundary(ctx, previous.EndsAt) {
+				return
+			}
+			block, err = source(ctx, request)
+		}
+
 		if err != nil {
 			if log != nil && ctx.Err() == nil {
 				log.Warn("playout: block open failed; retrying", "channel", channelID, "plan", plan.String(), "err", err)

@@ -28,7 +28,7 @@ func TestSyntheticResolversSelectDistinctStableProgrammeVariants(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			preparedResolver := syntheticPreparedResolver{specs: map[string][2]prepared.Specification{"channel-a": specs}, schedule: schedule, now: func() time.Time { return test.now }}
-			window, ok, err := preparedResolver.ResolvePrepared(context.Background(), playout.TuneRequest{ChannelID: "channel-a"})
+			window, ok, err := preparedResolver.ResolvePrepared(context.Background(), playout.TuneRequest{ChannelID: "channel-a"}, time.Time{})
 			if err != nil || !ok {
 				t.Fatalf("ResolvePrepared() ok=%t err=%v", ok, err)
 			}

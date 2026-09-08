@@ -75,7 +75,20 @@ const (
 	PlayoutAiringContentHeader    = "X-Loomarr-Airing-Content"
 	PlayoutScheduleBlockHeader    = "X-Loomarr-Schedule-Block"
 	PlayoutParentProcessRunHeader = "X-Loomarr-Parent-Process-Run"
+	PlayoutTimelineOriginHeader   = "X-Loomarr-Timeline-Origin"
 )
+
+func parsePlayoutTimelineOrigin(header http.Header) (time.Time, error) {
+	raw := header.Get(PlayoutTimelineOriginHeader)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	origin, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil || origin.IsZero() {
+		return time.Time{}, errors.New("invalid playout timeline origin")
+	}
+	return origin, nil
+}
 
 func setPlayoutAiringIdentity(header http.Header, airing playout.Airing) {
 	header.Set(PlayoutAiringStartedAtHeader, airing.StartedAt.UTC().Format(time.RFC3339Nano))
@@ -145,6 +158,11 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer admission.Release()
 	r = r.WithContext(admission.Context)
+	origin, err := parsePlayoutTimelineOrigin(r.Header)
+	if err != nil {
+		s.writeProblem(w, r, http.StatusBadRequest, "Invalid playout timeline", "The timeline origin is invalid.")
+		return
+	}
 
 	// The codec audience this program is for (§9.1 V48) — the EncodePlan set on the URL by the session
 	// parent that requested it, so a baseline session's programs plan for baseline and a full/tuner
@@ -275,6 +293,7 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// never switches codec. A source already matching the complete HEVC session format still copies;
 	// every mismatch normalizes to HEVC. For a baseline (h264/TS) session this is a no-op.
 	spec := playout.ProgramSpec{
+		Clock:      playout.ProgramClock{Origin: origin, StartedAt: airing.StartedAt},
 		Profile:    profile,
 		Input:      streamURL,
 		Offset:     airing.Offset,
@@ -350,6 +369,11 @@ func (s *Server) serveCard(
 	if s.playoutFont != nil {
 		font = s.playoutFont()
 	}
+	origin, err := parsePlayoutTimelineOrigin(r.Header)
+	if err != nil {
+		return false
+	}
+	clock := playout.ProgramClock{Origin: origin, StartedAt: time.Now().UTC()}
 	// The card is a synthetic lavfi source, so it does not contend for VRAM the way a decode+
 	// transcode does — but it still uses the profile's encoder, so it gets the SOFTWARE fallback
 	// (not the VRAM eviction step): a card that cannot hardware-encode should still render rather
@@ -359,7 +383,7 @@ func (s *Server) serveCard(
 		p.Encoder = enc
 		// The route key is an opaque internal identifier, not viewer-facing Channel identity.
 		// Keep fallback cards unlabelled until a real name/number is explicitly supplied.
-		return playout.OfflineCardArgs(p, font, title, "", duration)
+		return playout.OfflineCardArgs(p, font, title, "", duration, clock)
 	}
 	if c := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
 		s.pipeChild(w, r, channelID, "offline card", c)

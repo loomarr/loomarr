@@ -471,13 +471,13 @@ func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
 // `-t` goes before the output target, where it applies to the OUTPUT. As an input option it
 // would instead limit how much of the looping source is READ, which for an infinite generated
 // source means something subtly different.
-func OfflineCardArgs(p Profile, fontFile, title, subtitle string, d time.Duration) []string {
+func OfflineCardArgs(p Profile, fontFile, title, subtitle string, d time.Duration, clock ProgramClock) []string {
 	args := TestCardArgs(p, fontFile, title, subtitle)
 	// Insert before the trailing output target rather than appending: ffmpeg applies an option
 	// to whatever comes after it, so `pipe:1 -t 30` would be a parse error.
 	out := args[len(args)-1]
 	args = append(args[:len(args)-1], "-t", seconds(d))
-	return append(args, out)
+	return clock.apply(append(args, out), 0)
 }
 
 // drawTextFilter centres a title, with an optional subtitle beneath it. Returns "" when

@@ -452,7 +452,7 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var opened atomic.Int64
-	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (Block, error) {
+	source := BlockSource(func(ctx context.Context, blockRequest BlockRequest) (Block, error) {
 		i := int(opened.Add(1)) - 1
 		if i >= len(blocks) {
 			<-ctx.Done()
@@ -852,7 +852,7 @@ func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (Block, error) {
+	source := BlockSource(func(ctx context.Context, blockRequest BlockRequest) (Block, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
 		if err != nil {
 			return Block{}, err

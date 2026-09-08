@@ -1611,9 +1611,11 @@ func playoutBlockSource(
 	base string, token func() string, client *http.Client, preparedSource playout.BlockSource,
 ) playout.BlockSource {
 	var broadcast string
-	return func(blockCtx context.Context, blockChannel string, blockPlan playout.EncodePlan) (playout.Block, error) {
+	return func(blockCtx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
+		blockChannel := blockRequest.ChannelID
+		blockPlan := blockRequest.Plan
 		if preparedSource != nil {
-			block, err := preparedSource(blockCtx, blockChannel, blockPlan)
+			block, err := preparedSource(blockCtx, blockRequest)
 			if err == nil && block.Content != nil {
 				format, valid := playout.ParseBroadcastFormat(block.Format.String())
 				canonical := format.String()
@@ -1628,6 +1630,9 @@ func playoutBlockSource(
 				return playout.Block{}, blockCtx.Err()
 			}
 		}
+		if !blockRequest.AiringAt.IsZero() {
+			return playout.Block{}, playout.ErrPreparedUnavailable
+		}
 		query := url.Values{
 			"token": []string{token()},
 			"plan":  []string{blockPlan.String()},
@@ -1640,6 +1645,9 @@ func playoutBlockSource(
 		req, err := http.NewRequestWithContext(blockCtx, http.MethodGet, programURL, nil)
 		if err != nil {
 			return playout.Block{}, err
+		}
+		if !blockRequest.TimelineOrigin.IsZero() {
+			req.Header.Set(api.PlayoutTimelineOriginHeader, blockRequest.TimelineOrigin.UTC().Format(time.RFC3339Nano))
 		}
 		if parent, ok := diagnostics.ProcessSpecFromContext(blockCtx); ok && parent.ParentRunID != "" {
 			req.Header.Set(api.PlayoutParentProcessRunHeader, parent.ParentRunID)

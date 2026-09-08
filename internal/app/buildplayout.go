@@ -380,9 +380,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			set.str("playout.ffmpeg_path"), log, deps.processDiagnostics,
 		)
 		preparedBlockSource = func(
-			ctx context.Context, channelID string, plan playout.EncodePlan,
-		) (playout.Block, error) {
-			block, err := rawPreparedBlockSource(ctx, channelID, plan)
+			ctx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
+			channelID := blockRequest.ChannelID
+			plan := blockRequest.Plan
+			block, err := rawPreparedBlockSource(ctx, blockRequest)
 			if err == nil && block.Content != nil && !playoutMgr.AdmitProgram(channelID, plan, false) {
 				_ = block.Content.Close()
 				return playout.Block{}, playout.ErrAtCapacity

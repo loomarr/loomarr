@@ -195,7 +195,8 @@ func (r *preparedRuntimeResolver) plan(
 		need := needed[key]
 		channelPolicy := channelPolicies[key.ChannelID]
 		request, bound := r.readiness.Binding(key, policy, channelPolicy)
-		if bound && !r.sources.PreparedSourceCurrent(ctx, request.Source) {
+		if bound && (request.Rendition.PackagingVersion != prepared.CurrentPackagingVersion ||
+			!r.sources.PreparedSourceCurrent(ctx, request.Source)) {
 			staleBindings = append(staleBindings, key)
 			bound = false
 		}
@@ -324,13 +325,13 @@ func (r *preparedRuntimeResolver) resolveSource(
 // ResolvePrepared is the tune-time half. It intentionally cannot call resolveSource: an index miss
 // is a prepared miss and Origin immediately uses live playout.
 func (r *preparedRuntimeResolver) ResolvePrepared(
-	ctx context.Context, request playout.TuneRequest,
+	ctx context.Context, request playout.TuneRequest, at time.Time,
 ) (playout.PreparedWindow, bool, error) {
-	return r.resolvePrepared(ctx, request)
+	return r.resolvePrepared(ctx, request, at)
 }
 
 func (r *preparedRuntimeResolver) resolvePrepared(
-	ctx context.Context, request playout.TuneRequest,
+	ctx context.Context, request playout.TuneRequest, at time.Time,
 ) (playout.PreparedWindow, bool, error) {
 	if r == nil || r.channels == nil || r.timeline == nil || r.lookup == nil || r.readiness == nil ||
 		r.now == nil || request.ChannelID == "" {
@@ -348,7 +349,10 @@ func (r *preparedRuntimeResolver) resolvePrepared(
 		return playout.PreparedWindow{}, false, nil
 	}
 	channelPolicy := schedule.ResolveAudioLanguage(channel.Policy, "")
-	now := r.now()
+	now := at
+	if now.IsZero() {
+		now = r.now()
+	}
 	broadcasts, err := r.timeline.ScheduledBroadcasts(
 		ctx, request.ChannelID, now.Add(-playout.DVRHorizon), now.Add(time.Nanosecond),
 	)
@@ -416,7 +420,7 @@ func (r *preparedRuntimeResolver) preparedAiring(
 	request, warmed := r.readiness.Binding(prepared.BindingKey{
 		ChannelID: channelID, LibraryItemID: broadcast.LibraryItemID,
 	}, r.sourcePolicy(), channelPolicy)
-	if !warmed {
+	if !warmed || request.Rendition.PackagingVersion != prepared.CurrentPackagingVersion {
 		return playout.PreparedAiring{}, false, nil
 	}
 	specification, hit, err := r.lookup.Lookup(request)

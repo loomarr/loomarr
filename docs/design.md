@@ -2285,6 +2285,37 @@ a private schedule. A tune resolves in this order:
    Empty output, a schedule gap, or a missed Airing likewise cannot create a continuation from an
    earlier programme's boundary. A common transport timestamp domain is not proof of timely
    wall-clock delivery.
+   The finite-block request carries the Channel, EncodePlan, one session media-clock origin, and
+   an optional prospective schedule instant. These are internal playout coordinates, not client
+   tuning controls or context-local flags. After nonempty successful completion before EndsAt, the
+   supervisor may request the prepared Airing at EndsAt through the same source composition. The
+   prepared resolver reads that instant from the accepted schedule; the result must start exactly
+   there with offset zero and match the pinned broadcast format. A prospective miss must not call
+   the live resolver, which records airing history and selects filler. It waits for the boundary
+   and resolves the current Airing normally. Gaps, changed boundaries, errors, empty bodies and late
+   openings never contribute speculative bytes to the Channel mux.
+   The outgoing EndsAt bounds both source lookup and the successor's first read. A separate startup
+   timer cancels and closes a late attempt. Successful startup disarms that timer; the child then
+   follows the session lifetime and is not cancelled at its own start. The first read retains at
+   most one 188-byte transport prefix, preserving it in order for the parent. This proves startup,
+   not uninterrupted delivery of all later media. Current-time retries acquire a fresh seek; they
+   never reuse a prospective target or erase its elapsed offset. Existing admission, format checks
+   and instrumentation apply to every prospective opening as they do to an ordinary opening.
+   Prepared packaging version 2 establishes a no-reordering video contract for continuous copied
+   handoffs. The packager applies zero B-frames after either software or injected encoder arguments,
+   then probes the local output before publication and requires exactly one video stream with
+   explicitly zero decoder reordering. Missing, failed or nonzero observations reject preparation;
+   the bounded probe uses ffprobe beside the configured ffmpeg, with no original-source access.
+   Version 1 publications cannot
+   satisfy a version 2 readiness binding and must be prepared again by the ordinary control plane.
+   The prepared child preserves source timestamps, applies its Airing start relative to the shared
+   session origin equally to audio and video, and ends at the absolute source offset plus remaining
+   duration. For a positive seek that copies either stream, an output seek also discards copied
+   packets before the requested position; the clock compensates for FFmpeg subtracting that output
+   seek from both timestamps. Video copy may start at the next decodable keyframe, never replay the
+   preceding GOP as current content. A zero source offset omits seeking entirely. The parent copy mux flushes without an
+   extra mux delay. The internal live-child hop carries the same origin, including generated cards;
+   media clocks must not reset when the source changes between prepared and live delivery.
    The live child's finite HTTP response follows the same completion rule: natural process exit
    must succeed before the response completes. A child failure after headers or programme bytes
    have been sent aborts the response body, so the block supervisor observes an incomplete read and

@@ -405,6 +405,68 @@ func TestPlayoutProgram_PassesTheSeekAndTheSlotBound(t *testing.T) {
 	}
 }
 
+func TestPlayoutProgramSharedClockKeepsSeekAndAbsoluteSourceEnd(t *testing.T) {
+	enc := &fakeEncoder{output: "x"}
+	airing := playableAiring(2*time.Second, 3*time.Second)
+	airing.StartedAt = time.Unix(1000, 0).UTC()
+	origin := airing.StartedAt.Add(-10 * time.Second)
+	srv := newProgramServer(t, programOpts{
+		resolver: &fakeResolver{airing: airing, url: "http://media.invalid/original"}, encoder: enc.start,
+	})
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(api.PlayoutTimelineOriginHeader, origin.Format(time.RFC3339Nano))
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	args := strings.Join(enc.args(), " ")
+	for _, want := range []string{"-copyts -start_at_zero", "-ss 2.000", "-to 5.000", "-output_ts_offset 10.000", "-muxdelay 0", "-muxpreload 0"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("missing %q: %s", want, args)
+		}
+	}
+	if strings.Contains(args, "-t ") {
+		t.Fatalf("shared-clock source uses a relative end: %s", args)
+	}
+}
+
+func TestPlayoutProgramRejectsMalformedClockBeforeSourceEffects(t *testing.T) {
+	for _, value := range []string{"not-a-time", "0001-01-01T00:00:00Z"} {
+		t.Run(value, func(t *testing.T) {
+			resolver := &fakeResolver{airing: playableAiring(0, time.Minute), url: "http://media.invalid/original"}
+			enc := &fakeEncoder{output: "x"}
+			srv := newProgramServer(t, programOpts{resolver: resolver, encoder: enc.start})
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set(api.PlayoutTimelineOriginHeader, value)
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resolver.mu.Lock()
+			calls := resolver.calls
+			resolver.mu.Unlock()
+			if resp.StatusCode != http.StatusBadRequest || calls != 0 || len(enc.args()) != 0 {
+				t.Fatalf("status=%d resolves=%d args=%v", resp.StatusCode, calls, enc.args())
+			}
+		})
+	}
+}
+
 // Nothing airing ⇒ the offline CARD, not an empty 200. An empty body EOFs the demuxer
 // instantly and it re-requests in a tight loop, spinning a core on an empty channel.
 func TestPlayoutProgram_NothingAiringServesABoundedCard(t *testing.T) {

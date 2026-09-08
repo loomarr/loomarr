@@ -689,12 +689,15 @@ func (s syntheticPreparedStatus) Status() prepared.PlannerStatus {
 	}
 }
 
-func (r syntheticPreparedResolver) ResolvePrepared(_ context.Context, request playout.TuneRequest) (playout.PreparedWindow, bool, error) {
+func (r syntheticPreparedResolver) ResolvePrepared(_ context.Context, request playout.TuneRequest, at time.Time) (playout.PreparedWindow, bool, error) {
 	specs, ok := r.specs[request.ChannelID]
 	if !ok {
 		return playout.PreparedWindow{}, false, nil
 	}
-	now := r.currentTime()
+	now := at
+	if now.IsZero() {
+		now = r.currentTime()
+	}
 	identity, _, offset := r.schedule.airings(now, request.ChannelID)
 	spec := specs[r.schedule.variant(now)]
 	return playout.PreparedWindow{Current: playout.PreparedAiring{
@@ -772,9 +775,11 @@ func (syntheticLiveResolver) ChannelCodec(context.Context, string) string { retu
 
 func syntheticBlockSource(base, device string, preparedSource playout.BlockSource, manager *playout.Manager, recorder *playoutcert.ProgrammeBoundaryRecorder, sourceID uint64) playout.BlockSource {
 	var broadcast string
-	return func(ctx context.Context, channelID string, plan playout.EncodePlan) (playout.Block, error) {
+	return func(ctx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
+		channelID := blockRequest.ChannelID
+		plan := blockRequest.Plan
 		if preparedSource != nil {
-			block, err := preparedSource(ctx, channelID, plan)
+			block, err := preparedSource(ctx, blockRequest)
 			if err == nil && block.Content != nil {
 				if manager != nil && !manager.AdmitProgram(channelID, plan, false) {
 					_ = block.Content.Close()
@@ -793,6 +798,9 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 				return playout.Block{}, ctx.Err()
 			}
 		}
+		if !blockRequest.AiringAt.IsZero() {
+			return playout.Block{}, playout.ErrPreparedUnavailable
+		}
 		query := url.Values{"token": {device}, "plan": {plan.String()}}
 		if broadcast != "" {
 			query.Set(api.PlayoutBroadcastFormatQuery, broadcast)
@@ -800,6 +808,9 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/playout/program/"+url.PathEscape(channelID)+"?"+query.Encode(), nil)
 		if err != nil {
 			return playout.Block{}, err
+		}
+		if !blockRequest.TimelineOrigin.IsZero() {
+			req.Header.Set(api.PlayoutTimelineOriginHeader, blockRequest.TimelineOrigin.UTC().Format(time.RFC3339Nano))
 		}
 		if spec, ok := diagnostics.ProcessSpecFromContext(ctx); ok && spec.ParentRunID != "" {
 			req.Header.Set(api.PlayoutParentProcessRunHeader, spec.ParentRunID)

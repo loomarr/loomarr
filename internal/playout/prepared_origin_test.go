@@ -49,7 +49,7 @@ func TestPreparedBlockFailureResolvesBeforeScheduledEnd(t *testing.T) {
 	defer cancel()
 	content := startPreparedBlockHelper(t, ctx, "prepared-failure")
 	calls := 0
-	source := BlockSource(func(context.Context, string, EncodePlan) (Block, error) {
+	source := BlockSource(func(_ context.Context, blockRequest BlockRequest) (Block, error) {
 		calls++
 		if calls > 1 {
 			cancel()
@@ -117,7 +117,7 @@ type fixedPreparedResolver struct {
 	ok     bool
 }
 
-func (r fixedPreparedResolver) ResolvePrepared(context.Context, TuneRequest) (PreparedWindow, bool, error) {
+func (r fixedPreparedResolver) ResolvePrepared(_ context.Context, _ TuneRequest, at time.Time) (PreparedWindow, bool, error) {
 	return r.window, r.ok, nil
 }
 
@@ -127,7 +127,7 @@ func preparedSpec(source string) prepared.Specification {
 		Rendition: prepared.RenditionContract{
 			VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080,
 			FrameRate: 25, VideoBitrateKbps: 5000, AudioBitrateKbps: 160,
-			SegmentDurationMS: 2000, PackagingVersion: 1,
+			SegmentDurationMS: 2000, PackagingVersion: prepared.CurrentPackagingVersion,
 		},
 	}
 }
@@ -306,7 +306,7 @@ func TestPreparedMPEGTSBlockCopiesPublicationAtAiringOffset(t *testing.T) {
 		return &Process{Stdout: io.NopCloser(strings.NewReader("prepared-ts"))}, nil
 	})
 
-	block, err := source(t.Context(), "ch-one", PlanFull)
+	block, err := source(t.Context(), BlockRequest{ChannelID: "ch-one", Plan: PlanFull})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -570,7 +570,7 @@ func TestPumpBlocksLatePreparedHandoffRetainsCurrentPosition(t *testing.T) {
 					return nil, errors.New("captured current-airing process request")
 				})
 				calls := 0
-				source := BlockSource(func(ctx context.Context, channel string, plan EncodePlan) (Block, error) {
+				source := BlockSource(func(ctx context.Context, blockRequest BlockRequest) (Block, error) {
 					calls++
 					if calls == 1 {
 						return Block{Content: io.NopCloser(strings.NewReader(tc.body)), Identity: previous}, nil
@@ -584,12 +584,16 @@ func TestPumpBlocksLatePreparedHandoffRetainsCurrentPosition(t *testing.T) {
 						case <-timer.C:
 						}
 					}
-					return preparedSource(ctx, channel, plan)
+					return preparedSource(ctx, blockRequest)
 				})
 				var output writeCloser
 				pumpBlocks(ctx, &output, source, "channel", PlanBaseline, nil)
-				if calls != 2 {
-					t.Fatalf("source calls = %d, want 2", calls)
+				wantCalls := 2
+				if tc.slowLookup {
+					wantCalls = 3
+				}
+				if calls != wantCalls {
+					t.Fatalf("source calls = %d, want %d", calls, wantCalls)
 				}
 				if output.String() != tc.body {
 					t.Fatalf("predecessor output = %q", output.String())

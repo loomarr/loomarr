@@ -24,7 +24,7 @@ func TestPumpBlocksReportsOnlyAuthoritativeAiringTransitions(t *testing.T) {
 		{StartedAt: time.Unix(2, 0).UTC(), Kind: schedule.SlotFiller, ContentID: "commercial"},
 	}
 	next := 0
-	source := BlockSource(func(context.Context, string, EncodePlan) (Block, error) {
+	source := BlockSource(func(_ context.Context, blockRequest BlockRequest) (Block, error) {
 		if next == len(identities) {
 			cancel()
 			return Block{}, context.Canceled
@@ -78,7 +78,7 @@ func TestPumpBlocksDoesNotReplayACleanlyFinishedAiring(t *testing.T) {
 		{Content: io.NopCloser(strings.NewReader("commercial")), Identity: commercial},
 	}
 	next := 0
-	source := BlockSource(func(context.Context, string, EncodePlan) (Block, error) {
+	source := BlockSource(func(_ context.Context, blockRequest BlockRequest) (Block, error) {
 		if next == len(blocks) {
 			cancel()
 			return Block{}, context.Canceled
