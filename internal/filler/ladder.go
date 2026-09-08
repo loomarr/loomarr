@@ -275,19 +275,6 @@ func (r EraRange) Widened() EraRange {
 	return w
 }
 
-func filterEra(clips []Clip, era EraRange) []Clip {
-	if era.Any() {
-		return clips
-	}
-	out := make([]Clip, 0, len(clips))
-	for _, c := range clips {
-		if era.Contains(c.Era) {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
 func (w Window) eraWindows() []EraRange {
 	if len(w.EraWindows) > 0 {
 		return NormalizeEraWindows(w.EraWindows)

@@ -1941,6 +1941,8 @@ an explicit no-date expectation requires absent Dates and Era. The result record
 scope so the score is auditable. An unsuccessful proposal cannot satisfy a date expectation.
 Expected date conflicts or ambiguity are instead scored as the required typed abstention under
 `proposal_quality`; they must not be registered as successful no-date policy expectations.
+For these expected pre-dispatch refusals, tool-operation quality requires no observed catalog
+operation, and proposal quality also requires a failure trace with zero source queries dispatched.
 Cases without date expectations retain their existing ceiling-only scoring, and all quality
 thresholds and historical artifact bytes remain unchanged. Required evidence includes adjacent and disjoint
 unions, true same-axis conflict with no source dispatch, different premiere/airing axes, title dates,

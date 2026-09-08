@@ -112,6 +112,33 @@ func typedDateRefusalRunner(proposal suggest.Proposal, err error) *Runner {
 	}})
 }
 
+func TestV8TypedDateRefusalRequiresNoCatalogActivity(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		toolCalls  int
+		dispatches int
+		certified  bool
+	}{
+		{name: "pre-dispatch refusal", certified: true},
+		{name: "observed tool operation", toolCalls: 1},
+		{name: "source dispatch in failure trace", dispatches: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			trace := validDateTrace(suggest.TerminalConstraintsConflict)
+			trace.SourceQueriesDispatched = tc.dispatches
+			err := suggest.NewFailure(suggest.FailureCodeNoGroundedTitles, trace, errors.New("date conflict"))
+			card := NewRunner(scriptedGenerator{err: err}, RunnerConfig{Contract: &CertificationContract{
+				Thresholds: CertificationThresholds{MinProposalQualityRate: 1, MinCorrectToolOperationRate: 1},
+			}}).WithObserver(&scriptedObserver{value: Observation{ToolCalls: tc.toolCalls}}).Run(context.Background(), []Case{{
+				Name: tc.name, NoFabrication: true, ExpectedProposalTerminal: suggest.TerminalConstraintsConflict, ExpectedToolOperation: "none",
+			}})
+			if card.Certified != tc.certified || !card.Results[0].Passed() {
+				t.Fatalf("certified=%v want=%v assessment=%+v failures=%v", card.Certified, tc.certified, card.Assessment, card.Results[0].Failures)
+			}
+		})
+	}
+}
+
 func boolRate(value bool) float64 {
 	if value {
 		return 1

@@ -743,12 +743,12 @@ func TestCatalogDiscoverUnion_FailureAndCancellationAreAtomic(t *testing.T) {
 	t.Run("source failure returns no partial candidates", func(t *testing.T) {
 		corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
 			if q.YearFrom == 2001 {
-				return nil, catalogfixture.DiscoverError
+				return nil, catalogfixture.ErrDiscover
 			}
 			return []catalog.Candidate{{MediaType: provision.Movie, TMDBID: q.YearFrom, Name: "partial"}}, nil
 		}}
 		got, err := catalog.New(nil, corpus).DiscoverUnion(context.Background(), []catalog.DiscoveryQuery{{YearFrom: 2000}, {YearFrom: 2001}, {YearFrom: 2002}})
-		if !errors.Is(err, catalogfixture.DiscoverError) || got.Candidates != nil || got.WindowsCompleted != 1 || got.SourceQueriesDispatched != 2 {
+		if !errors.Is(err, catalogfixture.ErrDiscover) || got.Candidates != nil || got.WindowsCompleted != 1 || got.SourceQueriesDispatched != 2 {
 			t.Fatalf("result = %+v, err = %v", got, err)
 		}
 		if calls := corpus.Discoveries(); len(calls) != 2 {

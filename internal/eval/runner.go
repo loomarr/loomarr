@@ -644,7 +644,14 @@ func assessCertification(results []Result, thresholds CertificationThresholds, m
 
 func proposalQualityMatches(c Case, proposal suggest.Proposal, err error) bool {
 	if c.ExpectedProposalTerminal != "" {
-		return typedDateAbstention(proposal, err) && typedFailureTerminal(err) == c.ExpectedProposalTerminal
+		if !typedDateAbstention(proposal, err) || typedFailureTerminal(err) != c.ExpectedProposalTerminal {
+			return false
+		}
+		if c.ExpectedToolOperation == "none" {
+			var failure *suggest.Failure
+			return errors.As(err, &failure) && failure.Trace.SourceQueriesDispatched == 0
+		}
+		return true
 	}
 	if c.ExpectedProposalAbstention {
 		return len(allItems(proposal)) == 0 && errors.Is(err, suggest.ErrNoGroundedTitles)
@@ -726,6 +733,11 @@ func expectedToolOperationFailure(expected string, observation Observation) stri
 	var calls int
 	switch expected {
 	case "":
+		return ""
+	case "none":
+		if observation.ToolCalls != 0 {
+			return "expected no catalog operation"
+		}
 		return ""
 	case "title":
 		calls = observation.TitleCalls

@@ -185,7 +185,7 @@ func TestSuggest_DateUnionProviderErrorDoesNotSurfacePartialCandidates(t *testin
 	}}}}
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}, DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
 		if q.YearFrom == 2000 {
-			return nil, catalogfixture.DiscoverError
+			return nil, catalogfixture.ErrDiscover
 		}
 		return []catalog.Candidate{matrixCandidate()}, nil
 	}}
@@ -248,7 +248,7 @@ func TestSuggest_DateUnionCreditExhaustionSpansRepairsAndGroundingRetry(t *testi
 		union, unsupported, unsupported, unsupported, union,
 	)
 	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, _ catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
-		return nil, catalogfixture.DiscoverError
+		return nil, catalogfixture.ErrDiscover
 	}}
 	_, err = dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990, 2000, and 2010 movies"})
 	var failure *suggest.Failure

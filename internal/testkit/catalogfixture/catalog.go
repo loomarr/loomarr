@@ -46,9 +46,9 @@ func (c *Corpus) Discover(ctx context.Context, query catalog.DiscoveryQuery, lim
 	return append([]catalog.Candidate(nil), c.Candidates...), nil
 }
 
-// DiscoverError is a shared deterministic discovery-source failure for catalog
+// ErrDiscover is a shared deterministic discovery-source failure for catalog
 // tests that need to preserve errors.Is identity.
-var DiscoverError = errors.New("catalog fixture discovery failure")
+var ErrDiscover = errors.New("catalog fixture discovery failure")
 
 func (c *Corpus) Searches() []SearchRequest {
 	c.mu.Lock()
