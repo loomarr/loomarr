@@ -40,6 +40,17 @@ func TestSyntheticResolversSelectDistinctStableProgrammeVariants(t *testing.T) {
 			if window.Current.Specification.SourceFingerprint != test.fingerprint || source != test.source || live.Identity != window.Current.Identity.ContentID {
 				t.Fatalf("prepared=%q source=%q live=%q, want fingerprint=%q source=%q matching identities", window.Current.Specification.SourceFingerprint, source, live.Identity, test.fingerprint, test.source)
 			}
+			if playhead := live.StartedAt.Add(live.Offset); !playhead.Equal(test.now) {
+				t.Errorf("live playhead = %s, want current wall clock %s", playhead, test.now)
+			}
+			if live.Offset != window.Current.Offset {
+				t.Errorf("live offset = %s, prepared offset = %s", live.Offset, window.Current.Offset)
+			}
+			// The HTTP programme adapter publishes this end coordinate. Both delivery
+			// paths must report the same authoritative boundary after a mid-Airing join.
+			if end := live.StartedAt.Add(live.Offset).Add(live.Remaining); !end.Equal(window.Current.Identity.EndsAt) {
+				t.Errorf("live end = %s, prepared end = %s", end, window.Current.Identity.EndsAt)
+			}
 		})
 	}
 }

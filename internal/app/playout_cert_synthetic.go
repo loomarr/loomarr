@@ -743,8 +743,8 @@ type syntheticLiveResolver struct {
 
 func (r syntheticLiveResolver) AiringNow(_ context.Context, channelID string) (playout.Airing, string, error) {
 	now := r.currentTime()
-	identity, _, _ := r.schedule.airings(now, channelID)
-	return playout.Airing{StartedAt: identity.StartedAt, Identity: identity.ContentID, ScheduleBlockID: identity.ScheduleBlockID, Kind: identity.Kind, LibraryItemID: channelID, Title: "Synthetic", Remaining: identity.EndsAt.Sub(now)}, r.sources[r.schedule.variant(now)], nil
+	identity, _, offset := r.schedule.airings(now, channelID)
+	return playout.Airing{StartedAt: identity.StartedAt, Identity: identity.ContentID, ScheduleBlockID: identity.ScheduleBlockID, Kind: identity.Kind, LibraryItemID: channelID, Title: "Synthetic", Offset: offset, Remaining: identity.EndsAt.Sub(now)}, r.sources[r.schedule.variant(now)], nil
 }
 func (r syntheticLiveResolver) currentTime() time.Time {
 	if r.now != nil {
