@@ -206,6 +206,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Shared no-network HTTP test seams without importing any application adapter.
 - **`testkit/operationfixture`**
   Cycle-free function-backed recordings for testing durable operations without importing an application package.
+- **`testkit/playoutprocessfixture`**
+  Supplies real subprocess behaviours for playout tests.
 - **`testkit/postgresimage`** · 1 importer
   Owns the single image reference used by Postgres testcontainers and the Make pre-pull that runs before those tests.
 - **`testkit/recordfixture`**
@@ -2270,6 +2272,10 @@ a private schedule. A tune resolves in this order:
    The outer pacing also bounds any whole-segment demux burst from fMP4/HLS before it reaches the raw
    viewer's finite queue; a copy must not disconnect a healthy television before its first frame
    merely because it can read immutable bytes faster than live.
+   EOF on a prepared remux child's output is successful completion only after its natural process
+   exit succeeds. A nonzero exit after a nonempty prefix remains a block read failure, so the
+   supervisor resolves the current Airing without waiting for the failed block's scheduled end.
+   Explicit close and cancellation still terminate and reap the child tree.
    The first prepared block pins the session to the publication's codec, dimensions, frame rate,
    and bitrates. Every later prepared block must match that format, while a prepared miss opens the
    ordinary live child constrained to the same format, so an Airing boundary cannot change decoder

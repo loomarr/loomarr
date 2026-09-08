@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,7 +15,101 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/testkit/playoutprocessfixture"
 )
+
+func TestPreparedBlockContentReportsNaturalExit(t *testing.T) {
+	for _, mode := range []string{"prepared-success", "prepared-failure"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			content := startPreparedBlockHelper(t, ctx, mode)
+			got, err := io.ReadAll(content)
+			if string(got) != playoutprocessfixture.PreparedPrefix {
+				t.Fatalf("forwarded output = %q", got)
+			}
+			if mode == "prepared-failure" {
+				var exitErr *exec.ExitError
+				if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
+					t.Fatalf("read error = %v; want child exit status 7", err)
+				}
+			} else if err != nil {
+				t.Fatalf("successful child: %v", err)
+			}
+			if err := content.Close(); err != nil {
+				t.Fatalf("close after natural exit: %v", err)
+			}
+		})
+	}
+}
+
+func TestPreparedBlockFailureResolvesBeforeScheduledEnd(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	content := startPreparedBlockHelper(t, ctx, "prepared-failure")
+	calls := 0
+	source := BlockSource(func(context.Context, string, EncodePlan) (Block, error) {
+		calls++
+		if calls > 1 {
+			cancel()
+			return Block{}, context.Canceled
+		}
+		return Block{Content: content, Identity: AiringIdentity{
+			ContentID: "failed-programme", EndsAt: time.Now().Add(time.Hour),
+		}}, nil
+	})
+	var output writeCloser
+	pumpBlocks(ctx, &output, source, "channel", PlanBaseline, nil)
+	if calls != 2 {
+		t.Fatalf("source calls = %d; partial child failure waited for scheduled end instead of resolving again", calls)
+	}
+	if output.String() != playoutprocessfixture.PreparedPrefix {
+		t.Fatalf("forwarded prefix = %q", output.String())
+	}
+}
+
+func TestPreparedBlockContentStopsAfterStdoutCloses(t *testing.T) {
+	for _, stop := range []string{"cancel", "close"} {
+		t.Run(stop, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			content := startPreparedBlockHelper(t, ctx, "prepared-stalled")
+			prefix := make([]byte, len(playoutprocessfixture.PreparedPrefix))
+			if _, err := io.ReadFull(content, prefix); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan struct{})
+			go func() {
+				_, _ = io.Copy(io.Discard, content)
+				close(done)
+			}()
+			if stop == "cancel" {
+				cancel()
+			} else {
+				_ = content.Close()
+			}
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("read did not finish after stopping the child")
+			}
+			if err := content.process.Wait(); err != nil {
+				t.Fatalf("cancelled child was not reaped cleanly: %v", err)
+			}
+		})
+	}
+}
+
+func startPreparedBlockHelper(t *testing.T, ctx context.Context, mode string) *processBlockContent {
+	t.Helper()
+	proc, err := Start(ctx, os.Args[0], []string{"-test.run=^TestProcessTreeHelper$", "--", mode}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := &processBlockContent{reader: proc.Stdout, process: proc}
+	t.Cleanup(func() { _ = content.Close() })
+	return content
+}
 
 type fixedPreparedResolver struct {
 	window PreparedWindow

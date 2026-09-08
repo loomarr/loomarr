@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -203,11 +204,25 @@ type processBlockContent struct {
 	err     error
 }
 
-func (c *processBlockContent) Read(p []byte) (int, error) { return c.reader.Read(p) }
+func (c *processBlockContent) Read(p []byte) (int, error) {
+	n, err := c.reader.Read(p)
+	if err == io.EOF {
+		// A child can close stdout after a partial programme and still fail. Reap its
+		// natural exit before Close requests Stop, which suppresses termination errors.
+		if exitErr := c.process.Wait(); exitErr != nil {
+			return n, exitErr
+		}
+	}
+	return n, err
+}
 
 func (c *processBlockContent) Close() error {
 	c.once.Do(func() {
 		c.err = c.reader.Close()
+		// Wait closes exec's stdout pipe after natural completion.
+		if errors.Is(c.err, os.ErrClosed) {
+			c.err = nil
+		}
 		c.process.Stop()
 	})
 	return c.err

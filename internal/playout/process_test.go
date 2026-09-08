@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/testkit/playoutprocessfixture"
 )
 
 func TestCombinedProgressPreservesDiagnostics(t *testing.T) {
@@ -336,6 +337,8 @@ func TestProcessTreeHelper(t *testing.T) {
 		return
 	}
 	switch args[0] {
+	case "prepared-success", "prepared-failure", "prepared-stalled":
+		playoutprocessfixture.RunPrepared(args[0])
 	case "parent", "parent-exit":
 		if len(args) != 2 {
 			os.Exit(2)
