@@ -2665,6 +2665,11 @@ that bound fails and rebuilds only the remux rather than discarding MPEG-TS pack
 without limit. Only the current and two adjacent hot-set Channels create these queues, so the memory
 bound is independent of the full Guide size.
 
+The MPEG-TS HLS remux preserves packet payloads and a common audio/video timestamp shift, including
+spacing across source gaps. It flushes transport output without mux delay so an AAC payload group
+cannot interpolate new-programme packets across an earlier gap. This preserves source timing; it
+does not fill gaps caused by late child startup or certify uninterrupted playback.
+
 The controller publishes User Timing measures with one attempt id: request-to-OSD-paint,
 request-to-manifest, and request-to-first-decoded-frame (`requestVideoFrameCallback`, with the media
 `playing` event as a compatibility fallback). It also records whether the request was adjacent,

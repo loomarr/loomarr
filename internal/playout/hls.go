@@ -901,6 +901,8 @@ func hlsArgs(dir string, plan EncodePlan) []string {
 		)
 	}
 	return append(base,
+		// Flush AAC PES payloads before timestamp gaps can be interpolated away.
+		"-muxdelay", "0",
 		"-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time",
 		"-hls_segment_type", "mpegts",
 		"-hls_segment_filename", filepath.Join(dir, "seg-%d.ts"),
