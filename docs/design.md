@@ -208,6 +208,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Cycle-free function-backed recordings for testing durable operations without importing an application package.
 - **`testkit/playoutprocessfixture`**
   Supplies real subprocess behaviours for playout tests.
+- **`testkit/playoutstreamfixture`**
+  Adapts controlled test chunks to cancellable transport reads.
 - **`testkit/postgresimage`** · 1 importer
   Owns the single image reference used by Postgres testcontainers and the Make pre-pull that runs before those tests.
 - **`testkit/recordfixture`**
@@ -2611,7 +2613,15 @@ controller's zero-delay disposal; leaving Watch lets that disposal destroy it. N
 keep the equivalent one-element source swap.
 
 The live HLS remux is an in-process sink of the shared Channel session, not an ordinary network
-viewer. Ordinary viewers retain their small mailbox and are dropped when they lag. The HLS sink
+viewer. Each ordinary raw viewer has a lossless FIFO capped at 512 KiB of queued transport bytes,
+matching the former eight maximum-size 64 KiB reads. The bound counts bytes rather than incidental
+pipe-read fragments: an ordinary small-write startup burst cannot disconnect a reader merely for
+containing more than eight chunks. An offer that exceeds the byte bound drops only that viewer;
+the shared producer never waits for a consumer and never discards bytes from an otherwise connected
+stream. Queued bytes retain their order through natural producer EOF. Explicit release discards
+unread bytes and wakes a pending read; request cancellation and startup deadlines bound the read
+itself, without a forwarding goroutine. The HTTP adapter consumes this stream through a cancellable
+read contract, so neither a channel adapter nor a second staging buffer bypasses the bound. The HLS sink
 instead preserves the finite encoder startup burst in a lossless queue capped at 128 MiB; exceeding
 that bound fails and rebuilds only the remux rather than discarding MPEG-TS packets or growing
 without limit. Only the current and two adjacent hot-set Channels create these queues, so the memory

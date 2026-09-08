@@ -529,7 +529,7 @@ func (r *hlsRemux) finishTeardown() {
 // ⚠ THE BUG THIS FIXES (found live, and it cost real time): the pump used to read a chunk from the
 // session channel and SYNCHRONOUSLY write it to ffmpeg's stdin. But the remux ffmpeg's stdin pipe
 // backs up during startup (it is initialising the HLS muxer), so the write blocks, the pump stops
-// reading the session channel, the session's small per-viewer buffer (viewerBuffer × 64KB ≈ 512KB)
+// reading the session channel, the session's small per-viewer buffer (formerly eight chunks of at most 64 KiB)
 // fills in a burst, and the session — whose policy is "drop a viewer that falls behind", correct
 // for a genuinely stalled TV — DROPS THE REMUX. The channel then closes with no segment written:
 // a black frame. The remux is not a slow client; it is a pipe with normal backpressure, and it

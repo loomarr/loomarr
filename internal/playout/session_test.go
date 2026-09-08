@@ -1,9 +1,11 @@
 package playout
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -281,14 +283,18 @@ func TestManager_StopChannelStopsEveryPlanAndLeavesOtherChannels(t *testing.T) {
 
 	m.StopChannel("ch1")
 
-	for name, stream := range map[string]<-chan []byte{"baseline": baseline, "hevc": hevc} {
-		select {
-		case _, ok := <-stream:
+	for name, stream := range map[string]Stream{"baseline": baseline, "hevc": hevc} {
+		{
+			readCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+			_, readErr := stream.Next(readCtx)
+			cancel()
+			if errors.Is(readErr, context.DeadlineExceeded) {
+				t.Fatalf("%s viewer was not disconnected", name)
+			}
+			ok := readErr == nil
 			if ok {
 				t.Fatalf("%s viewer remained connected after StopChannel", name)
 			}
-		case <-time.After(time.Second):
-			t.Fatalf("%s viewer was not disconnected", name)
 		}
 	}
 	for _, plan := range []EncodePlan{PlanBaseline, PlanHEVC10} {
@@ -301,12 +307,14 @@ func TestManager_StopChannelStopsEveryPlanAndLeavesOtherChannels(t *testing.T) {
 	if got := m.ActiveCount(); got != 1 {
 		t.Fatalf("ActiveCount after channel stop = %d, want only ch2", got)
 	}
-	select {
-	case _, ok := <-other:
+	{
+		readCtx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+		_, readErr := other.Next(readCtx)
+		cancel()
+		ok := !errors.Is(readErr, io.EOF)
 		if !ok {
 			t.Fatal("stopping ch1 disconnected ch2")
 		}
-	default:
 	}
 }
 
@@ -361,14 +369,17 @@ func TestAttach_AllViewersReceiveTheSameBytes(t *testing.T) {
 	if _, err := encoder("ch1").w.Write([]byte("mpegts-payload")); err != nil {
 		t.Fatal(err)
 	}
-	for name, ch := range map[string]<-chan []byte{"a": a, "b": b} {
-		select {
-		case got := <-ch:
+	for name, ch := range map[string]Stream{"a": a, "b": b} {
+		{
+			readCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			got, readErr := ch.Next(readCtx)
+			cancel()
+			if errors.Is(readErr, context.DeadlineExceeded) {
+				t.Fatalf("viewer %s received nothing", name)
+			}
 			if string(got) != "mpegts-payload" {
 				t.Errorf("viewer %s got %q", name, got)
 			}
-		case <-time.After(2 * time.Second):
-			t.Fatalf("viewer %s received nothing", name)
 		}
 	}
 }
@@ -447,7 +458,10 @@ func TestBroadcast_SlowViewerIsDroppedNotBlocking(t *testing.T) {
 	received := make(chan int, 1)
 	go func() {
 		n := 0
-		for range fast {
+		for {
+			if _, err := fast.Next(t.Context()); err != nil {
+				break
+			}
 			n++
 			received <- n
 		}
@@ -459,7 +473,7 @@ func TestBroadcast_SlowViewerIsDroppedNotBlocking(t *testing.T) {
 	payload := make([]byte, 64*1024)
 	w := encoder("ch1").w
 	go func() {
-		for i := 0; i < viewerBuffer*4; i++ {
+		for i := 0; i < (viewerBufferBytes/transportReadSize)*4; i++ {
 			if _, err := w.Write(payload); err != nil {
 				return // the pipe closed; the assertions below report the real problem
 			}
@@ -468,7 +482,7 @@ func TestBroadcast_SlowViewerIsDroppedNotBlocking(t *testing.T) {
 
 	// The property: the fast viewer keeps receiving well past the point at which the slow
 	// one's buffer was exhausted.
-	want := viewerBuffer * 2
+	want := (viewerBufferBytes / transportReadSize) * 2
 	deadline := time.After(10 * time.Second)
 	for {
 		select {
@@ -500,7 +514,7 @@ func TestBroadcast_StalledLastViewerIsClosedAndSessionEntersGrace(t *testing.T) 
 	payload := make([]byte, 64*1024)
 	w := encoder("ch1").w
 	go func() {
-		for i := 0; i < viewerBuffer*4; i++ {
+		for i := 0; i < (viewerBufferBytes/transportReadSize)*4; i++ {
 			if _, err := w.Write(payload); err != nil {
 				return
 			}
@@ -509,19 +523,18 @@ func TestBroadcast_StalledLastViewerIsClosedAndSessionEntersGrace(t *testing.T) 
 
 	// Read nothing for a while, then drain: the channel must be closed, not merely full.
 	time.Sleep(200 * time.Millisecond)
-	deadline := time.After(10 * time.Second)
+	readCtx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
 	for {
-		select {
-		case _, ok := <-stalled:
-			if !ok {
-				goto viewerClosed
-			}
-		case <-deadline:
-			t.Fatal("a viewer that stopped reading was never dropped")
+		_, err := stalled.Next(readCtx)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("a viewer that stopped reading was never dropped: %v", err)
 		}
 	}
 
-viewerClosed:
 	select {
 	case <-encoder("ch1").stopped:
 	case <-time.After(2 * time.Second):
@@ -542,7 +555,7 @@ func TestAttachSink_PreservesWarmStartupBurst(t *testing.T) {
 	}
 	defer lease.Release()
 
-	const writes = viewerBuffer * 4
+	const writes = (viewerBufferBytes / transportReadSize) * 4
 	payload := make([]byte, 64*1024)
 	written := make(chan error, 1)
 	go func() {
@@ -616,12 +629,14 @@ func TestAttach_AtCapacityRefusesRatherThanEvicting(t *testing.T) {
 	if n := m.ActiveCount(); n != 2 {
 		t.Errorf("ActiveCount = %d, want 2", n)
 	}
-	select {
-	case _, ok := <-first:
+	{
+		readCtx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+		_, readErr := first.Next(readCtx)
+		cancel()
+		ok := !errors.Is(readErr, io.EOF)
 		if !ok {
 			t.Error("an existing viewer was disconnected to make room — that is eviction")
 		}
-	default: // no bytes pending is fine; we only care that it is not closed
 	}
 
 	// A viewer already attached to an admitted channel is still fine, and attaching
@@ -1043,13 +1058,17 @@ func TestSession_EncoderExitDisconnectsViewers(t *testing.T) {
 	}
 	_ = encoder("ch1").w.Close() // encoder exits → pump sees EOF
 
-	select {
-	case _, ok := <-v:
+	{
+		readCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		_, readErr := v.Next(readCtx)
+		cancel()
+		if errors.Is(readErr, context.DeadlineExceeded) {
+			t.Error("viewer was left parked after the encoder exited")
+		}
+		ok := readErr == nil
 		if ok {
 			t.Error("expected the viewer channel to be closed when the encoder exits")
 		}
-	case <-time.After(2 * time.Second):
-		t.Error("viewer was left parked after the encoder exited")
 	}
 }
 
@@ -1109,18 +1128,22 @@ func TestManagerStop_TearsDownEveryEncoder(t *testing.T) {
 //
 // These four cover the behaviour onIdle owes. They fail until it is implemented.
 
-func warmSession(t *testing.T, viewer <-chan []byte, encoder *fakeEncoder) {
+func warmSession(t *testing.T, viewer Stream, encoder *fakeEncoder) {
 	t.Helper()
 	if _, err := encoder.w.Write([]byte("warm")); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case chunk, ok := <-viewer:
+	{
+		readCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		chunk, readErr := viewer.Next(readCtx)
+		cancel()
+		if errors.Is(readErr, context.DeadlineExceeded) {
+			t.Fatal("session produced no warming transport")
+		}
+		ok := readErr == nil
 		if !ok || string(chunk) != "warm" {
 			t.Fatalf("warming chunk = %q, open=%v", chunk, ok)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("session produced no warming transport")
 	}
 }
 
@@ -1209,12 +1232,14 @@ func TestOnIdle_ReconnectInsideGraceAbortsTeardown(t *testing.T) {
 
 	// Well past the original deadline: the returning viewer must still be connected.
 	time.Sleep(500 * time.Millisecond)
-	select {
-	case _, ok := <-v:
+	{
+		readCtx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+		_, readErr := v.Next(readCtx)
+		cancel()
+		ok := !errors.Is(readErr, io.EOF)
 		if !ok {
 			t.Fatal("the grace timer tore down a session that a viewer had rejoined")
 		}
-	default:
 	}
 	select {
 	case <-encoder("ch1").stopped:
@@ -1251,12 +1276,14 @@ func TestOnIdle_StaleTimerDoesNotKillALaterViewer(t *testing.T) {
 	// Let every earlier timer's deadline pass.
 	time.Sleep(600 * time.Millisecond)
 
-	select {
-	case _, ok := <-v:
+	{
+		readCtx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+		_, readErr := v.Next(readCtx)
+		cancel()
+		ok := !errors.Is(readErr, io.EOF)
 		if !ok {
 			t.Fatal("a stale grace timer disconnected a live viewer")
 		}
-	default:
 	}
 	select {
 	case <-encoder("ch1").stopped:
@@ -1327,15 +1354,64 @@ func TestOnIdle_TornDownSessionIsReplacedOnNextAttach(t *testing.T) {
 	if _, err := encoder("ch1").w.Write([]byte("fresh")); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case got, ok := <-v:
+	{
+		readCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		got, readErr := v.Next(readCtx)
+		cancel()
+		if errors.Is(readErr, context.DeadlineExceeded) {
+			t.Fatal("no bytes from the replacement encoder")
+		}
+		ok := readErr == nil
 		if !ok {
 			t.Fatal("attached to a dead session")
 		}
 		if string(got) != "fresh" {
 			t.Errorf("got %q, want %q", got, "fresh")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("no bytes from the replacement encoder")
+	}
+}
+
+// A burst is bounded by payload, not the number of fragments returned by pipe reads.
+func TestManager_FragmentedViewerBurstPreservesAcceptedBytes(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		size, count int
+	}{
+		{"single_byte_fragments", 1, 1024},
+		{"small_transport_fragments", 376, 128},
+		{"full_size_bound", 64 << 10, 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			spawn, _ := newFakeSpawner(t)
+			manager := testManager(t, spawn, 4, time.Minute)
+			stream, release, err := manager.Attach(t.Context(), "fragmented", PlanFull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			session := manager.session("fragmented", PlanFull)
+			want := make([]byte, tc.size*tc.count)
+			for i := range want {
+				want[i] = byte(i % 251)
+			}
+			for start := 0; start < len(want); start += tc.size {
+				session.broadcast(want[start : start+tc.size])
+			}
+			session.close()
+			var got []byte
+			for {
+				chunk, err := stream.Next(t.Context())
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				got = append(got, chunk...)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatalf("fragmented burst delivered %d/%d bytes", len(got), len(want))
+			}
+		})
 	}
 }

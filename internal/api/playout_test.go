@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 )
 
 const (
@@ -126,7 +127,7 @@ func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequ
 	f.tunes++
 	f.mu.Unlock()
 	chunks, release, err := f.Attach(ctx, request.ChannelID, request.Plan)
-	return playout.Presentation{Stream: chunks, Release: release}, err
+	return playout.Presentation{Stream: playoutstreamfixture.Channel{Chunks: chunks}, Release: release}, err
 }
 
 func (f *fakePlayoutSessions) OpenAsset(_ context.Context, _ string, _ playout.EncodePlan, rel string) (playout.Asset, bool, error) {
