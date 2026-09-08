@@ -3823,3 +3823,40 @@ Evidence is retained in the maintainer's `delivery-evidence-2026-09-06/hls-input
 archive, including the initial failures. These results do not resolve the measured source handoff
 gaps, map generated programme-date-time to the source schedule, or implement private decoded
 programme-signature qualification. Those remain acceptance work under #1037.
+
+
+## 2026-09-08 — preserve the source clock through parent and HLS
+
+Correction `7a048cd7` keeps the finite child's session-relative timestamps through the parent and
+ordinary HLS remux. An isolated signed-HLS capture retains every captured source-to-parent video
+and audio packet (418 / 791) with exact payload, duration, PTS and DTS. Its public prefix retains
+412 video / 782 audio packets with the same exact coordinates. Planned capture cancellation leaves
+a tail, so finite regressions separately establish complete counts.
+
+The stronger parent and five HLS clock assertions fail against the previous published arguments:
+the parent rebases video PTS 1,026,000 to 7,200, and HLS rebases ten seconds to approximately zero.
+Two old multi-programme fixtures reset each source clock independently; they now supply advancing
+shared-clock inputs, as production children already do. All original packet/payload/A-V-delay,
+geometry, decoded RBR and transition-position assertions remain. Parent assertions additionally
+require zero timestamp shift for every programme and both streams. Final parent checks pass (5.67s)
+and all five HLS startup/clock cases pass (3.40s), retaining aligned/delayed H.264 and HEVC plus the
+601,069-byte initial keyframe case.
+
+The first correction exposed a separate live-fMP4 audio offset: its movie clock rounded a source
+origin by about 0.667 ms. Selecting `movie_timescale=90000` through the HLS segment options fixes both
+HEVC cases without relaxing the assertions. The option is documented in the
+[FFmpeg format reference](https://ffmpeg.org/ffmpeg-formats.html); the pinned-media red/green
+experiment proves the observed behaviour. Packet comparisons use exact rational timebases; equal
+timebases require equality and differing timebases permit only one tick of quantization.
+
+Other pinned regressions pass: stable RBR (12.19s), source-gap timing (0.32s), prepared initial media
+(2.68s), prepared rollover (4.80s), and eight child codec/copy combinations (1.58s). The final real
+signed-HLS reader passes (20.41s), and the existing 100-prepared-channel/bounded-transcode workload
+passes (40.81s). Its historical test name does not establish the still-missing private programme
+identity qualification. `make verify BASE=7f53c395627b27b2e50b118c73562985a818bb6d` passes Go, docs and
+policy without retry; playout race tests take 13.001s, app 61.600s and the command package 112.564s.
+
+Evidence is retained in `delivery-evidence-2026-09-06/source-clock-7a048cd7`, including both initial
+failures, final captures, packet comparisons, overlays and gate logs. Retaining PTS is a prerequisite:
+private binding to the owning session origin and each prepared asset, expected-signature comparison,
+late A/V/read/byte qualification, source gaps, remaining cohorts and independent review remain open.
