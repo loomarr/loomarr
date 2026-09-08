@@ -24,16 +24,27 @@ func TestJourney_NewAdmin(t *testing.T) {
 	// The scripted suggester: search the catalog by term (grounds to the real library
 	// results), then pick the four surfaced ids + a kids policy.
 	llm := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "cartoon"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"query": "cartoon",
+			"dateMeaning": map[string]any{
+				"kind":    "constraints",
+				"anchors": []any{map[string]any{"field": "description", "start": 0, "end": 3}},
+				"axes": []any{map[string]any{
+					"kind": "movie_release", "combine": "any",
+					"intervals": []any{map[string]any{"anchor": 0, "start": 1990, "end": 1999}},
+				}},
+			},
+		}),
 		testkit.FinalResponse(`{
 			"rationale":"90s Saturday morning cartoons",
+			"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":3}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]},
 			"picks":[
 				{"mediaType":"movie","tmdbId":5001,"name":"Sunny Toon Hour"},
 				{"mediaType":"movie","tmdbId":5002,"name":"Robo Rangers"},
 				{"mediaType":"movie","tmdbId":5003,"name":"Critter Club"},
 				{"mediaType":"movie","tmdbId":5004,"name":"Midnight Mayhem Toons"}
 			],
-			"policy":{"audience":{"ceiling":"TV-Y7"},"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]},"ordering":"syndication"}
+			"policy":{"audience":{"ceiling":"TV-Y7"},"genres":{"include":["Animation"]},"ordering":"syndication"}
 		}`),
 	)
 	h := newHarness(t, withLLM(llm), withSeerr(), withTunarrPlayout())
@@ -196,10 +207,11 @@ func TestJourney_NewAdmin(t *testing.T) {
 func TestJourney_HolidayKeywordProposalIncludesOutsideLibraryDiscovery(t *testing.T) {
 	llm := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{
-			"keywords": []any{"Christmas"}, "media_type": "movie",
+			"keywords": []any{"Christmas"}, "media_type": "movie", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
 		}),
 		testkit.FinalResponse(`{
 			"channelName":"Snow Day Cinema",
+			"dateMeaning":{"kind":"none","anchors":[],"axes":[]},
 			"picks":[{"mediaType":"movie","tmdbId":2401,"name":"Snowbound Reunion","confidence":0.91}],
 			"policy":{"seasonal":{"mode":"exclusive"}}
 		}`),
