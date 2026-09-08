@@ -3308,6 +3308,15 @@ regressing per-stream timestamps and missing required signal fields cannot yield
 signal evidence. Cancellation closes the admitted input and joins the decoder and both metadata
 readers; no unbounded metadata buffer or free-form decoder output enters a report.
 
+The signed-HLS observation reader accepts the prepared fMP4 and ordinary MPEG-TS media playlists
+served by the production origin. Prepared-only observation still requires an initialization map;
+ordinary MPEG-TS does not invent one. Programme-date-time may precede or follow `EXTINF`, including
+the numeric timezone form emitted by the pinned FFmpeg. Each segment retains its positive duration,
+absolute media sequence, discontinuity epoch and wall-clock interval. Missing initial/discontinuity
+time anchors, malformed durations, sequence overflow and changed metadata for a replayed segment
+fail closed. These playlist coordinates support decoded observation; they never substitute for the
+required private signature succession or late audio/video progress.
+
 A separately declared remote-FFmpeg lane may push MPEG-TS over TCP/Tailscale
 to that isolated instance, but it is reported independently and never substitutes for the real
 Loomarr HTTP route phases.

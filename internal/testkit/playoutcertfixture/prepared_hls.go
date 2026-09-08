@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,6 +22,8 @@ const (
 	PreparedHLSBlockedRefresh
 	PreparedHLSQueuedTransition
 	PreparedHLSBlockedAfterQualified
+	PreparedHLSChangedTime
+	PreparedHLSChangedDuration
 )
 
 // PreparedHLS is a public mint/HLS fixture. Its second playlist either
@@ -75,6 +78,16 @@ func (f *PreparedHLS) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		playlist := f.playlists.Add(1)
 		if playlist == 1 {
 			_, _ = io.WriteString(w, preparedHLSManifest("init-a", "a", ""))
+			return
+		}
+		if f.mode == PreparedHLSChangedTime || f.mode == PreparedHLSChangedDuration {
+			body := preparedHLSManifest("init-a", "a", "")
+			if f.mode == PreparedHLSChangedTime {
+				body = strings.ReplaceAll(body, "12:00:00Z", "12:00:01Z")
+			} else {
+				body = strings.ReplaceAll(body, "#EXTINF:1,", "#EXTINF:2,")
+			}
+			_, _ = io.WriteString(w, body)
 			return
 		}
 		if f.mode == PreparedHLSBlockedRefresh {

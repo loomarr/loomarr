@@ -2,6 +2,8 @@ package playoutcert
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"testing"
 )
 
@@ -71,4 +73,21 @@ func RequireCertifiedPublicationForTest(t *testing.T, report Report) {
 }
 func RequireUncertifiedPublicationForTest(t *testing.T, report Report) {
 	requireUncertifiedPublication(t, report)
+}
+
+// ColdHLSStreamForTest requires a prepared miss before opening ordinary signed HLS.
+func ColdHLSStreamForTest(ctx context.Context, config Config, channel string) (io.ReadCloser, error) {
+	e, err := newEndpoint(config.normalized())
+	if err != nil {
+		return nil, err
+	}
+	signed, _, class := e.mint(ctx, channel)
+	if class != "ok" {
+		return nil, fmt.Errorf("mint: %s", class)
+	}
+	_, hit, class := e.prepared(ctx, signed)
+	if hit || class != "prepared_miss" {
+		return nil, fmt.Errorf("expected cold cohort: %s", class)
+	}
+	return newLiveHLSReader(ctx, e, signed), nil
 }

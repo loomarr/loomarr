@@ -1,22 +1,19 @@
 package playoutcert
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// preparedHLSReader turns the public, signed prepared playlist into one ordered
-// fMP4 byte stream.  It intentionally owns both playlist and asset fetching: a
+// preparedHLSReader turns a public signed media playlist into an ordered fMP4
+// or MPEG-TS byte stream.  It intentionally owns both playlist and asset fetching: a
 // raw programme stream is not evidence for a transition advertised elsewhere.
 type preparedHLSReader struct {
 	ctx          context.Context
@@ -33,12 +30,15 @@ type preparedHLSReader struct {
 	armed        bool
 	boundary     string
 	epochPending bool
+	requireMap   bool
 	transition   chan bool
 }
 
 type preparedHLSSegment struct {
 	uri, init, id, boundary string
 	postArm                 bool
+	startedAt               time.Time
+	duration                time.Duration
 }
 
 var errPreparedHLSEpoch = errors.New("prepared HLS decode epoch ended")
@@ -49,7 +49,18 @@ func newPreparedHLSReader(ctx context.Context, e *endpoint, signed *url.URL) *pr
 	q.Set("mode", "prepared")
 	p.RawQuery = q.Encode()
 	owned, cancel := context.WithCancel(ctx)
-	return &preparedHLSReader{ctx: owned, cancel: cancel, e: e, playlist: &p, seen: map[string]preparedHLSSegment{}, transition: make(chan bool, 1)}
+	return &preparedHLSReader{ctx: owned, cancel: cancel, e: e, playlist: &p, seen: map[string]preparedHLSSegment{}, transition: make(chan bool, 1), requireMap: true}
+}
+
+// newLiveHLSReader follows ordinary signed HLS, including MPEG-TS playlists
+// without an initialization map. It never requests prepared-only delivery.
+func newLiveHLSReader(ctx context.Context, e *endpoint, signed *url.URL) *preparedHLSReader {
+	r := newPreparedHLSReader(ctx, e, signed)
+	q := r.playlist.Query()
+	q.Del("mode")
+	r.playlist.RawQuery = q.Encode()
+	r.requireMap = false
+	return r
 }
 
 func (r *preparedHLSReader) Read(p []byte) (int, error) {
@@ -201,13 +212,13 @@ func (r *preparedHLSReader) refresh() error {
 	if err != nil {
 		return err
 	}
-	segments, err := parsePreparedHLS(body)
+	segments, err := parseHLSMedia(body, r.requireMap)
 	if err != nil {
 		return err
 	}
 	for _, seg := range segments {
 		if previous, ok := r.seen[seg.id]; ok {
-			if previous.uri != seg.uri || previous.init != seg.init || previous.boundary != seg.boundary {
+			if previous.uri != seg.uri || previous.init != seg.init || previous.boundary != seg.boundary || !previous.startedAt.Equal(seg.startedAt) || previous.duration != seg.duration {
 				return errors.New("inconsistent_hls_replay")
 			}
 			continue
@@ -220,78 +231,6 @@ func (r *preparedHLSReader) refresh() error {
 		r.queue = append(r.queue, seg)
 	}
 	return nil
-}
-
-func parsePreparedHLS(body []byte) ([]preparedHLSSegment, error) {
-	var out []preparedHLSSegment
-	sequence := int64(0)
-	index := int64(0)
-	discontinuitySequence := int64(0)
-	localDiscontinuities := int64(0)
-	init := ""
-	sawMedia := false
-	pdt, discontinuity := false, false
-	scanner := bufio.NewScanner(bytes.NewReader(body))
-	scanner.Buffer(make([]byte, 1024), 1<<20)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		switch {
-		case strings.HasPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"):
-			v, err := strconv.ParseInt(strings.TrimPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"), 10, 64)
-			if err != nil || v < 0 {
-				return nil, errors.New("invalid_hls")
-			}
-			sequence = v
-			index = 0
-		case strings.HasPrefix(line, "#EXT-X-DISCONTINUITY-SEQUENCE:"):
-			v, err := strconv.ParseInt(strings.TrimPrefix(line, "#EXT-X-DISCONTINUITY-SEQUENCE:"), 10, 64)
-			if err != nil || v < 0 {
-				return nil, errors.New("invalid_hls")
-			}
-			discontinuitySequence = v
-		case strings.HasPrefix(line, "#EXT-X-MAP:"):
-			v := mapURI(line)
-			if v == "" {
-				return nil, errors.New("invalid_hls")
-			}
-			init = v
-		case line == "#EXT-X-DISCONTINUITY":
-			discontinuity = true
-			localDiscontinuities++
-		case strings.HasPrefix(line, "#EXT-X-PROGRAM-DATE-TIME:"):
-			if _, err := time.Parse(time.RFC3339Nano, strings.TrimPrefix(line, "#EXT-X-PROGRAM-DATE-TIME:")); err != nil {
-				return nil, errors.New("invalid_hls")
-			}
-			pdt = true
-		case strings.HasPrefix(line, "#EXTINF:"):
-			if init == "" {
-				return nil, errors.New("invalid_hls")
-			}
-			first := !sawMedia
-			sawMedia = true
-			if !scanner.Scan() {
-				return nil, errors.New("invalid_hls")
-			}
-			uri := strings.TrimSpace(scanner.Text())
-			if uri == "" || strings.HasPrefix(uri, "#") {
-				return nil, errors.New("invalid_hls")
-			}
-			if (discontinuity || first) && !pdt {
-				return nil, errors.New("invalid_hls")
-			}
-			boundary := fmt.Sprintf("%d", discontinuitySequence+localDiscontinuities)
-			out = append(out, preparedHLSSegment{uri: uri, init: init, id: fmt.Sprintf("%d", sequence+index), boundary: boundary})
-			index++
-			discontinuity, pdt = false, false
-		}
-	}
-	if scanner.Err() != nil || !sawMedia {
-		return nil, errors.New("invalid_hls")
-	}
-	return out, nil
 }
 
 func mapURI(line string) string {
