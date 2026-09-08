@@ -442,6 +442,8 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 			"-map", "0:v:0", "-map", "1:a:0", "-shortest", "-t", "5",
 			"-c:v", "libx264", "-preset", "ultrafast", "-g", "50", "-sc_threshold", "0",
 			"-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2",
+			// Production children already share a clock; do not reset each fixture to zero.
+			"-output_ts_offset", fmt.Sprint(10 + i*5),
 			"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", blocks[i],
 		}
 		if out, err := exec.Command(bin, args...).CombinedOutput(); err != nil {

@@ -62,7 +62,7 @@ func TestLive_BlockMuxPreservesSourceAVOffset(t *testing.T) {
 		if i == 1 {
 			offset = "0.3"
 		}
-		args := []string{"-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=duration=3:size=320x180:rate=25", "-itsoffset", offset, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "25", "-bf", "3", "-sc_threshold", "0", "-c:a", "aac", "-ac", "2", "-ar", "48000", "-t", "3", "-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", path}
+		args := []string{"-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=duration=3:size=320x180:rate=25", "-itsoffset", offset, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "25", "-bf", "3", "-sc_threshold", "0", "-c:a", "aac", "-ac", "2", "-ar", "48000", "-t", "3", "-output_ts_offset", strconv.Itoa(10 + i*3), "-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", path}
 		if out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
 			t.Fatalf("generate source: %v\n%s", err, out)
 		}
@@ -132,6 +132,19 @@ func TestLive_BlockMuxPreservesSourceAVOffset(t *testing.T) {
 	output := packetsByCodec(t, probeMuxPackets(t, ctx, probe, outPath), "joined output")
 	assertSecondProgrammeAudioDelay(t, programmes[1])
 	assertProgrammesPreserved(t, programmes, output)
+	// The children share a session clock. Preserve its origin as well as A/V
+	// offsets, payloads and spacing; an arbitrary common rebase is insufficient.
+	for _, codec := range []string{"video", "audio"} {
+		cursor := 0
+		for index, programme := range programmes {
+			first, _, _ := parseMuxPacket(t, programme[codec][0], "source clock")
+			got, _, _ := parseMuxPacket(t, output[codec][cursor], "parent clock")
+			if got != first {
+				t.Fatalf("programme %d %s session origin changed: got %d, want %d", index, codec, got, first)
+			}
+			cursor += len(programme[codec])
+		}
+	}
 }
 
 func packetsByCodec(t *testing.T, probe muxProbe, label string) map[string][]muxPacket {

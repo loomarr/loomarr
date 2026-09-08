@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,7 +33,7 @@ func TestLive_HLSStartsBeforeFiniteInputCloses(t *testing.T) {
 			defer cancel()
 			dir := t.TempDir()
 			source := filepath.Join(dir, "source.ts")
-			args := []string{"-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=duration=4.6:size=" + test.size + ":rate=25", "-itsoffset", test.audioOffset, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4.6", "-c:v", test.encoder, "-preset", "ultrafast", "-g", "25", "-bf", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "2", "-ar", "48000", "-muxdelay", "0"}
+			args := []string{"-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=duration=4.6:size=" + test.size + ":rate=25", "-itsoffset", test.audioOffset, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4.6", "-c:v", test.encoder, "-preset", "ultrafast", "-g", "25", "-bf", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "2", "-ar", "48000", "-muxdelay", "0", "-output_ts_offset", "10"}
 			if test.largeKeyframe {
 				args = append(args, "-crf", "0", "-threads", "2")
 			}
@@ -160,8 +161,7 @@ func TestLive_HLSStartsBeforeFiniteInputCloses(t *testing.T) {
 			if err := joined.Close(); err != nil {
 				t.Fatal(err)
 			}
-			counts := func(path string) map[string]int {
-				p := probeMuxPackets(t, ctx, probe, path)
+			counts := func(p muxProbe) map[string]int {
 				if len(p.Streams) != 2 {
 					t.Fatalf("stream count=%d, want two", len(p.Streams))
 				}
@@ -186,12 +186,76 @@ func TestLive_HLSStartsBeforeFiniteInputCloses(t *testing.T) {
 				}
 				return result
 			}
-			got, want := counts(joined.Name()), counts(source)
+			sourcePackets := probeMuxPackets(t, ctx, probe, source)
+			outputPackets := probeMuxPackets(t, ctx, probe, joined.Name())
+			assertHLSPacketClock(t, sourcePackets, outputPackets, test.plan == PlanBaseline)
+			got, want := counts(outputPackets), counts(sourcePackets)
 			for _, kind := range []string{"video", "audio"} {
 				if want[kind] == 0 || got[kind] != want[kind] {
 					t.Fatalf("%s packet counts changed: %d/%d", kind, got[kind], want[kind])
 				}
 			}
 		})
+	}
+}
+
+// Containers may rescale timebases, but may not choose a new media-clock origin.
+func assertHLSPacketClock(t *testing.T, want, got muxProbe, identicalPayload bool) {
+	t.Helper()
+	for _, sourceStream := range want.Streams {
+		var outputStream *muxStream
+		for _, stream := range got.Streams {
+			if stream.CodecType == sourceStream.CodecType {
+				outputStream = &stream
+				break
+			}
+		}
+		if outputStream == nil {
+			t.Fatalf("missing %s stream", sourceStream.CodecType)
+		}
+		sourceTick, sourceOK := new(big.Rat).SetString(sourceStream.TimeBase)
+		outputTick, outputOK := new(big.Rat).SetString(outputStream.TimeBase)
+		if !sourceOK || !outputOK || sourceTick.Sign() <= 0 || outputTick.Sign() <= 0 {
+			t.Fatal("invalid stream timebase")
+		}
+		var sources, outputs []muxPacket
+		for _, packet := range want.Packets {
+			if packet.Stream == sourceStream.Index {
+				sources = append(sources, packet)
+			}
+		}
+		for _, packet := range got.Packets {
+			if packet.Stream == outputStream.Index {
+				outputs = append(outputs, packet)
+			}
+		}
+		if len(sources) == 0 || len(sources) != len(outputs) {
+			t.Fatalf("%s packets=%d/%d", sourceStream.CodecType, len(outputs), len(sources))
+		}
+		for i, source := range sources {
+			output := outputs[i]
+			if identicalPayload && source.Hash != output.Hash {
+				t.Fatalf("%s packet %d payload changed", sourceStream.CodecType, i)
+			}
+			sp, sd, sn := parseMuxPacket(t, source, "source clock")
+			op, od, on := parseMuxPacket(t, output, "HLS clock")
+			for field, pair := range map[string][2]int64{"PTS": {sp, op}, "DTS": {sd, od}, "duration": {sn, on}} {
+				sourceTime := new(big.Rat).Mul(new(big.Rat).SetInt64(pair[0]), sourceTick)
+				outputTime := new(big.Rat).Mul(new(big.Rat).SetInt64(pair[1]), outputTick)
+				delta := new(big.Rat).Abs(new(big.Rat).Sub(outputTime, sourceTime))
+				// Equal timebases must retain exact coordinates. Different ones
+				// permit only the larger single-tick quantization error.
+				tolerance := new(big.Rat)
+				if sourceTick.Cmp(outputTick) != 0 {
+					tolerance.Set(sourceTick)
+					if outputTick.Cmp(tolerance) > 0 {
+						tolerance.Set(outputTick)
+					}
+				}
+				if delta.Cmp(tolerance) > 0 {
+					t.Fatalf("%s packet %d %s changed: %s to %s", sourceStream.CodecType, i, field, sourceTime, outputTime)
+				}
+			}
+		}
 	}
 }

@@ -2315,7 +2315,14 @@ a private schedule. A tune resolves in this order:
    seek from both timestamps. Video copy may start at the next decodable keyframe, never replay the
    preceding GOP as current content. A zero source offset omits seeking entirely. The parent copy mux flushes without an
    extra mux delay. The internal live-child hop carries the same origin, including generated cards;
-   media clocks must not reset when the source changes between prepared and live delivery.
+   media clocks must not reset when the source changes between prepared and live delivery. The
+   parent and ordinary HLS remux retain those source coordinates rather than choosing another zero
+   at tune-in. MPEG-TS preserves the exact packet PTS/DTS; fMP4 may only round to its stream timebase.
+   The live fMP4 movie clock uses the 90 kHz transport timescale so edit-list offsets do not round
+   the audio origin to milliseconds.
+   Qualification binds the retained coordinates to the owning session origin, never to FFmpeg's
+   generated programme-date-time. Resetting each child's input clock is outside this shared-clock
+   contract; the parent does not infer programme offsets from concatenation order.
    The live child's finite HTTP response follows the same completion rule: natural process exit
    must succeed before the response completes. A child failure after headers or programme bytes
    have been sent aborts the response body, so the block supervisor observes an incomplete read and
@@ -2674,7 +2681,7 @@ seconds after video, in addition to aligned H.264 MPEG-TS and HEVC fMP4. This do
 segment cadence or alter copied media. FFmpeg's generated programme-date-time is not proof of the
 original schedule timestamp.
 
-The MPEG-TS HLS remux preserves packet payloads and a common audio/video timestamp shift, including
+The MPEG-TS HLS remux preserves packet payloads and the source audio/video timestamps, including
 spacing across source gaps. It flushes transport output without mux delay so an AAC payload group
 cannot interpolate new-programme packets across an earlier gap. This preserves source timing; it
 does not fill gaps caused by late child startup or certify uninterrupted playback.

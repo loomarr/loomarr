@@ -861,6 +861,8 @@ func hlsArgs(dir string, plan EncodePlan) []string {
 		// segment without shrinking the byte probe: a large keyframe or delayed audio must
 		// not disappear merely to publish earlier. Both normalized streams are required.
 		"-analyzeduration", strconv.Itoa(hlsSegmentDuration * 1_000_000),
+		// Retain the parent session's clock through both TS and fMP4 packaging.
+		"-copyts",
 		"-f", "mpegts", "-i", "pipe:0",
 		"-map", "0:v:0", "-map", "0:a:0",
 		"-c", "copy",
@@ -898,6 +900,8 @@ func hlsArgs(dir string, plan EncodePlan) []string {
 			"-tag:v", "hvc1",
 			"-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time",
 			"-hls_segment_type", "fmp4",
+			// Preserve sub-millisecond audio origins in MP4 edit-list coordinates.
+			"-hls_segment_options", "movie_timescale=90000",
 			"-hls_fmp4_init_filename", "init.mp4",
 			"-hls_segment_filename", filepath.Join(dir, "seg-%d.m4s"),
 			filepath.Join(dir, hlsPlaylistName),

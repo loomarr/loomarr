@@ -77,6 +77,9 @@ func BlockMuxArgs() []string {
 		// input read-rate pacing. Pace the shared mux as the final authority so that burst is
 		// absorbed by the pipe instead of overflowing a network viewer's bounded queue.
 		"-readrate", "1.0",
+		// Children already share a session origin. Retain it through the parent;
+		// rebasing here severs the relationship between media PTS and source time.
+		"-copyts",
 		// The children already guarantee the broadcast stream shape. FFmpeg's defaults may
 		// inspect several seconds of this live pipe before the copy mux emits anything; these
 		// measured bounds still discover its video and audio streams without adding that delay.
