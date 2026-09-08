@@ -422,7 +422,7 @@ func TestPlayoutProgramSharedClockKeepsSeekAndAbsoluteSourceEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestPlayoutProgramRejectsMalformedClockBeforeSourceEffects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			_, _ = io.Copy(io.Discard, resp.Body)
 			resolver.mu.Lock()
 			calls := resolver.calls

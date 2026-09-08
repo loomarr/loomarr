@@ -41,7 +41,7 @@ func TestOpenBlockBeforeKeepsProgrammeAliveAfterStartupDeadline(t *testing.T) {
 func TestOpenBlockBeforeRejectsLateFirstByteAndClosesReader(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		reader, writer := io.Pipe()
-		defer writer.Close()
+		defer func() { _ = writer.Close() }()
 		deadline := time.Now().Add(time.Second)
 		_, err := openBlockBefore(t.Context(), deadline, func(context.Context) (Block, error) {
 			return Block{Content: reader}, nil
@@ -106,7 +106,7 @@ func TestPumpBlocksOpensSuccessorBeforeBoundaryWithoutExpiringItsLifetime(t *tes
 					t.Fatal("successor opening waited until its boundary")
 				}
 				go func() {
-					defer writer.Close()
+					defer func() { _ = writer.Close() }()
 					if _, err := writer.Write([]byte("b")); err != nil {
 						t.Error(err)
 						return
