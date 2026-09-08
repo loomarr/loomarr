@@ -179,13 +179,14 @@ func successfulRunReport(t *testing.T) playoutcert.Report {
 	if err != nil {
 		t.Skip("ffprobe unavailable")
 	}
-	channels := make([]playoutcert.Channel, 0, 105)
+	channels := make([]playoutcert.Channel, 0, 106)
 	for index := range 100 {
 		channels = append(channels, playoutcert.Channel{ID: fmt.Sprintf("prepared-%03d", index+1), Roles: []string{"prepared"}})
 	}
 	for index := range 5 {
 		channels = append(channels, playoutcert.Channel{ID: fmt.Sprintf("transcode-%03d", index+1), Roles: []string{"transcode_h264", "audio_aac"}})
 	}
+	channels = append(channels, playoutcert.Channel{ID: "copy-channel", Roles: []string{"copy", "audio_aac"}})
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	target, err := app.NewPlayoutCertificationTarget(ctx, app.PlayoutCertificationConfig{Channels: channels, FFmpeg: ffmpeg, Capacity: 4, Grace: time.Second, ProgrammeDuration: 6 * time.Second})
@@ -211,8 +212,11 @@ func successfulRunReport(t *testing.T) playoutcert.Report {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Certified || report.AuditStatus != playoutcert.AuditMissing || len(report.Failures) != 0 {
-		t.Fatalf("Run exposed a forged final verdict: %+v", report)
+	if report.Certified || report.AuditStatus != playoutcert.AuditMissing {
+		t.Fatalf("Run exposed a final verdict before publication: certified=%t audit=%s", report.Certified, report.AuditStatus)
+	}
+	if len(report.Failures) != 0 {
+		t.Fatalf("required successful run failed: %v; boundary evidence: %+v", report.Failures, report.PhaseMust("programme_boundary").ProgrammeBoundaries)
 	}
 	return report
 }
