@@ -3792,3 +3792,34 @@ Current status belongs in `PROGRESS.md`; this record does not supersede it.
 ### 2026-09-08 — Playout evidence before HLS input-analysis repair
 
 The integrated branch includes child-exit recovery, the byte-bounded viewer queue, timed prepared continuation, shared child clocks, packaging-v2 verification, immediate signal metadata and ordinary-HLS composition. HLS timestamp repair `6c689ce2` passes `make verify BASE=9046af34a6dd3721bf7fd240a3b9517bf1455636` (Go, docs, policy); focused HLS race checks pass (2.478s). A pinned packet regression fails on the prior HLS remux and passes with zero/three B-frames (0.33s). Before/after captures isolate seven incorrectly timed AAC packets to HLS; the fixed public route preserves every captured payload, duration and common PTS/DTS shift across seven transitions (44.29s), with zero inconsistent signal windows among 1,772 checked. Late live-child startup still creates approximately 0.24-second gaps in the source/parent timeline; this remux repair preserves rather than fills them. The maintained HLS reader `cf70fa8e` accepts production TS/fMP4 tag ordering and timezones, retains segment intervals, and rejects malformed or changed replay coordinates. Its required gate passes Go/full-Go/docs/policy at base `892b1cdb`; focused race checks pass (2.189s). All three pinned live/prepared HLS reader regressions pass (20.35s, 7.58s, 10.58s). Both prepared and live HLS still need maintained private expected signature succession and late-progress qualification; mixed prepared/live, remaining cohorts and final independent review remain open. Earlier gates, initial fixture failures and the unresolved full-suite timeout sensitivity are retained in the progress journal. No operator, hardware, provider or wider-beta qualification is claimed.
+
+
+## 2026-09-08 — HLS input-analysis correction before publication
+
+The first local candidate `e5cadd10` bounded input probing to 256k bytes and 500 ms. It passed the
+original aligned H.264/HEVC held-input tests and the affected gate, but a larger fixture exposed
+video-only output. Its first video packet is 601,069 bytes, exceeding the rejected byte limit.
+Restoring the byte budget and requiring both streams fixed that fixture, but 500 ms of analysis
+still rejected three-second delayed audio with `sample rate not set`. Neither candidate was accepted
+as the final repair.
+
+Correction `2352aeff` retains the normal byte budget, bounds analysis to the four-second segment
+cadence and explicitly maps both normalized streams. Five maintained pinned startup cases pass
+(3.36s), including the large keyframe and delayed audio for both H.264 and HEVC. Each must publish a
+complete segment while input stays open and retain both streams and all source packet counts after
+EOF. The unpaced fixture's publication timing is not a real-time cold-start latency claim.
+The stable decoded RBR test passes (12.19s), source-gap packet timing with zero/three B-frames passes
+(0.32s), and the ordinary signed-HLS reader reports three transitions and late 163 video/326 audio
+observations (20.43s). `make verify BASE=ebf23e0350baf8072a649556e18149711d14d58b` passes Go, docs and
+policy without retry; playout race tests take 12.051s, app 75.766s and the command package 106.974s.
+
+The original three-block regression required three four-second segments within ten seconds while
+feeding three five-second sources at 1×. Both unchanged baseline and the first candidate failed
+with two segments. Its observation window now covers all 15 fixture seconds plus one four-second
+cadence; all original geometry, decoded colour and transition-position assertions remain. This
+fixture correction does not alter prepared latency thresholds.
+
+Evidence is retained in the maintainer's `delivery-evidence-2026-09-06/hls-input-analysis-2352aeff`
+archive, including the initial failures. These results do not resolve the measured source handoff
+gaps, map generated programme-date-time to the source schedule, or implement private decoded
+programme-signature qualification. Those remain acceptance work under #1037.
