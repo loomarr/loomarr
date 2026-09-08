@@ -59,8 +59,8 @@ func (d FFmpegSignalDecoder) DecodeSignals(ctx context.Context, input io.ReadClo
 		"-hide_banner", "-loglevel", "error", "-nostdin",
 		"-probesize", "256k", "-analyzeduration", "500000", "-copyts",
 		"-i", "pipe:0", "-map", "0:v:0", "-map", "0:a:0",
-		"-vf", "crop=32:32:16:16,settb=AVTB,signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG:file='pipe\\:1'",
-		"-af", "aresample=48000,aformat=channel_layouts=mono,asettb=AVTB,astats=metadata=1:reset=1,ametadata=mode=print:file='pipe\\:2'",
+		"-vf", "crop=32:32:16:16,settb=AVTB,signalstats,metadata=mode=print:direct=1:key=lavfi.signalstats.YAVG:file='pipe\\:1'",
+		"-af", "aresample=48000,aformat=channel_layouts=mono,asettb=AVTB,astats=metadata=1:reset=1,ametadata=mode=print:direct=1:file='pipe\\:2'",
 		"-fps_mode", "passthrough", "-f", "null", "-")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

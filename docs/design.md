@@ -3287,8 +3287,10 @@ never enter public reports.
 
 Boundary observation has a dedicated decoded-signal port. One owned FFmpeg process maps both audio
 and video, preserves presentation timestamps and emits separate bounded video/audio metadata
-streams. Its video signal is the mean luma of the declared interior sample region; audio is normalized
-to mono 48 kHz and reports decoded sample count, presentation time, zero-crossing rate and RMS level.
+streams. Metadata is flushed while the admitted input remains open; successful observation must not
+require source EOF or a full output buffer. Its video signal is the mean luma of the declared interior
+sample region; audio is normalized to mono 48 kHz and reports decoded sample count, presentation time,
+zero-crossing rate and RMS level.
 These are private observations for a qualified cohort, not general-purpose recognition truth. The
 observer uses each asset's own media timeline when excluding buffered pre-arm evidence; packet
 arrival time is insufficient. Existing raw-load and held-stream frame-progress checks retain their
