@@ -88,6 +88,10 @@ type Case struct {
 	ExpectedDateScope          *schedule.DateScope
 	ExpectedProposalKeys       []provision.Key
 	ExpectedProposalAbstention bool
+	// ExpectedProposalTerminal requires the exact typed suggestion failure. It
+	// deepens proposal quality for cases whose correct result is a classified
+	// refusal, rather than treating every empty no-grounded-title result alike.
+	ExpectedProposalTerminal string
 	// RecoveryExpected marks an injected failure the candidate must recover from.
 	RecoveryExpected    bool
 	TrackRepairRecovery bool

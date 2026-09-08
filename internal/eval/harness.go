@@ -413,7 +413,7 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	// result also satisfies it (nothing fabricated). A provider or generation
 	// failure cannot certify the invariant because the production path did not run.
 	if c.NoFabrication {
-		if groundErr != nil && errors.Is(groundErr, suggest.ErrNoGroundedTitles) {
+		if groundErr != nil && (errors.Is(groundErr, suggest.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, groundErr))) {
 			if c.MinGrounded == 0 {
 				return nil // an explicit abstention case fabricated nothing → passes
 			}

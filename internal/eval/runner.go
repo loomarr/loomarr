@@ -283,7 +283,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				GroundedCompletionExpected: c.ExpectGroundedCompletion,
 				ToolOperationExpected:      c.ExpectedToolOperation != "",
 				PolicyAccuracyExpected:     c.ExpectedPolicyCeiling != "" || c.ExpectedDateScope != nil,
-				ProposalQualityExpected:    len(c.ExpectedProposalKeys) > 0 || c.ExpectedProposalAbstention,
+				ProposalQualityExpected:    len(c.ExpectedProposalKeys) > 0 || c.ExpectedProposalAbstention || c.ExpectedProposalTerminal != "",
 				RecoveryExpected:           c.RecoveryExpected,
 				GeneratorCalls:             make([]InferenceCall, 0), JudgeCalls: make([]InferenceCall, 0),
 			}
@@ -314,7 +314,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				result.Lineup = len(prop.Lineup)
 				result.Acquisitions = len(prop.Acquisitions)
 				result.GroundedCompletion = result.Lineup+result.Acquisitions > 0
-				result.SchemaValid = err == nil || errors.Is(err, suggest.ErrNoGroundedTitles)
+				result.SchemaValid = err == nil || errors.Is(err, suggest.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, err))
 				result.Ceiling = string(prop.Policy.Audience.Ceiling)
 				result.DateScope = cloneDateScope(prop.Policy.Scope.Dates)
 				result.ScalarEra = cloneRange(prop.Policy.Scope.Era)
@@ -643,6 +643,9 @@ func assessCertification(results []Result, thresholds CertificationThresholds, m
 }
 
 func proposalQualityMatches(c Case, proposal suggest.Proposal, err error) bool {
+	if c.ExpectedProposalTerminal != "" {
+		return typedDateAbstention(proposal, err) && typedFailureTerminal(err) == c.ExpectedProposalTerminal
+	}
 	if c.ExpectedProposalAbstention {
 		return len(allItems(proposal)) == 0 && errors.Is(err, suggest.ErrNoGroundedTitles)
 	}
@@ -666,6 +669,21 @@ func proposalQualityMatches(c Case, proposal suggest.Proposal, err error) bool {
 		}
 	}
 	return true
+}
+
+func typedFailureTerminal(err error) string {
+	var failure *suggest.Failure
+	if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || suggest.ValidateDecisionTrace(failure.Trace) != nil {
+		return ""
+	}
+	if failure.Trace.Terminal != suggest.TerminalConstraintsConflict && failure.Trace.Terminal != suggest.TerminalDateSemanticsUnclear {
+		return ""
+	}
+	return failure.Trace.Terminal
+}
+
+func typedDateAbstention(proposal suggest.Proposal, err error) bool {
+	return len(allItems(proposal)) == 0 && typedFailureTerminal(err) != ""
 }
 
 func performanceSummary(runLatencies []int64, toolCalls []int, measurement ResourceMeasurement) PerformanceSummary {
