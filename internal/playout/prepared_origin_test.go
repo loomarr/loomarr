@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
@@ -518,5 +519,86 @@ func TestPreparedManifestOmitsDiscontinuitySequenceAtTheStartOfAChannel(t *testi
 	}
 	if manifest := string(presentation.Manifest); strings.Contains(manifest, "#EXT-X-DISCONTINUITY-SEQUENCE") {
 		t.Errorf("unstarted Channel should omit the tag:\n%s", manifest)
+	}
+}
+
+// A completed predecessor can be observed after the next programme has already
+// started. Exercise the actual block loop and prepared adapter together: clean
+// EOF alone must not replace the resolver's current position with offset zero.
+func TestPumpBlocksLatePreparedHandoffRetainsCurrentPosition(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		predecessorGap time.Duration
+		body           string
+		slowLookup     bool
+	}{
+		{name: "clean_adjacent", body: "previous-tail"},
+		{name: "clean_early_slow_lookup", body: "previous-tail", slowLookup: true},
+		{name: "clean_after_gap", predecessorGap: time.Second, body: "previous-tail"},
+		{name: "clean_after_missed_airing", predecessorGap: 8 * time.Second, body: "previous-tail"},
+		{name: "empty_adjacent"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				lib, err := prepared.NewLibrary(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				spec := preparedSpec("late-handoff")
+				publishHLS(t, lib, spec)
+				started := time.Now().UTC().Add(-5 * time.Second)
+				if tc.slowLookup {
+					started = time.Now().UTC().Add(10 * time.Millisecond)
+				}
+				current := AiringIdentity{StartedAt: started, EndsAt: started.Add(8 * time.Second),
+					Kind: "program", ContentID: "current", ScheduleBlockID: "current-block"}
+				previousEnd := started.Add(-tc.predecessorGap)
+				previous := AiringIdentity{StartedAt: previousEnd.Add(-8 * time.Second), EndsAt: previousEnd,
+					Kind: "program", ContentID: "previous", ScheduleBlockID: "previous-block"}
+				origin := newPreparedOrigin(lib, fixedPreparedResolver{ok: true, window: PreparedWindow{
+					Current: PreparedAiring{Specification: spec, StartedAt: started,
+						Offset: 5 * time.Second, Identity: current},
+				}})
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				var gotArgs []string
+				preparedSource := newPreparedMPEGTSBlockSource(origin, func(
+					_ context.Context, args []string, _ diagnostics.ProcessSpec,
+				) (*Process, error) {
+					gotArgs = append([]string(nil), args...)
+					cancel()
+					return nil, errors.New("captured current-airing process request")
+				})
+				calls := 0
+				source := BlockSource(func(ctx context.Context, channel string, plan EncodePlan) (Block, error) {
+					calls++
+					if calls == 1 {
+						return Block{Content: io.NopCloser(strings.NewReader(tc.body)), Identity: previous}, nil
+					}
+					if tc.slowLookup {
+						timer := time.NewTimer(time.Until(started.Add(5 * time.Second)))
+						defer timer.Stop()
+						select {
+						case <-ctx.Done():
+							return Block{}, ctx.Err()
+						case <-timer.C:
+						}
+					}
+					return preparedSource(ctx, channel, plan)
+				})
+				var output writeCloser
+				pumpBlocks(ctx, &output, source, "channel", PlanBaseline, nil)
+				if calls != 2 {
+					t.Fatalf("source calls = %d, want 2", calls)
+				}
+				if output.String() != tc.body {
+					t.Fatalf("predecessor output = %q", output.String())
+				}
+				joined := strings.Join(gotArgs, " ")
+				if !strings.Contains(joined, "-ss 5.000 ") {
+					t.Fatalf("resolved five-second offset discarded after %s: %s", tc.name, joined)
+				}
+			})
+		})
 	}
 }

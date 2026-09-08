@@ -2278,6 +2278,13 @@ a private schedule. A tune resolves in this order:
    exit succeeds. A nonzero exit after a nonempty prefix remains a block read failure, so the
    supervisor resolves the current Airing without waiting for the failed block's scheduled end.
    Explicit close and cancellation still terminate and reap the child tree.
+   Clean completion and adjacent Airing identities do not by themselves authorize restarting the
+   next programme from zero. An overdue handoff retains the resolver's current Airing offset. This
+   applies both when the outgoing child finishes late and when it finishes on time but subsequent
+   source resolution is delayed; checking only the predecessor's completion time is insufficient.
+   Empty output, a schedule gap, or a missed Airing likewise cannot create a continuation from an
+   earlier programme's boundary. A common transport timestamp domain is not proof of timely
+   wall-clock delivery.
    The live child's finite HTTP response follows the same completion rule: natural process exit
    must succeed before the response completes. A child failure after headers or programme bytes
    have been sent aborts the response body, so the block supervisor observes an incomplete read and
