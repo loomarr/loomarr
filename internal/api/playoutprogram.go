@@ -555,7 +555,10 @@ func (s *Server) startChild(
 // pipeChild commits the HTTP response and streams the live child to it: the peeked first chunk, then
 // the rest of the encoder's output, until the program ends (EOF) or the client disconnects.
 func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, what string, c *liveChild) {
-	defer c.cancel()
+	defer func() {
+		c.cancel()
+		_ = c.proc.Wait()
+	}()
 
 	flusher, _ := w.(http.Flusher)
 	w.Header().Set("Content-Type", "video/mp2t")
@@ -567,15 +570,27 @@ func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, wh
 
 	// The peeked first chunk goes out FIRST — it was read off the pipe before the header, so
 	// skipping it would drop the start of the program.
-	if _, err := w.Write(c.first); err == nil && flusher != nil {
+	if _, err := w.Write(c.first); err != nil {
+		return
+	}
+	if flusher != nil {
 		flusher.Flush()
 	}
 
-	_, _ = copyAndFlush(w, c.proc.Stdout, flusher)
+	if _, err := copyAndFlush(w, c.proc.Stdout, flusher); err != nil {
+		if r.Context().Err() != nil {
+			return
+		}
+		s.log.Warn("playout: program stream failed after output began", "channel", channelID, "program", what, "err", err)
+		panic(http.ErrAbortHandler)
+	}
 
-	// Reap before returning so the encoder count is accurate the moment the demuxer re-requests.
-	c.cancel()
-	_ = c.proc.Wait()
+	// Stdout EOF alone does not prove completion. Cancel would suppress a natural
+	// nonzero exit, and returning normally would falsely finish the HTTP body.
+	if err := c.proc.Wait(); err != nil {
+		s.log.Warn("playout: program child failed after output began", "channel", channelID, "program", what, "err", err)
+		panic(http.ErrAbortHandler)
+	}
 }
 
 // failProgram writes the 502 for a program that could not be produced at all — every ladder step

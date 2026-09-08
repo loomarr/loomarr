@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/playoutprocessfixture"
 )
 
 // fakeResolver answers "what's on" without a store or a media server.
@@ -1059,5 +1061,57 @@ func TestPlayoutProgram_EmptyTargetDisablesNormalisation(t *testing.T) {
 	}
 	if joined := strings.Join(enc.args(), " "); strings.Contains(joined, "loudnorm") {
 		t.Errorf("normalisation ran with the setting disabled; args = %v", enc.args())
+	}
+}
+
+func TestPlayoutProgramChildExitHelper(t *testing.T) {
+	for i, arg := range os.Args {
+		if arg == "--" && i+1 < len(os.Args) {
+			playoutprocessfixture.RunPrepared(os.Args[i+1])
+			return
+		}
+	}
+}
+
+func TestPlayoutProgramPartialFailureIsNotCleanHTTPCompletion(t *testing.T) {
+	for _, mode := range []string{"prepared-success", "prepared-failure"} {
+		t.Run(mode, func(t *testing.T) {
+			var starts atomic.Int32
+			encoder := api.PlayoutEncoder(func(ctx context.Context, _ []string, onProgress func(playout.Progress)) (*playout.Process, error) {
+				starts.Add(1)
+				return playout.Start(ctx, os.Args[0], []string{"-test.run=^TestPlayoutProgramChildExitHelper$", "--", mode}, nil, onProgress)
+			})
+			srv := newProgramServer(t, programOpts{
+				resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"}, encoder: encoder,
+			})
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, readErr := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusOK || string(body) != playoutprocessfixture.PreparedPrefix {
+				t.Fatalf("status=%d body=%q; want the committed programme prefix", resp.StatusCode, body)
+			}
+			if ctx.Err() != nil {
+				t.Fatalf("request expired instead of observing child completion: %v", ctx.Err())
+			}
+			if mode == "prepared-failure" {
+				if !errors.Is(readErr, io.ErrUnexpectedEOF) {
+					t.Fatalf("body read = %v; want an incomplete HTTP response after child exit 7", readErr)
+				}
+			} else if readErr != nil {
+				t.Fatalf("successful child response: %v", readErr)
+			}
+			if starts.Load() != 1 {
+				t.Fatalf("child starts = %d; a committed partial response must not retry or append another programme", starts.Load())
+			}
+		})
 	}
 }

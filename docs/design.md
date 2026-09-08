@@ -2276,6 +2276,10 @@ a private schedule. A tune resolves in this order:
    exit succeeds. A nonzero exit after a nonempty prefix remains a block read failure, so the
    supervisor resolves the current Airing without waiting for the failed block's scheduled end.
    Explicit close and cancellation still terminate and reap the child tree.
+   The live child's finite HTTP response follows the same completion rule: natural process exit
+   must succeed before the response completes. A child failure after headers or programme bytes
+   have been sent aborts the response body, so the block supervisor observes an incomplete read and
+   resolves the current Airing. It must not append a retry or an unavailable card to that response.
    The first prepared block pins the session to the publication's codec, dimensions, frame rate,
    and bitrates. Every later prepared block must match that format, while a prepared miss opens the
    ordinary live child constrained to the same format, so an Airing boundary cannot change decoder
