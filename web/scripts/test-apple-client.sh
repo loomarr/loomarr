@@ -150,6 +150,10 @@ for arg in "${args[@]}"; do
     -resultBundlePath) capture_result=false; break ;;
   esac
 done
+if [[ "$capture_result" == true ]]; then
+  # A generic simulator destination has no selected device from which to infer an active slice.
+  args+=("ARCHS=$(uname -m)")
+fi
 if [[ "$capture_result" == true && -n "${LOOMARR_APPLE_RESULT_BUNDLE_PATH:-}" ]]; then
   args+=(-resultBundlePath "$LOOMARR_APPLE_RESULT_BUNDLE_PATH")
 fi
@@ -257,7 +261,7 @@ expo_run=(
   pnpm exec expo run:ios
   --scheme "${SCHEME}"
   --configuration Release
-  --device "${simulator_id}"
+  --device generic
   --no-install
   --no-bundler
   --output "${BUILD_DIR}"
@@ -354,6 +358,8 @@ if [[ "$build_mode" == warm ]]; then
 else
   run_expo_build cold
 fi
+# Expo's generic destination builds without physical-device enumeration or an implicit launch.
+xcrun simctl install "${simulator_id}" "${BUILD_DIR}/${SCHEME}.app"
 record_phase_timing native_build_install "$native_build_started_at"
 
 # Release simulator builds default to every standard architecture. Hosted Apple jobs run on one
@@ -377,8 +383,7 @@ if [[ "${APP_ARCHS}" != "${HOST_ARCH}" ]]; then
 fi
 printf 'apple-client: %s simulator executable contains only %s\n' "${APP_NAME}" "${HOST_ARCH}"
 
-# Expo owns dependency installation, CocoaPods, compilation, installation, and
-# initial launch. Relaunch once to obtain the host PID used by the liveness check.
+# Launch the explicitly installed app and retain the host PID used by the liveness check.
 xcrun simctl launch --terminate-running-process \
   --stdout="${ARTIFACTS_DIR}/launch.stdout.log" --stderr="${ARTIFACTS_DIR}/launch.stderr.log" \
   "${simulator_id}" "${BUNDLE_ID}" >"${ARTIFACTS_DIR}/launch-command.stdout.log" \
