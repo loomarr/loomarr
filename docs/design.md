@@ -3723,6 +3723,12 @@ programme-boundary viewers and their warm sessions to converge to that baseline 
 cleanup deadline. It records this convergence separately and refuses the fan-in workload if cleanup
 fails; a prior Channel's grace session cannot be counted as a duplicate fan-in session.
 
+Raw burst observers record every viewer’s first decoded frame (or startup failure) before any
+metadata-validation subprocess starts. Validation remains mandatory for every successful observer,
+uses the original request deadline, and holds the viewers through resource sampling. This separates
+first-frame measurement from cross-viewer metadata-probe contention without moving the request clock,
+prestarting decoders, reducing concurrency or relaxing stream validity and latency requirements.
+
 Certification requires 100 or more configured Channels to complete mint and surf with bounded
 failure and resource growth; every admitted stream at measured capacity to yield valid media without
 interrupting an existing held stream; overload to return the documented bounded admission outcome

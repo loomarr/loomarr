@@ -834,38 +834,60 @@ func programmeBoundarySoak(ctx context.Context, endpoint *endpoint, config Confi
 	return phase
 }
 
-func startValidatedObserver(ctx context.Context, config Config, connection *rawConnection) (*decoderObserver, MediaShape, time.Duration, string) {
-	input := &joinedReadCloser{
-		Reader: io.MultiReader(bytes.NewReader(connection.first[:]), connection.body),
-		Closer: connection.body,
-	}
-	observer := startDecoderObserver(ctx, config.Decoder, input, config.RawCaptureBytes)
-	deadline := connection.startedAt.Add(config.RequestTimeout)
-	initialCtx, cancel := context.WithDeadline(ctx, deadline)
-	defer cancel()
+// decodedMedia owns a live observer and its first-frame evidence until validation.
+type decodedMedia struct {
+	observer *decoderObserver
+	capture  []byte
+	elapsed  time.Duration
+}
 
+func startDecodedMedia(ctx context.Context, config Config, connection *rawConnection) (decodedMedia, string) {
+	input := &joinedReadCloser{Reader: io.MultiReader(bytes.NewReader(connection.first[:]), connection.body), Closer: connection.body}
+	observer := startDecoderObserver(ctx, config.Decoder, input, config.RawCaptureBytes)
+	initialCtx, cancel := context.WithDeadline(ctx, connection.startedAt.Add(config.RequestTimeout))
+	defer cancel()
 	snapshot, err := observer.wait(initialCtx, func(current decoderSnapshot) bool { return current.frames > 0 })
 	decoded := time.Since(connection.startedAt)
 	if !snapshot.firstFrame.IsZero() {
 		decoded = snapshot.firstFrame.Sub(connection.startedAt)
 	}
+	media := decodedMedia{observer: observer, capture: snapshot.capture, elapsed: decoded}
 	if err != nil {
 		_ = observer.close()
-		return nil, MediaShape{}, decoded, "decode_failed"
+		media.observer = nil
+		return media, "decode_failed"
 	}
-	// RawCaptureBytes bounds memory, not the source's bitrate. A decoded
-	// silent card can take longer than the request deadline to fill 256 KiB.
-	// Validate the actual captured media instead of waiting for an arbitrary size.
 	if initialCtx.Err() != nil || snapshot.decoderDone || snapshot.decoderErr != nil || snapshot.readErr != nil {
 		_ = observer.close()
-		return nil, MediaShape{}, decoded, "body_failed"
+		media.observer = nil
+		return media, "body_failed"
 	}
-	shape, err := config.Validator.Validate(initialCtx, snapshot.capture)
+	return media, "ok"
+}
+
+func validateDecodedMedia(ctx context.Context, config Config, connection *rawConnection, media decodedMedia) (*decoderObserver, MediaShape, time.Duration, string) {
+	initialCtx, cancel := context.WithDeadline(ctx, connection.startedAt.Add(config.RequestTimeout))
+	defer cancel()
+	current := media.observer.snapshot()
+	if initialCtx.Err() != nil || current.decoderDone || current.decoderErr != nil || current.readErr != nil {
+		_ = media.observer.close()
+		return nil, MediaShape{}, media.elapsed, "body_failed"
+	}
+	// Capture size bounds memory; a valid low-rate stream need not fill it.
+	shape, err := config.Validator.Validate(initialCtx, media.capture)
 	if err != nil || shape.VideoStreams != 1 || shape.AudioStreams != 1 {
-		_ = observer.close()
-		return nil, MediaShape{}, decoded, "invalid_media"
+		_ = media.observer.close()
+		return nil, MediaShape{}, media.elapsed, "invalid_media"
 	}
-	return observer, shape, decoded, "ok"
+	return media.observer, shape, media.elapsed, "ok"
+}
+
+func startValidatedObserver(ctx context.Context, config Config, connection *rawConnection) (*decoderObserver, MediaShape, time.Duration, string) {
+	media, class := startDecodedMedia(ctx, config, connection)
+	if class != "ok" {
+		return nil, MediaShape{}, media.elapsed, class
+	}
+	return validateDecodedMedia(ctx, config, connection, media)
 }
 
 func lifecycleDrill(ctx context.Context, endpoint *endpoint, config Config, channelIndex int, baseline ResourceSample, precondition string, sampler *phaseSampler) []Phase {
@@ -1259,6 +1281,8 @@ func rawBurst(ctx context.Context, endpoint *endpoint, config Config, indexes []
 	ready := make(chan struct{}, count)
 	results := make([]observation, count)
 	var wg sync.WaitGroup
+	var startup sync.WaitGroup
+	startup.Add(count)
 	for position := range count {
 		channelIndex := indexes[position]
 		wg.Add(1)
@@ -1267,11 +1291,21 @@ func rawBurst(ctx context.Context, endpoint *endpoint, config Config, indexes []
 			<-start
 			connection, class := openRaw(ctx, endpoint, config, channelIndex)
 			if class != "ok" {
+				startup.Done()
 				results[position] = observation{class: class}
 				ready <- struct{}{}
 				return
 			}
-			observer, shape, decoded, class := startValidatedObserver(ctx, config, connection)
+			media, class := startDecodedMedia(ctx, config, connection)
+			startup.Done()
+			if class != "ok" {
+				results[position] = observation{duration: media.elapsed, firstByte: connection.firstByte, class: class}
+				ready <- struct{}{}
+				return
+			}
+			// Metadata subprocesses cannot compete with any viewer's initial decode.
+			startup.Wait()
+			observer, shape, decoded, class := validateDecodedMedia(ctx, config, connection, media)
 			results[position] = observation{duration: decoded, firstByte: connection.firstByte, class: class, media: shape}
 			ready <- struct{}{}
 			if observer == nil {
