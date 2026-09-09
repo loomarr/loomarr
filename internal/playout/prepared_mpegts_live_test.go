@@ -286,7 +286,7 @@ func TestLive_PreparedMPEGTSTailSeeksContainDecodableVideo(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer block.Content.Close()
+			defer func() { _ = block.Content.Close() }()
 			decoder := exec.CommandContext(ctx, bin, "-hide_banner", "-loglevel", "error", "-f", "mpegts", "-i", "pipe:0", "-map", "0:v:0", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1")
 			decoder.Stdin = block.Content
 			frame, err := decoder.Output()
