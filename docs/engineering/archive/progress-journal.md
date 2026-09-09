@@ -4465,3 +4465,34 @@ commands, binary/source provenance, reports, summaries and SHA-256 manifests are
 `GOFLAGS=-p=1 make verify BASE=origin/main` at `16b2669f` passes against accepted base
 `b17ab7a9`: Go, complete Go tests, documentation and policy. The real publication package passes
 in 97.745s. Protected hosted acceptance remains pending for the final published head.
+
+
+### Production FFmpeg parity in Go CI — 2026-09-09
+
+Protected queue `34321998617` at candidate `7e319632` fails only the two real command
+reports' prepared-raw p95 assertion. Programme audio/video boundaries, held copy, capacity,
+all other race shards, Postgres, contracts, documentation, policy and both release images pass.
+The failed queue was allowed to complete and the PR was returned to draft before repair.
+
+A controlled Ubuntu 24.04 ARM64 matrix uses the same race binary, four distinct prepared
+Channels and a two-CPU quota. Distribution FFmpeg 6.1.1-3ubuntu5 produces 3509.682ms first-frame
+p95; changing only FFmpeg/ffprobe to production 8.1.2 produces 290.677ms. All four streams
+decode correctly in both runs. This isolates a toolchain latency difference without changing
+the 500ms limit. The new installer verifies the retained production archive and both exact
+build versions; the same matrix passes at 397.567ms after installing through that helper.
+
+Go CI now derives its archive and architecture-specific SHA-256 from the production Dockerfile,
+caches by exact digest, verifies cache hits and downloads before extraction, and requires the
+verified pair first on PATH. The installer, Go workflow and Dockerfile all select complete Go
+runtime evidence. Offline tests cover corrupt downloads and caches, post-download changes,
+missing and mismatched tools, AMD64 and both ARM64 names, unsupported architectures, duplicate
+pins and the workflow's install/PATH execution. Independent bounded read-only review finds no
+blocking defect; supervisor validation corrects the retained build's date suffix and portable
+checksum comparison before acceptance. Review final charged usage is 67,007/100,000 tokens;
+the native work cutoff paused at 63,471 and the pane is closed.
+
+Both previously failing real command tests pass with the new installed pair in the same
+Ubuntu image and two-CPU quota: cleanup-failure publication and actual audited publication.
+The Linux race binary is built from `46f1bc6b`; production media code is unchanged by this
+CI-toolchain repair. Exact durations, binary hashes and matrix logs are retained in
+`shared-aac-ffmpeg-parity-46f1bc6b` in the delivery evidence archive.

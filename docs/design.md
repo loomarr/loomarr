@@ -11499,7 +11499,11 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   latency and capacity contract. Race instrumentation, within-package concurrency and the complete
   package partition remain unchanged. The Postgres Make target pins `-p=1` directly; its
   release-verifier contract requires that exact recipe and still rejects workflow environment
-  overrides. The Go shard workflow admits only the literal `GOFLAGS=-p=1` for its test
+  overrides. Go runtime workers use the production Dockerfile's retained FFmpeg build and
+  architecture-specific SHA-256 pins for both `ffmpeg` and `ffprobe`, rather than the runner's
+  distribution package. The download archive is cached by its exact digest, verified on every
+  use before extraction or execution, and its installed pair must report the declared build.
+  Installer, Go workflow, and Dockerfile pin-source changes select the complete Go runtime gate. The Go shard workflow admits only the literal `GOFLAGS=-p=1` for its test
   step, with other environment overrides still rejected. Go package shards consume the alphabetic `go list ./...` stream in rows the
   width of the shard count and alternate each row's direction. This serpentine distribution avoids
   a recurring every-N phase alignment without introducing a hand-maintained package-cost table;
