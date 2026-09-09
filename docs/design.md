@@ -3723,6 +3723,11 @@ programme-boundary viewers and their warm sessions to converge to that baseline 
 cleanup deadline. It records this convergence separately and refuses the fan-in workload if cleanup
 fails; a prior Channel's grace session cannot be counted as a duplicate fan-in session.
 
+When a programme observer’s context expires while its decoder completion is also ready, the
+observer reports `programme_observation_timeout` rather than a generic `decode_failed`. An already
+established asset-clock mismatch retains its specific failure. Neither outcome can qualify the
+run, and cancellation still closes and joins the owned decoder and transport.
+
 Raw burst observers record every viewer’s first decoded frame (or startup failure) before any
 metadata-validation subprocess starts. Validation remains mandatory for every successful observer,
 uses the original request deadline, and holds the viewers through resource sampling. This separates
