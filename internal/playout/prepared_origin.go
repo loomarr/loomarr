@@ -91,7 +91,7 @@ func (o *PreparedOrigin) MPEGTSBlockSource(
 	})
 }
 
-// MPEGTSReady is the lookup-only admission proof for a copy-only prepared cold start. It opens no
+// MPEGTSReady is the lookup-only admission proof for a prepared cold start without video encoding. It opens no
 // original source and starts no process; a miss or malformed boundary keeps conservative admission.
 func (o *PreparedOrigin) MPEGTSReady(ctx context.Context, channelID string, plan EncodePlan) (bool, error) {
 	_, ready, err := o.resolveMPEGTSBlock(ctx, BlockRequest{ChannelID: channelID, Plan: plan})
@@ -152,8 +152,12 @@ func newPreparedMPEGTSBlockSource(o *PreparedOrigin, start preparedBlockStarter)
 		if !blockRequest.AiringAt.IsZero() && (!resolved.identity.StartedAt.Equal(blockRequest.AiringAt) || resolved.media.airing.Offset != 0) {
 			return Block{}, ErrPreparedUnavailable
 		}
+		if blockRequest.AudioBitrate > 0 {
+			resolved.format.AudioBitrate = blockRequest.AudioBitrate
+		}
 		args := ProgramArgs(ProgramSpec{
-			Clock: ProgramClock{Origin: blockRequest.TimelineOrigin, StartedAt: resolved.identity.StartedAt},
+			SessionAudio: !blockRequest.TimelineOrigin.IsZero(),
+			Clock:        ProgramClock{Origin: blockRequest.TimelineOrigin, StartedAt: resolved.identity.StartedAt},
 			Profile: Profile{
 				Width: resolved.format.Width, Height: resolved.format.Height, Framerate: resolved.format.Framerate,
 				VideoBitrate: resolved.format.VideoBitrate, AudioBitrate: resolved.format.AudioBitrate,

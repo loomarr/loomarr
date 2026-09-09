@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
@@ -68,15 +69,18 @@ type PlayoutResolver interface {
 // request. These names are exported only for the composition adapter that performs that owned HTTP
 // hop; device clients never set or consume them.
 const (
-	PlayoutBroadcastFormatQuery   = "broadcast"
-	PlayoutBroadcastFormatHeader  = "X-Loomarr-Broadcast-Format"
-	PlayoutAiringStartedAtHeader  = "X-Loomarr-Airing-Started-At"
-	PlayoutAiringEndsAtHeader     = "X-Loomarr-Airing-Ends-At"
-	PlayoutAiringKindHeader       = "X-Loomarr-Airing-Kind"
-	PlayoutAiringContentHeader    = "X-Loomarr-Airing-Content"
-	PlayoutScheduleBlockHeader    = "X-Loomarr-Schedule-Block"
-	PlayoutParentProcessRunHeader = "X-Loomarr-Parent-Process-Run"
-	PlayoutTimelineOriginHeader   = "X-Loomarr-Timeline-Origin"
+	PlayoutSessionAudioBitrateHeader = "X-Loomarr-Session-Audio-Bitrate"
+	PlayoutBlockAudioHeader          = "X-Loomarr-Block-Audio"
+	PlayoutBlockAudioPCM             = "s302m-48000-stereo"
+	PlayoutBroadcastFormatQuery      = "broadcast"
+	PlayoutBroadcastFormatHeader     = "X-Loomarr-Broadcast-Format"
+	PlayoutAiringStartedAtHeader     = "X-Loomarr-Airing-Started-At"
+	PlayoutAiringEndsAtHeader        = "X-Loomarr-Airing-Ends-At"
+	PlayoutAiringKindHeader          = "X-Loomarr-Airing-Kind"
+	PlayoutAiringContentHeader       = "X-Loomarr-Airing-Content"
+	PlayoutScheduleBlockHeader       = "X-Loomarr-Schedule-Block"
+	PlayoutParentProcessRunHeader    = "X-Loomarr-Parent-Process-Run"
+	PlayoutTimelineOriginHeader      = "X-Loomarr-Timeline-Origin"
 )
 
 func parsePlayoutTimelineOrigin(header http.Header) (time.Time, error) {
@@ -177,6 +181,17 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	if pinned, ok := playout.ParseBroadcastFormat(r.URL.Query().Get(PlayoutBroadcastFormatQuery)); ok {
 		profile = pinned.Apply(profile)
 		broadcastCodec = pinned.VideoCodec
+	}
+	if !origin.IsZero() {
+		if raw := r.Header.Get(PlayoutSessionAudioBitrateHeader); raw != "" {
+			bitrate, err := strconv.Atoi(raw)
+			if err != nil || bitrate <= 0 || bitrate > 2000 {
+				s.writeProblem(w, r, http.StatusBadRequest, "Invalid session audio", "The session audio bitrate is invalid.")
+				return
+			}
+			profile.AudioBitrate = bitrate
+		}
+		w.Header().Set(PlayoutBlockAudioHeader, PlayoutBlockAudioPCM)
 	}
 	if playout.IsHEVCCodec(broadcastCodec) {
 		profile.Encoder = playout.HEVCEncoderFor(profile.Encoder)
@@ -303,6 +318,7 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// never switches codec. A source already matching the complete HEVC session format still copies;
 	// every mismatch normalizes to HEVC. For a baseline (h264/TS) session this is a no-op.
 	spec := playout.ProgramSpec{
+		SessionAudio:  !origin.IsZero(),
 		VideoCopySeek: videoCopySeek,
 		Clock:         playout.ProgramClock{Origin: origin, StartedAt: airing.StartedAt},
 		Profile:       profile,

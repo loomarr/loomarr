@@ -107,7 +107,7 @@ func TestLive_PreparedMPEGTSBlockProducesTransportUnderOneSecond(t *testing.T) {
 	decodeCtx, decodeCancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer decodeCancel()
 	decodeBegin := time.Now()
-	channel, err := BlockSpawner(bin, origin.MPEGTSBlockSource(bin, nil, nil), nil)(
+	channel, err := BlockSpawner(bin, BlockProfile{AudioBitrate: 128, PreparedStart: true}, origin.MPEGTSBlockSource(bin, nil, nil), nil)(
 		decodeCtx, "channel", PlanFull,
 	)
 	if err != nil {
@@ -161,7 +161,7 @@ func TestLive_PreparedMPEGTSRolloverIsContinuousAndDoesNotReplayOutgoingAiring(t
 	origin := newPreparedOrigin(lib, resolver)
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	channel, err := BlockSpawner(bin, origin.MPEGTSBlockSource(bin, nil, nil), nil)(ctx, "channel", PlanFull)
+	channel, err := BlockSpawner(bin, BlockProfile{AudioBitrate: 128, PreparedStart: true}, origin.MPEGTSBlockSource(bin, nil, nil), nil)(ctx, "channel", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}

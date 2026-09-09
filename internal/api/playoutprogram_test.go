@@ -423,6 +423,7 @@ func TestPlayoutProgramSharedClockKeepsSeekAndAbsoluteSourceEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set(api.PlayoutTimelineOriginHeader, origin.Format(time.RFC3339Nano))
+	req.Header.Set(api.PlayoutSessionAudioBitrateHeader, "96")
 	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -435,7 +436,7 @@ func TestPlayoutProgramSharedClockKeepsSeekAndAbsoluteSourceEnd(t *testing.T) {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 	args := strings.Join(enc.args(), " ")
-	for _, want := range []string{"-copyts -start_at_zero", "-ss 2.000", "-to 5.000", "-output_ts_offset 10.000", "-muxdelay 0", "-muxpreload 0"} {
+	for _, want := range []string{"-copyts -start_at_zero", "-ss 2.000", "-to 5.000", "-output_ts_offset 10.000", "-muxdelay 0", "-muxpreload 0", "-c:a s302m", "-strict -2", "-af atrim=start=2.000:end=5.000", "-bf 0"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("missing %q: %s", want, args)
 		}
@@ -443,6 +444,13 @@ func TestPlayoutProgramSharedClockKeepsSeekAndAbsoluteSourceEnd(t *testing.T) {
 	if strings.Contains(args, "-t ") {
 		t.Fatalf("shared-clock source uses a relative end: %s", args)
 	}
+	if resp.Header.Get(api.PlayoutBlockAudioHeader) != api.PlayoutBlockAudioPCM || !strings.HasSuffix(resp.Header.Get(api.PlayoutBroadcastFormatHeader), "-96") {
+		t.Fatalf("missing PCM or pinned bitrate acknowledgement: %v", resp.Header)
+	}
+	if strings.Contains(args, "-readrate") || strings.Contains(args, "-c:a aac") || strings.Contains(args, "-c:a copy") {
+		t.Fatalf("private child must leave pacing and AAC encoding to session: %s", args)
+	}
+
 }
 
 func TestPlayoutProgramRejectsMalformedClockBeforeSourceEffects(t *testing.T) {

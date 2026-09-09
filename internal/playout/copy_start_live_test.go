@@ -69,3 +69,18 @@ func TestLive_CopyStartKeepsOpeningFrameAndTranscodesUnsafeLateSeek(t *testing.T
 		})
 	}
 }
+
+func TestLive_CopyStartRejectsDecoderReordering(t *testing.T) {
+	bin := ffmpegBin(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	source := filepath.Join(t.TempDir(), "reordered.mp4")
+	args := []string{"-v", "error", "-f", "lavfi", "-i", "testsrc2=duration=3:size=320x180:rate=25",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "25", "-bf", "3", "-b_strategy", "0", source}
+	if out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
+		t.Fatalf("generate reordered source: %v: %s", err, out)
+	}
+	if _, ok := FFprobeCopyStartNextTo(bin)(ctx, source, 0, time.Second, 25); ok {
+		t.Fatal("reordered source was admitted for a mixed session handoff")
+	}
+}

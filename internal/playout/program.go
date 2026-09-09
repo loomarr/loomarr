@@ -9,16 +9,13 @@ import (
 
 // Per-program encode args (§9.1, prior-art §1) — DIRECT PLAY by default (V47).
 //
-// A program is COPIED when its codec already fits the target, and transcoded only for the
-// streams that do not (copyplan.go, PlanCopy). The common case — an h264 file to a browser or
-// TV — copies the video untouched (instant, no GPU) and at most re-encodes an incompatible audio
-// track. Transcoding the whole program is the exception, for a codec the target genuinely cannot
-// play (HEVC/MPEG-2 to an h264-only client).
+// Video is copied when its codec, geometry, cadence, pixel format and seek/reordering proof
+// fit the session. Otherwise the ordinary admitted transcode produces the pinned profile.
+// Shared-session audio is decoded to PCM for one continuous parent AAC encoder. Standalone
+// responses may still copy an already compatible audio stream.
 //
-// Every child conforms to the session's pinned broadcast format before it enters the continuous
-// copy mux. Direct copy is therefore conservative: codec, geometry, cadence, pixel format and audio
-// shape must already match; unknown or mismatched properties transcode to the pinned profile. A
-// logical airing boundary alone does not require an HLS decoder discontinuity.
+// Every child conforms before it enters the session mux. A logical Airing boundary alone
+// does not require an HLS decoder discontinuity.
 //
 // The transcode flags below are each verified in Tunarr's source or against the live dev Emby
 // (prior-art §5a–§5c); the ones that look redundant are the ones a real failure found.
@@ -45,6 +42,8 @@ const tuneInBurstThreshold = time.Duration(readrateInitialBurst) * time.Second
 // is a first-class field, not a seventh positional, and adding the next knob widens a struct instead
 // of forking another function.
 type ProgramSpec struct {
+	// SessionAudio emits private PCM for the shared session's continuous AAC encoder.
+	SessionAudio bool
 	// VideoCopySeek is a seek-local keyframe proof supplied by ordinary source planning.
 	// Prepared publications already own their copy-start contract and leave this nil.
 	VideoCopySeek *time.Duration
@@ -112,7 +111,7 @@ func (s ProgramSpec) tonemapStep() string {
 //     up a decoder/encoder would be wasted work and, worse, a chance for a hardware-init failure to
 //     take down a program that needed no hardware at all.
 //   - else the video transcodes to the Profile (the exception path, unchanged from before).
-//   - Plan.CopyAudio ⇒ `-c:a copy`; else the audio alone transcodes to AAC.
+//   - SessionAudio ⇒ selected PCM for the parent; otherwise Plan.CopyAudio copies audio or encodes AAC.
 func ProgramArgs(spec ProgramSpec) []string {
 	clock := spec.Clock
 	provenCopySeek := spec.Plan.CopyVideo && spec.VideoCopySeek != nil && *spec.VideoCopySeek >= 0 && *spec.VideoCopySeek <= spec.Offset
@@ -160,10 +159,9 @@ func ProgramArgs(spec ProgramSpec) []string {
 		)
 	}
 
-	// Ordinary live children own their input pacing. An immutable prepared child deliberately does
-	// not: its downstream Channel mux is the sole pacing authority, and pacing before -ss makes
-	// FFmpeg consume the discarded part of the current segment at 1x before emitting transport.
-	if !spec.UnpacedInput {
+	// Shared-session children leave pacing to the parent. Standalone responses retain their
+	// own clock; pacing a prepared seek would also turn discarded media into tune latency.
+	if !spec.UnpacedInput && !spec.SessionAudio {
 		args = append(args, "-readrate", "1.0")
 		// The burst is only for a genuine mid-program tune-in with enough media left to absorb it.
 		// Applying it at offset zero makes every child finish ten seconds before its wall-clock
@@ -247,12 +245,24 @@ func ProgramArgs(spec ProgramSpec) []string {
 		// are added here. See hdrToSDRChain: they were measured to be redundant.
 		args = append(args, p.scaleFilterArgs(spec.tonemapStep())...)
 		args = append(args, p.videoEncodeArgs()...)
+		if spec.SessionAudio {
+			args = append(args, "-bf", "0")
+		}
 	}
 
 	// AUDIO: copy when the target plays it, else transcode ONLY the audio (cheap) to AAC. The
 	// loudness filter (filler) is a transcode-time concern, so a copy skips it — a copied advert
 	// keeps its own levels, which is acceptable and far better than a needless re-encode.
-	if spec.Plan.CopyAudio {
+	if spec.SessionAudio {
+		trim := "atrim=start=" + seconds(offset)
+		if limit > 0 {
+			trim += ":end=" + seconds(offset+limit)
+		}
+		if targetLUFS != "" && !spec.Plan.CopyAudio {
+			trim += ",loudnorm=I=" + targetLUFS + ":TP=-1:LRA=11"
+		}
+		args = append(args, "-af", trim, "-c:a", "s302m", "-strict", "-2", "-ac", "2", "-ar", "48000")
+	} else if spec.Plan.CopyAudio {
 		args = append(args, "-c:a", "copy")
 	} else {
 		args = append(args, p.audioEncodeArgsNormalised(targetLUFS)...)

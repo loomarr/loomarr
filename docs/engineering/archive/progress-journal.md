@@ -4292,3 +4292,51 @@ Both positive actual-run publication tests failed: `TestCleanupFailureIsPersiste
 With that setup corrected, the unchanged positive publication requirement was rerun alone under race detection: **63.718s RED**, with **only `programme_boundary_failed`**. Prepared succession passes (one transition, 44,032 late audio samples, 18 late video frames); live succession fails `programme_audio_mismatch` before a verified transition. Copy and the other workloads are no longer failures in this run. Scoped command lint passes with zero issues. This is a deterministic correctness hold in the isolated run, not evidence that another broad retry will pass.
 
 The gate therefore prevents code push as well as merge. Local commits preserve the full implementation for continuation; published #1157 remains `4d1e9edf`. Do not replace the real-media positive fixture, relax its successful-publication assertion, extend its deadline, or treat the passing HEVC startup checks as audio-boundary acceptance. Audio ownership, broader qualification and independent review remain pending. The full affected gate must pass after repair before publication.
+
+
+## 2026-09-08 — approved continuous session audio and completed date review
+
+The maintainer explicitly approved replacing independent AAC joins with one continuous AAC
+encoder per shared raw/live session, including prepared MPEG-TS, and authorized monitored read-only
+worker budgets. Prepared HLS remains process-free. Finite live/prepared/card children supply
+48 kHz stereo SMPTE 302M PCM; the parent owns AAC state and pacing. The existing profile pins
+viewer bitrate before startup, and the private HTTP hop acknowledges its distinct PCM payload.
+Standalone public programme responses retain their existing audio format.
+
+The first full pinned Linux publication run after migration passed both programme audio boundaries
+but failed held copy progress. Giving ordinary live parents the prepared startup burst ran a short
+source ahead of its wall-clock successor. Prepared readiness now selects the two-second burst;
+ordinary live starts explicitly use one microsecond. The unchanged complete publication test then
+passed on pinned Linux in 50.40s, including copy held-progress, overload, cleanup and parent fault.
+Host prepared first-frame latency improved from the migration regression of 1.45s to 43ms under
+the unchanged one-second limit. A mixed card fixture exposed decode-timestamp rewriting when a
+reordered source follows a non-reordered card. Live copy now requires observed zero reordering in
+the existing bounded seek probe, matching prepared version 2; session transcodes/cards set zero
+B-frames. Missing/nonzero proof uses existing video admission rather than changing capacity rules.
+
+Real-media checks preserve all copied video payloads, PTS and DTS. Continuous AAC output matches
+275,456 decoded samples/channel for delayed-source joins and 563,200 through card/return; every
+AAC packet PTS also matches the source sample timeline, retaining a deliberate 300ms source delay.
+A separate original-PCM source test selects exactly 72,000 samples/channel at a nonzero seek for all
+four copy/transcode plans. Host HEVC tuner/native-HLS and baseline-HLS output continues to decode.
+
+A controlled 20-second synthetic AAC-input comparison measures actual FFmpeg process CPU, separate
+from the certification endpoint's Go-process metric. Child plus parent CPU is 0.094048s for the
+prior audio-copy contract and 0.484475s with continuous AAC (0.47% versus 2.42% of one core during
+streaming). After aligning one AAC priming frame, the old path is sample-identical to the source;
+the new path measures 43.19dB SNR over all 960,000 samples/channel. This narrow synthetic host
+measurement does not establish perceptual quality, hardware capacity or real-corpus qualification.
+The host filler-conditioning journey separately fails during conditioning before playback, so it
+is not counted as a passing audio-migration journey. Full affected verification, pinned media
+coverage and independent review remain required for publication.
+
+PR #1158 independent Standards/Spec review is complete through `c985cf35`. Scoped reviewers
+accepted date interpretation, evaluator/corpus and editor/schema; retrieval found lost union
+counters after membership lookup failure. The regression fails before the fix and passes for both
+failure and cancellation afterward, with independent delta acceptance. The supervisor completed
+runtime/API/integration review. `make verify BASE=d13a797c` passes the 194-package affected closure.
+The PR is published, out of draft, and has auto-merge enabled pending protected checks. All workers
+used visible interactive Terra/Medium sessions and monitored150K checkpoints; final uncached-input
+plus output usage, including setup/report, stayed below each limit. Early incomplete reviews are
+preserved and are not treated as acceptance. Evidence is retained under the delivery archive's
+`date-final-reviewed-c985cf35` directory; live-provider and beta acceptance remain separate.

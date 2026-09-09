@@ -216,7 +216,7 @@ func successfulRunReport(t *testing.T) playoutcert.Report {
 		t.Fatalf("Run exposed a final verdict before publication: certified=%t audit=%s", report.Certified, report.AuditStatus)
 	}
 	if len(report.Failures) != 0 {
-		t.Fatalf("required successful run failed: %v; boundary evidence: %+v", report.Failures, report.PhaseMust("programme_boundary").ProgrammeBoundaries)
+		t.Fatalf("required successful run failed: %v; boundary evidence: %+v; copy: %+v; overload: %+v", report.Failures, report.PhaseMust("programme_boundary").ProgrammeBoundaries, report.PhaseMust("copy_raw"), report.PhaseMust("overload"))
 	}
 	return report
 }

@@ -142,7 +142,11 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		playoutSpawner(set.str("playout.ffmpeg_path"),
 			func() string { return set.str("server.public_url") },
 			playoutTokenFn, log, deps.processDiagnostics,
-			func() playout.BlockSource { return preparedBlockSource }),
+			func() playout.BlockSource { return preparedBlockSource },
+			func(ctx context.Context) int { return playoutRes.Profile(ctx).AudioBitrate },
+			func(ctx context.Context, channelID string, plan playout.EncodePlan) bool {
+				return preparedMPEGTSReady != nil && preparedMPEGTSReady(ctx, channelID, plan)
+			}),
 		playoutBudget,
 		playout.DefaultGrace,
 		log,

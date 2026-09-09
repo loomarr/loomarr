@@ -278,7 +278,7 @@ func TestPreparedOriginRendersAKeyedWallClockManifest(t *testing.T) {
 	}
 }
 
-func TestPreparedMPEGTSBlockCopiesPublicationAtAiringOffset(t *testing.T) {
+func TestPreparedMPEGTSBlockCopiesVideoAndDecodesPublicationAudioAtAiringOffset(t *testing.T) {
 	t.Parallel()
 	lib, err := prepared.NewLibrary(t.TempDir())
 	if err != nil {
@@ -306,7 +306,7 @@ func TestPreparedMPEGTSBlockCopiesPublicationAtAiringOffset(t *testing.T) {
 		return &Process{Stdout: io.NopCloser(strings.NewReader("prepared-ts"))}, nil
 	})
 
-	block, err := source(t.Context(), BlockRequest{ChannelID: "ch-one", Plan: PlanFull})
+	block, err := source(t.Context(), BlockRequest{ChannelID: "ch-one", Plan: PlanFull, TimelineOrigin: started.Add(75 * time.Second), AudioBitrate: 128})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,14 +320,14 @@ func TestPreparedMPEGTSBlockCopiesPublicationAtAiringOffset(t *testing.T) {
 	}
 	wantFormat := BroadcastFormat{
 		VideoCodec: "h264", Width: 1920, Height: 1080, Framerate: 25,
-		VideoBitrate: 5000, AudioBitrate: 160,
+		VideoBitrate: 5000, AudioBitrate: 128,
 	}
 	if block.Format != wantFormat {
 		t.Fatalf("block format = %+v, want %+v", block.Format, wantFormat)
 	}
 	joined := strings.Join(gotArgs, " ")
 	for _, want := range []string{
-		"-ss 75.000", "-t 405.000", "-c:v copy", "-c:a copy", "-f mpegts",
+		"-ss 75.000", "-to 480.000", "-c:v copy", "-c:a s302m", "-af atrim=start=75.000:end=480.000", "-f mpegts",
 		filepath.Join(pub.Directory, prepared.MediaManifestName),
 	} {
 		if !strings.Contains(joined, want) {

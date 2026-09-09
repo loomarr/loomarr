@@ -2,8 +2,10 @@ package playout
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
@@ -33,6 +35,8 @@ type Block struct {
 // AiringAt is zero for an ordinary current-time resolution. A nonzero instant is
 // a prepared-only prospective lookup; it must never invoke live source effects.
 type BlockRequest struct {
+	// AudioBitrate is pinned by the shared AAC encoder, in kbit/s.
+	AudioBitrate   int
 	ChannelID      string
 	Plan           EncodePlan
 	TimelineOrigin time.Time
@@ -43,16 +47,27 @@ type BlockRequest struct {
 // composition, admission and format checks. AiringAt permits prepared lookup only.
 type BlockSource func(context.Context, BlockRequest) (Block, error)
 
+// BlockProfile pins session audio and the initial source's prepared-readiness proof.
+// Prepared starts need enough burst to reach the next copied keyframe; live starts must not
+// run ahead of a short first Airing and then wait for the next wall-clock boundary.
+type BlockProfile struct {
+	AudioBitrate  int
+	PreparedStart bool
+}
+
 // BlockSpawner builds the production session spawner around finite, explicit blocks. One long-lived
-// copy mux keeps output timestamps monotonic; Go owns the EOF-and-advance loop so an Airing boundary
+// video-copy/AAC-encode mux retains the session clock; Go owns the EOF-and-advance loop so an Airing boundary
 // is no longer hidden inside a media-tool demuxer.
-func BlockSpawner(ffmpeg string, source BlockSource, log *slog.Logger, observers ...*diagnostics.ProcessManager) Spawner {
+func BlockSpawner(ffmpeg string, profile BlockProfile, source BlockSource, log *slog.Logger, observers ...*diagnostics.ProcessManager) Spawner {
 	return func(ctx context.Context, channelID string, plan EncodePlan) (*Process, error) {
+		if profile.AudioBitrate <= 0 || profile.AudioBitrate > 2000 {
+			return nil, fmt.Errorf("playout: invalid session audio bitrate")
+		}
 		var observer *diagnostics.ProcessManager
 		if len(observers) > 0 {
 			observer = observers[0]
 		}
-		proc, err := StartPipedObserved(ctx, ffmpeg, BlockMuxArgs(), log, nil, observer, diagnostics.ProcessSpec{
+		proc, err := StartPipedObserved(ctx, ffmpeg, BlockMuxArgs(profile), log, nil, observer, diagnostics.ProcessSpec{
 			Purpose: "playout_parent", ChannelID: channelID, Target: plan.String(),
 		})
 		if err != nil {
@@ -61,32 +76,40 @@ func BlockSpawner(ffmpeg string, source BlockSource, log *slog.Logger, observers
 		if parentID := proc.ProcessRunID(); parentID != "" {
 			ctx = diagnostics.WithProcessSpec(ctx, diagnostics.ProcessSpec{ParentRunID: parentID})
 		}
-		go pumpBlocks(ctx, proc.Stdin, source, channelID, plan, log)
+		go pumpBlocks(ctx, proc.Stdin, func(ctx context.Context, request BlockRequest) (Block, error) {
+			request.AudioBitrate = profile.AudioBitrate
+			return source(ctx, request)
+		}, channelID, plan, log)
 		return proc, nil
 	}
 }
 
 // BlockMuxArgs builds the one continuous transport mux fed by the block supervisor. Children have
-// already copied or encoded into the session's stable broadcast format and shared media clock;
-// this process paces and muxes those bytes onto one continuous MPEG-TS timeline.
-func BlockMuxArgs() []string {
+// already conformed video and decoded audio into private PCM on the shared media clock.
+// This process owns continuous AAC state and paces one MPEG-TS timeline.
+func BlockMuxArgs(profile BlockProfile) []string {
+	burst := "0.000001"
+	if profile.PreparedStart {
+		burst = "2"
+	}
 	return []string{
 		"-hide_banner", "-loglevel", "error",
 		"-progress", progressPipeArg(), "-nostats",
-		// A copy-only prepared child can demux an entire fMP4 segment in one burst even with
-		// input read-rate pacing. Pace the shared mux as the final authority so that burst is
+		// Children can demux an entire source segment in one burst.
+		// Pace the shared mux as the final authority so that burst is
 		// absorbed by the pipe instead of overflowing a network viewer's bounded queue.
-		"-readrate", "1.0",
+		"-readrate", "1.0", "-readrate_initial_burst", burst,
 		// Children already share a session origin. Retain it through the parent;
 		// rebasing here severs the relationship between media PTS and source time.
 		"-copyts",
 		// The children already guarantee the broadcast stream shape. FFmpeg's defaults may
-		// inspect several seconds of this live pipe before the copy mux emits anything; these
+		// inspect several seconds of this live pipe before the session mux emits anything; these
 		// measured bounds still discover its video and audio streams without adding that delay.
 		"-probesize", "256k", "-analyzeduration", "500000",
-		"-f", "mpegts", "-i", "pipe:0",
+		"-c:a", "s302m", "-f", "mpegts", "-i", "pipe:0",
 		"-map", "0:v:0", "-map", "0:a:0",
-		"-c", "copy", "-muxdelay", "0",
+		"-c:v", "copy", "-c:a", "aac", "-b:a", strconv.Itoa(profile.AudioBitrate) + "k",
+		"-ac", "2", "-ar", "48000", "-muxdelay", "0",
 		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1",
 	}
 }

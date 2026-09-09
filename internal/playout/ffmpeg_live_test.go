@@ -345,7 +345,7 @@ func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 		}
 		plan := ConformCopyPlan(format, PlanCopy(format, PlanBaseline), profile, "h264")
 		spec := ProgramSpec{
-			Profile: profile, Input: src.path, Limit: 2 * time.Second,
+			SessionAudio: true, Profile: profile, Input: src.path, Limit: 2 * time.Second,
 			Plan: plan, Source: format,
 		}
 		proc, err := Start(ctx, bin, replaceOutput(ProgramArgs(spec), part), nil, nil)
@@ -360,7 +360,7 @@ func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 	}
 
 	joined := dir + "/channel.ts"
-	proc, err := StartPipedObserved(ctx, bin, BlockMuxArgs(), nil, nil, nil, diagnostics.ProcessSpec{})
+	proc, err := StartPipedObserved(ctx, bin, BlockMuxArgs(BlockProfile{AudioBitrate: 128}), nil, nil, nil, diagnostics.ProcessSpec{})
 	if err != nil {
 		t.Fatalf("channel mux start: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 			"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
 			"-map", "0:v:0", "-map", "1:a:0", "-shortest", "-t", "5",
 			"-c:v", "libx264", "-preset", "ultrafast", "-g", "50", "-sc_threshold", "0",
-			"-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2",
+			"-pix_fmt", "yuv420p", "-c:a", "s302m", "-strict", "-2", "-ar", "48000", "-ac", "2",
 			// Production children already share a clock; do not reset each fixture to zero.
 			"-output_ts_offset", fmt.Sprint(10 + i*5),
 			"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", blocks[i],
@@ -469,7 +469,7 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 			},
 		}, err
 	})
-	channel, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
+	channel, err := BlockSpawner(bin, BlockProfile{AudioBitrate: 128}, source, nil)(ctx, "channel", PlanBaseline)
 	if err != nil {
 		t.Fatalf("channel start: %v", err)
 	}
@@ -828,7 +828,7 @@ func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 	if o, err := exec.Command(bin, "-hide_banner", "-loglevel", "error", "-y",
 		"-f", "lavfi", "-i", "testsrc=size=320x180:rate=25:duration=2",
 		"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
-		"-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+		"-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "s302m", "-strict", "-2",
 		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", seg).CombinedOutput(); err != nil {
 		t.Fatalf("could not build the segment: %v\n%s", err, o)
 	}
@@ -878,7 +878,7 @@ func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 			},
 		}, nil
 	})
-	proc, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
+	proc, err := BlockSpawner(bin, BlockProfile{AudioBitrate: 128}, source, nil)(ctx, "channel", PlanBaseline)
 	if err != nil {
 		t.Fatalf("block spawner start: %v", err)
 	}

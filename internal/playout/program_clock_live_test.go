@@ -3,7 +3,9 @@
 package playout
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -83,6 +85,56 @@ func TestLive_ProgramClockPreservesSeekEndAndCommonAVShift(t *testing.T) {
 						spec.Clock.Origin = spec.Clock.Origin.Add(-15 * time.Second)
 					}
 				})
+			}
+		})
+	}
+}
+
+// A source seek and finite end select the same samples for every video/copy plan. The reference
+// is sliced from the original PCM source, independently of FFmpeg seeking and the child filter.
+func TestLive_SessionPCMSelectsExactSourceSamples(t *testing.T) {
+	bin := ffmpegBin(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	source := filepath.Join(t.TempDir(), "source.mov")
+	args := []string{"-v", "error", "-f", "lavfi", "-i", "testsrc2=duration=6:size=320x180:rate=25",
+		"-f", "lavfi", "-i", "sine=frequency=733:sample_rate=48000:duration=6", "-c:v", "libx264",
+		"-pix_fmt", "yuv420p", "-g", "25", "-bf", "0", "-c:a", "pcm_s16le", "-ac", "2", "-shortest", source}
+	if out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
+		t.Fatalf("generate PCM source: %v: %s", err, out)
+	}
+	decode := func(path string) []byte {
+		t.Helper()
+		pcm, err := exec.CommandContext(ctx, bin, "-v", "error", "-i", path, "-map", "0:a:0", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pcm
+	}
+	all := decode(source)
+	const offsetSamples, countSamples = 60000, 72000
+	want := all[offsetSamples*4 : (offsetSamples+countSamples)*4]
+	for _, plan := range []CopyPlan{{}, {CopyVideo: true}, {CopyAudio: true}, {CopyVideo: true, CopyAudio: true}} {
+		t.Run(fmt.Sprint(plan), func(t *testing.T) {
+			profile := DefaultProfile()
+			profile.Encoder, profile.Width, profile.Height, profile.Framerate = EncoderSoftware, 320, 180, 25
+			spec := ProgramSpec{SessionAudio: true, Profile: profile, Input: source, Offset: 1250 * time.Millisecond, Limit: 1500 * time.Millisecond, Plan: plan,
+				Clock: ProgramClock{Origin: time.Unix(1000, 0), StartedAt: time.Unix(1010, 0)}}
+			path := filepath.Join(t.TempDir(), "child.ts")
+			proc, err := Start(ctx, bin, replaceOutput(ProgramArgs(spec), path), nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := io.Copy(io.Discard, proc.Stdout); err != nil {
+				proc.Stop()
+				t.Fatal(err)
+			}
+			if err := proc.Wait(); err != nil {
+				t.Fatalf("PCM child: %v: %s", err, proc.LastError())
+			}
+			got := decode(path)
+			if !bytes.Equal(got, want) {
+				t.Fatalf("selected PCM differs: got %d bytes, want %d", len(got), len(want))
 			}
 		})
 	}

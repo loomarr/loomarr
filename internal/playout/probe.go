@@ -31,6 +31,7 @@ type probedStream struct {
 	Index          int             `json:"index"`
 	CodecType      string          `json:"codec_type"`
 	CodecName      string          `json:"codec_name"`
+	HasBFrames     *int            `json:"has_b_frames"`
 	Profile        string          `json:"profile"`
 	Level          json.RawMessage `json:"level"`
 	Width          int             `json:"width"`
@@ -161,7 +162,7 @@ func FFprobeCopyStartNextTo(ffmpegPath string, observers ...*diagnostics.Process
 		ctx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
 		args := []string{"-v", "error", "-select_streams", "v:0", "-read_intervals", seconds(offset) + "%+#256",
-			"-show_entries", "stream=index,codec_type:packet=stream_index,pts_time,flags:format=start_time", "-of", "json", input}
+			"-show_entries", "stream=index,codec_type,has_b_frames:packet=stream_index,pts_time,flags:format=start_time", "-of", "json", input}
 		result, err := executeFFprobeObserved(ctx, bin, args, observer)
 		if err != nil || ctx.Err() != nil {
 			return 0, false
@@ -171,7 +172,7 @@ func FFprobeCopyStartNextTo(ffmpegPath string, observers ...*diagnostics.Process
 }
 
 func copyStartOf(result probed, offset, limit time.Duration, fps float64) (time.Duration, bool) {
-	if len(result.Streams) != 1 || result.Streams[0].CodecType != "video" || offset < 0 || limit <= 0 || fps <= 0 || math.IsNaN(fps) || math.IsInf(fps, 0) {
+	if len(result.Streams) != 1 || result.Streams[0].CodecType != "video" || result.Streams[0].HasBFrames == nil || *result.Streams[0].HasBFrames != 0 || offset < 0 || limit <= 0 || fps <= 0 || math.IsNaN(fps) || math.IsInf(fps, 0) {
 		return 0, false
 	}
 	start, err := strconv.ParseFloat(result.Format.StartTime, 64)

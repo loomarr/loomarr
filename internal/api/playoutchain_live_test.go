@@ -60,7 +60,7 @@ func TestLiveChain_BlockSupervisorAdvancesThroughPrograms(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	channel, err := playout.BlockSpawner(bin, liveHTTPBlockSource(srv), nil)(ctx, "ch1", playout.PlanBaseline)
+	channel, err := playout.BlockSpawner(bin, playout.BlockProfile{AudioBitrate: 128}, liveHTTPBlockSource(srv), nil)(ctx, "ch1", playout.PlanBaseline)
 	if err != nil {
 		cancel()
 		t.Fatal(err)

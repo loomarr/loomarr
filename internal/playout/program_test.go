@@ -307,7 +307,7 @@ func TestProgramArgs_DoesNotBurstTheShortTailBeforeABoundary(t *testing.T) {
 func TestProgramArgs_ProgressIsStructuredAndOffStdout(t *testing.T) {
 	for name, args := range map[string][]string{
 		"child": transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Hour),
-		"mux":   BlockMuxArgs(),
+		"mux":   BlockMuxArgs(BlockProfile{AudioBitrate: 128}),
 	} {
 		v, ok := argsAfter(args, "-progress")
 		if !ok || !strings.HasPrefix(v, "pipe:") {
@@ -320,12 +320,13 @@ func TestProgramArgs_ProgressIsStructuredAndOffStdout(t *testing.T) {
 }
 
 func TestBlockMuxArgs_BoundsPipeInputAnalysis(t *testing.T) {
-	args := BlockMuxArgs()
+	args := BlockMuxArgs(BlockProfile{AudioBitrate: 128})
 	input := argIndex(args, "-i")
 	for flag, want := range map[string]string{
-		"-readrate":        "1.0",
-		"-probesize":       "256k",
-		"-analyzeduration": "500000",
+		"-readrate":               "1.0",
+		"-readrate_initial_burst": "0.000001",
+		"-probesize":              "256k",
+		"-analyzeduration":        "500000",
 	} {
 		got, ok := argsAfter(args, flag)
 		if !ok || got != want {
@@ -344,7 +345,7 @@ func TestBlockMuxArgs_BoundsPipeInputAnalysis(t *testing.T) {
 func TestArgs_OutputGoesToStdout(t *testing.T) {
 	for name, args := range map[string][]string{
 		"child": transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Hour),
-		"mux":   BlockMuxArgs(),
+		"mux":   BlockMuxArgs(BlockProfile{AudioBitrate: 128}),
 		"card":  TestCardArgs(DefaultProfile(), "", "CH", ""),
 	} {
 		if args[len(args)-1] != "pipe:1" {

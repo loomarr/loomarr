@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -253,7 +254,8 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 			return sourceForParent(ctx, request)
 		}
 		var spawnErr error
-		process, spawnErr = playout.BlockSpawner(ffmpeg, clockedSource, logger, processManager)(spawnCtx, channelID, plan)
+		preparedStart, _ := preparedOrigin.MPEGTSReady(spawnCtx, channelID, plan)
+		process, spawnErr = playout.BlockSpawner(ffmpeg, playout.BlockProfile{AudioBitrate: liveResolver.Profile(spawnCtx).AudioBitrate, PreparedStart: preparedStart}, clockedSource, logger, processManager)(spawnCtx, channelID, plan)
 		if spawnErr != nil {
 			return nil, spawnErr
 		}
@@ -860,6 +862,9 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 		if err != nil {
 			return playout.Block{}, err
 		}
+		if blockRequest.AudioBitrate > 0 {
+			req.Header.Set(api.PlayoutSessionAudioBitrateHeader, strconv.Itoa(blockRequest.AudioBitrate))
+		}
 		if !blockRequest.TimelineOrigin.IsZero() {
 			req.Header.Set(api.PlayoutTimelineOriginHeader, blockRequest.TimelineOrigin.UTC().Format(time.RFC3339Nano))
 		}
@@ -874,8 +879,12 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 			_ = resp.Body.Close()
 			return playout.Block{}, fmt.Errorf("program endpoint status %d", resp.StatusCode)
 		}
+		if !blockRequest.TimelineOrigin.IsZero() && resp.Header.Get(api.PlayoutBlockAudioHeader) != api.PlayoutBlockAudioPCM {
+			_ = resp.Body.Close()
+			return playout.Block{}, errors.New("playout: block endpoint did not acknowledge session PCM audio")
+		}
 		format, ok := playout.ParseBroadcastFormat(resp.Header.Get(api.PlayoutBroadcastFormatHeader))
-		if !ok {
+		if !ok || (blockRequest.AudioBitrate > 0 && format.AudioBitrate != blockRequest.AudioBitrate) {
 			_ = resp.Body.Close()
 			return playout.Block{}, errors.New("program endpoint format missing")
 		}

@@ -3,10 +3,13 @@
 package playout
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,17 +55,46 @@ func probeMuxPackets(t *testing.T, ctx context.Context, probe, path string) muxP
 }
 
 func TestLive_BlockMuxPreservesSourceAVOffset(t *testing.T) {
+	t.Run("consistent reordered sources", func(t *testing.T) { verifyMuxAudioReference(t, false) })
+	t.Run("session card and return", func(t *testing.T) { verifyMuxAudioReference(t, true) })
+}
+
+func verifyMuxAudioReference(t *testing.T, card bool) {
+	t.Helper()
 	bin, probe := ffmpegBin(t), ffprobeBin(t)
 	dir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	paths := []string{filepath.Join(dir, "aligned.ts"), filepath.Join(dir, "audio-delay.ts")}
+	bframes := "3"
+	if card {
+		paths = append(paths, filepath.Join(dir, "card.ts"), filepath.Join(dir, "return.ts"))
+		bframes = "0"
+	}
 	for i, path := range paths {
+		if i == 2 {
+			profile := DefaultProfile()
+			profile.Encoder, profile.Width, profile.Height, profile.Framerate = EncoderSoftware, 320, 180, 25
+			clock := ProgramClock{Origin: time.Unix(1000, 0), StartedAt: time.Unix(1016, 0)}
+			args := OfflineCardArgs(profile, "", "", "", 3*time.Second, clock)
+			proc, err := Start(ctx, bin, replaceOutput(args, path), nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := io.Copy(io.Discard, proc.Stdout); err != nil {
+				proc.Stop()
+				t.Fatal(err)
+			}
+			if err := proc.Wait(); err != nil {
+				t.Fatalf("private card: %v: %s", err, proc.LastError())
+			}
+			continue
+		}
 		offset := "0"
 		if i == 1 {
 			offset = "0.3"
 		}
-		args := []string{"-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=duration=3:size=320x180:rate=25", "-itsoffset", offset, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "25", "-bf", "3", "-sc_threshold", "0", "-c:a", "aac", "-ac", "2", "-ar", "48000", "-t", "3", "-output_ts_offset", strconv.Itoa(10 + i*3), "-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", path}
+		args := []string{"-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=duration=3:size=320x180:rate=25", "-itsoffset", offset, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "25", "-bf", bframes, "-sc_threshold", "0", "-c:a", "s302m", "-strict", "-2", "-ac", "2", "-ar", "48000", "-t", "3", "-output_ts_offset", strconv.Itoa(10 + i*3), "-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", path}
 		if out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
 			t.Fatalf("generate source: %v\n%s", err, out)
 		}
@@ -84,7 +116,7 @@ func TestLive_BlockMuxPreservesSourceAVOffset(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = outFile.Close() }()
-	proc, err := StartPipedObserved(ctx, bin, BlockMuxArgs(), nil, nil, nil, diagnostics.ProcessSpec{})
+	proc, err := StartPipedObserved(ctx, bin, BlockMuxArgs(BlockProfile{AudioBitrate: 128}), nil, nil, nil, diagnostics.ProcessSpec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,10 +163,11 @@ func TestLive_BlockMuxPreservesSourceAVOffset(t *testing.T) {
 	}
 	output := packetsByCodec(t, probeMuxPackets(t, ctx, probe, outPath), "joined output")
 	assertSecondProgrammeAudioDelay(t, programmes[1])
-	assertProgrammesPreserved(t, programmes, output)
+	assertProgrammesPreserved(t, programmes, output, "video")
+	assertContinuousAudioReference(t, ctx, bin, paths, outPath)
 	// The children share a session clock. Preserve its origin as well as A/V
 	// offsets, payloads and spacing; an arbitrary common rebase is insufficient.
-	for _, codec := range []string{"video", "audio"} {
+	for _, codec := range []string{"video"} {
 		cursor := 0
 		for index, programme := range programmes {
 			first, _, _ := parseMuxPacket(t, programme[codec][0], "source clock")
@@ -174,7 +207,6 @@ func packetsByCodec(t *testing.T, probe muxProbe, label string) map[string][]mux
 		if !ok {
 			t.Fatalf("%s packet has unknown stream %d", label, packet.Stream)
 		}
-		parseMuxPacket(t, packet, label)
 		byCodec[codec] = append(byCodec[codec], packet)
 	}
 	for _, codec := range []string{"video", "audio"} {
@@ -220,19 +252,25 @@ func parseMuxPacket(t *testing.T, packet muxPacket, label string) (pts, dts, dur
 func assertSecondProgrammeAudioDelay(t *testing.T, programme map[string][]muxPacket) {
 	t.Helper()
 	videoPTS, _, _ := parseMuxPacket(t, programme["video"][0], "second programme video")
-	audioPTS, _, _ := parseMuxPacket(t, programme["audio"][0], "second programme audio")
+	audioPTS, err := strconv.ParseInt(string(programme["audio"][0].PTS), 10, 64)
+	if err != nil {
+		t.Fatalf("second programme audio PTS: %v", err)
+	}
 	if delay := audioPTS - videoPTS; abs64(delay-27000) > 4500 {
 		t.Fatalf("second programme source A/V delay=%d ticks, want approximately 27000", delay)
 	}
 }
 
-func assertProgrammesPreserved(t *testing.T, programmes []map[string][]muxPacket, output map[string][]muxPacket) {
+func assertProgrammesPreserved(t *testing.T, programmes []map[string][]muxPacket, output map[string][]muxPacket, codecs ...string) {
 	t.Helper()
+	if len(codecs) == 0 {
+		codecs = []string{"video", "audio"}
+	}
 	start := map[string]int{"video": 0, "audio": 0}
 	for programmeIndex, programme := range programmes {
 		var shift int64
 		shiftSet := false
-		for _, codec := range []string{"video", "audio"} {
+		for _, codec := range codecs {
 			sourcePackets, outputPackets := programme[codec], output[codec]
 			end := start[codec] + len(sourcePackets)
 			if end > len(outputPackets) {
@@ -265,7 +303,7 @@ func assertProgrammesPreserved(t *testing.T, programmes []map[string][]muxPacket
 			start[codec] = end
 		}
 	}
-	for _, codec := range []string{"video", "audio"} {
+	for _, codec := range codecs {
 		if start[codec] != len(output[codec]) {
 			t.Fatalf("%s output packet count=%d, want %d", codec, len(output[codec]), start[codec])
 		}
@@ -277,4 +315,155 @@ func abs64(value int64) int64 {
 		return -value
 	}
 	return value
+}
+
+// Build the reference from separately decoded private children. Concatenating decoded samples
+// before a single independent encode catches AAC restart artifacts, dropped PCM and duplication.
+func assertContinuousAudioReference(t *testing.T, ctx context.Context, bin string, sources []string, joined string) {
+	t.Helper()
+	decode := func(path string) []byte {
+		t.Helper()
+		cmd := exec.CommandContext(ctx, bin, "-v", "error", "-i", path, "-map", "0:a:0", "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		pcm, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("decode reference audio: %v: %s", err, &stderr)
+		}
+		return pcm
+	}
+	var input bytes.Buffer
+	var sampleCounts []int64
+	for _, source := range sources {
+		pcm := decode(source)
+		sampleCounts = append(sampleCounts, int64(len(pcm)/8))
+		input.Write(pcm)
+	}
+	if input.Len() == 0 {
+		t.Fatal("reference has no PCM samples")
+	}
+	reference := filepath.Join(t.TempDir(), "continuous-reference.aac")
+	cmd := exec.CommandContext(ctx, bin, "-v", "error", "-f", "f32le", "-ar", "48000", "-ac", "2", "-i", "pipe:0", "-c:a", "aac", "-b:a", "128k", "-f", "adts", reference)
+	cmd.Stdin = &input
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("encode reference audio: %v: %s", err, out)
+	}
+	want, got := decode(reference), decode(joined)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("session decoded audio differs from continuous reference: got %d, want %d bytes", len(got), len(want))
+	}
+	// Encoder priming is one AAC frame; later programme gaps must survive instead of being
+	// concealed by resampling or independent per-programme timestamp rebases.
+	probe := ffprobeBin(t)
+	output := packetsByCodec(t, probeMuxPackets(t, ctx, probe, joined), "AAC timeline")["audio"]
+	var starts []int64
+	for _, source := range sources {
+		packets := packetsByCodec(t, probeMuxPackets(t, ctx, probe, source), "PCM timeline")["audio"]
+		pts, err := strconv.ParseInt(string(packets[0].PTS), 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		starts = append(starts, pts)
+	}
+	programme, consumed := 0, int64(0)
+	for i, packet := range output {
+		sample := int64(i-1) * 1024
+		for programme+1 < len(starts) && sample >= consumed+sampleCounts[programme] {
+			consumed += sampleCounts[programme]
+			programme++
+		}
+		wantPTS := starts[programme] + (sample-consumed)*90000/48000
+		gotPTS, _, _ := parseMuxPacket(t, packet, "continuous AAC timeline")
+		if abs64(gotPTS-wantPTS) > 1 {
+			t.Fatalf("AAC packet %d PTS=%d, want %d from source sample %d", i, gotPTS, wantPTS, sample)
+		}
+	}
+	t.Logf("continuous AAC reference: %d stereo samples/channel matched exactly", len(got)/8)
+}
+
+// This records FFmpeg CPU, separately from the certification endpoint's Go-process metric.
+// The comparison isolates the approved prepared-MPEG-TS audio cost on the same finite source.
+func TestLive_PreparedSessionAudioCPU(t *testing.T) {
+	bin := ffmpegBin(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.mp4")
+	generate := []string{"-v", "error", "-f", "lavfi", "-i", "testsrc2=duration=20:size=320x180:rate=25", "-f", "lavfi", "-i", "sine=frequency=733:sample_rate=48000:duration=20",
+		"-c:v", "libx264", "-preset", "ultrafast", "-g", "25", "-bf", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-shortest", source}
+	if out, err := exec.CommandContext(ctx, bin, generate...).CombinedOutput(); err != nil {
+		t.Fatalf("benchmark source: %v: %s", err, out)
+	}
+	run := func(args []string, input io.Reader) time.Duration {
+		t.Helper()
+		args = append([]string(nil), args...)
+		for i := 1; i < len(args); i++ {
+			if args[i-1] == "-progress" {
+				args[i] = "pipe:2"
+			}
+		}
+		cmd := exec.CommandContext(ctx, bin, args...)
+		cmd.Stdin = input
+		cmd.Stdout = io.Discard
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("benchmark process: %v: %s", err, &stderr)
+		}
+		return cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()
+	}
+	decodePCM := func(path string) []byte {
+		t.Helper()
+		out, err := exec.CommandContext(ctx, bin, "-v", "error", "-i", path, "-map", "0:a:0", "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	referencePCM := decodePCM(source)
+	profile := DefaultProfile()
+	profile.Encoder, profile.Width, profile.Height, profile.Framerate = EncoderSoftware, 320, 180, 25
+	for _, continuous := range []bool{false, true} {
+		child := filepath.Join(t.TempDir(), "child.ts")
+		spec := ProgramSpec{SessionAudio: continuous, Profile: profile, Input: source, Limit: 20 * time.Second, Plan: CopyPlan{CopyVideo: true, CopyAudio: true}, UnpacedInput: true,
+			Clock: ProgramClock{Origin: time.Unix(1000, 0), StartedAt: time.Unix(1010, 0)}}
+		childCPU := run(replaceOutput(ProgramArgs(spec), child), nil)
+		input, err := os.Open(child)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args := BlockMuxArgs(BlockProfile{AudioBitrate: 128, PreparedStart: true})
+		if !continuous {
+			// Frozen prior prepared contract: independently encoded AAC enters a copy-only parent.
+			args = []string{"-v", "error", "-readrate", "1.0", "-readrate_initial_burst", "2", "-copyts", "-probesize", "256k", "-analyzeduration", "500000", "-f", "mpegts", "-i", "pipe:0",
+				"-map", "0:v:0", "-map", "0:a:0", "-c", "copy", "-muxdelay", "0", "-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1"}
+		}
+		parentOutput := filepath.Join(t.TempDir(), "parent.ts")
+		parentCPU := run(replaceOutput(args, parentOutput), input)
+		if err := input.Close(); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("continuous_aac=%t source_seconds=20 child_cpu=%s parent_cpu=%s total_cpu=%s core_fraction=%.4f", continuous, childCPU, parentCPU, childCPU+parentCPU, (childCPU+parentCPU).Seconds()/20)
+		pcm := decodePCM(parentOutput)
+		// AAC transport retains one 1024-sample priming frame. MP4's input edit removes it;
+		// align that codec delay, then compare every available sample over the intended 20s.
+		const primingBytes = 1024 * 2 * 4
+		if len(pcm) <= primingBytes {
+			t.Fatal("CPU sample has no decoded audio")
+		}
+		pcm = pcm[primingBytes:]
+		count := min(len(pcm), len(referencePCM), 20*48000*2*4) / 4
+		var energy, noise float64
+		for i := range count {
+			x := float64(math.Float32frombits(binary.LittleEndian.Uint32(referencePCM[i*4:])))
+			y := float64(math.Float32frombits(binary.LittleEndian.Uint32(pcm[i*4:])))
+			energy += x * x
+			noise += (x - y) * (x - y)
+		}
+		if count == 0 || energy == 0 {
+			t.Fatal("quality reference is empty or silent")
+		}
+		t.Logf("continuous_aac=%t compared_samples_per_channel=%d snr_db=%.2f", continuous, count/2, 10*math.Log10(energy/noise))
+
+	}
 }

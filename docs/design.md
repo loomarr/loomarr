@@ -2178,16 +2178,37 @@ the format never switches underneath that viewer. This is deliberately a tuner-b
 not another encoder rung: it can recover both an unusable HEVC software encoder and a silent direct
 copy while keeping the stable-format invariant above.
 
-Every finite live child is paced to the Channel wall clock. The ten-second read-rate burst is a
-**tune-in-only** optimization: it applies only when a new session joins at least ten seconds into an
-Airing and more than ten seconds remain. A child opened near the start of an Airing, or for its short
-remaining tail, has no meaningful burst. FFmpeg interprets both an omitted initial-burst option and
-an explicit zero as its half-second default. Those children therefore pass `0.000001` seconds, the
-smallest positive microsecond value, to prevent an unintended half-second read-ahead on every block.
-The ten-second tune-in case remains explicit, and prepared children remain unpaced under the shared
-mux. Otherwise a child reaches EOF ahead of the schedule, the block supervisor asks
-“what is on now?” before the boundary, and repeats the outgoing tail—making both entry into and
-return from a commercial block appear roughly ten seconds late.
+All children entering a shared session use zero video decoder reordering, matching prepared
+packaging version 2. The existing bounded copy-start probe must positively observe zero
+`has_b_frames`; missing or nonzero observations require the ordinary admitted video transcode.
+Session video transcodes and generated cards explicitly set zero B-frames. This prevents a
+card/prepared-to-live handoff from forcing the parent to rewrite copied decode timestamps.
+
+Raw/live sessions own one continuous AAC encoder and the final input pacing clock. Only a session whose initial prepared readiness lookup succeeds uses a one-time
+two-second parent startup burst. It covers the portable prepared rendition's keyframe interval so a
+mid-fragment tune does not wait at real-time speed for its first decodable copied frame.
+Ordinary live starts use a one-microsecond burst so short sources do not run ahead and then stall
+waiting for the next scheduled Airing. Finite live,
+prepared and fallback-card children decode selected audio to a private 48 kHz stereo SMPTE 302M
+PCM stream; the parent copies video and encodes that PCM to AAC once for all viewers. A child's
+source-offset/end trim selects decoded samples explicitly. Children feeding that parent are
+unpaced so two independent read-rate clocks cannot create a handoff stall. Standalone programme
+responses retain their own pacing and public audio format. Their long mid-programme tune-in burst
+remains ten seconds; short/boundary starts explicitly use `0.000001` seconds to avoid FFmpeg's
+implicit half-second default.
+
+The session pins its audio bitrate from the existing playout profile before starting the parent.
+Every finite block receives that bitrate on the private hop and acknowledges the same viewer
+broadcast format. A separate fixed private-audio marker identifies SMPTE 302M/48 kHz/stereo;
+AAC broadcast metadata must not describe the private child payload. The parent explicitly selects
+the SMPTE 302M decoder and cannot silently accept independently encoded AAC children. Missing
+codec support fails startup through the existing process-error path; there is no legacy audio join.
+The parent process diagnostics retain its actual AAC encoding arguments. Audio encoding consumes
+CPU and remains one per shared session, including prepared MPEG-TS; video capacity accounting still
+counts only video encoding. Certification must measure the resulting CPU/latency/cleanup cost,
+retain complete copied video and compare selected decoded audio against independent reference
+encoding across seeks, programme ends and mixed live/prepared/card boundaries. The unchanged
+private programme-signature/late-progress checks remain the boundary acceptance gate.
 
 **A live session has one stable broadcast format across every Airing boundary.** Codec compatibility
 alone is not enough to direct-copy a source into that session: resolution, frame rate, pixel format,
@@ -2281,11 +2302,12 @@ a private schedule. A tune resolves in this order:
    all of its immutable fragments and metadata have validated and been atomically committed.
 3. On a hit, adapt the shared publication to the requested Delivery. HLS renders the short
    wall-clock manifest over immutable fMP4 fragments. MPEG-TS opens the current publication at the
-   authoritative Airing offset through a copy-only fMP4-to-TS remux child and feeds that finite
-   block into the existing long-lived Channel mux. This child decodes and encodes nothing, owns no
-   publication bytes, and is shared by every viewer of the Manager's `(Channel, EncodePlan)`
-   session; starting an encoder or a second per-Channel packager remains a contract violation. The
-   prepared copy remux does not pace its immutable input; the long-lived Channel mux is the sole
+   authoritative Airing offset through a finite fMP4-to-TS child that copies video and decodes
+   selected audio to the private PCM contract. It reads only the prepared publication and feeds
+   the shared session audio encoder; it never acquires an original media-server source or writes
+   publication bytes. Every viewer of the Manager's `(Channel, EncodePlan)` session shares these
+   processes. Prepared HLS still starts no media process; neither path starts a second packager.
+   The prepared child does not pace its immutable input; the long-lived Channel mux is the sole
    wall-clock pacing authority. Applying input read-rate before the child's authoritative seek would
    turn its distance from the preceding segment boundary into viewer-visible cold-start latency.
    The outer pacing also bounds any whole-segment demux burst from fMP4/HLS before it reaches the raw
@@ -2330,7 +2352,7 @@ a private schedule. A tune resolves in this order:
    duration. For a positive seek that copies either stream, an output seek also discards copied
    packets before the requested position; the clock compensates for FFmpeg subtracting that output
    seek from both timestamps. Video copy may start at the next decodable keyframe, never replay the
-   preceding GOP as current content. A zero source offset omits seeking entirely. The parent copy mux flushes without an
+   preceding GOP as current content. A zero source offset omits seeking entirely. The parent video-copy/audio-encode mux flushes without an
    extra mux delay. The internal live-child hop carries the same origin, including generated cards;
    media clocks must not reset when the source changes between prepared and live delivery. The
    parent and ordinary HLS remux retain those source coordinates rather than choosing another zero
@@ -2344,8 +2366,8 @@ a private schedule. A tune resolves in this order:
    must succeed before the response completes. A child failure after headers or programme bytes
    have been sent aborts the response body, so the block supervisor observes an incomplete read and
    resolves the current Airing. It must not append a retry or an unavailable card to that response.
-   The first prepared block pins the session to the publication's codec, dimensions, frame rate,
-   and bitrates. Every later prepared block must match that format, while a prepared miss opens the
+   The first prepared block pins video to the publication's codec, dimensions, frame rate,
+   and video bitrate; the session retains its pinned AAC bitrate. Every later prepared block must match that format, while a prepared miss opens the
    ordinary live child constrained to the same format, so an Airing boundary cannot change decoder
    state inside the continuous transport stream.
 4. On a miss, use the bounded live implementation as an internal fallback. A miss never changes the
@@ -2465,7 +2487,7 @@ audio track, and rendition; startup loads it into memory before the minute sched
 that memory index and `Preparer.Lookup` only. An absent entry, changed tier, audio preference, path
 map, source revision, or publication is an immediate prepared miss. Tune never opens the original
 source, contacts the media server, probes audio, hashes bytes, encodes, or waits for the scheduler.
-An MPEG-TS prepared hit may start only the copy-only transport remux described above; an HLS
+An MPEG-TS prepared hit may start only the video-copy/private-PCM child described above; an HLS
 prepared-only probe remains process-free.
 
 The accelerated packaging driver reuses the live playout encoder's device setup, hardware decode and
