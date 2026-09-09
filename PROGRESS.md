@@ -9,6 +9,9 @@ long-form narrative into
 [`docs/engineering/archive/progress-journal.md`](docs/engineering/archive/progress-journal.md).
 Do not restate the active table in prose.
 
+Release sequencing and acceptance targets: [next three betas](docs/engineering/plans/next-three-betas.md),
+tracked by [#1105](https://github.com/loomarr/loomarr/issues/1105). Release targets do not change phase status.
+
 ## Active work
 
 The one place current status belongs — a table row, not a paragraph. One line per active
