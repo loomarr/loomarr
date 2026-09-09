@@ -80,11 +80,18 @@ func (t *PlayoutCertificationTarget) measureProfile(ctx context.Context, config 
 	}
 	config.Capacity = capacity.MaxChannels
 	t.encoder = capacity.Chosen
-	t.profileEvidence = &playoutcert.ProfileEvidence{
-		QualityTier: string(config.QualityTier), Encoder: string(capacity.Chosen), MeasuredCapacity: capacity.MaxChannels,
-		Probe: profileDimensions(probe), Prepared: profileDimensions(probe),
-	}
+	t.profileEvidence = certificationProfileEvidence(*config, probe, capacity)
 	return nil
+}
+
+func certificationProfileEvidence(config PlayoutCertificationConfig, probe playout.Profile, capacity playout.Capacity) *playoutcert.ProfileEvidence {
+	rendition := config.rendition()
+	return &playoutcert.ProfileEvidence{
+		QualityTier: string(config.QualityTier), Encoder: string(capacity.Chosen), MeasuredCapacity: capacity.MaxChannels,
+		Probe: profileDimensions(probe),
+		Prepared: playoutcert.ProfileDimensions{Width: rendition.Width, Height: rendition.Height, FrameRate: rendition.FrameRate,
+			VideoBitrateKbps: rendition.VideoBitrateKbps, AudioBitrateKbps: rendition.AudioBitrateKbps},
+	}
 }
 
 func profileDimensions(p playout.Profile) playoutcert.ProfileDimensions {

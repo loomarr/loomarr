@@ -34,3 +34,11 @@ func TestCertificationLiveProfileRespondsToLoad(t *testing.T) {
 		t.Fatalf("load policy did not reach encoder: initial=%+v loaded=%+v", initial, loaded)
 	}
 }
+
+func TestCertificationProfileEvidenceKeepsProbeAndPreparationIndependent(t *testing.T) {
+	evidence := certificationProfileEvidence(PlayoutCertificationConfig{QualityTier: playout.TierBalanced}, playout.DefaultProfile(),
+		playout.Capacity{Chosen: playout.EncoderVAAPI, MaxChannels: 12})
+	if evidence.Probe.Height != 720 || evidence.Prepared.Height != 1080 || evidence.Probe.VideoBitrateKbps == evidence.Prepared.VideoBitrateKbps {
+		t.Fatalf("probe replaced the canonical prepared profile: %+v", evidence)
+	}
+}
