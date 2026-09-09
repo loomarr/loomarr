@@ -4400,3 +4400,68 @@ unmerged work remain protected. Current qualification is synthetic; real operato
 recognition/provider evaluation, installation and next-beta acceptance are separate. The earlier
 host FFmpeg9 conditioning failure and unresolved parallel-package timing sensitivity remain
 recorded and are not counted as passing acceptance.
+
+
+### September 9 — playout CI isolation and accepted date delivery
+
+Channel date PR #1158 merged as `b17ab7a9` after full protected queue run
+[34313791536](https://github.com/loomarr/loomarr/actions/runs/34313791536) passed.
+Its exact reviewed/published source is `8de3057c`. The clean accepted worktree was released and
+removed by the guarded collector: one eligible checkout removed, fourteen other secondary
+checkouts retained, no errors. Primary dirty/conflicted work and unrelated runtimes remain
+protected. This supersedes the earlier fifteen-checkout retention snapshot.
+
+PR #1157 queue run [34315006501](https://github.com/loomarr/loomarr/actions/runs/34315006501)
+failed prepared latency assertions, oversized-metrics classification and lifecycle fixture setup.
+The completed failed candidate was dequeued and the PR returned to draft. A controlled pinned
+Linux/ARM64 two-CPU reproduction passed the real publication test alone without race (39.40s)
+and with race (41.46s). Two independent copies of the same race binary sharing that quota both
+failed prepared raw latency (54.33s / 48.75s), with an additional boundary mismatch in one.
+This demonstrates contention can invalidate qualification; it does not identify every historical
+failure's cause or equate local FFmpeg 8.1/ARM64 with hosted FFmpeg 6.1/x86-64.
+
+Repair `ce6271a7` serializes independent Go packages and replaces expensive fixture setup:
+the two late-child shutdown tests obtain the shared migrated SQLite fixture before their unchanged
+five-second contexts; the oversized metrics suffix uses the same four MiB of valid comments in
+128 scanner-safe lines instead of two million tiny lines. Its request deadline and exact
+oversize error assertion remain unchanged. Focused race tests pass (app 13.505s, certifier 1.327s).
+An independent review accepts that delta. The full gate then correctly rejected unaudited workflow
+environment changes; this failed checkpoint is retained.
+
+Repair `98c51e5f` pins Postgres `-p=1` in the exact audited Make recipe, preserves the workflow's
+ban on environment overrides, and admits only literal `GOFLAGS=-p=1` at the Go shard test step.
+Negative controls reject restored package concurrency, removed race instrumentation, test filters,
+dynamic flags, tool substitution and extra environment. The complete release-verifier suite passes
+in 10.465s, and an independent contract review accepts the delta. Package partitioning, within-package
+concurrency, capacity and latency limits, and all media assertions remain unchanged.
+
+Diagnosis, failed and passing probes, exact patches, review reports and final worker meters are
+retained with SHA-256 manifests in `shared-aac-ci-isolation-98c51e5f` in the delivery evidence archive.
+
+The next full affected gate at `98c51e5f` still failed the real publication test, this time on
+transcode programme audio. It was interrupted after the confirmed failure to isolate diagnosis.
+A saved first AAC frame measured ZCR 0.053711/RMS -37.044586; all following 135 frames (138,240
+samples) satisfy the unchanged programme signature. The deterministic captured replay rejects
+priming as content before the correction and accepts the remaining samples with declared priming.
+The first instrumented three-run probe also retained a separate decoder failure; a further batch
+retained a resource-sampling/timeout failure. Neither is silently relabeled as fixed.
+
+Repair `16b2669f` binds a private AAC-preroll declaration to the exact live source epoch. Only one
+1024-sample first callback is excluded from programme counts; numeric validity and strict timestamp
+ordering still apply. fMP4 cannot declare extra priming, declaration changes fail, and all subsequent
+frames retain their existing signatures, boundary guard, transition and late-observation requirements.
+Focused race checks pass in 16.411s, signed-stream negative controls in 2.031s, and three complete real
+publication race runs pass in 45.36s, 45.42s and 45.36s. Independent Standards/Spec review accepts this
+six-file delta. Captured media, sanitized diagnostics, replay, controls, exact patch and final worker
+meters are retained in `shared-aac-priming-16b2669f` with SHA-256 manifests.
+
+Actual pinned Linux/ARM64 CLI reports at `16b2669f` certify 106 synthetic Channels at declared
+target capacity four, with passed audits and zero failures. Child/parent faults qualify in
+42.46s and shutdown separately in 25.06s. Prepared raw first-frame p95 is 148.2ms / 141.0ms
+under the unchanged 500ms limit. Unselected fault profiles remain explicitly unqualified. Exact
+commands, binary/source provenance, reports, summaries and SHA-256 manifests are retained in
+`shared-aac-cli-16b2669f`; this is synthetic acceptance, not physical-hardware qualification.
+
+`GOFLAGS=-p=1 make verify BASE=origin/main` at `16b2669f` passes against accepted base
+`b17ab7a9`: Go, complete Go tests, documentation and policy. The real publication package passes
+in 97.745s. Protected hosted acceptance remains pending for the final published head.
