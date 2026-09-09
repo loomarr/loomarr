@@ -149,9 +149,6 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	}
 	target.store = st
 	logger := slog.New(slog.DiscardHandler)
-	if config.QualityTier != "" {
-		logger = slog.New(certificationStartupProbe{slog.NewTextHandler(os.Stderr, nil)})
-	}
 	processManager := diagnostics.NewProcessManager(st, nil, diagnostics.ProcessOptions{
 		OutputDir: filepath.Join(root, "diagnostics"), InstanceID: "synthetic-cert",
 	})
@@ -290,22 +287,15 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 			case <-ctx.Done():
 				return playout.Block{}, ctx.Err()
 			}
-			logger.Info("source open begins", "channel", channelID)
-			start := time.Now()
 			target.programmeEvidence.recordClock(spawnCtx, channelID, process, sourceID, request.TimelineOrigin)
-			block, err := sourceForParent(ctx, request)
-			logger.Info("source open returns", "channel", channelID, "elapsed_ms", time.Since(start).Milliseconds(), "failed", err != nil, "has_content", block.Content != nil)
-			return block, err
+			return sourceForParent(ctx, request)
 		}
 		var spawnErr error
-		lookupStarted := time.Now()
 		preparedStart, _ := preparedOrigin.MPEGTSReady(spawnCtx, channelID, plan)
-		logger.Info("prepared startup lookup", "channel", channelID, "ready", preparedStart, "lookup_ms", time.Since(lookupStarted).Milliseconds())
 		process, spawnErr = playout.BlockSpawner(ffmpeg, playout.BlockProfile{AudioBitrate: liveResolver.Profile(spawnCtx).AudioBitrate, PreparedStart: preparedStart}, clockedSource, logger, processManager)(spawnCtx, channelID, plan)
 		if spawnErr != nil {
 			return nil, spawnErr
 		}
-		logger.Info("parent spawn returned", "channel", channelID, "elapsed_ms", time.Since(lookupStarted).Milliseconds())
 		close(processReady)
 		target.registerParent(channelID, process)
 		return process, nil
