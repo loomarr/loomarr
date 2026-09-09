@@ -9989,6 +9989,14 @@ Workspace-local links and an operator-supplied Loomarr release version are the o
 manifest references. Platform authorities such as Expo may hold an older compatible pin; the hold
 is documented beside the dependency and remains exact rather than widening into a range.
 
+The Expo/Metro graph retains its compatible exact `image-size@1.2.1` pin with a pnpm source patch
+for #1162. Malformed ICNS entries and malformed JXL/HEIF container boxes must terminate with a
+parse failure instead of non-progressing loops. Regression tests exercise the actual Metro asset
+consumer in bounded child processes, including content disguised with an allowed image extension.
+This is a local reviewed parser correction, not a claim of an upstream patched version or a reason
+to dismiss dependency advisories. Retire the patch only after a compatible upstream remedy passes
+the same consumer and native-client gates.
+
 ### Backend (Go 1.27+)
 
 Go 1.27 is the minimum toolchain. Its standard library transparently backs the existing
