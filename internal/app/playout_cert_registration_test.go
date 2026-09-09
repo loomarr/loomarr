@@ -6,7 +6,6 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -14,18 +13,14 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playoutcert"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/execfixture"
 )
 
 func TestSyntheticShutdownStopsChildRegisteredLate(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "diagnostics.db"), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
 	manager := diagnostics.NewProcessManager(st, nil, diagnostics.ProcessOptions{OutputDir: t.TempDir()})
 	defer func() { _ = manager.Close(context.Background()) }()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -68,13 +63,9 @@ func TestSyntheticShutdownStopsChildRegisteredLate(t *testing.T) {
 }
 
 func TestSyntheticShutdownWaitsForLateChildAdmissionFromHTTPHandler(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "diagnostics.db"), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
 	manager := diagnostics.NewProcessManager(st, nil, diagnostics.ProcessOptions{OutputDir: t.TempDir()})
 	defer func() { _ = manager.Close(context.Background()) }()
 	process := execfixture.POSIX(t, "synthetic-registration-process", "while :; do sleep 1; done")

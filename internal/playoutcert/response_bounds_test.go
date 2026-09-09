@@ -27,9 +27,12 @@ func TestBoundedReaderAcceptsExactLimitAndRejectsSuffix(t *testing.T) {
 
 func TestEndpointRejectsOverLimitResponseSuffixes(t *testing.T) {
 	fixture := playoutcertfixture.New(t, 1)
+	// Exceed the same byte cap with bounded comment lines. Millions of tiny
+	// lines measure scanner/allocator throughput before reaching the size bound.
+	metricsComment := "#" + strings.Repeat("x", (32<<10)-2) + "\n"
 	fixture.ResponsePadding = map[string]string{
 		"/v1/system/version": strings.Repeat(" ", 2<<20),
-		"/metrics":           strings.Repeat("#\n", 2<<20),
+		"/metrics":           strings.Repeat(metricsComment, 128),
 	}
 	config := Config{BaseURL: fixture.Server.URL, AdminBearer: fixture.Admin, Client: fixture.Server.Client(), RequestTimeout: time.Second}
 	endpoint, err := newEndpoint(config.normalized())

@@ -199,6 +199,10 @@ jobs:
           command -v ffmpeg
           command -v ffprobe
       - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+        # Independent synthetic targets otherwise compete for the same worker
+        # while asserting strict media latency. Retain race and shard coverage.
+        env:
+          GOFLAGS: -p=1
       # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
       # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
       # restored again once that PR closes — cache reads are scoped to the branch and its

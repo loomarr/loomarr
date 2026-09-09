@@ -11485,7 +11485,10 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   `check-static` contract half and its race-policy-aware `test` half as parallel jobs, and may shard
   the latter or run independent runtime certification beside both, but the required aggregate
   succeeds only when every constituent succeeds. Splitting execution must not delete, skip, or
-  weaken an assertion. Go package shards consume the alphabetic `go list ./...` stream in rows the
+  weaken an assertion. Each Go test and Postgres conformance worker runs one package at a time:
+  independent synthetic playout targets must not compete for the same worker while asserting its
+  latency and capacity contract. Race instrumentation, within-package concurrency and the complete
+  package partition remain unchanged. Go package shards consume the alphabetic `go list ./...` stream in rows the
   width of the shard count and alternate each row's direction. This serpentine distribution avoids
   a recurring every-N phase alignment without introducing a hand-maintained package-cost table;
   adding or removing a package still fails safe because every package remains assigned by the
