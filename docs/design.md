@@ -2634,6 +2634,11 @@ source, contacts the media server, probes audio, hashes bytes, encodes, or waits
 An MPEG-TS prepared hit may start only the video-copy/private-PCM child described above; an HLS
 prepared-only probe remains process-free.
 
+Publication readiness permits concurrent metadata lookups and asset opens: ordinary viewer reads
+must not turn a complete publication into a prepared miss. Publication and eviction retain exclusive
+ownership of that key; a readiness probe never waits behind either operation. Concurrent readers
+preserve the latest playback-use timestamp when populating the shared metadata cache.
+
 The accelerated packaging driver reuses the live playout encoder's device setup, hardware decode and
 upload, filter, preset, rate-control, and GOP builders. Its driver contract separates pre-input
 arguments from output arguments because ffmpeg hardware-device setup placed after `-i` silently
