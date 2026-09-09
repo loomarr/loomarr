@@ -149,6 +149,9 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	}
 	target.store = st
 	logger := slog.New(slog.DiscardHandler)
+	if config.QualityTier != "" {
+		logger = slog.New(certificationStartupProbe{slog.NewTextHandler(os.Stderr, nil)})
+	}
 	processManager := diagnostics.NewProcessManager(st, nil, diagnostics.ProcessOptions{
 		OutputDir: filepath.Join(root, "diagnostics"), InstanceID: "synthetic-cert",
 	})
@@ -291,7 +294,9 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 			return sourceForParent(ctx, request)
 		}
 		var spawnErr error
+		lookupStarted := time.Now()
 		preparedStart, _ := preparedOrigin.MPEGTSReady(spawnCtx, channelID, plan)
+		logger.Info("prepared startup lookup", "channel", channelID, "ready", preparedStart, "lookup_ms", time.Since(lookupStarted).Milliseconds())
 		process, spawnErr = playout.BlockSpawner(ffmpeg, playout.BlockProfile{AudioBitrate: liveResolver.Profile(spawnCtx).AudioBitrate, PreparedStart: preparedStart}, clockedSource, logger, processManager)(spawnCtx, channelID, plan)
 		if spawnErr != nil {
 			return nil, spawnErr
