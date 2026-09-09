@@ -4568,3 +4568,29 @@ complete in 42.381 seconds; shutdown completes separately in 25.098 seconds. Bot
 with zero failures. Prepared raw first-frame p95 is 250.027ms / 373.127ms under the unchanged
 500ms limit. The exact commands, binary/source provenance, reports and hashes are retained in
 `shared-aac-cli-9df1669f`. Protected hosted acceptance remains required.
+
+
+### Playout delivery accepted — 2026-09-09
+
+PR [#1157](https://github.com/loomarr/loomarr/pull/1157) merged at 11:18 UTC as
+`71b7ff3ab1fc844c35366445be39810e17278038`. The accepted commit is on `origin/main`
+and its full tree `b9b5b80ecaaffe79c081350cbff5c000d51f8cc8` equals reviewed source
+`85d0496dc15579f05ea2fe811baa043d276bbd81`. PR CI `34338583842` and the exact
+[protected queue run](https://github.com/loomarr/loomarr/actions/runs/34341681693) pass.
+All three Go race shards, repository contracts, Postgres conformance, Android, both release
+images, docs and policy pass. The protected command package passes in 93.380 seconds and
+`internal/playoutcert` in 73.721 seconds, including the formerly failing command path.
+
+This accepts the continuous shared AAC encoder, process-free prepared HLS path, pinned
+production FFmpeg parity, finite-output lifetime repair and strict per-epoch validation.
+The local gates, six-position boundary matrix and both fresh synthetic CLI audits above
+remain the qualification evidence for the measured generated workload. Complete redacted
+queue logs, PR metadata, exact-tree provenance and hashes are retained in
+`shared-aac-output-and-epoch-7e29cf4f` in the delivery evidence archive.
+
+Code delivery is complete. Declared-hardware/profile qualification and integrated prepared
+readiness remain in [#1037](https://github.com/loomarr/loomarr/issues/1037) and
+[#1097](https://github.com/loomarr/loomarr/issues/1097). These synthetic results do not
+certify a deployment's capacity, operator corpus or physical-client beta acceptance.
+Final worktree retirement and retained-worktree dispositions are recorded on
+[#1116](https://github.com/loomarr/loomarr/issues/1116).
