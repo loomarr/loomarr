@@ -17,6 +17,20 @@ mkdir -p "$test_root/bin" "$test_root/store" "$test_root/artifacts" "$test_root/
 printf 'CAS object\n' > "$test_root/store/object"
 printf 'template fixture\n' > "$test_root/expo/template.tgz"
 
+# This suite tests shell orchestration with no installed frontend dependencies.
+# Native runs execute the real consumer regressions; here only their invocation is observed.
+cat > "$test_root/bin/ruby" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -eq 1 ]] || exit 64
+case "${1##*/}" in
+  hermes-download-test.rb|native-release-selection-test.rb|native-artifact-download-test.rb)
+    printf 'native_contract_%s\n' "${1##*/}" >> "$APPLE_CACHE_TEST_ROOT/command-order"
+    ;;
+  *) printf 'unexpected Ruby invocation: %s\n' "$*" >&2; exit 64 ;;
+esac
+STUB
+
 cat > "$test_root/bin/node" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -338,7 +352,7 @@ if [[ "$(cat "$test_root/artifacts/phase-timings.tsv")" != \
   exit 1
 fi
 if [[ "$(cat "$test_root/command-order")" != \
-  $'simulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run' ]]; then
+  $'native_contract_hermes-download-test.rb\nnative_contract_native-release-selection-test.rb\nnative_contract_native-artifact-download-test.rb\nsimulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run' ]]; then
   printf 'test-apple-client-cache-test: overlap command order got:\n%s\n' \
     "$(cat "$test_root/command-order")" >&2
   exit 1
