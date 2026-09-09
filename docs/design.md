@@ -2323,7 +2323,7 @@ not another encoder rung: it can recover both an unusable HEVC software encoder 
 copy while keeping the stable-format invariant above.
 
 All children entering a shared session use zero video decoder reordering, matching prepared
-packaging version 2. The existing bounded copy-start probe must positively observe zero
+packaging's no-reordering contract. The existing bounded copy-start probe must positively observe zero
 `has_b_frames`; missing or nonzero observations require the ordinary admitted video transcode.
 Session video transcodes and generated cards explicitly set zero B-frames. This prevents a
 card/prepared-to-live handoff from forcing the parent to rewrite copied decode timestamps.
@@ -2331,6 +2331,10 @@ card/prepared-to-live handoff from forcing the parent to rewrite copied decode t
 Raw/live sessions own one continuous AAC encoder and the final input pacing clock. Only a session whose initial prepared readiness lookup succeeds uses a one-time
 two-second parent startup burst. It covers the portable prepared rendition's keyframe interval so a
 mid-fragment tune does not wait at real-time speed for its first decodable copied frame.
+That prepared-start proof also bounds the parent transport probe to 32 KiB: the validated child
+already supplies the broadcast video and private PCM stream shape, so a short valid programme tail
+must not wait for its successor merely to fill a 256 KiB probe. Ordinary live starts retain the
+256 KiB probe. Neither path changes source timestamps, stream mapping or decoded-frame qualification.
 Ordinary live starts use a one-microsecond burst so short sources do not run ahead and then stall
 waiting for the next scheduled Airing. Finite live,
 prepared and fallback-card children decode selected audio to a private 48 kHz stereo SMPTE 302M
