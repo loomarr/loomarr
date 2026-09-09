@@ -40,6 +40,14 @@ and frame rates follow that tier. The report's `target.profile` records the sele
 measured admission budget, probe dimensions and prepared dimensions. These fields describe the
 workload; only the complete passing run supplies concurrent-load evidence.
 
+Retain a separate paired-encode quality comparison in the same evidence packet when changing the
+prepared random-access cadence. Bind both encoder commands and binary/source hashes to the same
+input, hardware limits, rendition and bitrate policy; record publication bytes and decoded-video
+SSIM against that input for the previous and candidate cadence. Preserve the input generator or
+authorized media identity and comparison output before removing temporary publications. The load
+report does not embed this comparison and cannot replace it. A generated motion fixture measures
+that fixture's compression tradeoff; it does not establish representative real-media picture quality.
+
 The prepared cohort converges through the production runtime resolver, persistent readiness index,
 planner, source access and packager under the shared encode pool. Software-only or single-slot
 targets cannot satisfy this background-preparation lane and hold qualification. Missing readiness
