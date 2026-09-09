@@ -181,7 +181,9 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 		// In window: keep only items seasonal for an active holiday.
 		kept := entries[:0:0]
 		for _, e := range entries {
-			if isSeasonal(e, active) {
+			// A series title is not evidence about each of its episodes. The
+			// concrete exclusive filter runs after episode safety and grouping.
+			if e.Key.IsSeries() || isSeasonal(e, active) {
 				kept = append(kept, e)
 			} else {
 				report.add(e, "out_of_season")
@@ -209,6 +211,47 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 		}
 		return kept, report
 	}
+}
+
+func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time) map[string]bool {
+	if now.IsZero() || rp.Seasonal.Mode != SeasonalExclusive {
+		return nil
+	}
+	active := activeHolidays(now, rp.Seasonal.Holidays)
+	if len(active) == 0 {
+		return nil
+	}
+	ids := make(map[string]bool, len(active))
+	for _, h := range active {
+		ids[h.id] = true
+	}
+	return ids
+}
+
+func filterExclusiveEpisodes(e LineupEntry, episodes []ResolvedProgram, editorialUnavailable bool, holidays map[string]bool, report *ExclusionReport, trace *scheduleTraceBuilder) []ResolvedProgram {
+	if len(holidays) == 0 {
+		return episodes
+	}
+	var selected []ResolvedProgram
+	if !editorialUnavailable {
+		selected = matchingHolidayEpisodes(episodes, holidays)
+	}
+	kept := make(map[resolvedProgramID]int, len(selected))
+	for _, ep := range selected {
+		kept[resolvedProgramIdentity(ep)]++
+	}
+	for _, ep := range episodes {
+		id := resolvedProgramIdentity(ep)
+		if kept[id] > 0 {
+			kept[id]--
+			continue
+		}
+		trace.add(episodeFact(e, ep, StageHardFilter, OutcomeExcluded, ReasonOutOfSeason))
+		if report != nil {
+			report.Items = append(report.Items, ExcludedItem{Key: e.Key, Title: episodeLabel(e, ep), Reason: "out_of_season"})
+		}
+	}
+	return selected
 }
 
 // lowerSet builds a lowercased set from a slice, or nil for an empty slice.

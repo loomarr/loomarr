@@ -295,6 +295,15 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     `holiday` episode selector; after episode safety/scope filtering it matches the episode's title,
     overview, and media-server tags against only the named holiday ids. This supports “Christmas
     Simpsons episodes” without mistaking every Comedy or Family episode for a holiday episode.
+    In an active `exclusive` window, defer series membership to those concrete episode facts:
+    a non-holiday series title cannot exclude its holiday episodes, and a holiday series title
+    cannot certify every episode. After safety/date/season filtering and multipart grouping,
+    retain the units supported by the active holiday ids. Preserve complete supported multipart
+    units and their ordering. No matching or current editorial evidence means an explicit seasonal
+    exclusion, not the ordinary editorial selector's full-run fallback or an acquisition placeholder.
+    Genuine unavailability still follows the pending policy. This deferred filter does not change
+    movie detection, ordinary `auto`/`off`, zero-clock behavior, or the exclusive off-season
+    `loop`/`dark` contract. Calendar exclusion does not remove library availability from drift evidence.
   - ⚠ **Genres are excluded deliberately, and this is a correction.** Detection originally hayed over title **+ genres**, which conflated *"this title is about a holiday"* with *"this title belongs to a genre that correlates with one"*. Those are different claims, and only the first is what a holiday window should act on. The failure was total rather than cosmetic: `horror` sat in the Halloween keyword set, so on a year-round horror channel **every** entry detected as seasonal, and `auto` mode benched all of them `out_of_season` for the eleven months outside October. The channel was legal to configure, reported `live`, and aired nothing. A genre is what a channel **is**; a holiday keyword is what a title is **about**. The rule's own example — *Christmas episodes in July break the spell* — is a title, and the fix restores exactly that reading. (A single genre-shaped keyword could have been dropped instead, but the mechanism would have re-fired on the next collision: a Romance channel near Valentine's, a Family channel near Christmas.)
 - **`mode: "auto"` (default):** in-window, seasonal items get a scheduling **boost** (weighted up, tasteful — not wall-to-wall); out-of-window, detected-seasonal items are **benched** (excluded). The bench is the half everyone forgets and the one viewers notice: *Christmas episodes in July break the spell.*
 - **`mode: "exclusive"`:** the channel *is* the holiday (a December Hallmark-style channel): only in-window seasonal content airs; out of window the channel runs its `offSeason` fallback (loop scope without seasonal filter, or go dark — policy field, default loop).

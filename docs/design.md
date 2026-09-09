@@ -1502,6 +1502,9 @@ maximum even when the model omits policy; unrated or harder picks are refused be
 that names a built-in holiday deterministically becomes `seasonal.mode=exclusive` with only that
 holiday id selected; an empty holiday subset would mean all built-ins and is therefore not an honest
 representation of a Christmas-, Halloween-, or other single-holiday channel.
+During an active exclusive window, a series is evaluated through its concrete episode evidence,
+not rejected solely because its series title lacks the holiday name. Programming-design §6 owns
+the deferred seasonal filter, including current evidence, multipart units and explicit exclusions.
 An existing-channel refine that merely adds holiday programming is different: it contributes a
 grounded `holiday:<id>` scheduling rule and leaves the year-round seasonal identity intact. Only a
 refine that explicitly turns the object into a holiday *channel* receives the exclusive override.

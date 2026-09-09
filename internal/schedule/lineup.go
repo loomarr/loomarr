@@ -305,8 +305,9 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// Resolve each eligible entry to its program slot(s) — movie → one, series → one
 	// per in-range episode (§9 expansion).
 	slots := make([]Slot, 0, len(eligible))
+	seasonalHolidays := exclusiveEpisodeHolidays(rp, now)
 	for _, e := range eligible {
-		slots = append(slots, resolveEntryWithTrace(e, avail, pending, franchiseGroups, rp, rule.What, &report, trace)...)
+		slots = append(slots, resolveEntryWithTrace(e, avail, pending, franchiseGroups, rp, rule.What, seasonalHolidays, &report, trace)...)
 	}
 
 	// EligibleKeys: the distinct program keys the library can currently supply, captured
@@ -585,10 +586,10 @@ func episodeLabel(e LineupEntry, ep ResolvedProgram) string {
 // episodes exist. report accumulates those drops; pass nil to run the gate without recording
 // (the EligibleKeys pass does, so a drop is not counted twice).
 func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, report *ExclusionReport) []Slot {
-	return resolveEntryWithTrace(e, avail, policy, franchise, rp, nil, report, nil)
+	return resolveEntryWithTrace(e, avail, policy, franchise, rp, nil, nil, report, nil)
 }
 
-func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, ruleScope *ScopePolicy, report *ExclusionReport, trace *scheduleTraceBuilder) []Slot {
+func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, ruleScope *ScopePolicy, seasonalHolidays map[string]bool, report *ExclusionReport, trace *scheduleTraceBuilder) []Slot {
 	// A series expands into its episodes (each a program slot).
 	if e.Key.IsSeries() {
 		resolution := avail.ResolveEpisodes(e.Key)
@@ -661,6 +662,9 @@ func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPoli
 				inRange = append(inRange, ep)
 			}
 			assignPartGroups(string(e.Key), inRange)
+			beforeSeasonal := len(inRange)
+			inRange = filterExclusiveEpisodes(e, inRange, resolution.EditorialUnavailable, seasonalHolidays, report, trace)
+			seasonalDropped := beforeSeasonal - len(inRange)
 			inRange = selectEpisodesWithTrace(e, inRange, resolution.EditorialUnavailable, trace)
 			out := make([]Slot, 0, len(inRange))
 			for _, ep := range inRange {
@@ -695,7 +699,7 @@ func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPoli
 			// Likewise, a series whose known episodes were all outside the era is
 			// excluded, not advertised as still acquiring. An explicit season window
 			// with no local match retains the existing pending behavior below.
-			if scopeDropped > 0 {
+			if scopeDropped > 0 || seasonalDropped > 0 {
 				return nil
 			}
 			// The range matched no in-library episodes yet → pending (like an
