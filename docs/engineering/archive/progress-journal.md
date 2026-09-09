@@ -4496,3 +4496,14 @@ Ubuntu image and two-CPU quota: cleanup-failure publication and actual audited p
 The Linux race binary is built from `46f1bc6b`; production media code is unchanged by this
 CI-toolchain repair. Exact durations, binary hashes and matrix logs are retained in
 `shared-aac-ffmpeg-parity-46f1bc6b` in the delivery evidence archive.
+
+Repair `409c8fa4` passes both required local gates:
+
+- `GOFLAGS=-p=1 make verify BASE=46f1bc6ba161e4a94061fd963dfd4e4e3cea6954`: Go,
+  complete Go tests, docs, Android and policy.
+- `GOFLAGS=-p=1 make verify SCOPE=all`: comprehensive static contracts and the complete
+  race-policy test suite. The release-verifier package passes in 37.944s.
+
+The separate Ubuntu command tests pass in 41.40s and 41.57s. These results, the exact repair
+patch and the independent review are retained with SHA-256 manifests in
+`shared-aac-ffmpeg-parity-46f1bc6b`. Protected hosted acceptance is still required.
