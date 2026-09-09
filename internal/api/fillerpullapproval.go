@@ -40,8 +40,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 		}
 		return nil, huma.Error500InternalServerError("read pull", err)
 	}
-	// A decided pull cannot be approved again. Atomic concurrent idempotency is tracked in #955;
-	// this guard owns ordinary retries and decisions already visible in persistence.
+	// Fast feedback for a visible decision; the transaction below owns concurrent decisions.
 	if p.Status != filler.PullPending {
 		return nil, errConflict("That pull has already been decided",
 			"Someone already "+string(p.Status)+" this pull. Propose a new one if you still want the clips.")
@@ -120,7 +119,16 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, RemoteID: row.RemoteID, Kind: src.Kind, URL: url})
 	}
 
-	if _, err := s.filler.IngestPull(ctx, p.ID, targets); err != nil {
+	p.Status = filler.PullApproved
+	p.Note = strings.TrimSpace(in.Body.Note)
+	p.DecidedAt = time.Now().UTC()
+	p.DecidedBy = auditActor(ctx)
+	if _, err := s.filler.IngestPull(ctx, p.ID, targets, func(commitCtx context.Context, run filler.AcquisitionRun) error {
+		return s.store.CommitPullApproval(commitCtx, p, run)
+	}); err != nil {
+		if errors.Is(err, store.ErrPullNotPending) {
+			return nil, errConflict("That pull has already been decided or started", "Another decision or acquisition already owns this pull. Review its history before proposing a new one.")
+		}
 		if errors.Is(err, ErrIngestUnavailable) {
 			return nil, errConflict("Downloading isn't available on this install",
 				"This build can't run the download tooling, so an approved pull would have nothing to fetch with.")
@@ -129,13 +137,6 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 			"Loomarr couldn't start downloading. Check the Filler sources and try again.", err)
 	}
 
-	p.Status = filler.PullApproved
-	p.Note = strings.TrimSpace(in.Body.Note)
-	p.DecidedAt = time.Now().UTC()
-	p.DecidedBy = auditActor(ctx)
-	if err := s.store.UpsertPull(ctx, p); err != nil {
-		return nil, huma.Error500InternalServerError("save pull decision", err)
-	}
 	return &pullOutput{Body: pullToDTO(p)}, nil
 }
 
@@ -161,7 +162,10 @@ func (s *Server) dismissFillerPull(ctx context.Context, in *dismissFillerPullInp
 	p.Status = filler.PullDismissed
 	p.DecidedAt = time.Now().UTC()
 	p.DecidedBy = auditActor(ctx)
-	if err := s.store.UpsertPull(ctx, p); err != nil {
+	if err := s.store.DismissPull(ctx, p); err != nil {
+		if errors.Is(err, store.ErrPullNotPending) {
+			return nil, errConflict("That pull has already been decided", "Another decision won. Reload the pull to see its history.")
+		}
 		return nil, huma.Error500InternalServerError("save pull decision", err)
 	}
 	return &pullOutput{Body: pullToDTO(p)}, nil

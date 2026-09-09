@@ -43,6 +43,9 @@ var ErrConditioningPublicationMismatch = filler.ErrConditioningOwnershipMismatch
 // never retry the same write blindly.
 var ErrTaxonConflict = errors.New("store: taxonomy conflict")
 
+// ErrPullNotPending reports a losing pull decision or a pending pull with prior acquisition work.
+var ErrPullNotPending = errors.New("store: pull already decided or acquired")
+
 // ErrProposalNotSubmitted reports a terminal proposal decision that lost the
 // submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:
 // the proposal exists, but another decision already won.
@@ -545,12 +548,19 @@ type FillerPullStore interface {
 	// ListPulls returns pulls with the given status, newest first; an empty status means all.
 	ListPulls(ctx context.Context, status filler.PullStatus) ([]filler.Pull, error)
 	UpsertPull(ctx context.Context, p filler.Pull) error
+	// CommitPullApproval atomically saves the pending decision and its one queued run.
+	// Existing historical runs and losing decisions return ErrPullNotPending.
+	CommitPullApproval(ctx context.Context, p filler.Pull, run filler.AcquisitionRun) error
+	// DismissPull compares-and-sets pending without overwriting a concurrent approval.
+	DismissPull(ctx context.Context, p filler.Pull) error
 }
 
 // FillerAcquisitionStore is the reconnect truth for filler downloads and their resulting clip
 // lifecycle. It is separate from sources and pulls because one run is an execution record, not a
 // source definition or approval decision.
 type FillerAcquisitionStore interface {
+	// UpsertAcquisitionRun creates unbound runs and updates existing snapshots.
+	// Pull-bound creation belongs to CommitPullApproval; execution ownership is immutable.
 	UpsertAcquisitionRun(ctx context.Context, run filler.AcquisitionRun) error
 	// UpsertAcquisitionArtifacts atomically records the exact downloaded-byte manifest before
 	// publication makes any artifact eligible for intake.

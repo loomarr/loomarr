@@ -182,3 +182,12 @@ func TestPostgresConformance(t *testing.T) {
 		testProposalAutoApprovalQuotaAcrossStores(t, primary, secondary)
 	})
 }
+
+func TestPostgresFillerPullCommitMigrationPreservesHistoricalRuns(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testFillerPullCommitMigration(t, db, DialectPostgres, "migrations/postgres")
+}

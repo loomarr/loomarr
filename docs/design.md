@@ -7767,6 +7767,25 @@ Three rules, each of which is a safety property rather than a feature:
 
 ⚠ **The gate binds bulk composition, not an admin's own hands.** An admin searching one source and queueing one clip stays direct — the §7 shape, where an admin may `POST /v1/titles` because the admin *is* the gate. Requiring a proposal for a single deliberate click would make the gate ceremony, and ceremony is what teaches people to click through it. What the gate exists for is what happens when *nobody is looking*: a composed multi-source plan, which is exactly what a pull is.
 
+**A pull decision commits once (#955).** Approval compares-and-sets the persisted pull from
+pending, writes the exact reviewed plan (including dropped rows), note, actor and decision time,
+and creates one durable queued acquisition run in a single short transaction. Only after commit
+may the ordinary manifest-backed ingest job start. A losing approval or dismissal returns a
+conflict and cannot overwrite the winning audit or enqueue another run. The transaction never
+spans downloader execution; validation or persistence failure before commit leaves the pull pending
+and creates no run.
+
+The uniquely pull-bound decision record constrains new approvals without deleting historical
+acquisition audit. The acquisition snapshot writer can update an existing pull-bound run but cannot
+create one outside the approval commit or change an execution's trigger/source/pull ownership. Approval of a pending pull that already has a historical run is refused for review, rather
+than silently starting another download. An operator may dismiss that still-pending proposal
+without changing or canceling any historical acquisition; dismissal cannot overwrite an approval. Historical source-level plans remain executable through
+the same approval boundary. In the single-replica beta, startup settles any queued/running run left
+by the previous process as a visible acquisition error, including a crash after the approval
+transaction but before launch. The approved decision remains historical truth; retrying that
+approval cannot create another run. An operator may propose a fresh pull after reviewing the
+interruption. Recovery does not claim automatic replay or successful download.
+
 ### Acquisition intent chooses exact remote items (V66)
 
 V35 supplied the approval object but its first implementation stopped one level too early: it
@@ -10022,6 +10041,14 @@ to review. Peer ranges remain compatibility contracts rather than selected insta
 Workspace-local links and an operator-supplied Loomarr release version are the other non-concrete
 manifest references. Platform authorities such as Expo may hold an older compatible pin; the hold
 is documented beside the dependency and remains exact rather than widening into a range.
+
+The Expo/Metro graph retains its compatible exact `image-size@1.2.1` pin with a pnpm source patch
+for #1162. Malformed ICNS entries and malformed JXL/HEIF container boxes must terminate with a
+parse failure instead of non-progressing loops. Regression tests exercise the actual Metro asset
+consumer in bounded child processes, including content disguised with an allowed image extension.
+This is a local reviewed parser correction, not a claim of an upstream patched version or a reason
+to dismiss dependency advisories. Retire the patch only after a compatible upstream remedy passes
+the same consumer and native-client gates.
 
 ### Backend (Go 1.27+)
 
