@@ -3,6 +3,7 @@
 set -euo pipefail
 
 readonly APP_NAME="${1:-mobile}"
+readonly APPLE_SIMULATOR_ID="${LOOMARR_APPLE_SIMULATOR_ID:-}"
 WEB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly WEB_ROOT
 readonly APP_DIR="${WEB_ROOT}/apps/${APP_NAME}"
@@ -164,12 +165,13 @@ chmod +x "$XCODE_CAPTURE_DIR/xcodebuild"
 
 simulator_started_at="$(date +%s)"
 simulator_json="$(xcrun simctl list devices available --json)"
-simulator_id="$(jq -r --arg runtime "${RUNTIME_TOKEN}" '
-  [.devices | to_entries[] | select(.key | contains($runtime)) | .value[] | select(.isAvailable)]
+simulator_id="$(jq -r --arg runtime "${RUNTIME_TOKEN}" --arg requested "$APPLE_SIMULATOR_ID" '
+  [.devices | to_entries[] | select(.key | contains($runtime)) | .value[]
+   | select(.isAvailable) | select($requested == "" or .udid == $requested)]
   | last | .udid // empty
 ' <<<"${simulator_json}")"
 if [[ -z "${simulator_id}" ]]; then
-  printf 'no available %s simulator is installed\n' "${RUNTIME_TOKEN}" >&2
+  printf 'no available %s simulator matches the requested selection\n' "${RUNTIME_TOKEN}" >&2
   exit 1
 fi
 

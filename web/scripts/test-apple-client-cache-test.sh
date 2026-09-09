@@ -253,6 +253,7 @@ output="$(
   PATH="$test_root/bin:$PATH" \
     APPLE_CACHE_TEST_ROOT="$test_root" \
     APPLE_CACHE_TEST_LIVE_PID="$$" \
+    LOOMARR_APPLE_SIMULATOR_ID=SIM-1 \
     LOOMARR_APPLE_ARTIFACTS_DIR="$test_root/artifacts" \
     LOOMARR_APPLE_BUILD_DIR="$test_root/build" \
     LOOMARR_APPLE_CACHE_MODE=warm \
@@ -445,5 +446,17 @@ for native_override in REACT_NATIVE_OVERRIDE_HERMES_DIR HERMES_ENGINE_TARBALL_PA
   fi
   printf '0\n' > "$test_root/build-count"
 done
+
+unlink "$test_root/build-count"
+set +e
+output="$(PATH="$test_root/bin:$PATH" APPLE_CACHE_TEST_ROOT="$test_root" \
+  LOOMARR_APPLE_SIMULATOR_ID=UNAVAILABLE-OR-WRONG-PLATFORM "$verifier" mobile 2>&1)"
+status=$?
+set -e
+if [[ $status -ne 1 || -f "$test_root/build-count" ]] \
+  || [[ "$output" != *'no available iOS simulator matches the requested selection'* ]]; then
+  printf 'test-apple-client-cache-test: unavailable device selection did not fail closed (%s): %s\n' "$status" "$output" >&2
+  exit 1
+fi
 
 echo 'test-apple-client-cache-test: ok'
