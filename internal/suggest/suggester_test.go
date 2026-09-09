@@ -2603,7 +2603,7 @@ func TestSuggestReportsPartialInterpretationOfGroundedFragment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prop.Lineup)+len(prop.Acquisitions) != 1 || prop.Scores.ThemeFit == nil || *prop.Scores.ThemeFit != 0.25 || prop.Scores.Theme.Status != "partial" {
+	if len(prop.Lineup)+len(prop.Acquisitions) != 1 || prop.Scores.ThemeFit == nil || *prop.Scores.ThemeFit != 0 || prop.Scores.Theme.Status != "partial" {
 		t.Fatalf("grounded fragment was represented as full understanding: %+v", prop)
 	}
 }

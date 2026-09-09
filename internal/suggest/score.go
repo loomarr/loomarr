@@ -97,7 +97,7 @@ func canonicalQualifier(term string) string {
 }
 
 func supportsQualifier(item ProposalItem, term string) bool {
-	hay := strings.Join(append(append([]string{item.Name, item.Overview}, item.Genres...), item.Keywords...), " ")
+	hay := strings.Join(append(append([]string{item.Overview}, item.Genres...), item.Keywords...), " ")
 	variants := qualifierEquivalents[term]
 	if len(variants) == 0 {
 		variants = []string{term}

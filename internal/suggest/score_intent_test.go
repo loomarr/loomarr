@@ -60,7 +60,8 @@ func TestThemeEvidenceDoesNotConfuseMetadataWithUnderstanding(t *testing.T) {
 		want   *float64
 		status string
 	}{
-		{"partial nonsense is explained", "asdf banana xqz 999", suggest.ProposalItem{Name: "Banana Fish", Overview: "A crime drama"}, new(0.25), "partial"},
+		{"partial nonsense is explained", "asdf banana xqz 999", suggest.ProposalItem{Name: "Banana Fish", Overview: "A crime drama"}, new(0.0), "partial"},
+		{"title cannot borrow unrelated metadata", "British murder mysteries", suggest.ProposalItem{Name: "British Murder Mysteries", Overview: "A documentary about undersea exploration"}, new(0.0), "partial"},
 		{"title alone is insufficient", "banana", suggest.ProposalItem{Name: "Banana Fish"}, nil, "unassessed"},
 		{"substrings do not prove a theme", "war", suggest.ProposalItem{Name: "Reward", Overview: "A heartwarming drama"}, new(0.0), "partial"},
 		{"known equivalents and country", "cozy British murder mysteries", suggest.ProposalItem{Overview: "A cosy murder whodunit", OriginCountries: []string{"GB"}}, new(1.0), "supported"},

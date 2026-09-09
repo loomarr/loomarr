@@ -1388,7 +1388,10 @@ supported by each item's Catalog metadata. Matching one fragment never earns com
 Verified named membership remains its own full-support case. Whole normalized words and a small,
 explicit synonym vocabulary handle known equivalences; unrecognized wording is unverified, not a
 literal-word admission rule. No item is silently excluded by this diagnostic, and generated rationale
-cannot support it. Missing substantive metadata or no requested theme leaves coverage unassessed.
+cannot support it. Ordinary theme coverage uses overview, genres, keywords and documented country
+evidence; a matching Catalog title plus unrelated metadata cannot establish theme support. Named
+membership uses its separate verified identity evidence. Missing substantive metadata or no requested
+theme leaves coverage unassessed.
 The existing evaluation `MinThemeFit` floor remains enforced against this definition: unassessed
 evidence cannot pass a required floor, and no threshold is lowered as part of the correction.
 
