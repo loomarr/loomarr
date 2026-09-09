@@ -290,8 +290,12 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 			case <-ctx.Done():
 				return playout.Block{}, ctx.Err()
 			}
+			logger.Info("source open begins", "channel", channelID)
+			start := time.Now()
 			target.programmeEvidence.recordClock(spawnCtx, channelID, process, sourceID, request.TimelineOrigin)
-			return sourceForParent(ctx, request)
+			block, err := sourceForParent(ctx, request)
+			logger.Info("source open returns", "channel", channelID, "elapsed_ms", time.Since(start).Milliseconds(), "failed", err != nil, "has_content", block.Content != nil)
+			return block, err
 		}
 		var spawnErr error
 		lookupStarted := time.Now()
@@ -301,6 +305,7 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 		if spawnErr != nil {
 			return nil, spawnErr
 		}
+		logger.Info("parent spawn returned", "channel", channelID, "elapsed_ms", time.Since(lookupStarted).Milliseconds())
 		close(processReady)
 		target.registerParent(channelID, process)
 		return process, nil
