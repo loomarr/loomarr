@@ -46,6 +46,7 @@ type Decoder interface {
 }
 
 type Config struct {
+	Profile                          *ProfileEvidence
 	BaseURL                          string
 	AdminBearer                      string
 	DeviceToken                      string
@@ -107,6 +108,9 @@ func (c Config) Validate() error {
 // ValidateInputs checks the bounded run parameters which are safe to validate
 // before binding credentials and an origin to a target.
 func (c Config) ValidateInputs() error {
+	if err := c.Profile.validate(); err != nil {
+		return err
+	}
 	boundaryTimeout := c.ProgrammeBoundaryTimeout
 	if boundaryTimeout == 0 {
 		boundaryTimeout = 20 * time.Minute
@@ -288,12 +292,13 @@ func (c Config) normalized() Config {
 }
 
 type Target struct {
-	CohortManifestSHA256 string `json:"cohortManifestSha256,omitempty"`
-	Version              string `json:"version"`
-	Revision             string `json:"revision"`
-	ManifestSHA256       string `json:"manifestSha256"`
-	ConfiguredChannels   int    `json:"configuredChannels"`
-	Capacity             int    `json:"capacity"`
+	Profile              *ProfileEvidence `json:"profile,omitempty"`
+	CohortManifestSHA256 string           `json:"cohortManifestSha256,omitempty"`
+	Version              string           `json:"version"`
+	Revision             string           `json:"revision"`
+	ManifestSHA256       string           `json:"manifestSha256"`
+	ConfiguredChannels   int              `json:"configuredChannels"`
+	Capacity             int              `json:"capacity"`
 }
 
 type LatencySummary struct {

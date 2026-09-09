@@ -16,6 +16,10 @@ const (
 
 func fixedReportString(path, value string) bool {
 	switch path {
+	case "target.profile.qualityTier":
+		return oneOf(value, "efficient", "balanced", "quality")
+	case "target.profile.encoder":
+		return oneOf(value, "libx264", "h264_nvenc", "h264_qsv", "h264_vaapi", "h264_amf", "h264_videotoolbox", "h264_rkmpp", "h264_v4l2m2m", "h264_vulkan")
 	case "auditStatus":
 		return oneOf(value, "missing", "passed", "failed", "unavailable")
 	case "auditReason":
@@ -129,7 +133,11 @@ func jsonObjectFields(path string) []string {
 	case "":
 		return []string{"schemaVersion", "startedAt", "completedAt", "target", "phases", "resources", "failures", "faultProfiles", "certified", "auditStatus", "auditReason"}
 	case "target":
-		return []string{"version", "revision", "manifestSha256", "cohortManifestSha256", "configuredChannels", "capacity"}
+		return []string{"version", "revision", "manifestSha256", "cohortManifestSha256", "configuredChannels", "capacity", "profile"}
+	case "target.profile":
+		return []string{"qualityTier", "encoder", "measuredCapacity", "probe", "prepared"}
+	case "target.profile.probe", "target.profile.prepared":
+		return []string{"width", "height", "frameRate", "videoBitrateKbps", "audioBitrateKbps"}
 	case "phases.*":
 		return []string{"name", "attempts", "successes", "failures", "p50Ms", "p95Ms", "p99Ms", "firstByte", "preparedHits", "httpClasses", "media", "heldContinuity", "programmeBoundaries", "resources"}
 	case "phases.*.firstByte":

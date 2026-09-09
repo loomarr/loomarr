@@ -3439,6 +3439,25 @@ the app-owned target to those contracts. Observed programme-boundary recording a
 resource sampling may expose small operational ports needed by this composition; private test
 access belongs in test-only files. Moving the target preserves real-route coverage, lifecycle
 ownership, and the existing admission, cleanup and certification requirements.
+Declared-profile qualification selects an explicit existing quality tier on the disposable target.
+Before generating its workload it runs the production encoder probe at that tier's highest live
+rendition, requires a successful measured encoder, and uses the resulting admission capacity;
+the fixture-only capacity override cannot substitute for measurement. Live encoding follows the
+production load-dependent quality ladder, while preparation uses the tier's canonical rendition.
+Generated inputs use the declared top-rung dimensions and frame rate. The report binds the tier,
+encoder, probe profile, canonical prepared profile and measured admission budget as bounded fields.
+The small software fixture mode remains a deterministic harness check, with no declared-hardware
+qualification claim. A probe or a successful small fixture run never certifies concurrent capacity.
+
+Prepared readiness on the declared-profile target is produced by the normal runtime resolver,
+persistent readiness index, Preparer and Planner under the shared foreground/background encode
+pool. It is observed through the ordinary status API rather than supplied as invented ready counts.
+The target keeps intentionally cold copy/transcode Channels outside its preparation cohort, and
+waits for the declared prepared cohort to converge before the transport workload. Independent
+programme truth is frozen from source/publication evidence before observing transported bytes.
+Restart, schedule changes, retention and foreground preemption require their own integrated
+evidence; the initial convergence pass alone does not certify those lifecycle clauses. Every
+background task is cancelled and joined before the target's owned directories are disposed.
 The target includes the production live HLS manager beside prepared delivery and live sessions,
 using the same observed process owner and an isolated scratch directory. An explicitly cold cohort
 must miss prepared-only delivery and reach the ordinary signed HLS remux. Terminal shutdown joins

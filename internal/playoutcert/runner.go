@@ -49,6 +49,13 @@ func Run(ctx context.Context, config Config) (Report, error) {
 		return Report{}, fmt.Errorf("target preflight failed")
 	}
 	report.Target = target
+	if config.Profile != nil {
+		if config.Profile.MeasuredCapacity != target.Capacity {
+			return Report{}, errors.New("declared profile capacity differs from target")
+		}
+		profile := *config.Profile
+		report.Target.Profile = &profile
+	}
 	report.Target.CohortManifestSHA256 = cohortDigest
 	baseline, err := endpoint.sample(ctx, "baseline")
 	if err != nil {
