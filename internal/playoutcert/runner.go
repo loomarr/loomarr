@@ -483,7 +483,8 @@ type childFaultDrill struct {
 // The parent can be playing buffered media between finite encoder children.
 // Select only a current generation while the drill keeps its viewers attached.
 func waitCurrentChild(ctx context.Context, controller ChildFaultController, request ChildFaultRequest, poll time.Duration) (ChildFaultTarget, error) {
-	ticker := time.NewTicker(max(poll, time.Millisecond))
+	// Resource sampling can be much coarser than a finite encoder's lifetime.
+	ticker := time.NewTicker(min(max(poll, time.Millisecond), 10*time.Millisecond))
 	defer ticker.Stop()
 	for {
 		if err := ctx.Err(); err != nil {

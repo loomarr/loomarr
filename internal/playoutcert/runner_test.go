@@ -554,20 +554,22 @@ func TestWaitCurrentChildRequiresLiveGenerationWithinDeadline(t *testing.T) {
 		name        string
 		unavailable int32
 		wantExpiry  bool
+		poll        time.Duration
 	}{
 		{name: "between finite children", unavailable: 2},
 		{name: "no later child", unavailable: -1, wantExpiry: true},
+		{name: "coarse cleanup interval", unavailable: 2, poll: 250 * time.Millisecond},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := &atomic.Int32{}
 			controller := fixtureChildFaultController{target: playoutcertfixture.ParentFaultTarget{CurrentCalls: calls, UnavailableCalls: tc.unavailable}}
-			timeout := time.Second
+			timeout := 100 * time.Millisecond
 			if tc.wantExpiry {
 				timeout = 30 * time.Millisecond
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), timeout)
 			defer cancel()
-			current, err := waitCurrentChild(ctx, controller, ChildFaultRequest{}, time.Millisecond)
+			current, err := waitCurrentChild(ctx, controller, ChildFaultRequest{}, max(tc.poll, time.Millisecond))
 			if tc.wantExpiry {
 				if !errors.Is(err, context.DeadlineExceeded) || current != (ChildFaultTarget{}) {
 					t.Fatalf("missing child qualified: %+v %v", current, err)

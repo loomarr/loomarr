@@ -3507,7 +3507,9 @@ profiles because shutdown mutates only the explicitly named disposable instance.
 held viewers while selecting their target. A finite unpaced child may finish encoding while its
 parent still plays buffered media; the child-failure drill therefore waits within its existing
 request deadline for a currently owned child generation. It never signals a completed generation
-or treats expiry without a current child as a successful fault.
+or treats expiry without a current child as a successful fault. Current-child selection polls at
+most ten milliseconds apart, independently of a coarser resource-cleanup sampling interval; a finite
+encoder can start and finish between the default 250 ms resource samples.
 Fault profiles use
 the fixed names `child_failure`, `parent_failure`, and `shutdown`; omitted profiles are explicitly
 unqualified and a selected profile is required evidence, never an informational best effort. Unknown,

@@ -422,7 +422,7 @@ func TestSyntheticTargetChildFaultDrillExitsOwnedEncoderAndRecoversPeer(t *testi
 	}()
 	config := playoutcert.Config{
 		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels,
-		RequestTimeout: 15 * time.Second, RawCaptureBytes: 2 << 20, CleanupPoll: 25 * time.Millisecond,
+		RequestTimeout: 15 * time.Second, RawCaptureBytes: 2 << 20,
 		Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}, FaultController: target,
 	}
 	config = playoutcert.NormalizeConfigForTest(config)
