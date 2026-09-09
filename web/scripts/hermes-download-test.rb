@@ -4,7 +4,7 @@ require 'json'
 require File.realpath(File.join(__dir__, '../apps/mobile/node_modules/react-native/sdks/hermes-engine/hermes-utils.rb'))
 
 %w[REACT_NATIVE_OVERRIDE_HERMES_DIR HERMES_ENGINE_TARBALL_PATH HERMES_COMMIT
-   RCT_BUILD_HERMES_FROM_SOURCE ENTERPRISE_REPOSITORY RCT_SKIP_CACHES].each { |key| ENV.delete(key) }
+   RCT_BUILD_HERMES_FROM_SOURCE ENTERPRISE_REPOSITORY RCT_SKIP_CACHES RNTV_TESTONLY_LOCAL_RNCORE_REPOSITORY].each { |key| ENV.delete(key) }
 
 def check(condition, message)
   raise message unless condition

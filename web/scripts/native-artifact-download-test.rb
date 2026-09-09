@@ -3,7 +3,7 @@ require 'tmpdir'
 require 'pathname'
 require File.realpath(File.join(__dir__, '../apps/mobile/node_modules/react-native/scripts/cocoapods/rndependencies.rb'))
 require File.realpath(File.join(__dir__, '../apps/mobile/node_modules/react-native/scripts/cocoapods/rncore.rb'))
-%w[RCT_SKIP_CACHES ENTERPRISE_REPOSITORY].each { |key| ENV.delete(key) }
+%w[RCT_SKIP_CACHES ENTERPRISE_REPOSITORY RNTV_TESTONLY_LOCAL_RNCORE_REPOSITORY].each { |key| ENV.delete(key) }
 
 def check(condition, message)
   raise message unless condition

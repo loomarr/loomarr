@@ -3,7 +3,7 @@ require 'json'
 require File.realpath(File.join(__dir__, '../apps/mobile/node_modules/react-native/scripts/cocoapods/rndependencies.rb'))
 require File.realpath(File.join(__dir__, '../apps/mobile/node_modules/react-native/scripts/cocoapods/rncore.rb'))
 %w[RCT_DEPS_VERSION RCT_USE_LOCAL_RN_DEP RCT_TESTONLY_RNCORE_VERSION
-   RCT_TESTONLY_RNCORE_TARBALL_PATH REACT_NATIVE_OVERRIDE_NIGHTLY_BUILD_VERSION].each { |key| ENV.delete(key) }
+   RCT_TESTONLY_RNCORE_TARBALL_PATH REACT_NATIVE_OVERRIDE_NIGHTLY_BUILD_VERSION RNTV_TESTONLY_LOCAL_RNCORE_REPOSITORY].each { |key| ENV.delete(key) }
 
 failures = []
 [
