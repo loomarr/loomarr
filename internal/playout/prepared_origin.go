@@ -233,7 +233,7 @@ func (c *processBlockContent) Read(p []byte) (int, error) {
 func (c *processBlockContent) Close() error {
 	c.once.Do(func() {
 		c.err = c.reader.Close()
-		// Wait closes exec's stdout pipe after natural completion.
+		// EOF or an earlier explicit close may have released the media reader.
 		if errors.Is(c.err, os.ErrClosed) {
 			c.err = nil
 		}

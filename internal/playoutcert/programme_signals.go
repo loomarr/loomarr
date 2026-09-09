@@ -142,6 +142,7 @@ func observeProgrammeSignals(ctx context.Context, endpoint *endpoint, config Con
 	var boundaryFrames, boundarySamples int64
 	var completedReads, completedBytes, boundaryReads, boundaryBytes int
 	validated := false
+	var decodedVideo, decodedAudio bool
 	var epochVideo, epochAudio int64
 	consume := func(event programmeSignalEvent) string {
 		beforeVideo, beforeAudio := check.videoFrames, check.audioSamples
@@ -154,6 +155,8 @@ func observeProgrammeSignals(ctx context.Context, endpoint *endpoint, config Con
 		if err != nil {
 			return err.Error()
 		}
+		decodedVideo = decodedVideo || event.video != nil
+		decodedAudio = decodedAudio || event.audio != nil
 		now := time.Now()
 		if check.videoFrames > beforeVideo {
 			epochVideo += check.videoFrames - beforeVideo
@@ -163,7 +166,7 @@ func observeProgrammeSignals(ctx context.Context, endpoint *endpoint, config Con
 			epochAudio += check.audioSamples - beforeAudio
 			lastAudioArrival = now
 		}
-		if !validated && epochVideo > 0 && epochAudio > 0 {
+		if !validated && decodedVideo && decodedAudio {
 			shape, err := config.Validator.Validate(ctx, epoch.capture())
 			if err != nil || shape.VideoStreams != 1 || shape.AudioStreams != 1 {
 				return "invalid_media"
@@ -221,6 +224,7 @@ func observeProgrammeSignals(ctx context.Context, endpoint *endpoint, config Con
 			check.beginEpoch()
 			epoch = startProgrammeSignalEpoch(ctx, reader, evidence, decoder, config.RawCaptureBytes, events)
 			validated = false
+			decodedVideo, decodedAudio = false, false
 			epochVideo, epochAudio = 0, 0
 		case <-tick.C:
 		}

@@ -4507,3 +4507,48 @@ Repair `409c8fa4` passes both required local gates:
 The separate Ubuntu command tests pass in 41.40s and 41.57s. These results, the exact repair
 patch and the independent review are retained with SHA-256 manifests in
 `shared-aac-ffmpeg-parity-46f1bc6b`. Protected hosted acceptance is still required.
+
+
+### Finite output ownership and guarded epoch validation — 2026-09-09
+
+Queue `34330986620` at candidate `fef6f152` for source `7e29cf4f` passes all production
+FFmpeg install steps, the repaired prepared-raw latency checks, race shards two/three,
+Postgres, contracts, policy, docs, Android and both images. Only race shard one fails:
+`TestCleanupFailureIsPersistedAsUncertifiedReport` reports live `decode_failed` during the
+programme-boundary phase. The prepared lane and the other full publication test pass.
+The failed queue is retained; #1157 returns to draft without a queue entry or auto-merge request.
+
+Six captured repetitions of the exact command test pass and do not resolve that failure.
+A generated signed-HLS target joined about 200 ms before a programme boundary reproduces
+live `decode_failed` twice. Captured AAC packets collapse to one 90 kHz clock tick apart;
+private source capture contains the same short programme tail twice before the next programme.
+The target's child observer can reap a finite encoder while its media consumer is still reading.
+`TestProcessWaitPreservesUnreadFiniteOutput` makes that ordering deterministic and fails the
+published code for both successful and naturally failing children: no bytes remain and the
+reader returns `file already closed`.
+
+Playout now owns stdout/stderr pipe readers independently of command reaping. Natural `Wait`
+preserves buffered media and joins diagnostic/progress readers; media EOF, explicit close or
+Stop releases stdout. Natural nonzero exits remain errors. The new regression and selected
+existing progress, process-tree and observed-process tests pass in 5.823 seconds. Independent
+Standards/Spec review finds no functional defect; its stale prepared-origin comment finding is
+corrected. Final charged review usage is 57,251/100,000; the pane is closed. A prior lifecycle
+coverage reader used 63,769/100,000 and supplied hypotheses only, not the diagnosis.
+
+Under pinned production FFmpeg in Ubuntu ARM64 with two CPUs, the fixed 200 ms boundary case
+passes six times. The two full command tests each pass twice: 44.29s / 42.02s / 41.85s / 42.08s.
+These are generated isolated workload results, not declared-hardware qualification.
+
+Separate 50 ms and 100 ms joins expose a prepared-lane observer defect. A decoded first epoch
+can end with no countable samples because all its media lies before the observation or inside
+the 100 ms boundary guard. The old observer returns `invalid_media` without ever calling the
+validator. `TestProgrammeSignalsValidateEpochWithoutCountableSignals` reproduces both cases
+in 0.11 seconds, with zero validations. Separate decoded-stream presence now triggers each
+epoch's media-shape validation while all accepted-content counters, guards, expected sequence,
+transition and late-observation requirements remain unchanged. Added missing-audio negatives
+still reject the first epoch. All `TestProgrammeSignals` race tests pass in 18.118 seconds.
+Independent review, the six-position real boundary matrix and final affected gates are pending.
+
+Exact diagnostic overlays, retained failures, input media, private block identities, red/green
+logs and frozen review patches are retained in `epoch-decode-7e29cf4f`. Instrumentation remains
+outside the repository. Tracking receipt: #1037 comment `5599922628`.

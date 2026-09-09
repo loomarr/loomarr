@@ -3563,6 +3563,10 @@ A declared HLS discontinuity creates a new decoder ordering epoch: timestamp ord
 only after the preceding decoder and its metadata readers have joined. The frozen schedule, arm
 time and matched evidence remain unchanged, so decoder preroll cannot select a different expected
 transition or count buffered pre-arm media. Ordering remains strict within each decoder epoch.
+Every epoch validates its media shape after decoding both streams, even when its samples fall
+before the arm time or within the boundary guard and contribute no programme evidence. Such an
+epoch may advance only through a declared discontinuity; all subsequent transition and late-sample
+requirements remain unchanged. Missing or invalid media still prevents qualification.
 For ordinary MPEG-TS from the baseline AAC session, the private asset source declares the decoder's
 single 1024-sample AAC priming frame. This declaration is fixed for the entire source epoch and
 comes from the source contract before decoding, never from an observed signal mismatch. The first
@@ -11015,6 +11019,12 @@ An ffmpeg Process run has three independent streams with three different owners:
 - **stdout is media** consumed by Playout and never logged;
 - **structured progress** is parsed and downsampled into bounded Process-run observations; and
 - **stderr is diagnostic output**, drained continuously into a bounded process-scoped file.
+
+Process exit and output consumption have separate lifetimes. A lifecycle observer may reap a
+finite child before its media consumer drains stdout; `Wait` must preserve buffered media and
+allow progress and diagnostic readers to reach EOF. Playout owns the output pipe readers rather
+than letting command reaping close them. Media EOF, explicit reader closure, or `Stop` releases
+the media reader; natural nonzero child exits remain failures.
 
 Diagnostic writes happen after each pipe read and cannot apply backpressure to ffmpeg. If the
 output writer falls behind, it drops diagnostic lines, counts them, and continues draining. Each

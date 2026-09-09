@@ -82,6 +82,32 @@ func TestProcessProgressTransport(t *testing.T) {
 	}
 }
 
+func TestProcessWaitPreservesUnreadFiniteOutput(t *testing.T) {
+	for _, mode := range []string{"prepared-success", "prepared-failure"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			proc, err := Start(ctx, os.Args[0], []string{
+				"-test.run=^TestProcessTreeHelper$", "--", mode,
+			}, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = proc.Stdout.Close() }()
+			// A lifecycle observer can reap a short child before its media consumer
+			// reads the final buffered bytes. Reaping must preserve those bytes.
+			waitErr := proc.Wait()
+			if (waitErr != nil) != (mode == "prepared-failure") {
+				t.Fatalf("natural child exit: %v", waitErr)
+			}
+			got, err := io.ReadAll(proc.Stdout)
+			if err != nil || string(got) != playoutprocessfixture.PreparedPrefix {
+				t.Fatalf("unread finite output after Wait: %q, error: %v", got, err)
+			}
+		})
+	}
+}
+
 type processDiagnosticsSink struct {
 	mu     sync.Mutex
 	runs   map[string]diagnostics.ProcessRun

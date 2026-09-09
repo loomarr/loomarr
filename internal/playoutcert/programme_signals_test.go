@@ -422,6 +422,45 @@ func TestProgrammeSignalsValidateEachDecoderEpoch(t *testing.T) {
 	}
 }
 
+func TestProgrammeSignalsValidateEpochWithoutCountableSignals(t *testing.T) {
+	for _, test := range []struct {
+		firstPTS     int64
+		missingAudio bool
+	}{
+		{500_000, false}, {1_325_000, false}, {500_000, true}, {1_325_000, true},
+	} {
+		t.Run(fmt.Sprint(test), func(t *testing.T) {
+			f := newProgrammeSignalFixture(t)
+			f.discontinuity = true
+			// The first epoch contains valid decoded media, entirely before the
+			// observation or inside the end guard. It contributes no evidence.
+			var ignored []playoutcertfixture.SignalPair[DecodedVideoSignal, DecodedAudioSignal]
+			for i := range 2 {
+				v := DecodedVideoSignal{PTSUS: test.firstPTS + int64(i)*25_000, Luma: 16}
+				a := DecodedAudioSignal{PTSUS: v.PTSUS, Samples: 1024, ZeroCrossingRate: 0.018, RMSDB: -24}
+				ignored = append(ignored, playoutcertfixture.SignalPair[DecodedVideoSignal, DecodedAudioSignal]{Video: &v, Audio: &a})
+			}
+			f.decoder.Signals = append(ignored, f.decoder.Signals...)
+			next := make([]byte, 40)
+			for i := range next {
+				next[i] = byte(i + 2)
+			}
+			f.bodies[1] = playoutcertfixture.NewPacedBody(next, 25*time.Millisecond, true)
+			validator := &playoutcertfixture.ShapeValidator[MediaShape]{Shapes: []MediaShape{{VideoStreams: 1, AudioStreams: 1}, {VideoStreams: 1, AudioStreams: 1}}}
+			want, validations, transitions := "ok", 2, 1
+			if test.missingAudio {
+				validator.Shapes[0].AudioStreams = 0
+				want, validations, transitions = "invalid_media", 1, 0
+			}
+			f.config.Validator = validator
+			got := runProgrammeSignalFixture(t, f)
+			if got.observation.class != want || got.evidence.Transitions != transitions || validator.Calls() != validations {
+				t.Fatalf("result=%+v validations=%d", got, validator.Calls())
+			}
+		})
+	}
+}
+
 func TestProgrammeSignalsCloseFailureCannotQualify(t *testing.T) {
 	for _, index := range []int{0, 1} {
 		t.Run(fmt.Sprintf("asset=%d", index), func(t *testing.T) {
