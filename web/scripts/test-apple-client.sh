@@ -75,12 +75,22 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   printf 'Apple client verification requires macOS with Xcode\n' >&2
   exit 2
 fi
-for command_name in jq xcodebuild xcrun; do
+for command_name in jq xcodebuild xcrun python3 ruby; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     printf '%s is required for Apple client verification\n' "${command_name}" >&2
     exit 2
   }
 done
+# This verifier qualifies the reviewed package pins, never caller-selected source
+# revisions, local tarballs, another Hermes generation, or repository overrides.
+for native_override in REACT_NATIVE_OVERRIDE_HERMES_DIR HERMES_ENGINE_TARBALL_PATH \
+  HERMES_COMMIT RCT_BUILD_HERMES_FROM_SOURCE RCT_HERMES_V1_ENABLED ENTERPRISE_REPOSITORY; do
+  if printenv "$native_override" >/dev/null; then
+    printf 'apple-client: %s overrides the qualified dependency selection\n' "$native_override" >&2
+    exit 2
+  fi
+done
+ruby "${WEB_ROOT}/scripts/hermes-download-test.rb"
 REAL_XCODEBUILD="$(command -v xcodebuild)"
 readonly REAL_XCODEBUILD
 xcodebuild -version
@@ -171,10 +181,19 @@ if [[ "${simulator_state}" != "Booted" ]]; then
   xcrun simctl boot "${simulator_id}"
   booted_here=true
 fi
+readonly DIAGNOSTIC_STARTED_AT="$simulator_started_at"
 cleanup() {
+  local original_status=$?
+  trap - EXIT
+  if (( original_status != 0 )); then
+    python3 "${WEB_ROOT}/scripts/apple-launch-diagnostics.py" \
+      "$ARTIFACTS_DIR" "${BUILD_DIR}/${SCHEME}.app" "$SCHEME" "$BUNDLE_ID" \
+      "$simulator_id" "$DIAGNOSTIC_STARTED_AT" || true
+  fi
   if [[ "${booted_here}" == "true" ]]; then
     xcrun simctl shutdown "${simulator_id}" >/dev/null 2>&1 || true
   fi
+  exit "$original_status"
 }
 trap cleanup EXIT
 
@@ -353,7 +372,11 @@ printf 'apple-client: %s simulator executable contains only %s\n' "${APP_NAME}" 
 
 # Expo owns dependency installation, CocoaPods, compilation, installation, and
 # initial launch. Relaunch once to obtain the host PID used by the liveness check.
-launch_output="$(xcrun simctl launch --terminate-running-process "${simulator_id}" "${BUNDLE_ID}")"
+xcrun simctl launch --terminate-running-process \
+  --stdout="${ARTIFACTS_DIR}/launch.stdout.log" --stderr="${ARTIFACTS_DIR}/launch.stderr.log" \
+  "${simulator_id}" "${BUNDLE_ID}" >"${ARTIFACTS_DIR}/launch-command.stdout.log" \
+  2>"${ARTIFACTS_DIR}/launch-command.stderr.log"
+launch_output="$(cat "${ARTIFACTS_DIR}/launch-command.stdout.log")"
 printf '%s\n' "${launch_output}"
 launch_pid="${launch_output##*: }"
 if [[ ! "${launch_pid}" =~ ^[0-9]+$ ]]; then
@@ -387,7 +410,7 @@ if ! /bin/kill -0 "${launch_pid}"; then
     --last 2m \
     --style compact \
     --predicate "process == '${SCHEME}' OR eventMessage CONTAINS[c] '${BUNDLE_ID}'" \
-    | tee "${ARTIFACTS_DIR}/${APP_NAME}.log" >&2
+    | tee "${ARTIFACTS_DIR}/${APP_NAME}.log" >&2 || true
   exit 1
 fi
 printf 'apple-client: %s built, installed, launched, and remained alive on %s\n' \

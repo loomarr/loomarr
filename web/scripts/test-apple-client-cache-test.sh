@@ -102,6 +102,13 @@ case "$1" in
       shutdown)
         ;;
       launch)
+        if [[ "${APPLE_CACHE_TEST_LAUNCH_EXIT:-0}" != 0 ]]; then
+          printf 'fixture launch stdout\n'
+          printf 'fixture launch failed\n' >&2
+          exit "$APPLE_CACHE_TEST_LAUNCH_EXIT"
+        fi
+        [[ "$*" == *"--stdout=$LOOMARR_APPLE_ARTIFACTS_DIR/launch.stdout.log"* ]]
+        [[ "$*" == *"--stderr=$LOOMARR_APPLE_ARTIFACTS_DIR/launch.stderr.log"* ]]
         printf 'media.loomarr.mobile.prototype: %s\n' "$APPLE_CACHE_TEST_LIVE_PID"
         ;;
       io)
@@ -210,6 +217,15 @@ set -euo pipefail
 [[ "$RCT_NO_LAUNCH_PACKAGER" == 1 ]]
 [[ "$REACT_NATIVE_NODE_MODULES_DIR" == */apps/mobile/node_modules ]]
 printf 'pod_install\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+STUB
+
+cat > "$test_root/bin/python3" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == */apple-launch-diagnostics.py ]]
+printf 'diagnostics attempted\n' > "$APPLE_CACHE_TEST_ROOT/diagnostics-attempted"
+# A diagnostics failure must never mask the original verifier exit status.
+exit 77
 STUB
 
 cat > "$test_root/bin/sleep" <<'STUB'
@@ -387,5 +403,47 @@ if ! grep -F '// Loomarr cache invalidation probe: source-change' "$test_root/na
   printf 'test-apple-client-cache-test: source change did not prove cache hits and misses\n' >&2
   exit 1
 fi
+
+find "$test_root/artifacts" -mindepth 1 -depth -delete
+unlink "$test_root/build-count"
+set +e
+output="$(
+  PATH="$test_root/bin:$PATH" \
+    APPLE_CACHE_TEST_ROOT="$test_root" \
+    APPLE_CACHE_TEST_LIVE_PID="$$" \
+    APPLE_CACHE_TEST_WARM_RESULT=pass \
+    APPLE_CACHE_TEST_LAUNCH_EXIT=86 \
+    LOOMARR_APPLE_ARTIFACTS_DIR="$test_root/artifacts" \
+    LOOMARR_APPLE_BUILD_DIR="$test_root/build" \
+    LOOMARR_APPLE_CACHE_MODE=warm \
+    LOOMARR_APPLE_CACHE_STORE="$test_root/store" \
+    "$verifier" mobile 2>&1
+)"
+status=$?
+set -e
+if [[ $status -ne 86 || ! -f "$test_root/diagnostics-attempted" ]] \
+  || [[ "$(cat "$test_root/artifacts/launch-command.stderr.log")" != 'fixture launch failed' ]] \
+  || [[ "$(cat "$test_root/artifacts/launch-command.stdout.log")" != 'fixture launch stdout' ]]; then
+  printf 'test-apple-client-cache-test: launch evidence or original failure was lost (%s):\n%s\n' "$status" "$output" >&2
+  exit 1
+fi
+
+for native_override in REACT_NATIVE_OVERRIDE_HERMES_DIR HERMES_ENGINE_TARBALL_PATH \
+  HERMES_COMMIT RCT_BUILD_HERMES_FROM_SOURCE RCT_HERMES_V1_ENABLED ENTERPRISE_REPOSITORY; do
+  # Even an exported empty override changes ENV.has_key? in the upstream helper.
+  # Rejection must precede prebuild, installation, or any native work.
+  unlink "$test_root/build-count"
+  set +e
+  output="$(env "$native_override=" PATH="$test_root/bin:$PATH" \
+    APPLE_CACHE_TEST_ROOT="$test_root" "$verifier" mobile 2>&1)"
+  status=$?
+  set -e
+  if [[ $status -ne 2 || -f "$test_root/build-count" ]] \
+    || [[ "$output" != *"$native_override overrides the qualified dependency selection"* ]]; then
+    printf 'override %s reached native work or escaped rejection (%s): %s\n' "$native_override" "$status" "$output" >&2
+    exit 1
+  fi
+  printf '0\n' > "$test_root/build-count"
+done
 
 echo 'test-apple-client-cache-test: ok'
