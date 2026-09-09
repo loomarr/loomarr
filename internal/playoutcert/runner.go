@@ -472,6 +472,30 @@ type childFaultDrill struct {
 	recovery string
 }
 
+// The parent can be playing buffered media between finite encoder children.
+// Select only a current generation while the drill keeps its viewers attached.
+func waitCurrentChild(ctx context.Context, controller ChildFaultController, request ChildFaultRequest, poll time.Duration) (ChildFaultTarget, error) {
+	ticker := time.NewTicker(max(poll, time.Millisecond))
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return ChildFaultTarget{}, err
+		}
+		current, err := controller.CurrentChild(ctx, request)
+		if err == nil && current.ParentGeneration != 0 && current.ChildGeneration != 0 {
+			if err := ctx.Err(); err != nil {
+				return ChildFaultTarget{}, err
+			}
+			return current, nil
+		}
+		select {
+		case <-ctx.Done():
+			return ChildFaultTarget{}, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 func childFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, capacity int, sampler *phaseSampler) childFaultDrill {
 	controller, ok := config.FaultController.(ChildFaultController)
 	requiredCohort := min(capacity, 2)
@@ -492,7 +516,7 @@ func childFailureDrill(ctx context.Context, endpoint *endpoint, config Config, i
 	faultCtx, cancel := context.WithTimeout(ctx, config.RequestTimeout)
 	defer cancel()
 	request := ChildFaultRequest{BaseURL: endpoint.base.String(), ChannelID: config.Channels[indexes[0]].ID}
-	current, err := controller.CurrentChild(faultCtx, request)
+	current, err := waitCurrentChild(faultCtx, controller, request, config.CleanupPoll)
 	if err != nil {
 		held.release()
 		return childFaultDrill{phase: phaseFrom("child_failure", []observation{{class: "generation_unavailable"}}), sample: held.sample, receipt: "not_observed", selected: "not_observed", peer: peerOutcome, recovery: "not_observed"}

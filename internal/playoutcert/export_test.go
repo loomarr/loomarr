@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 )
 
 func FaultQualificationsForTest(profiles []FaultProfile, controller FaultController) ([]FaultQualification, []string) {
@@ -69,6 +70,10 @@ type ChildFaultDrillForTest struct {
 	Selected string
 	Peer     string
 	Recovery string
+}
+
+func WaitCurrentChildForTest(ctx context.Context, controller ChildFaultController, request ChildFaultRequest, poll time.Duration) (ChildFaultTarget, error) {
+	return waitCurrentChild(ctx, controller, request, poll)
 }
 
 func ChildFailureDrillForTest(ctx context.Context, endpoint *EndpointForTest, config Config, indexes []int, capacity int) ChildFaultDrillForTest {

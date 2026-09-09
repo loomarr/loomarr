@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -545,6 +546,36 @@ func TestRunChildFaultCleanupResidualRetainsFinalEvidenceButDisqualifiesOutcome(
 	}
 	if row.Baseline == nil || row.Final == nil || row.Final.Capacity == 0 || row.Final.SessionsActive <= row.Baseline.SessionsActive || row.Status != "unavailable" || row.Outcome != "cleanup_failed" || !slices.Contains(report.Failures, "cleanup_residual") {
 		t.Fatalf("Run child cleanup residual fault evidence = %+v failures=%v", row, report.Failures)
+	}
+}
+
+func TestWaitCurrentChildRequiresLiveGenerationWithinDeadline(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		unavailable int32
+		wantExpiry  bool
+	}{
+		{name: "between finite children", unavailable: 2},
+		{name: "no later child", unavailable: -1, wantExpiry: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := &atomic.Int32{}
+			controller := fixtureChildFaultController{target: playoutcertfixture.ParentFaultTarget{CurrentCalls: calls, UnavailableCalls: tc.unavailable}}
+			timeout := time.Second
+			if tc.wantExpiry {
+				timeout = 30 * time.Millisecond
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), timeout)
+			defer cancel()
+			current, err := waitCurrentChild(ctx, controller, ChildFaultRequest{}, time.Millisecond)
+			if tc.wantExpiry {
+				if !errors.Is(err, context.DeadlineExceeded) || current != (ChildFaultTarget{}) {
+					t.Fatalf("missing child qualified: %+v %v", current, err)
+				}
+			} else if err != nil || current.ParentGeneration != 1 || current.ChildGeneration != 1 || calls.Load() != 3 {
+				t.Fatalf("later live child not selected: %+v %v calls=%d", current, err, calls.Load())
+			}
+		})
 	}
 }
 

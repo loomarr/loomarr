@@ -2,6 +2,8 @@ package playoutcertfixture
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,6 +23,8 @@ type ParentFaultTarget struct {
 	Peer                string
 	WaitForExpiry       bool
 	RetainAfterRecovery bool
+	CurrentCalls        *atomic.Int32
+	UnavailableCalls    int32
 }
 
 // ShutdownTarget supplies the neutral mechanics for a shutdown fault test.
@@ -91,6 +95,12 @@ func (c ShutdownTarget) SampleStopped(_ context.Context, point string) (StoppedR
 }
 
 func (c ParentFaultTarget) Current(ctx context.Context) (uint64, error) {
+	if c.CurrentCalls != nil {
+		call := c.CurrentCalls.Add(1)
+		if c.UnavailableCalls < 0 || call <= c.UnavailableCalls {
+			return 0, errors.New("no current child")
+		}
+	}
 	return 1, ctx.Err()
 }
 

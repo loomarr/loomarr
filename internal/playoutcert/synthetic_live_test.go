@@ -430,11 +430,26 @@ func TestSyntheticTargetChildFaultDrillExitsOwnedEncoderAndRecoversPeer(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial, initialSample := playoutcert.RawBurstForTest(ctx, endpoint, config, []int{0, 1})
+	// Keep the selected and peer viewers attached while waiting for a finite child.
+	// A raw burst releases them before returning and can outlive the encoder.
+	initialViewers := playoutcert.StartHeldBurstForTest(ctx, endpoint, config, []int{0, 1})
+	initialReleased := false
+	defer func() {
+		if !initialReleased {
+			initialViewers.Release()
+		}
+	}()
+	initial := initialViewers.Results()
+	initialSample, sampleErr := playoutcert.SampleResources(ctx, config, "raw_capacity")
+	if sampleErr != nil {
+		t.Fatal(sampleErr)
+	}
 	if len(initial) != 2 || initial[0].Class != "ok" || initial[1].Class != "ok" || initialSample.PreparedChannels != 1 || initialSample.TranscodeCost < 2 {
 		t.Fatalf("selected/peer did not enter the live transcode cohort: observations=%+v sample=%+v", initial, initialSample)
 	}
-	stale, err := target.CurrentChild(ctx, playoutcert.ChildFaultRequest{BaseURL: target.BaseURL, ChannelID: channels[0].ID})
+	childCtx, cancelChild := context.WithTimeout(ctx, config.RequestTimeout)
+	defer cancelChild()
+	stale, err := playoutcert.WaitCurrentChildForTest(childCtx, target, playoutcert.ChildFaultRequest{BaseURL: target.BaseURL, ChannelID: channels[0].ID}, config.CleanupPoll)
 	if err != nil {
 		t.Fatalf("current selected live child before drill: %v", err)
 	}
@@ -449,6 +464,8 @@ func TestSyntheticTargetChildFaultDrillExitsOwnedEncoderAndRecoversPeer(t *testi
 	if _, err := target.FailChild(ctx, playoutcert.ChildFaultRequest{BaseURL: target.BaseURL, ChannelID: channels[0].ID, ParentGeneration: stale.ParentGeneration + 1, ChildGeneration: stale.ChildGeneration}); err == nil {
 		t.Fatal("reused parent generation signalled the current child")
 	}
+	initialViewers.Release()
+	initialReleased = true
 	drill := playoutcert.ChildFailureDrillForTest(ctx, endpoint, config, []int{0, 1}, 2)
 	if drill.Phase.Failures != 0 || drill.Receipt != "exited" || drill.Peer != "continued" || drill.Recovery != "recovered" {
 		t.Fatalf("child fault drill did not prove owned exit and peer recovery: %+v", drill)
