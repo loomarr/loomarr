@@ -3479,7 +3479,12 @@ The client measures signed-URL mint, HLS master, first referenced asset/body byt
 first byte independently. HLS parsing accepts only relative same-origin asset references returned by
 the master; redirects to another origin, traversal, missing auth propagation, and an empty media
 playlist fail closed. A bounded capture is independently checked with `ffprobe` and must contain
-exactly one expected video stream and one expected audio stream. Percentiles use nearest-rank over
+exactly one expected video stream and one expected audio stream.
+For admitted raw media, the independent decoder must produce a frame before the current bounded
+capture is probed. The capture byte limit is a maximum, not a minimum bitrate requirement: a
+decoded silent card need not accumulate 256 KiB before its stream pair can be validated. The same
+request deadline, stream-shape checks and subsequent held-continuity checks still apply.
+Percentiles use nearest-rank over
 successful observations and retain failure counts separately; a failed request never disappears
 from a latency distribution by being coerced to zero.
 

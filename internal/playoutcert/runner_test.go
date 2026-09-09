@@ -731,6 +731,33 @@ func fixtureConfig(fixture *playoutcertfixture.Fixture, channels []Channel) Conf
 		RawCaptureBytes: 188, Validator: validator, Decoder: decoder}
 }
 
+func TestRawBurstValidatesDecodedCaptureWithoutMinimumByteCount(t *testing.T) {
+	for _, audioStreams := range []int{1, 0} {
+		t.Run(fmt.Sprintf("audio-streams-%d", audioStreams), func(t *testing.T) {
+			fixture := playoutcertfixture.New(t, 1)
+			channels := fixtureChannels(1)
+			fixture.ContinuousRawChannels = map[string]bool{channels[0].ID: true}
+			config := fixtureConfig(fixture, channels)
+			config.RawCaptureBytes = 2 << 20
+			config.RequestTimeout = 500 * time.Millisecond
+			config.Validator = &playoutcertfixture.ShapeValidator[MediaShape]{Shapes: []MediaShape{{VideoStreams: 1, AudioStreams: audioStreams, VideoCodec: "h264", AudioCodec: "aac"}}}
+			config = config.normalized()
+			endpoint, err := newEndpoint(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			results, _ := rawBurst(t.Context(), endpoint, config, []int{0})
+			want := "ok"
+			if audioStreams == 0 {
+				want = "invalid_media"
+			}
+			if len(results) != 1 || results[0].class != want {
+				t.Fatalf("decoded low-rate capture = %+v, want %s", results, want)
+			}
+		})
+	}
+}
+
 func TestNearestRankPercentilesKeepFailuresSeparate(t *testing.T) {
 	got := summarize([]time.Duration{10 * time.Millisecond, 40 * time.Millisecond, 20 * time.Millisecond, 30 * time.Millisecond}, 2)
 	if got.Attempts != 6 || got.Successes != 4 || got.Failures != 2 || got.P50MS != 20 || got.P95MS != 40 || got.P99MS != 40 {

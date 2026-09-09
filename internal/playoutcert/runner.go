@@ -837,9 +837,10 @@ func startValidatedObserver(ctx context.Context, config Config, connection *rawC
 		_ = observer.close()
 		return nil, MediaShape{}, decoded, "decode_failed"
 	}
-	target := min(config.RawCaptureBytes, 256<<10)
-	snapshot, err = observer.wait(initialCtx, func(current decoderSnapshot) bool { return len(current.capture) >= target })
-	if err != nil {
+	// RawCaptureBytes bounds memory, not the source's bitrate. A decoded
+	// silent card can take longer than the request deadline to fill 256 KiB.
+	// Validate the actual captured media instead of waiting for an arbitrary size.
+	if initialCtx.Err() != nil || snapshot.decoderDone || snapshot.decoderErr != nil || snapshot.readErr != nil {
 		_ = observer.close()
 		return nil, MediaShape{}, decoded, "body_failed"
 	}
