@@ -159,7 +159,7 @@ func (s *syntheticProgrammeEvidence) liveAsset(ctx context.Context, channel stri
 	if !ok || state.source != process || state.clock.Origin.IsZero() {
 		return playoutcert.ProgrammeAssetEvidence{}, errors.New("live asset source changed")
 	}
-	proof := playoutcert.ProgrammeAssetEvidence{Clock: state.clock, Media: data}
+	proof := playoutcert.ProgrammeAssetEvidence{Clock: state.clock, Media: data, AACPreroll: asset.InitReference == ""}
 	proof.Validate = func() error {
 		s.mu.Lock()
 		current, ok := s.clocks[channel]

@@ -3563,6 +3563,15 @@ A declared HLS discontinuity creates a new decoder ordering epoch: timestamp ord
 only after the preceding decoder and its metadata readers have joined. The frozen schedule, arm
 time and matched evidence remain unchanged, so decoder preroll cannot select a different expected
 transition or count buffered pre-arm media. Ordering remains strict within each decoder epoch.
+For ordinary MPEG-TS from the baseline AAC session, the private asset source declares the decoder's
+single 1024-sample AAC priming frame. This declaration is fixed for the entire source epoch and
+comes from the source contract before decoding, never from an observed signal mismatch. The first
+audio callback must contain exactly 1024 samples; its numeric values and timestamp ordering are
+validated, but codec priming cannot count as programme content or transition/late evidence.
+Every following audio frame uses the unchanged programme signatures and 100 ms boundary guard.
+Prepared fMP4 assets retain their container handling of priming and declare no additional exclusion.
+A changed declaration within an epoch, malformed priming, or missing subsequent programme audio
+cannot qualify. Each discontinuity still joins the previous decoder before admitting a new epoch.
 Qualification also waits until the scheduled late-observation point has actually arrived; correctly
 signed future media and a completed arrival-time interval cannot certify an unaired transition.
 Queued observations are consumed before success, and input-close failure prevents qualification.

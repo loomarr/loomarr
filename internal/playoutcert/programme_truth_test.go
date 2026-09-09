@@ -19,6 +19,51 @@ func programmeTruthFixture() ([]ExpectedProgramme, ProgrammeMediaClock) {
 	return programmes, ProgrammeMediaClock{Origin: origin, Generation: "one"}
 }
 
+func TestProgrammeAudioPrerollCannotQualifyContentOrHideLaterMismatch(t *testing.T) {
+	programmes, clock := programmeTruthFixture()
+	check := newProgrammeSignalCheck(programmes, clock.Origin.Add(2100*time.Millisecond))
+	// Captured AAC startup measurements: the following frames carry the correct
+	// 880 Hz signal, while codec priming itself is outside that content signature.
+	priming := DecodedAudioSignal{PTSUS: 2_300_000, Samples: 1024, ZeroCrossingRate: 0.053711, RMSDB: -37.044586}
+	if err := check.checkAudioSignal(clock, priming, true); err != nil {
+		t.Fatal(err)
+	}
+	if check.audioSamples != 0 || check.audio[1] != 0 || !check.lastMatchedAudio.IsZero() || check.transition >= 0 {
+		t.Fatal("codec priming counted as programme evidence")
+	}
+	content := priming
+	content.PTSUS += 21_333
+	content.ZeroCrossingRate = 0.036133
+	content.RMSDB = -22.412026
+	if err := check.audioSignal(clock, content); err != nil || check.audio[1] != 1024 {
+		t.Fatalf("first content frame: samples=%d err=%v", check.audio[1], err)
+	}
+	content.PTSUS += 21_333
+	content.ZeroCrossingRate = priming.ZeroCrossingRate
+	if err := check.audioSignal(clock, content); err == nil || err.Error() != "programme_audio_mismatch" {
+		t.Fatalf("later corrupt audio was not rejected: %v", err)
+	}
+	if err := check.audioSignal(clock, priming); err == nil || err.Error() != "audio_time_regressed" {
+		t.Fatalf("priming did not establish strict timestamp ordering: %v", err)
+	}
+}
+
+func TestProgrammeAudioPrerollRequiresOneValidAACFrame(t *testing.T) {
+	for name, signal := range map[string]DecodedAudioSignal{
+		"short":          {PTSUS: 300_000, Samples: 1023, ZeroCrossingRate: 0.05, RMSDB: -30},
+		"long":           {PTSUS: 300_000, Samples: 1025, ZeroCrossingRate: 0.05, RMSDB: -30},
+		"invalid signal": {PTSUS: 300_000, Samples: 1024, ZeroCrossingRate: math.NaN(), RMSDB: -30},
+	} {
+		t.Run(name, func(t *testing.T) {
+			programmes, clock := programmeTruthFixture()
+			check := newProgrammeSignalCheck(programmes, clock.Origin)
+			if err := check.checkAudioSignal(clock, signal, true); err == nil || err.Error() != "invalid_audio_signal" {
+				t.Fatalf("invalid priming admitted: %v", err)
+			}
+		})
+	}
+}
+
 func feedProgrammeSignals(t *testing.T, check *programmeSignalCheck, clock ProgrammeMediaClock, index int, audio bool) {
 	t.Helper()
 	luma, zero := 16.0, 0.02

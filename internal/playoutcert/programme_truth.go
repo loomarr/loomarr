@@ -36,6 +36,9 @@ type ProgrammeAssetEvidence struct {
 	Clock ProgrammeMediaClock
 	Media []byte
 	Init  []byte
+	// AACPreroll declares the baseline MPEG-TS decoder's one 1024-sample
+	// priming frame. Container-trimmed fMP4 does not declare it.
+	AACPreroll bool
 	// Validate rejects a retired live source. Immutable publications need no
 	// liveness callback. It is checked before admitting each read and success.
 	Validate func() error
@@ -196,6 +199,10 @@ func (c *programmeSignalCheck) videoSignal(clock ProgrammeMediaClock, signal Dec
 }
 
 func (c *programmeSignalCheck) audioSignal(clock ProgrammeMediaClock, signal DecodedAudioSignal) error {
+	return c.checkAudioSignal(clock, signal, false)
+}
+
+func (c *programmeSignalCheck) checkAudioSignal(clock ProgrammeMediaClock, signal DecodedAudioSignal, preroll bool) error {
 	at, err := signalTime(clock, signal.PTSUS)
 	if err != nil {
 		return err
@@ -208,6 +215,12 @@ func (c *programmeSignalCheck) audioSignal(clock ProgrammeMediaClock, signal Dec
 		return errors.New("audio_time_regressed")
 	}
 	c.lastAudio = at
+	if preroll {
+		if signal.Samples != 1024 {
+			return errors.New("invalid_audio_signal")
+		}
+		return nil
+	}
 	duration := time.Duration(signal.Samples) * time.Second / 48000
 	index, err := c.programme(at, duration)
 	if err != nil || index < 0 {

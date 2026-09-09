@@ -10,22 +10,24 @@ import (
 )
 
 type programmeSignalEvent struct {
-	video *DecodedVideoSignal
-	audio *DecodedAudioSignal
-	clock ProgrammeMediaClock
+	video   *DecodedVideoSignal
+	audio   *DecodedAudioSignal
+	clock   ProgrammeMediaClock
+	preroll bool
 }
 
 // programmeSignalEpoch owns one decoder lifecycle. Its clock is established
 // before admitting bytes and independently checked for every asset in that epoch.
 type programmeSignalEpoch struct {
-	input    *observedReadCloser
-	cancel   context.CancelFunc
-	done     chan struct{}
-	mu       sync.Mutex
-	clock    ProgrammeMediaClock
-	err      error
-	clockErr bool
-	validate func() error
+	input      *observedReadCloser
+	cancel     context.CancelFunc
+	done       chan struct{}
+	mu         sync.Mutex
+	clock      ProgrammeMediaClock
+	err        error
+	clockErr   bool
+	validate   func() error
+	aacPreroll bool
 }
 
 func startProgrammeSignalEpoch(ctx context.Context, reader *preparedHLSReader, evidence ProgrammeEvidence, decoder SignalDecoder, capture int, events chan<- programmeSignalEvent) *programmeSignalEpoch {
@@ -47,11 +49,13 @@ func startProgrammeSignalEpoch(ctx context.Context, reader *preparedHLSReader, e
 		if err != nil || clock.Origin.IsZero() || clock.Generation == "" || len(clock.Generation) > 256 ||
 			len(proof.Media) == 0 || len(proof.Media) > 32<<20 || len(proof.Init) > 32<<20 ||
 			(initReference == "" && len(proof.Init) != 0) ||
-			(!epoch.clock.Origin.IsZero() && (!epoch.clock.Origin.Equal(clock.Origin) || epoch.clock.Generation != clock.Generation)) {
+			(initReference != "" && proof.AACPreroll) ||
+			(!epoch.clock.Origin.IsZero() && (!epoch.clock.Origin.Equal(clock.Origin) || epoch.clock.Generation != clock.Generation || epoch.aacPreroll != proof.AACPreroll)) {
 			epoch.clockErr = true
 			return ProgrammeAssetEvidence{}, errors.New("asset_clock_mismatch")
 		}
 		epoch.clock = clock
+		epoch.aacPreroll = proof.AACPreroll
 		epoch.validate = proof.Validate
 		proof.Media, proof.Init = slices.Clone(proof.Media), slices.Clone(proof.Init)
 		return proof, nil
@@ -66,7 +70,14 @@ func startProgrammeSignalEpoch(ctx context.Context, reader *preparedHLSReader, e
 		}
 	}
 	go func() {
-		err := decoder.DecodeSignals(ctx, epoch.input, func(v DecodedVideoSignal) { send(programmeSignalEvent{video: &v}) }, func(a DecodedAudioSignal) { send(programmeSignalEvent{audio: &a}) })
+		firstAudio := true
+		err := decoder.DecodeSignals(ctx, epoch.input, func(v DecodedVideoSignal) { send(programmeSignalEvent{video: &v}) }, func(a DecodedAudioSignal) {
+			epoch.mu.Lock()
+			preroll := firstAudio && epoch.aacPreroll
+			epoch.mu.Unlock()
+			firstAudio = false
+			send(programmeSignalEvent{audio: &a, preroll: preroll})
+		})
 		epoch.mu.Lock()
 		epoch.err = err
 		epoch.mu.Unlock()
@@ -138,7 +149,7 @@ func observeProgrammeSignals(ctx context.Context, endpoint *endpoint, config Con
 		if event.video != nil {
 			err = check.videoSignal(event.clock, *event.video)
 		} else if event.audio != nil {
-			err = check.audioSignal(event.clock, *event.audio)
+			err = check.checkAudioSignal(event.clock, *event.audio, event.preroll)
 		}
 		if err != nil {
 			return err.Error()

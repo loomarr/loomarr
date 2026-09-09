@@ -25,6 +25,7 @@ type programmeSignalFixture struct {
 	origin          time.Time
 	discontinuity   bool
 	thirdEpoch      bool
+	raw             bool
 	blockRefresh    bool
 	refreshes       atomic.Int32
 	blocked         chan struct{}
@@ -89,6 +90,9 @@ func newProgrammeSignalFixture(t *testing.T) *programmeSignalFixture {
 				return nil, r.Context().Err()
 			}
 			manifest := fmt.Sprintf("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-MAP:URI=\"init?sig=private-signature\"\n#EXT-X-PROGRAM-DATE-TIME:%s\n#EXTINF:0.1,\na?sig=private-signature\n#EXTINF:5,\nb?sig=private-signature\n", f.origin.Format(time.RFC3339Nano))
+			if f.raw {
+				manifest = strings.Replace(manifest, "#EXT-X-MAP:URI=\"init?sig=private-signature\"\n", "", 1)
+			}
 			if f.blockRefresh {
 				manifest = strings.Split(manifest, "#EXTINF:5,")[0]
 			}
@@ -128,11 +132,63 @@ func runProgrammeSignalFixture(t *testing.T, f *programmeSignalFixture) boundary
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), config.ProgrammeBoundaryTimeout)
 	defer cancel()
-	result := observeProgrammeSignals(ctx, endpoint, config, boundaryLane{name: "prepared", channelIndex: 0})
+	lane := "prepared"
+	if f.raw {
+		lane = "transcode"
+	}
+	result := observeProgrammeSignals(ctx, endpoint, config, boundaryLane{name: lane, channelIndex: 0})
 	if f.decoder.Started.Load() != f.decoder.Stopped.Load() {
 		t.Fatalf("decoder lifecycle started=%d stopped=%d", f.decoder.Started.Load(), f.decoder.Stopped.Load())
 	}
 	return result
+}
+
+func TestProgrammeSignalsBoundAACPrerollToOneDeclaredFrame(t *testing.T) {
+	for _, mode := range []string{"declared", "undeclared", "extra priming", "malformed", "declaration changed"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newProgrammeSignalFixture(t)
+			f.raw = true
+			priming := DecodedAudioSignal{PTSUS: 1_128_667, Samples: 1024, ZeroCrossingRate: 0.053711, RMSDB: -37.044586}
+			f.decoder.Signals = append([]playoutcertfixture.SignalPair[DecodedVideoSignal, DecodedAudioSignal]{{Audio: &priming}}, f.decoder.Signals...)
+			first, next := []byte{0, 1, 2}, make([]byte, 38)
+			for i := range next {
+				next[i] = byte(i + 3)
+			}
+			for _, body := range f.bodies {
+				_ = body.Close()
+			}
+			f.bodies = []*playoutcertfixture.PacedBody{playoutcertfixture.NewPacedBody(first, 25*time.Millisecond, false), playoutcertfixture.NewPacedBody(next, 25*time.Millisecond, true)}
+			resolve := f.truth.Value.ResolveAsset
+			f.truth.Value.ResolveAsset = func(ctx context.Context, asset ProgrammeAsset) (ProgrammeAssetEvidence, error) {
+				proof, err := resolve(ctx, asset)
+				proof.AACPreroll = mode != "undeclared"
+				proof.Media = first
+				if asset.Reference == "b" {
+					proof.Media = next
+					if mode == "declaration changed" {
+						proof.AACPreroll = false
+					}
+				}
+				return proof, err
+			}
+			want := "ok"
+			switch mode {
+			case "undeclared":
+				want = "programme_audio_mismatch"
+			case "extra priming":
+				f.decoder.Signals[1].Audio.ZeroCrossingRate = priming.ZeroCrossingRate
+				want = "programme_audio_mismatch"
+			case "malformed":
+				priming.Samples = 1025
+				want = "invalid_audio_signal"
+			case "declaration changed":
+				want = "asset_clock_mismatch"
+			}
+			if got := runProgrammeSignalFixture(t, f); got.observation.class != want {
+				t.Fatalf("outcome=%s want=%s", got.observation.class, want)
+			}
+		})
+	}
 }
 
 func TestProgrammeSignalsQualifyExpectedAVAndOrdinarySignedRoute(t *testing.T) {
@@ -173,7 +229,7 @@ func TestProgrammeSignalsRejectMissingTruthBeforeNetwork(t *testing.T) {
 }
 
 func TestProgrammeSignalsRejectWrongSignalsAndSourceReplacement(t *testing.T) {
-	for _, mode := range []string{"video", "audio", "silence", "generation", "origin", "missing origin", "decoder failure"} {
+	for _, mode := range []string{"video", "audio", "silence", "generation", "origin", "missing origin", "decoder failure", "priming declaration"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newProgrammeSignalFixture(t)
 			want := "programme_" + mode + "_mismatch"
@@ -206,6 +262,9 @@ func TestProgrammeSignalsRejectWrongSignalsAndSourceReplacement(t *testing.T) {
 					}
 					proof, err := resolve(ctx, a)
 					proof.Clock = c
+					if mode == "priming declaration" && a.Reference == "b" {
+						proof.AACPreroll = true
+					}
 					return proof, err
 				}
 			}
