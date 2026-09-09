@@ -47,10 +47,6 @@ jobs:
             gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-
       # testcontainers uses the Docker daemon preinstalled on ubuntu-latest.
       - run: make test-pg
-        # Includes lifecycle/media integration packages; give each its worker
-        # budget without changing race policy or conformance coverage.
-        env:
-          GOFLAGS: -p=1
       # main only — see the `go` job's save step for why a PR-scoped save is pure eviction
       # pressure on caches that are still being read.
       - name: Save Go caches (main only)

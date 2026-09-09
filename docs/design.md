@@ -11488,7 +11488,10 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   weaken an assertion. Each Go test and Postgres conformance worker runs one package at a time:
   independent synthetic playout targets must not compete for the same worker while asserting its
   latency and capacity contract. Race instrumentation, within-package concurrency and the complete
-  package partition remain unchanged. Go package shards consume the alphabetic `go list ./...` stream in rows the
+  package partition remain unchanged. The Postgres Make target pins `-p=1` directly; its
+  release-verifier contract requires that exact recipe and still rejects workflow environment
+  overrides. The Go shard workflow admits only the literal `GOFLAGS=-p=1` for its test
+  step, with other environment overrides still rejected. Go package shards consume the alphabetic `go list ./...` stream in rows the
   width of the shard count and alternate each row's direction. This serpentine distribution avoids
   a recurring every-N phase alignment without introducing a hand-maintained package-cost table;
   adding or removing a package still fails safe because every package remains assigned by the
