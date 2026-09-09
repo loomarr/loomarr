@@ -2,6 +2,7 @@ package suggest
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -103,5 +104,35 @@ func TestParseDiscoveryQueryRetiresRawEra(t *testing.T) {
 	_, _, err := parseDiscoveryQuery(map[string]any{"genres": []any{"Drama"}, "era": "1990s", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}})
 	if err == nil || !strings.Contains(err.Error(), "sole date authority") {
 		t.Fatalf("raw era error = %v", err)
+	}
+}
+
+func TestDateUnionMembershipFailurePreservesDispatchTrace(t *testing.T) {
+	for _, failure := range []error{errors.New("membership lookup failed"), context.Canceled} {
+		t.Run(failure.Error(), func(t *testing.T) {
+			corpus := &catalogfixture.Corpus{
+				Candidates: []catalog.Candidate{{MediaType: provision.Series, TVDBID: 762, Name: "Full House", Year: 1987}},
+				SearchFunc: func(context.Context, string, int) ([]catalog.Candidate, error) { return nil, failure },
+			}
+			s := New(nil, catalog.New(nil, corpus), nil, 10)
+			intent := Intent{Description: "1980s named programming block with Full House", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+			arguments := map[string]any{
+				"media_type": "series",
+				"dateMeaning": map[string]any{"kind": "constraints", "anchors": []any{map[string]any{"field": "description", "start": 0, "end": 5}},
+					"axes": []any{map[string]any{"kind": "series_premiere", "combine": "any", "intervals": []any{map[string]any{"anchor": 0, "start": 1980, "end": 1989}}}}},
+			}
+			ledger := newWorkLedger()
+			ledger.beginGeneration()
+			result, candidates, trace, valid, _ := s.runToolWithDateMeaning(t.Context(), llm.ToolCall{Name: catalogToolName, Arguments: arguments}, intent, nil, nil, ledger)
+			if len(corpus.Discoveries()) != 1 || len(corpus.Searches()) != 1 {
+				t.Fatalf("expected discovery followed by membership lookup, discoveries=%v searches=%v", corpus.Discoveries(), corpus.Searches())
+			}
+			if !valid || len(candidates) != 0 || trace.Terminal != TerminalRetrievalFailure || !strings.Contains(result, failure.Error()) {
+				t.Fatalf("failure lost: result=%s candidates=%v trace=%+v valid=%v", result, candidates, trace, valid)
+			}
+			if trace.WindowsCompleted != 1 || trace.SourceQueriesDispatched != 1 {
+				t.Fatalf("completed discovery counters lost on membership failure: %+v", trace)
+			}
+		})
 	}
 }

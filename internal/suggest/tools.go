@@ -129,7 +129,7 @@ func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedTo
 	}
 	for _, candidate := range cands {
 		if resolveErr := s.resolveMembershipSource(ctx, intent, candidate.Name); resolveErr != nil {
-			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
+			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
 		}
 	}
 	if mtArg != "" {

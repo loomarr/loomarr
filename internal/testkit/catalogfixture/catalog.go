@@ -13,6 +13,7 @@ import (
 // Corpus is a deterministic search/discovery corpus.
 type Corpus struct {
 	Candidates   []catalog.Candidate
+	SearchFunc   func(context.Context, string, int) ([]catalog.Candidate, error)
 	DiscoverFunc func(context.Context, catalog.DiscoveryQuery, int) ([]catalog.Candidate, error)
 	mu           sync.Mutex
 	searches     []SearchRequest
@@ -29,10 +30,13 @@ type DiscoveryRequest struct {
 	Limit int
 }
 
-func (c *Corpus) Search(_ context.Context, query string, limit int) ([]catalog.Candidate, error) {
+func (c *Corpus) Search(ctx context.Context, query string, limit int) ([]catalog.Candidate, error) {
 	c.mu.Lock()
 	c.searches = append(c.searches, SearchRequest{Query: query, Limit: limit})
 	c.mu.Unlock()
+	if c.SearchFunc != nil {
+		return c.SearchFunc(ctx, query, limit)
+	}
 	return append([]catalog.Candidate(nil), c.Candidates...), nil
 }
 
