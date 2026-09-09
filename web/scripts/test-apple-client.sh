@@ -85,13 +85,18 @@ done
 # This verifier qualifies the reviewed package pins, never caller-selected source
 # revisions, local tarballs, another Hermes generation, or repository overrides.
 for native_override in REACT_NATIVE_OVERRIDE_HERMES_DIR HERMES_ENGINE_TARBALL_PATH \
-  HERMES_COMMIT RCT_BUILD_HERMES_FROM_SOURCE RCT_HERMES_V1_ENABLED ENTERPRISE_REPOSITORY; do
+  HERMES_COMMIT RCT_BUILD_HERMES_FROM_SOURCE RCT_HERMES_V1_ENABLED ENTERPRISE_REPOSITORY \
+  RCT_USE_RN_DEP RCT_USE_LOCAL_RN_DEP RCT_DEPS_VERSION \
+  RCT_USE_PREBUILT_RNCORE RCT_TESTONLY_RNCORE_VERSION RCT_TESTONLY_RNCORE_TARBALL_PATH \
+  REACT_NATIVE_OVERRIDE_NIGHTLY_BUILD_VERSION; do
   if printenv "$native_override" >/dev/null; then
     printf 'apple-client: %s overrides the qualified dependency selection\n' "$native_override" >&2
     exit 2
   fi
 done
 ruby "${WEB_ROOT}/scripts/hermes-download-test.rb"
+ruby "${WEB_ROOT}/scripts/native-release-selection-test.rb"
+ruby "${WEB_ROOT}/scripts/native-artifact-download-test.rb"
 REAL_XCODEBUILD="$(command -v xcodebuild)"
 readonly REAL_XCODEBUILD
 xcodebuild -version

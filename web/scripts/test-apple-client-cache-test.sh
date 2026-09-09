@@ -430,7 +430,10 @@ if [[ $status -ne 86 || ! -f "$test_root/diagnostics-attempted" ]] \
 fi
 
 for native_override in REACT_NATIVE_OVERRIDE_HERMES_DIR HERMES_ENGINE_TARBALL_PATH \
-  HERMES_COMMIT RCT_BUILD_HERMES_FROM_SOURCE RCT_HERMES_V1_ENABLED ENTERPRISE_REPOSITORY; do
+  HERMES_COMMIT RCT_BUILD_HERMES_FROM_SOURCE RCT_HERMES_V1_ENABLED ENTERPRISE_REPOSITORY \
+  RCT_USE_RN_DEP RCT_USE_LOCAL_RN_DEP RCT_DEPS_VERSION \
+  RCT_USE_PREBUILT_RNCORE RCT_TESTONLY_RNCORE_VERSION RCT_TESTONLY_RNCORE_TARBALL_PATH \
+  REACT_NATIVE_OVERRIDE_NIGHTLY_BUILD_VERSION; do
   # Even an exported empty override changes ENV.has_key? in the upstream helper.
   # Rejection must precede prebuild, installation, or any native work.
   unlink "$test_root/build-count"
