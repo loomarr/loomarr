@@ -4340,3 +4340,63 @@ used visible interactive Terra/Medium sessions and monitored150K checkpoints; fi
 plus output usage, including setup/report, stayed below each limit. Early incomplete reviews are
 preserved and are not treated as acceptance. Evidence is retained under the delivery archive's
 `date-final-reviewed-c985cf35` directory; live-provider and beta acceptance remain separate.
+
+### 2026-09-09 — continuous audio qualified through the actual certification command
+
+Tracking #1037 / #1116, delivery #1157. Source `f8baf2b748f7a4a0e9e0755f85338b481fffd9c4`
+completes the approved shared AAC migration and the finite-child certification follow-ups.
+Independent scoped Standards/Spec reviews accept the operator cohort, private truth observer,
+audio reference, production wiring, child selection, capture validation and fan-in repairs.
+
+The extended fault suite exposed a child-selection race: private children encode a finite programme
+and exit while the parent continues paced playback. `73628370` waits within the existing request
+budget for a currently owned generation. The subsequent recovery failure was a capture-volume
+assumption, not stopped playback: the trace had 345 decoded frames and 257,184 captured bytes at
+its deadline, just below the old 262,144-byte floor. `40736906` validates the bounded current capture
+after a decoded frame; exact one-video/one-audio shape and held continuity remain required.
+
+Faster validation exposed a previous warm session in the fan-in measurement. All four viewers
+received valid media, but the still-warm earlier Channel was counted as a duplicate session.
+`080cc949` records actual convergence to the original baseline before fan-in and refuses the burst
+if convergence fails. The existing full synthetic regression failed before this repair and passes
+afterward; a smaller two-Channel diagnostic reproduces the split in 5.64s and verifies the measured
+cleanup correction in 7.40s. No session or video-capacity limit was raised.
+
+The real CLI then exposed its default 250ms resource interval missing a child that lives only
+50–100ms. The default-config child test fails in 21.16s before the final repair. `f8baf2b7` bounds
+child polling to 1–10ms independently of coarser resource sampling. The short-deadline regression
+fails before and passes with race detection afterward (1.286s); the original real child-failure
+test now uses CLI defaults and passes in 23.66s with owned exit, peer continuity, recovery and
+stale-generation refusal intact. The earlier failed CLI artifact passed its redaction audit but
+remained uncertified; it is retained rather than replaced.
+
+All nine pinned fault/continuity scenarios pass at `080cc949`, followed by the default-config child
+regression at `f8baf2b7`. Pinned generated-copy reports at six and thirty seconds, operator copy and
+unsafe-seek reports, mixed-codec capacity, long-GOP admission and mislabeled source-role controls
+also pass on the final source. The earlier independent audio/reference and copied-video evidence
+remains applicable; no runtime media wiring changed in these certifier follow-ups.
+
+Two actual Linux/ARM64 CLI runs at `f8baf2b7` publish certified reports with passed audits and zero
+failures over 106 synthetic Channels at measured capacity four. The 39.98s child/parent run qualifies
+both selected fault profiles; the separate 24.85s run qualifies shutdown. Unselected profiles remain
+explicitly unqualified. Prepared raw first-decoded-frame p95 is 140.2ms and 132.3ms respectively,
+below the unchanged 500ms limit. Commands, source/binary/image provenance, exact JSON, summaries and
+SHA-256 manifests are retained in the delivery archive's `shared-aac-cli-f8baf2b7` directory. The
+report hashes are `f55cc2009550d6e1a1fdc9606573a3860adc0ae45d873b4b8257122379825e85`
+and `1f589d88a8a5962161e2d20864f240671d88bd7c7d2bb150d368633f44676641`.
+
+`GOFLAGS=-p=1 make verify BASE=a885d9e05aa178381cb657351f463c87a46a0436` at `f8baf2b7` passes the complete affected Go, full-Go, documentation and policy gates. The real command publication package passes in97.738s. The earlier `a885d9e0` full affected gate from `4d1e9edf` remains passing migration evidence; the subsequent fan-in failures are repaired rather than retried away.
+
+PR #1158's earlier merge-queue failure was an unchanged rights-withdrawal UI test querying its
+portal option before it became available. Tracking #1159 records the failure. The one-line awaited
+accessible-option lookup at `8de3057c` preserves every withdrawal assertion, passes the original
+frontend shard and complete affected web gate, and is independently accepted. All new-head PR
+checks pass; protected merge-queue run34313791536 is pending. This correction supersedes the prior
+queue failure without attributing it to channel date behavior.
+
+The September 9 worktree audit retains all 15 secondary checkouts: zero are eligible, zero removed,
+and zero audit errors. Credentials, dirty or divergent state, unrelated runtime processes and
+unmerged work remain protected. Current qualification is synthetic; real operator media, hardware,
+recognition/provider evaluation, installation and next-beta acceptance are separate. The earlier
+host FFmpeg9 conditioning failure and unresolved parallel-package timing sensitivity remain
+recorded and are not counted as passing acceptance.
