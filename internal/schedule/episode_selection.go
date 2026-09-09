@@ -187,6 +187,16 @@ func selectHolidayEpisodes(episodes []ResolvedProgram, holidayIDs []string) []Re
 	for _, id := range holidayIDs {
 		selectedHolidays[strings.ToLower(id)] = true
 	}
+	out := matchingHolidayEpisodes(episodes, selectedHolidays)
+	if len(out) == 0 {
+		return episodes
+	}
+	return out
+}
+
+// matchingHolidayEpisodes preserves complete multipart units with supported
+// holiday evidence. Unlike the editorial selector, absence of a match is empty.
+func matchingHolidayEpisodes(episodes []ResolvedProgram, selectedHolidays map[string]bool) []ResolvedProgram {
 	groups := make(map[string]bool)
 	selected := make(map[int]bool)
 	for i, episode := range episodes {
@@ -196,9 +206,6 @@ func selectHolidayEpisodes(episodes []ResolvedProgram, holidayIDs []string) []Re
 				groups[episode.PartGroup] = true
 			}
 		}
-	}
-	if len(selected) == 0 {
-		return episodes
 	}
 	out := make([]ResolvedProgram, 0, len(selected))
 	for i, episode := range episodes {

@@ -140,13 +140,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `openroutermedia` | 7 | `fillereval` |
-| `provision` | 18 | — |
+| `provision` | 20 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 5 | — |
-| `schedule` | 15 | `provision` |
+| `schedule` | 16 | `provision` |
 | `scheduler` | 6 | `store` |
 | `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
-| `suggest` | 6 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
+| `suggest` | 7 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
 
 ##### Every package, by layer
@@ -187,7 +187,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Drives Loomarr's public playout transports through a bounded, credential-redacted production-path certification run.
 - **`proctree`** · 4 importers
   Supervises one child process and every descendant it starts.
-- **`provision`** · 18 importers
+- **`provision`** · 20 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`recovery`** · 5 importers
   Owns local-password recovery records and their bearer grants (§11).
@@ -245,7 +245,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 15 importers · → `holidayvocab`, `provision`, `textmatch`
+- **`schedule`** · 16 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
@@ -342,7 +342,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
-- **`testkit/libraryfixture`** · → `library`, `schedule`
+- **`testkit/libraryfixture`** · → `library`, `provision`, `schedule`
   No-network adapters for library-facing tests.
 
 **Layer 10**
@@ -366,7 +366,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`suggest`** · 6 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
+- **`suggest`** · 7 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`testkit`** · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
@@ -381,6 +381,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
+- **`testkit/channeljourney`** · → `provision`, `schedule`, `suggest`
+  The public synthetic approval-to-schedule fixtures for #1103.
 
 **Layer 13**
 
@@ -1502,6 +1504,9 @@ maximum even when the model omits policy; unrated or harder picks are refused be
 that names a built-in holiday deterministically becomes `seasonal.mode=exclusive` with only that
 holiday id selected; an empty holiday subset would mean all built-ins and is therefore not an honest
 representation of a Christmas-, Halloween-, or other single-holiday channel.
+During an active exclusive window, a series is evaluated through its concrete episode evidence,
+not rejected solely because its series title lacks the holiday name. Programming-design §6 owns
+the deferred seasonal filter, including current evidence, multipart units and explicit exclusions.
 An existing-channel refine that merely adds holiday programming is different: it contributes a
 grounded `holiday:<id>` scheduling rule and leaves the year-round seasonal identity intact. Only a
 refine that explicitly turns the object into a holiday *channel* receives the exclusive override.
