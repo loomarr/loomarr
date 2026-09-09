@@ -91,6 +91,92 @@ func TestEnforce_EraBindsEveryExpandedEpisode(t *testing.T) {
 	}
 }
 
+func TestEnforce_DatesKeepPremiereAndAiringAxesIndependent(t *testing.T) {
+	series := ratedEntry("series:tmdb:456", "Long Runner", "TV-PG", 1989)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:456": {
+		{LibraryItemID: "gap", Title: "Gap", DurationMs: 1, Year: 1991},
+		{LibraryItemID: "wanted", Title: "Wanted", DurationMs: 1, Year: 1995},
+		{LibraryItemID: "new", Title: "New", DurationMs: 1, Year: 2001},
+	}})
+	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Dates: &schedule.DateScope{
+		SeriesPremiere: []schedule.Range{{From: 1985, To: 1989}},
+		SeriesAiring:   []schedule.Range{{From: 1990, To: 1990}, {From: 1995, To: 1999}},
+	}}}}
+	desired := computeWithPolicy([]schedule.LineupEntry{series}, avail, policy)
+	if desired.ProgramCount() != 1 || desired.Slots[0].LibraryItemID != "wanted" {
+		t.Fatalf("separate premiere/airing dates scheduled %+v, want only 1995", desired.Slots)
+	}
+}
+
+func TestEnforce_RuleDatesIntersectEpisodeAiringWithoutChangingEligibleKeys(t *testing.T) {
+	series := ratedEntry("series:tmdb:456", "Long Runner", "TV-PG", 1989)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:456": {
+		{LibraryItemID: "before-rule", Title: "Before rule", DurationMs: 1, Year: 1985},
+		{LibraryItemID: "wanted", Title: "Wanted", DurationMs: 1, Year: 1995},
+		{LibraryItemID: "after-rule", Title: "After rule", DurationMs: 1, Year: 2000},
+	}})
+	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+		Scope: schedule.ScopePolicy{Dates: &schedule.DateScope{
+			SeriesPremiere: []schedule.Range{{From: 1989, To: 1989}},
+			SeriesAiring:   []schedule.Range{{From: 1980, To: 2000}},
+		}},
+		Rules: []schedule.SchedulingRule{{What: &schedule.ScopePolicy{Dates: &schedule.DateScope{
+			SeriesAiring: []schedule.Range{{From: 1990, To: 1999}},
+		}}}},
+	}}
+	desired := computeWithPolicy([]schedule.LineupEntry{series}, avail, policy)
+	if got := programItemIDs(desired); len(got) != 1 || got[0] != "wanted" {
+		t.Fatalf("rule airing window scheduled %v, want only wanted", got)
+	}
+	if !desired.EligibleKeys["series:tmdb:456"] {
+		t.Fatalf("EligibleKeys = %v, want rule-rotated series retained", desired.EligibleKeys)
+	}
+}
+
+func TestEnforce_RuleAiringDatesIntersectAndUnknownYearsFailOpen(t *testing.T) {
+	series := ratedEntry("series:tmdb:456", "Long Runner", "TV-PG", 1989)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:456": {
+		{LibraryItemID: "known", Title: "Known", DurationMs: 1, Year: 1995},
+		{LibraryItemID: "unknown", Title: "Unknown", DurationMs: 1, Year: 0},
+	}})
+	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+		Scope: schedule.ScopePolicy{Dates: &schedule.DateScope{
+			SeriesPremiere: []schedule.Range{{From: 1989, To: 1989}},
+			SeriesAiring:   []schedule.Range{{From: 1980, To: 1989}},
+		}},
+		Rules: []schedule.SchedulingRule{{What: &schedule.ScopePolicy{Dates: &schedule.DateScope{
+			SeriesAiring: []schedule.Range{{From: 1990, To: 1999}},
+		}}}},
+	}}
+	desired := computeWithPolicy([]schedule.LineupEntry{series}, avail, policy)
+	if got := programItemIDs(desired); len(got) != 1 || got[0] != "unknown" {
+		t.Fatalf("disjoint rule/channel airing windows scheduled %v, want only unknown", got)
+	}
+}
+
+func TestEnforce_RuleOnlyAiringDatesDoNotFilterSeriesPremiere(t *testing.T) {
+	series := ratedEntry("series:tmdb:456", "Long Runner", "TV-PG", 1989)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:456": {
+		{LibraryItemID: "wanted", Title: "Wanted", DurationMs: 1, Year: 1995},
+	}})
+	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: []schedule.SchedulingRule{{
+		What: &schedule.ScopePolicy{Dates: &schedule.DateScope{SeriesAiring: []schedule.Range{{From: 1990, To: 1999}}}},
+	}}}}
+	if got := programItemIDs(computeWithPolicy([]schedule.LineupEntry{series}, avail, policy)); len(got) != 1 || got[0] != "wanted" {
+		t.Fatalf("rule-only airing scope scheduled %v, want wanted", got)
+	}
+}
+
+func TestEnforce_DatesMovieWindowsAndUnknownYear(t *testing.T) {
+	entries := []schedule.LineupEntry{ratedEntry("movie:tmdb:1", "Gap", "", 1995), ratedEntry("movie:tmdb:2", "Window", "", 2001), ratedEntry("movie:tmdb:3", "Unknown", "", 0)}
+	avail := mapAvail{"movie:tmdb:1": "gap", "movie:tmdb:2": "window", "movie:tmdb:3": "unknown"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Dates: &schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 1992}, {From: 2000, To: 2002}}}}}}
+	keys := programKeys(computeWithPolicy(entries, avail, p))
+	if hasKey(keys, "movie:tmdb:1") || !hasKey(keys, "movie:tmdb:2") || !hasKey(keys, "movie:tmdb:3") {
+		t.Fatalf("movie date windows = %v", keys)
+	}
+}
+
 func TestEnforce_GenreBinds(t *testing.T) {
 	entries := []schedule.LineupEntry{
 		ratedEntry("movie:tmdb:1", "Toon", "", 1994, "Animation"),

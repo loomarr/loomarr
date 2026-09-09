@@ -559,7 +559,7 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 // its own, the two would drift and the UI would confidently show pods the reconciler
 // never builds — the whole failure mode preview exists to prevent.
 func SelectionForChannel(ch store.Channel) filler.Selection {
-	sel := SelectionFrom(ch.Policy.Filler, ch.Policy.Scope.Era)
+	sel := SelectionFrom(ch.Policy.Filler, ch.Policy.Scope)
 	if ch.Policy.BreakDuration != nil {
 		sel.BreakDurationMs = ch.Policy.BreakDuration.Std().Milliseconds()
 	}
@@ -619,15 +619,15 @@ func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Dur
 // working the instant "explicitly any era" exists: a fallback keyed on `Era == 0` cannot tell an
 // unset era from a chosen one, so it would overwrite the operator's answer with the channel's.
 // One writer, called from every derivation, is the only version of this that stays true.
-func SelectionFrom(f *schedule.FillerSelection, scopeEra *schedule.Range) filler.Selection {
+func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy) filler.Selection {
 	sel := filler.Selection{}
 	inheritEra := true
 	if f != nil {
 		sel.Audience = filler.Audience(f.Audience)
-		sel.Categories = f.Categories
-		sel.Kinds = f.Kinds
-		sel.Pinned = f.Pinned
-		sel.Excluded = f.Excluded
+		sel.Categories = append([]string(nil), f.Categories...)
+		sel.Kinds = append([]string(nil), f.Kinds...)
+		sel.Pinned = append([]string(nil), f.Pinned...)
+		sel.Excluded = append([]string(nil), f.Excluded...)
 		if f.Geography != nil {
 			sel.Geography = filler.Geography{Country: f.Geography.Country, Market: f.Geography.Market}.Normalize()
 		}
@@ -640,14 +640,29 @@ func SelectionFrom(f *schedule.FillerSelection, scopeEra *schedule.Range) filler
 			// from the whole catalog". Same pattern as `AutoCurate`, for the same reason.
 			inheritEra = false
 			sel.Era = filler.EraRange{From: f.Era.From, To: f.Era.To}
+		} else if len(f.EraWindows) > 0 {
+			inheritEra = false
+			sel.EraWindows = rangesToFiller(f.EraWindows)
 		}
 	}
 	// The "seed filler era from scope.era" default, applied live rather than only stamped at
 	// create — so an existing channel benefits, and a channel whose scope later changes follows.
-	if inheritEra && scopeEra != nil {
-		sel.Era = filler.EraRange{From: scopeEra.From, To: scopeEra.To}
+	if inheritEra {
+		if windows := scope.FillerEraWindows(); len(windows) > 0 {
+			sel.EraWindows = rangesToFiller(windows)
+		} else if scope.Era != nil {
+			sel.Era = filler.EraRange{From: scope.Era.From, To: scope.Era.To}
+		}
 	}
 	return sel
+}
+
+func rangesToFiller(ranges []schedule.Range) []filler.EraRange {
+	out := make([]filler.EraRange, len(ranges))
+	for i, r := range ranges {
+		out[i] = filler.EraRange{From: r.From, To: r.To}
+	}
+	return filler.NormalizeEraWindows(out)
 }
 
 // PodSeed derives a deterministic pod seed from the channel id (§10 seeded-

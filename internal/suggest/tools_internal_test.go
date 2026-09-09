@@ -21,9 +21,9 @@ func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
 	s := New(testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{
 			"mode": "collection", "media_type": "series",
-			"titles": []any{map[string]any{"name": "The Simpsons", "year": float64(1989)}},
+			"titles": []any{map[string]any{"name": "The Simpsons", "year": float64(1989)}}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
 		}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	), catalog.New(nil, corpus), nil, 10)
 
 	_, err := s.Suggest(context.Background(), Intent{Description: "Classic Simpsons"})
@@ -165,7 +165,6 @@ func TestParseDiscoveryQueryIgnoresProviderEmptyOptionalPlaceholders(t *testing.
 	got, discovery, err := parseDiscoveryQuery(map[string]any{
 		"cast":              []any{""},
 		"creators":          []any{""},
-		"era":               "1990s",
 		"genres":            []any{},
 		"keywords":          []any{},
 		"media_type":        "series",
@@ -177,7 +176,7 @@ func TestParseDiscoveryQueryIgnoresProviderEmptyOptionalPlaceholders(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !discovery || got.Network != "ABC" || got.MediaType != "series" || got.YearFrom != 1990 || got.YearTo != 1999 {
+	if !discovery || got.Network != "ABC" || got.MediaType != "series" {
 		t.Fatalf("normalized provider placeholders = %+v discovery=%v", got, discovery)
 	}
 	if len(got.Cast) != 0 || len(got.Creators) != 0 || got.OriginalLanguage != "" || got.OriginCountry != "" {
@@ -188,7 +187,7 @@ func TestParseDiscoveryQueryIgnoresProviderEmptyOptionalPlaceholders(t *testing.
 func TestProjectCatalogArgumentsKeepsAuthoritativeNetworkQualifiers(t *testing.T) {
 	got, ok := projectCatalogArguments(map[string]any{
 		"cast": []any{"Tiffani Thiessen"}, "creators": []any{"Jeff Franklin"},
-		"era": "1990-1999", "genres": []any{"Comedy", "Family"}, "keywords": []any{"TGIF"},
+		"genres": []any{"Comedy", "Family"}, "keywords": []any{"TGIF"},
 		"media_type": "series", "network": "ABC", "origin_country": "US",
 		"original_language": "en", "query": "TGIF", "runtime_min": float64(20),
 		"runtime_max": float64(60), "vote_average_min": 6.5, "vote_count_min": float64(100),
@@ -228,7 +227,7 @@ func TestRunToolKeepsAllQualifiersOnAlreadyValidStrictCall(t *testing.T) {
 		Name: catalogToolName,
 		Arguments: map[string]any{
 			"media_type": "series", "network": "ABC", "genres": []any{"Comedy"},
-			"keywords": []any{"TGIF"}, "era": "1990s", "origin_country": "US",
+			"keywords": []any{"TGIF"}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}, "origin_country": "US",
 			"original_language": "en", "runtime_min": float64(20), "runtime_max": float64(60),
 			"vote_average_min": 6.5, "vote_count_min": float64(100),
 		},
@@ -255,7 +254,7 @@ func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testi
 	}
 	s := New(nil, catalog.New(nil, corpus), nil, 10)
 	_, candidates, _, _ := s.runTool(context.Background(), llm.ToolCall{
-		Name: catalogToolName, Arguments: map[string]any{"query": "family comedies"},
+		Name: catalogToolName, Arguments: map[string]any{"query": "family comedies", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}},
 	}, intent, nil)
 	if len(candidates) != 2 || len(corpus.Searches()) != 1 {
 		t.Fatalf("broad search = candidates %+v searches %+v", candidates, corpus.Searches())
@@ -276,7 +275,7 @@ func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T)
 		membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState(),
 	}
 	s := New(nil, catalog.New(nil, corpus), nil, 10)
-	call := llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"query": "family night"}}
+	call := llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"query": "family night", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}}
 	_, _, _, _ = s.runTool(context.Background(), call, intent, nil)
 	_, _, _, _ = s.runTool(context.Background(), call, intent, nil)
 	searches := corpus.Searches()
@@ -360,8 +359,8 @@ func TestParseDiscoveryQueryRejectsMalformedOrBroadeningInputs(t *testing.T) {
 		{name: "blank non-empty genre", args: map[string]any{"network": "ABC", "media_type": "series", "genres": []any{"   "}}, want: "genres must be"},
 		{name: "non-string keyword", args: map[string]any{"network": "ABC", "media_type": "series", "keywords": []any{17}}, want: "keywords must be"},
 		{name: "blank non-empty keyword", args: map[string]any{"network": "ABC", "media_type": "series", "keywords": []any{"\t"}}, want: "keywords must be"},
-		{name: "bad era", args: map[string]any{"era": "whenever"}, want: "year, decade"},
-		{name: "non-string era", args: map[string]any{"network": "ABC", "media_type": "series", "era": 1990}, want: "era must be"},
+		{name: "retired era", args: map[string]any{"era": "whenever"}, want: "era is retired"},
+		{name: "non-string retired era", args: map[string]any{"network": "ABC", "media_type": "series", "era": 1990}, want: "era is retired"},
 		{name: "non-string country", args: map[string]any{"genres": []any{"Drama"}, "origin_country": 44}, want: "two-letter"},
 		{name: "fractional runtime", args: map[string]any{"genres": []any{"Drama"}, "runtime_min": 20.5}, want: "integer"},
 		{name: "inverted runtime", args: map[string]any{"genres": []any{"Drama"}, "runtime_min": 90, "runtime_max": 20}, want: "must not exceed"},

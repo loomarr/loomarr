@@ -1,8 +1,10 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { ClipDTOAudience } from "@loomarr/api/models/clipDTOAudience";
 import { ClipDTOKind } from "@loomarr/api/models/clipDTOKind";
+import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
-import { useState } from "react";
+import type { Range } from "@loomarr/api/models/range";
+import { useEffect, useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -80,6 +82,194 @@ const toggle = (list: string[] | null | undefined, value: string): string[] | un
   return set.size === 0 ? undefined : [...set];
 };
 
+const YEAR_MIN = 1900;
+const YEAR_MAX = 2099;
+const MAX_ERA_WINDOWS = 8;
+
+const isValidWindow = (range: Range): range is Range & { from: number; to: number } =>
+  Number.isInteger(range.from) &&
+  Number.isInteger(range.to) &&
+  range.from !== undefined &&
+  range.to !== undefined &&
+  range.from >= YEAR_MIN &&
+  range.from <= YEAR_MAX &&
+  range.to >= YEAR_MIN &&
+  range.to <= YEAR_MAX &&
+  range.from <= range.to;
+
+const normalizeWindows = (windows: Range[] | undefined): Range[] => {
+  const valid = (windows ?? []).filter(isValidWindow).sort((a, b) => a.from - b.from || a.to - b.to);
+  return valid.reduce<Range[]>((merged, range) => {
+    const previous = merged.at(-1);
+    if (previous?.to !== undefined && range.from <= previous.to + 1)
+      previous.to = Math.max(previous.to, range.to);
+    else merged.push({ from: range.from, to: range.to });
+    return merged;
+  }, []);
+};
+
+const rangesLabel = (ranges: Range[] | undefined): string | undefined => {
+  const normalized = normalizeWindows(ranges);
+  return normalized.length ? normalized.map((range) => `${range.from}–${range.to}`).join(", ") : undefined;
+};
+
+// A legacy scalar scope can be open-ended. It is a display fallback only: multi-window
+// data remains subject to the strict complete-window validation above.
+const scalarScopeLabel = (scopeEra: { from?: number; to?: number } | undefined): string | undefined => {
+  if (scopeEra?.from !== undefined && scopeEra.to !== undefined) return `${scopeEra.from}–${scopeEra.to}`;
+  const year = scopeEra?.from ?? scopeEra?.to;
+  return year === undefined ? undefined : String(year);
+};
+
+const WindowRow = ({
+  window,
+  index,
+  disabled,
+  onCommit,
+  onRemove,
+}: {
+  window: Range;
+  index: number;
+  disabled?: boolean;
+  onCommit: (index: number, next: Range) => void;
+  onRemove: (index: number) => void;
+}) => {
+  const [draft, setDraft] = useState({ from: String(window.from), to: String(window.to) });
+
+  useEffect(() => {
+    setDraft({ from: String(window.from), to: String(window.to) });
+  }, [window.from, window.to]);
+
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`filler-window-${index}-from`} className="text-muted-foreground text-xs">
+          From year
+        </Label>
+        <Input
+          id={`filler-window-${index}-from`}
+          type="number"
+          min={YEAR_MIN}
+          max={YEAR_MAX}
+          className="w-28"
+          disabled={disabled}
+          value={draft.from}
+          onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+          onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`filler-window-${index}-to`} className="text-muted-foreground text-xs">
+          To year
+        </Label>
+        <Input
+          id={`filler-window-${index}-to`}
+          type="number"
+          min={YEAR_MIN}
+          max={YEAR_MAX}
+          className="w-28"
+          disabled={disabled}
+          value={draft.to}
+          onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+          onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
+        />
+      </div>
+      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => onRemove(index)}>
+        Remove
+      </Button>
+    </div>
+  );
+};
+
+const WindowEditor = ({
+  windows,
+  onChange,
+  disabled,
+}: {
+  windows: Range[];
+  onChange: (next: Range[]) => void;
+  disabled?: boolean;
+}) => {
+  const [draft, setDraft] = useState({ from: "", to: "" });
+  const [error, setError] = useState<string>();
+  const valid = isValidWindow;
+  const commit = (index: number, next: Range) => {
+    if (!valid(next)) {
+      setError(`Enter whole years from ${YEAR_MIN} to ${YEAR_MAX}, with From no later than To.`);
+      return;
+    }
+    setError(undefined);
+    const changed = [...windows];
+    changed[index] = next;
+    onChange(normalizeWindows(changed));
+  };
+  const add = () => {
+    const next = { from: Number(draft.from), to: Number(draft.to) };
+    if (!draft.from || !draft.to || !valid(next)) {
+      setError(`Enter whole years from ${YEAR_MIN} to ${YEAR_MAX}, with From no later than To.`);
+      return;
+    }
+    setError(undefined);
+    setDraft({ from: "", to: "" });
+    onChange(normalizeWindows([...windows, next]));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      {windows.map((window, index) => (
+        <WindowRow
+          key={`${window.from}-${window.to}`}
+          window={window}
+          index={index}
+          disabled={disabled}
+          onCommit={commit}
+          onRemove={(row) => onChange(windows.filter((_, current) => current !== row))}
+        />
+      ))}
+      {windows.length < MAX_ERA_WINDOWS && (
+        <div className="flex flex-wrap items-end gap-2">
+          <Input
+            aria-label="New date range from"
+            type="number"
+            min={YEAR_MIN}
+            max={YEAR_MAX}
+            className="w-28"
+            disabled={disabled}
+            value={draft.from}
+            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+            placeholder="From"
+          />
+          <Input
+            aria-label="New date range to"
+            type="number"
+            min={YEAR_MIN}
+            max={YEAR_MAX}
+            className="w-28"
+            disabled={disabled}
+            value={draft.to}
+            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+            placeholder="To"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            disabled={disabled}
+            onClick={add}
+          >
+            Add range
+          </Button>
+        </div>
+      )}
+      {error && (
+        <p className="text-onair-300 text-xs" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+};
+
 // FillerCriteria — the THEME half of the sandbox: era range, audience, categories, kinds.
 // Controlled, like ChannelPolicyFields: the parent holds the draft and applies whatever
 // `onChange` hands back. Every control clears to "any" when emptied (undefined, never a
@@ -90,6 +280,7 @@ const FillerCriteria = ({
   disabled,
   className,
   scopeEra,
+  programmingDates,
   installationGeography,
 }: {
   selection: FillerSelection;
@@ -100,19 +291,26 @@ const FillerCriteria = ({
   // the inheritance can be SHOWN — it was applied live by the server and rendered nowhere, so a
   // channel drawing 1990s ads from a blank field looked like it was drawing from everything.
   scopeEra?: { from?: number; to?: number };
+  programmingDates?: DateScope;
   installationGeography?: { country?: string; market?: string };
 }) => {
   const era = selection.era;
+  const eraWindows = selection.eraWindows;
   // ⚠ **Three states, and they are only distinguishable because `era` is a POINTER on the wire.**
   // Absent = inherit the channel's era; PRESENT-but-empty = explicitly any; a set range = itself.
   // Before V51f the first two were the same value, so "any era" was unreachable on any channel
   // that had a programming era — clearing the field simply re-inherited on the next derivation.
-  const inheriting = era === undefined;
+  const inheriting = era === undefined && eraWindows === undefined;
   const explicitlyAny = era !== undefined && !era.from && !era.to;
-  const scopeLabel =
-    scopeEra?.from && scopeEra.to
-      ? `${scopeEra.from}–${scopeEra.to}`
-      : (scopeEra?.from ?? scopeEra?.to)?.toString();
+  const inheritedWindows = programmingDates
+    ? normalizeWindows([
+        ...(programmingDates.movieRelease ?? []),
+        ...((programmingDates.seriesAiring?.length ?? 0) > 0
+          ? (programmingDates.seriesAiring ?? [])
+          : (programmingDates.seriesPremiere ?? [])),
+      ])
+    : undefined;
+  const scopeLabel = rangesLabel(inheritedWindows) ?? scalarScopeLabel(scopeEra);
   const categories = selection.categories ?? [];
   const kinds = selection.kinds ?? [];
   const productCategories = useProductCategories();
@@ -220,10 +418,8 @@ const FillerCriteria = ({
         <FieldLabel help="Match commercials from this era. Left blank, it follows the channel's own era.">
           Era
         </FieldLabel>
-        {/* ⚠ The inherited state is SHOWN rather than implied by an empty field (§10 V51f).
-            The server has always applied `policy.scope.era` to an unset filler era, live on every
-            derivation — but nothing said so, so a channel quietly drawing 1990s ads from two
-            blank inputs read as "any era". Naming it is what makes the escape below make sense. */}
+        {/* An absent selection inherits the programming dates. Presence is meaningful: an empty
+            scalar is explicit-any, and windows are a separate explicit representation. */}
         {inheriting && scopeLabel && (
           <p className="text-muted-foreground text-xs" data-testid="era-inherited">
             Following the channel&rsquo;s era ({scopeLabel}).{" "}
@@ -231,9 +427,10 @@ const FillerCriteria = ({
               type="button"
               className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
               disabled={disabled}
-              // An EMPTY range, not a cleared field: presence is what tells the server the
-              // operator answered "any" rather than not answering.
-              onClick={() => onChange({ ...selection, era: {} })}
+              onClick={() => {
+                const { eraWindows: _windows, ...rest } = selection;
+                onChange({ ...rest, era: {} });
+              }}
             >
               Use any era
             </button>
@@ -246,9 +443,8 @@ const FillerCriteria = ({
               type="button"
               className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
               disabled={disabled}
-              // Removing the key entirely is what "inherit" IS — the absence is the signal.
               onClick={() => {
-                const { era: _dropped, ...rest } = selection;
+                const { era: _era, eraWindows: _windows, ...rest } = selection;
                 onChange(rest);
               }}
             >
@@ -256,46 +452,114 @@ const FillerCriteria = ({
             </button>
           </p>
         )}
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="filler-era-from" className="text-muted-foreground text-xs">
-              From year
-            </Label>
-            <Input
-              id="filler-era-from"
-              type="number"
-              className="w-28"
+        {eraWindows !== undefined ? (
+          <>
+            <p className="text-muted-foreground text-xs" data-testid="era-windows">
+              Matching these date ranges only. Gaps remain excluded.
+            </p>
+            <WindowEditor
+              windows={normalizeWindows(eraWindows)}
               disabled={disabled}
-              defaultValue={era?.from ?? ""}
-              placeholder="Any"
-              key={`from-${era?.from ?? ""}`}
-              onBlur={(e) => {
-                const from = e.target.value === "" ? undefined : Number(e.target.value);
-                if (from === era?.from) return;
-                onChange({ ...selection, era: { ...era, from } });
+              onChange={(next) => {
+                if (next.length === 0) {
+                  const { eraWindows: _windows, ...rest } = selection;
+                  onChange({ ...rest, era: {} });
+                  return;
+                }
+                const { era: _era, ...rest } = selection;
+                onChange({ ...rest, eraWindows: next });
               }}
             />
+          </>
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="filler-era-from" className="text-muted-foreground text-xs">
+                From year
+              </Label>
+              <Input
+                id="filler-era-from"
+                type="number"
+                className="w-28"
+                disabled={disabled}
+                defaultValue={era?.from ?? ""}
+                placeholder="Any"
+                key={`from-${era?.from ?? ""}`}
+                onBlur={(e) => {
+                  const from = e.target.value === "" ? undefined : Number(e.target.value);
+                  if (from === era?.from) return;
+                  const { eraWindows: _windows, ...rest } = selection;
+                  onChange({ ...rest, era: { ...era, from } });
+                }}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="filler-era-to" className="text-muted-foreground text-xs">
+                To year
+              </Label>
+              <Input
+                id="filler-era-to"
+                type="number"
+                className="w-28"
+                disabled={disabled}
+                defaultValue={era?.to ?? ""}
+                placeholder="Any"
+                key={`to-${era?.to ?? ""}`}
+                onBlur={(e) => {
+                  const to = e.target.value === "" ? undefined : Number(e.target.value);
+                  if (to === era?.to) return;
+                  const { eraWindows: _windows, ...rest } = selection;
+                  onChange({ ...rest, era: { ...era, to } });
+                }}
+              />
+            </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="filler-era-to" className="text-muted-foreground text-xs">
-              To year
-            </Label>
-            <Input
-              id="filler-era-to"
-              type="number"
-              className="w-28"
-              disabled={disabled}
-              defaultValue={era?.to ?? ""}
-              placeholder="Any"
-              key={`to-${era?.to ?? ""}`}
-              onBlur={(e) => {
-                const to = e.target.value === "" ? undefined : Number(e.target.value);
-                if (to === era?.to) return;
-                onChange({ ...selection, era: { ...era, to } });
-              }}
-            />
-          </div>
-        </div>
+        )}
+        {eraWindows === undefined && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            disabled={disabled}
+            onClick={() => {
+              const { era: _era, ...rest } = selection;
+              onChange({ ...rest, eraWindows: [{ from: YEAR_MIN, to: YEAR_MAX }] });
+            }}
+          >
+            Use date ranges
+          </Button>
+        )}
+        {eraWindows !== undefined && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            disabled={disabled}
+            onClick={() => {
+              const { eraWindows: _windows, ...rest } = selection;
+              onChange({ ...rest, era: {} });
+            }}
+          >
+            Use any era
+          </Button>
+        )}
+        {!inheriting && !explicitlyAny && scopeLabel && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-fit"
+            disabled={disabled}
+            onClick={() => {
+              const { era: _era, eraWindows: _windows, ...rest } = selection;
+              onChange(rest);
+            }}
+          >
+            Follow the channel&rsquo;s era ({scopeLabel})
+          </Button>
+        )}
       </div>
 
       {/* Audience — "any" is the sentinel (Radix forbids an empty item value). */}

@@ -60,6 +60,10 @@ func TestPlannerModelCertification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	materializer, err := NewFrozenCertificationScheduleMaterializer()
+	if err != nil {
+		t.Fatal(err)
+	}
 	runnerConfig, err := CertificationRunnerConfig(RunnerConfig{
 		Trials: trials, Profile: os.Getenv("LOOMARR_EVAL_PROFILE"),
 		Generator: generatorIdentity, Judge: judgeIdentity, ResourceBudget: budget.Resource,
@@ -69,7 +73,7 @@ func TestPlannerModelCertification(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Minute)
 	defer cancel()
-	runner := NewRunner(generator, runnerConfig).WithObserver(observer)
+	runner := NewRunner(generator, runnerConfig).WithObserver(observer).WithMaterializer(materializer)
 	if normalizedProviderIdentity(generatorConfig.Provider) == "ollama" {
 		runner = runner.WithResourceProbe(NewOllamaResourceProbe(generatorConfig.BaseURL))
 	}

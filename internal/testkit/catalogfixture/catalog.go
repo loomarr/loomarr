@@ -3,6 +3,7 @@ package catalogfixture
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -11,10 +12,12 @@ import (
 
 // Corpus is a deterministic search/discovery corpus.
 type Corpus struct {
-	Candidates  []catalog.Candidate
-	mu          sync.Mutex
-	searches    []SearchRequest
-	discoveries []DiscoveryRequest
+	Candidates   []catalog.Candidate
+	SearchFunc   func(context.Context, string, int) ([]catalog.Candidate, error)
+	DiscoverFunc func(context.Context, catalog.DiscoveryQuery, int) ([]catalog.Candidate, error)
+	mu           sync.Mutex
+	searches     []SearchRequest
+	discoveries  []DiscoveryRequest
 }
 
 type SearchRequest struct {
@@ -27,19 +30,29 @@ type DiscoveryRequest struct {
 	Limit int
 }
 
-func (c *Corpus) Search(_ context.Context, query string, limit int) ([]catalog.Candidate, error) {
+func (c *Corpus) Search(ctx context.Context, query string, limit int) ([]catalog.Candidate, error) {
 	c.mu.Lock()
 	c.searches = append(c.searches, SearchRequest{Query: query, Limit: limit})
 	c.mu.Unlock()
+	if c.SearchFunc != nil {
+		return c.SearchFunc(ctx, query, limit)
+	}
 	return append([]catalog.Candidate(nil), c.Candidates...), nil
 }
 
-func (c *Corpus) Discover(_ context.Context, query catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
+func (c *Corpus) Discover(ctx context.Context, query catalog.DiscoveryQuery, limit int) ([]catalog.Candidate, error) {
 	c.mu.Lock()
 	c.discoveries = append(c.discoveries, DiscoveryRequest{Query: query, Limit: limit})
 	c.mu.Unlock()
+	if c.DiscoverFunc != nil {
+		return c.DiscoverFunc(ctx, query, limit)
+	}
 	return append([]catalog.Candidate(nil), c.Candidates...), nil
 }
+
+// ErrDiscover is a shared deterministic discovery-source failure for catalog
+// tests that need to preserve errors.Is identity.
+var ErrDiscover = errors.New("catalog fixture discovery failure")
 
 func (c *Corpus) Searches() []SearchRequest {
 	c.mu.Lock()

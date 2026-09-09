@@ -1,7 +1,7 @@
 import type { ChannelPolicy } from "@loomarr/api";
 import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { ChannelPolicyFields } from "./channel-policy-fields";
@@ -9,6 +9,25 @@ import { ChannelPolicyFields } from "./channel-policy-fields";
 // Each field's help is a FieldHelp tooltip now, which needs a TooltipProvider ancestor (the
 // app mounts one at the root). Wrap every render so the fields mount without a Radix error.
 const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+
+const PolicyHarness = ({
+  initial,
+  onChange,
+}: {
+  initial: ChannelPolicy;
+  onChange: (policy: ChannelPolicy) => void;
+}) => {
+  const [policy, setPolicy] = useState(initial);
+  return (
+    <ChannelPolicyFields
+      policy={policy}
+      onChange={(next) => {
+        onChange(next);
+        setPolicy(next);
+      }}
+    />
+  );
+};
 
 const EMPTY: ChannelPolicy = {};
 
@@ -23,6 +42,186 @@ const POPULATED: ChannelPolicy = {
 };
 
 describe("ChannelPolicyFields", () => {
+  it("adds a movie-release range without changing the independent episode-airing requirement", async () => {
+    const onChange = vi.fn();
+    render(
+      <PolicyHarness
+        initial={{
+          scope: {
+            dates: {
+              movieRelease: [{ from: 1990, to: 1999 }],
+              seriesAiring: [{ from: 2010, to: 2014 }],
+            },
+          },
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    await userEvent.type(screen.getByLabelText("Movie release new range from"), "2005");
+    await userEvent.type(screen.getByLabelText("Movie release new range to"), "2009");
+    await userEvent.click(screen.getByRole("button", { name: "Add Movie release range" }));
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      scope: {
+        dates: {
+          movieRelease: [
+            { from: 1990, to: 1999 },
+            { from: 2005, to: 2009 },
+          ],
+          seriesAiring: [{ from: 2010, to: 2014 }],
+        },
+      },
+    });
+  });
+
+  it("rejects an inverted date edit without clearing the existing range", async () => {
+    const onChange = vi.fn();
+    render(
+      <PolicyHarness
+        initial={{ scope: { dates: { movieRelease: [{ from: 1990, to: 1999 }] } } }}
+        onChange={onChange}
+      />,
+    );
+
+    const from = screen.getAllByLabelText("From year")[1]!;
+    await userEvent.clear(from);
+    await userEvent.type(from, "2005");
+    await userEvent.tab();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("From no later than To");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getAllByLabelText("From year")[1]).toHaveValue(2005);
+    expect(screen.getAllByLabelText("To year")[1]).toHaveValue(1999);
+  });
+
+  it("commits a recovered date pair without widening the range after an invalid From edit", async () => {
+    const onChange = vi.fn();
+    render(
+      <PolicyHarness
+        initial={{
+          scope: {
+            dates: {
+              movieRelease: [
+                { from: 1990, to: 1999 },
+                { from: 2011, to: 2014 },
+              ],
+              seriesAiring: [{ from: 1980, to: 1984 }],
+            },
+          },
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    const from = screen.getAllByLabelText("From year")[1]!;
+    const to = screen.getAllByLabelText("To year")[1]!;
+    await userEvent.clear(from);
+    await userEvent.type(from, "2005");
+    await userEvent.tab();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("From no later than To");
+    expect(onChange).not.toHaveBeenCalled();
+
+    await userEvent.clear(to);
+    await userEvent.type(to, "2009");
+    await userEvent.tab();
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      scope: {
+        dates: {
+          movieRelease: [
+            { from: 2005, to: 2009 },
+            { from: 2011, to: 2014 },
+          ],
+          seriesAiring: [{ from: 1980, to: 1984 }],
+        },
+      },
+    });
+    expect(screen.getAllByLabelText("From year")[1]).toHaveValue(2005);
+    expect(screen.getAllByLabelText("To year")[1]).toHaveValue(2009);
+  });
+
+  it("commits a recovered date pair after an invalid To edit", async () => {
+    const onChange = vi.fn();
+    render(
+      <PolicyHarness
+        initial={{ scope: { dates: { movieRelease: [{ from: 1990, to: 1999 }] } } }}
+        onChange={onChange}
+      />,
+    );
+
+    const from = screen.getAllByLabelText("From year")[1]!;
+    const to = screen.getAllByLabelText("To year")[1]!;
+    await userEvent.clear(to);
+    await userEvent.type(to, "1985");
+    await userEvent.tab();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("From no later than To");
+    expect(onChange).not.toHaveBeenCalled();
+
+    await userEvent.clear(from);
+    await userEvent.type(from, "1980");
+    await userEvent.tab();
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      scope: { dates: { movieRelease: [{ from: 1980, to: 1985 }] } },
+    });
+  });
+
+  it("removes the dates object only after its last axis is removed", async () => {
+    const onChange = vi.fn();
+    render(
+      <PolicyHarness
+        initial={{
+          scope: {
+            dates: {
+              movieRelease: [{ from: 1990, to: 1999 }],
+              seriesAiring: [{ from: 2010, to: 2014 }],
+            },
+          },
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    expect(onChange).toHaveBeenLastCalledWith({
+      scope: { dates: { movieRelease: undefined, seriesAiring: [{ from: 2010, to: 2014 }] } },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(onChange).toHaveBeenLastCalledWith({ scope: {} });
+  });
+
+  it("clears the alternative date representation when switching between era and dates", async () => {
+    const onChange = vi.fn();
+    render(
+      <PolicyHarness
+        initial={{
+          scope: {
+            era: { from: 1980, to: 1989 },
+            dates: { movieRelease: [{ from: 1990, to: 1999 }] },
+          },
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    const scalarFrom = screen.getAllByLabelText("From year")[0]!;
+    await userEvent.clear(scalarFrom);
+    await userEvent.type(scalarFrom, "1970");
+    await userEvent.tab();
+    expect(onChange).toHaveBeenLastCalledWith({ scope: { era: { from: 1970, to: 1989 } } });
+
+    await userEvent.type(screen.getByLabelText("Movie release new range from"), "2005");
+    await userEvent.type(screen.getByLabelText("Movie release new range to"), "2009");
+    await userEvent.click(screen.getByRole("button", { name: "Add Movie release range" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      scope: { dates: { movieRelease: [{ from: 2005, to: 2009 }] } },
+    });
+  });
+
   it("renders source-explicit fallback and no-limit sentinels for an empty policy", () => {
     render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
     expect(screen.getByRole("combobox", { name: "Play order" })).toHaveTextContent("Use channel strategy");

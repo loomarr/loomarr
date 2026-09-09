@@ -254,16 +254,27 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// ceiling). The model proposes the adult toon too — the ENFORCER must be what
 	// drops it, not the model's discretion.
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "cartoon"}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"query": "cartoon",
+			"dateMeaning": map[string]any{
+				"kind":    "constraints",
+				"anchors": []any{map[string]any{"field": "description", "start": 0, "end": 3}},
+				"axes": []any{map[string]any{
+					"kind": "movie_release", "combine": "any",
+					"intervals": []any{map[string]any{"anchor": 0, "start": 1990, "end": 1999}},
+				}},
+			},
+		}),
 		testkit.FinalResponse(`{
 			"rationale":"90s Saturday morning cartoons",
+			"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":3}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]},
 			"picks":[
 				{"mediaType":"movie","tmdbId":5001,"name":"Sunny Toon Hour"},
 				{"mediaType":"movie","tmdbId":5002,"name":"Robo Rangers"},
 				{"mediaType":"movie","tmdbId":5003,"name":"Critter Club"},
 				{"mediaType":"movie","tmdbId":5004,"name":"Midnight Mayhem Toons"}
 			],
-			"policy":{"audience":{"ceiling":"TV-Y7"},"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]},"ordering":"syndication"}
+			"policy":{"audience":{"ceiling":"TV-Y7"},"genres":{"include":["Animation"]},"ordering":"syndication"}
 		}`),
 	)
 

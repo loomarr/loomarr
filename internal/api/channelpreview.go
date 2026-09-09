@@ -445,7 +445,7 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 
 	// ⚠ ONE resolved selection feeds both the pod and the meter (V51f). Resolving it twice would
 	// reintroduce, inside a single handler, exactly the drift this pairing exists to remove.
-	sel := fillerSelectionToDomain(in.Body.Filler, ch.Policy.Scope.Era)
+	sel := fillerSelectionToDomain(in.Body.Filler, ch.Policy.Scope)
 	if in.Body.BreakDuration != nil {
 		sel.BreakDurationMs = in.Body.BreakDuration.Std().Milliseconds()
 	}
@@ -473,6 +473,6 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 // adapter downstream re-applied it, so two copies cancelled out. That accident stops working the
 // moment "explicitly any era" is reachable: a fallback keyed on `Era == 0` cannot tell an unset
 // era from a chosen one. `scopeEra` comes from the channel the handler already loads.
-func fillerSelectionToDomain(f schedule.FillerSelection, scopeEra *schedule.Range) filler.Selection {
-	return channels.SelectionFrom(&f, scopeEra)
+func fillerSelectionToDomain(f schedule.FillerSelection, scope schedule.ScopePolicy) filler.Selection {
+	return channels.SelectionFrom(&f, scope)
 }

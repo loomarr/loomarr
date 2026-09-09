@@ -275,8 +275,8 @@ func TestSubmit_FailedJobDoesNotCache(t *testing.T) {
 func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	st := newStore(t)
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 
@@ -318,8 +318,8 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	// The first empty, no-tool answer receives the bounded grounding retry; a second
 	// explicit empty answer proves the retry exhausted and preserves the typed failure.
 	svc := buildService(t, st, testkit.NewLLM(
-		testkit.FinalResponse(`{"picks":[]}`),
-		testkit.FinalResponse(`{"picks":[]}`),
+		finalResponseWithNone(`{"picks":[]}`),
+		finalResponseWithNone(`{"picks":[]}`),
 	)).
 		WithDurableWorkflow(workflow)
 	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Simpsons episodes"}, "alice")
@@ -370,8 +370,8 @@ func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 		{
 			name: "accepted grounded proposal",
 			model: testkit.NewLLM(
-				testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-				testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+				catalogSearchResponse(map[string]any{"query": "matrix"}),
+				finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 			),
 			wantJob: "done", wantCands: true,
 			want: map[quality.Stage]quality.Outcome{
@@ -383,9 +383,9 @@ func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 		{
 			name: "empty retrieval abstains and rejects grounding",
 			model: testkit.NewLLM(
-				testkit.ToolCallResponse("catalog_search", map[string]any{"query": "definitely absent"}),
-				testkit.FinalResponse(`{"picks":[]}`),
-				testkit.FinalResponse(`{"picks":[]}`),
+				catalogSearchResponse(map[string]any{"query": "definitely absent"}),
+				finalResponseWithNone(`{"picks":[]}`),
+				finalResponseWithNone(`{"picks":[]}`),
 			),
 			wantJob: "failed",
 			want: map[quality.Stage]quality.Outcome{
@@ -452,8 +452,8 @@ func TestWorker_QualityRecordingFailureDoesNotFailCommittedProposal(t *testing.T
 	recorder := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
 	terminal := newDoneEmitter()
 	svc := buildService(t, st, testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)).WithDurableWorkflow(workflow).WithProgressEmitter(terminal).WithQualityRecorder(recorder)
 	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "matrix"}, "alice")
 	if err != nil {
@@ -534,8 +534,8 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 		"channel-a": {{Target: "movie:tmdb:603", Action: suggest.FeedbackSurprise}},
 	}}
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
 	workflow := proposalworkflow.New(st, idGen(), time.Now)
 	ms := testkit.NewMediaServer(t)
@@ -647,7 +647,7 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			llmMock := testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`))
+			llmMock := testkit.NewLLM(finalResponseWithNone(`{"picks":[]}`))
 			feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
 				"":                  {{Target: "movie:tmdb:603", Action: suggest.FeedbackNever}},
 				"channel-unrelated": {{Target: "movie:tmdb:603", Action: suggest.FeedbackSurprise}},
@@ -729,8 +729,8 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 				"channel-a": {{Target: "movie:tmdb:603", Action: suggest.FeedbackSurprise}},
 			}}
 			llmMock := testkit.NewLLM(
-				testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-				testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+				catalogSearchResponse(map[string]any{"query": "matrix"}),
+				finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 			)
 			ms := testkit.NewMediaServer(t)
 			mt := testkit.NewTMDB(t)
@@ -782,8 +782,8 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	// The first turn surfaces grounded candidates; the second hangs. This proves
 	// timeout normalization preserves safe facts gathered before generation ended.
 	slow := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-		testkit.FinalResponse(`{"channelName":"Late","picks":[]}`),
+		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		finalResponseWithNone(`{"channelName":"Late","picks":[]}`),
 	)
 	slow.OnChat = func() {
 		if slow.Calls == 1 {
@@ -922,8 +922,8 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 	st := newLifecycleErrorStore(base)
 	st.successErr = store.ErrJobNotRunning
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	terminal := newDoneEmitter()
@@ -1137,8 +1137,8 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 	}
 
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
@@ -1220,8 +1220,8 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 		t.Fatal(err)
 	}
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
@@ -1267,8 +1267,8 @@ func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 		t.Fatal(err)
 	}
 	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{PlanError: fmt.Errorf("cannot build local channel")}

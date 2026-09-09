@@ -77,6 +77,11 @@ func filterEntriesWithTrace(entries []LineupEntry, rp ResolvedPolicy, trace *sch
 	seriesAllow := seriesAllowSet(rp.Scope.Series)
 
 	for _, e := range entries {
+		if e.Year > 0 && ((e.Key.IsSeries() && !rp.Scope.seriesPremiereDateOK(e.Year)) || (!e.Key.IsSeries() && !rp.Scope.movieDateOK(e.Year))) {
+			report.add(e, "out_of_scope")
+			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfScope))
+			continue
+		}
 		// Explicit series allowlist (never relaxed): if set, keep only listed series
 		// (and any non-series entry the channel also carries).
 		if seriesAllow != nil && e.Key.IsSeries() {

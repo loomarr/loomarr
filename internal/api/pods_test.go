@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -302,6 +303,22 @@ func TestPreviewDraftPods_MeterAndPodDescribeTheSameSelection(t *testing.T) {
 	}
 }
 
+func TestPreviewDraftPods_PreservesDisjointEraWindows(t *testing.T) {
+	srv, _, fp := newPodsServer(t)
+	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken,
+		`{"filler":{"eraWindows":[{"from":1970,"to":1979},{"from":1990,"to":1999}]}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("draft preview → %d, want 200", resp.StatusCode)
+	}
+	if len(fp.draftAsked) != 1 || len(fp.draftCoverageAsked) != 1 {
+		t.Fatalf("pod/coverage calls = %d/%d, want 1/1", len(fp.draftAsked), len(fp.draftCoverageAsked))
+	}
+	want := []filler.EraRange{{From: 1970, To: 1979}, {From: 1990, To: 1999}}
+	if !reflect.DeepEqual(fp.draftAsked[0].EraWindows, want) || !reflect.DeepEqual(fp.draftCoverageAsked[0].EraWindows, want) {
+		t.Errorf("draft era windows = pod:%+v coverage:%+v, want %+v", fp.draftAsked[0].EraWindows, fp.draftCoverageAsked[0].EraWindows, want)
+	}
+}
+
 // The draft preview is an authoring tool (it precedes an Apply that writes policy), so it
 // is admin-only — a member gets 403, not a sandbox.
 func TestPreviewDraftPods_RequiresAdmin(t *testing.T) {
@@ -318,14 +335,19 @@ func TestPreviewDraftPods_RequiresAdmin(t *testing.T) {
 // A nonsense selection is rejected (422) with the same validation a policy write uses —
 // the sandbox must not assemble an invalid draft.
 func TestPreviewDraftPods_InvalidSelection422(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
-	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken,
-		`{"filler":{"audience":"nonsense"}}`)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("invalid draft → %d, want 422", resp.StatusCode)
-	}
-	if len(fp.draftAsked) != 0 {
-		t.Error("an invalid draft was assembled instead of rejected")
+	for _, body := range []string{
+		`{"filler":{"audience":"nonsense"}}`,
+		`{"filler":{"eraWindows":[]}}`,
+		`{"filler":{"era":{"from":0,"to":0},"eraWindows":[{"from":1990,"to":1999}]}}`,
+	} {
+		srv, _, fp := newPodsServer(t)
+		resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken, body)
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("invalid draft %s → %d, want 422", body, resp.StatusCode)
+		}
+		if len(fp.draftAsked) != 0 {
+			t.Errorf("invalid draft %s was assembled", body)
+		}
 	}
 }
 

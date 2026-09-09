@@ -53,6 +53,57 @@ type referenceGrounding struct {
 	messages   []llm.Message
 }
 
+// sourceGroundingState owns source work for one Suggest invocation. URL
+// detection is deliberately local; provider work waits for a canonical date
+// interpretation so malformed or ambiguous first turns cannot touch a source.
+type sourceGroundingState struct {
+	hasReference bool
+	initialized  bool
+	result       sourceGroundingResult
+}
+
+type sourceGroundingResult struct {
+	reference referenceGrounding
+	curated   []catalog.Candidate
+	explicit  []catalog.Candidate
+}
+
+func newSourceGroundingState(intent Intent) sourceGroundingState {
+	_, hasReference := reference.URL(referenceIntentText(intent))
+	return sourceGroundingState{hasReference: hasReference}
+}
+
+func (s *Suggester) initializeSources(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning, state *sourceGroundingState) (sourceGroundingResult, error) {
+	if state.initialized {
+		return state.result, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return sourceGroundingResult{}, err
+	}
+	var result sourceGroundingResult
+	if state.hasReference {
+		referenceResult, _, err := s.groundReference(ctx, intent, meaning)
+		if err != nil {
+			return sourceGroundingResult{}, err
+		}
+		if len(referenceResult.candidates) == 0 {
+			return sourceGroundingResult{}, ErrNoGroundedTitles
+		}
+		result.reference = referenceResult
+	}
+	curated, err := s.groundCuratedTitleSubject(ctx, intent)
+	if err != nil {
+		return sourceGroundingResult{}, err
+	}
+	explicit, err := s.groundExplicitMembershipAnchors(ctx, intent)
+	if err != nil {
+		return sourceGroundingResult{}, err
+	}
+	result.curated, result.explicit = curated, explicit
+	state.result, state.initialized = result, true
+	return result, nil
+}
+
 // referenceReadError marks a failed fetch of the supplied public page. Catalog
 // failures after a successful fetch deliberately do not use it.
 type referenceReadError struct{ err error }
@@ -88,11 +139,12 @@ func (s *Suggester) groundExplicitMembershipAnchors(ctx context.Context, intent 
 	return anchored, nil
 }
 
-// groundReference resolves a pasted public page before inference and
+// groundReference resolves a pasted public page only after inference has
+// supplied a valid date interpretation, then
 // exact-searches a bounded set of its title anchors. The synthesized assistant
 // tool-call/result pair is an honest record of catalog work Loomarr already did;
 // it lets the unchanged planner contract finalize from grounded ids in one turn.
-func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (referenceGrounding, bool, error) {
+func (s *Suggester) groundReference(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning) (referenceGrounding, bool, error) {
 	rawURL, found := reference.URL(referenceIntentText(*intent))
 	if !found {
 		return referenceGrounding{}, false, nil
@@ -135,7 +187,7 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent) (refere
 		result, _ := json.Marshal(toolResult(exact))
 		messages = append(messages,
 			llm.Message{Role: llm.Assistant, ToolCalls: []llm.ToolCall{{
-				ID: callID, Name: catalogToolName, Arguments: map[string]any{"query": title},
+				ID: callID, Name: catalogToolName, Arguments: map[string]any{"query": title, "dateMeaning": meaning.DateMeaning()},
 			}}},
 			llm.Message{Role: llm.Tool, ToolCallID: callID, Content: string(result)},
 		)

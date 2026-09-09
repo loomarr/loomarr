@@ -1846,8 +1846,118 @@ requirements on the same semantic axis. A union and separate premiere/airing axe
 contradiction. A model interpretation is a hypothesis: invalid or unanchored model claims consume
 bounded repair capacity and cannot blame the user's request. A clarification reason requires actual
 ambiguous request evidence. Both tool execution and final Proposal construction enforce any required
-validated interpretation; omission cannot bypass it. The concrete interpretation schema and its
-immutable certification fixtures must be documented before implementing that producer.
+validated interpretation; omission cannot bypass it. The following date-interpretation contract owns the producer and its execution.
+
+**Date meaning and execution (#1034).** Every `catalog_search` mode and final model response
+carries `dateMeaning`: `kind` is `none`, `constraints`, or `ambiguous`; `anchors` identify submitted
+Intent text; `axes` contain dated requirements. An anchor contains `field`, optional `index`, and
+zero-based half-open rune offsets `start`/`end`. Fields are `description`, `era`, `refineText`,
+`mustInclude`, and `mustExclude`; an array field requires its actual element index, while scalar
+fields forbid it. Spans must select nonempty text in the submitted field. They establish origin,
+not semantic truth. `none` has no anchors or axes; `ambiguous` has anchors and no axes;
+`constraints` has one to three unique axes: `movie_release`, `series_premiere`, `series_airing`.
+Each axis has `combine: any|all` and one to four inclusive 1900–2099 intervals referencing valid
+anchors. Canonicalization deduplicates anchors, remaps their references, intersects `all`, and
+coalesces overlapping or adjacent `any` windows. Empty same-axis intersections alone produce
+`constraints_conflict`. Different axes remain independent. Ordinary “90s and 2000s movies” is a
+union; words such as “and” or “both” alone do not establish an intersection. A title date is not a
+filter merely because an anchor can select it. The existing validated interpretation and immutable
+semantic cases, rather than a new keyword heuristic, govern that distinction.
+
+One submitted Intent owns the interpretation state across tool execution and final repair.
+Accepted tool meanings and the final meaning must canonicalize identically, including their source
+anchors; final-only and reference-derived proposals validate the same object independently.
+Missing, malformed, unanchored, or inconsistent output consumes existing bounded repair capacity
+and ends as provider/tool/schema failure when exhausted. Only validated anchored ambiguity requests
+`clarify_dates`. Persisted scope is derived from the accepted meaning; a contradictory or otherwise
+unanchored model `policy.era` cannot bypass it. New v6 model proposals use `scope.dates` for date
+constraints and leave `scope.era` unset; existing stored Era policies and direct operator edits keep
+their established contract. `kind: none` cannot acquire a hidden date filter from another model field.
+
+Catalog and reference source initialization occurs once per Suggest invocation, after a valid,
+non-ambiguous canonical interpretation. Local feedback reads and local reference-URL detection may
+precede inference. A tool attempt validates its complete arguments and reserves its required work
+credits before accepting an interpretation or initializing sources. A final response validates its
+complete schema and interpretation before source initialization or name grounding. Initial date
+ambiguity, true conflict, and exhausted malformed output therefore dispatch no sources, including
+for reference, curated-title, and explicit-membership requests. Existing source-grounded membership
+authority remains unchanged; model-proposed titles never establish membership by themselves.
+
+A reference request initially exposes no tools. After its first valid final response, resolve the
+submitted reference and its bounded catalog title anchors, discard the bootstrap picks, and provide
+the actual reference evidence for finalization. This continuation consumes the remaining model turns
+of the same six-turn generation; it grants no extra repair, generation, or work credits. Synthesized
+catalog history includes the accepted canonical `dateMeaning`. Source initialization is cached across
+repairs and grounding retries, so neither continuation nor repair repeats reference or membership
+lookups. Existing cancellation, reference-read, catalog-failure, and empty-reference outcomes remain
+distinct, and all existing per-source fanout and invocation limits still apply.
+
+A date union is one semantic retrieval, completed before `finalizationOnly` can be set. Each
+normalized scalar provider query returns through the existing bounded discovery machinery;
+`series_airing` never becomes a series first-air filter. Collect every intended window, deduplicate
+identities, apply the existing owned/discovery ordering, and truncate the aggregate once to the
+existing 24-candidate limit. One empty window is ordinary; only an empty complete aggregate affects
+the existing two-empty-retrieval limit. A failed or budget-incomplete window cannot become a
+successful partial aggregate. Source failures remain retrieval failures, while exhausted capacity
+reports the existing budget failure without blaming the date request.
+
+Additional windows spend existing retrieval capacity. A generation has six work credits, and one
+Suggest invocation has the unchanged `ProductionBounds().MaxToolCalls` total (currently 24).
+Every model tool attempt costs its existing one credit; a discovery expanded into N scalar catalog
+queries costs N credits in total, reserving the additional N−1 before any window dispatch. A ledger
+owned by the Suggest invocation survives grounding and JSON repairs; a new generation refreshes
+only its six-credit allowance, never the whole-invocation allowance. Existing collection/title
+search fanout remains within its existing per-tool bounds. Each date window is bounded like one
+old discovery call, including keyword/entity resolution, provider pages, and presence backfill;
+therefore expansion cannot multiply the existing number of such work units. Do not introduce a
+four-times-larger HTTP allowance or treat an assumed provider page size as a code-enforced bound.
+Record window completion and actual source dispatches; tests assert both shared-credit exhaustion
+and unchanged per-window fanout. Model-call, surfaced-result, source-membership, and outer timeout
+limits remain unchanged.
+
+`scope.dates` contains normalized `movieRelease`, `seriesPremiere`, and `seriesAiring` range lists:
+union within a list, conjunction across applicable axes. Empty lists impose no requirement; an
+entirely empty Dates object is invalid. Title filtering checks a movie's release year or a series'
+first-air year on its LineupEntry; episode expansion checks that episode's own year for the airing
+axis. A series premiered in 1989 may supply 1990s episodes without being rejected as a 1980s title.
+Known gap years are excluded. Unknown programme years retain the existing taste-filter behavior.
+Neither `eraAdmittingPicks` nor automatic era widening may broaden these explicit date windows.
+Existing keep/never, approval, season windows, and nonempty operator `scope` pins continue to apply.
+Dates ride `policy_json`; they require no rewriting of existing rows.
+
+Filler preserves the same era preference through its own selection boundary. Add an optional,
+nonempty `filler.eraWindows` list of at most eight normalized ranges, mutually exclusive with the
+existing scalar `filler.era`. A present scalar remains authoritative, including `{0,0}` for “any”.
+An explicit list is authoritative too. When neither is present, inherit the canonical union of
+movie-release windows and series-airing windows, using series-premiere windows only when there is
+no airing axis. An Era-only scope retains current inheritance. Generated-channel creation seeds a
+copy of the derived list, just as it currently seeds a scalar era; later refinement must not
+replace a present operator-owned filler selection. Do not take the hull of disjoint windows.
+One resolver supplies real reconciliation, coverage, preview, and draft preview. Its resolved
+window representation reaches the pod ladder intact: the exact rung matches any selected range;
+wider rungs widen each range under the existing ladder, then normalize the union. Unknown filler
+years do not satisfy a selected era, unlike unknown programme years; existing explicitly “any” and
+later ladder behavior remain unchanged. Pins, exclusions, safety, quarantine, and sole publication
+authority are untouched. APIs, generated clients, and editors must show the range lists and clear
+the alternative era representation when an operator replaces it.
+
+The prompt/tool contract becomes v6 and the active immutable certification corpus becomes v8;
+historical v5/v7 artifacts remain unchanged. The v8 scorer is versioned as `planner-scorer-v3`.
+For cases with explicit date expectations, `policy_accuracy` requires the expected normalized
+movie-release, series-premiere, and series-airing lists and an absent model-created scalar Era;
+an explicit no-date expectation requires absent Dates and Era. The result records actual date
+scope so the score is auditable. An unsuccessful proposal cannot satisfy a date expectation.
+Expected date conflicts or ambiguity are instead scored as the required typed abstention under
+`proposal_quality`; they must not be registered as successful no-date policy expectations.
+For these expected pre-dispatch refusals, tool-operation quality requires no observed catalog
+operation, and proposal quality also requires a failure trace with zero source queries dispatched.
+Cases without date expectations retain their existing ceiling-only scoring, and all quality
+thresholds and historical artifact bytes remain unchanged. Required evidence includes adjacent and disjoint
+unions, true same-axis conflict with no source dispatch, different premiere/airing axes, title dates,
+indexed anchors and invalid-output repair, final-only bypass prevention, aggregate failure and
+credit exhaustion across repairs, actual scheduled gap-year exclusion, unknown-year behavior,
+explicit filler overrides, and preview/runtime/seed parity. Code and fixture acceptance do not
+claim live provider qualification.
 
 The Proposal Job id is the correlation spine, not a mega-state-machine key that steals domain
 ownership. A Proposal remains the grounded artifact and approval audit. Approval remains the only

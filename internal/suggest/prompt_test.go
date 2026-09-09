@@ -47,3 +47,16 @@ func TestSystemPromptSeparatesEmptyResultRecoveryFromFinalization(t *testing.T) 
 		}
 	}
 }
+
+func TestPromptRequiresCanonicalDateMeaningWithoutPolicyEra(t *testing.T) {
+	for _, prompt := range []string{systemPrompt, repairPrompt} {
+		for _, want := range []string{"dateMeaning", "anchors", "axes"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("prompt is missing required date contract field %q", want)
+			}
+		}
+	}
+	if strings.Contains(systemPrompt, `"era":{"from":<int>,"to":<int>}`) || strings.Contains(systemPrompt, "era.from/era.to") {
+		t.Fatal("systemPrompt must not ask the model to emit retired policy-era dates")
+	}
+}

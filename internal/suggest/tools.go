@@ -17,42 +17,107 @@ import (
 // inventing a tool). Returns the JSON result string AND the candidates (so the
 // suggester can track what was surfaced for grounding).
 func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
+	ledger := newWorkLedger()
+	ledger.beginGeneration()
+	if !ledger.reserve(1) {
+		return `{"error":"suggestion budget exhausted"}`, nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: FailureBudgetExhausted}, false
+	}
+	result, candidates, trace, valid, _ := s.runToolWithDateMeaning(ctx, tc, intent, feedback, nil, ledger)
+	return result, candidates, trace, valid
+}
+
+// runToolWithDateMeaning is the one tool boundary that decodes model JSON and
+// returns its canonical interpretation to the invocation state. Keeping the
+// accepted value out of the untrusted map prevents a later final response from
+// silently changing what the earlier retrieval meant.
+type preparedToolCall struct {
+	arguments     map[string]any
+	meaning       ValidatedDateMeaning
+	collection    bool
+	discovery     catalog.DiscoveryQuery
+	discoveryMode bool
+	queries       []catalog.DiscoveryQuery
+}
+
+// prepareToolCall performs every untrusted-input check and computes the exact
+// extra window reservation without calling a source.
+func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMeaning) (preparedToolCall, string, DecisionTrace, bool) {
 	if tc.Name != catalogToolName {
-		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil, DecisionTrace{}, false
+		return preparedToolCall{}, fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), DecisionTrace{}, false
 	}
 	arguments := tc.Arguments
+	meaning, dateErr := validatedToolDateMeaning(intent, arguments)
+	if dateErr != nil {
+		if accepted == nil && isDateMeaningConflict(dateErr) {
+			return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, dateErr.Error()), DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalConstraintsConflict}, true
+		}
+		return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, dateErr.Error()), DecisionTrace{}, false
+	}
+	if accepted != nil && !accepted.Equal(meaning) {
+		return preparedToolCall{}, `{"error":"dateMeaning does not match accepted tool interpretation"}`, DecisionTrace{}, false
+	}
+	if _, present := arguments["era"]; present {
+		return preparedToolCall{}, `{"error":"era is retired"}`, DecisionTrace{}, false
+	}
+	if meaning.DateMeaning().Kind == DateMeaningAmbiguous {
+		return preparedToolCall{meaning: meaning}, `{"error":"clarify_dates"}`, DecisionTrace{}, true
+	}
 	if rawMode, present := arguments["mode"]; present {
 		mode, ok := rawMode.(string)
 		if !ok || strings.TrimSpace(mode) != "collection" {
-			return `{"error":"mode must be collection when provided"}`, nil, DecisionTrace{}, false
+			return preparedToolCall{}, `{"error":"mode must be collection when provided"}`, DecisionTrace{}, false
 		}
-		return s.runCollectionTool(ctx, arguments, intent, feedback)
+		for key := range arguments {
+			if key != "mode" && key != "media_type" && key != "titles" && key != "dateMeaning" {
+				return preparedToolCall{}, `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, DecisionTrace{}, false
+			}
+		}
+		// Validate collection arguments now; execution can then be delayed until
+		// after source initialization.
+		if _, err := collectionTitleAnchors(arguments["titles"]); err != nil {
+			return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, err.Error()), DecisionTrace{}, false
+		}
+		if !provision.MediaType(stringArg(arguments["media_type"])).Valid() {
+			return preparedToolCall{}, `{"error":"collection mode requires media_type movie or series"}`, DecisionTrace{}, false
+		}
+		return preparedToolCall{arguments: arguments, meaning: meaning, collection: true}, "", DecisionTrace{}, true
 	}
-	discovery, discoveryMode, parseErr := parseDiscoveryQuery(arguments)
+	discovery, discoveryMode, parseErr := parseDiscoveryQueryWithDateMeaning(arguments, meaning)
 	if parseErr != nil {
 		if projected, ok := projectCatalogArguments(tc.Arguments); ok {
 			arguments = projected
-			discovery, discoveryMode, parseErr = parseDiscoveryQuery(arguments)
+			discovery, discoveryMode, parseErr = parseDiscoveryQueryWithDateMeaning(arguments, meaning)
 		}
 	}
 	if parseErr != nil {
-		return fmt.Sprintf(`{"error":%q}`, parseErr.Error()), nil, DecisionTrace{}, false
+		return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, parseErr.Error()), DecisionTrace{}, false
 	}
+	prepared := preparedToolCall{arguments: arguments, meaning: meaning, discovery: discovery, discoveryMode: discoveryMode}
+	if discoveryMode {
+		prepared.queries = projectDiscoveryWindows(discovery, meaning)
+	}
+	return prepared, "", DecisionTrace{}, true
+}
+
+func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
+	if prepared.collection {
+		return s.runCollectionTool(ctx, prepared.arguments, intent, feedback)
+	}
+	arguments, discoveryMode := prepared.arguments, prepared.discoveryMode
 	mtArg, _ := arguments["media_type"].(string)
 
 	var cands []catalog.Candidate
 	var err error
+	var union catalog.DiscoveryUnion
 	if discoveryMode {
-		// Structured discovery covers genres, thematic keywords, era, and the
-		// validated scalar qualifiers. Grounding is unchanged: every returned row
-		// is keyed into `surfaced` exactly like a title-search result.
-		cands, err = s.catalog.Discover(ctx, discovery, catalogSearchLimit)
+		union, err = s.catalog.DiscoverUnion(ctx, prepared.queries)
+		cands = union.Candidates
 	} else {
 		// KEYWORD: search both corpora by title.
 		cands, err = s.catalog.Search(ctx, stringArg(arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
 	}
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
 	}
 	if !discoveryMode {
 		query := stringArg(arguments["query"])
@@ -64,16 +129,89 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 	}
 	for _, candidate := range cands {
 		if resolveErr := s.resolveMembershipSource(ctx, intent, candidate.Name); resolveErr != nil {
-			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
+			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
 		}
 	}
 	if mtArg != "" {
 		cands = filterByMediaType(cands, mtArg) // narrow to the requested type
 	}
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), cands, feedback)
+	ranked.Trace.WindowsCompleted = union.WindowsCompleted
+	ranked.Trace.SourceQueriesDispatched = union.SourceQueriesDispatched
 	cands = ranked.Candidates
 	blob, _ := json.Marshal(toolResult(cands))
 	return string(blob), cands, ranked.Trace, true
+}
+
+func (s *Suggester) runToolWithDateMeaning(ctx context.Context, tc llm.ToolCall, intent Intent, feedback []FeedbackSignal, accepted *ValidatedDateMeaning, ledger *workLedger) (string, []catalog.Candidate, DecisionTrace, bool, *ValidatedDateMeaning) {
+	prepared, result, trace, valid := prepareToolCall(tc, intent, accepted)
+	if result != "" || !valid || prepared.meaning.DateMeaning().Kind == DateMeaningAmbiguous {
+		return result, nil, trace, valid, func() *ValidatedDateMeaning {
+			if valid {
+				return &prepared.meaning
+			}
+			return nil
+		}()
+	}
+	extra := 0
+	if prepared.discoveryMode {
+		extra = len(prepared.queries) - 1
+	}
+	if !ledger.reserve(extra) {
+		return `{"error":"suggestion budget exhausted"}`, nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: FailureBudgetExhausted}, true, &prepared.meaning
+	}
+	result, candidates, trace, valid := s.executePreparedTool(ctx, prepared, intent, feedback)
+	return result, candidates, trace, valid, &prepared.meaning
+}
+
+// projectDiscoveryWindows lowers only the accepted execution meaning. Model
+// arguments never choose provider years: movie release and series premiere are
+// independent title axes, while series airing constrains episode selection only.
+func projectDiscoveryWindows(base catalog.DiscoveryQuery, meaning ValidatedDateMeaning) []catalog.DiscoveryQuery {
+	var movie, series []DateYearRange
+	for _, axis := range meaning.ExecutionWindows() {
+		switch axis.Kind {
+		case DateAxisMovieRelease:
+			movie = axis.Windows
+		case DateAxisSeriesPremiere:
+			series = axis.Windows
+		}
+	}
+	windowed := func(media provision.MediaType, windows []DateYearRange) []catalog.DiscoveryQuery {
+		out := make([]catalog.DiscoveryQuery, 0, len(windows))
+		for _, window := range windows {
+			query := base
+			query.MediaType, query.YearFrom, query.YearTo = media, window.Start, window.End
+			out = append(out, query)
+		}
+		return out
+	}
+	switch base.MediaType {
+	case provision.Movie:
+		if len(movie) > 0 {
+			return windowed(provision.Movie, movie)
+		}
+	case provision.Series:
+		if len(series) > 0 {
+			return windowed(provision.Series, series)
+		}
+	default:
+		var out []catalog.DiscoveryQuery
+		if len(movie) > 0 {
+			out = append(out, windowed(provision.Movie, movie)...)
+		} else if len(series) > 0 {
+			out = append(out, catalog.DiscoveryQuery{MediaType: provision.Movie, Keywords: base.Keywords, Genres: base.Genres, OriginalLanguage: base.OriginalLanguage, OriginCountry: base.OriginCountry, RuntimeMin: base.RuntimeMin, RuntimeMax: base.RuntimeMax, VoteAverageMin: base.VoteAverageMin, VoteCountMin: base.VoteCountMin, Cast: base.Cast, Creators: base.Creators})
+		}
+		if len(series) > 0 {
+			out = append(out, windowed(provision.Series, series)...)
+		} else if len(movie) > 0 {
+			out = append(out, catalog.DiscoveryQuery{MediaType: provision.Series, Keywords: base.Keywords, Genres: base.Genres, OriginalLanguage: base.OriginalLanguage, OriginCountry: base.OriginCountry, RuntimeMin: base.RuntimeMin, RuntimeMax: base.RuntimeMax, VoteAverageMin: base.VoteAverageMin, VoteCountMin: base.VoteCountMin, Network: base.Network})
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return []catalog.DiscoveryQuery{base}
 }
 
 // runCollectionTool resolves only the exact constituent titles the model names.
@@ -81,7 +219,7 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall, intent Intent,
 // membership evidence: those are thematic evidence, not a named set's roster.
 func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]any, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
 	for key := range arguments {
-		if key != "mode" && key != "media_type" && key != "titles" {
+		if key != "mode" && key != "media_type" && key != "titles" && key != "dateMeaning" {
 			return `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, nil, DecisionTrace{}, false
 		}
 	}
@@ -116,6 +254,25 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), candidates, feedback)
 	blob, _ := json.Marshal(toolResult(ranked.Candidates))
 	return string(blob), ranked.Candidates, ranked.Trace, true
+}
+
+// validatedToolDateMeaning deliberately round-trips the JSON-shaped tool
+// arguments before validation. Tool calls arrive as map[string]any, whereas the
+// canonical validator owns all semantic and anchor checks.
+func validatedToolDateMeaning(intent Intent, arguments map[string]any) (ValidatedDateMeaning, error) {
+	raw, present := arguments["dateMeaning"]
+	if !present {
+		return ValidatedDateMeaning{}, fmt.Errorf("dateMeaning is required")
+	}
+	blob, err := json.Marshal(raw)
+	if err != nil {
+		return ValidatedDateMeaning{}, fmt.Errorf("dateMeaning: %w", err)
+	}
+	meaning, err := decodeDateMeaning(blob)
+	if err != nil {
+		return ValidatedDateMeaning{}, fmt.Errorf("dateMeaning: %w", err)
+	}
+	return ValidateDateMeaning(intent, &meaning)
 }
 
 type collectionTitleAnchor struct {
@@ -174,6 +331,20 @@ const (
 )
 
 func parseDiscoveryQuery(args map[string]any) (catalog.DiscoveryQuery, bool, error) {
+	return parseDiscoveryQueryWithDateQualifier(args, false)
+}
+
+// parseDiscoveryQueryWithDateMeaning permits a date-only discovery only after
+// dateMeaning has passed the canonical validator at the tool boundary. The
+// ordinary parser intentionally cannot infer qualification from untrusted JSON.
+func parseDiscoveryQueryWithDateMeaning(args map[string]any, meaning ValidatedDateMeaning) (catalog.DiscoveryQuery, bool, error) {
+	return parseDiscoveryQueryWithDateQualifier(args, meaning.DateMeaning().Kind == DateMeaningConstraints)
+}
+
+func parseDiscoveryQueryWithDateQualifier(args map[string]any, dateOnlyQualifier bool) (catalog.DiscoveryQuery, bool, error) {
+	if _, present := args["era"]; present {
+		return catalog.DiscoveryQuery{}, false, fmt.Errorf("era is retired; dateMeaning is the sole date authority")
+	}
 	titleQuery := ""
 	if raw, exists := args["query"]; exists {
 		value, ok := raw.(string)
@@ -223,19 +394,6 @@ func parseDiscoveryQuery(args map[string]any) (catalog.DiscoveryQuery, bool, err
 	if hasPeople && query.MediaType != provision.Movie {
 		return catalog.DiscoveryQuery{}, false, fmt.Errorf("cast and creators require media_type movie")
 	}
-	rawEra := ""
-	if raw, exists := args["era"]; exists && raw != "" {
-		value, ok := raw.(string)
-		rawEra = strings.TrimSpace(value)
-		if !ok || rawEra == "" {
-			return catalog.DiscoveryQuery{}, false, fmt.Errorf("era must be a year, decade, or year range")
-		}
-	}
-	query.YearFrom, query.YearTo = parseEra(rawEra)
-	if rawEra != "" && query.YearFrom == 0 {
-		return catalog.DiscoveryQuery{}, false, fmt.Errorf("era must be a year, decade, or year range")
-	}
-
 	if rawValue, ok := args["original_language"]; ok && rawValue != "" {
 		raw, stringOK := rawValue.(string)
 		if !stringOK || strings.TrimSpace(raw) == "" {
@@ -276,7 +434,7 @@ func parseDiscoveryQuery(args map[string]any) (catalog.DiscoveryQuery, bool, err
 		}
 	}
 
-	discoveryMode := len(query.Keywords) > 0 || len(query.Genres) > 0 || rawEra != "" ||
+	discoveryMode := len(query.Keywords) > 0 || len(query.Genres) > 0 || (titleQuery == "" && dateOnlyQualifier) ||
 		query.OriginalLanguage != "" || query.OriginCountry != "" || query.RuntimeMin > 0 ||
 		query.RuntimeMax > 0 || voteAverageSet || query.VoteCountMin > 0 || query.Network != "" || hasPeople
 	if discoveryMode && titleQuery != "" {
@@ -379,7 +537,7 @@ func projectCatalogArguments(args map[string]any) (map[string]any, bool) {
 		return nil, false
 	}
 	return projectArgumentKeys(args,
-		"media_type", "genres", "keywords", "era", "original_language", "origin_country",
+		"media_type", "genres", "keywords", "original_language", "origin_country",
 		"runtime_min", "runtime_max", "vote_average_min", "vote_count_min", "network",
 	), true
 }
@@ -457,6 +615,8 @@ func mergeDecisionTrace(dst, src *DecisionTrace) {
 	dst.Truncated = dst.Truncated || src.Truncated || surfacedTotal > DecisionTraceMaxTotal || recordedTotal > DecisionTraceMaxTotal
 	dst.SurfacedTotal = min(surfacedTotal, DecisionTraceMaxTotal)
 	dst.RecordedTotal = min(recordedTotal, DecisionTraceMaxTotal)
+	dst.WindowsCompleted += src.WindowsCompleted
+	dst.SourceQueriesDispatched += src.SourceQueriesDispatched
 	if src.Terminal != "" {
 		dst.Terminal = src.Terminal
 	} else if src.SurfacedTotal > 0 {
@@ -527,7 +687,7 @@ func filterByMediaType(cands []catalog.Candidate, mt string) []catalog.Candidate
 }
 
 // catalogTool is the provider-neutral tool schema the model may call (§8). It does
-// three modes: `query` runs title search; `genres` (+ optional `era`) discovers
+// three modes: `query` runs title search; `genres` discovers
 // genre themes; `keywords` discovers holidays, motifs, franchises, and topics
 // whose terms need not occur in the title. Structured discovery may add scalar,
 // movie-person, or TV-network qualifiers. Every mode returns real ids + genres +
@@ -537,15 +697,17 @@ func catalogTool() llm.ToolSchema {
 	return llm.ToolSchema{
 		Name: catalogToolName,
 		Description: "Find real titles from the library + TMDB. Provide `query` to search by title, `genres` " +
-			"to discover genre/era matches, or `keywords` to discover holidays, motifs, franchises, and topics. " +
+			"to discover genre matches, or `keywords` to discover holidays, motifs, franchises, and topics. " +
 			"For a named collection, set mode=collection with media_type and 1-8 exact constituent titles; no discovery filters are allowed. " +
 			"Discovery may also use explicitly requested country, original-language, runtime, vote, movie cast/creator, and TV network filters. " +
 			"Returns real external ids, genres, a short overview, available language/country/runtime/vote/keyword/network/person evidence, " +
 			"and an inLibrary flag. Missing fields mean unknown. This is the ONLY way to find titles.",
 		Parameters: map[string]any{
-			"type": "object",
+			"type":     "object",
+			"required": []string{"dateMeaning"},
 			"properties": map[string]any{
-				"mode": map[string]any{"type": "string", "enum": []string{"collection"}, "description": "collection requires media_type and titles; omit for ordinary title or discovery search"},
+				"dateMeaning": dateMeaningSchema(),
+				"mode":        map[string]any{"type": "string", "enum": []string{"collection"}, "description": "collection requires media_type and titles; omit for ordinary title or discovery search"},
 				"titles": map[string]any{"type": "array", "minItems": 1, "maxItems": 8, "items": map[string]any{"oneOf": []any{
 					map[string]any{"type": "string", "minLength": 1, "maxLength": 120},
 					map[string]any{"type": "object", "properties": map[string]any{
@@ -556,7 +718,6 @@ func catalogTool() llm.ToolSchema {
 				"query":             map[string]any{"type": "string", "description": "title keywords (for a known title)"},
 				"keywords":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "TMDB thematic keywords, e.g. [\"Christmas\"] or [\"heist\"]"},
 				"genres":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "genre names to discover by, e.g. [\"Action\",\"Science Fiction\"]"},
-				"era":               map[string]any{"type": "string", "description": "decade or year range for discovery, e.g. \"1990s\" or \"1985-1995\""},
 				"media_type":        map[string]any{"type": "string", "enum": []string{"movie", "series"}},
 				"original_language": map[string]any{"type": "string", "description": "explicit ISO 639-1 original-language code, e.g. \"ja\""},
 				"origin_country":    map[string]any{"type": "string", "description": "explicit ISO 3166-1 origin-country code, e.g. \"GB\""},
@@ -573,6 +734,54 @@ func catalogTool() llm.ToolSchema {
 				"then": map[string]any{"required": []string{"media_type", "titles"}},
 			}},
 		},
+	}
+}
+
+func dateMeaningSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "required": []string{"kind", "anchors", "axes"}, "additionalProperties": false,
+		"properties": map[string]any{
+			"kind":    map[string]any{"type": "string", "enum": []string{"none", "constraints", "ambiguous"}},
+			"anchors": map[string]any{"type": "array", "items": dateAnchorSchema()},
+			"axes":    map[string]any{"type": "array", "items": dateAxisSchema()},
+		},
+	}
+}
+
+func dateAnchorSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "required": []string{"field", "start", "end"},
+		"properties": map[string]any{
+			"field": map[string]any{"type": "string", "enum": []string{"description", "era", "refineText", "mustInclude", "mustExclude"}},
+			"index": map[string]any{"type": "integer", "minimum": 0},
+			"start": map[string]any{"type": "integer", "minimum": 0},
+			"end":   map[string]any{"type": "integer", "minimum": 1},
+		},
+		"additionalProperties": false,
+	}
+}
+
+func dateAxisSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "required": []string{"kind", "combine", "intervals"},
+		"properties": map[string]any{
+			"kind":      map[string]any{"type": "string", "enum": []string{"movie_release", "series_premiere", "series_airing"}},
+			"combine":   map[string]any{"type": "string", "enum": []string{"any", "all"}},
+			"intervals": map[string]any{"type": "array", "minItems": 1, "maxItems": 4, "items": dateIntervalSchema()},
+		},
+		"additionalProperties": false,
+	}
+}
+
+func dateIntervalSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "required": []string{"anchor", "start", "end"},
+		"properties": map[string]any{
+			"anchor": map[string]any{"type": "integer", "minimum": 0},
+			"start":  map[string]any{"type": "integer", "minimum": 1900, "maximum": 2099},
+			"end":    map[string]any{"type": "integer", "minimum": 1900, "maximum": 2099},
+		},
+		"additionalProperties": false,
 	}
 }
 

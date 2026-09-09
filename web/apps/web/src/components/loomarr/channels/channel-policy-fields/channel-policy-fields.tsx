@@ -1,9 +1,193 @@
+import type { Range } from "@loomarr/api/models/range";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
+
+const YEAR_MIN = 1900;
+const YEAR_MAX = 2099;
+
+const isValidRange = (range: Range): range is Range & { from: number; to: number } =>
+  Number.isInteger(range.from) &&
+  Number.isInteger(range.to) &&
+  range.from !== undefined &&
+  range.to !== undefined &&
+  range.from >= YEAR_MIN &&
+  range.from <= YEAR_MAX &&
+  range.to >= YEAR_MIN &&
+  range.to <= YEAR_MAX &&
+  range.from <= range.to;
+
+const normalizedRanges = (ranges: Range[] | undefined): Range[] => {
+  const valid = (ranges ?? []).filter(isValidRange).sort((a, b) => a.from - b.from || a.to - b.to);
+  return valid.reduce<Range[]>((merged, range) => {
+    const previous = merged.at(-1);
+    if (previous?.to !== undefined && range.from <= previous.to + 1)
+      previous.to = Math.max(previous.to, range.to);
+    else merged.push({ from: range.from, to: range.to });
+    return merged;
+  }, []);
+};
+
+const DateAxisRow = ({
+  label,
+  range,
+  index,
+  onCommit,
+  onRemove,
+}: {
+  label: string;
+  range: Range;
+  index: number;
+  onCommit: (index: number, next: Range) => void;
+  onRemove: (index: number) => void;
+}) => {
+  const [draft, setDraft] = useState({ from: String(range.from), to: String(range.to) });
+
+  // An invalid endpoint remains visible until its partner makes the pair valid. The actual
+  // committed range is the reset boundary, so drafts neither survive an external replacement
+  // nor slide onto another row when the list changes.
+  useEffect(() => {
+    setDraft({ from: String(range.from), to: String(range.to) });
+  }, [range.from, range.to]);
+
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`policy-dates-${label}-${index}-from`} className="text-muted-foreground text-xs">
+          From year
+        </Label>
+        <Input
+          id={`policy-dates-${label}-${index}-from`}
+          type="number"
+          min={YEAR_MIN}
+          max={YEAR_MAX}
+          className="w-28"
+          value={draft.from}
+          onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+          onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`policy-dates-${label}-${index}-to`} className="text-muted-foreground text-xs">
+          To year
+        </Label>
+        <Input
+          id={`policy-dates-${label}-${index}-to`}
+          type="number"
+          min={YEAR_MIN}
+          max={YEAR_MAX}
+          className="w-28"
+          value={draft.to}
+          onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+          onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
+        />
+      </div>
+      <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(index)}>
+        Remove
+      </Button>
+    </div>
+  );
+};
+
+const DateAxisEditor = ({
+  label,
+  ranges,
+  onChange,
+}: {
+  label: string;
+  ranges: Range[];
+  onChange: (next: Range[] | undefined) => void;
+}) => {
+  const [draft, setDraft] = useState({ from: "", to: "" });
+  const [error, setError] = useState<string>();
+  const commit = (index: number, next: Range) => {
+    if (!isValidRange(next)) {
+      setError(`Enter whole years from ${YEAR_MIN} to ${YEAR_MAX}, with From no later than To.`);
+      return;
+    }
+    setError(undefined);
+    const changed = [...ranges];
+    changed[index] = next;
+    onChange(changed);
+  };
+  const add = () => {
+    const from = Number(draft.from);
+    const to = Number(draft.to);
+    if (
+      !draft.from ||
+      !draft.to ||
+      !Number.isInteger(from) ||
+      !Number.isInteger(to) ||
+      from < YEAR_MIN ||
+      from > YEAR_MAX ||
+      to < YEAR_MIN ||
+      to > YEAR_MAX ||
+      from > to
+    ) {
+      setError(`Enter whole years from ${YEAR_MIN} to ${YEAR_MAX}, with From no later than To.`);
+      return;
+    }
+    setError(undefined);
+    setDraft({ from: "", to: "" });
+    onChange([...ranges, { from, to }]);
+  };
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+      <div className="flex items-center justify-between gap-3">
+        <Label className="text-sm">{label}</Label>
+      </div>
+      {ranges.length === 0 ? (
+        <p className="text-muted-foreground text-xs">No date requirement.</p>
+      ) : (
+        ranges.map((range, index) => (
+          <DateAxisRow
+            key={`${range.from}-${range.to}`}
+            label={label}
+            range={range}
+            index={index}
+            onCommit={commit}
+            onRemove={(row) => onChange(ranges.filter((_, current) => current !== row))}
+          />
+        ))
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <Input
+          aria-label={`${label} new range from`}
+          type="number"
+          min={YEAR_MIN}
+          max={YEAR_MAX}
+          className="w-28"
+          value={draft.from}
+          onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+          placeholder="From"
+        />
+        <Input
+          aria-label={`${label} new range to`}
+          type="number"
+          min={YEAR_MIN}
+          max={YEAR_MAX}
+          className="w-28"
+          value={draft.to}
+          onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+          placeholder="To"
+        />
+        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add ${label} range`}>
+          Add range
+        </Button>
+      </div>
+      {error && (
+        <p className="text-onair-300 text-xs" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+};
 
 // FieldLabel — a form label paired with an (i) help icon (FieldHelp), the row that replaces
 // the old permanent helper `<p>` under every control. Keeps the form compact: the guidance is
@@ -113,6 +297,7 @@ const CEILING_OPTIONS: { value: string; label: string }[] = [
 
 const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: ChannelPolicyFieldsProps) => {
   const era = policy.scope?.era;
+  const dates = policy.scope?.dates;
   const separation = policy.separation;
   // Split for the Programming surface's blocks (§12): scope = audience ceiling + era ("What
   // plays"); ordering = ordering + no-repeat ("How it's ordered"). Omitted = show everything.
@@ -246,9 +431,10 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
                 onBlur={(e) => {
                   const next = e.target.value === "" ? undefined : Number(e.target.value);
                   if (next === era?.from) return;
+                  const { dates: _dates, ...scope } = policy.scope ?? {};
                   onChange({
                     ...policy,
-                    scope: { ...policy.scope, era: { ...era, from: next } },
+                    scope: { ...scope, era: { ...era, from: next } },
                   });
                 }}
               />
@@ -266,14 +452,52 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
                 onBlur={(e) => {
                   const next = e.target.value === "" ? undefined : Number(e.target.value);
                   if (next === era?.to) return;
+                  const { dates: _dates, ...scope } = policy.scope ?? {};
                   onChange({
                     ...policy,
-                    scope: { ...policy.scope, era: { ...era, to: next } },
+                    scope: { ...scope, era: { ...era, to: next } },
                   });
                 }}
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {showScope && (
+        <div className="flex flex-col gap-2 sm:col-span-2">
+          <FieldLabel help="Use separate year ranges when the channel needs distinct release, series-premiere, or episode-airing dates. Ranges are inclusive and never fill a gap between them.">
+            Programming dates
+          </FieldLabel>
+          <p className="text-muted-foreground text-xs">
+            Adding date ranges replaces the single Era field. Movie release and series premiere filter titles;
+            episode airing filters individual episodes.
+          </p>
+          {(
+            [
+              ["Movie release", "movieRelease"],
+              ["Series premiere", "seriesPremiere"],
+              ["Episode airing", "seriesAiring"],
+            ] as const
+          ).map(([label, axis]) => (
+            <DateAxisEditor
+              key={axis}
+              label={label}
+              ranges={normalizedRanges(dates?.[axis])}
+              onChange={(next) => {
+                const nextAxis = normalizedRanges(next);
+                const nextDates = { ...dates, [axis]: nextAxis.length ? nextAxis : undefined };
+                const hasDates = Object.values(nextDates).some(
+                  (ranges) => Array.isArray(ranges) && ranges.length > 0,
+                );
+                const { era: _era, dates: _dates, ...scope } = policy.scope ?? {};
+                onChange({
+                  ...policy,
+                  scope: { ...scope, ...(hasDates ? { dates: nextDates } : {}) },
+                });
+              }}
+            />
+          ))}
         </div>
       )}
 
