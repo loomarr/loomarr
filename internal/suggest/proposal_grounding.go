@@ -162,7 +162,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// ratio and theme fit for a lineup nobody is being offered — the scorecard already half-knew
 	// something was wrong on the live smoke (theme fit 43%) and that ambiguity is what a refusal
 	// list replaces with a statement.
-	prop.Scores = score(intent, prop.Lineup, prop.Acquisitions)
+	prop.Scores = score(intent, prop.Lineup, prop.Acquisitions, meaning)
 	if trace != nil {
 		// Tool calls contribute evidence, not the run outcome. A later empty or
 		// failed lookup cannot label a proposal that ultimately succeeded from an

@@ -71,9 +71,16 @@ func HumanSummary(card Scorecard) string {
 		if !result.Passed() {
 			status = "FAIL"
 		}
-		fmt.Fprintf(&b, "| %s | %d | %s | %d | %d | %.2f | %.2f |\n",
+		fmt.Fprintf(&b, "| %s | %d | %s | %d | %d | %s | %.2f |\n",
 			result.Case, result.Trial, status, result.ToolCalls, result.CandidatesSurfaced,
-			result.ThemeFit, result.JudgeScore)
+			formatThemeFit(result.ThemeFit), result.JudgeScore)
 	}
 	return b.String()
+}
+
+func formatThemeFit(value *float64) string {
+	if value == nil {
+		return "unassessed"
+	}
+	return fmt.Sprintf("%.2f", *value)
 }

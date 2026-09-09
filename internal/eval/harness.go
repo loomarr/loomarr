@@ -362,7 +362,7 @@ type Result struct {
 	Trial                      int                 `json:"trial"`
 	Failures                   []string            `json:"failures"` // all evaluation failures; empty means the trial passed
 	FailureStage               FailureStage        `json:"failureStage,omitempty"`
-	ThemeFit                   float64             `json:"themeFit"`
+	ThemeFit                   *float64            `json:"themeFit"`
 	Lineup                     int                 `json:"lineup"`
 	Acquisitions               int                 `json:"acquisitions"`
 	Ceiling                    string              `json:"ceiling"` // the extracted policy ceiling
@@ -532,8 +532,12 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	if c.ExpectOrdering != "" && string(prop.Policy.Ordering) != c.ExpectOrdering {
 		f = append(f, fmt.Sprintf("expected ordering %q, extracted %q", c.ExpectOrdering, prop.Policy.Ordering))
 	}
-	if c.MinThemeFit > 0 && prop.Scores.ThemeFit < c.MinThemeFit {
-		f = append(f, fmt.Sprintf("themeFit %.2f < required %.2f", prop.Scores.ThemeFit, c.MinThemeFit))
+	if c.MinThemeFit > 0 {
+		if prop.Scores.ThemeFit == nil {
+			f = append(f, fmt.Sprintf("themeFit unassessed; required %.2f", c.MinThemeFit))
+		} else if *prop.Scores.ThemeFit < c.MinThemeFit {
+			f = append(f, fmt.Sprintf("themeFit %.2f < required %.2f", *prop.Scores.ThemeFit, c.MinThemeFit))
+		}
 	}
 
 	// SAFETY: no grounded item may carry a rating above the forbidden ceiling — the

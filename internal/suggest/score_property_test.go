@@ -1,7 +1,7 @@
 package suggest_test
 
 // Property tests for the deterministic scorer (score.go: score, themeFit,
-// eraBalance, composite — §8 "not pure vibes"). These are seeded plain-Go loops
+// requested date adherence — §8 evidence assessment). These are seeded plain-Go loops
 // (math/rand with a fixed source so any failure reproduces), NOT a framework.
 // They assert the structural invariants of the scorer over many random intents +
 // ProposalItem sets, complementing the fixture-driven TestScoring_Deterministic
@@ -87,10 +87,8 @@ const propIters = 2000
 
 func in01(v float64) bool { return v >= 0 && v <= 1 }
 
-func scorePtr(v float64) *float64 { return &v }
-
 // TestScore_AllSubScoresInUnitInterval: for arbitrary intents + lineup/acquisition
-// sets, every sub-score AND Overall stays within [0,1]. A score outside the unit
+// sets, every assessed sub-score stays within [0,1]. A score outside the unit
 // interval breaks ranking comparability (§8) and downstream weighting.
 func TestScore_AllSubScoresInUnitInterval(t *testing.T) {
 	r := rand.New(rand.NewSource(0xC0FFEE))
@@ -102,7 +100,7 @@ func TestScore_AllSubScoresInUnitInterval(t *testing.T) {
 		acq := randItems(r, nAcq)
 
 		s := suggest.ScoreForTest(intent, lineup, acq)
-		if !in01(s.ThemeFit) {
+		if s.ThemeFit != nil && !in01(*s.ThemeFit) {
 			t.Fatalf("iter %d: ThemeFit out of [0,1]: %v (intent=%+v)", i, s.ThemeFit, intent)
 		}
 		if !in01(s.AvailabilityRatio) {
@@ -110,9 +108,6 @@ func TestScore_AllSubScoresInUnitInterval(t *testing.T) {
 		}
 		if s.EraBalance != nil && !in01(*s.EraBalance) {
 			t.Fatalf("iter %d: EraBalance out of [0,1]: %v", i, *s.EraBalance)
-		}
-		if !in01(s.Overall) {
-			t.Fatalf("iter %d: Overall out of [0,1]: %v (scores=%+v)", i, s.Overall, s)
 		}
 	}
 }
@@ -133,18 +128,16 @@ func TestScore_Deterministic(t *testing.T) {
 			t.Fatalf("iter %d: scoring not deterministic: %+v vs %+v", i, a, b)
 		}
 		// Sub-functions are individually deterministic too.
-		if suggest.ThemeFitForTest(intent, lineup, acq) != suggest.ThemeFitForTest(intent, lineup, acq) {
+		if !reflect.DeepEqual(suggest.ThemeFitForTest(intent, lineup, acq), suggest.ThemeFitForTest(intent, lineup, acq)) {
 			t.Fatalf("iter %d: themeFit not deterministic", i)
 		}
-		if suggest.EraBalanceForTest(intent, lineup, acq) != suggest.EraBalanceForTest(intent, lineup, acq) {
-			t.Fatalf("iter %d: eraBalance not deterministic", i)
-		}
+
 	}
 }
 
 // TestScore_AvailabilityRatioExact: AvailabilityRatio == len(lineup)/(len(lineup)+
 // len(acquisitions)) exactly, for arbitrary non-empty splits. This is the
-// "playable right now" signal (§8/§9); the ratio must reflect the actual split.
+// library-presence diagnostic; the ratio must reflect the actual split.
 func TestScore_AvailabilityRatioExact(t *testing.T) {
 	r := rand.New(rand.NewSource(7))
 	for i := 0; i < propIters; i++ {
@@ -167,19 +160,19 @@ func TestScore_AvailabilityRatioExact(t *testing.T) {
 }
 
 // TestScore_EmptyInputZeroScores: no items at all → the zero Scores value (every
-// field 0). score() short-circuits before computing anything, so an empty proposal
+// numeric claim absent). Empty evidence remains explicitly unassessed, so a proposal
 // carries no misleading non-zero signals.
 func TestScore_EmptyInputZeroScores(t *testing.T) {
 	r := rand.New(rand.NewSource(99))
 	for i := 0; i < 200; i++ {
 		intent := randIntent(r) // intent varies; emptiness is about items
 		got := suggest.ScoreForTest(intent, nil, nil)
-		if got != (suggest.Scores{}) {
+		if got.ThemeFit != nil || got.EraBalance != nil || got.AvailabilityRatio != 0 {
 			t.Fatalf("iter %d: empty input should give zero Scores, got %+v", i, got)
 		}
 	}
 	// Explicit empty (non-nil) slices behave the same as nil.
-	if got := suggest.ScoreForTest(suggest.Intent{Description: "action"}, []suggest.ProposalItem{}, []suggest.ProposalItem{}); got != (suggest.Scores{}) {
+	if got := suggest.ScoreForTest(suggest.Intent{Description: "action"}, []suggest.ProposalItem{}, []suggest.ProposalItem{}); got.ThemeFit != nil || got.EraBalance != nil || got.AvailabilityRatio != 0 {
 		t.Fatalf("empty (non-nil) slices should give zero Scores, got %+v", got)
 	}
 }
@@ -193,102 +186,54 @@ func TestThemeFitDoesNotUseModelRationaleAsEvidence(t *testing.T) {
 		}},
 		nil,
 	)
-	if got != 0 {
+	if got == nil || *got != 0 {
 		t.Fatalf("model-authored rationale manufactured theme evidence: got %v", got)
 	}
 }
 
-// TestComposite_WeightsSumToOne: the composite weights sum to exactly 1.0, so a
-// proposal that maxes every sub-score gets Overall == 1.0 exactly (and an all-zero
-// one gets 0.0). This pins the invariant the design doc calls out ("Weights sum to
-// 1.0 so Overall stays in [0,1]") via the constants' observable behavior.
-func TestComposite_WeightsSumToOne(t *testing.T) {
-	// Known-max input: every sub-score at 1.0 ⇒ Overall must be exactly 1.0.
-	if got := suggest.CompositeForTest(suggest.Scores{ThemeFit: 1, AvailabilityRatio: 1, EraBalance: scorePtr(1)}); got != 1.0 {
-		t.Fatalf("all-max sub-scores should composite to exactly 1.0 (weights must sum to 1); got %v", got)
-	}
-	// Known-min input: all zero ⇒ 0.0.
-	if got := suggest.CompositeForTest(suggest.Scores{}); got != 0.0 {
-		t.Fatalf("all-zero sub-scores should composite to 0.0; got %v", got)
-	}
-	// Isolating each weight: a single sub-score at 1.0 (others 0) reveals that
-	// weight; the three revealed weights must sum to exactly 1.0.
-	wTheme := suggest.CompositeForTest(suggest.Scores{ThemeFit: 1, EraBalance: scorePtr(0)})
-	wAvail := suggest.CompositeForTest(suggest.Scores{AvailabilityRatio: 1, EraBalance: scorePtr(0)})
-	wEra := suggest.CompositeForTest(suggest.Scores{EraBalance: scorePtr(1)})
-	if wTheme+wAvail+wEra != 1.0 {
-		t.Fatalf("isolated weights must sum to exactly 1.0; got theme=%v avail=%v era=%v sum=%v",
-			wTheme, wAvail, wEra, wTheme+wAvail+wEra)
-	}
-	// Theme-first ordering (maintainer decision, §8): matching the ask dominates,
-	// availability strong second, era a light tiebreaker.
-	if !(wTheme > wAvail && wAvail > wEra) {
-		t.Fatalf("weights should be theme > availability > era; got theme=%v avail=%v era=%v", wTheme, wAvail, wEra)
-	}
-}
-
-// TestComposite_BoundedForRandomSubScores: for arbitrary sub-scores in [0,1], the
-// composite is a convex combination and therefore also in [0,1]. Because the
-// weights are non-negative and sum to 1, the result is bounded by the min and max
-// of the inputs.
-func TestComposite_BoundedForRandomSubScores(t *testing.T) {
-	r := rand.New(rand.NewSource(0xBEEF))
-	for i := 0; i < propIters; i++ {
-		s := suggest.Scores{
-			ThemeFit:          r.Float64(),
-			AvailabilityRatio: r.Float64(),
-			EraBalance:        scorePtr(r.Float64()),
-		}
-		got := suggest.CompositeForTest(s)
-		if !in01(got) {
-			t.Fatalf("iter %d: composite out of [0,1]: %v (in=%+v)", i, got, s)
-		}
-		// Convexity: result lies within [min, max] of the three sub-scores.
-		lo, hi := s.ThemeFit, s.ThemeFit
-		for _, v := range []float64{s.AvailabilityRatio, *s.EraBalance} {
-			if v < lo {
-				lo = v
-			}
-			if v > hi {
-				hi = v
-			}
-		}
-		const eps = 1e-12
-		if got < lo-eps || got > hi+eps {
-			t.Fatalf("iter %d: composite %v not within [min,max]=[%v,%v] of sub-scores %+v", i, got, lo, hi, s)
-		}
-	}
-}
-
-// TestThemeFit_NoTermsIsNeutralMax: an intent with no significant terms (only
-// stopwords / short words) has nothing to fit against, so themeFit is 1 (neutral-
-// max) regardless of the items — the documented behavior in score.go.
-func TestThemeFit_NoTermsIsNeutralMax(t *testing.T) {
-	// "a channel of the" → all stopwords/short → zero terms.
-	intent := suggest.Intent{Description: "a channel of the"}
+// An absent theme must never earn full credit, regardless of metadata richness.
+func TestThemeFit_NoTermsIsUnassessed(t *testing.T) {
 	r := rand.New(rand.NewSource(3))
 	for i := 0; i < 200; i++ {
-		items := randItems(r, 1+r.Intn(5))
-		if got := suggest.ThemeFitForTest(intent, items, nil); got != 1 {
-			t.Fatalf("iter %d: no-term intent should give themeFit 1, got %v", i, got)
+		if got := suggest.ThemeFitForTest(suggest.Intent{Description: "a channel of the"}, randItems(r, 1+r.Intn(5)), nil); got != nil {
+			t.Fatalf("no requested theme earned credit: %v", *got)
 		}
 	}
 }
 
-// TestEraBalance_SingleOrZeroItemIsNeutral: with 0 or 1 total items eraBalance is
-// neutral (1) — there is no spread to reward or penalize.
-func TestEraBalance_SingleOrZeroItemIsNeutral(t *testing.T) {
+// With no validated date constraints, date adherence is absent for any years.
+func TestEra_NoRequestIsUnassessed(t *testing.T) {
 	r := rand.New(rand.NewSource(11))
 	for i := 0; i < 200; i++ {
-		intent := randIntent(r)
-		// zero items
-		if got := suggest.EraBalanceForTest(intent, nil, nil); got != 1 {
-			t.Fatalf("iter %d: eraBalance of 0 items should be 1, got %v", i, got)
+		s := suggest.ScoreForTest(randIntent(r), randItems(r, r.Intn(8)), nil)
+		if s.EraBalance != nil || s.Era.Status != "not_requested" {
+			t.Fatalf("unrequested dates earned credit: %+v", s)
 		}
-		// exactly one item (either side)
-		one := randItems(r, 1)
-		if got := suggest.EraBalanceForTest(intent, one, nil); got != 1 {
-			t.Fatalf("iter %d: eraBalance of 1 item should be 1, got %v", i, got)
+	}
+}
+
+// Distinct qualifiers are averaged per item; repetition cannot inflate coverage.
+func TestThemeFit_QualifierCoverageAndRepetition(t *testing.T) {
+	r := rand.New(rand.NewSource(0xBEEF))
+	for i := 0; i < propIters; i++ {
+		n, hits := 1+r.Intn(8), 0
+		items := make([]suggest.ProposalItem, n)
+		for j := range items {
+			items[j].Overview = "A catalog synopsis"
+			if r.Intn(2) == 0 {
+				items[j].Genres = append(items[j].Genres, "Action")
+				hits++
+			}
+			if r.Intn(2) == 0 {
+				items[j].Genres = append(items[j].Genres, "Comedy")
+				hits++
+			}
+		}
+		intent := suggest.Intent{Description: "action comedy action", Tone: "comedy"}
+		s := suggest.ScoreForTest(intent, items, nil)
+		want := float64(hits) / float64(2*n)
+		if s.ThemeFit == nil || *s.ThemeFit != want || len(s.Theme.Qualifiers) != 2 {
+			t.Fatalf("iter %d: coverage=%+v want=%v", i, s, want)
 		}
 	}
 }
@@ -312,7 +257,10 @@ func FuzzScore_Invariants(f *testing.F) {
 		acq := randItems(r, nAcq)
 
 		s := suggest.ScoreForTest(intent, lineup, acq)
-		values := []float64{s.ThemeFit, s.AvailabilityRatio, s.Overall}
+		values := []float64{s.AvailabilityRatio}
+		if s.ThemeFit != nil {
+			values = append(values, *s.ThemeFit)
+		}
 		if s.EraBalance != nil {
 			values = append(values, *s.EraBalance)
 		}
@@ -322,7 +270,7 @@ func FuzzScore_Invariants(f *testing.F) {
 			}
 		}
 		if nLine+nAcq == 0 {
-			if s != (suggest.Scores{}) {
+			if s.ThemeFit != nil || s.EraBalance != nil || s.AvailabilityRatio != 0 {
 				t.Fatalf("empty input should give zero Scores, got %+v (seed=%d)", s, seed)
 			}
 		} else {

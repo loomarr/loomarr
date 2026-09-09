@@ -37,7 +37,7 @@ func TestActionMarathonCorpusRejectsAnySeriesIdentity(t *testing.T) {
 			{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Genres: []string{"Action"}, OfficialRating: "PG-13"},
 			{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", Genres: []string{"Action"}, OfficialRating: "TV-PG"},
 		},
-		Scores: suggest.Scores{ThemeFit: 0.9},
+		Scores: suggest.Scores{ThemeFit: new(0.9)},
 	}
 	judge := &sequenceJudge{scores: []JudgeScores{{
 		Overall: 0.9, Relevance: 0.9, Serendipity: 0.8, Reason: "Otherwise strong.",
@@ -107,4 +107,24 @@ func corpusCase(t *testing.T, name string) Case {
 	}
 	t.Fatalf("corpus case %q not found", name)
 	return Case{}
+}
+
+func TestRequiredThemeFloorRejectsUnknownAndPartialEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value *float64
+		pass  bool
+	}{
+		{"unknown", nil, false}, {"partial", new(0.25), false}, {"at floor", new(0.5), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			card := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
+				Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
+				Scores: suggest.Scores{Version: 1, ThemeFit: tc.value},
+			}}, RunnerConfig{}).Run(context.Background(), []Case{{Name: "theme_floor", MinThemeFit: 0.5}})
+			if card.Results[0].Passed() != tc.pass {
+				t.Fatalf("required floor result: %+v", card.Results[0])
+			}
+		})
+	}
 }

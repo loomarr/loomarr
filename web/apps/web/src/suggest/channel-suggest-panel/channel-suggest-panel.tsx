@@ -153,6 +153,7 @@ const ChannelSuggestPanel = ({
             proposal={proposal.proposal}
             status={proposal.status}
             busy={approve.isPending || deny.isPending}
+            onEditRequest={() => run.reset(true)}
             onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: {} }) : undefined}
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />

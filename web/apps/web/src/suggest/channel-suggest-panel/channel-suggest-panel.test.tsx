@@ -75,7 +75,20 @@ const PROPOSAL: ProposalDTO = {
     // panel renders ProposalReview, which reads `scores` for the fit summary — so the review was
     // being exercised against a proposal the server could not have produced.
     alternates: [],
-    scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
+    scores: {
+      version: 1,
+      themeFit: 1,
+      availabilityRatio: 1,
+      eraBalance: null,
+      theme: {
+        status: "supported",
+        basis: "qualifiers",
+        assessedItems: 2,
+        unknownItems: 0,
+        qualifiers: [{ term: "action", supportedItems: 2 }],
+      },
+      era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
+    },
     rationale: "Grounded against your library.",
     trace: { version: 1, surfacedTotal: 0, recordedTotal: 0, truncated: false, candidates: [] },
   },
@@ -230,6 +243,18 @@ describe("ChannelSuggestPanel", () => {
 
     // The reused ProposalReview renders the lineup — no navigation away from the panel.
     expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
+  });
+
+  it("editing a landed request preserves its intent and performs no approval", async () => {
+    const user = userEvent.setup();
+    const { approvals, submissions } = stubSuggest({ proposals: [PROPOSAL] });
+    renderPanel(() => {});
+    await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+    await user.click(await screen.findByRole("button", { name: "Edit request" }));
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue("80s teen comedies");
+    expect(approvals).toEqual([]);
+    expect(submissions).toHaveLength(1);
   });
 
   it("explains an auto-approved result without offering the misleading Start over action", async () => {

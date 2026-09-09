@@ -2624,6 +2624,31 @@ components:
         mode:
           type: string
       type: object
+    EraEvidence:
+      additionalProperties: false
+      properties:
+        assessedItems:
+          format: int64
+          type: integer
+        matchingItems:
+          format: int64
+          type: integer
+        status:
+          enum:
+            - not_requested
+            - unassessed
+            - partial
+            - supported
+          type: string
+        unknownItems:
+          format: int64
+          type: integer
+      required:
+        - status
+        - assessedItems
+        - matchingItems
+        - unknownItems
+      type: object
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -7397,6 +7422,18 @@ components:
       required:
         - email
       type: object
+    QualifierEvidence:
+      additionalProperties: false
+      properties:
+        supportedItems:
+          format: int64
+          type: integer
+        term:
+          type: string
+      required:
+        - term
+        - supportedItems
+      type: object
     Range:
       additionalProperties: false
       properties:
@@ -7959,24 +7996,36 @@ components:
       additionalProperties: false
       properties:
         availabilityRatio:
+          description: In-library title share, not playback readiness
           format: double
           type: number
+        era:
+          $ref: "#/components/schemas/EraEvidence"
         eraBalance:
+          description: Requested date adherence; null when unknown or not requested
           format: double
           type:
             - number
             - "null"
-        overall:
-          format: double
-          type: number
+        theme:
+          $ref: "#/components/schemas/ThemeEvidence"
         themeFit:
+          description: Mean distinct qualifier coverage; null when evidence is insufficient
           format: double
-          type: number
+          type:
+            - number
+            - "null"
+        version:
+          description: Assessment contract version; zero means unassessed historical data
+          format: int64
+          type: integer
       required:
+        - version
         - themeFit
         - availabilityRatio
         - eraBalance
-        - overall
+        - theme
+        - era
       type: object
     SearchCandidate:
       additionalProperties: false
@@ -9518,6 +9567,38 @@ components:
       required:
         - slug
         - label
+      type: object
+    ThemeEvidence:
+      additionalProperties: false
+      properties:
+        assessedItems:
+          format: int64
+          type: integer
+        basis:
+          enum:
+            - qualifiers
+            - named_membership
+            - none
+          type: string
+        qualifiers:
+          items:
+            $ref: "#/components/schemas/QualifierEvidence"
+          type: array
+        status:
+          enum:
+            - unassessed
+            - partial
+            - supported
+          type: string
+        unknownItems:
+          format: int64
+          type: integer
+      required:
+        - status
+        - basis
+        - assessedItems
+        - unknownItems
+        - qualifiers
       type: object
     TimelineOutputBody:
       additionalProperties: false

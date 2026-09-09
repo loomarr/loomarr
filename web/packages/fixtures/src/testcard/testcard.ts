@@ -607,7 +607,20 @@ const proposal: Proposal = {
     { name: "Face/Off", year: 1997, mediaType: "movie", inLibrary: false },
     { name: "The Rock", year: 1996, mediaType: "movie", inLibrary: false },
   ],
-  scores: { themeFit: 0.88, availabilityRatio: 0.67, eraBalance: 0.71, overall: 0.82 },
+  scores: {
+    version: 1,
+    themeFit: 1,
+    availabilityRatio: 0.67,
+    eraBalance: null,
+    theme: {
+      status: "supported",
+      basis: "qualifiers",
+      assessedItems: 2,
+      unknownItems: 0,
+      qualifiers: [{ term: "action", supportedItems: 2 }],
+    },
+    era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
+  },
   trace: { version: 1, surfacedTotal: 0, recordedTotal: 0, truncated: false, candidates: [] },
 };
 

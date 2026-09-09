@@ -1,27 +1,15 @@
 package suggest
 
-// export_score_test.go bridges the unexported deterministic scoring functions to
-// the external suggest_test package so the property tests in
-// score_property_test.go can exercise them directly (not only through the full
-// Suggest pipeline). Test-only: this file has the _test.go suffix and ships no
-// production symbols.
-
-// ScoreForTest exposes score() (§8 deterministic post-scoring).
+// ScoreForTest exposes the production scorer without supplying date constraints.
 func ScoreForTest(intent Intent, lineup, acquisitions []ProposalItem) Scores {
-	return score(intent, lineup, acquisitions)
+	return score(intent, lineup, acquisitions, ValidatedDateMeaning{})
 }
 
-// ThemeFitForTest exposes themeFit().
-func ThemeFitForTest(intent Intent, lineup, acquisitions []ProposalItem) float64 {
-	return themeFit(intent, lineup, acquisitions)
+func ScoreWithDateForTest(intent Intent, lineup, acquisitions []ProposalItem, meaning ValidatedDateMeaning) Scores {
+	return score(intent, lineup, acquisitions, meaning)
 }
 
-// EraBalanceForTest exposes eraBalance().
-func EraBalanceForTest(intent Intent, lineup, acquisitions []ProposalItem) float64 {
-	return *eraBalance(intent, lineup, acquisitions)
-}
-
-// CompositeForTest exposes composite().
-func CompositeForTest(s Scores) float64 {
-	return composite(s)
+func ThemeFitForTest(intent Intent, lineup, acquisitions []ProposalItem) *float64 {
+	value, _ := themeFit(intent, append(append([]ProposalItem{}, lineup...), acquisitions...))
+	return value
 }

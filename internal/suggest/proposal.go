@@ -235,13 +235,35 @@ type RefusedPick struct {
 	Reason string       `json:"reason"` // "over_ceiling"
 }
 
-// Scores is the deterministic post-scoring layered on the LLM output (§8) so
-// ranking isn't pure vibes. Criteria are configurable; v1 ships three.
+// Scores describes source-backed evidence, not a calibrated probability or ranking.
 type Scores struct {
-	ThemeFit          float64 `json:"themeFit"`          // how well items match the intent terms
-	AvailabilityRatio float64 `json:"availabilityRatio"` // in-library / total (live-now readiness)
-	// EraBalance is nil when a named lineup includes a series whose episode dates
-	// are unavailable; a premiere year or model season selector cannot establish it.
-	EraBalance *float64 `json:"eraBalance"` // spread across the target era/years, when assessed
-	Overall    float64  `json:"overall"`    // weighted composite
+	Version           int           `json:"version" doc:"Assessment contract version; zero means unassessed historical data"`
+	ThemeFit          *float64      `json:"themeFit" doc:"Mean distinct qualifier coverage; null when evidence is insufficient"`
+	AvailabilityRatio float64       `json:"availabilityRatio" doc:"In-library title share, not playback readiness"`
+	EraBalance        *float64      `json:"eraBalance" doc:"Requested date adherence; null when unknown or not requested"`
+	Theme             ThemeEvidence `json:"theme"`
+	Era               EraEvidence   `json:"era"`
+}
+
+// ThemeEvidence keeps the supported interpretation inspectable without treating
+// an unmatched word as proof that a grounded title is unsuitable.
+type ThemeEvidence struct {
+	Status        string              `json:"status" enum:"unassessed,partial,supported"`
+	Basis         string              `json:"basis" enum:"qualifiers,named_membership,none"`
+	AssessedItems int                 `json:"assessedItems"`
+	UnknownItems  int                 `json:"unknownItems"`
+	Qualifiers    []QualifierEvidence `json:"qualifiers"`
+}
+
+type QualifierEvidence struct {
+	Term           string `json:"term"`
+	SupportedItems int    `json:"supportedItems"`
+}
+
+// EraEvidence separates a missing request from missing catalog/episode dates.
+type EraEvidence struct {
+	Status        string `json:"status" enum:"not_requested,unassessed,partial,supported"`
+	AssessedItems int    `json:"assessedItems"`
+	MatchingItems int    `json:"matchingItems"`
+	UnknownItems  int    `json:"unknownItems"`
 }

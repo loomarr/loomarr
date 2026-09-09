@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
 const script = readFileSync(new URL("test-apple-client.sh", import.meta.url), "utf8");
 const xcconfig = readFileSync(new URL("apple-simulator.xcconfig", import.meta.url), "utf8");
@@ -45,5 +47,20 @@ describe("Apple simulator verifier", () => {
   it("fails when the built artifact does not contain exactly the host architecture", () => {
     assert.match(script, /APP_ARCHS="\$\(xcrun lipo -archs "\$\{APP_BINARY\}"\)"/);
     assert.match(script, /if \[\[ "\$\{APP_ARCHS\}" != "\$\{HOST_ARCH\}" \]\]; then/);
+  });
+});
+
+describe("Apple launch failure evidence", () => {
+  it("retains only current matching crashes and bounds failed diagnostic commands", () => {
+    const result = spawnSync(
+      "python3",
+      [fileURLToPath(new URL("apple-launch-diagnostics-test.py", import.meta.url))],
+      {
+        encoding: "utf8",
+        timeout: 30_000,
+        env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
+      },
+    );
+    assert.equal(result.status, 0, result.error?.message ?? result.stderr);
   });
 });
