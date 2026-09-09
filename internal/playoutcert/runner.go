@@ -166,13 +166,21 @@ func Run(ctx context.Context, config Config) (Report, error) {
 			fanIndexes[index] = transcodeIndexes[0]
 		}
 	}
+	// Programme-boundary viewers may still own warm sessions. Measure fan-in
+	// only after their actual cleanup, not after an incidental media-read delay.
+	fanBaseline, fanConverged := waitForConvergence(ctx, endpoint, config, baseline, config.CleanupTimeout)
+	recordConvergenceSample(&report, "fan_in", fanConverged)
 	samper.begin("fan_in")
-	fanObs, fanSample := rawBurst(ctx, endpoint, config, fanIndexes)
-	if fanSample.SessionsActive > baseline.SessionsActive+1 || fanSample.TranscodeCost > baseline.TranscodeCost+1 {
-		fanObs = append(fanObs, observation{class: "fanout_split"})
+	fanObs := []observation{{class: "baseline_not_converged"}}
+	if fanBaseline.class == "ok" {
+		var fanSample ResourceSample
+		fanObs, fanSample = rawBurst(ctx, endpoint, config, fanIndexes)
+		if fanSample.SessionsActive > baseline.SessionsActive+1 || fanSample.TranscodeCost > baseline.TranscodeCost+1 {
+			fanObs = append(fanObs, observation{class: "fanout_split"})
+		}
+		recordBurstSample(&report, "fan_in", fanSample)
 	}
 	appendSampledPhase(&report, samper, phaseFrom("fan_in", fanObs))
-	recordBurstSample(&report, "fan_in", fanSample)
 	samper.begin("prepared_raw")
 	preparedRaw, preparedRawSample := rawBurst(ctx, endpoint, config, selectBurstIndexes(preparedIndexes, target.Capacity))
 	preparedRawPhase := phaseFrom("prepared_raw", preparedRaw)

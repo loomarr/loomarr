@@ -3517,6 +3517,11 @@ scope. Remote acknowledgement does not grant shutdown authority, and normal reso
 never reported as a shutdown drill. Ordinary origins without a supported fault controller report a
 selected profile unavailable and cannot certify it.
 
+Before measuring same-Channel raw fan-in against the run baseline, the harness waits for prior
+programme-boundary viewers and their warm sessions to converge to that baseline within the existing
+cleanup deadline. It records this convergence separately and refuses the fan-in workload if cleanup
+fails; a prior Channel's grace session cannot be counted as a duplicate fan-in session.
+
 Certification requires 100 or more configured Channels to complete mint and surf with bounded
 failure and resource growth; every admitted stream at measured capacity to yield valid media without
 interrupting an existing held stream; overload to return the documented bounded admission outcome
