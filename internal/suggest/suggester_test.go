@@ -1966,6 +1966,9 @@ func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) 
 		t.Fatalf("proposal rationale did not reflect admitted provenance: %q", prop.Rationale)
 	}
 	for _, item := range prop.Lineup {
+		if item.EditorialRole != suggest.EditorialCore {
+			t.Fatalf("verified user-supplied member must retain Core evidence: %+v", item)
+		}
 		if !strings.Contains(item.Rationale, "you supplied this title") || strings.Contains(item.Rationale, "aired") {
 			t.Fatalf("item rationale did not replace unsupported model prose: %+v", item)
 		}

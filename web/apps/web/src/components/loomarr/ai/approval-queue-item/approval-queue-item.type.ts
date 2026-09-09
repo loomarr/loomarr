@@ -10,6 +10,7 @@ interface ApprovalQueueItemProps {
   title: string;
   requestedBy?: string;
   summary?: string;
+  outlook?: (openEditor: () => void) => ReactNode;
   acquisitions?: number;
   status?: ApprovalStatus;
   denyReason?: string;

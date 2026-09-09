@@ -55,6 +55,7 @@ const ApprovalQueueItem = ({
   title,
   requestedBy,
   summary,
+  outlook,
   acquisitions,
   status = "pending",
   denyReason,
@@ -181,6 +182,8 @@ const ApprovalQueueItem = ({
           </p>
         </div>
       )}
+
+      {outlook?.(() => setOpen(true))}
 
       {hasPicks && (
         <div className="border-border border-t pt-2">

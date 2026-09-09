@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { outlook } from "@/test/fixtures/outlook";
 import { ApprovalQueue } from "./approval-queue";
 
 // The router is only reached on a successful approve that returns a channelId; these tests
@@ -40,7 +41,15 @@ const proposal = {
 };
 
 // Captures every approve body so a test can assert what the gate actually received.
-const stubApi = () => {
+const stubApi = (
+  assessment = outlook({
+    state: "uncertain",
+    programs: 0,
+    unknownTitles: 2,
+    uniqueRuntimeMs: 0,
+    firstRepeatMs: null,
+  }),
+) => {
   const approvals: unknown[] = [];
   vi.stubGlobal(
     "fetch",
@@ -54,6 +63,9 @@ const stubApi = () => {
       }
       if (typeof url === "string" && url.includes("/v1/discovery/feedback")) {
         return Promise.resolve(jsonResponse([]));
+      }
+      if (typeof url === "string" && url.endsWith("/outlook")) {
+        return Promise.resolve(jsonResponse(assessment));
       }
       if (typeof url === "string" && url.includes("/v1/proposals")) {
         return Promise.resolve(jsonResponse({ proposals: [proposal] }));
@@ -87,6 +99,19 @@ const stubEpisodePreviewApi = (preview: EpisodeSelection) => {
       if (typeof url === "string" && url.includes("/v1/discovery/feedback")) {
         return Promise.resolve(jsonResponse([]));
       }
+      if (typeof url === "string" && url.endsWith("/outlook")) {
+        return Promise.resolve(
+          jsonResponse(
+            outlook({
+              state: "uncertain",
+              programs: 0,
+              unknownTitles: 2,
+              uniqueRuntimeMs: 0,
+              firstRepeatMs: null,
+            }),
+          ),
+        );
+      }
       if (typeof url === "string" && url.includes("/v1/proposals")) {
         return Promise.resolve(
           jsonResponse({
@@ -117,6 +142,15 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
   // The reachability assertion the phase gate asks for: the edit panel must actually MOUNT from
   // the queue. `ProposalReview.onEditItem` shipped with no production caller and the button
   // therefore never rendered — the recurring defect this repo's reachability tests exist for.
+  it("thin outlook opens the actual pick editor without approving", async () => {
+    const approvals = stubApi(outlook({ thin: true }));
+    render(<ApprovalQueue />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add more variety" }));
+    expect(screen.getByText("What gets approved")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Remove Heat" })).toBeVisible();
+    expect(approvals).toEqual([]);
+  });
+
   it("mounts the edit surface from the queue", async () => {
     stubApi();
     render(<ApprovalQueue />);

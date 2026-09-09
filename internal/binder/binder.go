@@ -13,6 +13,7 @@ package binder
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -137,6 +138,20 @@ func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (sto
 	if p.Status != "approved" {
 		return store.Channel{}, fmt.Errorf("proposal %s has status %q, want approved", p.ID, p.Status)
 	}
+	return b.planChannel(ctx, p)
+}
+
+// PlanSubmittedChannel derives an unsaved channel for a pending proposal outlook.
+// It shares approval planning while preserving the submitted status and performs
+// no writes or post-commit work. Callers first use suggest.PrepareApproval.
+func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
+	if p.Status != "submitted" {
+		return store.Channel{}, fmt.Errorf("proposal %s has status %q, want submitted", p.ID, p.Status)
+	}
+	return b.planChannel(ctx, p)
+}
+
+func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
 	intentRef := p.JobID
 	if intentRef == "" {
 		return store.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
@@ -158,7 +173,8 @@ func (b *Binder) PlanApprovedChannel(ctx context.Context, p store.Proposal) (sto
 
 	ch := existing
 	if ch.ID == "" { // first approval of this intent → a new channel
-		ch.ID = newChannelID()
+		identity := sha256.Sum256([]byte(intentRef))
+		ch.ID = "ch_" + hex.EncodeToString(identity[:8])
 		ch.IntentRef = intentRef
 		// Sequential is the channel Strategy that decides ordering ONLY when the grounded
 		// policy leaves Ordering == OrderInherit — i.e. a single-series channel, where

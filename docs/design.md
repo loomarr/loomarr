@@ -134,19 +134,19 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `fillervisualsafety` | 6 | `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`, `openroutermedia` |
 | `httpx` | 13 | `metrics` |
 | `invitation` | 6 | `contact` |
-| `library` | 8 | `filler`, `httpx`, `metrics` |
+| `library` | 10 | `filler`, `httpx`, `metrics` |
 | `llm` | 6 | `httpx`, `metrics` |
 | `mediatools` | 11 | `diagnostics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `openroutermedia` | 7 | `fillereval` |
-| `provision` | 20 | — |
+| `provision` | 21 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 5 | — |
-| `schedule` | 16 | `provision` |
+| `schedule` | 18 | `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
-| `suggest` | 7 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
+| `store` | 15 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
 
 ##### Every package, by layer
@@ -187,7 +187,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Drives Loomarr's public playout transports through a bounded, credential-redacted production-path certification run.
 - **`proctree`** · 4 importers
   Supervises one child process and every descendant it starts.
-- **`provision`** · 20 importers
+- **`provision`** · 21 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`recovery`** · 5 importers
   Owns local-password recovery records and their bearer grants (§11).
@@ -245,7 +245,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 16 importers · → `holidayvocab`, `provision`, `textmatch`
+- **`schedule`** · 18 importers · → `holidayvocab`, `provision`, `textmatch`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
@@ -319,9 +319,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Adapts the bounded OpenRouter media transport to the provider-neutral complete-timeline assessor port.
 - **`fillerstructurewindowopenrouter`** · 2 importers · → `filler`, `fillerbakeoff`, `fillerstructure`, `fillerstructurewindow`, `httpx`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
-- **`library`** · 8 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
+- **`library`** · 10 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 15 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 9**
@@ -344,10 +344,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
 - **`testkit/libraryfixture`** · → `library`, `provision`, `schedule`
   No-network adapters for library-facing tests.
+- **`testkit/outlookfixture`** · → `library`, `schedule`
+  Shared read-only library observations for tests.
 
 **Layer 10**
 
-- **`channels`** · 2 importers · → `filler`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
+- **`channels`** · 3 importers · → `filler`, `programmer`, `provision`, `schedule`, `scheduler`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`devbootstrap`** · → `auth`, `store`
   Prepares an isolated agent worktree for UI development.
@@ -366,7 +368,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
-- **`suggest`** · 7 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
+- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`testkit`** · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
@@ -377,6 +379,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
 - **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `provision`, `quality`, `schedule`, `suggest`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
+- **`proposaloutlook`** · 2 importers · → `channels`, `library`, `provision`, `schedule`, `store`, `suggest`
+  Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
 - **`proposalworkflow`** · 2 importers · → `schedule`, `store`, `suggest`
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
 - **`recurate`** · 1 importer · → `catalog`, `provision`, `schedule`, `scheduler`, `store`, `suggest`
@@ -386,12 +390,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 13**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 14**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -1380,6 +1384,36 @@ rules. A member whose series premiered before a requested decade is not excluded
 year. An optional model season window remains an airing selector, not evidence that dated episodes
 actually overlap the era. For a named-set lineup containing series, a model season
 selector or a premiere year does not establish episode-era adherence.
+
+**Pre-approval outlook (#1068)** uses the exact pending Proposal, optional approval edits and
+resulting ChannelPolicy. `suggest.PrepareApproval` applies the existing title edit and trusted
+Intent-derived episode selectors without recording a decision. Approval and outlook share this
+pure preparation; only the existing approval coordinator commits the decision, titles and channel.
+`binder.PlanSubmittedChannel` and `PlanApprovedChannel` share the same planning implementation,
+with separate status checks. A new intent-bound channel uses a stable ID derived from its job ID,
+so seeded ordering is the same in a preview and its eventual approval. Existing channel IDs and
+operator-owned policy remain intact. This ID is identity, never an authorization credential.
+
+The outlook bounds its Library observation attempt to eight seconds and reads current metadata
+and concrete episodes without inserting available title
+rows, writing episode caches or starting preparation. The channels engine evaluates that observed
+availability through the same policy, ordering, separation, window and filler rules as its cycle
+preview. Only resolved, eligible program slots with positive source runtimes count toward immediate
+runway; missing content, pending placeholders, guessed durations and breaks do not. Report unique
+program runtime and time until the first repeated program in the computed cycle, its observation
+time and window, and explicit uncertainty when observations are incomplete. A window-limited result
+is a lower bound, not a claim that all remaining episodes have been exhausted. Starts now means
+there is schedulable programming after approval, not that transport preparation has been certified.
+Waiting copy names missing acquisitions; unknown Library evidence remains uncertain. Acquisition
+arrival has no promised date or runtime before actual media resolves.
+
+The compact review answers launch, fresh-programming runway and editorial mix, with exact counts,
+policy assumptions and evidence under How we estimated this. Thin or repetitive results have one
+Edit request action. Core denotes source-backed explicit requested/retained choices; Adjacent needs
+actual recommendation evidence; Discovery denotes other grounded choices, not inferred dislike or
+ownership-based favorites. Missing historical role evidence stays unknown. Changes to pending edits
+invalidate older outlook responses; errors never retain a previous lineup's estimate. Desktop and
+mobile cover healthy, waiting, thin and uncertain outcomes. No outlook grants approval or admission.
 
 **Proposal assessment (#1044/#1098)** reports evidence, not calibrated confidence. The synthetic
 Overall percentage is retired from the API and review. `scores.themeFit` is nullable source-backed
@@ -10553,7 +10587,8 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `proposalworkflow` | Owns durable Proposal Job commands, Attempt recovery, authorization, and authoritative First-channel Journeys (§8) |
 | `suggest` | Turns an intent into a grounded proposal (§8) |
 | `catalog` | The federated search boundary the suggester is grounded against (§7.2, §8) |
-| `binder` | Materialises an APPROVED proposal onto a channel — the one path (§7) |
+| `binder` | Shares submitted/approved channel planning; materialisation remains approval-only (§7) |
+| `proposaloutlook` | Read-only exact-proposal scheduling and editorial evidence for pre-approval review (§8) |
 | `schedule` | The scheduler domain: Channel identity, DesiredLineup, policy (§9) |
 | `channels` | The reconcile engine — the conductor that drives a channel to its desired state (§9, §18) |
 | `recurate` | Scheduled re-curation: a channel that keeps itself current (§8.2) |

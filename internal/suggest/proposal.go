@@ -97,13 +97,24 @@ type AdjacentContext struct {
 // ProposalItem is one entry in a lineup or acquisition list (§8 output contract).
 // Identity is always a real external id (the grounding guarantee); Name/Year are
 // for display only. It mirrors a catalog.Candidate plus the LLM's rationale.
+// EditorialRole records the grounded origin of a selected pick in one proposal run.
+// A missing role is unknown; ownership never means favorite or explicit preference.
+type EditorialRole string
+
+const (
+	EditorialCore      EditorialRole = "core"
+	EditorialAdjacent  EditorialRole = "adjacent"
+	EditorialDiscovery EditorialRole = "discovery"
+)
+
 type ProposalItem struct {
-	MediaType provision.MediaType `json:"mediaType"`
-	TMDBID    int                 `json:"tmdbId,omitempty"`
-	TVDBID    int                 `json:"tvdbId,omitempty"`
-	Name      string              `json:"name"`
-	Year      int                 `json:"year,omitempty"`
-	Seasons   []int               `json:"seasons,omitempty"` // series ACQUISITION (what to download)
+	EditorialRole EditorialRole       `json:"editorialRole,omitempty" enum:"core,adjacent,discovery"`
+	MediaType     provision.MediaType `json:"mediaType"`
+	TMDBID        int                 `json:"tmdbId,omitempty"`
+	TVDBID        int                 `json:"tvdbId,omitempty"`
+	Name          string              `json:"name"`
+	Year          int                 `json:"year,omitempty"`
+	Seasons       []int               `json:"seasons,omitempty"` // series ACQUISITION (what to download)
 	// SeasonMin/SeasonMax: optional AIRING season window for a series pick (which
 	// seasons play on the channel), distinct from Seasons (what to acquire). Set by
 	// the grounded suggester when the intent implies an era ("classic" → 1–10);
