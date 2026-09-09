@@ -237,12 +237,13 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make android` | ✅ | React Native Android TV — verified unsigned four-ABI Play artifact <br>*runs:* `android-release-test` |
+| `make android` |  | React Native Android TV — verified unsigned four-ABI Play artifact <br>*runs:* `android-release-test` |
 | `make android-release-test` |  | compile once, strip the ephemeral CI signature, and retain promotion evidence |
+| `make android-profile` | ✅ | profile the unchanged Android gate with separate timing and memory evidence |
 
 ## What CI runs
 
-`agent-harness-test` · `android` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

