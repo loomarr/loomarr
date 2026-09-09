@@ -16,10 +16,15 @@ go build -o "$LOOMARR_ARTIFACT_DIR/playout-load-cert" ./cmd/playout-load-cert
   --manifest /private/qualification/channels.json \
   --synthetic-scope beta5-qualified-target \
   --disposable-target beta5-qualified-target \
-  --fault-profile child_failure --fault-profile parent_failure --fault-profile shutdown \
+  --fault-profile child_failure --fault-profile parent_failure \
   --ffmpeg /opt/ffmpeg/ffmpeg --ffprobe /opt/ffmpeg/ffprobe \
   --programme-boundary-timeout 2m --suite-timeout 30m
 ```
+
+Run the terminal shutdown drill in a fresh disposable target: repeat the command with only
+`--fault-profile shutdown`, retaining the matching scope/acknowledgement and choosing a different
+`--out` report path under `LOOMARR_ARTIFACT_DIR`. Shutdown cannot be combined with the other fault
+profiles. Retain both reports; one drill does not substitute for another.
 
 Use the existing private ordered Channel manifest format. It must cover at least 100 configured
 Channels, a declared `prepared` cohort, enough deliberately cold transcode Channels for the measured
