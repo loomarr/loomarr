@@ -24,7 +24,7 @@ can move without weakening the release's promised outcome.
 
 | Release | Viewer/operator outcome | Primary gate owners |
 | --- | --- | --- |
-| **beta.5 — Trustworthy creation and playback** | Understand the request, explain uncertainty and launch readiness, recover cleanly, and watch the accepted changes on the declared household setup. | #1103, #1044, #1098/#1068, #1015/#494, #1097/#1037; approval safety #955 and applicable release prerequisites #688/#661 |
+| **beta.5 — Trustworthy creation and playback** | Understand the request, explain uncertainty and launch readiness, recover cleanly, and watch the accepted changes on the declared household setup. | #1103, #1044, #1098/#1068, #1015/#494, #1097/#1037; approval safety #955 and applicable release prerequisites #688/#661/#1162 |
 | **beta.6 — Complete certified filler journey** | Take an intentional source through exact approval, preparation, complete screening, review and deterministic admission into a real eligible break, with useful provenance and enrichment. | #945/#548, #955, #952/#1111, #908/#909/#951/#1086, #947, #946/#1110, #965/#1112, #741 |
 | **beta.7 — Sustained household use** | Preserve explicit preferences through repeated curation and ordinary maintenance, replenish filler from measured gaps, and complete the remaining Web parity work. | #498/#497, #749, #970, integrated acceptance #1104; carry forward the exact #1037/#1097 and filler certificates |
 
@@ -68,7 +68,10 @@ Complete these lanes concurrently, with one owner for overlapping planner/scorer
    #688's remaining release/homelab login acceptance needs evidence rather than another implementation.
 5. **Release preparation.** Qualify the supported current provider/build with #1015 and #494;
    retain unchanged semantic, latency and resource gates. Complete applicable #661 exact-artifact
-   redistribution evidence and review. Prepare the installed Shield/browser acceptance packet.
+   redistribution evidence and review. Resolve the newly tracked Metro/image-size dependency exposure
+   and compatible remedy or explicit release-scoped disposition in #1162; GitHub currently lists no
+   patched version. This is a locked-dependency finding, not a demonstrated deployed-service exploit.
+   Prepare the installed Shield/browser acceptance packet.
 
 **Exit:** the five journeys exercise creation through actual scheduled playback with honest
 sparse/acquisition/clarification states; the complete current-provider gate passes; declared-profile
@@ -192,11 +195,14 @@ missing decisions. Never run `make smoke*` from an agent session.
 ## Issue reconciliation and complete allocation
 
 Snapshot: **79 open issues** on 2026-09-09 before roadmap reconciliation. The table allocates every
-one. A target is the earliest planned completion window, not a claim that code is absent or that an
+one, plus the newly discovered dependency follow-up #1162. A target is the earliest planned completion window, not a claim that code is absent or that an
 open parent can close when only one child ships. Verify remaining clauses against current main and
 retain original assignees and acceptance criteria. Milestone metadata follows beta.5/.6/.7; supporting
 optimizations can move without relaxing required release gates.
 
+- Track #1162 before beta.5: Dependabot alerts 40/41 affect locked `image-size@1.2.1` through
+  `metro@0.87.0`; establish the actual input/consumer exposure and a compatible remedy. Earlier
+  dependency patches #1154 cover different package families.
 - Keep #688 open for its remaining homelab acceptance; its scheme/verifier code exists in
   `internal/library/auth.go`, `internal/library/client_test.go` and `internal/auth/auth_test.go`.
 - Keep #955 open: `internal/api/fillerpullapproval.go` still starts ingestion before persisting the
@@ -219,6 +225,7 @@ optimizations can move without relaxing required release gates.
 
 | Issue | Existing owner / required outcome | Target |
 | --- | --- | --- |
+| [#1162](https://github.com/loomarr/loomarr/issues/1162) | Resolve image-size parser advisories in the Metro dependency graph | beta.5 |
 | [#1103](https://github.com/loomarr/loomarr/issues/1103) | Define and exercise five reference Channel journeys | beta.5 |
 | [#1098](https://github.com/loomarr/loomarr/issues/1098) | Make Proposal theme and era scores reflect the requested Intent | beta.5 |
 | [#1068](https://github.com/loomarr/loomarr/issues/1068) | Show a calm Channel outlook for launch readiness, repeat runway, and serendipity | beta.5 |
