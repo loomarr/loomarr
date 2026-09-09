@@ -3111,6 +3111,21 @@ tests create ephemeral signing material. The sideload test
 also cleanly uninstalls any prior `loomarr.media` package from a Loomarr-owned Android TV emulator,
 installs the APK, and cold-launches the Leanback activity.
 
+Android build performance (#1050) is measured without changing the artifact contract. The
+`android-profile` Make target runs the normal four-ABI Android gate, retaining runner identity,
+wall time, actual Gradle settings and local `--profile` reports in a separate diagnostic artifact.
+It never uses an externally uploaded build scan or adds diagnostic files to the unsigned promotion
+artifact. The first baseline keeps one native worker and one Gradle worker. A later concurrency
+experiment changes one variable at a time and requires comparable hosted timing and memory evidence
+before becoming the CI default. Release continues to promote the already verified producer artifact.
+
+On Linux, the observer records its inherited cgroup v2 memory scope, limits, lifetime peak and
+OOM/limit event counters before and after the build, plus sampled current usage and host available
+memory. The lifetime peak is an upper bound for that scope, not a reset or isolated phase peak;
+sampled peaks can miss short spikes. Unavailable metrics remain explicit and cannot qualify a
+memory-safety claim. A single process's RSS is not aggregate compiler/Gradle memory. Observation does
+not change cgroup limits, build concurrency, JVM heap, caches, ABI scope or artifact checks.
+
 The accepted replacement is installed on the maintainer's Shield by removing the Kotlin application,
 sideloading the React Native APK, and pairing again. That physical journey has been accepted. The
 same permanent package now also has an Internal-testing-only Google Play path: Google manages the

@@ -11,6 +11,7 @@ readonly APP_DIR="${WEB_ROOT}/apps/tv"
 readonly OUTPUT_DIR="${ANDROID_RELEASE_OUTPUT_DIR:-${REPO_ROOT}/.artifacts/android-release}"
 readonly GRADLE_HEAP="${LOOMARR_ANDROID_GRADLE_HEAP:-1280m}"
 readonly ARCHITECTURES="armeabi-v7a,arm64-v8a,x86,x86_64"
+readonly GRADLE_WORKERS=1
 readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"
 
 if [[ -z "${VERSION_NAME}" ]]; then
@@ -53,17 +54,43 @@ export EXPO_PUBLIC_LOOMARR_CLIENT_VERSION="${VERSION_NAME}"
     --no-install --template "${EXPO_TEMPLATE}"
 )
 
+gradle_args=(
+  bundleRelease
+  --no-daemon
+  --build-cache
+  "--max-workers=${GRADLE_WORKERS}"
+  "-Dorg.gradle.jvmargs=-Xmx${GRADLE_HEAP}"
+  -Pkotlin.compiler.execution.strategy=in-process
+  "-PreactNativeArchitectures=${ARCHITECTURES}"
+)
+if [[ -n "${ANDROID_BUILD_PROFILE_DIR:-}" ]]; then
+  mkdir -p "${ANDROID_BUILD_PROFILE_DIR}"
+  gradle_args+=(--profile)
+  PROFILE_NATIVE_JOBS="${NATIVE_JOBS}" PROFILE_GRADLE_WORKERS="${GRADLE_WORKERS}" \
+    PROFILE_GRADLE_HEAP="${GRADLE_HEAP}" PROFILE_ARCHITECTURES="${ARCHITECTURES}" node <<'JS'
+const fs = require("node:fs");
+const path = require("node:path");
+fs.writeFileSync(path.join(process.env.ANDROID_BUILD_PROFILE_DIR, "gradle-settings.json"), JSON.stringify({
+  nativeJobs: Number(process.env.PROFILE_NATIVE_JOBS),
+  gradleWorkers: Number(process.env.PROFILE_GRADLE_WORKERS),
+  gradleHeap: process.env.PROFILE_GRADLE_HEAP,
+  architectures: process.env.PROFILE_ARCHITECTURES.split(","),
+}, null, 2) + "\n", { mode: 0o600 });
+JS
+fi
+
+gradle_status=0
 (
   cd "${APP_DIR}/android"
   CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=production EXPO_TV=1 \
-    ./gradlew bundleRelease \
-      --no-daemon \
-      --build-cache \
-      --max-workers=1 \
-      "-Dorg.gradle.jvmargs=-Xmx${GRADLE_HEAP}" \
-      -Pkotlin.compiler.execution.strategy=in-process \
-      "-PreactNativeArchitectures=${ARCHITECTURES}"
-)
+    ./gradlew "${gradle_args[@]}"
+) || gradle_status=$?
+if [[ -n "${ANDROID_BUILD_PROFILE_DIR:-}" && -d "${APP_DIR}/android/build/reports/profile" ]]; then
+  cp -R "${APP_DIR}/android/build/reports/profile" "${ANDROID_BUILD_PROFILE_DIR}/gradle"
+fi
+if (( gradle_status != 0 )); then
+  exit "${gradle_status}"
+fi
 
 readonly GENERATED_AAB="${APP_DIR}/android/app/build/outputs/bundle/release/app-release.aab"
 [[ -f "${GENERATED_AAB}" ]] || {
