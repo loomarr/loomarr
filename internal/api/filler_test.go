@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +25,8 @@ import (
 
 // fakeFiller records sync/tag calls.
 type fakeFiller struct {
+	pullMu     sync.Mutex
+	beforePull func()
 	testkit.FillerAcquisitionPlanner
 	syncs, tags, fetches int
 	fetchedSourceIDs     []string
@@ -166,9 +169,17 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 	return "job-1", nil
 }
 
-func (f *fakeFiller) IngestPull(_ context.Context, pullID string, targets []filler.AcquisitionTarget) (string, error) {
+func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (string, error) {
+	if f.beforePull != nil {
+		f.beforePull()
+	}
+	f.pullMu.Lock()
+	defer f.pullMu.Unlock()
 	if f.unavailable {
 		return "", api.ErrIngestUnavailable
+	}
+	if err := commit(ctx, filler.AcquisitionRun{ID: fmt.Sprintf("job-%d", len(f.ingested)+1), PullID: pullID, Trigger: filler.AcquisitionPull, Status: filler.AcquisitionQueued, Requested: len(targets), StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
+		return "", err
 	}
 	f.pullID = pullID
 	f.pullTargets = append([]filler.AcquisitionTarget(nil), targets...)

@@ -200,6 +200,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
 		t.Run("SeededDefaultSources", func(t *testing.T) { testSeededDefaultSources(t, newStore) })
 		t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })
+		t.Run("FillerPullCommit", func(t *testing.T) { testFillerPullCommit(t, newStore) })
 		t.Run("FillerAcquisitionRuns", func(t *testing.T) { testFillerAcquisitionRuns(t, newStore) })
 		t.Run("FillerAcquisitionArtifacts", func(t *testing.T) { testFillerAcquisitionArtifacts(t, newStore) })
 		t.Run("FillerAcquisitionRepairSummary", func(t *testing.T) { testFillerAcquisitionRepairSummary(t, newStore) })
