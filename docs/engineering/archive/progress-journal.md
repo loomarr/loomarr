@@ -4547,8 +4547,24 @@ in 0.11 seconds, with zero validations. Separate decoded-stream presence now tri
 epoch's media-shape validation while all accepted-content counters, guards, expected sequence,
 transition and late-observation requirements remain unchanged. Added missing-audio negatives
 still reject the first epoch. All `TestProgrammeSignals` race tests pass in 18.118 seconds.
-Independent review, the six-position real boundary matrix and final affected gates are pending.
+Independent Standards/Spec review passes without findings; final charged usage is
+53,336/100,000 and the pane is closed. The real prepared/live boundary matrix passes every
+5/20/50/100/200/400 ms join position in 146.25 seconds.
 
 Exact diagnostic overlays, retained failures, input media, private block identities, red/green
 logs and frozen review patches are retained in `epoch-decode-7e29cf4f`. Instrumentation remains
 outside the repository. Tracking receipt: #1037 comment `5599922628`.
+
+
+Repair `9df1669f` passes `GOFLAGS=-p=1 make verify BASE=7e29cf4f` (Go, docs, policy).
+The complete command-test package passes in 109.311 seconds and `internal/playoutcert` in
+71.712 seconds. Windows process-package cross-compilation also passes; no Windows runtime
+qualification is claimed. Final logs and exact frozen patches are archived with SHA-256
+manifests in `shared-aac-output-and-epoch-7e29cf4f`.
+
+Fresh actual CLI reports from the identical committed Go source certify 106 generated isolated
+Channels at capacity four in pinned Ubuntu ARM64 with a two-CPU quota. Child/parent faults
+complete in 42.381 seconds; shutdown completes separately in 25.098 seconds. Both audits pass
+with zero failures. Prepared raw first-frame p95 is 250.027ms / 373.127ms under the unchanged
+500ms limit. The exact commands, binary/source provenance, reports and hashes are retained in
+`shared-aac-cli-9df1669f`. Protected hosted acceptance remains required.
