@@ -8,7 +8,6 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
@@ -19,11 +18,7 @@ import (
 func (p *FFmpegPackager) verifyVideoReordering(ctx context.Context, workspace string) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	bin := "ffprobe"
-	if p.path != "ffmpeg" {
-		dir, base := filepath.Split(p.path)
-		bin = filepath.Join(dir, strings.Replace(base, "ffmpeg", "ffprobe", 1))
-	}
+	bin := p.probePath()
 	args := []string{"-v", "error", "-select_streams", "v", "-show_entries",
 		"stream=codec_type,has_b_frames", "-of", "json", filepath.Join(workspace, MediaManifestName)}
 	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // local output and fixed probe arguments

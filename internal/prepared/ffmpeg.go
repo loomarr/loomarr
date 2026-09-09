@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 )
@@ -22,7 +23,9 @@ const (
 	MediaManifestName = "media.m3u8"
 	// CurrentPackagingVersion changes whenever the prepared byte layout or manifest contract makes
 	// older publications incompatible. It participates in immutable publication identity.
-	CurrentPackagingVersion = 2
+	CurrentPackagingVersion = 3
+	// MaxRandomAccessInterval bounds prepared video seeks independently of HLS segment duration.
+	MaxRandomAccessInterval = 200 * time.Millisecond
 )
 
 var ErrUnsupportedRendition = errors.New("prepared: unsupported rendition")
@@ -118,6 +121,9 @@ func (p *FFmpegPackager) Package(
 	if err := p.verifyVideoReordering(ctx, workspace); err != nil {
 		return Output{}, err
 	}
+	if err := p.verifyRandomAccess(ctx, workspace); err != nil {
+		return Output{}, err
+	}
 	return collectPackagedOutput(workspace)
 }
 
@@ -195,9 +201,11 @@ func ffmpegPackageArgsWith(
 		"-i", input.url, "-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", audioTrack),
 	)
 	args = append(args, video.OutputArgs...)
-	// Version 2 copies consecutive programmes without reordered video timestamps.
-	// Apply this after the selected encoder plan, including injected hardware plans.
-	args = append(args, "-bf", "0")
+	// The immutable prepared contract overrides the live encoder's longer GOP. HLS segments
+	// retain their own duration; short access intervals also cover arbitrarily trimmed Airings.
+	gop := max(1, r.FrameRate*int(MaxRandomAccessInterval/time.Millisecond)/1000)
+	args = append(args, "-bf", "0", "-g", strconv.Itoa(gop), "-keyint_min", strconv.Itoa(gop),
+		"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.3f)", MaxRandomAccessInterval.Seconds()))
 	args = append(args,
 		"-c:a", "aac", "-b:a", fmt.Sprintf("%dk", r.AudioBitrateKbps), "-ac", strconv.Itoa(audioChannels),
 		"-f", "hls", "-hls_time", fmt.Sprintf("%.3f", segmentSeconds),
@@ -240,8 +248,8 @@ func softwareVideoArgs(r RenditionContract) (VideoPlan, error) {
 		return VideoPlan{}, ErrUnsupportedRendition
 	}
 
-	segmentSeconds := float64(r.SegmentDurationMS) / 1000
-	gop := max(1, r.FrameRate*r.SegmentDurationMS/1000)
+	accessSeconds := MaxRandomAccessInterval.Seconds()
+	gop := max(1, r.FrameRate*int(MaxRandomAccessInterval/time.Millisecond)/1000)
 	filter := fmt.Sprintf(
 		"scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1",
 		r.Width, r.Height, r.Width, r.Height,
@@ -260,10 +268,10 @@ func softwareVideoArgs(r RenditionContract) (VideoPlan, error) {
 		"-maxrate", fmt.Sprintf("%dk", r.VideoBitrateKbps*2),
 		"-bufsize", fmt.Sprintf("%dk", r.VideoBitrateKbps*2),
 		"-g", strconv.Itoa(gop), "-keyint_min", strconv.Itoa(gop),
-		"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.3f)", segmentSeconds),
+		"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.3f)", accessSeconds),
 	)
 	if videoEncoder == "libx265" {
-		args = append(args, "-x265-params", fmt.Sprintf("keyint=%d:min-keyint=%d:scenecut=0", gop, gop), "-tag:v", "hvc1")
+		args = append(args, "-x265-params", fmt.Sprintf("keyint=%d:min-keyint=%d:scenecut=0:open-gop=0", gop, gop), "-tag:v", "hvc1")
 	} else {
 		args = append(args, "-sc_threshold", "0")
 	}

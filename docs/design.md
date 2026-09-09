@@ -2484,13 +2484,27 @@ a private schedule. A tune resolves in this order:
    not uninterrupted delivery of all later media. Current-time retries acquire a fresh seek; they
    never reuse a prospective target or erase its elapsed offset. Existing admission, format checks
    and instrumentation apply to every prospective opening as they do to an ordinary opening.
-   Prepared packaging version 2 establishes a no-reordering video contract for continuous copied
+   Prepared packaging version 3 establishes a no-reordering video contract for continuous copied
    handoffs. The packager applies zero B-frames after either software or injected encoder arguments,
    then probes the local output before publication and requires exactly one video stream with
    explicitly zero decoder reordering. Missing, failed or nonzero observations reject preparation;
    the bounded probe uses ffprobe beside the configured ffmpeg, with no original-source access.
-   Version 1 publications cannot
-   satisfy a version 2 readiness binding and must be prepared again by the ordinary control plane.
+   Prepared random access is independent of HLS segment duration: consecutive video access points
+   are at most 200 ms apart, including the interval from the last access point to video EOF. The
+   packager applies this cadence after software or hardware encoder arguments while retaining the
+   rendition's HLS segment duration and bitrate policy. A bounded, streaming packet inspection of
+   the newly packaged local output verifies increasing video timestamps, an initial access point,
+   and the access-point/tail bound before publication. A missing or violated observation rejects
+   preparation. This background inspection never opens the original source on the tune path.
+   A seek in the last partial GOP may have no remaining video access point; the existing adjacent
+   Airing handoff supplies the next programme at its actual boundary. Arbitrarily trimmed Airings
+   obey the same 200 ms bound without duration-specific encodes or preceding-GOP replay. The
+   unchanged 500 ms decoded-frame qualification includes process startup and this boundary wait;
+   a short GOP alone is not certification. More frequent keyframes trade compression efficiency
+   for bounded random access, so declared-hardware evidence includes output size and picture-quality
+   comparison as well as startup and preparation capacity.
+   Version 1 and 2 publications cannot satisfy a version 3 readiness binding and must be prepared
+   again by the ordinary control plane.
    The prepared child preserves source timestamps, applies its Airing start relative to the shared
    session origin equally to audio and video, and ends at the absolute source offset plus remaining
    duration. For a positive seek that copies either stream, an output seek also discards copied
