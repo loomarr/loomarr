@@ -299,20 +299,14 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	for {
-		select {
-		case <-r.Context().Done():
-			return // the viewer left; detach fires
-		case chunk, ok := <-chunks:
-			if !ok {
-				// The session ended: the encoder exited, the channel was stopped, or this
-				// viewer fell too far behind and was dropped (playout.broadcast).
-				return
-			}
-			if _, err := w.Write(chunk); err != nil {
-				return // the client went away mid-write
-			}
-			flusher.Flush()
+		chunk, err := chunks.Next(r.Context())
+		if err != nil {
+			return // request cancelled, producer ended, or viewer exceeded its byte budget
 		}
+		if _, err := w.Write(chunk); err != nil {
+			return // the client went away mid-write
+		}
+		flusher.Flush()
 	}
 }
 
@@ -335,22 +329,22 @@ func (s *Server) writeRawTuneError(w http.ResponseWriter, r *http.Request, chann
 		"Loomarr couldn't start encoding this channel. Check the playout log for details.")
 }
 
-func firstTransportChunk(ctx context.Context, chunks <-chan []byte, timeout time.Duration) ([]byte, error) {
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
+func firstTransportChunk(ctx context.Context, stream playout.Stream, timeout time.Duration) ([]byte, error) {
+	startup, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	for {
-		select {
-		case <-ctx.Done():
+		chunk, err := stream.Next(startup)
+		if ctx.Err() != nil {
 			return nil, ctx.Err()
-		case <-timer.C:
+		}
+		if startup.Err() != nil {
 			return nil, errPlayoutStartupTimeout
-		case chunk, ok := <-chunks:
-			if !ok {
-				return nil, errPlayoutStartupEnded
-			}
-			if len(chunk) > 0 {
-				return chunk, nil
-			}
+		}
+		if err != nil {
+			return nil, errPlayoutStartupEnded
+		}
+		if len(chunk) > 0 {
+			return chunk, nil
 		}
 	}
 }

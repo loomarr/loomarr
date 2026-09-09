@@ -49,7 +49,7 @@ android-source-validator	scripts/validate-android-release-source.sh	android,poli
 android-artifact-downloader	scripts/download-android-ci-artifact.sh	android,policy
 android-artifact-signer	scripts/sign-android-ci-artifact.sh	android,policy
 android-emulator-acceptance	scripts/test-android-release-emulator.sh	android
-release-image	Dockerfile	contracts,image
+release-image	Dockerfile	contracts,go,go_full,image,policy
 observability-bundle	observability/metrics-manifest.txt	contracts
 documentation	docs/dev/testing.md	docs
 design-contract	docs/design.md	docs,policy
@@ -64,7 +64,7 @@ agent-script	scripts/agent.sh	agent,policy
 release-workflow	.github/workflows/release.yml	policy
 ci-workflow	.github/workflows/ci.yml	policy
 ci-agent-workflow	.github/workflows/ci-agent.yml	agent,policy
-ci-go-workflow	.github/workflows/ci-go.yml	go,policy
+ci-go-workflow	.github/workflows/ci-go.yml	go,go_full,policy
 ci-rust-workflow	.github/workflows/ci-rust-contracts.yml	rust,policy
 ci-rust-certification-workflow	.github/workflows/ci-image-certification.yml	rust,policy
 ci-go-contracts-workflow	.github/workflows/ci-go-contracts.yml	contracts,policy
@@ -106,3 +106,4 @@ filler-corpus-locked	internal/fillercorpus/corpus/pilot/locked.json	contracts,go
 filler-pilot-review	internal/fillercorpus/pilotreview.go	contracts,go,postgres,image
 filler-pilot-review-command	cmd/filler-corpus-pilot-rights-review/main.go;cmd/filler-corpus-pilot-rights-lock/main.go	contracts,go,postgres,image
 filler-eval-doc	internal/fillereval/README.md	docs
+ci-ffmpeg-toolchain	scripts/ci-ffmpeg.sh	contracts,go,go_full,policy

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -113,13 +114,15 @@ func startProcess(
 		}
 	}
 
-	stdout, err := cmd.StdoutPipe()
+	stdout, stdoutWriter, err := newProcessOutputPipe()
 	if err != nil {
 		if stdin != nil {
 			_ = stdin.Close()
 		}
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
+	cmd.Stdout = stdoutWriter
+	defer func() { _ = stdoutWriter.Close() }()
 
 	progress, err := wireProgress(cmd)
 	if err != nil {
@@ -135,7 +138,8 @@ func startProcess(
 	// breaks is the final line.
 	var stderr io.ReadCloser
 	if !progress.combined {
-		stderr, err = cmd.StderrPipe()
+		var stderrWriter *os.File
+		stderr, stderrWriter, err = newProcessOutputPipe()
 		if err != nil {
 			progress.closeFailure()
 			_ = stdout.Close()
@@ -144,6 +148,8 @@ func startProcess(
 			}
 			return nil, fmt.Errorf("stderr pipe: %w", err)
 		}
+		cmd.Stderr = stderrWriter
+		defer func() { _ = stderrWriter.Close() }()
 	}
 
 	p := &Process{Stdout: stdout, Stdin: stdin, log: log, done: make(chan struct{})}
@@ -195,6 +201,36 @@ func startProcess(
 	}()
 
 	return p, nil
+}
+
+// Command-owned StdoutPipe/StderrPipe readers are closed by cmd.Wait, which may
+// run in a lifecycle observer before consumers finish reading a finite child.
+// These readers instead survive reaping and release their descriptors at EOF.
+type processOutputPipe struct {
+	reader *os.File
+	once   sync.Once
+	err    error
+}
+
+func newProcessOutputPipe() (*processOutputPipe, *os.File, error) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	return &processOutputPipe{reader: reader}, writer, nil
+}
+
+func (p *processOutputPipe) Read(b []byte) (int, error) {
+	n, err := p.reader.Read(b)
+	if err == io.EOF {
+		_ = p.Close()
+	}
+	return n, err
+}
+
+func (p *processOutputPipe) Close() error {
+	p.once.Do(func() { p.err = p.reader.Close() })
+	return p.err
 }
 
 // readProgress parses ffmpeg's key=value progress stream.
@@ -404,6 +440,7 @@ func (p *Process) Stop() {
 		return
 	}
 	p.proc.Stop()
+	_ = p.Stdout.Close()
 	p.ioWG.Wait()
 	p.finish(p.proc.Wait())
 }

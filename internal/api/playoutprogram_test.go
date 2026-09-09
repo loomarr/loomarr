@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/playoutprocessfixture"
 )
 
 // fakeResolver answers "what's on" without a store or a media server.
@@ -35,7 +37,8 @@ type fakeResolver struct {
 	// test is specifically about track discovery.
 	tracks playout.MediaTracks
 	// plan is what PlanFor returns — zero value (transcode both) unless a test is about direct play.
-	plan playout.CopyPlan
+	plan            playout.CopyPlan
+	copyStartDenied bool
 	// sourceFormat is the probe PlanFor returns alongside the plan. Zero unless a test is about
 	// something the probe learned about the SOURCE (as opposed to the copy decision derived from
 	// it) — HDR is the first such thing.
@@ -95,6 +98,10 @@ func (f *fakeResolver) Tracks(context.Context, string) (playout.MediaTracks, err
 // probe learned (HDR is the first), which reads as "not probed": SDR, unknown geometry.
 func (f *fakeResolver) PlanFor(context.Context, string, playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat) {
 	return f.plan, f.sourceFormat
+}
+
+func (f *fakeResolver) CopyVideoStart(_ context.Context, _ string, offset, _ time.Duration, _ float64) (time.Duration, bool) {
+	return offset, !f.copyStartDenied
 }
 
 func (f *fakeResolver) ChannelCodec(context.Context, string) string {
@@ -400,6 +407,76 @@ func TestPlayoutProgram_PassesTheSeekAndTheSlotBound(t *testing.T) {
 	}
 	if !strings.Contains(got, "http://emby/Videos/abc/stream") {
 		t.Errorf("the resolved stream URL did not reach ffmpeg: %q", got)
+	}
+}
+
+func TestPlayoutProgramSharedClockKeepsSeekAndAbsoluteSourceEnd(t *testing.T) {
+	enc := &fakeEncoder{output: "x"}
+	airing := playableAiring(2*time.Second, 3*time.Second)
+	airing.StartedAt = time.Unix(1000, 0).UTC()
+	origin := airing.StartedAt.Add(-10 * time.Second)
+	srv := newProgramServer(t, programOpts{
+		resolver: &fakeResolver{airing: airing, url: "http://media.invalid/original"}, encoder: enc.start,
+	})
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(api.PlayoutTimelineOriginHeader, origin.Format(time.RFC3339Nano))
+	req.Header.Set(api.PlayoutSessionAudioBitrateHeader, "96")
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	args := strings.Join(enc.args(), " ")
+	for _, want := range []string{"-copyts -start_at_zero", "-ss 2.000", "-to 5.000", "-output_ts_offset 10.000", "-muxdelay 0", "-muxpreload 0", "-c:a s302m", "-strict -2", "-af atrim=start=2.000:end=5.000", "-bf 0"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("missing %q: %s", want, args)
+		}
+	}
+	if strings.Contains(args, "-t ") {
+		t.Fatalf("shared-clock source uses a relative end: %s", args)
+	}
+	if resp.Header.Get(api.PlayoutBlockAudioHeader) != api.PlayoutBlockAudioPCM || !strings.HasSuffix(resp.Header.Get(api.PlayoutBroadcastFormatHeader), "-96") {
+		t.Fatalf("missing PCM or pinned bitrate acknowledgement: %v", resp.Header)
+	}
+	if strings.Contains(args, "-readrate") || strings.Contains(args, "-c:a aac") || strings.Contains(args, "-c:a copy") {
+		t.Fatalf("private child must leave pacing and AAC encoding to session: %s", args)
+	}
+
+}
+
+func TestPlayoutProgramRejectsMalformedClockBeforeSourceEffects(t *testing.T) {
+	for _, value := range []string{"not-a-time", "0001-01-01T00:00:00Z"} {
+		t.Run(value, func(t *testing.T) {
+			resolver := &fakeResolver{airing: playableAiring(0, time.Minute), url: "http://media.invalid/original"}
+			enc := &fakeEncoder{output: "x"}
+			srv := newProgramServer(t, programOpts{resolver: resolver, encoder: enc.start})
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set(api.PlayoutTimelineOriginHeader, value)
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resolver.mu.Lock()
+			calls := resolver.calls
+			resolver.mu.Unlock()
+			if resp.StatusCode != http.StatusBadRequest || calls != 0 || len(enc.args()) != 0 {
+				t.Fatalf("status=%d resolves=%d args=%v", resp.StatusCode, calls, enc.args())
+			}
+		})
 	}
 }
 
@@ -1059,5 +1136,94 @@ func TestPlayoutProgram_EmptyTargetDisablesNormalisation(t *testing.T) {
 	}
 	if joined := strings.Join(enc.args(), " "); strings.Contains(joined, "loudnorm") {
 		t.Errorf("normalisation ran with the setting disabled; args = %v", enc.args())
+	}
+}
+
+func TestPlayoutProgramChildExitHelper(t *testing.T) {
+	for i, arg := range os.Args {
+		if arg == "--" && i+1 < len(os.Args) {
+			playoutprocessfixture.RunPrepared(os.Args[i+1])
+			return
+		}
+	}
+}
+
+func TestPlayoutProgramPartialFailureIsNotCleanHTTPCompletion(t *testing.T) {
+	for _, mode := range []string{"prepared-success", "prepared-failure"} {
+		t.Run(mode, func(t *testing.T) {
+			var starts atomic.Int32
+			encoder := api.PlayoutEncoder(func(ctx context.Context, _ []string, onProgress func(playout.Progress)) (*playout.Process, error) {
+				starts.Add(1)
+				return playout.Start(ctx, os.Args[0], []string{"-test.run=^TestPlayoutProgramChildExitHelper$", "--", mode}, nil, onProgress)
+			})
+			srv := newProgramServer(t, programOpts{
+				resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"}, encoder: encoder,
+			})
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, readErr := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusOK || string(body) != playoutprocessfixture.PreparedPrefix {
+				t.Fatalf("status=%d body=%q; want the committed programme prefix", resp.StatusCode, body)
+			}
+			if ctx.Err() != nil {
+				t.Fatalf("request expired instead of observing child completion: %v", ctx.Err())
+			}
+			if mode == "prepared-failure" {
+				if !errors.Is(readErr, io.ErrUnexpectedEOF) {
+					t.Fatalf("body read = %v; want an incomplete HTTP response after child exit 7", readErr)
+				}
+			} else if readErr != nil {
+				t.Fatalf("successful child response: %v", readErr)
+			}
+			if starts.Load() != 1 {
+				t.Fatalf("child starts = %d; a committed partial response must not retry or append another programme", starts.Load())
+			}
+		})
+	}
+}
+
+func TestPlayoutProgramUnsafeCopyStartUsesAtomicTranscodeAdmission(t *testing.T) {
+	for _, mode := range []string{"proven copy", "unsafe seek", "unsafe seek at capacity"} {
+		t.Run(mode, func(t *testing.T) {
+			profile := playout.DefaultProfile()
+			profile.Encoder, profile.Width, profile.Height = playout.EncoderSoftware, 320, 180
+			unsafe := mode != "proven copy"
+			resolver := &fakeResolver{airing: playableAiring(11*time.Second, time.Second), url: "http://emby/long-gop", plan: playout.CopyPlan{CopyVideo: true, CopyAudio: true}, copyStartDenied: unsafe, profile: profile, sourceFormat: playout.MediaFormat{VideoCodec: "h264", Width: 320, Height: 180, FrameRate: float64(profile.Framerate), PixelFormat: "yuv420p", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000}}
+			encoder := &fakeEncoder{output: "programme"}
+			sessions := &fakePlayoutSessions{denyProgram: mode == "unsafe seek at capacity"}
+			server := newProgramServer(t, programOpts{resolver: resolver, encoder: encoder.start, sessions: sessions})
+			response := getPlayout(t, server, "/v1/playout/program/ch1?token="+playoutToken)
+			_, _ = io.Copy(io.Discard, response.Body)
+			if len(sessions.programCosts) == 0 {
+				t.Fatalf("copy decision did not reach atomic admission: %v", sessions.programCosts)
+			}
+			for _, cost := range sessions.programCosts {
+				if cost != unsafe {
+					t.Fatalf("unsafe source or offline card bypassed video accounting: %v", sessions.programCosts)
+				}
+			}
+			if mode == "unsafe seek at capacity" {
+				if response.StatusCode != http.StatusBadGateway || encoder.args() != nil {
+					t.Fatalf("unsafe copy bypassed video capacity: status=%d args=%v", response.StatusCode, encoder.args())
+				}
+				return
+			}
+			want := "-c:v copy"
+			if unsafe {
+				want = "-c:v libx264"
+			}
+			if response.StatusCode != http.StatusOK || !strings.Contains(strings.Join(encoder.args(), " "), want) {
+				t.Fatalf("wrong playback plan: status=%d args=%v", response.StatusCode, encoder.args())
+			}
+		})
 	}
 }

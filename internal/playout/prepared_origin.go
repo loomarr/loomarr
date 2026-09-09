@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -46,10 +47,11 @@ type PreparedWindow struct {
 	Current  PreparedAiring
 }
 
-// PreparedResolver maps a tune request onto the authoritative Airings and prepared identities. It
-// is implemented at composition, where the accepted schedule and source catalogue already meet.
+// PreparedResolver maps a request onto authoritative Airings and prepared identities.
+// A zero instant resolves the current wall clock; a supplied instant is a prospective
+// prepared lookup. Neither mode may select filler or record live airing side effects.
 type PreparedResolver interface {
-	ResolvePrepared(context.Context, TuneRequest) (PreparedWindow, bool, error)
+	ResolvePrepared(context.Context, TuneRequest, time.Time) (PreparedWindow, bool, error)
 }
 
 // PreparedOrigin renders short live HLS manifests over immutable shared publications. It owns no
@@ -89,10 +91,10 @@ func (o *PreparedOrigin) MPEGTSBlockSource(
 	})
 }
 
-// MPEGTSReady is the lookup-only admission proof for a copy-only prepared cold start. It opens no
+// MPEGTSReady is the lookup-only admission proof for a prepared cold start without video encoding. It opens no
 // original source and starts no process; a miss or malformed boundary keeps conservative admission.
 func (o *PreparedOrigin) MPEGTSReady(ctx context.Context, channelID string, plan EncodePlan) (bool, error) {
-	_, ready, err := o.resolveMPEGTSBlock(ctx, channelID, plan)
+	_, ready, err := o.resolveMPEGTSBlock(ctx, BlockRequest{ChannelID: channelID, Plan: plan})
 	return ready, err
 }
 
@@ -107,14 +109,14 @@ type preparedMPEGTSBlock struct {
 // process-opening source. Keeping publication, format, identity, and remaining-boundary validation
 // together prevents a session being admitted cheaply under rules the actual block later rejects.
 func (o *PreparedOrigin) resolveMPEGTSBlock(
-	ctx context.Context, channelID string, plan EncodePlan,
+	ctx context.Context, request BlockRequest,
 ) (preparedMPEGTSBlock, bool, error) {
 	if o == nil || o.library == nil || o.resolver == nil {
 		return preparedMPEGTSBlock{}, false, nil
 	}
 	window, ok, err := o.resolver.ResolvePrepared(ctx, TuneRequest{
-		ChannelID: channelID, Plan: plan, Delivery: DeliveryMPEGTS,
-	})
+		ChannelID: request.ChannelID, Plan: request.Plan, Delivery: DeliveryMPEGTS,
+	}, request.AiringAt)
 	if err != nil || !ok {
 		return preparedMPEGTSBlock{}, false, err
 	}
@@ -134,18 +136,28 @@ func (o *PreparedOrigin) resolveMPEGTSBlock(
 }
 
 func newPreparedMPEGTSBlockSource(o *PreparedOrigin, start preparedBlockStarter) BlockSource {
-	return func(ctx context.Context, channelID string, plan EncodePlan) (Block, error) {
+	return func(ctx context.Context, blockRequest BlockRequest) (Block, error) {
+		channelID := blockRequest.ChannelID
+		plan := blockRequest.Plan
 		if start == nil {
 			return Block{}, ErrPreparedUnavailable
 		}
-		resolved, ok, err := o.resolveMPEGTSBlock(ctx, channelID, plan)
+		resolved, ok, err := o.resolveMPEGTSBlock(ctx, blockRequest)
 		if err != nil {
 			return Block{}, err
 		}
 		if !ok {
 			return Block{}, ErrPreparedUnavailable
 		}
+		if !blockRequest.AiringAt.IsZero() && (!resolved.identity.StartedAt.Equal(blockRequest.AiringAt) || resolved.media.airing.Offset != 0) {
+			return Block{}, ErrPreparedUnavailable
+		}
+		if blockRequest.AudioBitrate > 0 {
+			resolved.format.AudioBitrate = blockRequest.AudioBitrate
+		}
 		args := ProgramArgs(ProgramSpec{
+			SessionAudio: !blockRequest.TimelineOrigin.IsZero(),
+			Clock:        ProgramClock{Origin: blockRequest.TimelineOrigin, StartedAt: resolved.identity.StartedAt},
 			Profile: Profile{
 				Width: resolved.format.Width, Height: resolved.format.Height, Framerate: resolved.format.Framerate,
 				VideoBitrate: resolved.format.VideoBitrate, AudioBitrate: resolved.format.AudioBitrate,
@@ -180,6 +192,9 @@ func newPreparedMPEGTSBlockSource(o *PreparedOrigin, start preparedBlockStarter)
 }
 
 func preparedBroadcastFormat(r prepared.RenditionContract) (BroadcastFormat, bool) {
+	if r.PackagingVersion != prepared.CurrentPackagingVersion {
+		return BroadcastFormat{}, false
+	}
 	codec := strings.ToLower(strings.TrimSpace(r.VideoCodec))
 	if codec != "h264" && !IsHEVCCodec(codec) {
 		return BroadcastFormat{}, false
@@ -203,11 +218,25 @@ type processBlockContent struct {
 	err     error
 }
 
-func (c *processBlockContent) Read(p []byte) (int, error) { return c.reader.Read(p) }
+func (c *processBlockContent) Read(p []byte) (int, error) {
+	n, err := c.reader.Read(p)
+	if err == io.EOF {
+		// A child can close stdout after a partial programme and still fail. Reap its
+		// natural exit before Close requests Stop, which suppresses termination errors.
+		if exitErr := c.process.Wait(); exitErr != nil {
+			return n, exitErr
+		}
+	}
+	return n, err
+}
 
 func (c *processBlockContent) Close() error {
 	c.once.Do(func() {
 		c.err = c.reader.Close()
+		// EOF or an earlier explicit close may have released the media reader.
+		if errors.Is(c.err, os.ErrClosed) {
+			c.err = nil
+		}
 		c.process.Stop()
 	})
 	return c.err
@@ -217,7 +246,7 @@ func (o *PreparedOrigin) Tune(ctx context.Context, request TuneRequest) (Present
 	if request.Delivery != DeliveryHLS || o == nil || o.library == nil || o.resolver == nil {
 		return Presentation{}, false, nil
 	}
-	window, ok, err := o.resolver.ResolvePrepared(ctx, request)
+	window, ok, err := o.resolver.ResolvePrepared(ctx, request, time.Time{})
 	if err != nil || !ok {
 		return Presentation{}, false, err
 	}

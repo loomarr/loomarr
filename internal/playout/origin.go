@@ -46,7 +46,7 @@ type TuneRequest struct {
 // Presentation is one tuned Channel. Exactly one of Stream or Manifest is populated according
 // to the requested Delivery. Release must be called when the caller is finished with this snapshot.
 type Presentation struct {
-	Stream   <-chan []byte
+	Stream   Stream
 	Manifest []byte
 	Release  func()
 }
@@ -82,7 +82,7 @@ func (a Admission) Release() {
 }
 
 type sessionAttacher interface {
-	Attach(context.Context, string, EncodePlan) (<-chan []byte, func(), error)
+	Attach(context.Context, string, EncodePlan) (Stream, func(), error)
 	StopChannel(channelID string)
 	Stop()
 }

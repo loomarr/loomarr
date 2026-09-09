@@ -22,7 +22,7 @@ const (
 	MediaManifestName = "media.m3u8"
 	// CurrentPackagingVersion changes whenever the prepared byte layout or manifest contract makes
 	// older publications incompatible. It participates in immutable publication identity.
-	CurrentPackagingVersion = 1
+	CurrentPackagingVersion = 2
 )
 
 var ErrUnsupportedRendition = errors.New("prepared: unsupported rendition")
@@ -115,6 +115,9 @@ func (p *FFmpegPackager) Package(
 		diagnostic := strings.ReplaceAll(commandDiagnostic(output.bytes()), input.url, "[input]")
 		return Output{}, fmt.Errorf("prepared: ffmpeg package: %w: %s", err, diagnostic)
 	}
+	if err := p.verifyVideoReordering(ctx, workspace); err != nil {
+		return Output{}, err
+	}
 	return collectPackagedOutput(workspace)
 }
 
@@ -192,6 +195,9 @@ func ffmpegPackageArgsWith(
 		"-i", input.url, "-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", audioTrack),
 	)
 	args = append(args, video.OutputArgs...)
+	// Version 2 copies consecutive programmes without reordered video timestamps.
+	// Apply this after the selected encoder plan, including injected hardware plans.
+	args = append(args, "-bf", "0")
 	args = append(args,
 		"-c:a", "aac", "-b:a", fmt.Sprintf("%dk", r.AudioBitrateKbps), "-ac", strconv.Itoa(audioChannels),
 		"-f", "hls", "-hls_time", fmt.Sprintf("%.3f", segmentSeconds),

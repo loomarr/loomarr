@@ -133,7 +133,8 @@ type playoutResolver struct {
 	pathMap func() library.PathMap
 	// probeFormat probes a source's codec/format for the direct-play copy decision (probe.go).
 	// Nil ⇒ treat as transcode-required (safe: correctness over speed when we cannot probe).
-	probeFormat playout.FormatProber
+	probeFormat    playout.FormatProber
+	probeCopyStart playout.CopyStartProber
 
 	// ffmpegPath is the binary the capability probe executes.
 	ffmpegPath func() string
@@ -1441,6 +1442,13 @@ func (r *playoutResolver) PlanFor(
 	return playout.PlanCopy(f, target), f
 }
 
+func (r *playoutResolver) CopyVideoStart(ctx context.Context, input string, offset, limit time.Duration, fps float64) (time.Duration, bool) {
+	if r.probeCopyStart == nil {
+		return 0, false
+	}
+	return r.probeCopyStart(ctx, input, offset, limit, fps)
+}
+
 func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	enc := playout.Encoder(r.encoder())
 	if enc == "" {
@@ -1580,15 +1588,12 @@ func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {
 	return ch.PlayoutAnchor, nil
 }
 
-// playoutSpawner builds the SESSION encoder for a channel: a block-aware Go supervisor feeds one
-// long-lived `-c copy` mux. Each finite HTTP response is an explicit Airing boundary.
-//
-// This is the parent, not a program child. It never re-encodes — all the encoding happens in the
-// per-program children the supervisor requests — which is what makes one channel cost one
-// encode regardless of how many programs it plays.
+// playoutSpawner builds the session encoder: finite children supply broadcast video and PCM
+// audio; one long-lived parent copies video, encodes continuous AAC, and paces viewer output.
 func playoutSpawner(
 	ffmpegBin string, publicURL func() string, token func() string, log *slog.Logger,
 	processDiagnostics *diagnostics.ProcessManager, preparedSource func() playout.BlockSource,
+	audioBitrate func(context.Context) int, preparedReady func(context.Context, string, playout.EncodePlan) bool,
 ) playout.Spawner {
 	return func(ctx context.Context, channelID string, target playout.EncodePlan) (*playout.Process, error) {
 		base := publicURL()
@@ -1600,7 +1605,8 @@ func playoutSpawner(
 			prepared = preparedSource()
 		}
 		source := playoutBlockSource(base, token, http.DefaultClient, prepared)
-		return playout.BlockSpawner(ffmpegBin, source, log, processDiagnostics)(ctx, channelID, target)
+		profile := playout.BlockProfile{AudioBitrate: audioBitrate(ctx), PreparedStart: preparedReady != nil && preparedReady(ctx, channelID, target)}
+		return playout.BlockSpawner(ffmpegBin, profile, source, log, processDiagnostics)(ctx, channelID, target)
 	}
 }
 
@@ -1611,9 +1617,11 @@ func playoutBlockSource(
 	base string, token func() string, client *http.Client, preparedSource playout.BlockSource,
 ) playout.BlockSource {
 	var broadcast string
-	return func(blockCtx context.Context, blockChannel string, blockPlan playout.EncodePlan) (playout.Block, error) {
+	return func(blockCtx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
+		blockChannel := blockRequest.ChannelID
+		blockPlan := blockRequest.Plan
 		if preparedSource != nil {
-			block, err := preparedSource(blockCtx, blockChannel, blockPlan)
+			block, err := preparedSource(blockCtx, blockRequest)
 			if err == nil && block.Content != nil {
 				format, valid := playout.ParseBroadcastFormat(block.Format.String())
 				canonical := format.String()
@@ -1628,6 +1636,9 @@ func playoutBlockSource(
 				return playout.Block{}, blockCtx.Err()
 			}
 		}
+		if !blockRequest.AiringAt.IsZero() {
+			return playout.Block{}, playout.ErrPreparedUnavailable
+		}
 		query := url.Values{
 			"token": []string{token()},
 			"plan":  []string{blockPlan.String()},
@@ -1641,6 +1652,12 @@ func playoutBlockSource(
 		if err != nil {
 			return playout.Block{}, err
 		}
+		if blockRequest.AudioBitrate > 0 {
+			req.Header.Set(api.PlayoutSessionAudioBitrateHeader, strconv.Itoa(blockRequest.AudioBitrate))
+		}
+		if !blockRequest.TimelineOrigin.IsZero() {
+			req.Header.Set(api.PlayoutTimelineOriginHeader, blockRequest.TimelineOrigin.UTC().Format(time.RFC3339Nano))
+		}
 		if parent, ok := diagnostics.ProcessSpecFromContext(blockCtx); ok && parent.ParentRunID != "" {
 			req.Header.Set(api.PlayoutParentProcessRunHeader, parent.ParentRunID)
 		}
@@ -1652,8 +1669,12 @@ func playoutBlockSource(
 			_ = resp.Body.Close()
 			return playout.Block{}, fmt.Errorf("playout: block endpoint returned %s", resp.Status)
 		}
+		if !blockRequest.TimelineOrigin.IsZero() && resp.Header.Get(api.PlayoutBlockAudioHeader) != api.PlayoutBlockAudioPCM {
+			_ = resp.Body.Close()
+			return playout.Block{}, errors.New("playout: block endpoint did not acknowledge session PCM audio")
+		}
 		format, ok := playout.ParseBroadcastFormat(resp.Header.Get(api.PlayoutBroadcastFormatHeader))
-		if !ok {
+		if !ok || (blockRequest.AudioBitrate > 0 && format.AudioBitrate != blockRequest.AudioBitrate) {
 			_ = resp.Body.Close()
 			return playout.Block{}, fmt.Errorf("playout: block endpoint returned no valid broadcast format")
 		}

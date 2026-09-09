@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/testkit/playoutprocessfixture"
 )
 
 func TestCombinedProgressPreservesDiagnostics(t *testing.T) {
@@ -78,6 +79,32 @@ func TestProcessProgressTransport(t *testing.T) {
 	}
 	if got := proc.LastError(); got != "Decoder warning: recovered damaged frame" {
 		t.Errorf("last diagnostic = %q", got)
+	}
+}
+
+func TestProcessWaitPreservesUnreadFiniteOutput(t *testing.T) {
+	for _, mode := range []string{"prepared-success", "prepared-failure"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			proc, err := Start(ctx, os.Args[0], []string{
+				"-test.run=^TestProcessTreeHelper$", "--", mode,
+			}, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = proc.Stdout.Close() }()
+			// A lifecycle observer can reap a short child before its media consumer
+			// reads the final buffered bytes. Reaping must preserve those bytes.
+			waitErr := proc.Wait()
+			if (waitErr != nil) != (mode == "prepared-failure") {
+				t.Fatalf("natural child exit: %v", waitErr)
+			}
+			got, err := io.ReadAll(proc.Stdout)
+			if err != nil || string(got) != playoutprocessfixture.PreparedPrefix {
+				t.Fatalf("unread finite output after Wait: %q, error: %v", got, err)
+			}
+		})
 	}
 }
 
@@ -336,6 +363,8 @@ func TestProcessTreeHelper(t *testing.T) {
 		return
 	}
 	switch args[0] {
+	case "prepared-success", "prepared-failure", "prepared-stalled":
+		playoutprocessfixture.RunPrepared(args[0])
 	case "parent", "parent-exit":
 		if len(args) != 2 {
 			os.Exit(2)

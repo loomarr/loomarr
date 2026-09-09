@@ -60,7 +60,7 @@ func TestLiveChain_BlockSupervisorAdvancesThroughPrograms(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	channel, err := playout.BlockSpawner(bin, liveHTTPBlockSource(srv), nil)(ctx, "ch1", playout.PlanBaseline)
+	channel, err := playout.BlockSpawner(bin, playout.BlockProfile{AudioBitrate: 128}, liveHTTPBlockSource(srv), nil)(ctx, "ch1", playout.PlanBaseline)
 	if err != nil {
 		cancel()
 		t.Fatal(err)
@@ -267,7 +267,12 @@ func buildLiveSourceClip(t *testing.T, bin string) string {
 
 func liveHTTPBlockSource(srv *httptest.Server) playout.BlockSource {
 	var broadcast string
-	return func(ctx context.Context, channel string, plan playout.EncodePlan) (playout.Block, error) {
+	return func(ctx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
+		channel := blockRequest.ChannelID
+		plan := blockRequest.Plan
+		if !blockRequest.AiringAt.IsZero() {
+			return playout.Block{}, playout.ErrPreparedUnavailable
+		}
 		query := url.Values{
 			"token": []string{playoutToken},
 			"plan":  []string{plan.String()},
@@ -279,6 +284,9 @@ func liveHTTPBlockSource(srv *httptest.Server) playout.BlockSource {
 			srv.URL+"/v1/playout/program/"+url.PathEscape(channel)+"?"+query.Encode(), nil)
 		if err != nil {
 			return playout.Block{}, err
+		}
+		if !blockRequest.TimelineOrigin.IsZero() {
+			req.Header.Set(api.PlayoutTimelineOriginHeader, blockRequest.TimelineOrigin.UTC().Format(time.RFC3339Nano))
 		}
 		resp, err := srv.Client().Do(req)
 		if err != nil {
@@ -339,3 +347,7 @@ func (c *chainResolver) PlanFor(context.Context, string, playout.EncodePlan) (pl
 	return playout.CopyPlan{}, playout.MediaFormat{}
 }
 func (c *chainResolver) ChannelCodec(context.Context, string) string { return "h264" }
+
+func (c *chainResolver) CopyVideoStart(context.Context, string, time.Duration, time.Duration, float64) (time.Duration, bool) {
+	return 0, false // This fixture always transcodes.
+}

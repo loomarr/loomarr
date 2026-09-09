@@ -12,7 +12,7 @@ func baselineRendition() RenditionContract {
 	return RenditionContract{
 		VideoCodec: "h264", VideoProfile: "high", VideoLevel: "4.1", PixelFormat: "yuv420p", HDR: "sdr",
 		AudioCodec: "aac", AudioLayout: "stereo", Width: 1920, Height: 1080, FrameRate: 25,
-		VideoBitrateKbps: 5000, AudioBitrateKbps: 160, SegmentDurationMS: 2000, PackagingVersion: 1,
+		VideoBitrateKbps: 5000, AudioBitrateKbps: 160, SegmentDurationMS: 2000, PackagingVersion: CurrentPackagingVersion,
 	}
 }
 
@@ -64,7 +64,7 @@ func TestFFmpegPackagerUsesInjectedHardwareVideoArgs(t *testing.T) {
 		}
 		return VideoPlan{
 			InputArgs:  []string{"-hwaccel", "cuda"},
-			OutputArgs: []string{"-vf", "format=yuv420p", "-c:v", "h264_nvenc", "-preset", "p7"},
+			OutputArgs: []string{"-vf", "format=yuv420p", "-c:v", "h264_nvenc", "-preset", "p7", "-bf", "3"},
 		}, nil
 	}
 	args, err := ffmpegPackageArgsWith(
@@ -83,6 +83,9 @@ func TestFFmpegPackagerUsesInjectedHardwareVideoArgs(t *testing.T) {
 	if !strings.Contains(joined, "-hwaccel cuda -probesize 256k -analyzeduration 500000 -i /media/movie.mkv") {
 		t.Fatalf("hardware input args are not before -i: %s", joined)
 	}
+	if !strings.Contains(joined, "-bf 3 -bf 0 -c:a aac") {
+		t.Fatalf("packaging contract did not override the injected reorder depth: %s", joined)
+	}
 }
 
 func TestFFmpegPackageArgsRejectUnidentifiedOutputProperties(t *testing.T) {
@@ -92,7 +95,7 @@ func TestFFmpegPackageArgsRejectUnidentifiedOutputProperties(t *testing.T) {
 		"framerate":         func(r *RenditionContract) { r.FrameRate = 0 },
 		"video codec":       func(r *RenditionContract) { r.VideoCodec = "av1" },
 		"audio codec":       func(r *RenditionContract) { r.AudioCodec = "eac3" },
-		"packaging version": func(r *RenditionContract) { r.PackagingVersion = 2 },
+		"packaging version": func(r *RenditionContract) { r.PackagingVersion = CurrentPackagingVersion + 1 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := baselineRendition()

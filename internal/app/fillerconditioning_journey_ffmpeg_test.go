@@ -207,6 +207,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	var transport bytes.Buffer
 	for i, block := range airings {
 		args := playout.ProgramArgs(playout.ProgramSpec{
+			SessionAudio: true, Clock: playout.ProgramClock{Origin: epoch, StartedAt: block.airing.StartedAt},
 			Profile: profile, Input: block.input,
 			Offset: block.airing.Offset, Limit: block.airing.Remaining,
 		})
@@ -221,7 +222,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 		}
 		transport.Write(encoded)
 	}
-	mux, err := playout.StartPipedObserved(ctx, ffmpeg, playout.BlockMuxArgs(), nil, nil, nil, diagnostics.ProcessSpec{})
+	mux, err := playout.StartPipedObserved(ctx, ffmpeg, playout.BlockMuxArgs(playout.BlockProfile{AudioBitrate: 128}), nil, nil, nil, diagnostics.ProcessSpec{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -428,6 +428,10 @@ func (p Profile) audioEncodeArgsNormalised(targetLUFS string) []string {
 //     as the CPU allows and floods the pipe, racing ahead of wall-clock.
 //   - `-stream_loop -1` so a generated source never EOFs and ends the channel.
 func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
+	return testCardArgs(p, fontFile, title, subtitle, false)
+}
+
+func testCardArgs(p Profile, fontFile, title, subtitle string, sessionAudio bool) []string {
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		// Progress as line-framed machine-readable key=value — never stdout, which carries
@@ -437,8 +441,11 @@ func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
 		"-progress", progressPipeArg(), "-nostats",
 	}
 	// Video: a plain colour field, paced to realtime, looping forever.
+	if !sessionAudio {
+		args = append(args, "-re")
+	}
 	args = append(args,
-		"-f", "lavfi", "-re", "-stream_loop", "-1",
+		"-f", "lavfi", "-stream_loop", "-1",
 		"-i", fmt.Sprintf("color=c=black:s=%dx%d:r=%d", p.Width, p.Height, p.Framerate),
 	)
 	// Audio: silence. Explicit layout + rate so it matches the encode profile exactly;
@@ -450,7 +457,11 @@ func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
 		args = append(args, "-vf", vf)
 	}
 	args = append(args, p.videoEncodeArgs()...)
-	args = append(args, p.audioEncodeArgs()...)
+	if sessionAudio {
+		args = append(args, "-bf", "0", "-c:a", "s302m", "-strict", "-2", "-ac", "2", "-ar", "48000")
+	} else {
+		args = append(args, p.audioEncodeArgs()...)
+	}
 	// mpegts to stdout. `+initial_discontinuity` tells a downstream demuxer that the
 	// first timestamps are not necessarily zero, which is true for anything joining a
 	// live stream mid-flight (ErsatzTV sets the same flag).
@@ -471,13 +482,16 @@ func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
 // `-t` goes before the output target, where it applies to the OUTPUT. As an input option it
 // would instead limit how much of the looping source is READ, which for an infinite generated
 // source means something subtly different.
-func OfflineCardArgs(p Profile, fontFile, title, subtitle string, d time.Duration) []string {
-	args := TestCardArgs(p, fontFile, title, subtitle)
+func OfflineCardArgs(p Profile, fontFile, title, subtitle string, d time.Duration, clock ProgramClock) []string {
+	args := testCardArgs(p, fontFile, title, subtitle, clock.active())
 	// Insert before the trailing output target rather than appending: ffmpeg applies an option
 	// to whatever comes after it, so `pipe:1 -t 30` would be a parse error.
 	out := args[len(args)-1]
 	args = append(args[:len(args)-1], "-t", seconds(d))
-	return append(args, out)
+	if clock.active() {
+		args = append(args, "-af", "atrim=end="+seconds(d))
+	}
+	return clock.apply(append(args, out), 0)
 }
 
 // drawTextFilter centres a title, with an optional subtitle beneath it. Returns "" when

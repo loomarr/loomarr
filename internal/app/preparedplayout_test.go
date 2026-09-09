@@ -587,7 +587,7 @@ func TestPreparedRuntimeInvalidatesStaleBindingWhenSourceReresolutionFails(t *te
 	if _, err := r.Plan(t.Context(), now, now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}); err != nil || ok {
+	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}, time.Time{}); err != nil || ok {
 		t.Fatalf("ResolvePrepared after failed stale rebind = ok %v err %v, want immediate miss", ok, err)
 	}
 	if _, ok := r.readiness.Binding(key, "policy", ""); ok {
@@ -620,7 +620,7 @@ func TestPreparedRuntimeTuneIsLookupOnlyAndCarriesPreviousAiring(t *testing.T) {
 	)
 
 	// No control-plane pass yet: tune misses without touching the media server or audio prober.
-	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}); err != nil || ok {
+	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}, time.Time{}); err != nil || ok {
 		t.Fatalf("cold ResolvePrepared = ok %v err %v, want clean miss", ok, err)
 	}
 	if inputs.calls != 0 || timeline.audioCalls != 0 {
@@ -631,7 +631,7 @@ func TestPreparedRuntimeTuneIsLookupOnlyAndCarriesPreviousAiring(t *testing.T) {
 	}
 	inputCalls, audioCalls := inputs.calls, timeline.audioCalls
 
-	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"})
+	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}, time.Time{})
 	if err != nil || !ok {
 		t.Fatalf("warmed ResolvePrepared = ok %v err %v", ok, err)
 	}
@@ -658,7 +658,7 @@ func TestPreparedRuntimeTuneRequestsTheSharedDVRLookbehind(t *testing.T) {
 		func() prepared.RenditionContract { return playout.CanonicalPreparedRendition(playout.TierBalanced) },
 	)
 
-	_, _, _ = r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"})
+	_, _, _ = r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}, time.Time{})
 	if want := now.Add(-playout.DVRHorizon); !timeline.lastFrom.Equal(want) {
 		t.Fatalf("prepared schedule starts at %v, want DVR cutoff %v", timeline.lastFrom, want)
 	}
@@ -689,7 +689,7 @@ func TestPreparedRuntimePolicyChangeMakesTuneMissUntilPlannerRewarms(t *testing.
 		t.Fatal(err)
 	}
 	policy = "quality"
-	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}); err != nil || ok {
+	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}, time.Time{}); err != nil || ok {
 		t.Fatalf("ResolvePrepared after policy change = ok %v err %v, want lookup-only miss", ok, err)
 	}
 	if inputs.calls != 1 {
@@ -735,7 +735,7 @@ func TestPreparedRuntimeTuneUsesDurableReadinessBeforeTheFirstPlannerPass(t *tes
 		Readiness: reopened,
 	})
 
-	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"})
+	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}, time.Time{})
 	if err != nil || !ok || window.Current.Specification.SourceFingerprint != "ready" {
 		t.Fatalf("ResolvePrepared after restart = (%+v, %v, %v), want durable hit", window, ok, err)
 	}
@@ -783,7 +783,7 @@ func TestPreparedRuntimePublishedInternalCanServeWarmedMediaBeforeCutover(t *tes
 		Rendition: func() prepared.RenditionContract { return render }, Readiness: readiness,
 	})
 
-	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"})
+	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}, time.Time{})
 	if err != nil || !ok || window.Current.Specification.SourceFingerprint != "prepared-internal" {
 		t.Fatalf("prepared transport before cutover = (%+v, %v, %v)", window, ok, err)
 	}
@@ -819,7 +819,7 @@ func TestPreparedRuntimeChannelAudioPolicyChangeMakesTuneMissImmediately(t *test
 		t.Fatal(err)
 	}
 	channels.channels[0].Policy.Playout.AudioLanguage = "jpn"
-	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}); err != nil || ok {
+	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}, time.Time{}); err != nil || ok {
 		t.Fatalf("ResolvePrepared after channel audio change = ok %v err %v, want immediate miss", ok, err)
 	}
 	if inputs.calls != 1 || timeline.audioCalls != 1 {
@@ -837,5 +837,53 @@ func TestPreparedBudgetBytesUsesGiBAndSaturates(t *testing.T) {
 	}
 	if got := preparedBudgetBytes(int(^uint(0) >> 1)); got <= 0 {
 		t.Fatalf("preparedBudgetBytes(max int) overflowed to %d", got)
+	}
+}
+
+func TestPreparedRuntimeUpgradesOldPackagingBindingsBeforeProspectiveTune(t *testing.T) {
+	now := time.Unix(20000, 0)
+	nextStart := now.Add(time.Hour)
+	channel := store.Channel{Channel: schedule.Channel{ID: "ch"}}
+	timeline := &preparedTimelineFake{broadcasts: map[string][]playout.Broadcast{"ch": {
+		{Kind: schedule.SlotProgram, LibraryItemID: "item", Start: now.Add(-time.Second), Stop: nextStart},
+		{Kind: schedule.SlotProgram, LibraryItemID: "item", Start: nextStart, Stop: nextStart.Add(time.Hour)},
+	}}}
+	inputs := &preparedInputsFake{sources: map[string]library.InputSource{"item": {URL: "/media/item.mkv", Kind: library.InputFile}}}
+	current := playout.CanonicalPreparedRendition(playout.TierBalanced)
+	old := current
+	old.PackagingVersion = 1
+	oldRequest := prepared.Request{Source: preparedSource("item", 2), Rendition: old}
+	lookup := preparedLookupFake{hits: map[prepared.Request]prepared.Specification{oldRequest: {SourceFingerprint: "old", Rendition: old}}}
+	r := newPreparedRuntimeForTest(t, preparedChannels{channels: []store.Channel{channel}}, timeline, inputs, lookup,
+		func() time.Time { return now }, nil, func() string { return "policy" }, func() string { return "internal" }, func() prepared.RenditionContract { return current })
+	key := prepared.BindingKey{ChannelID: "ch", LibraryItemID: "item"}
+	if err := r.readiness.ReconcileBindings(map[prepared.BindingKey]prepared.Binding{key: {Policy: "policy", ChannelPolicy: schedule.ResolveAudioLanguage(channel.Policy, ""), Request: oldRequest}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch"}, time.Time{}); err != nil || ok {
+		t.Fatalf("old publication remained tunable: ready=%v err=%v", ok, err)
+	}
+	if inputs.calls != 0 || timeline.audioCalls != 0 {
+		t.Fatal("old-version tune performed source work")
+	}
+	plan, err := r.Plan(t.Context(), now, nextStart.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.ReadyBindings != 0 || len(plan.Candidates) != 1 || plan.Candidates[0].Request.Rendition != current {
+		t.Fatalf("old binding was not replaced by current preparation: %+v", plan)
+	}
+	upgraded := plan.Candidates[0].Request
+	lookup.hits[upgraded] = prepared.Specification{SourceFingerprint: "current", Rendition: current}
+	sourceCalls, audioCalls := inputs.calls, timeline.audioCalls
+	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch", Delivery: playout.DeliveryMPEGTS}, nextStart)
+	if err != nil || !ok || !window.Current.StartedAt.Equal(nextStart) || window.Current.Offset != 0 || window.Current.Specification.Rendition != current {
+		t.Fatalf("prospective current-version window=%+v ready=%v err=%v", window, ok, err)
+	}
+	if inputs.calls != sourceCalls || timeline.audioCalls != audioCalls {
+		t.Fatal("prospective tune performed source work")
+	}
+	if !timeline.lastFrom.Equal(nextStart.Add(-playout.DVRHorizon)) || !timeline.lastTo.Equal(nextStart.Add(time.Nanosecond)) {
+		t.Fatalf("prospective schedule range=%s..%s", timeline.lastFrom, timeline.lastTo)
 	}
 }

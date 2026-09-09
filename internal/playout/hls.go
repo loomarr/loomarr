@@ -260,6 +260,27 @@ func (m *HLSManager) AssetPath(channelID string, plan EncodePlan, rel string) (s
 	return full, true
 }
 
+// OpenAssetSource opens a private snapshot from one remux and returns the exact
+// session process supplying that remux. The handle remains tied to that source
+// even if the channel is replaced before the caller finishes reading it.
+// Source handles are in-process provenance, never HTTP or report metadata.
+func (m *HLSManager) OpenAssetSource(channelID string, plan EncodePlan, rel string) (*os.File, *Process, error) {
+	if rel == "" || filepath.Base(rel) != rel || rel == "." || rel == ".." {
+		return nil, nil, fmt.Errorf("hls: invalid asset name")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r := m.remuxes[remuxKey{channel: channelID, plan: plan}]
+	if r == nil || r.source == nil {
+		return nil, nil, fmt.Errorf("hls: asset source unavailable")
+	}
+	f, err := os.Open(filepath.Join(r.dir, rel))
+	if err != nil {
+		return nil, nil, err
+	}
+	return f, r.source, nil
+}
+
 // start launches a remux for a channel at one EncodePlan. Caller holds m.mu.
 func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error) {
 	dir, err := os.MkdirTemp(m.root, "ch-")
@@ -297,6 +318,7 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 
 	key := remuxKey{channel: channelID, plan: plan}
 	r := &hlsRemux{
+		source:    sessLease.source,
 		channelID: channelID, dir: dir,
 		playlist: filepath.Join(dir, hlsPlaylistName),
 		cancel:   cancel, sessDetach: sessLease.Release,
@@ -403,6 +425,7 @@ func (m *HLSManager) readyWait() time.Duration {
 // hlsRemux is one channel's HLS repackaging: a `-c copy -f hls` ffmpeg fed by the session's
 // bytes, writing segments a browser reads. Its viewer refcount mirrors Session's.
 type hlsRemux struct {
+	source    *Process
 	channelID string
 	dir       string
 	playlist  string
@@ -529,7 +552,7 @@ func (r *hlsRemux) finishTeardown() {
 // ⚠ THE BUG THIS FIXES (found live, and it cost real time): the pump used to read a chunk from the
 // session channel and SYNCHRONOUSLY write it to ffmpeg's stdin. But the remux ffmpeg's stdin pipe
 // backs up during startup (it is initialising the HLS muxer), so the write blocks, the pump stops
-// reading the session channel, the session's small per-viewer buffer (viewerBuffer × 64KB ≈ 512KB)
+// reading the session channel, the session's small per-viewer buffer (formerly eight chunks of at most 64 KiB)
 // fills in a burst, and the session — whose policy is "drop a viewer that falls behind", correct
 // for a genuinely stalled TV — DROPS THE REMUX. The channel then closes with no segment written:
 // a black frame. The remux is not a slow client; it is a pipe with normal backpressure, and it
@@ -857,9 +880,14 @@ func hlsTerminationReason(stopped bool) string {
 func hlsArgs(dir string, plan EncodePlan) []string {
 	base := []string{
 		"-hide_banner", "-loglevel", "error",
-		// Input is the raw MPEG-TS on stdin. `-f mpegts` names it explicitly rather than making
-		// ffmpeg probe a pipe it cannot seek.
+		// Naming MPEG-TS skips format detection, not stream analysis. Bound analysis to one
+		// segment without shrinking the byte probe: a large keyframe or delayed audio must
+		// not disappear merely to publish earlier. Both normalized streams are required.
+		"-analyzeduration", strconv.Itoa(hlsSegmentDuration * 1_000_000),
+		// Retain the parent session's clock through both TS and fMP4 packaging.
+		"-copyts",
 		"-f", "mpegts", "-i", "pipe:0",
+		"-map", "0:v:0", "-map", "0:a:0",
 		"-c", "copy",
 		"-f", "hls",
 		"-hls_time", strconv.Itoa(hlsSegmentDuration),
@@ -895,12 +923,16 @@ func hlsArgs(dir string, plan EncodePlan) []string {
 			"-tag:v", "hvc1",
 			"-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time",
 			"-hls_segment_type", "fmp4",
+			// Preserve sub-millisecond audio origins in MP4 edit-list coordinates.
+			"-hls_segment_options", "movie_timescale=90000",
 			"-hls_fmp4_init_filename", "init.mp4",
 			"-hls_segment_filename", filepath.Join(dir, "seg-%d.m4s"),
 			filepath.Join(dir, hlsPlaylistName),
 		)
 	}
 	return append(base,
+		// Flush AAC PES payloads before timestamp gaps can be interpolated away.
+		"-muxdelay", "0",
 		"-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time",
 		"-hls_segment_type", "mpegts",
 		"-hls_segment_filename", filepath.Join(dir, "seg-%d.ts"),

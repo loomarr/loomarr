@@ -104,101 +104,35 @@ jobs:
           restore-keys: |
             go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-
-      # ⚠ ffmpeg is NOT on the runner image, and several filler tests skip without it — the
-      # language gate's span extraction (16kHz mono WAV, the shape whisper requires), the
-      # silence guard, artwork rendering and the clip scan's probe. Measured on this runner
-      # before adding this step: `ffmpeg: MISSING`, and the three `TestExtractSpanWAV_*`
-      # tests reported SKIP while the job stayed green.
-      #
-      # A skip is visible in the log, so this was never a silent hole — but it did mean CI
-      # could not catch a broken `-ar 16000`, which is exactly the flag those tests exist to
-      # pin. The two backends carried byte-identical copies of that invocation with nothing
-      # asserting it, so the gap was worth closing rather than documenting.
-      #
-      # ⚠ `ffmpeg` alone pulls `ffprobe` (same Debian source package), and both are needed:
-      # the tests assert what the extracted file IS by probing it, not merely that ffmpeg
-      # exited 0. `--no-install-recommends` keeps the codec/doc tail off a runner that only
-      # has to decode and re-encode small synthetic WAVs.
-      #
-      # ⚠ The DEBS are cached, not the installed binaries. Copying `/usr/bin/ffmpeg` back into
-      # place would leave its shared libraries behind — ffmpeg links a large tree (libav*,
-      # libx264, …) spread across /usr/lib, so a binary-only cache produces a file that exists
-      # and cannot run. Caching the .debs and letting apt install them keeps the package
-      # manager's own dependency handling and skips only the download, which is the slow part.
-      #
-      # ⚠ Cache what APT ITSELF decides to fetch on THIS runner (~62.8 MB), not a computed
-      # dependency closure. Measured while writing this: `apt-cache depends --recurse` over
-      # ffmpeg resolves 298 packages / 244 MB, because the closure includes base packages the
-      # runner image already has installed. Caching that would spend 244 MB of a 10GB repo-wide
-      # budget to save 38 seconds — worse than no cache at all. `-d` into the apt archive dir
-      # asks apt for the actual delta against what is already there.
-      #
-      # ⚠ A STABLE key, deliberately NOT the rolling `github.run_id` pattern the golangci and
-      # gobuild caches above use. Those cache contents track something their key does not
-      # (`~/.cache/go-build` tracks .go SOURCE), so they must re-save every run. Ubuntu can
-      # retire package point versions while VERSION_ID remains unchanged, so this cache is an
-      # optimization rather than an immutable closure: the install step detects an incomplete
-      # cache, refreshes metadata, and fetches only the small missing delta. A rolling key would
-      # instead write a fresh ~63 MB copy EVERY run into the budget that `cache-cleanup.yml`
-      # exists because the repo already blew through once.
-      #
-      # ⚠ The Ubuntu RELEASE is in the key because the package versions come from the runner
-      # image's apt sources. Without it a runner image bump would restore debs built for the
-      # previous release and the install would fail on unmet dependencies — a red CI whose
-      # cause is a cache entry nobody edited.
-      #
-      # ⚠ Read from `/etc/os-release` into an output, NOT from `env.ImageOS`. That variable is
-      # set by the hosted runner image rather than by Actions itself, so it is not a documented
-      # context (editors flag it, and a self-hosted or changed image can leave it empty) — and
-      # an empty segment does not fail, it silently produces ONE key shared across every image
-      # version, which is precisely the collision this segment exists to prevent.
-      - name: Resolve the runner's Ubuntu release (cache key input)
-        id: os
-        run: |
-          . /etc/os-release
-          test -n "$VERSION_ID"
-          echo "release=$VERSION_ID" >> "$GITHUB_OUTPUT"
-      - name: Cache ffmpeg packages
+      # Exercise the deployed media toolchain. Distribution FFmpeg versions have different
+      # MPEG-TS startup latency; both executables must match the production image's pins.
+      # Cache the immutable archive by digest and verify every hit before extraction.
+      - name: Resolve production FFmpeg pin
+        id: ffmpeg-pin
+        run: ./scripts/ci-ffmpeg.sh metadata >> "$GITHUB_OUTPUT"
+      - name: Cache production FFmpeg archive
         id: ffmpeg-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          path: ~/ffmpeg-debs
-          key: ffmpeg-debs-${{ runner.os }}-${{ steps.os.outputs.release }}-v1
-      - name: Download ffmpeg packages
-        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+          path: ~/.cache/loomarr-ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ steps.ffmpeg-pin.outputs.sha256 }}
+      - name: Download production FFmpeg
+        run: ./scripts/ci-ffmpeg.sh download "$HOME/.cache/loomarr-ffmpeg"
+      - name: Install production FFmpeg
         run: |
-          sudo apt-get update -qq
-          mkdir -p ~/ffmpeg-debs
-          # -d downloads without installing. Copied out of apt's archive dir rather than
-          # pointed there directly, because that path is root-owned and actions/cache runs
-          # as the runner user.
-          sudo apt-get install -y --no-install-recommends -d -o Dir::Cache::archives="$HOME/apt-debs" ffmpeg \
-            || sudo apt-get install -y --no-install-recommends -d ffmpeg
-          sudo find "$HOME/apt-debs" /var/cache/apt/archives -maxdepth 1 -name '*.deb' \
-            -exec cp -n {} ~/ffmpeg-debs/ \; 2>/dev/null || true
-          sudo chown -R "$USER" ~/ffmpeg-debs
-          echo "cached $(find ~/ffmpeg-debs -name '*.deb' | wc -l) debs, $(du -sh ~/ffmpeg-debs | cut -f1)"
-      # ⚠ apt-get install with the cached debs already in its archive dir, NOT `dpkg -i`. dpkg
-      # processes files in glob order and fails on a package whose dependency has not been
-      # unpacked yet; apt orders them itself. `--no-download` proves the cache is doing the
-      # work — if a deb is missing this fails rather than quietly re-fetching it, which is how
-      # a cache that stopped working would otherwise stay invisible.
-      - name: Install ffmpeg (several filler tests skip without it)
+          ./scripts/ci-ffmpeg.sh install "$HOME/.cache/loomarr-ffmpeg" "$RUNNER_TEMP/loomarr-ffmpeg"
+          echo "$RUNNER_TEMP/loomarr-ffmpeg" >> "$GITHUB_PATH"
+      - name: Verify production FFmpeg on PATH
         run: |
-          sudo cp -n ~/ffmpeg-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
-          if ! sudo apt-get install -y --no-install-recommends --no-download ffmpeg; then
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends ffmpeg
-          fi
-      # ⚠ FAIL LOUDLY if the install silently stopped working. Without this the tests go back
-      # to skipping and the job stays green — the exact "green but not covered" state this
-      # step was added to end, and one nobody would notice because a skip looks like a pass
-      # at a glance.
-      - name: ffmpeg and ffprobe are on PATH
-        run: |
-          command -v ffmpeg
-          command -v ffprobe
+          test "$(command -v ffmpeg)" = "$RUNNER_TEMP/loomarr-ffmpeg/ffmpeg"
+          test "$(command -v ffprobe)" = "$RUNNER_TEMP/loomarr-ffmpeg/ffprobe"
+          ffmpeg -version
+          ffprobe -version
       - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+        # Independent synthetic targets otherwise compete for the same worker
+        # while asserting strict media latency. Retain race and shard coverage.
+        env:
+          GOFLAGS: -p=1
       # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
       # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
       # restored again once that PR closes — cache reads are scoped to the branch and its

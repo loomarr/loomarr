@@ -345,7 +345,7 @@ func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 		}
 		plan := ConformCopyPlan(format, PlanCopy(format, PlanBaseline), profile, "h264")
 		spec := ProgramSpec{
-			Profile: profile, Input: src.path, Limit: 2 * time.Second,
+			SessionAudio: true, Profile: profile, Input: src.path, Limit: 2 * time.Second,
 			Plan: plan, Source: format,
 		}
 		proc, err := Start(ctx, bin, replaceOutput(ProgramArgs(spec), part), nil, nil)
@@ -360,7 +360,7 @@ func TestLive_BaselineSessionKeepsOneFormatAcrossBlockBoundary(t *testing.T) {
 	}
 
 	joined := dir + "/channel.ts"
-	proc, err := StartPipedObserved(ctx, bin, BlockMuxArgs(), nil, nil, nil, diagnostics.ProcessSpec{})
+	proc, err := StartPipedObserved(ctx, bin, BlockMuxArgs(BlockProfile{AudioBitrate: 128}), nil, nil, nil, diagnostics.ProcessSpec{})
 	if err != nil {
 		t.Fatalf("channel mux start: %v", err)
 	}
@@ -441,7 +441,9 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 			"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
 			"-map", "0:v:0", "-map", "1:a:0", "-shortest", "-t", "5",
 			"-c:v", "libx264", "-preset", "ultrafast", "-g", "50", "-sc_threshold", "0",
-			"-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2",
+			"-pix_fmt", "yuv420p", "-c:a", "s302m", "-strict", "-2", "-ar", "48000", "-ac", "2",
+			// Production children already share a clock; do not reset each fixture to zero.
+			"-output_ts_offset", fmt.Sprint(10 + i*5),
 			"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", blocks[i],
 		}
 		if out, err := exec.Command(bin, args...).CombinedOutput(); err != nil {
@@ -452,7 +454,7 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var opened atomic.Int64
-	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (Block, error) {
+	source := BlockSource(func(ctx context.Context, blockRequest BlockRequest) (Block, error) {
 		i := int(opened.Add(1)) - 1
 		if i >= len(blocks) {
 			<-ctx.Done()
@@ -467,7 +469,7 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 			},
 		}, err
 	})
-	channel, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
+	channel, err := BlockSpawner(bin, BlockProfile{AudioBitrate: 128}, source, nil)(ctx, "channel", PlanBaseline)
 	if err != nil {
 		t.Fatalf("channel start: %v", err)
 	}
@@ -488,7 +490,10 @@ func TestLive_HLSKeepsAStableTimelineAcrossBlockBoundaries(t *testing.T) {
 
 	manifestPath := hlsDir + "/" + hlsPlaylistName
 	var manifest []byte
-	deadline := time.Now().Add(10 * time.Second)
+	// The real parent now paces at 1x. Observe the fixture's fifteen seconds of
+	// media plus one segment cadence; a ten-second wait cannot contain three
+	// complete four-second segments, even when delivery has no startup delay.
+	deadline := time.Now().Add(time.Duration(len(blocks)*5+hlsSegmentDuration) * time.Second)
 	for time.Now().Before(deadline) {
 		manifest, _ = os.ReadFile(manifestPath)
 		if strings.Count(string(manifest), "#EXTINF:") >= 3 && opened.Load() >= 3 {
@@ -823,7 +828,7 @@ func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 	if o, err := exec.Command(bin, "-hide_banner", "-loglevel", "error", "-y",
 		"-f", "lavfi", "-i", "testsrc=size=320x180:rate=25:duration=2",
 		"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
-		"-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+		"-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "s302m", "-strict", "-2",
 		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", seg).CombinedOutput(); err != nil {
 		t.Fatalf("could not build the segment: %v\n%s", err, o)
 	}
@@ -852,7 +857,7 @@ func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	source := BlockSource(func(ctx context.Context, _ string, _ EncodePlan) (Block, error) {
+	source := BlockSource(func(ctx context.Context, blockRequest BlockRequest) (Block, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
 		if err != nil {
 			return Block{}, err
@@ -873,7 +878,7 @@ func TestLive_BlockSpawnerAdvancesPastAChunkedHTTPBlock(t *testing.T) {
 			},
 		}, nil
 	})
-	proc, err := BlockSpawner(bin, source, nil)(ctx, "channel", PlanBaseline)
+	proc, err := BlockSpawner(bin, BlockProfile{AudioBitrate: 128}, source, nil)(ctx, "channel", PlanBaseline)
 	if err != nil {
 		t.Fatalf("block spawner start: %v", err)
 	}

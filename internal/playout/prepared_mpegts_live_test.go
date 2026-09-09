@@ -20,8 +20,11 @@ type wallClockPreparedResolver struct {
 	second   PreparedAiring
 }
 
-func (r wallClockPreparedResolver) ResolvePrepared(context.Context, TuneRequest) (PreparedWindow, bool, error) {
-	now := time.Now().UTC()
+func (r wallClockPreparedResolver) ResolvePrepared(_ context.Context, _ TuneRequest, at time.Time) (PreparedWindow, bool, error) {
+	now := at
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 	airing := r.first
 	if !now.Before(r.boundary) {
 		airing = r.second
@@ -82,7 +85,7 @@ func TestLive_PreparedMPEGTSBlockProducesTransportUnderOneSecond(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	begin := time.Now()
-	block, err := origin.MPEGTSBlockSource(bin, nil, nil)(ctx, "channel", PlanFull)
+	block, err := origin.MPEGTSBlockSource(bin, nil, nil)(ctx, BlockRequest{ChannelID: "channel", Plan: PlanFull})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +107,7 @@ func TestLive_PreparedMPEGTSBlockProducesTransportUnderOneSecond(t *testing.T) {
 	decodeCtx, decodeCancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer decodeCancel()
 	decodeBegin := time.Now()
-	channel, err := BlockSpawner(bin, origin.MPEGTSBlockSource(bin, nil, nil), nil)(
+	channel, err := BlockSpawner(bin, BlockProfile{AudioBitrate: 128, PreparedStart: true}, origin.MPEGTSBlockSource(bin, nil, nil), nil)(
 		decodeCtx, "channel", PlanFull,
 	)
 	if err != nil {
@@ -158,7 +161,7 @@ func TestLive_PreparedMPEGTSRolloverIsContinuousAndDoesNotReplayOutgoingAiring(t
 	origin := newPreparedOrigin(lib, resolver)
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	channel, err := BlockSpawner(bin, origin.MPEGTSBlockSource(bin, nil, nil), nil)(ctx, "channel", PlanFull)
+	channel, err := BlockSpawner(bin, BlockProfile{AudioBitrate: 128, PreparedStart: true}, origin.MPEGTSBlockSource(bin, nil, nil), nil)(ctx, "channel", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}

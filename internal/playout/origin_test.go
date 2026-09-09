@@ -3,6 +3,8 @@ package playout
 import (
 	"context"
 	"errors"
+	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -16,9 +18,9 @@ type tuneSessions struct {
 	stopped string
 }
 
-func (s *tuneSessions) Attach(_ context.Context, channel string, _ EncodePlan) (<-chan []byte, func(), error) {
+func (s *tuneSessions) Attach(_ context.Context, channel string, _ EncodePlan) (Stream, func(), error) {
 	s.channel = channel
-	return make(chan []byte), func() {}, nil
+	return playoutstreamfixture.Channel{Chunks: make(chan []byte)}, func() {}, nil
 }
 
 func (s *tuneSessions) StopChannel(channel string) { s.stopped = channel }
@@ -124,8 +126,8 @@ type quiescingSessions struct {
 	once   sync.Once
 }
 
-func (s *quiescingSessions) Attach(context.Context, string, EncodePlan) (<-chan []byte, func(), error) {
-	return s.stream, func() {}, nil
+func (s *quiescingSessions) Attach(context.Context, string, EncodePlan) (Stream, func(), error) {
+	return playoutstreamfixture.Channel{Chunks: s.stream}, func() {}, nil
 }
 func (*quiescingSessions) StopChannel(string) {}
 func (s *quiescingSessions) Stop()            { s.once.Do(func() { close(s.stream) }) }
@@ -142,7 +144,7 @@ func TestOriginQuiesceEndsActiveStreamAndPermanentlyClosesAdmission(t *testing.T
 		t.Fatal(err)
 	}
 	origin.Quiesce()
-	if _, open := <-presentation.Stream; open {
+	if _, err := presentation.Stream.Next(t.Context()); !errors.Is(err, io.EOF) {
 		t.Fatal("active stream remained open after Origin.Quiesce")
 	}
 	if _, err := origin.Tune(context.Background(), TuneRequest{
@@ -209,10 +211,10 @@ type blockingTuneSessions struct {
 	stopped atomic.Bool
 }
 
-func (s *blockingTuneSessions) Attach(context.Context, string, EncodePlan) (<-chan []byte, func(), error) {
+func (s *blockingTuneSessions) Attach(context.Context, string, EncodePlan) (Stream, func(), error) {
 	close(s.entered)
 	<-s.release
-	return make(chan []byte), func() {}, nil
+	return playoutstreamfixture.Channel{Chunks: make(chan []byte)}, func() {}, nil
 }
 
 func (*blockingTuneSessions) StopChannel(string) {}

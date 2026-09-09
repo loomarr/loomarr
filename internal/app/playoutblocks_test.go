@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,9 +18,16 @@ import (
 func TestPlayoutBlockSourcePinsTheFirstBroadcastFormat(t *testing.T) {
 	t.Helper()
 	const format = "h264-1280x720-25-2500-128"
+	origin := time.Unix(10, 123).UTC()
 	requests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
+		if got := r.Header.Get(api.PlayoutSessionAudioBitrateHeader); got != "128" {
+			t.Errorf("session audio bitrate = %q, want 128", got)
+		}
+		if got := r.Header.Get(api.PlayoutTimelineOriginHeader); got != origin.Format(time.RFC3339Nano) {
+			t.Errorf("timeline origin = %q", got)
+		}
 		if got := r.URL.Query().Get("plan"); got != "full" {
 			t.Errorf("request %d plan = %q, want full", requests, got)
 		}
@@ -28,6 +36,7 @@ func TestPlayoutBlockSourcePinsTheFirstBroadcastFormat(t *testing.T) {
 		} else if requests == 2 && got != format {
 			t.Errorf("second request broadcast = %q, want %q", got, format)
 		}
+		w.Header().Set(api.PlayoutBlockAudioHeader, api.PlayoutBlockAudioPCM)
 		w.Header().Set(api.PlayoutBroadcastFormatHeader, format)
 		w.Header().Set(api.PlayoutAiringStartedAtHeader, time.Unix(int64(requests), 0).UTC().Format(time.RFC3339Nano))
 		w.Header().Set(api.PlayoutAiringKindHeader, string(schedule.SlotProgram))
@@ -38,8 +47,11 @@ func TestPlayoutBlockSourcePinsTheFirstBroadcastFormat(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), nil)
+	if _, err := source(t.Context(), playout.BlockRequest{ChannelID: "channel/one", Plan: playout.PlanFull, AiringAt: origin.Add(time.Second)}); !errors.Is(err, playout.ErrPreparedUnavailable) || requests != 0 {
+		t.Fatalf("prospective lookup without prepared source: err=%v HTTP=%d", err, requests)
+	}
 	for i := 0; i < 2; i++ {
-		block, err := source(context.Background(), "channel/one", playout.PlanFull)
+		block, err := source(context.Background(), playout.BlockRequest{ChannelID: "channel/one", Plan: playout.PlanFull, TimelineOrigin: origin, AudioBitrate: 128})
 		if err != nil {
 			t.Fatalf("block %d: %v", i+1, err)
 		}
@@ -66,12 +78,12 @@ func TestPlayoutBlockSourceRejectsAFormatChange(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), nil)
-	first, err := source(context.Background(), "channel", playout.PlanBaseline)
+	first, err := source(context.Background(), playout.BlockRequest{ChannelID: "channel", Plan: playout.PlanBaseline})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = first.Content.Close()
-	if _, err := source(context.Background(), "channel", playout.PlanBaseline); err == nil {
+	if _, err := source(context.Background(), playout.BlockRequest{ChannelID: "channel", Plan: playout.PlanBaseline}); err == nil {
 		t.Fatal("second block accepted a changed broadcast format")
 	}
 }
@@ -98,8 +110,10 @@ func TestPlayoutBlockSourceUsesPreparedThenPinsLiveFallback(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	preparedCalls := 0
-	prepared := playout.BlockSource(func(context.Context, string, playout.EncodePlan) (playout.Block, error) {
+	var preparedRequests []playout.BlockRequest
+	prepared := playout.BlockSource(func(_ context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
 		preparedCalls++
+		preparedRequests = append(preparedRequests, blockRequest)
 		if preparedCalls > 1 {
 			return playout.Block{}, playout.ErrPreparedUnavailable
 		}
@@ -113,7 +127,7 @@ func TestPlayoutBlockSourceUsesPreparedThenPinsLiveFallback(t *testing.T) {
 	})
 	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), prepared)
 
-	first, err := source(t.Context(), "channel", playout.PlanFull)
+	first, err := source(t.Context(), playout.BlockRequest{ChannelID: "channel", Plan: playout.PlanFull})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,14 +136,43 @@ func TestPlayoutBlockSourceUsesPreparedThenPinsLiveFallback(t *testing.T) {
 	if string(firstBody) != "prepared" || first.Format != format || requests != 0 {
 		t.Fatalf("first block = body %q format %+v HTTP requests %d, want prepared hit", firstBody, first.Format, requests)
 	}
-	second, err := source(t.Context(), "channel", playout.PlanFull)
+	prospective := playout.BlockRequest{ChannelID: "channel", Plan: playout.PlanFull, TimelineOrigin: time.Unix(1, 0), AiringAt: time.Unix(2, 0)}
+	if _, err := source(t.Context(), prospective); !errors.Is(err, playout.ErrPreparedUnavailable) || requests != 0 {
+		t.Fatalf("prospective prepared miss started live effects: err=%v HTTP=%d", err, requests)
+	}
+	if preparedRequests[1] != prospective {
+		t.Fatalf("prepared request lost its timing: %+v", preparedRequests[1])
+	}
+	second, err := source(t.Context(), playout.BlockRequest{ChannelID: "channel", Plan: playout.PlanFull})
 	if err != nil {
 		t.Fatal(err)
 	}
 	secondBody, _ := io.ReadAll(second.Content)
 	_ = second.Content.Close()
-	if string(secondBody) != "live" || second.Format != format || requests != 1 || preparedCalls != 2 {
+	if string(secondBody) != "live" || second.Format != format || requests != 1 || preparedCalls != 3 {
 		t.Fatalf("second block = body %q format %+v HTTP %d prepared %d, want pinned live fallback",
 			secondBody, second.Format, requests, preparedCalls)
+	}
+}
+
+func TestPlayoutBlockSourceRejectsIncompatibleSessionAudio(t *testing.T) {
+	for _, tc := range []struct{ name, marker, format string }{
+		{"missing PCM marker", "", "h264-1280x720-25-2500-128"},
+		{"old AAC child", "aac", "h264-1280x720-25-2500-128"},
+		{"different bitrate", api.PlayoutBlockAudioPCM, "h264-1280x720-25-2500-160"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set(api.PlayoutBlockAudioHeader, tc.marker)
+				w.Header().Set(api.PlayoutBroadcastFormatHeader, tc.format)
+				_, _ = io.WriteString(w, "incompatible child")
+			}))
+			t.Cleanup(srv.Close)
+			source := playoutBlockSource(srv.URL, func() string { return "token" }, srv.Client(), nil)
+			block, err := source(t.Context(), playout.BlockRequest{ChannelID: "channel", TimelineOrigin: time.Unix(1, 0), AudioBitrate: 128})
+			if err == nil || block.Content != nil {
+				t.Fatalf("incompatible audio entered session: block=%+v err=%v", block, err)
+			}
+		})
 	}
 }

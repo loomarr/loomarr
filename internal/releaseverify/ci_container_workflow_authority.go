@@ -265,7 +265,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make observability-verify":     exactWorkflowStep(12, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, allowsAcquisition: true}),
 		}),
 		"ci-go.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}": exactWorkflowStep(10, "", workflowStepAuthority{targets: []string{"test"}}),
+			"make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}": exactWorkflowStep(10, "", workflowStepAuthority{targets: []string{"test"}, environment: map[string]string{"GOFLAGS": "-p=1"}}),
 		}),
 		"ci-image-certification.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			`IMAGE_CERT_REPORT="$RUNNER_TEMP/image-certification.json" make image-cert`: exactWorkflowStep(3, "Certify the release worker against the deterministic real-codec corpus", workflowStepAuthority{targets: []string{"image-cert"}}),

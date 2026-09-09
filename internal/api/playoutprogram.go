@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
@@ -58,6 +59,7 @@ type PlayoutResolver interface {
 	// Tone-mapping is the first caller; the zero value means "not probed", which every consumer
 	// must treat as unknown rather than as a positive claim.
 	PlanFor(ctx context.Context, input string, target playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat)
+	CopyVideoStart(ctx context.Context, input string, offset, limit time.Duration, fps float64) (time.Duration, bool)
 	// ChannelCodec returns the persisted codec the Channel's live timeline normalizes to. It is
 	// needed only to turn the broad tuner capability plan into one stable output codec.
 	ChannelCodec(ctx context.Context, channelID string) string
@@ -67,15 +69,31 @@ type PlayoutResolver interface {
 // request. These names are exported only for the composition adapter that performs that owned HTTP
 // hop; device clients never set or consume them.
 const (
-	PlayoutBroadcastFormatQuery   = "broadcast"
-	PlayoutBroadcastFormatHeader  = "X-Loomarr-Broadcast-Format"
-	PlayoutAiringStartedAtHeader  = "X-Loomarr-Airing-Started-At"
-	PlayoutAiringEndsAtHeader     = "X-Loomarr-Airing-Ends-At"
-	PlayoutAiringKindHeader       = "X-Loomarr-Airing-Kind"
-	PlayoutAiringContentHeader    = "X-Loomarr-Airing-Content"
-	PlayoutScheduleBlockHeader    = "X-Loomarr-Schedule-Block"
-	PlayoutParentProcessRunHeader = "X-Loomarr-Parent-Process-Run"
+	PlayoutSessionAudioBitrateHeader = "X-Loomarr-Session-Audio-Bitrate"
+	PlayoutBlockAudioHeader          = "X-Loomarr-Block-Audio"
+	PlayoutBlockAudioPCM             = "s302m-48000-stereo"
+	PlayoutBroadcastFormatQuery      = "broadcast"
+	PlayoutBroadcastFormatHeader     = "X-Loomarr-Broadcast-Format"
+	PlayoutAiringStartedAtHeader     = "X-Loomarr-Airing-Started-At"
+	PlayoutAiringEndsAtHeader        = "X-Loomarr-Airing-Ends-At"
+	PlayoutAiringKindHeader          = "X-Loomarr-Airing-Kind"
+	PlayoutAiringContentHeader       = "X-Loomarr-Airing-Content"
+	PlayoutScheduleBlockHeader       = "X-Loomarr-Schedule-Block"
+	PlayoutParentProcessRunHeader    = "X-Loomarr-Parent-Process-Run"
+	PlayoutTimelineOriginHeader      = "X-Loomarr-Timeline-Origin"
 )
+
+func parsePlayoutTimelineOrigin(header http.Header) (time.Time, error) {
+	raw := header.Get(PlayoutTimelineOriginHeader)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	origin, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil || origin.IsZero() {
+		return time.Time{}, errors.New("invalid playout timeline origin")
+	}
+	return origin, nil
+}
 
 func setPlayoutAiringIdentity(header http.Header, airing playout.Airing) {
 	header.Set(PlayoutAiringStartedAtHeader, airing.StartedAt.UTC().Format(time.RFC3339Nano))
@@ -145,6 +163,11 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer admission.Release()
 	r = r.WithContext(admission.Context)
+	origin, err := parsePlayoutTimelineOrigin(r.Header)
+	if err != nil {
+		s.writeProblem(w, r, http.StatusBadRequest, "Invalid playout timeline", "The timeline origin is invalid.")
+		return
+	}
 
 	// The codec audience this program is for (§9.1 V48) — the EncodePlan set on the URL by the session
 	// parent that requested it, so a baseline session's programs plan for baseline and a full/tuner
@@ -158,6 +181,17 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	if pinned, ok := playout.ParseBroadcastFormat(r.URL.Query().Get(PlayoutBroadcastFormatQuery)); ok {
 		profile = pinned.Apply(profile)
 		broadcastCodec = pinned.VideoCodec
+	}
+	if !origin.IsZero() {
+		if raw := r.Header.Get(PlayoutSessionAudioBitrateHeader); raw != "" {
+			bitrate, err := strconv.Atoi(raw)
+			if err != nil || bitrate <= 0 || bitrate > 2000 {
+				s.writeProblem(w, r, http.StatusBadRequest, "Invalid session audio", "The session audio bitrate is invalid.")
+				return
+			}
+			profile.AudioBitrate = bitrate
+		}
+		w.Header().Set(PlayoutBlockAudioHeader, PlayoutBlockAudioPCM)
 	}
 	if playout.IsHEVCCodec(broadcastCodec) {
 		profile.Encoder = playout.HEVCEncoderFor(profile.Encoder)
@@ -267,6 +301,15 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// boundary — the one moment continuity is most fragile.
 	plan, source := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
 	plan = playout.ConformCopyPlan(source, plan, profile, broadcastCodec)
+	var videoCopySeek *time.Duration
+	if plan.CopyVideo {
+		seek, proven := s.playoutResolver.CopyVideoStart(r.Context(), streamURL, airing.Offset, airing.Remaining, source.FrameRate)
+		if !proven || seek < 0 || seek > airing.Offset {
+			plan.CopyVideo = false
+		} else {
+			videoCopySeek = &seek
+		}
+	}
 
 	// ⚠ Keep an HEVC-plan session's stream UNIFORMLY HEVC (§9.1 V49). An hevc8/hevc10 client watches
 	// over fMP4, which binds ONE decoder from its init segment and cannot survive a mid-stream codec
@@ -275,14 +318,17 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// never switches codec. A source already matching the complete HEVC session format still copies;
 	// every mismatch normalizes to HEVC. For a baseline (h264/TS) session this is a no-op.
 	spec := playout.ProgramSpec{
-		Profile:    profile,
-		Input:      streamURL,
-		Offset:     airing.Offset,
-		Limit:      airing.Remaining,
-		AudioTrack: audioTrack,
-		TargetLUFS: targetLUFS,
-		Plan:       plan,
-		Source:     source,
+		SessionAudio:  !origin.IsZero(),
+		VideoCopySeek: videoCopySeek,
+		Clock:         playout.ProgramClock{Origin: origin, StartedAt: airing.StartedAt},
+		Profile:       profile,
+		Input:         streamURL,
+		Offset:        airing.Offset,
+		Limit:         airing.Remaining,
+		AudioTrack:    audioTrack,
+		TargetLUFS:    targetLUFS,
+		Plan:          plan,
+		Source:        source,
 		// Whether this BUILD can tone-map, asked once per process by the composition root. Nil
 		// here means "no" — the same fail-safe direction as playoutFont: a missing filter emitted
 		// anyway fails at graph-init and kills the channel, so an unknown answer must never be
@@ -350,6 +396,11 @@ func (s *Server) serveCard(
 	if s.playoutFont != nil {
 		font = s.playoutFont()
 	}
+	origin, err := parsePlayoutTimelineOrigin(r.Header)
+	if err != nil {
+		return false
+	}
+	clock := playout.ProgramClock{Origin: origin, StartedAt: time.Now().UTC()}
 	// The card is a synthetic lavfi source, so it does not contend for VRAM the way a decode+
 	// transcode does — but it still uses the profile's encoder, so it gets the SOFTWARE fallback
 	// (not the VRAM eviction step): a card that cannot hardware-encode should still render rather
@@ -359,7 +410,7 @@ func (s *Server) serveCard(
 		p.Encoder = enc
 		// The route key is an opaque internal identifier, not viewer-facing Channel identity.
 		// Keep fallback cards unlabelled until a real name/number is explicitly supplied.
-		return playout.OfflineCardArgs(p, font, title, "", duration)
+		return playout.OfflineCardArgs(p, font, title, "", duration, clock)
 	}
 	if c := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
 		s.pipeChild(w, r, channelID, "offline card", c)
@@ -555,7 +606,10 @@ func (s *Server) startChild(
 // pipeChild commits the HTTP response and streams the live child to it: the peeked first chunk, then
 // the rest of the encoder's output, until the program ends (EOF) or the client disconnects.
 func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, what string, c *liveChild) {
-	defer c.cancel()
+	defer func() {
+		c.cancel()
+		_ = c.proc.Wait()
+	}()
 
 	flusher, _ := w.(http.Flusher)
 	w.Header().Set("Content-Type", "video/mp2t")
@@ -567,15 +621,27 @@ func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, wh
 
 	// The peeked first chunk goes out FIRST — it was read off the pipe before the header, so
 	// skipping it would drop the start of the program.
-	if _, err := w.Write(c.first); err == nil && flusher != nil {
+	if _, err := w.Write(c.first); err != nil {
+		return
+	}
+	if flusher != nil {
 		flusher.Flush()
 	}
 
-	_, _ = copyAndFlush(w, c.proc.Stdout, flusher)
+	if _, err := copyAndFlush(w, c.proc.Stdout, flusher); err != nil {
+		if r.Context().Err() != nil {
+			return
+		}
+		s.log.Warn("playout: program stream failed after output began", "channel", channelID, "program", what, "err", err)
+		panic(http.ErrAbortHandler)
+	}
 
-	// Reap before returning so the encoder count is accurate the moment the demuxer re-requests.
-	c.cancel()
-	_ = c.proc.Wait()
+	// Stdout EOF alone does not prove completion. Cancel would suppress a natural
+	// nonzero exit, and returning normally would falsely finish the HTTP body.
+	if err := c.proc.Wait(); err != nil {
+		s.log.Warn("playout: program child failed after output began", "channel", channelID, "program", what, "err", err)
+		panic(http.ErrAbortHandler)
+	}
 }
 
 // failProgram writes the 502 for a program that could not be produced at all — every ladder step

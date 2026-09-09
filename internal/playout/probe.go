@@ -5,15 +5,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"math"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 )
 
-// All ffprobe use lives here (§9.1). One invocation, one stream model, three consumers.
+// Shared source observations and seek-local copy proofs use one stream/packet model (§9.1).
 //
 // Playout asks three questions of a source, and they used to be three separate ffprobe calls with
 // three JSON shapes and three copies of the shell-out: which audio track to map (audio.go), the
@@ -28,6 +31,7 @@ type probedStream struct {
 	Index          int             `json:"index"`
 	CodecType      string          `json:"codec_type"`
 	CodecName      string          `json:"codec_name"`
+	HasBFrames     *int            `json:"has_b_frames"`
 	Profile        string          `json:"profile"`
 	Level          json.RawMessage `json:"level"`
 	Width          int             `json:"width"`
@@ -62,6 +66,7 @@ type probedPacket struct {
 
 // probedFormat is the container-level `-show_format` slice — one per file, not per stream.
 type probedFormat struct {
+	StartTime  string `json:"start_time"`
 	FormatName string `json:"format_name"` // "matroska,webm", "mov,mp4,…"
 	Duration   string `json:"duration"`    // seconds, as a string
 	BitRate    string `json:"bit_rate"`    // overall bit/s, as a string
@@ -98,8 +103,12 @@ func runFFprobeObserved(ctx context.Context, bin, input string, inspectPackets b
 		entries += ":packet=stream_index,pts_time,flags"
 	}
 	args = append(args, "-show_entries", entries, "-of", "json", input)
+	return executeFFprobeObserved(ctx, bin, args, manager)
+}
+
+func executeFFprobeObserved(ctx context.Context, bin string, args []string, manager *diagnostics.ProcessManager) (probed, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
-	var out bytes.Buffer
+	var out probeOutputLimit
 	cmd.Stdout = &out
 	stderr, pipeErr := cmd.StderrPipe()
 	if pipeErr != nil {
@@ -134,6 +143,76 @@ func runFFprobeObserved(ctx context.Context, bin, input string, inspectPackets b
 		return probed{}, err
 	}
 	return parseProbeJSON(out.Bytes())
+}
+
+// CopyStartProber proves a video random-access point for this finite source interval.
+// The returned seek retains that frame at FFmpeg's millisecond argument precision.
+type CopyStartProber func(context.Context, string, time.Duration, time.Duration, float64) (time.Duration, bool)
+
+func FFprobeCopyStartNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) CopyStartProber {
+	bin := ffprobeBesideFFmpeg(ffmpegPath)
+	var observer *diagnostics.ProcessManager
+	if len(observers) > 0 {
+		observer = observers[0]
+	}
+	return func(ctx context.Context, input string, offset, limit time.Duration, fps float64) (time.Duration, bool) {
+		if offset < 0 || limit <= 0 || fps <= 0 || math.IsNaN(fps) || math.IsInf(fps, 0) {
+			return 0, false
+		}
+		ctx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		args := []string{"-v", "error", "-select_streams", "v:0", "-read_intervals", seconds(offset) + "%+#256",
+			"-show_entries", "stream=index,codec_type,has_b_frames:packet=stream_index,pts_time,flags:format=start_time", "-of", "json", input}
+		result, err := executeFFprobeObserved(ctx, bin, args, observer)
+		if err != nil || ctx.Err() != nil {
+			return 0, false
+		}
+		return copyStartOf(result, offset, limit, fps)
+	}
+}
+
+func copyStartOf(result probed, offset, limit time.Duration, fps float64) (time.Duration, bool) {
+	if len(result.Streams) != 1 || result.Streams[0].CodecType != "video" || result.Streams[0].HasBFrames == nil || *result.Streams[0].HasBFrames != 0 || offset < 0 || limit <= 0 || fps <= 0 || math.IsNaN(fps) || math.IsInf(fps, 0) {
+		return 0, false
+	}
+	start, err := strconv.ParseFloat(result.Format.StartTime, 64)
+	if err != nil || math.IsNaN(start) || math.IsInf(start, 0) {
+		return 0, false
+	}
+	frameNanos := float64(time.Second) / fps
+	if frameNanos < 1 || frameNanos >= float64(math.MaxInt64) {
+		return 0, false
+	}
+	frame := time.Duration(frameNanos)
+	for _, packet := range result.Packets {
+		if packet.StreamIndex != result.Streams[0].Index || !strings.Contains(packet.Flags, "K") || strings.Contains(packet.Flags, "D") {
+			continue
+		}
+		pts, err := strconv.ParseFloat(packet.PTS, 64)
+		at := pts - start
+		if err != nil || math.IsNaN(at) || math.IsInf(at, 0) || at < 0 || at >= float64(math.MaxInt64)/float64(time.Second) {
+			continue
+		}
+		point := time.Duration(at * float64(time.Second))
+		if point-offset > -frame && point-offset < frame && point-offset < limit {
+			// ProgramArgs renders seeks at millisecond precision. Rounding above a
+			// proven fractional keyframe would discard exactly the frame we need.
+			return min(point, offset).Truncate(time.Millisecond), true
+		}
+	}
+	return 0, false
+}
+
+// probeOutputLimit prevents malformed probe output from growing without bound.
+type probeOutputLimit struct{ buffer bytes.Buffer }
+
+func (b *probeOutputLimit) Bytes() []byte { return b.buffer.Bytes() }
+
+func (b *probeOutputLimit) Write(p []byte) (int, error) {
+	if len(p) > (1<<20)-b.buffer.Len() {
+		return 0, errors.New("media probe output exceeds bound")
+	}
+	return b.buffer.Write(p)
 }
 
 // SourceObservation is the durable, provider-neutral projection of the shared ffprobe result.

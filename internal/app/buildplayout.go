@@ -142,7 +142,11 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		playoutSpawner(set.str("playout.ffmpeg_path"),
 			func() string { return set.str("server.public_url") },
 			playoutTokenFn, log, deps.processDiagnostics,
-			func() playout.BlockSource { return preparedBlockSource }),
+			func() playout.BlockSource { return preparedBlockSource },
+			func(ctx context.Context) int { return playoutRes.Profile(ctx).AudioBitrate },
+			func(ctx context.Context, channelID string, plan playout.EncodePlan) bool {
+				return preparedMPEGTSReady != nil && preparedMPEGTSReady(ctx, channelID, plan)
+			}),
 		playoutBudget,
 		playout.DefaultGrace,
 		log,
@@ -213,6 +217,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		probeSource:        playout.FFprobeSourceNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		probeTracks:        playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		probeFormat:        playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		probeCopyStart:     playout.FFprobeCopyStartNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		processDiagnostics: deps.processDiagnostics,
 		// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
 		// applies without a restart — the same hot-apply posture as audioLanguage.
@@ -380,9 +385,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			set.str("playout.ffmpeg_path"), log, deps.processDiagnostics,
 		)
 		preparedBlockSource = func(
-			ctx context.Context, channelID string, plan playout.EncodePlan,
-		) (playout.Block, error) {
-			block, err := rawPreparedBlockSource(ctx, channelID, plan)
+			ctx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
+			channelID := blockRequest.ChannelID
+			plan := blockRequest.Plan
+			block, err := rawPreparedBlockSource(ctx, blockRequest)
 			if err == nil && block.Content != nil && !playoutMgr.AdmitProgram(channelID, plan, false) {
 				_ = block.Content.Close()
 				return playout.Block{}, playout.ErrAtCapacity

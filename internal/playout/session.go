@@ -38,14 +38,6 @@ import (
 // or choose a lower quality tier) are only discoverable if we say which wall was hit.
 var ErrAtCapacity = errors.New("playout: at channel capacity")
 
-// viewerBuffer is how many chunks a single slow viewer may fall behind before it is
-// dropped.
-//
-// Sized in CHUNKS, not bytes, because that is the unit the fan-out moves. Deliberately
-// small: a viewer this far behind is not going to recover, and a bigger buffer only delays
-// the drop while holding more memory per stalled TV.
-const viewerBuffer = 8
-
 // warmIdleSessionLimit is the complete process-wide speculative/retained live hot set. The Watch
 // controller warms only the previous and next Channels beside current, so retaining more than two
 // proven-warm idle (Channel, EncodePlan) sessions buys no product latency while keeping their parent
@@ -325,9 +317,9 @@ const DefaultGrace = 30 * time.Second
 // browser as TargetBrowser; they get separate sessions when the copy plan differs (HEVC) and
 // separate-but-both-cheap `-c copy` sessions when it does not (h264).
 //
-// Returns a chunk channel and a detach func. The caller MUST call detach — it is what
+// Returns a cancellable stream and a detach func. The caller MUST call detach — it is what
 // decrements the refcount, and a leaked viewer keeps a channel encoding forever.
-func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan) (<-chan []byte, func(), error) {
+func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan) (Stream, func(), error) {
 	key := sessionKey{channel: channelID, plan: plan}
 	for {
 		s, err := m.acquire(ctx, key)
@@ -343,7 +335,7 @@ func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan)
 
 // AttachSink registers an in-process consumer directly in the session fan-out. It exists for the
 // HLS remux, whose input must absorb ffmpeg's finite readrate startup burst without crossing the
-// eight-chunk mailbox intended for network viewers. The sink's offer is synchronous and must stay
+// smaller byte budget intended for network viewers. The sink's offer is synchronous and must stay
 // non-blocking; returning false drops only that sink, preserving the channel for every other viewer.
 func (m *Manager) AttachSink(ctx context.Context, channelID string, plan EncodePlan, sink sessionSink) (sinkLease, error) {
 	key := sessionKey{channel: channelID, plan: plan}
@@ -362,6 +354,7 @@ func (m *Manager) AttachSink(ctx context.Context, channelID string, plan EncodeP
 // sinkLease lets an in-process delivery adapter distinguish retained warmth from current viewer
 // demand without exposing Session lifecycle machinery. A plain byte-stream viewer is always active.
 type sinkLease struct {
+	source    *Process
 	release   func()
 	setActive func(bool) bool
 }
@@ -664,7 +657,7 @@ func (s *Session) pump() {
 	// 64 KiB: ~340 MPEG-TS packets, a few frames at playout bitrates. Large enough that
 	// the per-chunk fan-out overhead is negligible, small enough that a viewer joining
 	// mid-stream waits milliseconds for its first bytes.
-	buf := make([]byte, 64*1024)
+	buf := make([]byte, transportReadSize)
 	var total int64
 	for {
 		n, err := s.proc.Stdout.Read(buf)
@@ -751,33 +744,19 @@ func (s *Session) broadcast(chunk []byte) {
 	}
 }
 
-// sessionViewer is the fan-out's private delivery contract. A network viewer uses a deliberately
-// tiny mailbox and returns false when stalled; the HLS relay implements the same interface with a
-// bounded lossless startup queue. broadcast therefore knows only the policy outcome, not buffering.
+// sessionViewer is the fan-out's private delivery contract. A network viewer uses a bounded byte
+// FIFO and returns false when stalled; the HLS relay has its own bounded startup queue. broadcast therefore knows only the policy outcome, not buffering.
 type sessionViewer interface {
 	offer([]byte) bool
 	close()
 }
-
-type channelViewer struct{ chunks chan []byte }
-
-func (v *channelViewer) offer(chunk []byte) bool {
-	select {
-	case v.chunks <- chunk:
-		return true
-	default:
-		return false
-	}
-}
-
-func (v *channelViewer) close() { close(v.chunks) }
 
 type sessionSink interface {
 	sessionViewer
 }
 
 // addViewer registers a viewer. Reports false if the session is already tearing down.
-func (s *Session) addViewer() (<-chan []byte, func(), bool) {
+func (s *Session) addViewer() (Stream, func(), bool) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -785,18 +764,23 @@ func (s *Session) addViewer() (<-chan []byte, func(), bool) {
 	}
 	id := s.nextID
 	s.nextID++
-	ch := make(chan []byte, viewerBuffer)
-	s.viewers[id] = &channelViewer{chunks: ch}
+	viewer := newStreamViewer()
+	s.viewers[id] = viewer
 	s.idleSince = time.Time{}
 	s.idleGeneration++
 
 	var once sync.Once
-	detach := func() { once.Do(func() { s.removeViewer(id) }) }
+	detach := func() {
+		once.Do(func() {
+			viewer.discard()
+			s.removeViewer(id)
+		})
+	}
 	s.mu.Unlock()
 	if s.onDemandChange != nil {
 		s.onDemandChange()
 	}
-	return ch, detach, true
+	return viewer, detach, true
 }
 
 func (s *Session) addSink(sink sessionSink) (sinkLease, bool) {
@@ -814,6 +798,7 @@ func (s *Session) addSink(sink sessionSink) (sinkLease, bool) {
 	var once sync.Once
 	detach := func() { once.Do(func() { s.removeViewer(id) }) }
 	lease := sinkLease{
+		source:    s.proc,
 		release:   detach,
 		setActive: func(active bool) bool { return s.setViewerActive(id, active) },
 	}
@@ -986,9 +971,8 @@ func (s *Session) ViewerCount() int {
 
 // close tears the session down and disconnects every remaining viewer.
 //
-// Closing the viewer channels is what unblocks their handlers: a tuner handler is parked
-// on a channel receive, and a closed channel is how it learns the stream ended and can
-// return instead of hanging until the client gives up.
+// Closing each stream wakes its reader and preserves already accepted transport through EOF.
+// No forwarding goroutine survives teardown; caller release discards any unread tail.
 func (s *Session) close() {
 	s.mu.Lock()
 	if s.closed {
