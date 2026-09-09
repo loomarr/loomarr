@@ -306,7 +306,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// per in-range episode (§9 expansion).
 	slots := make([]Slot, 0, len(eligible))
 	for _, e := range eligible {
-		slots = append(slots, resolveEntryWithTrace(e, avail, pending, franchiseGroups, rp, &report, trace)...)
+		slots = append(slots, resolveEntryWithTrace(e, avail, pending, franchiseGroups, rp, rule.What, &report, trace)...)
 	}
 
 	// EligibleKeys: the distinct program keys the library can currently supply, captured
@@ -585,10 +585,10 @@ func episodeLabel(e LineupEntry, ep ResolvedProgram) string {
 // episodes exist. report accumulates those drops; pass nil to run the gate without recording
 // (the EligibleKeys pass does, so a drop is not counted twice).
 func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, report *ExclusionReport) []Slot {
-	return resolveEntryWithTrace(e, avail, policy, franchise, rp, report, nil)
+	return resolveEntryWithTrace(e, avail, policy, franchise, rp, nil, report, nil)
 }
 
-func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, report *ExclusionReport, trace *scheduleTraceBuilder) []Slot {
+func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, ruleScope *ScopePolicy, report *ExclusionReport, trace *scheduleTraceBuilder) []Slot {
 	// A series expands into its episodes (each a program slot).
 	if e.Key.IsSeries() {
 		resolution := avail.ResolveEpisodes(e.Key)
@@ -620,6 +620,14 @@ func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPoli
 						report.Items = append(report.Items, ExcludedItem{
 							Key: e.Key, Title: episodeLabel(e, ep), Reason: "out_of_scope",
 						})
+					}
+					continue
+				}
+				if ep.Year > 0 && (!rp.Scope.seriesAiringDateOK(ep.Year) || (ruleScope != nil && !ruleScope.seriesAiringDateOK(ep.Year))) {
+					scopeDropped++
+					trace.add(episodeFact(e, ep, StageHardFilter, OutcomeExcluded, ReasonOutOfScope))
+					if report != nil {
+						report.Items = append(report.Items, ExcludedItem{Key: e.Key, Title: episodeLabel(e, ep), Reason: "out_of_scope"})
 					}
 					continue
 				}

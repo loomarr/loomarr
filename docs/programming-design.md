@@ -54,6 +54,16 @@ is unavailable passes the era check: scope is a taste filter rather than a safet
 stale pre-year episode cache must not empty a Channel until its next refresh. An explicit
 per-Lineup season window still narrows independently and wins by intersection.
 
+For newly interpreted date constraints, `scope.dates` preserves separate movie-release,
+series-premiere, and series-airing range lists under the [date contract](design.md). Each list is a
+union; applicable lists compose by intersection. Title axes are checked before series expansion,
+and the airing axis checks the concrete episode year. Explicit date windows are not widened to
+admit out-of-window model picks or by automatic era relaxation. `scope.era` continues to govern
+existing Era-only policies and operator selections. The whole nonempty scope remains operator
+pinnable. Filler derives its own viewing-era union through the shared selection resolver and
+persists a generated seed in `filler.eraWindows`; explicit scalar-era and range-list overrides are
+mutually exclusive. Programme-year and filler-year unknowns retain their distinct existing rules.
+
 **Single-series channels** (a Simpsons channel) auto-relax `seriesMinGap`/`blockMax` — separation there means *episode* spacing, not series spacing. The relaxation is rule-based, not LLM judgment.
 
 ### 2.1 Ownership (who may write each field, and what a refine does)

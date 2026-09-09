@@ -22,22 +22,22 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 	}{
 		{
 			name:      "bare json (gpt-4o-mini)",
-			content:   `{"rationale":"r","picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`,
+			content:   `{"rationale":"r","picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
 			wantPicks: 1, wantRat: "r",
 		},
 		{
 			name:      "markdown-fenced json (claude)",
-			content:   "```json\n{\"rationale\":\"r\",\"picks\":[{\"mediaType\":\"movie\",\"tmdbId\":603,\"name\":\"The Matrix\"}]}\n```",
+			content:   "```json\n{\"rationale\":\"r\",\"picks\":[{\"mediaType\":\"movie\",\"tmdbId\":603,\"name\":\"The Matrix\"}],\"dateMeaning\":{\"kind\":\"none\",\"anchors\":[],\"axes\":[]}}\n```",
 			wantPicks: 1, wantRat: "r",
 		},
 		{
 			name:      "prose before and after",
-			content:   "Here is the channel:\n{\"rationale\":\"r\",\"picks\":[]}\nHope that helps!",
+			content:   "Here is the channel:\n{\"rationale\":\"r\",\"picks\":[],\"dateMeaning\":{\"kind\":\"none\",\"anchors\":[],\"axes\":[]}}\nHope that helps!",
 			wantPicks: 0, wantRat: "r",
 		},
 		{
 			name:      "brace inside a string value is not the object end",
-			content:   `{"rationale":"a {weird} title","picks":[{"mediaType":"movie","tmdbId":1,"name":"Brace } Face"}]}`,
+			content:   `{"rationale":"a {weird} title","picks":[{"mediaType":"movie","tmdbId":1,"name":"Brace } Face"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
 			wantPicks: 1, wantRat: "a {weird} title",
 		},
 		{

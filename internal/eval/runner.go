@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -281,8 +282,8 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				Case: c.Name, Trial: trial,
 				GroundedCompletionExpected: c.ExpectGroundedCompletion,
 				ToolOperationExpected:      c.ExpectedToolOperation != "",
-				PolicyAccuracyExpected:     c.ExpectedPolicyCeiling != "",
-				ProposalQualityExpected:    len(c.ExpectedProposalKeys) > 0 || c.ExpectedProposalAbstention,
+				PolicyAccuracyExpected:     c.ExpectedPolicyCeiling != "" || c.ExpectedDateScope != nil,
+				ProposalQualityExpected:    len(c.ExpectedProposalKeys) > 0 || c.ExpectedProposalAbstention || c.ExpectedProposalTerminal != "",
 				RecoveryExpected:           c.RecoveryExpected,
 				GeneratorCalls:             make([]InferenceCall, 0), JudgeCalls: make([]InferenceCall, 0),
 			}
@@ -313,9 +314,11 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				result.Lineup = len(prop.Lineup)
 				result.Acquisitions = len(prop.Acquisitions)
 				result.GroundedCompletion = result.Lineup+result.Acquisitions > 0
-				result.SchemaValid = err == nil || errors.Is(err, suggest.ErrNoGroundedTitles)
+				result.SchemaValid = err == nil || errors.Is(err, suggest.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, err))
 				result.Ceiling = string(prop.Policy.Audience.Ceiling)
-				result.PolicyAccurate = c.ExpectedPolicyCeiling == "" || result.Ceiling == c.ExpectedPolicyCeiling
+				result.DateScope = cloneDateScope(prop.Policy.Scope.Dates)
+				result.ScalarEra = cloneRange(prop.Policy.Scope.Era)
+				result.PolicyAccurate = policyAccuracyMatches(c, result, err)
 				result.ProposalQuality = proposalQualityMatches(c, prop, err)
 				result.ThemeFit = prop.Scores.ThemeFit
 				result.Failures = deterministicChecks(c, prop, err)
@@ -485,6 +488,70 @@ func maxResourceMeasurement(current, sample ResourceMeasurement) ResourceMeasure
 	return current
 }
 
+// policyAccuracyMatches keeps policy scoring advisory while requiring every
+// declared policy dimension to be correct. A date expectation is intentionally
+// stricter than an omitted expectation: even explicit `none` requires the
+// proposal to omit both date axes and the retired scalar era representation.
+func policyAccuracyMatches(c Case, result Result, suggestErr error) bool {
+	if c.ExpectedPolicyCeiling != "" && result.Ceiling != c.ExpectedPolicyCeiling {
+		return false
+	}
+	if c.ExpectedDateScope == nil {
+		return true
+	}
+	if suggestErr != nil || result.ScalarEra != nil {
+		return false
+	}
+	if dateScopeEmpty(c.ExpectedDateScope) {
+		return result.DateScope == nil
+	}
+	return normalizedDateScope(c.ExpectedDateScope) && dateScopesEqual(c.ExpectedDateScope, result.DateScope)
+}
+
+func dateScopeEmpty(scope *schedule.DateScope) bool {
+	return scope != nil && len(scope.MovieRelease) == 0 && len(scope.SeriesPremiere) == 0 && len(scope.SeriesAiring) == 0
+}
+
+func normalizedDateScope(scope *schedule.DateScope) bool {
+	if scope == nil {
+		return false
+	}
+	for _, ranges := range [][]schedule.Range{scope.MovieRelease, scope.SeriesPremiere, scope.SeriesAiring} {
+		if !slices.Equal(ranges, schedule.NormalizeRanges(ranges)) {
+			return false
+		}
+	}
+	return true
+}
+
+func dateScopesEqual(expected, actual *schedule.DateScope) bool {
+	if expected == nil || actual == nil {
+		return expected == actual
+	}
+	return slices.Equal(expected.MovieRelease, actual.MovieRelease) &&
+		slices.Equal(expected.SeriesPremiere, actual.SeriesPremiere) &&
+		slices.Equal(expected.SeriesAiring, actual.SeriesAiring)
+}
+
+func cloneDateScope(scope *schedule.DateScope) *schedule.DateScope {
+	if scope == nil {
+		return nil
+	}
+	return &schedule.DateScope{
+		MovieRelease:   slices.Clone(scope.MovieRelease),
+		SeriesPremiere: slices.Clone(scope.SeriesPremiere),
+		SeriesAiring:   slices.Clone(scope.SeriesAiring),
+	}
+}
+
+func cloneRange(value *schedule.Range) *schedule.Range {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
 func assessCertification(results []Result, thresholds CertificationThresholds, measurement ResourceMeasurement) CertificationAssessment {
 	assessment := CertificationAssessment{Passed: true}
 	groundedExpected, grounded := 0, 0
@@ -576,6 +643,16 @@ func assessCertification(results []Result, thresholds CertificationThresholds, m
 }
 
 func proposalQualityMatches(c Case, proposal suggest.Proposal, err error) bool {
+	if c.ExpectedProposalTerminal != "" {
+		if !typedDateAbstention(proposal, err) || typedFailureTerminal(err) != c.ExpectedProposalTerminal {
+			return false
+		}
+		if c.ExpectedToolOperation == "none" {
+			var failure *suggest.Failure
+			return errors.As(err, &failure) && failure.Trace.SourceQueriesDispatched == 0
+		}
+		return true
+	}
 	if c.ExpectedProposalAbstention {
 		return len(allItems(proposal)) == 0 && errors.Is(err, suggest.ErrNoGroundedTitles)
 	}
@@ -599,6 +676,21 @@ func proposalQualityMatches(c Case, proposal suggest.Proposal, err error) bool {
 		}
 	}
 	return true
+}
+
+func typedFailureTerminal(err error) string {
+	var failure *suggest.Failure
+	if !errors.As(err, &failure) || failure.Code != suggest.FailureCodeNoGroundedTitles || suggest.ValidateDecisionTrace(failure.Trace) != nil {
+		return ""
+	}
+	if failure.Trace.Terminal != suggest.TerminalConstraintsConflict && failure.Trace.Terminal != suggest.TerminalDateSemanticsUnclear {
+		return ""
+	}
+	return failure.Trace.Terminal
+}
+
+func typedDateAbstention(proposal suggest.Proposal, err error) bool {
+	return len(allItems(proposal)) == 0 && typedFailureTerminal(err) != ""
 }
 
 func performanceSummary(runLatencies []int64, toolCalls []int, measurement ResourceMeasurement) PerformanceSummary {
@@ -641,6 +733,11 @@ func expectedToolOperationFailure(expected string, observation Observation) stri
 	var calls int
 	switch expected {
 	case "":
+		return ""
+	case "none":
+		if observation.ToolCalls != 0 {
+			return "expected no catalog operation"
+		}
 		return ""
 	case "title":
 		calls = observation.TitleCalls

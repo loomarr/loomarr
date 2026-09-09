@@ -1,4 +1,5 @@
 import type { ChannelPolicy } from "@loomarr/api";
+import { disjointProgrammingDatesPolicy } from "@loomarr/fixtures";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
@@ -41,5 +42,9 @@ const StrictCeiling: Story = {
   args: { policy: { audience: { ceiling: "TV-Y" } } },
 };
 
+const DisjointProgrammingDates: Story = {
+  args: { policy: disjointProgrammingDatesPolicy },
+};
+
 export default meta;
-export { Empty, Populated, StrictCeiling };
+export { DisjointProgrammingDates, Empty, Populated, StrictCeiling };

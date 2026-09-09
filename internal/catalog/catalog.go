@@ -140,6 +140,15 @@ type DiscoveryQuery struct {
 	Creators         []string
 }
 
+// DiscoveryUnion is the outcome of one semantic discovery retrieval over one or
+// more normalized scalar queries. SourceQueriesDispatched counts catalog source
+// adapter calls, rather than underlying provider HTTP requests.
+type DiscoveryUnion struct {
+	Candidates              []Candidate
+	WindowsCompleted        int
+	SourceQueriesDispatched int
+}
+
 // TMDBDiscoverer is the TMDB discovery corpus for structured, authoritative
 // filters rather than title text (§8). Implemented by tmdb.Client. Optional: a
 // nil or legacy search-only corpus yields no discovery results.
@@ -318,6 +327,58 @@ func (c *Catalog) Discover(ctx context.Context, query DiscoveryQuery, limit int)
 		return nil, err
 	}
 	return c.finishDiscovery(ctx, res, poolLimit, limit), nil
+}
+
+// DiscoverUnion retrieves all supplied normalized discovery windows as one
+// semantic result. Each source query receives the normal 48-candidate pool;
+// identity merging, presence backfill, blend ordering, and truncation happen
+// once after every window has completed. A source failure never returns a
+// partial candidate set.
+func (c *Catalog) DiscoverUnion(ctx context.Context, queries []DiscoveryQuery) (DiscoveryUnion, error) {
+	const (
+		limit     = 24
+		poolLimit = limit * 2
+	)
+
+	if err := ctx.Err(); err != nil {
+		return DiscoveryUnion{}, err
+	}
+	if len(queries) == 0 {
+		return DiscoveryUnion{}, nil
+	}
+	d, ok := c.tmdb.(TMDBDiscoverer)
+	if !ok || c.tmdb == nil {
+		return DiscoveryUnion{}, nil
+	}
+	maxInt := int(^uint(0) >> 1)
+	if len(queries) > maxInt/poolLimit {
+		return DiscoveryUnion{}, fmt.Errorf("discovery union pool size overflows int")
+	}
+
+	result := DiscoveryUnion{}
+	var candidates []Candidate
+	for _, query := range queries {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		result.SourceQueriesDispatched++
+		window, err := d.Discover(ctx, query, poolLimit)
+		if err != nil {
+			return result, err
+		}
+		result.WindowsCompleted++
+		for i := range window {
+			if window[i].RelevanceRank <= 0 {
+				window[i].RelevanceRank = i + 1
+			}
+		}
+		candidates = append(candidates, window...)
+	}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	result.Candidates = c.finishDiscovery(ctx, candidates, poolLimit*len(queries), limit)
+	return result, nil
 }
 
 func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, poolLimit, limit int) []Candidate {

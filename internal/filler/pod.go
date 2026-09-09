@@ -98,9 +98,10 @@ type Window struct {
 	Seed int64
 	// Era + Audience are the block's target (90s cartoons → 1990s + kids). Era is a RANGE
 	// (§10, V51f) — before that it was one int and the "To year" the UI collected was discarded.
-	Era       EraRange
-	Audience  Audience
-	Geography Geography
+	Era        EraRange
+	EraWindows []EraRange
+	Audience   Audience
+	Geography  Geography
 	// GapMs is the flex gap to fill.
 	GapMs int64
 	// BreaksMax caps clips per pod (FILLER_POD_MAX, §15).
@@ -354,7 +355,7 @@ func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, r
 		return PodEntry{}, false
 	}
 	// Prefer era-matching bumpers; fall back to any bumper.
-	era := filterEra(bumpers, w.Era)
+	era := filterEraWindows(bumpers, w.eraWindows())
 	if len(era) > 0 {
 		bumpers = era
 	}

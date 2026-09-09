@@ -224,6 +224,10 @@ func applyRuleScopeWithTrace(entries []LineupEntry, what *ScopePolicy, trace *sc
 	seriesAllow := seriesAllowSet(what.Series)
 	out := make([]LineupEntry, 0, len(entries))
 	for _, e := range entries {
+		if e.Year > 0 && ((e.Key.IsSeries() && !what.seriesPremiereDateOK(e.Year)) || (!e.Key.IsSeries() && !what.movieDateOK(e.Year))) {
+			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfRuleScope))
+			continue
+		}
 		if seriesAllow != nil && e.Key.IsSeries() {
 			if _, ok := seriesAllow[e.Key]; !ok {
 				trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfRuleScope))

@@ -222,7 +222,7 @@ func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCover
 		{CriterionGeography, count(func(c Clip) bool {
 			return GeographicallyEligible(c, effectiveGeography(w.Geography, policy.Geography))
 		})},
-		{CriterionEra, count(func(c Clip) bool { return w.Era.Contains(c.Era) })},
+		{CriterionEra, count(func(c Clip) bool { return len(filterEraWindows([]Clip{c}, w.eraWindows())) > 0 })},
 		{CriterionAudience, count(func(c Clip) bool {
 			return len(filterAudienceWithUngrounded([]Clip{c}, w.Audience)) > 0
 		})},

@@ -54,8 +54,8 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 	// ungrounded clips — that ordering is the whole point. An unclassified clip with a perfect
 	// era must not outrank a clip Loomarr actually knows is right for this channel.
 	return []pool{
-		{MatchExact, filterEra(audienceMatch, w.Era)},
-		{MatchWidened, filterEra(audienceMatch, w.Era.Widened())},
+		{MatchExact, filterEraWindows(audienceMatch, w.eraWindows())},
+		{MatchWidened, filterEraWindows(audienceMatch, widenEraWindows(w.eraWindows()))},
 		{MatchAudience, filterAudienceWithUngrounded(commercials, w.Audience)},
 	}
 }
@@ -275,17 +275,69 @@ func (r EraRange) Widened() EraRange {
 	return w
 }
 
-func filterEra(clips []Clip, era EraRange) []Clip {
-	if era.Any() {
-		return clips
+func (w Window) eraWindows() []EraRange {
+	if len(w.EraWindows) > 0 {
+		return NormalizeEraWindows(w.EraWindows)
+	}
+	return []EraRange{w.Era}
+}
+
+func widenEraWindows(windows []EraRange) []EraRange {
+	out := make([]EraRange, len(windows))
+	for i, r := range windows {
+		out[i] = r.Widened()
+	}
+	return NormalizeEraWindows(out)
+}
+
+func filterEraWindows(clips []Clip, windows []EraRange) []Clip {
+	for _, r := range windows {
+		if r.Any() {
+			return clips
+		}
 	}
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
-		if era.Contains(c.Era) {
-			out = append(out, c)
+		for _, r := range windows {
+			if r.Contains(c.Era) {
+				out = append(out, c)
+				break
+			}
 		}
 	}
 	return out
+}
+
+// NormalizeEraWindows sorts and merges overlapping or adjacent windows while
+// retaining disjoint gaps. An explicit any window canonicalizes to just any.
+func NormalizeEraWindows(in []EraRange) []EraRange {
+	if len(in) == 0 {
+		return nil
+	}
+	for _, r := range in {
+		if r.Any() {
+			return []EraRange{{}}
+		}
+	}
+	out := append([]EraRange(nil), in...)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].From == out[j].From {
+			return out[i].To < out[j].To
+		}
+		return out[i].From < out[j].From
+	})
+	n := 0
+	for _, r := range out {
+		if n == 0 || r.From > out[n-1].To+1 {
+			out[n] = r
+			n++
+			continue
+		}
+		if r.To > out[n-1].To {
+			out[n-1].To = r.To
+		}
+	}
+	return out[:n:n]
 }
 
 func filterAudience(clips []Clip, aud Audience) []Clip {

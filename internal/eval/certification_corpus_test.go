@@ -25,11 +25,11 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v7" {
-		t.Fatalf("corpus version = %q, want planner-certification-v7", corpus.Version)
+	if corpus.Version != "planner-certification-v8" {
+		t.Fatalf("corpus version = %q, want planner-certification-v8", corpus.Version)
 	}
-	if corpus.SchemaVersion != 6 {
-		t.Fatalf("corpus schema version = %d, want 6", corpus.SchemaVersion)
+	if corpus.SchemaVersion != 8 {
+		t.Fatalf("corpus schema version = %d, want 8", corpus.SchemaVersion)
 	}
 	if corpus.PromptVersion != suggest.PlannerPromptVersion || corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion {
 		t.Fatalf("prompt/tool version = %q/%q, want production %q/%q", corpus.PromptVersion, corpus.ToolSchemaVersion, suggest.PlannerPromptVersion, suggest.PlannerToolSchemaVersion)
@@ -37,8 +37,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if corpus.Split != "certification" {
 		t.Fatalf("corpus split = %q, want certification", corpus.Split)
 	}
-	if len(corpus.Cases) != 28 {
-		t.Fatalf("certification scenario families = %d, want 28", len(corpus.Cases))
+	if len(corpus.Cases) != 35 {
+		t.Fatalf("certification scenario families = %d, want 35", len(corpus.Cases))
 	}
 	if corpus.Fixture.SHA256 == "" {
 		t.Fatal("catalog fixture digest is empty")
@@ -54,8 +54,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 		if c.Split != corpus.Split {
 			t.Fatalf("case %q split = %q, want %q", c.ID, c.Split, corpus.Split)
 		}
-		if len(c.Variants) != 5 {
-			t.Fatalf("case family %q variants = %d, want 5 plus its base Intent", c.ID, len(c.Variants))
+		if !strings.HasPrefix(c.ID, "date-") && len(c.Variants) != 5 {
+			t.Fatalf("historical case family %q variants = %d, want 5 plus its base Intent", c.ID, len(c.Variants))
 		}
 		for _, axis := range c.Axes {
 			axes[axis] = true
@@ -101,7 +101,7 @@ func TestV7ManifestChangesFrozenV6OnlyForProductionIdentityBinding(t *testing.T)
 		return manifest
 	}
 	v6, v7 := load("testdata/planner-certification-v6.json"), load("testdata/planner-certification-v7.json")
-	if v7["version"] != "planner-certification-v7" || v7["promptVersion"] != suggest.PlannerPromptVersion || v7["toolSchemaVersion"] != suggest.PlannerToolSchemaVersion {
+	if v7["version"] != "planner-certification-v7" || v7["promptVersion"] != "suggester-prompt-v5" || v7["toolSchemaVersion"] != "catalog-search-v5" {
 		t.Fatalf("v7 identity = version %q, prompt/tool %q/%q", v7["version"], v7["promptVersion"], v7["toolSchemaVersion"])
 	}
 	delete(v6, "version")
@@ -201,7 +201,7 @@ func TestCertificationExtensionRejectsUnknownCaseReferences(t *testing.T) {
 		}},
 		RecoveryCases: []string{"unknown"},
 	}
-	if err := validateCertificationExtension(extension, corpus); err == nil || !strings.Contains(err.Error(), "unknown") {
+	if err := validateCertificationExtension(extension, corpus, map[string]map[provision.Key]bool{}); err == nil || !strings.Contains(err.Error(), "unknown") {
 		t.Fatalf("unknown extension case error = %v", err)
 	}
 }
@@ -230,7 +230,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v7" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v8" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)
@@ -253,8 +253,8 @@ func TestCertificationRunnerConfigRequiresSnapshotIdentity(t *testing.T) {
 
 func TestRunnerExecutesCertificationCaseAgainstPinnedCatalogFixture(t *testing.T) {
 	provider := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Synthetic Matrix"}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":10001,"name":"Synthetic Matrix"}]}`),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Synthetic Matrix", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":10001,"name":"Synthetic Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
 	generator, observer, err := NewEmbeddedCertificationGenerator(provider)
 	if err != nil {
@@ -323,9 +323,10 @@ func TestRunnerExecutesV6QualifierFamiliesThroughProductionSuggester(t *testing.
 			if selected.Name == "" {
 				t.Fatalf("certification case %q is missing", tc.caseName)
 			}
+			tc.arguments["dateMeaning"] = map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}
 			provider := testkit.NewLLM(
 				testkit.ToolCallResponse("catalog_search", tc.arguments),
-				testkit.FinalResponse(tc.response),
+				testkit.FinalResponse(strings.TrimSuffix(tc.response, "}")+`,"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 			)
 			generator, observer, err := NewEmbeddedCertificationGenerator(provider)
 			if err != nil {
@@ -524,8 +525,8 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 168 {
-		t.Fatalf("executable certification cases = %d, want 168", len(cases))
+	if len(cases) != 182 {
+		t.Fatalf("executable certification cases = %d, want 182", len(cases))
 	}
 	abstentions := 0
 	policyCases := 0
@@ -548,7 +549,7 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 		if c.ExpectedPolicyCeiling != "" {
 			policyCases++
 		}
-		if len(c.ExpectedProposalKeys) > 0 || c.ExpectedProposalAbstention {
+		if len(c.ExpectedProposalKeys) > 0 || c.ExpectedProposalAbstention || c.ExpectedProposalTerminal != "" {
 			proposalCases++
 		}
 		if c.RecoveryExpected {
@@ -559,11 +560,11 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 		}
 		intents[c.Intent.Description] = true
 	}
-	if abstentions != 18 {
-		t.Fatalf("abstention cases = %d, want exactly 18 explicit empty/conflict cases", abstentions)
+	if abstentions != 20 {
+		t.Fatalf("abstention cases = %d, want exactly 20 explicit empty/conflict cases", abstentions)
 	}
-	if policyCases != 30 || proposalCases != 168 || recoveryCases != 6 {
-		t.Fatalf("quality answer coverage: policy=%d proposal=%d recovery=%d, want 30/168/6",
+	if policyCases != 30 || proposalCases != 182 || recoveryCases != 6 {
+		t.Fatalf("quality answer coverage: policy=%d proposal=%d recovery=%d, want 30/182/6",
 			policyCases, proposalCases, recoveryCases)
 	}
 }
@@ -573,8 +574,8 @@ func TestCertificationFamilySmokeCasesSelectExactlyOneBaseIntentPerFamily(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 28 {
-		t.Fatalf("family smoke cases = %d, want 28", len(cases))
+	if len(cases) != 35 {
+		t.Fatalf("family smoke cases = %d, want 35", len(cases))
 	}
 	seen := make(map[string]bool, len(cases))
 	for _, c := range cases {

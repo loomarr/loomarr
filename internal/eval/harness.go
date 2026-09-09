@@ -358,33 +358,35 @@ func mapIntent(i Intent) suggest.Intent {
 
 // Result is the scored outcome of one case.
 type Result struct {
-	Case                       string          `json:"case"`
-	Trial                      int             `json:"trial"`
-	Failures                   []string        `json:"failures"` // all evaluation failures; empty means the trial passed
-	FailureStage               FailureStage    `json:"failureStage,omitempty"`
-	ThemeFit                   float64         `json:"themeFit"`
-	Lineup                     int             `json:"lineup"`
-	Acquisitions               int             `json:"acquisitions"`
-	Ceiling                    string          `json:"ceiling"` // the extracted policy ceiling
-	JudgeScore                 float64         `json:"judgeScore"`
-	RelevanceScore             float64         `json:"relevanceScore"`
-	SerendipityScore           float64         `json:"serendipityScore"`
-	JudgeNote                  string          `json:"judgeNote"`
-	JudgeError                 string          `json:"judgeError,omitempty"`
-	ScheduledPrograms          []string        `json:"scheduledPrograms,omitempty"`
-	GroundedCompletionExpected bool            `json:"groundedCompletionExpected"`
-	GroundedCompletion         bool            `json:"groundedCompletion"`
-	ToolOperationExpected      bool            `json:"toolOperationExpected"`
-	CorrectToolOperation       bool            `json:"correctToolOperation"`
-	SchemaValid                bool            `json:"schemaValid"`
-	PolicyAccuracyExpected     bool            `json:"policyAccuracyExpected"`
-	PolicyAccurate             bool            `json:"policyAccurate"`
-	ProposalQualityExpected    bool            `json:"proposalQualityExpected"`
-	ProposalQuality            bool            `json:"proposalQuality"`
-	RecoveryExpected           bool            `json:"recoveryExpected"`
-	RecoverySuccessful         bool            `json:"recoverySuccessful"`
-	GeneratorCalls             []InferenceCall `json:"generatorCalls"`
-	JudgeCalls                 []InferenceCall `json:"judgeCalls"`
+	Case                       string              `json:"case"`
+	Trial                      int                 `json:"trial"`
+	Failures                   []string            `json:"failures"` // all evaluation failures; empty means the trial passed
+	FailureStage               FailureStage        `json:"failureStage,omitempty"`
+	ThemeFit                   float64             `json:"themeFit"`
+	Lineup                     int                 `json:"lineup"`
+	Acquisitions               int                 `json:"acquisitions"`
+	Ceiling                    string              `json:"ceiling"` // the extracted policy ceiling
+	DateScope                  *schedule.DateScope `json:"dateScope,omitempty"`
+	ScalarEra                  *schedule.Range     `json:"scalarEra,omitempty"`
+	JudgeScore                 float64             `json:"judgeScore"`
+	RelevanceScore             float64             `json:"relevanceScore"`
+	SerendipityScore           float64             `json:"serendipityScore"`
+	JudgeNote                  string              `json:"judgeNote"`
+	JudgeError                 string              `json:"judgeError,omitempty"`
+	ScheduledPrograms          []string            `json:"scheduledPrograms,omitempty"`
+	GroundedCompletionExpected bool                `json:"groundedCompletionExpected"`
+	GroundedCompletion         bool                `json:"groundedCompletion"`
+	ToolOperationExpected      bool                `json:"toolOperationExpected"`
+	CorrectToolOperation       bool                `json:"correctToolOperation"`
+	SchemaValid                bool                `json:"schemaValid"`
+	PolicyAccuracyExpected     bool                `json:"policyAccuracyExpected"`
+	PolicyAccurate             bool                `json:"policyAccurate"`
+	ProposalQualityExpected    bool                `json:"proposalQualityExpected"`
+	ProposalQuality            bool                `json:"proposalQuality"`
+	RecoveryExpected           bool                `json:"recoveryExpected"`
+	RecoverySuccessful         bool                `json:"recoverySuccessful"`
+	GeneratorCalls             []InferenceCall     `json:"generatorCalls"`
+	JudgeCalls                 []InferenceCall     `json:"judgeCalls"`
 	Observation
 }
 
@@ -411,7 +413,7 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	// result also satisfies it (nothing fabricated). A provider or generation
 	// failure cannot certify the invariant because the production path did not run.
 	if c.NoFabrication {
-		if groundErr != nil && errors.Is(groundErr, suggest.ErrNoGroundedTitles) {
+		if groundErr != nil && (errors.Is(groundErr, suggest.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, groundErr))) {
 			if c.MinGrounded == 0 {
 				return nil // an explicit abstention case fabricated nothing → passes
 			}

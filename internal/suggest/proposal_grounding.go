@@ -22,7 +22,7 @@ var errNamedSetMembershipUnproven = errors.New("suggester: named-set membership 
 // Proposal. This is the grounding chokepoint: a pick survives ONLY if it matches
 // a candidate a Catalog operation actually surfaced (real id), and acquisitions must also
 // pass the exists re-validation. Unresolvable picks are dropped, never actioned.
-func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace) (Proposal, error) {
+func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, meaning ValidatedDateMeaning) (Proposal, error) {
 	prop := Proposal{Intent: intent, ChannelName: strings.TrimSpace(out.ChannelName), Rationale: out.Rationale}
 	picks := out.Picks
 	acqCount := 0
@@ -130,6 +130,14 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// series intersected with grounded ids) before they become a ChannelPolicy. A
 	// bad policy never sinks a good lineup — it degrades to defaults (empty policy).
 	prop.Policy = groundPolicy(out.Policy, prop.Lineup, prop.Acquisitions, intent)
+	// A validated interpretation, rather than a model supplied era, owns every
+	// new v6 proposal's date scope. This applies to `none` too: raw policy.era
+	// may not smuggle a date constraint around the canonical boundary.
+	prop.Policy.Scope.Era = nil
+	prop.Policy.Scope.Dates = nil
+	if meaning.DateMeaning().Kind == DateMeaningConstraints {
+		prop.Policy.Scope.Dates = dateScope(meaning)
+	}
 
 	// §4 honesty pass (#259). The ceiling is now FINAL — groundPolicy has already dropped an
 	// unjustified one and applied the deterministic child-safety bound — so this is the first moment the

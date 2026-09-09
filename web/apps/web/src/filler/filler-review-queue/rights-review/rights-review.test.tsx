@@ -114,7 +114,7 @@ describe("RightsReview", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Replace rights decision" }));
     await userEvent.click(screen.getByLabelText("Decision"));
-    await userEvent.click(screen.getByRole("option", { name: "Withdraw the current rights" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Withdraw the current rights" }));
     await userEvent.upload(
       screen.getByLabelText("Private review file"),
       new File(["withdrawal evidence"], "withdrawal.txt", { type: "text/plain" }),
