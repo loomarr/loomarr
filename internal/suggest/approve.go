@@ -169,7 +169,7 @@ func (a *Approver) approveDurably(
 	// `available` records so the scheduler can place them (§8:
 	// "the approved lineup feeds the scheduler"). Without this, an in-library pick is
 	// unresolvable and never becomes a program.
-	titles := make([]provision.Record, 0, len(body.Lineup)+len(body.Acquisitions))
+	titles := make([]provision.Record, 0, len(body.Lineup))
 	for _, l := range body.Lineup {
 		if !l.InLibrary || l.LibraryItemID == "" {
 			continue // a not-in-library lineup item is covered by acquisitions

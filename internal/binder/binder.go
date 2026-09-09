@@ -504,8 +504,8 @@ func (b *Binder) ApprovedProposalForJob(ctx context.Context, jobID string) (stor
 // Duplicate keys are collapsed so a title that appears in both lists (e.g. an
 // acquisition the human also marked in-library) yields exactly one entry.
 func lineupEntries(p suggest.Proposal) ([]schedule.LineupEntry, error) {
-	out := make([]schedule.LineupEntry, 0, len(p.Lineup)+len(p.Acquisitions))
-	seen := make(map[provision.Key]struct{}, len(p.Lineup)+len(p.Acquisitions))
+	out := make([]schedule.LineupEntry, 0, len(p.Lineup))
+	seen := make(map[provision.Key]struct{}, len(p.Lineup))
 	for _, items := range [][]suggest.ProposalItem{p.Lineup, p.Acquisitions} {
 		for _, it := range items {
 			key, err := provision.KeyFromWebhook(it.MediaType, it.TMDBID, it.TVDBID)
