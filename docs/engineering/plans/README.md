@@ -6,6 +6,7 @@ when it ships or is superseded.
 
 | Plan | Purpose |
 | --- | --- |
+| [`next-three-betas.md`](next-three-betas.md) | beta.5–beta.7 outcomes, dependencies, release gates and complete issue allocation |
 | [`backend-consolidation.md`](backend-consolidation.md) | Consolidate backend seams without changing behavior |
 | [`channel-discovery-next.md`](channel-discovery-next.md) | Evidence-backed discovery quality backlog |
 | [`client-diagnostics.md`](client-diagnostics.md) | Shared, curated client diagnostics |
