@@ -392,8 +392,9 @@ type FillerService interface {
 	//
 	// ⚠ Downloads and nothing else — it does not register a source.
 	Ingest(ctx context.Context, urls []string) (jobID string, err error)
-	// IngestPull retains the approval id and each plan row's registered source attribution.
-	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget) (jobID string, err error)
+	// IngestPull validates readiness, constructs the queued run, and calls commit exactly once
+	// before launching the ordinary downloader. A failed commit must not start any work.
+	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (jobID string, err error)
 	// IngestAsked is Ingest plus "remember this source", for `POST /v1/filler/ingest` only.
 	//
 	// ⚠ The split is a correctness fix: registration used to live inside Ingest, and auto-fetch

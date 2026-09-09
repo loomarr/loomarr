@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -227,7 +228,7 @@ func TestApproveFillerPull_IsTheOnlyPathThatDownloads(t *testing.T) {
 }
 
 // A retry after the first decision is durable must not enqueue the same downloads twice.
-// Atomic concurrency across two simultaneous reads is tracked separately in #955.
+// The concurrent boundary is covered separately with two requests held at the commit point.
 func TestApproveFillerPull_CannotBeApprovedTwice(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
@@ -376,5 +377,101 @@ func TestFillerPullRoutes_RequireAdmin(t *testing.T) {
 	}
 	if len(ff.ingested) != 0 {
 		t.Errorf("an unauthenticated caller caused a download: %v", ff.ingested)
+	}
+}
+
+// Both requests pass the read-side guard before either reaches durable approval.
+func TestApproveFillerPull_ConcurrentDecision(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	entered, release := make(chan struct{}, 2), make(chan struct{})
+	ff.beforePull = func() { entered <- struct{}{}; <-release }
+	results := make(chan int, 2)
+	for range 2 {
+		go func() {
+			res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve", `{"note":"concurrent approval"}`, adminToken)
+			_ = res.Body.Close()
+			results <- res.StatusCode
+		}()
+	}
+	for range 2 {
+		select {
+		case <-entered:
+		case <-time.After(5 * time.Second):
+			close(release)
+			t.Fatal("both requests did not reach the approval decision boundary")
+		}
+	}
+	close(release)
+	statuses := map[int]int{}
+	for range 2 {
+		statuses[<-results]++
+	}
+	if statuses[http.StatusOK] != 1 || statuses[http.StatusConflict] != 1 {
+		t.Fatalf("approval responses = %v, want one success and one conflict", statuses)
+	}
+	if len(ff.ingested) != 1 {
+		t.Fatalf("downloads = %d, want one", len(ff.ingested))
+	}
+	runs, err := st.ListAcquisitionRuns(t.Context(), 10, time.Now().UTC())
+	if err != nil || len(runs) != 1 || runs[0].PullID != created.ID || runs[0].Status != filler.AcquisitionQueued {
+		t.Fatalf("durable runs = %+v (%v), want exactly one queued run for the pull", runs, err)
+	}
+	decision, err := st.GetPull(t.Context(), created.ID)
+	if err != nil || decision.Status != filler.PullApproved || decision.Note != "concurrent approval" || decision.DecidedAt.IsZero() {
+		t.Fatalf("committed decision = %+v (%v)", decision, err)
+	}
+}
+
+func TestApproveFillerPull_HistoricalSourcePlan(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	p := filler.Pull{ID: "historical-source-plan", Status: filler.PullPending, CreatedAt: time.Now().UTC(), Plan: []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}}}
+	if err := st.UpsertPull(t.Context(), p); err != nil {
+		t.Fatal(err)
+	}
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+p.ID+"/approve", `{}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("historical approval = %d", res.StatusCode)
+	}
+	if len(ff.ingested) != 1 || ff.ingested[0] != "https://archive.org/details/classic" {
+		t.Fatalf("historical source target = %v", ff.ingested)
+	}
+}
+
+func TestApproveFillerPull_ConcurrentDismissalWins(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	entered, release := make(chan struct{}), make(chan struct{})
+	releaseApproval := sync.OnceFunc(func() { close(release) })
+	defer releaseApproval()
+	ff.beforePull = func() { close(entered); <-release }
+	result := make(chan int, 1)
+	go func() {
+		res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve", `{}`, adminToken)
+		_ = res.Body.Close()
+		result <- res.StatusCode
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("approval did not reach decision boundary")
+	}
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/dismiss", `{}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("dismiss = %d", res.StatusCode)
+	}
+	releaseApproval()
+	if status := <-result; status != http.StatusConflict {
+		t.Fatalf("losing approval = %d", status)
+	}
+	if len(ff.ingested) != 0 {
+		t.Fatalf("losing approval downloaded %v", ff.ingested)
+	}
+	runs, err := st.ListAcquisitionRuns(t.Context(), 10, time.Now().UTC())
+	if err != nil || len(runs) != 0 {
+		t.Fatalf("dismissed pull has runs: %+v (%v)", runs, err)
 	}
 }

@@ -813,13 +813,13 @@ func (a fillerServiceAdapter) Tag(ctx context.Context) (int, int, int, int, erro
 // pull uses, because it is the same problem (long external process, no request to hold).
 // ⚠ Downloads only — it does NOT register a source. See `rememberSources`.
 func (a fillerServiceAdapter) Ingest(ctx context.Context, urls []string) (string, error) {
-	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", "", urls))
+	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", "", urls), nil)
 }
 
 // IngestSource is the unattended registered-source path. It preserves source attribution through
 // the downloader sidecar so the catalog can apply and audit the correct admission policy.
 func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID, sourceKind string, urls []string) (string, error) {
-	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, sourceKind, urls))
+	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, sourceKind, urls), nil)
 }
 
 func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (string, error) {
@@ -829,23 +829,27 @@ func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, s
 			SourceID: sourceID, RemoteID: item.ID, Kind: sourceKind, URL: item.URL,
 		})
 	}
-	return a.ingest(ctx, filler.AcquisitionSource, "", targets)
+	return a.ingest(ctx, filler.AcquisitionSource, "", targets, nil)
 }
 
 // IngestAsked downloads AND remembers the target, for the one path where an operator named it.
 func (a fillerServiceAdapter) IngestAsked(ctx context.Context, urls []string) (string, error) {
 	a.rememberSources(ctx, urls)
-	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", "", urls))
+	return a.ingest(ctx, filler.AcquisitionManual, "", acquisitionTargets("", "", urls), nil)
 }
 
-// IngestPull preserves one approval identity across a plan that may contain several registered
-// sources. The approval route will use this seam once the shared API surface is available.
+// IngestPull constructs one run for the exact plan, commits its approval before launch,
+// and executes the same manifest-backed ingest used by other acquisition paths.
 func (a fillerServiceAdapter) IngestPull(
 	ctx context.Context,
 	pullID string,
 	targets []filler.AcquisitionTarget,
+	commit func(context.Context, filler.AcquisitionRun) error,
 ) (string, error) {
-	return a.ingest(ctx, filler.AcquisitionPull, pullID, targets)
+	if commit == nil {
+		return "", errors.New("pull approval commit is required")
+	}
+	return a.ingest(ctx, filler.AcquisitionPull, pullID, targets, commit)
 }
 
 func acquisitionTargets(sourceID, sourceKind string, urls []string) []filler.AcquisitionTarget {
@@ -861,6 +865,7 @@ func (a fillerServiceAdapter) ingest(
 	trigger filler.AcquisitionTrigger,
 	pullID string,
 	targets []filler.AcquisitionTarget,
+	commit func(context.Context, filler.AcquisitionRun) error,
 ) (string, error) {
 	if a.fetcher == nil {
 		return "", api.ErrIngestUnavailable
@@ -897,7 +902,11 @@ func (a fillerServiceAdapter) ingest(
 		Status: filler.AcquisitionQueued, Requested: len(sources),
 		StartedAt: now().UTC(), UpdatedAt: now().UTC(),
 	}
-	if a.acquisitions != nil {
+	if commit != nil {
+		if err := commit(ctx, run); err != nil {
+			return "", fmt.Errorf("commit filler pull: %w", err)
+		}
+	} else if a.acquisitions != nil {
 		if err := a.acquisitions.UpsertAcquisitionRun(ctx, run); err != nil {
 			return "", fmt.Errorf("queue filler acquisition: %w", err)
 		}

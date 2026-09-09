@@ -341,10 +341,17 @@ func TestIngestPull_RejectsUnknownRegisteredKindBeforeDurableWork(t *testing.T) 
 	a := fillerServiceAdapter{
 		fetcher: successfulClipIngestor{}, acquisitions: recordingAcquisitions{runs: runs},
 		newID: func() string { return "acq-17" },
+		start: func(time.Duration, func(context.Context) error, func(context.Context, error)) error {
+			t.Error("unknown provider reached launcher")
+			return nil
+		},
 	}
 	if _, err := a.IngestPull(t.Context(), "pull-7", []filler.AcquisitionTarget{{
 		SourceID: "unknown", Kind: "other", URL: "https://archive.org/details/one",
-	}}); err == nil {
+	}}, func(context.Context, filler.AcquisitionRun) error {
+		t.Error("invalid source reached approval commit")
+		return nil
+	}); err == nil {
 		t.Fatal("unknown registered kind started acquisition")
 	}
 	select {
@@ -443,7 +450,7 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 	_, err := a.IngestPull(t.Context(), "pull-7", []filler.AcquisitionTarget{
 		{SourceID: "classic", Kind: "archive", URL: "https://archive.org/details/one"},
 		{SourceID: "holiday", Kind: "youtube", URL: "https://youtube.com/watch?v=two"},
-	})
+	}, a.acquisitions.UpsertAcquisitionRun)
 	if err != nil {
 		t.Fatal(err)
 	}

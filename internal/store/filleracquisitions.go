@@ -15,24 +15,48 @@ const acquisitionRunSelect = `SELECT id, trigger, source_id, pull_id, status,
 	requested, fetched, skipped, failed, empty_count, error, started_at, completed_at, updated_at
 	FROM filler_acquisition_runs`
 
+const acquisitionRunInsert = `INSERT INTO filler_acquisition_runs
+		(id, trigger, source_id, pull_id, status, requested, fetched, skipped, failed,
+		 empty_count, error, started_at, completed_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+func acquisitionRunArgs(run filler.AcquisitionRun) []any {
+	return []any{run.ID, string(run.Trigger), run.SourceID, run.PullID, string(run.Status), run.Requested, run.Fetched, run.Skipped, run.Failed, run.Empty, run.Error, epoch(run.StartedAt), epoch(run.CompletedAt), epoch(run.UpdatedAt)}
+}
+
 // UpsertAcquisitionRun persists one execution snapshot. The app adapter is the single writer and
 // rewrites the whole snapshot as the job moves queued -> running -> success/error.
 func (s *sqlStore) UpsertAcquisitionRun(ctx context.Context, run filler.AcquisitionRun) error {
-	_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO filler_acquisition_runs
-		(id, trigger, source_id, pull_id, status, requested, fetched, skipped, failed,
-		 empty_count, error, started_at, completed_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	// Only the approval transaction may create a pull-bound run. Updates may also
+	// settle historical runs, whose audit predates the unique decision binding.
+	if run.PullID != "" {
+		var existing int
+		if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM filler_acquisition_runs WHERE id = ? AND pull_id = ?`), run.ID, run.PullID).Scan(&existing); err != nil {
+			return fmt.Errorf("read pull acquisition ownership: %w", err)
+		}
+		if existing != 1 {
+			return fmt.Errorf("pull-bound acquisition requires an atomic approval commit")
+		}
+	}
+	result, err := s.db.ExecContext(ctx, s.ph(acquisitionRunInsert+`
 		ON CONFLICT(id) DO UPDATE SET
-		 trigger=excluded.trigger, source_id=excluded.source_id, pull_id=excluded.pull_id,
 		 status=excluded.status, requested=excluded.requested, fetched=excluded.fetched,
 		 skipped=excluded.skipped, failed=excluded.failed, empty_count=excluded.empty_count,
 		 error=excluded.error, started_at=excluded.started_at,
-		 completed_at=excluded.completed_at, updated_at=excluded.updated_at`),
-		run.ID, string(run.Trigger), run.SourceID, run.PullID, string(run.Status),
-		run.Requested, run.Fetched, run.Skipped, run.Failed, run.Empty, run.Error,
-		epoch(run.StartedAt), epoch(run.CompletedAt), epoch(run.UpdatedAt))
+		 completed_at=excluded.completed_at, updated_at=excluded.updated_at
+  WHERE filler_acquisition_runs.trigger = excluded.trigger
+   AND filler_acquisition_runs.source_id = excluded.source_id
+   AND filler_acquisition_runs.pull_id = excluded.pull_id`),
+		acquisitionRunArgs(run)...)
 	if err != nil {
 		return fmt.Errorf("upsert filler acquisition %s: %w", run.ID, err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count acquisition update: %w", err)
+	}
+	if n != 1 {
+		return fmt.Errorf("acquisition ownership cannot change")
 	}
 	return nil
 }

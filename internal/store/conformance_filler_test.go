@@ -1143,6 +1143,17 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 		Status: filler.AcquisitionSuccess, Requested: 4, Fetched: 2, Skipped: 1, Failed: 1,
 		StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
 	}
+	// Establish the pull-bound run through the same durable approval boundary.
+	approval := filler.Pull{ID: newer.PullID, Status: filler.PullPending, CreatedAt: newer.StartedAt,
+		Plan: []filler.PullPlanRow{{SourceID: "archive:vault"}, {SourceID: "archive:vault"}, {SourceID: "archive:vault"}, {SourceID: "archive:vault"}}}
+	if err := s.UpsertPull(ctx, approval); err != nil {
+		t.Fatal(err)
+	}
+	approval.Status, approval.DecidedAt = filler.PullApproved, newer.StartedAt
+	initial := filler.AcquisitionRun{ID: newer.ID, Trigger: newer.Trigger, SourceID: newer.SourceID, PullID: newer.PullID, Status: filler.AcquisitionQueued, Requested: newer.Requested, StartedAt: newer.StartedAt, UpdatedAt: newer.StartedAt}
+	if err := s.CommitPullApproval(ctx, approval, initial); err != nil {
+		t.Fatal(err)
+	}
 	for _, run := range []filler.AcquisitionRun{older, newer} {
 		if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
 			t.Fatal(err)

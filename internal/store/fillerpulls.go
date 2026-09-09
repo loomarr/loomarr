@@ -68,16 +68,10 @@ func (s *sqlStore) ListPulls(ctx context.Context, status filler.PullStatus) ([]f
 	return out, rows.Err()
 }
 
-// UpsertPull writes a pull by id.
-//
-// Every field is in the DO UPDATE list, unlike filler_sources: a pull has no
-// independently-owned column: the composer writes it once and the approval path rewrites it
-// wholesale with the operator's edits. There is no second writer to protect a field from.
+// UpsertPull writes a proposal or imported snapshot by id. Live terminal decisions use
+// CommitPullApproval/DismissPull, whose compare-and-set protects the winning audit.
 func (s *sqlStore) UpsertPull(ctx context.Context, p filler.Pull) error {
-	plan, err := json.Marshal(fillerPullPlanDocument{
-		Version: filler.AcquisitionIntentVersion, Intent: p.Intent,
-		Selected: p.Plan, Rejected: p.Rejected, Sources: p.Sources,
-	})
+	plan, err := encodePullPlan(p)
 	if err != nil {
 		return fmt.Errorf("encode pull plan %s: %w", p.ID, err)
 	}
@@ -95,6 +89,13 @@ func (s *sqlStore) UpsertPull(ctx context.Context, p filler.Pull) error {
 		return fmt.Errorf("upsert filler pull %s: %w", p.ID, err)
 	}
 	return nil
+}
+
+func encodePullPlan(p filler.Pull) ([]byte, error) {
+	return json.Marshal(fillerPullPlanDocument{
+		Version: filler.AcquisitionIntentVersion, Intent: p.Intent,
+		Selected: p.Plan, Rejected: p.Rejected, Sources: p.Sources,
+	})
 }
 
 func scanPull(sc scannable) (filler.Pull, error) {
