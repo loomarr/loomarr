@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -1496,15 +1497,11 @@ func TestScoring_Deterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p1.Scores.ThemeFit != p2.Scores.ThemeFit ||
-		p1.Scores.AvailabilityRatio != p2.Scores.AvailabilityRatio ||
-		p1.Scores.Overall != p2.Scores.Overall ||
-		(p1.Scores.EraBalance == nil) != (p2.Scores.EraBalance == nil) ||
-		(p1.Scores.EraBalance != nil && *p1.Scores.EraBalance != *p2.Scores.EraBalance) {
+	if !reflect.DeepEqual(p1.Scores, p2.Scores) {
 		t.Errorf("scoring not deterministic: %+v vs %+v", p1.Scores, p2.Scores)
 	}
-	if p1.Scores.Overall < 0 || p1.Scores.Overall > 1 {
-		t.Errorf("overall score out of [0,1]: %v", p1.Scores.Overall)
+	if p1.Scores.ThemeFit != nil && (*p1.Scores.ThemeFit < 0 || *p1.Scores.ThemeFit > 1) {
+		t.Errorf("theme coverage out of [0,1]: %v", *p1.Scores.ThemeFit)
 	}
 }
 
@@ -2015,7 +2012,7 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 	if !strings.Contains(prompt, "UNTRUSTED REFERENCE DATA") || !strings.Contains(prompt, "Alpha House") {
 		t.Fatalf("bounded reference catalog evidence was not supplied to the model: %q", prompt)
 	}
-	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != nil {
+	if (prop.Scores.ThemeFit == nil || *prop.Scores.ThemeFit != 1) || prop.Scores.EraBalance != nil {
 		t.Fatalf("reference-backed membership should score as supported with episode-era overlap unassessed, got %+v", prop.Scores)
 	}
 	if !strings.Contains(prop.Rationale, "resolved public-reference constituent evidence") {
@@ -2274,7 +2271,7 @@ func TestSuggest_ThemeFitScoresGenres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prop.Scores.ThemeFit <= 0 {
+	if prop.Scores.ThemeFit == nil || *prop.Scores.ThemeFit <= 0 {
 		t.Errorf("themeFit should be > 0 for an action lineup matching an 'action' intent via genres, got %v", prop.Scores.ThemeFit)
 	}
 	if prop.Trace.WindowsCompleted == 0 || prop.Trace.SourceQueriesDispatched == 0 {
@@ -2589,10 +2586,24 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 	if !foundNeighborRejection {
 		t.Fatalf("trace did not preserve the surfaced neighbor's membership rejection: %+v", prop.Trace)
 	}
-	if prop.Scores.ThemeFit != 1 || prop.Scores.EraBalance != nil {
+	if (prop.Scores.ThemeFit == nil || *prop.Scores.ThemeFit != 1) || prop.Scores.EraBalance != nil {
 		t.Fatalf("membership score/unknown episode-era balance = %+v, want supported/unassessed", prop.Scores)
 	}
 	if strings.Contains(prop.Rationale, "throughout the 90s") {
 		t.Fatalf("unsupported model history survived in proposal rationale: %q", prop.Rationale)
+	}
+}
+
+func TestSuggestReportsPartialInterpretationOfGroundedFragment(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		finalResponseWithNone(`{"rationale":"Perfectly matches the whole request","picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","rationale":"asdf xqz 999 are all satisfied"}]}`),
+	)
+	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{Description: "asdf matrix xqz 999"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup)+len(prop.Acquisitions) != 1 || prop.Scores.ThemeFit == nil || *prop.Scores.ThemeFit != 0.25 || prop.Scores.Theme.Status != "partial" {
+		t.Fatalf("grounded fragment was represented as full understanding: %+v", prop)
 	}
 }

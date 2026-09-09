@@ -1,6 +1,5 @@
 import type { ConstraintMatches } from "@loomarr/api/models/constraintMatches";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
-import { formatPercent } from "@loomarr/core/format";
 import { Check, Pencil, X } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +12,9 @@ import { episodeSelectionLabel } from "../episode-selection-label";
 import type { ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
 
 // ProposalReview — the human-in-the-loop review that fronts the approval gate (§3,
-// §8). It shows the grounded lineup (in-library, ready now), the acquisitions it
+// §8). It shows the grounded lineup (in-library), the acquisitions it
 // wants (missing titles → the provisioner, but only on approve), ranked alternates,
-// and the model's rationale + deterministic scores. Nothing here executes; approve/
+// and the model's rationale + catalog evidence. Nothing here executes; approve/
 // deny IS the gate (§7). Each row is editable-via-search (onEditItem) so a pick can
 // be swapped for a grounded alternative without regenerating the whole proposal.
 const STATUS: Record<
@@ -76,9 +75,6 @@ const ItemRow = ({
           <Badge variant="tune">{seasonWindowLabel(item.seasonMin, item.seasonMax)}</Badge>
         )}
         {episodeSelectionLabel(item) && <Badge variant="suggest">{episodeSelectionLabel(item)}</Badge>}
-        {typeof item.confidence === "number" && (
-          <span className="font-mono text-static-400 text-xs">{`${formatPercent(item.confidence)} fit`}</span>
-        )}
       </div>
       {item.rationale && <p className="mt-1 text-muted-foreground text-sm">{item.rationale}</p>}
     </div>
@@ -118,6 +114,7 @@ const ProposalReview = ({
   onApprove,
   onDeny,
   onEditItem,
+  onEditRequest,
   className,
 }: ProposalReviewProps) => {
   const s = STATUS[status];
@@ -155,39 +152,71 @@ const ProposalReview = ({
             <p className="mt-1 max-w-prose text-muted-foreground text-sm">{proposal.rationale}</p>
           )}
         </div>
-        {/* Overall ranks proposals. When episode-era evidence is unavailable, its
-            theme and readiness inputs are renormalized rather than showing a made-up era percentage. */}
-        {proposal.scores && (
-          <dl className="shrink-0 text-right">
-            <div className="flex items-baseline justify-end gap-1.5">
-              <dt className="text-static-400 text-xs">Overall</dt>
-              <dd className="font-mono font-semibold text-base text-foreground">
-                {formatPercent(proposal.scores.overall)}
-              </dd>
-            </div>
-            <div className="flex items-baseline justify-end gap-1.5">
-              <dt className="text-static-400 text-xs">Theme fit</dt>
-              <dd className="font-mono text-sm text-suggest-300">
-                {formatPercent(proposal.scores.themeFit)}
-              </dd>
-            </div>
-            <div className="flex items-baseline justify-end gap-1.5">
-              <dt className="text-static-400 text-xs">Ready now</dt>
-              <dd className="font-mono text-lock text-sm">
-                {formatPercent(proposal.scores.availabilityRatio)}
-              </dd>
-            </div>
-            <div className="flex items-baseline justify-end gap-1.5">
-              <dt className="text-static-400 text-xs">Era spread</dt>
-              <dd className="font-mono text-sm text-tune">
-                {proposal.scores.eraBalance === null
-                  ? "Not assessed"
-                  : formatPercent(proposal.scores.eraBalance)}
-              </dd>
-            </div>
-          </dl>
-        )}
       </header>
+
+      <section aria-label="Request interpretation" className="flex flex-col gap-2 text-sm">
+        {status === "partially-edited" ? (
+          <p>These picks have changed. The original assessment no longer describes this lineup.</p>
+        ) : proposal.scores?.version !== 1 ? (
+          <p>
+            This saved proposal has no current evidence assessment. Review the picks against your request.
+          </p>
+        ) : proposal.scores.theme.basis === "named_membership" ? (
+          <p>The picks have source-backed membership in the named lineup you requested.</p>
+        ) : proposal.scores.theme.basis === "none" ? (
+          <p>No theme qualifiers to assess. Review the picks and any date requirements below.</p>
+        ) : proposal.scores.theme.status !== "supported" ? (
+          <p role="status" className="text-caution">
+            This may be a narrow reading of your request. The catalog evidence supports only part of it, or is
+            too sparse to assess it. Review the interpretation or edit your request before approving.
+          </p>
+        ) : (
+          <p>
+            Catalog metadata supports the requested theme terms. Review the picks to judge the overall match.
+          </p>
+        )}
+        {actionable && onEditRequest && (
+          <Button variant="outline" size="sm" className="w-fit" onClick={onEditRequest} disabled={busy}>
+            Edit request
+          </Button>
+        )}
+        {status !== "partially-edited" && proposal.scores?.version === 1 && (
+          <details>
+            <summary className="cursor-pointer text-muted-foreground">
+              Evidence behind this interpretation
+            </summary>
+            <div className="mt-2 flex flex-col gap-2 text-muted-foreground">
+              {proposal.scores.theme.basis === "qualifiers" && (
+                <>
+                  <p>Term coverage is a catalog check, not a probability of understanding your request.</p>
+                  <ul className="list-inside list-disc">
+                    {(proposal.scores.theme.qualifiers ?? []).map((qualifier) => (
+                      <li key={qualifier.term}>
+                        “{qualifier.term}”: supported by {qualifier.supportedItems} of{" "}
+                        {proposal.scores.theme.assessedItems} assessed titles
+                      </li>
+                    ))}
+                  </ul>
+                  {proposal.scores.theme.unknownItems > 0 && (
+                    <p>{proposal.scores.theme.unknownItems} titles have too little metadata to assess.</p>
+                  )}
+                </>
+              )}
+              <p>
+                {proposal.scores.era.status === "not_requested"
+                  ? "No date requirement was requested."
+                  : proposal.scores.era.status === "unassessed"
+                    ? "Date adherence is not assessed: catalog years or resolved episode dates are missing."
+                    : `${proposal.scores.era.matchingItems} of ${proposal.scores.era.assessedItems} titles with known applicable dates meet the requested date requirements.`}
+              </p>
+              <p>
+                {lineup.length} titles are in the library; {acquisitions.length} need acquisition. Library
+                presence alone does not establish playback readiness.
+              </p>
+            </div>
+          </details>
+        )}
+      </section>
 
       <Section title="Lineup" count={lineup.length}>
         {lineup.map((item) => (

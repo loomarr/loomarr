@@ -17,6 +17,7 @@ interface ProposalReviewProps {
   // OPTIONAL by design: requiring one would make denying a chore and produce "no"
   // fifty times over, but offering one costs a click.
   onDeny?: (reason?: string) => void;
+  onEditRequest?: () => void;
   onEditItem?: (item: ProposalItem) => void;
   className?: string;
 }

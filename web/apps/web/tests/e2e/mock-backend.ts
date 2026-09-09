@@ -254,7 +254,20 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               lineup: [{ name: "Heat", year: 1995, mediaType: "movie", inLibrary: true }],
               acquisitions: [],
               alternates: [],
-              scores: { themeFit: 1, availabilityRatio: 1, eraBalance: 1, overall: 1 },
+              scores: {
+                version: 1,
+                themeFit: 1,
+                availabilityRatio: 1,
+                eraBalance: null,
+                theme: {
+                  status: "supported",
+                  basis: "qualifiers",
+                  assessedItems: 2,
+                  unknownItems: 0,
+                  qualifiers: [{ term: "action", supportedItems: 2 }],
+                },
+                era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
+              },
               trace: { version: 1, surfacedTotal: 1, recordedTotal: 1, truncated: false, candidates: [] },
             },
           },
@@ -283,7 +296,20 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             // One acquisition: the in-library pick needs nothing, so only the missing
             // title spends anything (§8).
             acquisitions: [{ name: "Gargoyles", year: 1994, mediaType: "series", tmdbId: 12345 }],
-            scores: { themeFit: 0.9, availabilityRatio: 0.5, coherence: 0.8 },
+            scores: {
+              version: 1,
+              themeFit: 1,
+              availabilityRatio: 0.5,
+              eraBalance: null,
+              theme: {
+                status: "supported",
+                basis: "qualifiers",
+                assessedItems: 2,
+                unknownItems: 0,
+                qualifiers: [{ term: "action", supportedItems: 2 }],
+              },
+              era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
+            },
           },
         }));
       return json(route, { proposals: rows });

@@ -138,8 +138,8 @@ func TestEvalCorpus(t *testing.T) {
 		for _, fail := range res.Failures {
 			t.Errorf("%s trial %d: %s", res.Case, res.Trial, fail)
 		}
-		t.Logf("case=%s trial=%d lineup=%d acq=%d ceiling=%q themeFit=%.2f judge=%.2f relevance=%.2f serendipity=%.2f stage=%s tools=%d candidates=%d (%s)",
-			res.Case, res.Trial, res.Lineup, res.Acquisitions, res.Ceiling, res.ThemeFit,
+		t.Logf("case=%s trial=%d lineup=%d acq=%d ceiling=%q themeFit=%s judge=%.2f relevance=%.2f serendipity=%.2f stage=%s tools=%d candidates=%d (%s)",
+			res.Case, res.Trial, res.Lineup, res.Acquisitions, res.Ceiling, formatThemeFit(res.ThemeFit),
 			res.JudgeScore, res.RelevanceScore, res.SerendipityScore, res.GroundingStage,
 			res.ToolCalls, res.CandidatesSurfaced, res.JudgeNote)
 	}
@@ -178,8 +178,8 @@ func writeScorecard(t *testing.T, scorecard Scorecard, required bool) {
 		} else {
 			pass++
 		}
-		fmt.Fprintf(&b, "  [%s] %-36s lineup=%d acq=%d ceiling=%-6s themeFit=%.2f stage=%-15s tools=%d candidates=%d judge=%.2f rel=%.2f ser=%.2f\n",
-			status, r.Case, r.Lineup, r.Acquisitions, r.Ceiling, r.ThemeFit,
+		fmt.Fprintf(&b, "  [%s] %-36s lineup=%d acq=%d ceiling=%-6s themeFit=%s stage=%-15s tools=%d candidates=%d judge=%.2f rel=%.2f ser=%.2f\n",
+			status, r.Case, r.Lineup, r.Acquisitions, r.Ceiling, formatThemeFit(r.ThemeFit),
 			r.GroundingStage, r.ToolCalls, r.CandidatesSurfaced,
 			r.JudgeScore, r.RelevanceScore, r.SerendipityScore)
 		for _, f := range r.Failures {

@@ -3,6 +3,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  'scores.overall|retired: proposal assessment reports evidence without a synthetic composite'
+  'func composite(s Scores)|retired: the proposal composite is not an assessment contract'
   'check: check-static test|retired: use make verify SCOPE=all for comprehensive local verification'
   '.github/dependabot.yml|dependency automation is owned by renovate.json; do not restore the legacy bot configuration'
   # The first full-corpus inventory put Archive.org identity at the document root, making mixed

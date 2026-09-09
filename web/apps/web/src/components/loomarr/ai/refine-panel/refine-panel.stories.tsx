@@ -1,4 +1,4 @@
-import type { ApproveOutputBody, ProposalJourneyDTO, RefineChannelOutputBody } from "@loomarr/api";
+import type { ApproveOutputBody, Proposal, ProposalJourneyDTO, RefineChannelOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LoomarrEventsProvider } from "@/events";
@@ -28,7 +28,7 @@ class StoryEventSource {
   }
 }
 
-const proposal = {
+const proposal: Proposal = {
   intent: { description: "add more Schwarzenegger" },
   lineup: [
     { name: "Heat", year: 1995, mediaType: "movie" as const, tmdbId: 949, inLibrary: true },
@@ -36,7 +36,20 @@ const proposal = {
   ],
   acquisitions: [],
   alternates: [],
-  scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
+  scores: {
+    version: 1,
+    themeFit: 1,
+    availabilityRatio: 1,
+    eraBalance: null,
+    theme: {
+      status: "supported",
+      basis: "qualifiers",
+      assessedItems: 2,
+      unknownItems: 0,
+      qualifiers: [{ term: "action", supportedItems: 2 }],
+    },
+    era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
+  },
   trace: { version: 1, surfacedTotal: 0, recordedTotal: 0, truncated: false, candidates: [] },
 };
 

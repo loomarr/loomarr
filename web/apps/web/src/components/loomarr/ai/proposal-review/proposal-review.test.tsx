@@ -25,7 +25,20 @@ const proposal: Proposal = {
   ],
   acquisitions: [{ name: "Con Air", year: 1997, mediaType: "movie", inLibrary: false, confidence: 0.81 }],
   alternates: [{ name: "Face/Off", mediaType: "movie", inLibrary: false }],
-  scores: { themeFit: 0.88, availabilityRatio: 0.5, eraBalance: 0.6, overall: 0.75 },
+  scores: {
+    version: 1,
+    themeFit: 1,
+    availabilityRatio: 0.5,
+    eraBalance: null,
+    theme: {
+      status: "supported",
+      basis: "qualifiers",
+      assessedItems: 2,
+      unknownItems: 0,
+      qualifiers: [{ term: "action", supportedItems: 2 }],
+    },
+    era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
+  },
   trace: {
     version: 1,
     surfacedTotal: 2,
@@ -52,19 +65,30 @@ const proposal: Proposal = {
 };
 
 describe("ProposalReview", () => {
-  it("separates in-library lineup from acquisitions and shows scores", () => {
+  it("separates library presence from acquisitions without confidence percentages", () => {
     renderWithTooltip(<ProposalReview proposal={proposal} />);
     expect(screen.getAllByText("Heat").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("In library")).toBeInTheDocument();
     expect(screen.getByText("Will acquire")).toBeInTheDocument();
-    expect(screen.getByText("88%")).toBeInTheDocument();
+    expect(screen.getByText(/Catalog metadata supports/)).toBeInTheDocument();
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Ready now")).not.toBeInTheDocument();
   });
 
   it("shows unavailable episode-era evidence as not assessed", () => {
     renderWithTooltip(
-      <ProposalReview proposal={{ ...proposal, scores: { ...proposal.scores, eraBalance: null } }} />,
+      <ProposalReview
+        proposal={{
+          ...proposal,
+          scores: {
+            ...proposal.scores,
+            eraBalance: null,
+            era: { status: "unassessed", assessedItems: 0, matchingItems: 0, unknownItems: 2 },
+          },
+        }}
+      />,
     );
-    expect(screen.getByText("Not assessed")).toBeInTheDocument();
+    expect(screen.getByText(/Date adherence is not assessed/)).toBeInTheDocument();
     expect(screen.queryByText("100%")).not.toBeInTheDocument();
   });
 
@@ -161,4 +185,49 @@ describe("ProposalReview", () => {
     renderWithTooltip(<ProposalReview proposal={proposal} status="approved" />);
     expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
   });
+});
+
+it("explains partial interpretation and provides an edit action", () => {
+  const onEditRequest = vi.fn();
+  renderWithTooltip(
+    <ProposalReview
+      proposal={{
+        ...proposal,
+        scores: {
+          ...proposal.scores,
+          themeFit: 0.25,
+          theme: {
+            status: "partial",
+            basis: "qualifiers",
+            assessedItems: 1,
+            unknownItems: 0,
+            qualifiers: [
+              { term: "banana", supportedItems: 1 },
+              { term: "xqz", supportedItems: 0 },
+            ],
+          },
+        },
+      }}
+      onEditRequest={onEditRequest}
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("narrow reading");
+  fireEvent.click(screen.getByRole("button", { name: "Edit request" }));
+  expect(onEditRequest).toHaveBeenCalledOnce();
+  expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+});
+
+it("does not reuse historical assessment or assessment after edits", () => {
+  const view = renderWithTooltip(
+    <ProposalReview proposal={{ ...proposal, scores: { ...proposal.scores, version: 0 } }} />,
+  );
+  expect(screen.getByText(/no current evidence assessment/)).toBeInTheDocument();
+  expect(screen.queryByText("Evidence behind this interpretation")).not.toBeInTheDocument();
+  view.rerender(
+    <TooltipProvider>
+      <ProposalReview proposal={proposal} status="partially-edited" />
+    </TooltipProvider>,
+  );
+  expect(screen.getByText(/original assessment no longer describes/)).toBeInTheDocument();
+  expect(screen.queryByText("Evidence behind this interpretation")).not.toBeInTheDocument();
 });

@@ -1,68 +1,65 @@
 package suggest
 
 import (
+	"encoding/json"
 	"strings"
+	"unicode"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/textmatch"
 )
 
-// This file holds the DETERMINISTIC post-scoring layered on the LLM output (§8):
-// given the same intent + same picks, score() always returns the same Scores, so
-// ranking is reproducible and testable — "not pure vibes". Criteria are simple
-// and explainable (SmarTunarr-style multi-criterion), and the weights are
-// configurable in spirit (v1 hardcodes a sensible default; §8 says "keep criteria
-// configurable" — a follow-on knob, not this phase).
-
-// score computes the deterministic scores for a proposal's lineup + acquisitions.
-// Present sub-scores are in [0,1].
-func score(intent Intent, lineup, acquisitions []ProposalItem) Scores {
-	total := len(lineup) + len(acquisitions)
-	if total == 0 {
-		return Scores{}
+// score describes only surviving grounded picks. Date evidence comes from the
+// validated interpretation used by admission; there is no second date parser.
+func score(intent Intent, lineup, acquisitions []ProposalItem, meaning ValidatedDateMeaning) Scores {
+	items := append(append([]ProposalItem{}, lineup...), acquisitions...)
+	s := Scores{Version: 1}
+	s.ThemeFit, s.Theme = themeFit(themeIntent(intent, meaning), items)
+	s.EraBalance, s.Era = eraAdherence(items, meaning)
+	if len(items) > 0 {
+		s.AvailabilityRatio = float64(len(lineup)) / float64(len(items))
 	}
-	s := Scores{
-		ThemeFit:          themeFit(intent, lineup, acquisitions),
-		AvailabilityRatio: float64(len(lineup)) / float64(total),
-		EraBalance:        eraBalance(intent, lineup, acquisitions),
-	}
-	s.Overall = composite(s)
 	return s
 }
 
-// themeFit measures how well the proposal matches the intent — deterministically
-// (§8: "not pure vibes"; same inputs → same score). It scores each item's THEME
-// SIGNALS (genres + overview + source-backed keywords, plus the title as a weak
-// fallback) against the intent's terms — NOT the title alone. That fix
-// matters: an intent like "90s action" almost never appears in a *title*, so
-// title-substring scoring returned ~0 even on a perfect lineup; genres/overview
-// carry the actual theme.
-func themeFit(intent Intent, lineup, acquisitions []ProposalItem) float64 {
-	// For a named set, membership is the requested semantic rather than a lexical
-	// theme. The admission gate has already established every surviving key from
-	// explicit user/public-reference anchors, so those source-backed members match
-	// the request even when catalog metadata does not repeat the block's name.
-	if requiresMembershipEvidence(intent) && allItemsHaveMembershipEvidence(intent, lineup, acquisitions) {
-		return 1
+func themeFit(intent Intent, items []ProposalItem) (*float64, ThemeEvidence) {
+	e := ThemeEvidence{Status: "unassessed", Basis: "none", Qualifiers: []QualifierEvidence{}}
+	if requiresMembershipEvidence(intent) && allItemsHaveMembershipEvidence(intent, items, nil) {
+		e.Status, e.Basis, e.AssessedItems = "supported", "named_membership", len(items)
+		return scoreValue(1), e
 	}
 	terms := themeTerms(intent)
 	if len(terms) == 0 {
-		return 1 // no terms to fit against → neutral-max
+		return nil, e
 	}
-	items := append(append([]ProposalItem{}, lineup...), acquisitions...)
-	if len(items) == 0 {
-		return 0
+	e.Basis = "qualifiers"
+	for _, term := range terms {
+		e.Qualifiers = append(e.Qualifiers, QualifierEvidence{Term: term})
 	}
 	hits := 0
-	for _, it := range items {
-		hay := themeHaystack(it)
-		for _, term := range terms {
-			if strings.Contains(hay, term) {
+	for _, item := range items {
+		// A catalog title alone is too weak to establish a requested theme.
+		if strings.TrimSpace(item.Overview+strings.Join(item.Genres, " ")+strings.Join(item.Keywords, " ")) == "" {
+			e.UnknownItems++
+			continue
+		}
+		e.AssessedItems++
+		for i, term := range terms {
+			if supportsQualifier(item, term) {
+				e.Qualifiers[i].SupportedItems++
 				hits++
-				break
 			}
 		}
 	}
-	return float64(hits) / float64(len(items))
+	if e.AssessedItems == 0 || e.UnknownItems > 0 {
+		return nil, e
+	}
+	value := float64(hits) / float64(len(terms)*e.AssessedItems)
+	e.Status = "partial"
+	if value == 1 {
+		e.Status = "supported"
+	}
+	return scoreValue(value), e
 }
 
 func allItemsHaveMembershipEvidence(intent Intent, lineup, acquisitions []ProposalItem) bool {
@@ -79,113 +76,152 @@ func allItemsHaveMembershipEvidence(intent Intent, lineup, acquisitions []Propos
 	return true
 }
 
-// themeHaystack is the lowercased source-backed text an item is scored against:
-// its genres, overview, keyword evidence, and name (weakest signal, last). The
-// model rationale is presentation-only and cannot award itself a good score.
-func themeHaystack(it ProposalItem) string {
-	var b strings.Builder
-	for _, g := range it.Genres {
-		b.WriteString(strings.ToLower(g))
-		b.WriteByte(' ')
-	}
-	b.WriteString(strings.ToLower(it.Overview))
-	b.WriteByte(' ')
-	for _, keyword := range it.Keywords {
-		b.WriteString(strings.ToLower(keyword))
-		b.WriteByte(' ')
-	}
-	b.WriteString(strings.ToLower(it.Name))
-	return b.String()
+// Explicit lexical equivalents make this diagnostic reproducible; they do not
+// pretend to resolve unrestricted semantics. Model rationale is never evidence.
+var qualifierEquivalents = map[string][]string{
+	"cozy":    {"cozy", "cosy"},
+	"mystery": {"mystery", "mysteries", "whodunit", "whodunits"},
+	"sitcom":  {"sitcom", "sitcoms", "situation comedy"},
+	"sci-fi":  {"sci-fi", "scifi", "science fiction"},
 }
 
-// themeTerms extracts lowercase significant words from the intent (description +
-// era + tone + must-include), skipping trivial stopwords so "a channel of" doesn't
-// count. Era/tone are included because they're the strongest theme signals for an
-// abstract intent (and now match genres/overview via themeHaystack).
-func themeTerms(intent Intent) []string {
-	var raw []string
-	raw = append(raw, strings.Fields(strings.ToLower(intent.Description))...)
-	raw = append(raw, strings.Fields(strings.ToLower(intent.Era))...)
-	raw = append(raw, strings.Fields(strings.ToLower(intent.Tone))...)
-	for _, m := range intent.MustInclude {
-		raw = append(raw, strings.ToLower(m))
-	}
-	stop := map[string]bool{"a": true, "an": true, "the": true, "of": true, "and": true, "for": true, "channel": true, "movies": true, "shows": true}
-	var terms []string
-	for _, w := range raw {
-		w = strings.Trim(w, ".,!?\"'")
-		if len(w) < 3 || stop[w] {
-			continue
+func canonicalQualifier(term string) string {
+	for canonical, equivalents := range qualifierEquivalents {
+		for _, equivalent := range equivalents {
+			if term == equivalent {
+				return canonical
+			}
 		}
-		terms = append(terms, w)
 	}
-	return terms
+	return term
 }
 
-// eraBalance rewards a spread of years when the intent targets an era. With no
-// era or one item it's neutral (1). The metric: fraction of distinct decades
-// among items relative to items — higher = better spread. When the intent names
-// an era, items outside it are penalized by not counting toward the spread.
-func eraBalance(intent Intent, lineup, acquisitions []ProposalItem) *float64 {
-	items := append(append([]ProposalItem{}, lineup...), acquisitions...)
-	// A series premiere year cannot prove which of its episodes air in the
-	// requested era, and a model-authored season window is a selector rather than
-	// dated evidence. Named series sets therefore leave this criterion unassessed.
-	if requiresMembershipEvidence(intent) && allItemsHaveMembershipEvidence(intent, lineup, acquisitions) && containsSeries(items) {
-		return nil
+func supportsQualifier(item ProposalItem, term string) bool {
+	hay := strings.Join(append(append([]string{item.Name, item.Overview}, item.Genres...), item.Keywords...), " ")
+	variants := qualifierEquivalents[term]
+	if len(variants) == 0 {
+		variants = []string{term}
 	}
-	if len(items) <= 1 {
-		return scoreValue(1)
-	}
-	decades := map[int]bool{}
-	withYear := 0
-	for _, it := range items {
-		if it.Year <= 0 {
-			continue
-		}
-		withYear++
-		decades[it.Year/10] = true
-	}
-	if withYear == 0 {
-		return scoreValue(1) // no year info → don't penalize
-	}
-	// Spread = distinct decades / items-with-year, clamped to [0,1].
-	spread := float64(len(decades)) / float64(withYear)
-	if spread > 1 {
-		spread = 1
-	}
-	return scoreValue(spread)
-}
-
-func containsSeries(items []ProposalItem) bool {
-	for _, item := range items {
-		if item.MediaType == provision.Series {
+	for _, variant := range variants {
+		if textmatch.ContainsPhrase(hay, variant) {
 			return true
+		}
+	}
+	if term == "british" {
+		for _, country := range item.OriginCountries {
+			if country == "GB" || country == "UK" {
+				return true
+			}
 		}
 	}
 	return false
 }
 
+func themeTerms(intent Intent) []string {
+	text := strings.ToLower(strings.Join(append([]string{intent.Description, intent.Era, intent.Tone}, intent.MustInclude...), " "))
+	// Normalize only the documented multiword equivalents before tokenization.
+	text = strings.ReplaceAll(text, "science fiction", "sci-fi")
+	text = strings.ReplaceAll(text, "situation comedy", "sitcom")
+	stop := map[string]bool{"a": true, "an": true, "the": true, "of": true, "and": true, "for": true, "channel": true, "movie": true, "movies": true, "show": true, "shows": true, "series": true, "with": true, "from": true, "in": true}
+	seen := map[string]bool{}
+	var terms []string
+	for _, word := range strings.FieldsFunc(text, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' }) {
+		term := canonicalQualifier(word)
+		if stop[term] || seen[term] {
+			continue
+		}
+		seen[term] = true
+		terms = append(terms, term)
+	}
+	return terms
+}
+
+// Mask all date spans in place before extracting theme qualifiers. Rune offsets
+// remain stable for overlapping anchors, and the submitted Intent is not mutated.
+func themeIntent(intent Intent, meaning ValidatedDateMeaning) Intent {
+	intent.MustInclude = append([]string(nil), intent.MustInclude...)
+	mask := func(text string, anchor DateAnchor) string {
+		runes := []rune(text)
+		for i := anchor.Start; i < anchor.End; i++ {
+			runes[i] = ' '
+		}
+		return string(runes)
+	}
+	for _, anchor := range meaning.DateMeaning().Anchors {
+		switch anchor.Field {
+		case DateAnchorDescription:
+			intent.Description = mask(intent.Description, anchor)
+		case DateAnchorEra:
+			intent.Era = mask(intent.Era, anchor)
+		case DateAnchorMustInclude:
+			intent.MustInclude[*anchor.Index] = mask(intent.MustInclude[*anchor.Index], anchor)
+		}
+	}
+	return intent
+}
+
+func eraAdherence(items []ProposalItem, meaning ValidatedDateMeaning) (*float64, EraEvidence) {
+	e := EraEvidence{Status: "not_requested"}
+	axes := meaning.ExecutionWindows()
+	if len(axes) == 0 {
+		return nil, e
+	}
+	e.Status = "unassessed"
+	for _, item := range items {
+		applicable, unknown, matches := false, false, true
+		for _, axis := range axes {
+			if axis.Kind == DateAxisMovieRelease && item.MediaType != provision.Movie || axis.Kind != DateAxisMovieRelease && item.MediaType != provision.Series {
+				continue
+			}
+			applicable = true
+			if axis.Kind == DateAxisSeriesAiring || item.Year <= 0 {
+				unknown = true
+				continue
+			}
+			inWindow := false
+			for _, window := range axis.Windows {
+				inWindow = inWindow || item.Year >= window.Start && item.Year <= window.End
+			}
+			matches = matches && inWindow
+		}
+		if !applicable {
+			continue
+		}
+		if unknown {
+			e.UnknownItems++
+			continue
+		}
+		e.AssessedItems++
+		if matches {
+			e.MatchingItems++
+		}
+	}
+	if e.AssessedItems == 0 || e.UnknownItems > 0 {
+		return nil, e
+	}
+	e.Status = "partial"
+	if e.MatchingItems == e.AssessedItems {
+		e.Status = "supported"
+	}
+	return scoreValue(float64(e.MatchingItems) / float64(e.AssessedItems)), e
+}
+
 func scoreValue(value float64) *float64 { return &value }
 
-// composite weights the sub-scores into the overall ranking score.
-//
-// This weighting decides how proposals rank against each other — the single most
-// product-shaping number in the suggester, so the trade-off is recorded rather than
-// left to be re-derived:
-//   - ThemeFit is "does it match what they asked for" — arguably the point.
-//   - AvailabilityRatio is "how much is playable RIGHT NOW" — a channel that's
-//     90% acquisitions is dead air for days (§9 never-dead-air is downstream, but
-//     ranking should prefer proposals that light up fast).
-//   - EraBalance is a nice-to-have polish signal.
-//
-// Theme-first weighting (maintainer decision): matching the ask dominates, with
-// how-much-is-playable-now a strong second and era spread a light tiebreaker.
-// When era balance is unavailable, the remaining weights are normalized so Overall
-// still stays in [0,1] without inventing a score for unknown episode dates.
-func composite(s Scores) float64 {
-	if s.EraBalance == nil {
-		return (0.5*s.ThemeFit + 0.35*s.AvailabilityRatio) / 0.85
+// UnmarshalJSON applies the assessment contract at the persisted-domain boundary,
+// shared by Proposal lists and Journey responses. Old percentages cannot acquire
+// the new meaning merely by being decoded into fields with the same wire names.
+func (s *Scores) UnmarshalJSON(data []byte) error {
+	type wire Scores
+	var decoded wire
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
 	}
-	return 0.5*s.ThemeFit + 0.35*s.AvailabilityRatio + 0.15*(*s.EraBalance)
+	*s = Scores(decoded)
+	if s.Version != 1 {
+		s.ThemeFit, s.EraBalance = nil, nil
+		s.Theme = ThemeEvidence{Status: "unassessed", Basis: "none", Qualifiers: []QualifierEvidence{}}
+		s.Era = EraEvidence{Status: "unassessed"}
+	}
+	return nil
 }

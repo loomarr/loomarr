@@ -24,7 +24,20 @@ const proposal: Proposal = {
   lineup: [{ name: "Predator", year: 1987, mediaType: "movie", tmdbId: 106, inLibrary: true }],
   acquisitions: [],
   alternates: [],
-  scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
+  scores: {
+    version: 1,
+    themeFit: 1,
+    availabilityRatio: 1,
+    eraBalance: null,
+    theme: {
+      status: "supported",
+      basis: "qualifiers",
+      assessedItems: 2,
+      unknownItems: 0,
+      qualifiers: [{ term: "action", supportedItems: 2 }],
+    },
+    era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
+  },
   trace: { version: 1, surfacedTotal: 0, recordedTotal: 0, truncated: false, candidates: [] },
 };
 

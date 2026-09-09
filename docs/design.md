@@ -1378,13 +1378,39 @@ Network, genre, era, adjacent recommendations, and model rationale may help disc
 prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
 rules. A member whose series premiered before a requested decade is not excluded merely by that premiere
 year. An optional model season window remains an airing selector, not evidence that dated episodes
-actually overlap the era. For a named-set lineup containing series, absent source-backed episode dates
-make the era-balance criterion unavailable: `scores.eraBalance` is JSON `null`, and the review UI shows
-“Not assessed” instead of a percentage. Unknown evidence receives neither full nor zero credit. Overall
-omits the unavailable criterion and normalizes the remaining theme-fit and availability weights
-(`(0.5 × themeFit + 0.35 × availabilityRatio) / 0.85`). When era balance is available, the existing
-0.5/0.35/0.15 composite applies. This does not exclude a grounded continuing series based on its
-premiere or treat a model season selector as historical evidence.
+actually overlap the era. For a named-set lineup containing series, a model season
+selector or a premiere year does not establish episode-era adherence.
+
+**Proposal assessment (#1044/#1098)** reports evidence, not calibrated confidence. The synthetic
+Overall percentage is retired from the API and review. `scores.themeFit` is nullable source-backed
+qualifier coverage: for ordinary discovery, average the fraction of distinct requested qualifiers
+supported by each item's Catalog metadata. Matching one fragment never earns complete coverage.
+Verified named membership remains its own full-support case. Whole normalized words and a small,
+explicit synonym vocabulary handle known equivalences; unrecognized wording is unverified, not a
+literal-word admission rule. No item is silently excluded by this diagnostic, and generated rationale
+cannot support it. Missing substantive metadata or no requested theme leaves coverage unassessed.
+The existing evaluation `MinThemeFit` floor remains enforced against this definition: unassessed
+evidence cannot pass a required floor, and no threshold is lowered as part of the correction.
+
+The review explains which requested terms have support and which remain unverified. Partial support
+or sparse evidence produces a clear narrow-interpretation warning and an Edit request action;
+it never presents a fragment as a confident understanding of the whole Intent. A verified terse
+named request such as TGIF remains supported. The initial equivalents are cozy/cosy, mystery/mysteries/whodunit(s), sitcom(s)/situation comedy,
+and sci-fi/scifi/science fiction. British origin can use a Catalog GB/UK country. These are lexical equivalences,
+not permission for model-authored rationale to award itself credit. Validated date-anchor spans
+are assessed by the date diagnostic rather than counted again as unsupported theme words.
+
+`scores.eraBalance` now reports requested-date adherence, not decade spread. It is assessed only
+for explicitly constrained axes from the validated DateMeaning, using source-backed movie-release
+or series-premiere years as appropriate. Off-era additions cannot earn diversity credit. An
+unconstrained era, missing year, or a series-airing constraint without resolved episode evidence
+leaves the diagnostic null; counts distinguish not requested from missing evidence. The review
+shows these facts under its explanation disclosure rather than percentage cards. Per-item model confidence
+is also omitted from review presentation. Historical unversioned assessments are explicitly unassessed,
+and editing picks invalidates the displayed assessment until it is recomputed. Library presence
+remains a factual Title count/ratio and is never called immediate playback readiness: the Channel
+outlook must compute that from the exact Lineup/Policy and resolved playable programs.
+
 
 Identity grounding and editorial support are separate mandatory gates. A selected id must both have
 been surfaced by the Catalog and carry positive, source-backed evidence for the semantic request. The
