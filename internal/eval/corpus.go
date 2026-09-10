@@ -38,9 +38,12 @@ const (
 // satisfy. The deterministic checks are hard gates; the judge rubric guides the
 // LLM-judge score (0..1). A field left zero/empty is not asserted.
 type Case struct {
-	Name       string
-	TemplateID string // non-empty for an exact shipped starter-template Intent
-	Intent     Intent
+	// AcceptableKeys freezes membership independently of the provider's selections.
+	AcceptableKeys    []provision.Key
+	MinAcceptableKeys int
+	Name              string
+	TemplateID        string // non-empty for an exact shipped starter-template Intent
+	Intent            Intent
 
 	// --- deterministic expectations (checked without a judge) ---
 

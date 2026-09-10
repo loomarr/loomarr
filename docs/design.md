@@ -1346,6 +1346,28 @@ change tools, quotas, policy, authorization, or identity. Only the submitted URL
 referenced host—not the complete household Intent, Library, or Proposal. Raw reference content is
 not persisted in the Proposal trace, logs, diagnostics, evaluation artifacts, or training corpus.
 
+For a named programming block without a pasted page or already resolved user constituents, the
+same reference module may discover one source automatically. After canonical date interpretation,
+send only the locally extracted public block label to English Wikipedia's MediaWiki search API,
+never the complete Intent or Library. Consider at most five article results. A unique exact label
+match whose source description identifies a programming block is required; disambiguation,
+competing matches and unrelated entities yield no evidence. Search snippets locate a page but do
+not establish constituent membership. Retrieve its exact named category through the same public
+routing, redirect, timeout and response-size bounds. The category must include the discovered
+subject itself; only its direct article members become title anchors. Historical schedule tables,
+search snippets and unrelated links are not rosters. Category membership is observed for this
+request, not claimed as an immutable historical roster. Parenthetical TV-series disambiguators may
+be removed from display names, but Catalog media/year ambiguity still fails closed.
+No brand roster, model-authored URL, arbitrary crawler, or new runtime dependency is added.
+The discovery operation has one shared 10-second budget and at most two bounded GET operations
+(search and category members); its result is reused within that Suggest invocation. Keep up to 128
+source anchors as membership evidence, but at most eight source-prefetch Catalog lookups. Existing
+model-tool and membership-resolution operation budgets remain separate and unchanged. Validated model title
+hypotheses may prioritize anchors for lookup only when the source independently contains that name;
+reordering cannot add a member, choose an ambiguous identity, or change source authority.
+Absent or ambiguous sources preserve named-set uncertainty; transport failures remain retrieval
+failures. Existing operator-supplied pages keep their site-neutral lookup behavior.
+
 After reference resolution, Loomarr pre-grounds extracted title anchors as untrusted membership evidence.
 Named-set mode is selected from the request's structure rather than a registry of brands: an explicit
 programming-block phrase, `named … collection`, a proper/acronym label used with block/lineup/collection
@@ -1652,6 +1674,25 @@ one. Exactly 18 manifest-declared empty/conflicting phrasings permit an explicit
 no-grounded-title abstention. The model
 still has no acquisition, approval, or authorization capability: the evaluator observes a Proposal,
 not an effectful workflow.
+
+The supplementary `planner-release-gate-v3` release replay retains v1's 18 synthetic cases,
+fixture bytes, acceptable members, hard negatives and thresholds, and binds them explicitly to the
+current production prompt/tool identities. The historical v1/v2 manifests remain unchanged. V3 separately pins a synthetic source-membership
+fixture for automatic named-block discovery; it is independent of model output and scoring keys.
+The source contract is versioned independently as `reference-source-v1` and participates in the
+proposal cache identity, so prior source behavior cannot reuse a successful cached Proposal.
+Only the configured model is live in this replay; actual source discovery needs separate diagnostic
+and installed-journey evidence. This
+release holdout complements the full active certification corpus; its one-trial canary and
+five-trial finalist passes cannot certify a release. The release pass requires exactly ten trials
+per live case, 100% grounded completion and schema validity, end-to-end Suggester p50 ≤8 seconds,
+p95 ≤12 seconds, and no successful Suggester call above 20 seconds. Missing timing fails any enabled
+latency gate. Provider-reported generator latency remains a separate metric; elapsed timing includes
+catalog and grounding work through the returned Proposal. Bounded catalog operation counts and
+elapsed fixture time contain no prompt, title, credential, or provider payload. Replay scorecards
+retain the current immutable run snapshot, resolved-provider attribution, and enforced per-run and
+suite call/token/USD accounting. These opt-in local targets refuse CI and never invoke inference
+from ordinary build or release commands.
 
 `make eval-planner-cert` is the explicit, inference-spending, non-CI command. It requires the same
 positive per-run and suite call/token/USD ceilings as other required semantic certification and

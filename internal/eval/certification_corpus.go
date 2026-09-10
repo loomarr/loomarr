@@ -777,11 +777,13 @@ func certificationIntentKey(description string, mustInclude []string) string {
 }
 
 type embeddedCatalogFixture struct {
-	mu        sync.RWMutex
-	current   string
-	fixtureID string
-	cases     map[string]certificationFixtureCase
-	byID      map[int]catalog.Candidate
+	operations   int
+	latencyNanos int64
+	mu           sync.RWMutex
+	current      string
+	fixtureID    string
+	cases        map[string]certificationFixtureCase
+	byID         map[int]catalog.Candidate
 	// Optional observation at the actual catalog boundary, after the Suggester
 	// has validated and projected its model-facing date interpretation.
 	onDiscover func(catalog.DiscoveryQuery)
@@ -811,6 +813,13 @@ func (f *embeddedCatalogFixture) selectCase(id string) {
 }
 
 func (f *embeddedCatalogFixture) response(operation string) ([]catalog.Candidate, error) {
+	started := time.Now()
+	defer func() {
+		f.mu.Lock()
+		f.operations++
+		f.latencyNanos += time.Since(started).Nanoseconds()
+		f.mu.Unlock()
+	}()
 	f.mu.RLock()
 	c := f.cases[f.current]
 	f.mu.RUnlock()
@@ -824,6 +833,19 @@ func (f *embeddedCatalogFixture) response(operation string) ([]catalog.Candidate
 		return append([]catalog.Candidate(nil), response.Candidates...), nil
 	}
 	return nil, nil
+}
+
+func (f *embeddedCatalogFixture) beginMetrics() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.operations = 0
+	f.latencyNanos = 0
+}
+
+func (f *embeddedCatalogFixture) metrics() (int, int64) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.operations, f.latencyNanos
 }
 
 func (f *embeddedCatalogFixture) currentCase() certificationFixtureCase {

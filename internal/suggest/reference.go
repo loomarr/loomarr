@@ -58,6 +58,8 @@ type referenceGrounding struct {
 // interpretation so malformed or ambiguous first turns cannot touch a source.
 type sourceGroundingState struct {
 	hasReference bool
+	presented    bool
+	titleHints   []string
 	initialized  bool
 	result       sourceGroundingResult
 }
@@ -98,6 +100,24 @@ func (s *Suggester) initializeSources(ctx context.Context, intent *Intent, meani
 	explicit, err := s.groundExplicitMembershipAnchors(ctx, intent)
 	if err != nil {
 		return sourceGroundingResult{}, err
+	}
+	if !state.hasReference && len(intent.membershipKeys) == 0 {
+		if finder, ok := s.references.(reference.Discoverer); ok {
+			if label := namedBlockLabel(*intent); label != "" {
+				evidence, discoveryErr := finder.Discover(ctx, label)
+				if discoveryErr != nil {
+					return sourceGroundingResult{}, fmt.Errorf("discover named source: %w", discoveryErr)
+				}
+				if evidence.URL != "" && len(evidence.TitleAnchors) > 0 {
+					grounded, _, groundingErr := s.groundReferenceEvidence(ctx, intent, meaning, evidence, state.titleHints)
+					if groundingErr != nil {
+						return sourceGroundingResult{}, groundingErr
+					}
+					result.reference = grounded
+					state.hasReference = true
+				}
+			}
+		}
 	}
 	result.curated, result.explicit = curated, explicit
 	state.result, state.initialized = result, true
@@ -157,7 +177,11 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent, meaning
 	if err != nil {
 		return referenceGrounding{}, true, &referenceReadError{err: fmt.Errorf("resolve reference: %w", err)}
 	}
-	titles := boundedReferenceTitles(evidence.TitleAnchors)
+	return s.groundReferenceEvidence(ctx, intent, meaning, evidence, nil)
+}
+
+func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning, evidence reference.Evidence, hints []string) (referenceGrounding, bool, error) {
+	titles := boundedTitles(evidence.TitleAnchors, reference.MaxTitleAnchors)
 	if len(titles) == 0 {
 		return referenceGrounding{}, true, errors.New("reference contains no title anchors")
 	}
@@ -172,7 +196,7 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent, meaning
 
 	byKey := make(map[provision.Key]catalog.Candidate)
 	messages := make([]llm.Message, 0, len(titles)*2)
-	for index, title := range titles {
+	for index, title := range prioritizedReferenceTitles(titles, hints) {
 		candidates, searchErr := s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
 		if searchErr != nil {
 			return referenceGrounding{}, true, fmt.Errorf("search reference title %q: %w", title, searchErr)
@@ -560,8 +584,12 @@ func acronymNamesSet(text string) bool {
 }
 
 func boundedReferenceTitles(values []string) []string {
+	return boundedTitles(values, maxReferenceTitleQueries)
+}
+
+func boundedTitles(values []string, limit int) []string {
 	seen := make(map[string]bool)
-	result := make([]string, 0, min(len(values), maxReferenceTitleQueries))
+	result := make([]string, 0, min(len(values), limit))
 	for _, value := range values {
 		value = strings.Join(strings.Fields(value), " ")
 		key := strings.ToLower(value)
@@ -570,7 +598,7 @@ func boundedReferenceTitles(values []string) []string {
 		}
 		seen[key] = true
 		result = append(result, value)
-		if len(result) == maxReferenceTitleQueries {
+		if len(result) == limit {
 			break
 		}
 	}
@@ -579,4 +607,75 @@ func boundedReferenceTitles(values []string) []string {
 
 func sameExactTitle(candidate, anchor string) bool {
 	return textmatch.ContainsPhrase(candidate, anchor) && textmatch.ContainsPhrase(anchor, candidate)
+}
+
+var acronymDaypartBlockPattern = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:[- ]night)?\s+(?:lineup|block|channel)\b)`)
+var blockDaypartPattern = regexp.MustCompile(`(?i)^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:-night)?$`)
+
+// namedBlockLabel extracts one label already present in the submitted request.
+// Conflicting labels abstain; no provider-authored terms reach source discovery.
+func namedBlockLabel(intent Intent) string {
+	if !requiresMembershipEvidence(intent) {
+		return ""
+	}
+	labels := make(map[string]string)
+	add := func(label string) {
+		label = strings.TrimSpace(label)
+		if label != "" && freeformTitlePolarity(referenceIntentText(intent), label) >= 0 {
+			labels[strings.ToLower(label)] = label
+		}
+	}
+	for _, field := range []string{intent.Description, intent.RefineText} {
+		for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymDaypartBlockPattern, acronymSentenceEndPattern, acronymCuePattern} {
+			for _, match := range pattern.FindAllStringSubmatchIndex(field, -1) {
+				if strings.HasPrefix(field[match[3]:], "'s") || directNetworkRoleBeforePattern.MatchString(field[:match[2]]) || directNetworkRolePattern.MatchString(field[match[3]:]) {
+					continue
+				}
+				add(field[match[2]:match[3]])
+			}
+		}
+	}
+	for _, field := range []string{intent.Description, intent.RefineText} {
+		for _, match := range properNamedSetPattern.FindAllString(field, -1) {
+			words := strings.Fields(match)
+			words = words[:len(words)-1]
+			for len(words) > 1 && (words[0] == "Make" || words[0] == "Create" || words[0] == "Build" || words[0] == "A" || words[0] == "An") {
+				words = words[1:]
+			}
+			if len(labels) > 0 {
+				filtered := make([]string, 0, len(words))
+				for _, word := range words {
+					if !strings.HasSuffix(word, "'s") && !blockDaypartPattern.MatchString(word) {
+						filtered = append(filtered, word)
+					}
+				}
+				if len(filtered) == 1 && labels[strings.ToLower(filtered[0])] != "" {
+					continue
+				}
+			}
+			add(strings.Join(words, " "))
+		}
+		if bareProperNameNamesSet(field) {
+			add(strings.Trim(strings.TrimSpace(field), ".,;:!?()[]{}\"'"))
+		}
+	}
+	if len(labels) != 1 {
+		return ""
+	}
+	for _, label := range labels {
+		return label
+	}
+	return ""
+}
+
+func prioritizedReferenceTitles(titles, hints []string) []string {
+	ordered := make([]string, 0, len(titles))
+	for _, hint := range boundedReferenceTitles(hints) {
+		for _, title := range titles {
+			if sameExactTitle(title, hint) {
+				ordered = append(ordered, title)
+			}
+		}
+	}
+	return boundedReferenceTitles(append(ordered, titles...))
 }

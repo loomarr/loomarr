@@ -698,7 +698,7 @@ func IntentHash(i Intent) string {
 		Refine     string
 		LineupKeys []string
 	}{
-		PlannerContract:   PlannerPromptVersion + ":" + PlannerToolSchemaVersion,
+		PlannerContract:   PlannerPromptVersion + ":" + PlannerToolSchemaVersion + ":" + PlannerSourceVersion,
 		MembershipPolicy:  requiresMembershipEvidence(i),
 		ReferenceIdentity: referenceIdentity,
 		Desc:              strings.ToLower(strings.TrimSpace(i.Description)),
