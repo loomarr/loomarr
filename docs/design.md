@@ -3891,6 +3891,12 @@ request deadline for a currently owned child generation. It never signals a comp
 or treats expiry without a current child as a successful fault. Current-child selection polls at
 most ten milliseconds apart, independently of a coarser resource-cleanup sampling interval; a finite
 encoder can start and finish between the default 250 ms resource samples.
+Parent and child fault reports retain the held-viewer observations in selected-then-peer order,
+including on failure. Process-exit receipts are classified independently from viewer continuity:
+an observed, correctly bound exit remains `exited` when a viewer fails. Wrong target or generation
+is `binding_mismatch`; a missing exit is `not_exited`, while controller errors and expired fault
+budgets retain their separate outcomes. None of these additional observations can qualify a failed
+fault drill, and missing historical observations are never reconstructed from a later run.
 Fault profiles use
 the fixed names `child_failure`, `parent_failure`, and `shutdown`; omitted profiles are explicitly
 unqualified and a selected profile is required evidence, never an informational best effort. Unknown,

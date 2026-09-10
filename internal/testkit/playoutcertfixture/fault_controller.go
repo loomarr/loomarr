@@ -21,6 +21,7 @@ func (c ScopedFaultController) Scope() string { return c.ScopeName }
 type ParentFaultTarget struct {
 	Fixture             *Fixture
 	Peer                string
+	FailPeer            bool
 	WaitForExpiry       bool
 	RetainAfterRecovery bool
 	CurrentCalls        *atomic.Int32
@@ -106,7 +107,11 @@ func (c ParentFaultTarget) Current(ctx context.Context) (uint64, error) {
 
 func (c ParentFaultTarget) Fail(ctx context.Context, channelID string) error {
 	_ = c.Fixture.FailSession(channelID)
-	_ = c.Fixture.ContinueSession(c.Peer)
+	if c.FailPeer {
+		_ = c.Fixture.FailSession(c.Peer)
+	} else {
+		_ = c.Fixture.ContinueSession(c.Peer)
+	}
 	if c.RetainAfterRecovery {
 		c.Fixture.RetainAfterRecovery(channelID)
 	}

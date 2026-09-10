@@ -596,6 +596,48 @@ func TestChildFailureDrillRefusesUnsupportedController(t *testing.T) {
 	}
 }
 
+func TestFaultDrillRetainsExitAndContinuityEvidence(t *testing.T) {
+	for _, profile := range []FaultProfile{FaultParentFailure, FaultChildFailure} {
+		for _, failPeer := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/peer-fails-%t", profile, failPeer), func(t *testing.T) {
+				fixture := playoutcertfixture.New(t, 100)
+				channels := fixtureChannels(100)
+				config := fixtureConfig(fixture, channels).normalized()
+				target := playoutcertfixture.ParentFaultTarget{Fixture: fixture, Peer: channels[1].ID, FailPeer: failPeer}
+				endpoint, err := newEndpoint(config)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var phase Phase
+				var receipt, recovery string
+				if profile == FaultParentFailure {
+					config.FaultController = fixtureParentFaultController{target: target}
+					drill := parentFailureDrill(t.Context(), endpoint, config, []int{0, 1}, 2, nil)
+					phase, receipt, recovery = drill.phase, drill.receipt, drill.recovery
+				} else {
+					config.FaultController = fixtureChildFaultController{target: target}
+					drill := childFailureDrill(t.Context(), endpoint, config, []int{0, 1}, 2, nil)
+					phase, receipt, recovery = drill.phase, drill.receipt, drill.recovery
+				}
+				if receipt != "exited" {
+					t.Fatalf("observed owned exit was lost: receipt=%s phase=%+v", receipt, phase)
+				}
+				if len(phase.HeldContinuity) != 2 || phase.HeldContinuity[0].Outcome == "" || phase.HeldContinuity[1].Outcome == "" {
+					t.Fatalf("selected/peer evidence was lost: %+v", phase)
+				}
+				peer := phase.HeldContinuity[1]
+				if failPeer {
+					if phase.Failures != 1 || peer.Outcome == "observed" || recovery != "not_observed" {
+						t.Fatalf("interrupted peer qualified or lacked evidence: phase=%+v recovery=%s", phase, recovery)
+					}
+				} else if phase.Failures != 0 || peer.Outcome != "observed" || !peer.DecodedFrame || recovery != "recovered" {
+					t.Fatalf("continuing peer lacked evidence: phase=%+v recovery=%s", phase, recovery)
+				}
+			})
+		}
+	}
+}
+
 func TestParentFailureDrillUsesOnlySelectedAndRequiredPeer(t *testing.T) {
 	for _, tc := range []struct {
 		name         string

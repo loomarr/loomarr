@@ -512,7 +512,7 @@ func waitCurrentChild(ctx context.Context, controller ChildFaultController, requ
 	}
 }
 
-func childFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, capacity int, sampler *phaseSampler) childFaultDrill {
+func childFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, capacity int, sampler *phaseSampler) (result childFaultDrill) {
 	controller, ok := config.FaultController.(ChildFaultController)
 	requiredCohort := min(capacity, 2)
 	if !ok || requiredCohort < 1 || len(indexes) < requiredCohort {
@@ -545,13 +545,18 @@ func childFailureDrill(ctx context.Context, endpoint *endpoint, config Config, i
 	// producing fresh media through the owned child's observed exit.
 	held.verify(ctx)
 	held.release()
+	defer func() { result.phase.HeldContinuity = append([]HeldContinuityObservation(nil), held.continuity...) }()
 	peerContinued := capacity < 2 || held.results[1].class == "ok"
 	if err != nil || faultExpired || !receipt.Exited || receipt.ChannelID != request.ChannelID || receipt.ParentGeneration != request.ParentGeneration || receipt.ChildGeneration != request.ChildGeneration || !peerContinued {
-		receiptOutcome := "not_exited"
+		receiptOutcome := "exited"
 		if err != nil {
 			receiptOutcome = "unavailable"
 		} else if faultExpired {
 			receiptOutcome = "fault_budget_expired"
+		} else if !receipt.Exited {
+			receiptOutcome = "not_exited"
+		} else if receipt.ChannelID != request.ChannelID || receipt.ParentGeneration != request.ParentGeneration || receipt.ChildGeneration != request.ChildGeneration {
+			receiptOutcome = "binding_mismatch"
 		}
 		if capacity >= 2 {
 			peerOutcome = held.results[1].class
@@ -570,7 +575,7 @@ func childFailureDrill(ctx context.Context, endpoint *endpoint, config Config, i
 	return childFaultDrill{phase: phase, sample: sample, receipt: "exited", selected: held.results[0].class, peer: peerOutcome, recovery: recoveryOutcome}
 }
 
-func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, capacity int, sampler *phaseSampler) parentFaultDrill {
+func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, indexes []int, capacity int, sampler *phaseSampler) (result parentFaultDrill) {
 	controller, ok := config.FaultController.(ParentFaultController)
 	// The drill can observe only a selected parent and one independently
 	// admitted peer. Full-capacity qualification remains the raw_capacity and
@@ -612,13 +617,18 @@ func parentFailureDrill(ctx context.Context, endpoint *endpoint, config Config, 
 	// independently admitted peer continued decoding through the event.
 	held.verify(ctx)
 	held.release()
+	defer func() { result.phase.HeldContinuity = append([]HeldContinuityObservation(nil), held.continuity...) }()
 	peerContinued := capacity < 2 || held.results[1].class == "ok"
 	if err != nil || faultExpired || !receipt.Exited || receipt.ChannelID != request.ChannelID || receipt.Generation != request.Generation || held.results[0].class != "held_stream_interrupted" || !peerContinued {
-		receiptOutcome := "not_exited"
+		receiptOutcome := "exited"
 		if err != nil {
 			receiptOutcome = "unavailable"
 		} else if faultExpired {
 			receiptOutcome = "fault_budget_expired"
+		} else if !receipt.Exited {
+			receiptOutcome = "not_exited"
+		} else if receipt.ChannelID != request.ChannelID || receipt.Generation != request.Generation {
+			receiptOutcome = "binding_mismatch"
 		}
 		if capacity >= 2 {
 			peerOutcome = held.results[1].class
