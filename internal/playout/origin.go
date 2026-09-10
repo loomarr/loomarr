@@ -88,7 +88,7 @@ type sessionAttacher interface {
 }
 
 type hlsOrigin interface {
-	Playlist(string, EncodePlan) (string, func(), error)
+	acquirePlaylist(string, EncodePlan) (hlsPlaylistLease, error)
 	AssetPath(string, EncodePlan, string) (string, bool)
 	StopChannel(channelID string)
 	StopAll()
@@ -228,54 +228,65 @@ func (o *Origin) checkAdmissionLocked(ctx context.Context, channelID string) err
 // Tune returns the presentation for the requested delivery without exposing which implementation
 // produced it.
 func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, error) {
+	presentation, lease, err := o.acquireTune(ctx, request)
+	if err != nil || lease == nil {
+		return presentation, err
+	}
+	// Admission already owns the shared remux. Readiness must not keep lifecycle
+	// teardown from cancelling that remux, or outlive an abandoned HTTP request.
+	path, release, err := lease.read(ctx)
+	if err != nil {
+		return Presentation{}, err
+	}
+	manifest, err := os.ReadFile(path)
+	if err != nil {
+		release()
+		return Presentation{}, fmt.Errorf("playout: read manifest: %w", err)
+	}
+	if o.prepared != nil && o.observer != nil {
+		o.observer.PlayoutFallback("prepared_to_live")
+	}
+	return Presentation{Manifest: manifest, Release: release}, nil
+}
+
+func (o *Origin) acquireTune(ctx context.Context, request TuneRequest) (Presentation, *hlsPlaylistLease, error) {
 	o.lifecycleMu.RLock()
 	defer o.lifecycleMu.RUnlock()
 	if err := o.checkAdmissionLocked(ctx, request.ChannelID); err != nil {
-		return Presentation{}, err
+		return Presentation{}, nil, err
 	}
 	var preparedErr error
 	if request.Delivery == DeliveryHLS && o.prepared != nil {
 		presentation, hit, err := o.prepared.Tune(ctx, request)
 		if err == nil && hit {
-			return presentation, nil
+			return presentation, nil, nil
 		}
 		preparedErr = err
 	}
 	if request.Delivery == DeliveryHLS && request.PreparedOnly {
 		if preparedErr != nil {
-			return Presentation{}, preparedErr
+			return Presentation{}, nil, preparedErr
 		}
-		return Presentation{}, ErrPreparedUnavailable
+		return Presentation{}, nil, ErrPreparedUnavailable
 	}
 	switch request.Delivery {
 	case DeliveryMPEGTS:
 		if o.sessions == nil {
-			return Presentation{}, ErrUnsupportedDelivery
+			return Presentation{}, nil, ErrUnsupportedDelivery
 		}
 		stream, release, err := o.sessions.Attach(ctx, request.ChannelID, request.Plan)
-		return Presentation{Stream: stream, Release: release}, err
+		return Presentation{Stream: stream, Release: release}, nil, err
 	case DeliveryHLS:
 		if o.hls == nil {
 			if preparedErr != nil {
-				return Presentation{}, preparedErr
+				return Presentation{}, nil, preparedErr
 			}
-			return Presentation{}, ErrUnsupportedDelivery
+			return Presentation{}, nil, ErrUnsupportedDelivery
 		}
-		path, release, err := o.hls.Playlist(request.ChannelID, request.Plan)
-		if err != nil {
-			return Presentation{}, err
-		}
-		manifest, err := os.ReadFile(path)
-		if err != nil {
-			release()
-			return Presentation{}, fmt.Errorf("playout: read manifest: %w", err)
-		}
-		if o.prepared != nil && o.observer != nil {
-			o.observer.PlayoutFallback("prepared_to_live")
-		}
-		return Presentation{Manifest: manifest, Release: release}, nil
+		lease, err := o.hls.acquirePlaylist(request.ChannelID, request.Plan)
+		return Presentation{}, &lease, err
 	default:
-		return Presentation{}, ErrUnsupportedDelivery
+		return Presentation{}, nil, ErrUnsupportedDelivery
 	}
 }
 
