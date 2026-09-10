@@ -21,6 +21,7 @@ type EncodePool struct {
 
 	mu          sync.Mutex
 	held        int
+	foregrounds int
 	waiters     int
 	nextID      uint64
 	backgrounds map[uint64]*backgroundLease
@@ -72,9 +73,11 @@ func (p *EncodePool) capacityForAdmission() int {
 	return p.capacity
 }
 
-// AcquireForeground takes a hardware slot for live playback. When preparation owns the last slot,
-// its context is cancelled and playback waits briefly for the process to release it; a stuck
-// background process therefore degrades this caller to software rather than delaying tune-in.
+// AcquireForeground takes a hardware slot for live playback. The first foreground caller cancels
+// every background lease and waits briefly for preparation to drain. Accelerated preparation is
+// deliberately excluded while any foreground lease is held: the synthetic single-encoder capacity
+// measurement does not prove that unpaced real-file preparation can share decode/filter throughput
+// with latency-critical playback.
 func (p *EncodePool) AcquireForeground(ctx context.Context) (release func(), ok bool) {
 	if p == nil {
 		return func() {}, true
@@ -89,7 +92,7 @@ func (p *EncodePool) AcquireForeground(ctx context.Context) (release func(), ok 
 			p.mu.Unlock()
 			return func() {}, true
 		}
-		if p.held < capacity {
+		if len(p.backgrounds) == 0 && p.held < capacity {
 			if waiting {
 				p.waiters--
 			}
@@ -108,21 +111,11 @@ func (p *EncodePool) AcquireForeground(ctx context.Context) (release func(), ok 
 			p.waiters++
 			waiting = true
 		}
-		var victim *backgroundLease
-		preempting := 0
-		for _, candidate := range p.backgrounds {
-			if candidate.preempting {
-				preempting++
-				continue
+		for _, background := range p.backgrounds {
+			if !background.preempting {
+				background.preempting = true
+				background.cancel()
 			}
-			if victim == nil || candidate.neededAt.After(victim.neededAt) ||
-				(candidate.neededAt.Equal(victim.neededAt) && candidate.id > victim.id) {
-				victim = candidate
-			}
-		}
-		if victim != nil && p.waiters > preempting {
-			victim.preempting = true
-			victim.cancel()
 		}
 		changed := p.changed
 		p.mu.Unlock()
@@ -150,7 +143,7 @@ func (p *EncodePool) AcquireBackground(ctx context.Context, neededAt time.Time) 
 	capacity := p.capacityForAdmission()
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if capacity < 2 || p.held >= capacity-1 {
+	if capacity < 2 || p.foregrounds > 0 || p.waiters > 0 || p.held >= capacity-1 {
 		return nil, nil, false
 	}
 	workCtx, cancel := context.WithCancel(ctx)
@@ -162,12 +155,17 @@ func (p *EncodePool) AcquireBackground(ctx context.Context, neededAt time.Time) 
 
 func (p *EncodePool) acquireLocked(backgroundID uint64, cancel context.CancelFunc) func() {
 	p.held++
+	if backgroundID == 0 {
+		p.foregrounds++
+	}
 	var once sync.Once
 	return func() {
 		once.Do(func() {
 			p.mu.Lock()
 			p.held--
-			if backgroundID != 0 {
+			if backgroundID == 0 {
+				p.foregrounds--
+			} else {
 				delete(p.backgrounds, backgroundID)
 				cancel()
 			}

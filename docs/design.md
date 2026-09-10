@@ -2782,18 +2782,21 @@ immutable publication; it never rewrites bytes under an existing key.
 Hardware encoding is a **host-wide resource**, not private state inside live playout or preparation.
 One encode pool admits both classes using the effective capacity after the measured limit, operator
 `playout.max_channels` safety cap, and resident-VRAM shading are applied. Live program children take
-foreground leases and may use every effective slot. The readiness planner may fill at most
-`effective capacity - 1` background leases, leaving one
-separate slot for a cold live tune. Every background lease is independently cancellable and carries
-the publication's need time. The first foreground arrival consumes the idle reserve; each additional
-arrival that finds the pool full cancels exactly one farthest-needed background lease and receives a
-short bounded opportunity to take the released slot. Concurrent foreground waiters and already
-preempting leases are counted explicitly, so several callers waking on one release cannot cancel
-more work than their outstanding demand requires. If a cancelled worker does not release in time,
-that live child takes the existing software fallback rather than waiting behind maintenance work.
-Unknown, software-only, or one-slot capacity disables hardware preparation — it does not guess and
-it does not consume the only live slot. This priority contract is shared code; adding a second
-semaphore around ffmpeg is forbidden.
+foreground leases and may use every effective slot. With no foreground lease, the readiness planner
+may fill at most `effective capacity - 1` background leases, leaving one separate slot for a cold
+live tune. Every background lease is independently cancellable and carries the publication's need
+time.
+
+The first foreground arrival cancels every background lease and receives a short bounded opportunity
+for them to drain before it starts. No new background lease is admitted while any foreground lease
+is held. This is required even when the numeric reserve has space: accelerated preparation runs as
+fast as possible, while the measured channel count is derived from one synthetic encoder's peak
+speed; three unpaced real-file decodes beside one live encode were observed to reduce a nominal
+four-slot host to 0.33× realtime. Multiple foreground children may still share every effective slot.
+If cancelled workers do not release in time, the live child takes the existing software fallback
+rather than waiting behind maintenance work. Unknown, software-only, or one-slot capacity disables
+hardware preparation — it does not guess and it does not consume the only live slot. This priority
+contract is shared code; adding a second semaphore around ffmpeg is forbidden.
 
 The shared pool re-reads effective capacity for every lease attempt. A lowered operator cap or newly
 resident model therefore blocks new work immediately; existing leases finish or yield through the
