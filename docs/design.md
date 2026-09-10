@@ -1366,7 +1366,11 @@ No brand roster, model-authored URL, arbitrary crawler, or new runtime dependenc
 The discovery operation has one shared 10-second budget and at most two bounded GET operations
 (search and category members); its result is reused within that Suggest invocation. Keep up to 128
 source anchors as membership evidence, but at most eight source-prefetch Catalog lookups. Existing
-model-tool and membership-resolution operation budgets remain separate and unchanged. Validated model title
+model-tool and membership-resolution operation budgets remain separate and unchanged. Evaluation attributes acknowledged model-tool operations to actual provider responses.
+Synthesized reference transcript entries do not become model operations; their real Catalog work
+remains in the independent Catalog operation ledger. Unexecuted final output is not a dispatched
+operation; its inference call and usage remain counted. Scorecard schema 13 separates this attribution
+from older transcript-only counts. Validated model title
 hypotheses may prioritize anchors for lookup only when the source independently contains that name;
 reordering cannot add a member, choose an ambiguous identity, or change source authority.
 Absent or ambiguous sources preserve named-set uncertainty; transport failures remain retrieval

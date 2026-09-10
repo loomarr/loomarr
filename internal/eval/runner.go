@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	scorecardSchemaVersion = 12
+	scorecardSchemaVersion = 13
 	corpusVersion          = "2026-08-27.8"
 )
 

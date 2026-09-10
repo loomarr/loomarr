@@ -4,6 +4,7 @@ package eval
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,10 +81,12 @@ func buildSuggesterWithClients(clients evalClients) (*suggest.Suggester, *observ
 // candidate counts, never prompts, titles, credentials, or model output. This is
 // what separates retrieval failures from model-selection failures in a scorecard.
 type observedProvider struct {
-	inner  llm.Provider
-	mu     sync.Mutex
-	obs    Observation
-	ledger *providerResourceLedger
+	emittedTools map[[32]byte]int
+	countedTools map[[32]byte]int
+	inner        llm.Provider
+	mu           sync.Mutex
+	obs          Observation
+	ledger       *providerResourceLedger
 }
 
 type Observation struct {
@@ -109,7 +112,6 @@ type Observation struct {
 	generatorSpendKnown bool
 	generatorBudgetErr  string
 	toolMessagesSeen    int
-	toolCallsSeen       int
 }
 
 func (p *observedProvider) Name() string { return p.inner.Name() }
@@ -117,6 +119,8 @@ func (p *observedProvider) Name() string { return p.inner.Name() }
 func (p *observedProvider) Begin() {
 	p.mu.Lock()
 	p.obs = Observation{generatorSpend: zeroDecimal()}
+	p.emittedTools = make(map[[32]byte]int)
+	p.countedTools = make(map[[32]byte]int)
 	p.ledger = nil
 	p.mu.Unlock()
 }
@@ -128,7 +132,7 @@ func (p *observedProvider) beginResourceRun(limits ResourceBudget, run, suite *r
 }
 
 func (p *observedProvider) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
-	p.observeToolCalls(messages)
+	p.observeModelToolHistory(messages)
 	p.observeToolResults(messages)
 	p.mu.Lock()
 	ledger := p.ledger
@@ -142,6 +146,13 @@ func (p *observedProvider) Chat(ctx context.Context, messages []llm.Message, opt
 	p.mu.Unlock()
 	response, err := p.inner.Chat(ctx, messages, opts)
 	p.mu.Lock()
+	if p.emittedTools == nil {
+		p.emittedTools = make(map[[32]byte]int)
+	}
+	for _, tool := range response.ToolCalls {
+		blob, _ := json.Marshal(tool)
+		p.emittedTools[sha256.Sum256(blob)]++
+	}
 	p.obs.ModelCalls++
 	call := scrubAttribution(response.Attribution)
 	observeGeneratorResourceUsage(&p.obs, call)
@@ -160,6 +171,34 @@ func (p *observedProvider) Chat(ctx context.Context, messages []llm.Message, opt
 	return response, err
 }
 
+// observeModelToolHistory preserves the executed/acknowledged-call metric: a
+// provider request must return through the conversation before it is counted.
+// Source-prefetched results cannot invent model operations, even with reused IDs.
+func (p *observedProvider) observeModelToolHistory(messages []llm.Message) {
+	occurrences := make(map[[32]byte]int)
+	var fresh []llm.ToolCall
+	p.mu.Lock()
+	if p.countedTools == nil {
+		p.countedTools = make(map[[32]byte]int)
+	}
+	for _, message := range messages {
+		if message.Role != llm.Assistant {
+			continue
+		}
+		for _, call := range message.ToolCalls {
+			blob, _ := json.Marshal(call)
+			key := sha256.Sum256(blob)
+			occurrences[key]++
+			if occurrences[key] > p.countedTools[key] && occurrences[key] <= p.emittedTools[key] {
+				p.countedTools[key]++
+				fresh = append(fresh, call)
+			}
+		}
+	}
+	p.mu.Unlock()
+	p.observeToolCalls([]llm.Message{{Role: llm.Assistant, ToolCalls: fresh}})
+}
+
 func (p *observedProvider) observeToolCalls(messages []llm.Message) {
 	var calls []llm.ToolCall
 	for _, message := range messages {
@@ -169,7 +208,7 @@ func (p *observedProvider) observeToolCalls(messages []llm.Message) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for _, call := range calls[p.obs.toolCallsSeen:] {
+	for _, call := range calls {
 		p.obs.ToolCalls++
 		network, _ := call.Arguments["network"].(string)
 		cast := stringSliceAny(call.Arguments["cast"])
@@ -191,7 +230,6 @@ func (p *observedProvider) observeToolCalls(messages []llm.Message) {
 			p.obs.TitleCalls++
 		}
 	}
-	p.obs.toolCallsSeen = len(calls)
 }
 
 func (p *observedProvider) observeToolResults(messages []llm.Message) {
