@@ -129,7 +129,7 @@ func filterEntriesWithTrace(entries []LineupEntry, rp ResolvedPolicy, trace *sch
 			continue
 		}
 		// Audience ceiling (§4) — the fail-closed safety filter, NEVER relaxed.
-		if rp.Ceiling != "" {
+		if rp.Ceiling != "" || rp.Unrated == UnratedExclude {
 			switch audienceVerdict(e.OfficialRating, rp.Ceiling, rp.Unrated) {
 			case verdictOverCeiling:
 				report.OverCeiling++
@@ -157,8 +157,7 @@ func (r *ExclusionReport) add(e LineupEntry, reason string) {
 	r.Items = append(r.Items, ExcludedItem{Key: e.Key, Title: e.Title, Reason: reason})
 }
 
-// audienceVerdict decides an entry against the ceiling (§4). Called only when a
-// ceiling is set.
+// audienceVerdict decides an entry against its ceiling and unrated policy (§4).
 type verdict int
 
 const (
@@ -170,7 +169,7 @@ const (
 func audienceVerdict(raw Rating, ceiling Rating, unrated UnratedPolicy) verdict {
 	r := normalizeRating(string(raw)) // raw may already be normalized (stamped) — idempotent
 	if r.mapped() {
-		if r.atOrBelow(ceiling) {
+		if ceiling == "" || r.atOrBelow(ceiling) {
 			return verdictKeep
 		}
 		return verdictOverCeiling
@@ -184,7 +183,7 @@ func audienceVerdict(raw Rating, ceiling Rating, unrated UnratedPolicy) verdict 
 
 // Admits reports whether a title carrying rating `raw` may air under this audience policy, and
 // when it may not, which exclusion reason applies ("over_ceiling" / "unrated"). A policy with no
-// ceiling admits everything — the adult/general default (§4).
+// ceiling admits every mapped rating; explicit unrated exclusion still binds (§4).
 //
 // ⚠ Exported so the SUGGESTER can ask the enforcement question at PROPOSAL time rather than
 // re-deriving it. A proposal that offers titles the §4 gate will later drop makes the approval
@@ -192,7 +191,7 @@ func audienceVerdict(raw Rating, ceiling Rating, unrated UnratedPolicy) verdict 
 // must not be a second reading of the ladder — #260 is what a second reading costs, where two
 // places agreed about ratings for months and then quietly didn't. One function, both callers.
 func (a AudiencePolicy) Admits(raw Rating) (bool, string) {
-	if a.Ceiling == "" {
+	if a.Ceiling == "" && a.Unrated != UnratedExclude {
 		return true, ""
 	}
 	switch audienceVerdict(raw, a.Ceiling, resolveUnrated(a)) {

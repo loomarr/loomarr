@@ -297,7 +297,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		}
 		out, perr := parsePicks(final)
 		if perr == nil {
-			meaning, meaningErr := ValidateDateMeaning(intent, out.DateMeaning)
+			meaning, meaningErr := validateIntentDateMeaning(intent, out.DateMeaning)
 			if meaningErr != nil {
 				if acceptedMeaning == nil && isDateMeaningConflict(meaningErr) {
 					trace.Terminal = TerminalConstraintsConflict
@@ -355,6 +355,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 				sources.presented = true
 				continue
 			}
+			out.Picks = preserveRequiredNamedMembers(intent, out.Picks, surfaced)
 			if len(surfaced) == 0 && len(out.Picks) > 0 {
 				out.Picks, out.nameGroundingIncomplete, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
 				if err != nil {

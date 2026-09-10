@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -292,6 +294,37 @@ func ValidateDateMeaning(intent Intent, raw *DateMeaning) (ValidatedDateMeaning,
 	}
 	canonicalizeAnchors(&m)
 	return canonicalizeAxes(m)
+}
+
+var explicitDateRequirement = regexp.MustCompile(`(?i)(?:\b(?:19|20)[0-9]0s\b|\b(?:19|20)[0-9]{2}\s*(?:-|–|—|to|through)\s*(?:19|20)[0-9]{2}\b|\b(?:from|during|throughout|between|before|after|since|until)\s+(?:the\s+)?(?:19|20)[0-9]{2}s?\b)`)
+
+// validateIntentDateMeaning adds the producer-boundary omission guard to the
+// shape validator. It never interprets the date: it only requires the model to
+// return anchored constraints or anchored ambiguity for unmistakable date
+// syntax instead of silently accepting none.
+func validateIntentDateMeaning(intent Intent, raw *DateMeaning) (ValidatedDateMeaning, error) {
+	meaning, err := ValidateDateMeaning(intent, raw)
+	if err != nil {
+		return ValidatedDateMeaning{}, err
+	}
+	if meaning.meaning.Kind == DateMeaningNone && intentRequiresDateAcknowledgement(intent) {
+		return ValidatedDateMeaning{}, dateMeaningErr("unacknowledged_date", "kind")
+	}
+	return meaning, nil
+}
+
+func intentRequiresDateAcknowledgement(intent Intent) bool {
+	if strings.TrimSpace(intent.Era) != "" {
+		return true
+	}
+	texts := append([]string{intent.Description, intent.RefineText}, intent.MustInclude...)
+	texts = append(texts, intent.MustExclude...)
+	for _, text := range texts {
+		if explicitDateRequirement.MatchString(text) {
+			return true
+		}
+	}
+	return false
 }
 
 // DateMeaning returns a detached canonical value suitable for comparison or

@@ -338,3 +338,73 @@ func assertPublicationMissing(t *testing.T, publication Publication) {
 }
 
 func validTestKey() string { return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+
+func TestPruneCapabilityControlFilesAndOwnedWorkspaces(t *testing.T) {
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	lib, err := newLibrary(t.TempDir(), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := []string{CapabilityEvidenceFile, CapabilityEvidenceTempPrefix + "fresh", CapabilityEvidenceTempPrefix + "abandoned"}
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(lib.root, name), []byte("control"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stale := filepath.Join(lib.root, names[2])
+	old := now.Add(-preparedStagingGrace - time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	result, err := lib.Prune(t.Context(), 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.StagingRemoved != 1 {
+		t.Fatalf("staging removed=%d, want1", result.StagingRemoved)
+	}
+	for _, name := range names[:2] {
+		if _, err := os.Stat(filepath.Join(lib.root, name)); err != nil {
+			t.Fatalf("removed active control file %s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("abandoned workspace survived: %v", err)
+	}
+}
+
+func TestPruneCapabilityMetadataDoesNotAuthorizeUnknownEntries(t *testing.T) {
+	for _, kind := range []string{"directory", "symlink", "temporary-directory", "temporary-symlink", "unknown"} {
+		t.Run(kind, func(t *testing.T) {
+			lib, err := NewLibrary(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			name := CapabilityEvidenceFile
+			if kind == "temporary-directory" || kind == "temporary-symlink" {
+				name = CapabilityEvidenceTempPrefix + "invalid"
+			}
+			if kind == "unknown" {
+				name = ".operator-secret"
+			}
+			path := filepath.Join(lib.root, name)
+			switch kind {
+			case "directory", "temporary-directory":
+				err = os.Mkdir(path, 0o700)
+			case "symlink", "temporary-symlink":
+				err = os.Symlink(t.TempDir(), path)
+			default:
+				err = os.WriteFile(path, []byte("keep"), 0o600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := lib.Prune(t.Context(), 1, nil); !errors.Is(err, ErrUnknownEntry) {
+				t.Fatalf("Prune error=%v, want unknown entry", err)
+			}
+			if _, err := os.Lstat(path); err != nil {
+				t.Fatalf("retention touched unowned or malformed entry: %v", err)
+			}
+		})
+	}
+}

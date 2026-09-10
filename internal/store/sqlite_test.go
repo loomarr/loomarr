@@ -186,8 +186,8 @@ func TestLegacySeriesEpisodeEvidenceIsSanitizedBeforeScheduling(t *testing.T) {
 		}},
 		cachedEpisodeAvailability(got.Episodes), schedule.PodFill, schedule.ChannelPolicy{}, time.Time{},
 	)
-	if lineup.ProgramCount() != 2 {
-		t.Fatalf("malformed legacy evidence selected %d programs, want complete fallback of 2", lineup.ProgramCount())
+	if lineup.ProgramCount() != 0 || lineup.PendingCount() != 0 {
+		t.Fatalf("malformed legacy holiday evidence selected %d programs and %d pending slots, want none", lineup.ProgramCount(), lineup.PendingCount())
 	}
 }
 

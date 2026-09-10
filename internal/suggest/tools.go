@@ -272,7 +272,7 @@ func validatedToolDateMeaning(intent Intent, arguments map[string]any) (Validate
 	if err != nil {
 		return ValidatedDateMeaning{}, fmt.Errorf("dateMeaning: %w", err)
 	}
-	return ValidateDateMeaning(intent, &meaning)
+	return validateIntentDateMeaning(intent, &meaning)
 }
 
 type collectionTitleAnchor struct {

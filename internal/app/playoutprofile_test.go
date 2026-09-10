@@ -79,6 +79,82 @@ func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 	}
 }
 
+func TestPreparedEncodePoolUsesEffectiveCapacity(t *testing.T) {
+	measuredCalls := 0
+	pool := newPreparedEncodePool(
+		func() playout.Encoder { return playout.EncoderVAAPI },
+		func() int {
+			measuredCalls++
+			return 12
+		},
+		func(measured int) int {
+			if measured != 12 {
+				t.Fatalf("effective capacity received measured %d, want 12", measured)
+			}
+			return 4
+		},
+	)
+	var releases []func()
+	for i := range 3 {
+		_, release, ok := pool.AcquireBackground(t.Context(), time.Unix(int64(i), 0))
+		if !ok {
+			t.Fatalf("background lease %d refused below effective capacity reserve", i+1)
+		}
+		releases = append(releases, release)
+	}
+	defer func() {
+		for _, release := range releases {
+			release()
+		}
+	}()
+	if _, _, ok := pool.AcquireBackground(t.Context(), time.Unix(3, 0)); ok {
+		t.Fatal("prepared pool bypassed operator cap: fourth background lease admitted at effective capacity four")
+	}
+	if measuredCalls != 4 {
+		t.Fatalf("measured capacity calls = %d, want one refresh for every admission", measuredCalls)
+	}
+}
+
+func TestPreparedEncodePoolDisablesHardwarePreparationForSoftwareOverride(t *testing.T) {
+	pool := newPreparedEncodePool(
+		func() playout.Encoder { return playout.EncoderSoftware },
+		func() int { t.Fatal("software override invoked the hardware capacity probe"); return 0 },
+		func(int) int { t.Fatal("software override applied a hardware capacity"); return 0 },
+	)
+	if _, _, ok := pool.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("software override admitted hardware preparation")
+	}
+}
+
+func TestPreparedEncodePoolRefreshesMeasuredAndEffectiveCapacity(t *testing.T) {
+	measured, effectiveLimit := 1, 4
+	pool := newPreparedEncodePool(
+		func() playout.Encoder { return playout.EncoderVAAPI },
+		func() int { return measured },
+		func(value int) int { return min(value, effectiveLimit) },
+	)
+	if _, _, ok := pool.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("background work admitted before multi-slot measurement completed")
+	}
+
+	measured = 12
+	releases := make([]func(), 0, 3)
+	for i := range 3 {
+		_, release, ok := pool.AcquireBackground(t.Context(), time.Unix(int64(i), 0))
+		if !ok {
+			t.Fatalf("background lease %d did not observe the completed measurement", i+1)
+		}
+		releases = append(releases, release)
+	}
+	effectiveLimit = 2
+	if _, _, ok := pool.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("background work ignored a lowered effective capacity")
+	}
+	for _, release := range releases {
+		release()
+	}
+}
+
 func TestPlayoutResolver_ProfileUsesMatchingEvidenceBeforeAsyncValidation(t *testing.T) {
 	loadCalls := 0
 	validationStarted := make(chan struct{})

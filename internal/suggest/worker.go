@@ -685,26 +685,38 @@ func classifyFailure(cause error) string {
 // order + case are normalized so semantically-identical intents collide.
 func IntentHash(i Intent) string {
 	referenceIdentity, _ := reference.URL(referenceIntentText(i))
+	audience := deriveIntentPolicy(i)
+	audienceConstraint := ""
+	if audience.explicitAudienceCeiling != "" || audience.excludeUnrated {
+		audienceConstraint = string(audience.explicitAudienceCeiling)
+		if audience.excludeUnrated {
+			audienceConstraint += ":exclude_unrated"
+		}
+	}
 	norm := struct {
-		PlannerContract   string
-		MembershipPolicy  bool
-		ReferenceIdentity string
-		Desc, Era, Tone   string
-		Rt, Max           int
-		Include, Exclude  []string
+		AudienceConstraint string `json:",omitempty"`
+		NamedBlockLabel    string `json:",omitempty"`
+		PlannerContract    string
+		MembershipPolicy   bool
+		ReferenceIdentity  string
+		Desc, Era, Tone    string
+		Rt, Max            int
+		Include, Exclude   []string
 		// Refine inputs are part of the identity so a refine ("drop the slow ones") never
 		// collides in the 24h cache with the original suggestion or a prior refine of the
 		// same channel. The current lineup is folded in via its keys (order-independent).
 		Refine     string
 		LineupKeys []string
 	}{
-		PlannerContract:   PlannerPromptVersion + ":" + PlannerToolSchemaVersion + ":" + PlannerSourceVersion,
-		MembershipPolicy:  requiresMembershipEvidence(i),
-		ReferenceIdentity: referenceIdentity,
-		Desc:              strings.ToLower(strings.TrimSpace(i.Description)),
-		Era:               strings.ToLower(strings.TrimSpace(i.Era)),
-		Tone:              strings.ToLower(strings.TrimSpace(i.Tone)),
-		Rt:                i.RuntimeTgt, Max: i.MaxAcquire,
+		AudienceConstraint: audienceConstraint,
+		NamedBlockLabel:    strings.ToLower(namedBlockLabel(i)),
+		PlannerContract:    PlannerPromptVersion + ":" + PlannerToolSchemaVersion + ":" + PlannerSourceVersion,
+		MembershipPolicy:   requiresMembershipEvidence(i),
+		ReferenceIdentity:  referenceIdentity,
+		Desc:               strings.ToLower(strings.TrimSpace(i.Description)),
+		Era:                strings.ToLower(strings.TrimSpace(i.Era)),
+		Tone:               strings.ToLower(strings.TrimSpace(i.Tone)),
+		Rt:                 i.RuntimeTgt, Max: i.MaxAcquire,
 		Include: normSlice(i.MustInclude), Exclude: normSlice(i.MustExclude),
 		Refine:     strings.ToLower(strings.TrimSpace(i.RefineText)),
 		LineupKeys: lineupKeys(i.CurrentLineup),

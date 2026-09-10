@@ -39,3 +39,23 @@ func TestIntentAliasesCoverSchedulerKnownSantaAndNYE(t *testing.T) {
 		}
 	}
 }
+
+func TestChristmasEvidenceIgnoresOnlyPetNameOccurrences(t *testing.T) {
+	for _, tt := range []struct {
+		text string
+		want bool
+	}{
+		{"Santa’s Little Helper gets lost", false},
+		{"Santa's Little Helper and Santa's Little Helper", false},
+		{"Santa visits Santa’s Little Helper", true},
+		{"Santa's Little Helper meets Santa", true},
+		{"Santa’s Little Helper celebrates Christmas", true},
+		{"A Halloween episode with holiday decorations", false},
+		{"The family meets Santa", true},
+		{"Ｓａｎｔａ’s Little Helper runs away", false},
+	} {
+		if got := holidayvocab.MatchesEvidence("christmas", tt.text); got != tt.want {
+			t.Errorf("MatchesEvidence(%q) = %v, want %v", tt.text, got, tt.want)
+		}
+	}
+}

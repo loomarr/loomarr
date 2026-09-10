@@ -215,7 +215,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the single image reference used by Postgres testcontainers and the Make pre-pull that runs before those tests.
 - **`testkit/recordfixture`**
   A shared generic call recorder for isolated tests without depending on application packages.
-- **`textmatch`** · 3 importers
+- **`textmatch`** · 2 importers
   Owns deterministic, Unicode-aware whole-word phrase matching.
 - **`web`** · 1 importer
   Embeds the built SPA and serves it same-origin at / (main doc §12).
@@ -245,7 +245,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 18 importers · → `holidayvocab`, `provision`, `textmatch`
+- **`schedule`** · 18 importers · → `holidayvocab`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
@@ -679,13 +679,13 @@ gate the Library evidence supports; Loomarr does not infer per-rating vote confi
 did not report. The upper rated quartile is selected, with a floor of four units and a cap of 48. Every unit tied
 at the cutoff is included; if that consumes the whole rated cohort or exceeds the cap, selection
 degrades to `complete` rather than making an arbitrary quality claim. Holiday matching uses
-case-folded whole words/phrases across the episode title and bounded overview/tags. No thematic
-match, insufficient rating coverage, an invalid mode, or sparse/legacy cache evidence returns the
-complete already-safe pool. Selection keeps multi-part stories whole and preserves canonical order;
+case-folded whole words/phrases across the episode title and bounded overview/tags. A holiday
+selection with no matching or unavailable evidence stays empty. Insufficient highlight rating
+coverage, an invalid mode, or unavailable highlight evidence returns the complete already-safe pool. Selection keeps multi-part stories whole and preserves canonical order;
 the existing sequential/shuffle/syndication engine alone decides broadcast order. Thus a fixture
 whose eight episodes have distinct, fully covered ratings can produce four high-rated highlights,
 whereas the same fixture with only five ratings must return all eight; a holiday fixture with one
-Christmas story emits that story, while a fixture with no holiday evidence emits its complete deck.
+Christmas story emits that story, while a fixture with no holiday evidence emits no programs.
 
 - **Read path:** `GetSeriesEpisodes(libraryID)`. A miss (or a row older than the staleness
   horizon) falls back to the live call and writes the result back, so a cold cache degrades to
@@ -1384,7 +1384,11 @@ routing, redirect, timeout and response-size bounds. The category must include t
 subject itself; only its direct article members become title anchors. Historical schedule tables,
 search snippets and unrelated links are not rosters. Category membership is observed for this
 request, not claimed as an immutable historical roster. Parenthetical TV-series disambiguators may
-be removed from display names, but Catalog media/year ambiguity still fails closed.
+be removed from display names. When an exact source title maps to multiple canonical Catalog
+identities, a single exact identity already present in the connected Library is the actionable
+identity for that request; unavailable namesakes cannot make an owned title ambiguous. No match or
+multiple owned exact identities still fails closed, and model-provided media/year filters cannot
+choose between them.
 No brand roster, model-authored URL, arbitrary crawler, or new runtime dependency is added.
 The discovery operation has one shared 10-second budget and at most two bounded GET operations
 (search and category members); its result is reused within that Suggest invocation. Keep up to 128
@@ -1393,9 +1397,10 @@ model-tool and membership-resolution operation budgets remain separate and uncha
 Synthesized reference transcript entries do not become model operations; their real Catalog work
 remains in the independent Catalog operation ledger. Unexecuted final output is not a dispatched
 operation; its inference call and usage remain counted. Scorecard schema 13 separates this attribution
-from older transcript-only counts. Validated model title
-hypotheses may prioritize anchors for lookup only when the source independently contains that name;
-reordering cannot add a member, choose an ambiguous identity, or change source authority.
+from older transcript-only counts. Exact source anchors that the operator directly names consume the
+bounded prefetch slots first. Validated model title hypotheses may then prioritize remaining anchors
+for lookup only when the source independently contains that name; reordering cannot add a member,
+choose an ambiguous identity, or change source authority.
 Absent or ambiguous sources preserve named-set uncertainty; transport failures remain retrieval
 failures. Existing operator-supplied pages keep their site-neutral lookup behavior.
 
@@ -1427,6 +1432,13 @@ proof. Only unambiguous Catalog identities for explicit user-supplied constituen
 reference anchors are members; an ambiguous anchor remains unproven rather than selecting a remake.
 A model-proposed title can help resolve examples embedded in free-form description text only when its
 exact normalized title is also present in that submitted text (or in a resolved reference anchor).
+For a named set, titles supplied through `mustInclude` or direct inclusion language such as `with`,
+`include`, `keep`, `add`, or `want` are required constituents. Once each title is independently
+resolved to one Catalog identity and admitted by the same source-membership boundary, deterministic
+finalization preserves it even when the provider omits it from the final pick list. The combined
+required and provider-selected list remains bounded to eight picks and passes through the unchanged
+surfaced-key, acquisition, policy, and approval checks. Softer examples introduced by `like`, `think`,
+or `example` remain choices for the model rather than mandatory selections.
 Network, genre, era, adjacent recommendations, and model rationale may help discover a theme, but never
 prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
 rules. A member whose series premiered before a requested decade is not excluded merely by that premiere
@@ -1608,14 +1620,38 @@ to repeat its names as tool arguments. Neither recovery invents candidates or wi
 still pass through the same read-only Catalog, surfaced-id chokepoint, acquisition revalidation, quota,
 and approval gate. A second empty answer fails normally, keeping the model loop bounded.
 
+A named-block label remains the submitted label when an acronym is followed by a comma,
+semicolon or colon introducing constituent titles or constraints. Generic dayparts such as
+`Friday-night` and explicit network-role phrases are context, not competing source labels.
+Multiple genuinely named labels still abstain; title existence and model memory do not establish
+block membership.
+
 Policy grounding does not delegate explicit user constraints back to probabilistic output. A rating
 the user writes (for example, `keep it PG-13`) is retained as the exact audience ceiling even on an
-otherwise adult channel, while an unqualified adult channel still has no inferred ceiling. A request
+otherwise adult channel, while an unqualified adult channel still has no inferred ceiling.
+Explicit maximum forms such as `capped at PG`, `nothing above PG`, `PG ceiling`, and
+`PG or gentler` carry the same constraint; rating tokens require word boundaries and unrelated
+mentions do not create a maximum. Multiple explicit maxima keep the stricter bound. An explicit
+`exclude unrated` request also survives omitted or looser model policy and refuses unknown ratings
+before approval, including when no ceiling was requested. Negating that exclusion does not add it.
+These restrictions remain proposal policy and pass through ordinary approval and scheduling.
+An explicit unrated exclusion binds even without a ceiling: mapped ratings remain eligible, while
+unknown title ratings are excluded. Expanded episodes retain the documented parent-rating inheritance.
+Their deterministic values participate in the request cache identity, so a previous proposal that
+lost the constraints cannot be served as the result of a fresh submission.
+A request
 that explicitly promises child or family safety contributes a deterministic `TV-Y7` or `TV-PG`
 maximum even when the model omits policy; unrated or harder picks are refused before approval. A request
 that names a built-in holiday deterministically becomes `seasonal.mode=exclusive` with only that
 holiday id selected; an empty holiday subset would mean all built-ins and is therefore not an honest
 representation of a Christmas-, Halloween-, or other single-holiday channel.
+Holiday episode selection is a content restriction: no supported matching evidence, including
+unavailable editorial evidence, yields no selected episodes rather than the full series. The
+existing explicit off-season loop can repeat that restricted selection; it cannot populate it
+with unrelated episodes. Christmas evidence excludes generic `holiday` language and occurrences
+of `Santa` that only name the pet Santa's Little Helper. Other specific Christmas evidence in
+the same episode still counts, and the ordinary Santa character remains a supported cue.
+
 During an active exclusive window, a series is evaluated through its concrete episode evidence,
 not rejected solely because its series title lacks the holiday name. Programming-design §6 owns
 the deferred seasonal filter, including current evidence, multipart units and explicit exclusions.
@@ -1763,14 +1799,20 @@ an exclusion or season limit, rather than promising unscheduled exceptions in th
 Non-date conflicts do not become ambiguous date interpretations. This uses the existing
 no-grounded-title outcome, adds no selection or approval authority, and changes no repair budget.
 `planner-release-gate-v10` retains the exact supplementary release cases, fixtures and gates while
-binding the same prompt; prior manifests remain immutable.
+binding the same prompt. `planner-release-gate-v11` keeps those inputs and thresholds unchanged and
+binds `reference-source-v2`. `planner-release-gate-v12` keeps those inputs and thresholds unchanged
+and binds `reference-source-v3`; prior manifests remain immutable.
 
 The supplementary `planner-release-gate-v4` release replay retains v1's 18 synthetic cases,
 fixture bytes, acceptable members, hard negatives and thresholds, and binds them explicitly to the
 current production prompt/tool identities. The historical v1–v3 manifests remain unchanged. V4 retains v3's synthetic source-membership
 fixture for automatic named-block discovery; it is independent of model output and scoring keys.
-The source contract is versioned independently as `reference-source-v1` and participates in the
-proposal cache identity, so prior source behavior cannot reuse a successful cached Proposal.
+The source contract is versioned independently. `reference-source-v2` adds owned exact-identity
+resolution and direct-member prefetch priority. It participates in the proposal cache identity, so
+successful Proposals from prior source behavior cannot be reused.
+`reference-source-v3` adds the date-omission guard at both producer boundaries. It likewise
+invalidates successful cached Proposals that could have accepted `kind: none` for an explicit date
+request.
 Only the configured model is live in this replay; actual source discovery needs separate diagnostic
 and installed-journey evidence. This
 release holdout complements the full active certification corpus; its one-trial canary and
@@ -2027,7 +2069,16 @@ coalesces overlapping or adjacent `any` windows. Empty same-axis intersections a
 `constraints_conflict`. Different axes remain independent. Ordinary “90s and 2000s movies” is a
 union; words such as “and” or “both” alone do not establish an intersection. A title date is not a
 filter merely because an anchor can select it. The existing validated interpretation and immutable
-semantic cases, rather than a new keyword heuristic, govern that distinction.
+semantic cases govern that distinction.
+
+At the tool and final Proposal boundaries, `kind: none` must acknowledge unmistakable submitted
+date-filter syntax. A nonempty dedicated `Era` field, a four-digit decade such as `1990s`, an
+explicit year range, or a relation such as `from`, `during`, `before`, `after`, `since`, or `until`
+governing a 1900–2099 year requires `constraints` or anchored `ambiguous`; `none` is malformed and
+uses the existing bounded repair path. This omission guard proves only that the request contains a
+date requirement. It does not select an axis, invent a range, create an anchor, or turn a bare year
+inside a title such as *2001: A Space Odyssey* into a filter. The model and validator still own the
+actual interpretation.
 
 The v7 planner prompt spells out the complete anchor and interval object shapes, including the
 mandatory zero-based interval `anchor` index, scalar versus array-field indexing, and copying the
@@ -2305,7 +2356,7 @@ Turns an approved proposal + live availability into a durable, filled channel on
   runtime code has no legacy epoch branch.
 - `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
 - **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; both internal timeline layout and downstream Tunarr programming require it.
-- **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land. A cached list younger than `episodes.max_age` is complete evidence and avoids enumeration. An aged cache always attempts live enumeration: success replaces it with fresh evidence; failure may retain only its valid cached playable identity, runtime, numbering, and safety fields. That retained deck remains playable, but its editorial evidence is unavailable, so highlights and holiday selection deterministically use the complete already-safe pool. An aged empty cache whose refresh fails is unavailable, never a synthetic deck.
+- **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land. A cached list younger than `episodes.max_age` is complete evidence and avoids enumeration. An aged cache always attempts live enumeration: success replaces it with fresh evidence; failure may retain only its valid cached playable identity, runtime, numbering, and safety fields. That retained deck remains playable, but its editorial evidence is unavailable: highlights may use the complete already-safe pool, while holiday selection remains empty until current matching evidence is available. An aged empty cache whose refresh fails is unavailable, never a synthetic deck.
   - **Season range (intent-level constraint).** A series entry may carry an optional `SeasonMin`/`SeasonMax` (inclusive; 0 = unbounded on that end) — an intent-level filter for channels like "old-school Simpsons" (seasons 1–10) or "just the classic run." Expansion filters the enumerated episodes to that range (by each episode's season number) before producing slots. It's a property of the *approved lineup entry* (the human's intent), not of availability, so it survives re-syncs and applies uniformly under any strategy. A range that matches no in-library episodes yet → a `pending` slot (same as an unavailable series).
 
 ### Scheduling strategies (shared by both playout backends)
@@ -2749,18 +2800,30 @@ publication without changing the identity or scheduler model. A tier change crea
 immutable publication; it never rewrites bytes under an existing key.
 
 Hardware encoding is a **host-wide resource**, not private state inside live playout or preparation.
-One measured encode pool admits both classes. Live program children take foreground leases and may
-use every slot. The readiness planner may fill at most `capacity - 1` background leases, leaving one
-separate slot for a cold live tune. Every background lease is independently cancellable and carries
-the publication's need time. The first foreground arrival consumes the idle reserve; each additional
-arrival that finds the pool full cancels exactly one farthest-needed background lease and receives a
-short bounded opportunity to take the released slot. Concurrent foreground waiters and already
-preempting leases are counted explicitly, so several callers waking on one release cannot cancel
-more work than their outstanding demand requires. If a cancelled worker does not release in time,
-that live child takes the existing software fallback rather than waiting behind maintenance work.
-Unknown, software-only, or one-slot capacity disables hardware preparation — it does not guess and
-it does not consume the only live slot. This priority contract is shared code; adding a second
-semaphore around ffmpeg is forbidden.
+One encode pool admits both classes using the effective capacity after the measured limit, operator
+`playout.max_channels` safety cap, and resident-VRAM shading are applied. Live program children take
+foreground leases and may use every effective slot. With no foreground lease, the readiness planner
+may fill at most `effective capacity - 1` background leases, leaving one separate slot for a cold
+live tune. Every background lease is independently cancellable and carries the publication's need
+time.
+
+The first foreground arrival cancels every background lease and receives a short bounded opportunity
+for them to drain before it starts. No new background lease is admitted while any foreground lease
+is held. This is required even when the numeric reserve has space: accelerated preparation runs as
+fast as possible, while the measured channel count is derived from one synthetic encoder's peak
+speed; three unpaced real-file decodes beside one live encode were observed to reduce a nominal
+four-slot host to 0.33× realtime. Multiple foreground children may still share every effective slot.
+If cancelled workers do not release in time, the live child takes the existing software fallback
+rather than waiting behind maintenance work. Unknown, software-only, or one-slot capacity disables
+hardware preparation — it does not guess and it does not consume the only live slot. This priority
+contract is shared code; adding a second semaphore around ffmpeg is forbidden.
+
+The shared pool re-reads effective capacity for every lease attempt. A lowered operator cap or newly
+resident model therefore blocks new work immediately; existing leases finish or yield through the
+same foreground-preemption contract, while capacity becomes available again after the limit grows.
+Before the first background admission, preparation completes the memoized hardware measurement and
+then applies the current cap and VRAM shading. The conservative pre-measurement floor must not become
+a process-lifetime preparation limit.
 
 A session whose current block is prepared or direct-copy holds zero transcode capacity, but that is
 not a promise about its next Airing. Immediately before any later live child starts a video
@@ -2782,6 +2845,12 @@ runs the full benchmark; any meanwhile-failed hardware child uses the existing s
 ladder. Merely configuring Channels starts no media processes. A successful hardware result and
 measured capacity are written as versioned, bounded evidence beneath the persistent prepared root;
 the record includes an FFmpeg-build fingerprint, GPU identity, profile identity, and observation time.
+The prepared-library layout owns the capability record filename and atomic-write temporary prefix.
+Retention recognizes only regular files at those declared control paths: it preserves the committed
+record and fresh workspaces, and removes abandoned workspaces only after the existing staging grace.
+Unknown files, directories at control-file paths, and symlinks remain errors rather than being
+silently ignored or deleted. The capability writer reuses the same layout identifiers.
+
 On restart Loomarr may publish that result only after the fingerprints match and the evidence is
 still within its bounded freshness window, then a short real keyframe-bearing MPEG-TS trial revalidates
 the chosen encoder asynchronously. A mismatch, expiry, malformed record, or failed validation falls

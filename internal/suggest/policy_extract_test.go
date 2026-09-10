@@ -385,3 +385,77 @@ func TestGroundPolicy_UnknownYearDoesNotWidenEra(t *testing.T) {
 		t.Errorf("era = %+v, want 1990-1999 unchanged by a yearless pick", p.Scope.Era)
 	}
 }
+
+func TestGroundPolicy_ExplicitAudienceMaximumForms(t *testing.T) {
+	descriptions := []string{
+		"Family movies, capped at PG; exclude unrated titles. Keep the audience cap on every scheduled movie.",
+		"A gentle family movie night with nothing above PG.",
+		"Program family movies with a firm PG maximum.",
+		"Easy family movie night, and please keep everything PG or gentler.",
+		"Family films; PG ceiling.",
+		"Nothing over PG may enter this family movie lineup.",
+		"Can you make a family film channel that never exceeds PG?",
+	}
+	for _, description := range descriptions {
+		t.Run(description, func(t *testing.T) {
+			for _, raw := range []*pickPolicy{nil, {}} {
+				if raw != nil {
+					raw.Audience.Ceiling = "R"
+					raw.Audience.Unrated = "allow"
+				}
+				p := groundPolicy(raw, nil, nil, Intent{Description: description})
+				if p.Audience.Ceiling != "PG" {
+					t.Fatalf("ceiling = %q, want PG", p.Audience.Ceiling)
+				}
+			}
+		})
+	}
+}
+
+func TestGroundPolicy_ExplicitUnratedExclusionSurvivesModel(t *testing.T) {
+	for _, description := range []string{"Family movies, capped at PG; exclude unrated titles.", "Action movies; exclude unrated titles."} {
+		raw := &pickPolicy{}
+		raw.Audience.Unrated = "allow"
+		p := groundPolicy(raw, nil, nil, Intent{Description: description})
+		if p.Audience.Unrated != schedule.UnratedExclude {
+			t.Fatalf("%q: unrated = %q", description, p.Audience.Unrated)
+		}
+		lineup, acquisitions, refused := refuseUnairable(p.Audience, []ProposalItem{{Name: "Unknown"}}, []ProposalItem{{Name: "Unknown acquisition"}}, false)
+		if len(lineup)+len(acquisitions) != 0 || len(refused) != 2 {
+			t.Fatalf("unknown ratings remain actionable: %v %v %v", lineup, acquisitions, refused)
+		}
+	}
+}
+
+func TestGroundPolicy_AudienceMaximumBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		description string
+		ceiling     schedule.Rating
+	}{
+		{"Movies capped at PG-13", "PG-13"}, {"Movies capped at R", "R"},
+		{"Movies capped at R, with a PG maximum", "PG"},
+		{"Movies about PG Tips", ""}, {"Movies capped at RPG", ""},
+		{"Movies capped at PG-131", ""},
+		{"Movies capped at PG-13x", ""},
+		{"Movies capped at R; rated G", "G"},
+	} {
+		p := groundPolicy(nil, nil, nil, Intent{Description: tc.description})
+		if p.Audience.Ceiling != tc.ceiling {
+			t.Errorf("%q: ceiling=%q, want %q", tc.description, p.Audience.Ceiling, tc.ceiling)
+		}
+	}
+	for _, description := range []string{"Do not exclude unrated movies", "Don't exclude unrated movies", "Never exclude unrated movies", "Movies about unrated film reviews"} {
+		p := groundPolicy(nil, nil, nil, Intent{Description: description})
+		if p.Audience.Unrated != schedule.UnratedDefault {
+			t.Errorf("%q inferred unrated exclusion", description)
+		}
+	}
+}
+
+func TestAudienceConstraintsInvalidateUnrestrictedProposalCache(t *testing.T) {
+	const old = "cbca5d0b2f22e5e3d30eba2f359606433553057c51482782d6053155ac7a7d1e"
+	intent := Intent{Description: "Family movies, capped at PG; exclude unrated titles. Keep the audience cap on every scheduled movie."}
+	if IntentHash(intent) == old {
+		t.Fatal("reused proposal cache identity that lost the requested audience restrictions")
+	}
+}

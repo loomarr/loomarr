@@ -185,12 +185,18 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
   - ⚠ **This paragraph used to say the opposite, and called it safe.** It described entry-only gating as "a small, deliberate safety *narrowing* … at worst a below-ceiling series with an occasional harder episode is admitted" — which is not a narrowing, it is the leak, stated as if it were the mitigation. Live proof (2026-08-10, maintainer's library): `90s Cartoon Classics`, `ceiling: TV-PG`, aired **King of the Hill** — a TV-PG series whose 275 episodes are 253 × TV-PG, **2 × TV-14**, and 20 × unrated. TMDB lists *both* TV-PG and TV-14 for the show. South Park and Futurama were dropped correctly at the entry gate, which is what made the leak look like correct behaviour.
   - **An episode with no rating of its own INHERITS its parent's** rather than failing closed — the one place §4's "never guess" is deliberately not applied. The parent has already cleared the ceiling as a whole title, so inheriting falls back to a check that just ran rather than guessing at unknown content; blank episode ratings are a metadata gap (20 of those 275) and refusing them would silently drop ~7% of an approved show. It is also what makes the change safe to deploy: `store.SeriesEpisodes` persists `[]ResolvedProgram`, so every cached row predating this field decodes as unrated, and a fail-closed reading would have emptied every kids channel until the refresh sweep repopulated the cache — trading a content leak for dead air, which §9 forbids just as firmly. The asymmetry still holds where it counts: an episode that **is** rated is judged on its own rating and can never be lifted by a permissive parent.
   - The rating/genres/year an *entry* is filtered on are **stamped onto the channel's approved lineup entry at create time** (when the full grounded candidate is in hand). Episode ratings and production years ride the episode cache (`library.ListEpisodes` requests `OfficialRating,ProductionYear`), so both gates stay pure entry/slot-set filters with no per-reconcile library I/O.
-- **Kids ceilings (`TV-Y`…`TV-PG`) default `unrated: "exclude"`** — an item with missing or unmappable rating metadata is *excluded*, never guessed at. Metadata gaps are the real-world failure mode; a kids' channel must be safe against them by construction. Adult/general channels default `allow`.
+- **Kids ceilings (`TV-Y`…`TV-PG`) default `unrated: "exclude"`** — an item with missing or unmappable rating metadata is *excluded*, never guessed at. Metadata gaps are the real-world failure mode; a kids' channel must be safe against them by construction. Adult/general channels default `allow`. An explicit `exclude` binds with or without a ceiling;
+  with no ceiling all mapped ratings remain eligible. Episode parent-rating inheritance still applies.
 - **Transparency at review:** the proposal shows the policy's effect — so gaps are visible *before* approval, and the fix (rate your media, or relax the policy) is a human decision.
   - **The suggester REFUSES its own unairable picks** (`refuseUnairable`, after `groundPolicy`). A grounded pick whose known rating is above the extracted ceiling is moved out of `Lineup`/`Acquisitions` into `Proposal.Refused` with the same `over_ceiling` vocabulary §4 uses elsewhere, and the approval card names it. ⚠ **Refused, not deleted** — the operator's usual fix is to raise the ceiling, and a pick that vanished between the model's answer and the approval screen is indistinguishable from one the model never made. It is not provisioned either: approval acts only on what it offered.
   - The refusal runs *after* `groundPolicy`, so every pick is judged against the final deterministic ceiling shown for approval.
   - **An UNRATED pick is refused when the intent explicitly requires child safety.** The refusal uses `over_ceiling`, the same operator-facing safety reason as a known harder rating. Rating enrichment and reconcile healing remain useful for ordinary family/teen proposals, but an explicit child-safety request cannot make unknown content actionable while waiting for metadata.
   - ⚠ **This closes a hole in the AUTHORIZATION model, not just a display gap.** Approval is the gate (design.md §7/§11); until this, it presented choices that were silently discarded downstream — the operator approved seven titles and got five — which teaches that the list is approximate, exactly the property approving exists to deny. Found live 2026-08-10 on a `TV-PG` "90s Saturday morning cartoons" channel that proposed South Park (TV-MA) and Futurama (TV-14).
+- Explicit rating maxima (`capped at PG`, `nothing above PG`, `PG ceiling`, `PG or gentler`)
+  are deterministic constraints even if the model omits policy. Match complete rating tokens;
+  preserve the stricter of multiple maxima. Explicit unrated exclusion also survives omitted or
+  looser model policy and refuses unknown ratings before approval, with or without a rating cap.
+  A negated exclusion or an unrelated rating/title mention does not create that constraint.
 - The LLM may *infer* the ceiling from intent, but it does not own the safety boundary. Explicit child-safety language (`kid-safe`, `for kids`, `safe for children`, preschool/toddler, or Saturday-morning kids programming) deterministically imposes a maximum of `TV-Y7`, even when the model omits a ceiling or proposes a looser one. A model may propose a stricter ceiling; it may never relax this bound. The final value is shown as an editable chip in review, and enforcement is the ladder comparison.
 - **The ceiling is a kids/teen guardrail, not a general default — omit it unless the intent asks for one.** The audience ceiling exists for one purpose: so a channel a user asked to be *for kids or teens* can never show adult content. An unqualified channel is an **adult-default** channel — "1980s Action Heroes" obviously includes its R-rated films (Die Hard, Predator, The Terminator). So **a proposed ceiling is kept only when the intent carries a kids/teen signal** (words like "kids", "family", "cartoons", "all ages", a named kids property like "Bluey", an explicit low rating like "TV-Y", or a kids daypart). With **no such signal, any model-proposed ceiling is dropped** (→ no ceiling, everything admitted) — a small model's reflexive "action might be violent, better cap it at TV-14" must not silently strip the R-rated content the channel is *about*. This is enforced deterministically in `groundPolicy` (the prompt says "adult/no mention → omit," but the model isn't trusted to obey it). **The safety asymmetry is absolute:** dropping an *unjustified* ceiling only ever *loosens* (a content choice, reversible by the operator); when a kids/teen signal *is* present the ceiling stays and is **enforced fail-closed**. Grounded picks never raise a ceiling: a known harder title is refused, and an explicit child-safety request also refuses unrated titles. Loosen freely on adult channels; never loosen a kids channel.
 - **Nor does an era (auto-widen-to-admit).** The same rule, for the same reason, on `scope.era`: a model-proposed year range is **widened just far enough to include the channel's own grounded picks**. The failure was live — a "Midnight Sci-Fi Horror" channel came back with `era.from: 1982` *and* **Alien (1979)** on its approved lineup, so the enforcer filtered out a title the operator had explicitly approved. The lineup said six, the guide aired four, and nothing named the missing two.
@@ -228,8 +234,8 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
   safe playable deck and whether that evidence is available, rather than encoding freshness by
   blanking episode fields or asking schedulers to inspect cache state. An aged cache is live-refreshed;
   if refresh fails, a non-empty valid cached deck remains subject to the same season, era, and audience
-  filters but `highlights` and `holiday` use that complete safe deck. An aged empty cache with failed
-  refresh is unavailable. Fresh and successfully refreshed decks permit their declared editorial mode.
+  filters; `highlights` may use that complete safe deck, while a `holiday` selector has no
+  current matching evidence and selects no episodes. An aged empty cache with failed refresh is unavailable. Fresh and successfully refreshed decks permit their declared editorial mode.
 
   Selection receives the pool only after season, era, and audience gates. It treats each standalone
   episode or detected multi-part story as one atomic unit, and returns units in canonical order for
@@ -266,10 +272,12 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
   an enumerated series with no playable episodes.
 
   `holiday` matches normalized whole words/phrases in the episode title and bounded overview/tags,
-  restricted to the selected holiday ids (empty means all built-ins). A no-match holiday request,
-  fewer than six rated units in an eight-episode fixture, malformed mode, or sparse/legacy cache row
-  returns the complete already-safe pool. Selection never restores an audience/scope rejection and
-  never manufactures dead air. Proposal review renders the mode before approval as `All episodes`,
+  restricted to the selected holiday ids (empty means all built-ins). Generic `holiday` text and
+  a `Santa` mention naming Santa's Little Helper do not establish Christmas membership; separate
+  Christmas evidence in the same episode still counts. No matching or unavailable holiday evidence
+  selects no episodes, including during an off-season loop. Sparse highlight ratings, malformed
+  mode, or unavailable highlight evidence retain the complete already-safe pool. Selection never
+  restores an audience/scope rejection. An unavailable requested holiday selection is reported honestly. Proposal review renders the mode before approval as `All episodes`,
   `Curated highlights`, or the named/generic holiday episode scope.
 
   `ApplyLineup` same-key replacement preserves the approved mode when the lossy lineup edit DTO
@@ -616,8 +624,9 @@ wall-clock; a proposal trace must never be relabeled as current-channel or sched
    becomes the configured `pod_fill` / `coming_soon` pending outcome. An empty series resolution
    is unavailable, not an unexplained episode-selection drop.
 3. `episode_selection` — each safe, in-season episode is kept or omitted by `complete`,
-   `highlights`, or `holiday`. A stale editorial cache and the highlights/holiday safety
-   fallbacks are explicit `full_run_fallback` facts; they never masquerade as positive matches.
+   `highlights`, or `holiday`. Highlight fallbacks, including unavailable editorial evidence,
+   are explicit `full_run_fallback` facts. Unsupported holiday episodes instead carry
+   `holiday_omitted`; a complete matching holiday pool still records positive holiday matches.
 4. `placement` — the fact records the effective ordering mode, any relaxation, its pre-window
    deck position, whether the rolling window retained or rotated it out, and its final cycle
    position. Inserted commercial gaps are placement facts with no content key.

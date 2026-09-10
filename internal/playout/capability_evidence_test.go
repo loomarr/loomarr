@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing.T) {
@@ -121,5 +123,23 @@ func TestDetectObservedWithEvidenceRejectsMismatchExpiryAndFailedValidation(t *t
 				t.Fatalf("validation calls=%d, want %d", validationCalls, wantValidation)
 			}
 		})
+	}
+}
+
+func TestCapabilityEvidenceDoesNotBreakPreparedRetention(t *testing.T) {
+	root := t.TempDir()
+	lib, err := prepared.NewLibrary(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := capabilityEvidence{Version: capabilityEvidenceVersion, Fingerprint: "host-a", Encoder: EncoderNVENC, MaxChannels: 4, ObservedAt: time.Now()}
+	if err := storeCapabilityEvidence(root, evidence); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.Prune(t.Context(), 1, nil); err != nil {
+		t.Fatalf("application-owned capability evidence blocked retention: %v", err)
+	}
+	if _, ok := loadCapabilityEvidence(root, "host-a", time.Now()); !ok {
+		t.Fatal("retention lost the hardware evidence")
 	}
 }

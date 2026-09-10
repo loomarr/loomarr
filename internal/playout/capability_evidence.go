@@ -14,11 +14,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 const (
 	capabilityEvidenceVersion = 1
-	capabilityEvidenceName    = ".host-capability-v1.json"
+	capabilityEvidenceName    = prepared.CapabilityEvidenceFile
 	capabilityEvidenceMaxAge  = 7 * 24 * time.Hour
 	capabilityValidationSecs  = 1
 	capabilityIdentityTimeout = 250 * time.Millisecond
@@ -157,7 +158,7 @@ func storeCapabilityEvidence(root string, evidence capabilityEvidence) error {
 	if err != nil {
 		return fmt.Errorf("playout: encode capability evidence: %w", err)
 	}
-	tmp, err := os.CreateTemp(root, ".host-capability-*")
+	tmp, err := os.CreateTemp(root, prepared.CapabilityEvidenceTempPrefix+"*")
 	if err != nil {
 		return fmt.Errorf("playout: create capability evidence: %w", err)
 	}

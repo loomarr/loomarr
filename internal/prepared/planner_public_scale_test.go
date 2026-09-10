@@ -82,7 +82,7 @@ func TestPlannerPublicSeamScalesOneHundredChannelPriorityAndPreemption(t *testin
 	candidates = append(candidates, duplicate)
 
 	work := &blockingScalePreparation{
-		start: make(chan string, capacity-1), canceled: make(chan string, 1), release: make(chan struct{}),
+		start: make(chan string, capacity-1), canceled: make(chan string, capacity-1), release: make(chan struct{}),
 	}
 	pool := media.NewEncodePool(func() int { return capacity })
 	planner := prepared.NewPlanner(prepared.PlannerDependencies{
@@ -109,32 +109,28 @@ func TestPlannerPublicSeamScalesOneHundredChannelPriorityAndPreemption(t *testin
 
 	reserveRelease, ok := pool.AcquireForeground(t.Context())
 	if !ok {
-		t.Fatal("foreground reserve was not available")
+		t.Fatal("foreground playback was not admitted after preparation drained")
 	}
-	secondReleaseCh := make(chan func(), 1)
-	go func() {
-		release, admitted := pool.AcquireForeground(t.Context())
-		if !admitted {
-			secondReleaseCh <- nil
-			return
-		}
-		secondReleaseCh <- release
-	}()
-	select {
-	case canceled := <-work.canceled:
-		if canceled != "source-010" {
-			t.Fatalf("preempted %s, want farthest-needed admitted source-010", canceled)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("foreground did not preempt background work")
+	secondRelease, ok := pool.AcquireForeground(t.Context())
+	if !ok {
+		t.Fatal("a second foreground playback lease did not share foreground capacity")
 	}
-	secondRelease := <-secondReleaseCh
-	if secondRelease == nil {
-		t.Fatal("foreground was not admitted after preemption")
+	canceled := make(map[string]bool, capacity-1)
+	for range capacity - 1 {
+		select {
+		case id := <-work.canceled:
+			canceled[id] = true
+		case <-time.After(time.Second):
+			t.Fatal("foreground did not drain every background preparation")
+		}
+	}
+	for id := range started {
+		if !canceled[id] {
+			t.Fatalf("started background %s was not cancelled for foreground playback", id)
+		}
 	}
 	reserveRelease()
 	secondRelease()
-	close(work.release)
 	if err := <-done; err != nil {
 		t.Fatalf("foreground preemption became an operator-visible planner failure: %v", err)
 	}

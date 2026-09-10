@@ -635,7 +635,7 @@ func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPoli
 				// §4 per-episode ceiling. A series entry reached this far because its SUMMARY
 				// rating cleared the gate; an individual episode rated above the ceiling must
 				// still not air (King of the Hill: a TV-PG show holding two TV-14 episodes).
-				if rp.Ceiling != "" {
+				if rp.Ceiling != "" || rp.Unrated == UnratedExclude {
 					switch episodeVerdict(ep.OfficialRating, e.OfficialRating, rp.Ceiling, rp.Unrated) {
 					case verdictOverCeiling:
 						audienceDropped++
@@ -665,7 +665,9 @@ func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPoli
 			beforeSeasonal := len(inRange)
 			inRange = filterExclusiveEpisodes(e, inRange, resolution.EditorialUnavailable, seasonalHolidays, report, trace)
 			seasonalDropped := beforeSeasonal - len(inRange)
+			beforeEditorial := len(inRange)
 			inRange = selectEpisodesWithTrace(e, inRange, resolution.EditorialUnavailable, trace)
+			editorialDropped := beforeEditorial - len(inRange)
 			out := make([]Slot, 0, len(inRange))
 			for _, ep := range inRange {
 				out = append(out, Slot{
@@ -699,7 +701,7 @@ func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPoli
 			// Likewise, a series whose known episodes were all outside the era is
 			// excluded, not advertised as still acquiring. An explicit season window
 			// with no local match retains the existing pending behavior below.
-			if scopeDropped > 0 || seasonalDropped > 0 {
+			if scopeDropped > 0 || seasonalDropped > 0 || editorialDropped > 0 {
 				return nil
 			}
 			// The range matched no in-library episodes yet → pending (like an

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -20,6 +21,7 @@ import (
 const (
 	maxReferenceTitleQueries   = 8
 	maxMembershipSourceQueries = 8
+	maxFinalSelectionPicks     = 8
 )
 
 type membershipSourceResolution struct {
@@ -41,9 +43,9 @@ var (
 	properNamedSetPattern          = regexp.MustCompile(`\b[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\s+(?i:collection|line-?up|block)\b`)
 	acronymCuePattern              = regexp.MustCompile(`(?i:\b(?:for|from|based\s+on|like)\s+)([A-Z][A-Z0-9&]{2,9})\b`)
 	acronymSetSuffixPattern        = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+(?:lineup|block|channel|like)\b)`)
-	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?]|$)`)
+	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?,;:]|$)`)
 	directNetworkRoleBeforePattern = regexp.MustCompile(`(?i:\b(?:the\s+)?network\s+)$`)
-	directNetworkRolePattern       = regexp.MustCompile(`(?i:^\s+(?:the\s+)?network\b)`)
+	directNetworkRolePattern       = regexp.MustCompile(`(?i:^\s*[,;:]?\s+(?:the\s+)?network\b)`)
 	bareProperNamePattern          = regexp.MustCompile(`\b(?:The\s+)?[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\b`)
 )
 
@@ -196,7 +198,7 @@ func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent,
 
 	byKey := make(map[provision.Key]catalog.Candidate)
 	messages := make([]llm.Message, 0, len(titles)*2)
-	for index, title := range prioritizedReferenceTitles(titles, hints) {
+	for index, title := range prioritizedReferenceTitles(*intent, titles, hints) {
 		candidates, searchErr := s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
 		if searchErr != nil {
 			return referenceGrounding{}, true, fmt.Errorf("search reference title %q: %w", title, searchErr)
@@ -434,24 +436,112 @@ func positiveIntentOrReferenceNamesTitle(intent Intent, title string) bool {
 	return false
 }
 
-// unambiguousMembershipCandidate accepts only a single canonical Catalog identity
-// for a source title. It deliberately runs before model-provided type/year or a
-// ranked subset can select a remake; duplicate rows for the same key are harmless.
+// preserveRequiredNamedMembers carries direct inclusion requests through the
+// provider's final selection. It cannot introduce authority: every synthesized
+// pick must already have both a surfaced Catalog key and membership evidence.
+// Softer examples remain optional and therefore stay under model control.
+func preserveRequiredNamedMembers(intent Intent, picks []pick, surfaced map[provision.Key]catalog.Candidate) []pick {
+	if !requiresMembershipEvidence(intent) {
+		return picks
+	}
+	required := make([]catalog.Candidate, 0, min(len(surfaced), maxFinalSelectionPicks))
+	for key, candidate := range surfaced {
+		if intent.membershipKeys[key] && requiredIntentNamesTitle(intent, candidate.Name) {
+			required = append(required, candidate)
+		}
+	}
+	if len(required) == 0 {
+		return picks
+	}
+	sort.Slice(required, func(i, j int) bool {
+		if required[i].Name != required[j].Name {
+			return required[i].Name < required[j].Name
+		}
+		left, _ := required[i].Key()
+		right, _ := required[j].Key()
+		return left < right
+	})
+
+	existing := make(map[provision.Key]pick, len(picks))
+	for _, proposed := range picks {
+		if key := provision.Key(proposed.key()); key != "" {
+			existing[key] = proposed
+		}
+	}
+	result := make([]pick, 0, min(maxFinalSelectionPicks, len(required)+len(picks)))
+	selected := make(map[provision.Key]bool, len(required))
+	for _, candidate := range required {
+		key, err := candidate.Key()
+		if err != nil || selected[key] || len(result) == maxFinalSelectionPicks {
+			continue
+		}
+		if proposed, found := existing[key]; found {
+			result = append(result, proposed)
+		} else {
+			result = append(result, pick{
+				MediaType: string(candidate.MediaType), Key: string(key), Name: candidate.Name,
+				Year: candidate.Year, Confidence: 1,
+			})
+		}
+		selected[key] = true
+	}
+	for _, proposed := range picks {
+		if len(result) == maxFinalSelectionPicks {
+			break
+		}
+		key := provision.Key(proposed.key())
+		if key != "" && selected[key] {
+			continue
+		}
+		result = append(result, proposed)
+		if key != "" {
+			selected[key] = true
+		}
+	}
+	return result
+}
+
+func requiredIntentNamesTitle(intent Intent, title string) bool {
+	if titleExplicitlyExcluded(intent, title) {
+		return false
+	}
+	for _, included := range intent.MustInclude {
+		if sameExactTitle(included, title) {
+			return true
+		}
+	}
+	return freeformTitlePolarity(intent.Description, title) > 1 ||
+		freeformTitlePolarity(intent.RefineText, title) > 1
+}
+
+// unambiguousMembershipCandidate accepts a single canonical Catalog identity for
+// a source title. If unavailable namesakes make the global result ambiguous, one
+// exact identity already in the Library remains actionable. It deliberately runs
+// before model-provided type/year or a ranked subset can select a remake; duplicate
+// rows for one key are harmless and multiple owned identities still fail closed.
 func unambiguousMembershipCandidate(candidates []catalog.Candidate, title string) (catalog.Candidate, bool) {
 	byKey := make(map[provision.Key]catalog.Candidate)
+	ownedByKey := make(map[provision.Key]catalog.Candidate)
 	for _, candidate := range candidates {
 		if !sameExactTitle(candidate.Name, title) {
 			continue
 		}
 		if key, err := candidate.Key(); err == nil {
 			byKey[key] = candidate
+			if candidate.InLibrary {
+				ownedByKey[key] = candidate
+			}
 		}
 	}
-	if len(byKey) != 1 {
-		return catalog.Candidate{}, false
+	if len(byKey) == 1 {
+		for _, candidate := range byKey {
+			return candidate, true
+		}
 	}
-	for _, candidate := range byKey {
-		return candidate, true
+	if len(ownedByKey) == 1 {
+		for _, candidate := range ownedByKey {
+			return candidate, true
+		}
 	}
 	return catalog.Candidate{}, false
 }
@@ -521,16 +611,20 @@ func titleExplicitlyExcluded(intent Intent, title string) bool {
 }
 
 // freeformTitlePolarity recognizes a deliberately small cue vocabulary around
-// an exact title mention. The closest cue in the preceding ten words wins, which
-// handles "think A and B" and "include A, but not B" without treating arbitrary
-// substring presence as positive intent.
+// an exact title mention. Positive examples return 1, direct inclusion returns
+// 2, and exclusions return -1. The closest cue in the preceding ten words wins,
+// which handles "think A and B" and "include A, but not B" without treating
+// arbitrary substring presence as positive intent.
 func freeformTitlePolarity(text, title string) int {
 	words := evidenceWords(text)
 	titleWords := evidenceWords(title)
 	if len(titleWords) == 0 || len(words) < len(titleWords) {
 		return 0
 	}
-	positive := map[string]bool{"add": true, "adding": true, "example": true, "examples": true, "include": true, "including": true, "keep": true, "like": true, "think": true, "want": true, "with": true}
+	positive := map[string]int{
+		"example": 1, "examples": 1, "like": 1, "think": 1,
+		"add": 2, "adding": 2, "include": 2, "including": 2, "keep": 2, "want": 2, "with": 2,
+	}
 	negative := map[string]bool{"avoid": true, "but": true, "drop": true, "except": true, "exclude": true, "excluding": true, "no": true, "not": true, "omit": true, "remove": true, "without": true}
 	polarity := 0
 	for start := 0; start+len(titleWords) <= len(words); start++ {
@@ -542,7 +636,11 @@ func freeformTitlePolarity(text, title string) int {
 				polarity = -1
 				break
 			}
-			if positive[words[cue]] || (words[cue] == "as" && cue > 0 && words[cue-1] == "such") {
+			if strength := positive[words[cue]]; strength > 0 {
+				polarity = strength
+				break
+			}
+			if words[cue] == "as" && cue > 0 && words[cue-1] == "such" {
 				polarity = 1
 				break
 			}
@@ -621,6 +719,9 @@ func namedBlockLabel(intent Intent) string {
 	labels := make(map[string]string)
 	add := func(label string) {
 		label = strings.TrimSpace(label)
+		if blockDaypartPattern.MatchString(label) {
+			return
+		}
 		if label != "" && freeformTitlePolarity(referenceIntentText(intent), label) >= 0 {
 			labels[strings.ToLower(label)] = label
 		}
@@ -668,8 +769,13 @@ func namedBlockLabel(intent Intent) string {
 	return ""
 }
 
-func prioritizedReferenceTitles(titles, hints []string) []string {
+func prioritizedReferenceTitles(intent Intent, titles, hints []string) []string {
 	ordered := make([]string, 0, len(titles))
+	for _, title := range titles {
+		if requiredIntentNamesTitle(intent, title) {
+			ordered = append(ordered, title)
+		}
+	}
 	for _, hint := range boundedReferenceTitles(hints) {
 		for _, title := range titles {
 			if sameExactTitle(title, hint) {

@@ -1,8 +1,10 @@
 package suggest
 
 import (
+	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -16,6 +18,7 @@ import (
 type deterministicIntentPolicy struct {
 	episodeSelection        schedule.EpisodeSelection
 	explicitAudienceCeiling schedule.Rating
+	excludeUnrated          bool
 	safetyCeiling           schedule.Rating
 	seasonal                schedule.SeasonalPolicy
 	sequential              bool
@@ -27,6 +30,7 @@ func deriveIntentPolicy(intent Intent) deterministicIntentPolicy {
 	return deterministicIntentPolicy{
 		episodeSelection:        EpisodeSelectionForIntent(intent),
 		explicitAudienceCeiling: intentExplicitAudienceCeiling(intent),
+		excludeUnrated:          intentExcludesUnrated(intent),
 		safetyCeiling:           intentDeterministicSafetyCeiling(intent),
 		seasonal:                seasonalPolicyForIntent(intent),
 		sequential:              intentRequestsSequential(intent),
@@ -218,11 +222,45 @@ func intentSignalsKids(intent Intent) bool {
 	return false
 }
 
+// Explicit maximum syntax is independent of the model's policy extraction.
+// A rating token alone (for example in a title) does not establish a maximum.
+const audienceRatingToken = `(TV-(?:Y7|Y|G|PG|14|MA)|PG-?13|PG|NC-?17|R|G)`
+
+var audienceMaximumPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\b(?:capped at|cap at|ceiling of|maximum of|nothing above|nothing over|never exceeds?|no higher than)\s+` + audienceRatingToken + `(?:$|[^\pL\pN_-])`),
+	regexp.MustCompile(`(?i)\b` + audienceRatingToken + `\s+(?:ceiling|maximum|or gentler|or lower|and below)\b`),
+}
+
+var unratedExclusionPattern = regexp.MustCompile(`(?i)\b(?:exclude|omit|skip|no|do not include|don't include)\s+(?:all\s+|any\s+)?unrated\b`)
+
+func intentExcludesUnrated(intent Intent) bool {
+	for _, term := range intent.MustExclude {
+		if strings.EqualFold(strings.TrimSpace(term), "unrated") {
+			return true
+		}
+	}
+	hay := affirmativeIntentText(intent)
+	for _, location := range unratedExclusionPattern.FindAllStringIndex(hay, -1) {
+		prefix := strings.TrimSpace(hay[:location[0]])
+		if strings.HasSuffix(prefix, "do not") || strings.HasSuffix(prefix, "don't") || strings.HasSuffix(prefix, "never") {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // intentExplicitAudienceCeiling extracts only ratings the user actually wrote.
 // It deliberately does not infer an adult cap from genre or tone: unqualified
 // channels retain the adult-default behavior, while an explicit limit is exact.
 func intentExplicitAudienceCeiling(intent Intent) schedule.Rating {
 	hay := normalizedIntentText(intent)
+	var explicit schedule.Rating
+	for _, pattern := range audienceMaximumPatterns {
+		for _, match := range pattern.FindAllStringSubmatch(hay, -1) {
+			explicit = stricterCeiling(schedule.NormalizeRating(match[1]), explicit)
+		}
+	}
 	for _, candidate := range []struct {
 		cues   []string
 		rating string
@@ -240,12 +278,30 @@ func intentExplicitAudienceCeiling(intent Intent) schedule.Rating {
 		{[]string{"g-rated", "rated g"}, "G"},
 	} {
 		for _, cue := range candidate.cues {
-			if strings.Contains(hay, cue) {
-				return schedule.NormalizeRating(candidate.rating)
+			if containsRatingPhrase(hay, cue) {
+				return stricterCeiling(schedule.NormalizeRating(candidate.rating), explicit)
 			}
 		}
 	}
-	return ""
+	return explicit
+}
+
+func containsRatingPhrase(text, phrase string) bool {
+	for start := 0; start < len(text); {
+		offset := strings.Index(text[start:], phrase)
+		if offset < 0 {
+			return false
+		}
+		begin := start + offset
+		end := begin + len(phrase)
+		before, after := []rune(text[:begin]), []rune(text[end:])
+		word := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' }
+		if (len(before) == 0 || !word(before[len(before)-1])) && (len(after) == 0 || !word(after[0])) {
+			return true
+		}
+		start = end
+	}
+	return false
 }
 
 func normalizedIntentText(intent Intent) string {

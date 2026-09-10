@@ -23,7 +23,7 @@ func TestEncodePoolForegroundUsesEverySlot(t *testing.T) {
 	r2()
 }
 
-func TestEncodePoolBackgroundKeepsOneSlotForForeground(t *testing.T) {
+func TestEncodePoolBackgroundKeepsOneIdleSlot(t *testing.T) {
 	p := NewEncodePool(func() int { return 4 })
 
 	releases := make([]func(), 0, 3)
@@ -45,55 +45,53 @@ func TestEncodePoolBackgroundKeepsOneSlotForForeground(t *testing.T) {
 	if _, _, ok := p.AcquireBackground(t.Context(), time.Unix(3, 0)); ok {
 		t.Fatal("a fourth background encode consumed the foreground reserve")
 	}
-	foregroundRelease, ok := p.AcquireForeground(t.Context())
-	if !ok {
-		t.Fatal("background work consumed the foreground reserve")
-	}
-	foregroundRelease()
 }
 
-func TestEncodePoolForegroundPreemptsFarthestNeededBackground(t *testing.T) {
-	p := NewEncodePool(func() int { return 3 })
-	now := time.Now()
+func TestEncodePoolFirstForegroundDrainsEveryBackgroundAndExcludesNewPreparation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	p := NewEncodePool(func() int { return 4 })
+	var workers sync.WaitGroup
+	var canceled atomic.Int64
+	for i := range 3 {
+		workCtx, release, ok := p.AcquireBackground(ctx, time.Unix(int64(i), 0))
+		if !ok {
+			t.Fatalf("background setup lease %d refused", i)
+		}
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			<-workCtx.Done()
+			canceled.Add(1)
+			release()
+		}()
+	}
 
-	urgentCtx, urgentRelease, ok := p.AcquireBackground(t.Context(), now)
-	if !ok {
-		t.Fatal("urgent background lease refused")
-	}
-	defer urgentRelease()
-	laterCtx, laterRelease, ok := p.AcquireBackground(t.Context(), now.Add(time.Hour))
-	if !ok {
-		t.Fatal("later background lease refused")
-	}
 	foregroundRelease, ok := p.AcquireForeground(t.Context())
 	if !ok {
-		t.Fatal("first foreground lease refused")
+		t.Fatal("foreground lease did not replace background preparation")
 	}
-
-	released := make(chan struct{})
-	go func() {
-		<-laterCtx.Done()
-		laterRelease()
-		close(released)
-	}()
-
-	secondRelease, ok := p.AcquireForeground(t.Context())
-	if !ok {
-		t.Fatal("second foreground lease did not replace cancelled background work")
+	if got := canceled.Load(); got != 3 {
+		foregroundRelease()
+		cancel()
+		workers.Wait()
+		t.Fatalf("cancelled background leases = %d, want all 3", got)
 	}
-	select {
-	case <-released:
-	case <-time.After(time.Second):
-		t.Fatal("preempted background worker did not observe cancellation")
-	}
-	if urgentCtx.Err() != nil {
-		t.Fatal("foreground preempted the most urgent background worker")
+	if _, _, ok := p.AcquireBackground(t.Context(), time.Time{}); ok {
+		foregroundRelease()
+		t.Fatal("background work started while foreground playback was active")
 	}
 	foregroundRelease()
-	secondRelease()
+	workers.Wait()
+
+	_, release, ok := p.AcquireBackground(t.Context(), time.Time{})
+	if !ok {
+		t.Fatal("background preparation did not resume after foreground playback ended")
+	}
+	release()
 }
 
-func TestEncodePoolConcurrentForegroundCancelsOnlyOutstandingDemand(t *testing.T) {
+func TestEncodePoolConcurrentForegroundSharesCapacityAfterBackgroundDrain(t *testing.T) {
 	const (
 		capacity = 8
 		extra    = 3
@@ -147,8 +145,8 @@ func TestEncodePoolConcurrentForegroundCancelsOnlyOutstandingDemand(t *testing.T
 			t.Fatal("foreground admission timed out")
 		}
 	}
-	if got := canceled.Load(); got != extra {
-		t.Fatalf("cancelled background leases = %d, want exactly %d", got, extra)
+	if got := canceled.Load(); got != capacity-1 {
+		t.Fatalf("cancelled background leases = %d, want all %d", got, capacity-1)
 	}
 	close(releaseForeground)
 	foregroundWorkers.Wait()
@@ -171,6 +169,65 @@ func TestEncodePoolBackgroundNeedsMeasuredSpareCapacity(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDynamicEncodePoolRefreshesCapacityForEveryAdmission(t *testing.T) {
+	capacity := 1
+	p := NewDynamicEncodePool(func() int { return capacity })
+	if _, _, ok := p.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("background work admitted at the conservative one-slot floor")
+	}
+
+	capacity = 4
+	releases := make([]func(), 0, 3)
+	for i := range 3 {
+		_, release, ok := p.AcquireBackground(t.Context(), time.Unix(int64(i), 0))
+		if !ok {
+			t.Fatalf("background lease %d did not observe increased capacity", i+1)
+		}
+		releases = append(releases, release)
+	}
+	capacity = 2
+	if _, _, ok := p.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("new background work ignored the lowered capacity")
+	}
+	for _, release := range releases {
+		release()
+	}
+
+	_, release, ok := p.AcquireBackground(t.Context(), time.Time{})
+	if !ok {
+		t.Fatal("background reserve was unavailable after leases drained at capacity two")
+	}
+	defer release()
+	if _, _, ok := p.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("capacity two admitted more than one background lease")
+	}
+}
+
+func TestDynamicEncodePoolForegroundObservesLoweredCapacity(t *testing.T) {
+	capacity := 2
+	p := NewDynamicEncodePool(func() int { return capacity })
+	first, firstOK := p.AcquireForeground(t.Context())
+	second, secondOK := p.AcquireForeground(t.Context())
+	if !firstOK || !secondOK {
+		t.Fatalf("initial foreground leases = %v, %v, want both admitted", firstOK, secondOK)
+	}
+	capacity = 1
+	if _, ok := p.AcquireForeground(t.Context()); ok {
+		t.Fatal("new foreground work ignored the lowered capacity")
+	}
+	second()
+	if _, ok := p.AcquireForeground(t.Context()); ok {
+		t.Fatal("lowered one-slot capacity admitted work while one lease remained")
+	}
+	capacity = 2
+	third, ok := p.AcquireForeground(t.Context())
+	if !ok {
+		t.Fatal("foreground work did not observe restored capacity")
+	}
+	third()
+	first()
 }
 
 func TestEncodePoolReleaseIsIdempotentAndRaceSafe(t *testing.T) {

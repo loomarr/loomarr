@@ -75,7 +75,6 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	var preparedObserver api.PreparedObserver
 	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
-	var hwEncodeSlots func(context.Context) int
 	var encodePool *media.EncodePool
 	var playoutGuideSvc api.PlayoutGuide
 	var playoutRes *playoutResolver
@@ -127,16 +126,19 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	//      resident model. So when a model is resident, shade the budget down by the encodes that
 	//      VRAM can no longer host (~1 hardware encode per few GiB held). Reactive to the model
 	//      loading/unloading, so headroom grows back when it evicts.
-	playoutBudget := func() int {
-		measured := 0
-		if playoutRes != nil {
-			measured = int(playoutRes.maxChannels.Load()) // published once by the lazy Detect trial
-		}
+	effectivePlayoutCapacity := func(measured int) int {
 		residentGiB := 0.0
 		if residentVRAM != nil {
 			residentGiB, _ = residentVRAM(rootCtx)
 		}
 		return playout.EffectiveCapacity(measured, set.intv("playout.max_channels"), residentGiB)
+	}
+	playoutBudget := func() int {
+		measured := 0
+		if playoutRes != nil {
+			measured = int(playoutRes.maxChannels.Load()) // published once by the lazy Detect trial
+		}
+		return effectivePlayoutCapacity(measured)
 	}
 	playoutMgr := playout.NewManager(
 		playoutSpawner(set.str("playout.ffmpeg_path"),
@@ -301,19 +303,15 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		})
 	}
 
-	// Wrap the resolver's capacity so the chosen HW-encode slot count is logged once, when the
-	// admission gate first reads it — the operator-facing counterpart to "encoder probed".
-	hwEncodeSlots = func(ctx context.Context) int {
-		n := playoutRes.HWEncodeSlots(ctx)
-		log.Info("playout: hardware encode admission", "hw_slots", n)
-		return n
-	}
-	encodePool = media.NewEncodePool(func() int {
-		if playout.Encoder(set.str("playout.encoder")) == playout.EncoderSoftware {
-			return 0 // an explicit software choice must not start hardware preparation.
-		}
-		return hwEncodeSlots(rootCtx)
-	})
+	encodePool = newPreparedEncodePool(
+		func() playout.Encoder { return playout.Encoder(set.str("playout.encoder")) },
+		func() int { return playoutRes.HWEncodeSlots(rootCtx) },
+		func(measured int) int {
+			n := effectivePlayoutCapacity(measured)
+			log.Debug("playout: hardware encode admission", "effective_hw_slots", n)
+			return n
+		},
+	)
 
 	// Prepared playout is persistent control-plane work feeding the SAME Origin as the live
 	// fallback. Construction may fail on an unwritable volume without taking live TV down; the
@@ -487,4 +485,22 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },
 	}, nil
+}
+
+func newPreparedEncodePool(
+	encoder func() playout.Encoder,
+	measuredCapacity func() int,
+	effectiveCapacity func(int) int,
+) *media.EncodePool {
+	return media.NewDynamicEncodePool(func() int {
+		if encoder() == playout.EncoderSoftware {
+			return 0 // an explicit software choice must not start hardware preparation.
+		}
+		// Preparation and live children share the same effective host budget. Using the raw
+		// probe result here bypassed the operator cap and VRAM shading: a measured-twelve host
+		// capped at four launched eleven background encodes and starved foreground playback.
+		// Resolve the memoized measurement before applying those live limits so a cold start's
+		// conservative one-slot floor cannot become the process-lifetime preparation capacity.
+		return effectiveCapacity(measuredCapacity())
+	})
 }

@@ -249,14 +249,14 @@ func traceDecision(trace *DecisionTrace, update DecisionCandidate) {
 func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalItem, refuseUnrated bool) (
 	keptLineup, keptAcquisitions []ProposalItem, refused []RefusedPick,
 ) {
-	if a.Ceiling == "" {
+	if a.Ceiling == "" && a.Unrated != schedule.UnratedExclude {
 		return lineup, acquisitions, nil // adult/general channel — nothing to refuse
 	}
 	sift := func(items []ProposalItem) []ProposalItem {
 		kept := make([]ProposalItem, 0, len(items))
 		for _, it := range items {
 			rating := schedule.NormalizeRating(it.OfficialRating)
-			if rating == "" && refuseUnrated {
+			if rating == "" && (refuseUnrated || a.Unrated == schedule.UnratedExclude) {
 				refused = append(refused, RefusedPick{Item: it, Reason: "over_ceiling"})
 				continue
 			}
@@ -307,6 +307,9 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	switch schedule.UnratedPolicy(raw.Audience.Unrated) {
 	case schedule.UnratedExclude, schedule.UnratedAllow:
 		p.Audience.Unrated = schedule.UnratedPolicy(raw.Audience.Unrated)
+	}
+	if intentPolicy.excludeUnrated {
+		p.Audience.Unrated = schedule.UnratedExclude
 	}
 
 	// Era: accept a sane year window (the enforcer treats 0 as unbounded), then WIDEN it

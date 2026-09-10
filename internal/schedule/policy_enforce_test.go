@@ -484,3 +484,40 @@ func TestEnforce_CollectionsEmptyScopeAdmitsAll(t *testing.T) {
 		t.Errorf("an empty collections scope filtered something (%d of 2 scheduled); got %v", len(keys), keys)
 	}
 }
+
+func TestEnforce_UnratedExclusionWithoutCeiling(t *testing.T) {
+	entries := []schedule.LineupEntry{
+		ratedEntry("movie:tmdb:1", "Rated", "R", 1994),
+		ratedEntry("movie:tmdb:2", "Missing", "", 1994),
+		ratedEntry("movie:tmdb:3", "Unmapped", "unknown", 1994),
+	}
+	a := schedule.AudiencePolicy{Unrated: schedule.UnratedExclude}
+	for _, e := range entries {
+		ok, reason := a.Admits(e.OfficialRating)
+		if want := e.Key == "movie:tmdb:1"; ok != want || (!ok && reason != "unrated") {
+			t.Errorf("Admits(%q) = %v, %q", e.Title, ok, reason)
+		}
+	}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: a}}
+	d := computeWithPolicy(entries, mapAvail{"movie:tmdb:1": "rated", "movie:tmdb:2": "missing", "movie:tmdb:3": "unmapped"}, p)
+	keys := programKeys(d)
+	if !hasKey(keys, "movie:tmdb:1") || hasKey(keys, "movie:tmdb:2") || hasKey(keys, "movie:tmdb:3") || d.Excluded.Unrated != 2 {
+		t.Fatalf("unrated-only policy: keys=%v exclusions=%+v", keys, d.Excluded)
+	}
+}
+
+func TestEnforce_UnratedOnlyKeepsRatedSeriesAndInheritedEpisodes(t *testing.T) {
+	show := ratedEntry("series:tmdb:1", "Rated series", "TV-MA", 1997)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
+		"series:tmdb:1": {
+			{LibraryItemID: "rated", Title: "Rated", DurationMs: 1320000, Season: 1, Episode: 1, OfficialRating: "TV-MA"},
+			{LibraryItemID: "inherited", Title: "Inherited", DurationMs: 1320000, Season: 1, Episode: 2},
+		},
+	})
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: schedule.AudiencePolicy{Unrated: schedule.UnratedExclude}}}
+	d := computeWithPolicy([]schedule.LineupEntry{show}, avail, p)
+	ids := programItemIDs(d)
+	if !hasID(ids, "rated") || !hasID(ids, "inherited") || d.Excluded.Unrated != 0 || d.Excluded.OverCeiling != 0 {
+		t.Fatalf("unrated-only series policy: ids=%v exclusions=%+v", ids, d.Excluded)
+	}
+}
