@@ -183,8 +183,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
 			"make fe-codegen": exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),
 			"echo \"gradle-cache-primary-key=android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-${{ github.run_id }}\"\necho \"gradle-cache-hit=${{ steps.gradle-cache.outputs.cache-hit == 'true' }}\"\necho \"gradle-cache-source-sha=${GITHUB_SHA}\"\n": exactWorkflowStep(8, "Record Gradle cache provenance", workflowStepAuthority{}),
-			"make android": exactWorkflowStep(9, "", workflowStepAuthority{
-				targets: []string{"android"},
+			"make android-profile": exactWorkflowStep(9, "Build and profile the verified four-ABI bundle", workflowStepAuthority{
+				targets: []string{"android-profile", "android"},
 				environment: map[string]string{
 					"ANDROID_CI_OUTPUT_DIR": "${{ github.workspace }}/.artifacts/android-ci",
 				},

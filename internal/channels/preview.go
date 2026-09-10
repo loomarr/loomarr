@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // CycleResult is everything one preview computation answers. It exists because the draft
@@ -90,11 +91,27 @@ func (e *Engine) CyclePreviewDraft(
 		ch.Policy = *draftPolicy
 	}
 
+	ch.Lineup = lineup
+	return e.PreviewPlannedChannel(ctx, ch, at, e.avail)
+}
+
+// PreviewPlannedChannel evaluates an unsaved channel using observed availability.
+// It performs the same read-only settings, history, filler and scheduling computation
+// as the persisted-channel preview; it never stores a channel or acquires media.
+func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at time.Time, availability schedule.Availability) (CycleResult, error) {
+	if availability == nil {
+		return CycleResult{}, fmt.Errorf("preview requires observed availability")
+	}
+	if at.IsZero() {
+		at = e.now()
+	}
+	lineup := ch.Lineup
+
 	// Mirror reconcile's chDomain assembly (reconcile.go step 2): break density only when a
 	// filler pool exists (drafted selection), and the settings-driven rolling-window horizon.
 	globalBackend, err := e.playoutBackendFor(ctx)
 	if err != nil {
-		return CycleResult{}, fmt.Errorf("resolve playout backend for channel %s: %w", channelID, err)
+		return CycleResult{}, fmt.Errorf("resolve playout backend for channel %s: %w", ch.ID, err)
 	}
 	playsInternally := schedule.PlaysInternally(ch.Policy, globalBackend)
 	hasFillerPool := false
@@ -130,7 +147,7 @@ func (e *Engine) CyclePreviewDraft(
 	// SERIES keys are deliberately not prewarmed here: a series resolves through ResolveEpisodes,
 	// whose episode enumeration has its own (three-tier) caching, and whose library ids are not
 	// known until that enumeration runs.
-	if pw, ok := e.avail.(interface{ PrewarmDurations([]string) }); ok {
+	if pw, ok := availability.(interface{ PrewarmDurations([]string) }); ok {
 		ids := make([]string, 0, len(lineup))
 		for i := range lineup {
 			if lineup[i].Key.IsSeries() {
@@ -143,7 +160,7 @@ func (e *Engine) CyclePreviewDraft(
 		pw.PrewarmDurations(ids)
 	}
 
-	desired := schedule.ComputeDesiredAt(chDomain, lineup, e.avail, e.policy, ch.Policy, at)
+	desired := schedule.ComputeDesiredAt(chDomain, lineup, availability, e.policy, ch.Policy, at)
 	if playsInternally {
 		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
 	}

@@ -75,6 +75,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt,
 		libraryConfigured: opts.LibraryConfigured,
 		liveConfigBoolOn:  opts.LiveConfigBoolOn, ready: ready,
+		proposalOutlook: opts.ProposalOutlook,
 		approver:        opts.Approver,
 		binder:          opts.Binder,
 		playoutObserver: opts.PlayoutObserver, preparedObserver: opts.PreparedObserver,

@@ -109,6 +109,7 @@ const Section = ({ title, count, children }: { title: string; count: number; chi
 
 const ProposalReview = ({
   proposal,
+  outlook,
   status = "draft",
   busy = false,
   onApprove,
@@ -153,6 +154,8 @@ const ProposalReview = ({
           )}
         </div>
       </header>
+
+      {outlook}
 
       <section aria-label="Request interpretation" className="flex flex-col gap-2 text-sm">
         {status === "partially-edited" ? (

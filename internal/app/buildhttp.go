@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -55,6 +56,13 @@ func buildHTTP(deps httpBuild) http.Handler {
 	playoutSvc, playoutResolverSvc := deps.channels.playout, deps.channels.playoutResolverService
 	playoutGuideSvc, encodePool := deps.channels.playoutGuide, deps.channels.encodePool
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
+	var proposalOutlook api.ProposalOutlook
+	if preview, ok := channelSvc.(proposaloutlook.Preview); ok && chBinder != nil && deps.foundation.libraryClient != nil {
+		proposalOutlook = proposaloutlook.New(proposaloutlook.Config{
+			Titles: st, Library: deps.foundation.libraryClient, Episodes: episodeResolver(deps.foundation.libraryClient),
+			Planner: chBinder, Preview: preview,
+		})
+	}
 	suggestSvc, proposalWorkflow := deps.suggestions.suggest, deps.suggestions.workflow
 	searchSvc, collectionsSvc := deps.suggestions.search, deps.suggestions.collections
 	systemLLM, iconSvc, imageSvc := deps.suggestions.systemLLM, deps.suggestions.icons, deps.suggestions.images
@@ -148,6 +156,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		},
 		Guide:             guideSvc,
 		Provision:         provisionSvc,
+		ProposalOutlook:   proposalOutlook,
 		Approver:          proposalApprover,
 		Binder:            chBinder,
 		FillerLayout:      fillerLayout,

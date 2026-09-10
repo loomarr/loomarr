@@ -41,7 +41,9 @@ jobs:
           echo "gradle-cache-primary-key=android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-${{ github.run_id }}"
           echo "gradle-cache-hit=${{ steps.gradle-cache.outputs.cache-hit == 'true' }}"
           echo "gradle-cache-source-sha=${GITHUB_SHA}"
-      - run: make android
+      - name: Build and profile the verified four-ABI bundle
+        id: android
+        run: make android-profile
         env:
           ANDROID_CI_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/android-ci
       - name: Retain the exact unsigned merge-result bundle
@@ -49,5 +51,13 @@ jobs:
         with:
           name: loomarr-android-unsigned-${{ github.sha }}
           path: .artifacts/android-ci/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Retain Android build diagnostics separately from promotion artifacts
+        if: ${{ always() && steps.android.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: loomarr-android-profile-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/android-build-profile/
           if-no-files-found: error
           retention-days: 30
