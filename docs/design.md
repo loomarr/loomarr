@@ -3747,6 +3747,21 @@ Every run writes one schema-versioned JSON report atomically plus a concise summ
 sample, media validation, cleanup assertion, exact target identity, or credential-redaction audit is
 missing.
 
+**Release scope — beta.5 through beta.7.** The maintainer deferred only the raw MPEG-TS prepared
+startup performance targets (p95 below 100 ms to first transport byte and 500 ms to first decoded
+frame) from beta.5 to beta.7. The certifier, threshold bounds, exit status and original failed
+reports remain unchanged. A report failing raw startup performance remains uncertified; release
+acceptance must not relabel it as a passing certification.
+For beta.5, the release evidence packet binds the exact candidate and declared hardware/client
+profile, identifies the deferred raw measurements explicitly, and proves every non-deferred
+requirement separately: media validity and continuity, admission and measured capacity, readiness,
+recovery, cleanup, credential audit, prepared HLS timing and shipping-browser/installed-client
+acceptance. Missing evidence or another failure still holds release. Browser budgets remain p95
+below 100 ms for OSD acknowledgement, 750 ms for prepared adjacent first frame and 1.5 seconds for
+prepared arbitrary first frame; HLS master-to-first-body remains below 100 ms. No cold-start
+performance guarantee is inferred from this scope change. Beta.7 must meet the original raw targets
+on its exact candidate/profile. The release roadmap and #1037/#1097 retain the deferred work.
+
 Playout report schema version 3 makes the credential-redaction audit executable and part of the
 publication verdict. `Run` retains private workload eligibility and a bounded private audit capsule;
 it returns an uncertified report until publication. Exported fields cannot supply or forge audit
