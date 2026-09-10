@@ -41,7 +41,7 @@ func TestVerifyCIContainerDownloadsRequiresBenignRunAuthorities(t *testing.T) {
 		command  string
 	}{
 		"agent harness": {workflow: "ci-agent.yml", command: "make agent-harness-test"},
-		"Android":       {workflow: "ci-android.yml", command: "make android"},
+		"Android":       {workflow: "ci-android.yml", command: "make android-profile"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

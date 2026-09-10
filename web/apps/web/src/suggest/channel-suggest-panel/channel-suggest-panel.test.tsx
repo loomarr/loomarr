@@ -2,6 +2,7 @@ import type { ApproveOutputBody, MeBody, ProposalDTO } from "@loomarr/api";
 import {
   getApproveProposalMockHandler,
   getGetProposalJobMockHandler,
+  getGetProposalOutlookMockHandler,
   getMeMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
@@ -10,6 +11,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { outlook } from "@/test/fixtures/outlook";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
@@ -164,6 +166,17 @@ const renderPanel = (onCreated: (id: string) => void) => {
 
 describe("ChannelSuggestPanel", () => {
   beforeEach(() => {
+    server.use(
+      getGetProposalOutlookMockHandler(
+        outlook({
+          state: "uncertain",
+          unknownTitles: 1,
+          programs: 0,
+          uniqueRuntimeMs: 0,
+          firstRepeatMs: null,
+        }),
+      ),
+    );
     runOverride = undefined; // default every test back to the real hook
     window.sessionStorage.clear();
   });
@@ -255,6 +268,18 @@ describe("ChannelSuggestPanel", () => {
     expect(await screen.findByLabelText("Channel intent")).toHaveValue("80s teen comedies");
     expect(approvals).toEqual([]);
     expect(submissions).toHaveLength(1);
+  });
+
+  it("thin outlook opens the preserved request without approving", async () => {
+    const user = userEvent.setup();
+    const { approvals } = stubSuggest({ proposals: [PROPOSAL] });
+    server.use(getGetProposalOutlookMockHandler(outlook({ thin: true })));
+    renderPanel(() => {});
+    await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+    await user.click(await screen.findByRole("button", { name: "Add more variety" }));
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue("80s teen comedies");
+    expect(approvals).toEqual([]);
   });
 
   it("explains an auto-approved result without offering the misleading Start over action", async () => {

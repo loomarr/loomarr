@@ -162,14 +162,12 @@ func TestVerifyCIContainerDownloadsBindsEverySourceBoundAuthorityToItsStep(t *te
 	tests := map[string]func(*testing.T, []*yaml.Node) []*yaml.Node{
 		"insert action before benign authority": func(t *testing.T, steps []*yaml.Node) []*yaml.Node {
 			checkout := steps[workflowUsesStepIndex(t, steps, "actions/checkout")]
-			return insertWorkflowStep(steps, workflowRunStepIndex(t, steps, "make android"), checkout)
+			return insertWorkflowStep(steps, workflowRunStepIndex(t, steps, "make android-profile"), checkout)
 		},
-		"name previously unnamed benign authority": func(t *testing.T, steps []*yaml.Node) []*yaml.Node {
-			index := workflowRunStepIndex(t, steps, "make android")
-			steps[index].Content = append(steps[index].Content,
-				&yaml.Node{Kind: yaml.ScalarNode, Value: "name"},
-				&yaml.Node{Kind: yaml.ScalarNode, Value: "Moved Android authority"},
-			)
+		"rename benign authority": func(t *testing.T, steps []*yaml.Node) []*yaml.Node {
+			index := workflowRunStepIndex(t, steps, "make android-profile")
+			name, _ := mappingValue(steps[index], "name")
+			name.Value = "Moved Android authority"
 			return steps
 		},
 	}

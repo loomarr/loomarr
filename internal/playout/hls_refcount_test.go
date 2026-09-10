@@ -18,6 +18,15 @@ import (
 	"github.com/loomarr/loomarr/internal/proctree"
 )
 
+// Playlist keeps the existing manager conformance scenarios on the same acquire/read seam.
+func (m *HLSManager) Playlist(channel string, plan EncodePlan) (string, func(), error) {
+	lease, err := m.acquirePlaylist(channel, plan)
+	if err != nil {
+		return "", nil, err
+	}
+	return lease.read(context.Background())
+}
+
 // eagerAttacher models a warm live session whose initial burst arrives as the sink is attached.
 type eagerAttacher struct {
 	drained chan struct{}

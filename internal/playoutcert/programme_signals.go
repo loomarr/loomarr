@@ -200,6 +200,11 @@ func observeProgrammeSignals(ctx context.Context, endpoint *endpoint, config Con
 				return fail("asset_clock_mismatch")
 			}
 			if decodeErr != nil {
+				// Cancellation can make both select cases ready. Classify the
+				// observer deadline consistently whichever notification wins.
+				if ctx.Err() != nil {
+					return fail("programme_observation_timeout")
+				}
 				return fail("decode_failed")
 			}
 			// Wait joined the producer callbacks. Drain their queued observations

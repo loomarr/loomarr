@@ -182,58 +182,46 @@ func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Dura
 // The find-or-create is under the manager lock for the same reason Attach's is (session.go): two
 // viewers tuning the same channel together must find one remux, not race two into existence with
 // one orphaned.
-func (m *HLSManager) Playlist(channelID string, plan EncodePlan) (playlistPath string, detach func(), err error) {
+// hlsPlaylistLease owns one viewer reference while media readiness is pending.
+// Acquiring the lease is short and lifecycle-ordered; reading it may wait for media.
+type hlsPlaylistLease struct {
+	path    string
+	release func()
+	await   func(context.Context) error
+}
+
+func (l hlsPlaylistLease) read(ctx context.Context) (string, func(), error) {
+	if err := l.await(ctx); err != nil {
+		l.release()
+		return "", nil, err
+	}
+	return l.path, l.release, nil
+}
+
+func (m *HLSManager) acquirePlaylist(channelID string, plan EncodePlan) (hlsPlaylistLease, error) {
 	key := remuxKey{channel: channelID, plan: plan}
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	if r := m.remuxes[key]; r != nil {
 		if p, d, ok := r.addViewer(); ok {
-			m.mu.Unlock()
-			// A shared remux may still be starting. The first caller waits below, but a later HLS
-			// poll can join before ffmpeg has written its first segment. Every caller must cross the
-			// same readiness gate; returning the path here races Origin's read and produces an
-			// immediate 502 even though the remux becomes healthy moments later.
-			if werr := r.awaitPlaylist(m.readyWait()); werr != nil {
-				d()
-				return "", nil, werr
-			}
-			return p, d, nil
+			return m.playlistLease(r, p, d), nil
 		}
-		// Mid-teardown: drop and start fresh below rather than joining something dying.
 		delete(m.remuxes, key)
 	}
 	r, err := m.start(channelID, plan)
 	if err != nil {
-		m.mu.Unlock()
-		return "", nil, err
+		return hlsPlaylistLease{}, err
 	}
 	m.remuxes[key] = r
-	p, d, _ := r.addViewer() // fresh remux: cannot be closed
-	m.mu.Unlock()
+	p, d, _ := r.addViewer()
+	return m.playlistLease(r, p, d), nil
+}
 
-	// Wait BRIEFLY for the first playlist to exist, then serve it. This is the INDUSTRY-STANDARD
-	// live-HLS origin behaviour — hold the first manifest request until a media segment exists,
-	// rather than serving an empty playlist or a 404. Apple's HLS spec requires a live playlist to
-	// list playable media, and every live packager (ffmpeg, Shaka, Wowza, MediaLive, Mux) and media
-	// server (Emby/Jellyfin) either holds the first request until ready or answers 503+Retry-After;
-	// none hand the client a 404. This is the reconciliation of two things that seemed to conflict:
-	//
-	//   - "plays right away" — because the wait is SHORT (~ the time to buffer one segment), not the
-	//     15s-then-502 an earlier version used, which is the version that was actually broken.
-	//   - "never a 404 race" — because the alternative (return immediately) hands the client a URL
-	//     that 404s for the few seconds until ffmpeg writes the first segment. Real clients handle
-	//     that poorly: hls.js exhausts its manifest retries against the 404 and gives up before the
-	//     file appears. Waiting here means the client's FIRST fetch gets a valid playlist with
-	//     segments, exactly as a live-HLS origin is supposed to behave.
-	//
-	// Copy-repackage produces the first segment in about one keyframe interval, but the SESSION
-	// upstream can take a few seconds to warm up (encoder spin-up, seek), so the wait is generous
-	// enough to cover that and still bounded so a genuinely stuck channel fails cleanly rather than
-	// hanging the request forever.
-	if werr := r.awaitPlaylist(m.readyWait()); werr != nil {
-		d() // release the refcount we just took; teardown fires if we were the only viewer
-		return "", nil, werr
-	}
-	return p, d, nil
+func (m *HLSManager) playlistLease(r *hlsRemux, path string, release func()) hlsPlaylistLease {
+	timeout := m.readyWait()
+	return hlsPlaylistLease{path: path, release: release, await: func(ctx context.Context) error {
+		return r.awaitPlaylist(ctx, timeout)
+	}}
 }
 
 // AssetPath resolves an HLS segment (`seg-N.ts`, referenced by the live playlist) to its on-disk
@@ -348,6 +336,7 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 		}
 		return nil, err
 	}
+	r.ctx = ctx
 	r.proc = proc
 	if m.log != nil {
 		m.log.Info("hls: remux ffmpeg spawned", "channel", channelID)
@@ -430,6 +419,7 @@ type hlsRemux struct {
 	dir       string
 	playlist  string
 
+	ctx        context.Context
 	cancel     context.CancelFunc
 	sessDetach func() // release the session refcount — MUST run exactly once on teardown
 	// setSessionActive distinguishes a live HLS client from a remux retained only for warmth.
@@ -696,9 +686,17 @@ func (q *hlsRelay) terminalError() error {
 // when a playable segment is listed. Deliberately NOT `#EXT-X-MAP`, which fMP4 writes with the init
 // segment BEFORE any media exists — matching it would reintroduce the header-only stall this
 // function was written to prevent, on the very path that just broke.
-func (r *hlsRemux) awaitPlaylist(timeout time.Duration) error {
+func (r *hlsRemux) awaitPlaylist(ctx context.Context, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	tick := time.NewTicker(firstSegmentPoll)
+	defer tick.Stop()
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if r.ctx.Err() != nil {
+			return ErrUnavailable
+		}
 		if body, err := os.ReadFile(r.playlist); err == nil && bytes.Contains(body, []byte("#EXTINF")) {
 			return nil
 		}
@@ -723,7 +721,13 @@ func (r *hlsRemux) awaitPlaylist(timeout time.Duration) error {
 			}
 			return fmt.Errorf("hls: channel %s produced no stream within %s", r.channelID, timeout)
 		}
-		time.Sleep(firstSegmentPoll)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-r.ctx.Done():
+			return ErrUnavailable
+		case <-tick.C:
+		}
 	}
 }
 

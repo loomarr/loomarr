@@ -160,48 +160,16 @@ func (a *Approver) approveDurably(
 	if a.channels == nil {
 		return ApprovalResult{}, errors.New("approve: channel binder is not configured")
 	}
-	var body Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-		return ApprovalResult{}, fmt.Errorf("approve: stored proposal is malformed: %w", err)
-	}
-
-	// The edit is applied HERE, before anything is enqueued, so what gets acquired is decided
-	// in one place for both callers. `applyEdit` also re-serialises the body back onto the
-	// proposal: the stored record must show what was actually approved, not what the model
-	// originally proposed — otherwise the audit trail describes a lineup that never existed.
-	summary, editedJSON, aerr := applyEdit(&body, edit)
-	if aerr != nil {
-		return ApprovalResult{}, aerr
-	}
-	// The edit surface controls title membership, not scheduler semantics. Re-ground every
-	// series from the Proposal's original Intent after additions/drops, at this one approval
-	// boundary shared by manual, bulk, and automatic approval. This also repairs a missing or
-	// crafted selector before either the durable approved JSON or the binder can observe it.
-	selectionChanged := stampEpisodeSelection(body.Lineup, body.Intent)
-	selectionChanged = stampEpisodeSelection(body.Acquisitions, body.Intent) || selectionChanged
-	selectionChanged = stampEpisodeSelection(body.Alternates, body.Intent) || selectionChanged
-	if selectionChanged {
-		raw, err := json.Marshal(body)
-		if err != nil {
-			return ApprovalResult{}, fmt.Errorf("approve: re-serialising grounded episode selection: %w", err)
-		}
-		editedJSON = string(raw)
-	}
-	if summary != "" {
-		p.ModSummary = summary
-	}
-	if editedJSON != "" {
-		p.ProposalJSON = editedJSON
-	}
-	if edit != nil && edit.Note != "" {
-		p.Note = edit.Note
+	p, body, err := PrepareApproval(p, edit)
+	if err != nil {
+		return ApprovalResult{}, err
 	}
 
 	// Prepare every candidate before entering the store transaction. In-library picks become
 	// `available` records so the scheduler can place them (§8:
 	// "the approved lineup feeds the scheduler"). Without this, an in-library pick is
 	// unresolvable and never becomes a program.
-	titles := make([]provision.Record, 0, len(body.Lineup)+len(body.Acquisitions))
+	titles := make([]provision.Record, 0, len(body.Lineup))
 	for _, l := range body.Lineup {
 		if !l.InLibrary || l.LibraryItemID == "" {
 			continue // a not-in-library lineup item is covered by acquisitions
@@ -303,6 +271,53 @@ func (a *Approver) afterApprovalCommitted(ctx context.Context, channelID string)
 	a.channels.AfterApprovalCommitted(ctx, channelID)
 }
 
+// PrepareApproval derives the exact proposed decision content without recording an
+// approval, changing status, or touching the store. The coordinator and pre-approval
+// outlook share this edit and trusted episode-selector boundary.
+func PrepareApproval(p store.Proposal, edit *ApprovalEdit) (store.Proposal, Proposal, error) {
+	if p.Status != "submitted" {
+		return store.Proposal{}, Proposal{}, ErrNotSubmitted
+	}
+	var body Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
+		return store.Proposal{}, Proposal{}, fmt.Errorf("approve: stored proposal is malformed: %w", err)
+	}
+
+	// The edit is applied HERE, before anything is enqueued, so what gets acquired is decided
+	// in one place for both callers. `applyEdit` also re-serialises the body back onto the
+	// proposal: the stored record must show what was actually approved, not what the model
+	// originally proposed — otherwise the audit trail describes a lineup that never existed.
+	summary, editedJSON, aerr := applyEdit(&body, edit)
+	if aerr != nil {
+		return store.Proposal{}, Proposal{}, aerr
+	}
+	// The edit surface controls title membership, not scheduler semantics. Re-ground every
+	// series from the Proposal's original Intent after additions/drops, at this one approval
+	// boundary shared by manual, bulk, and automatic approval. This also repairs a missing or
+	// crafted selector before either the durable approved JSON or the binder can observe it.
+	selectionChanged := stampEpisodeSelection(body.Lineup, body.Intent)
+	selectionChanged = stampEpisodeSelection(body.Acquisitions, body.Intent) || selectionChanged
+	selectionChanged = stampEpisodeSelection(body.Alternates, body.Intent) || selectionChanged
+	if selectionChanged {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return store.Proposal{}, Proposal{}, fmt.Errorf("approve: re-serialising grounded episode selection: %w", err)
+		}
+		editedJSON = string(raw)
+	}
+	if summary != "" {
+		p.ModSummary = summary
+	}
+	if editedJSON != "" {
+		p.ProposalJSON = editedJSON
+	}
+	if edit != nil && edit.Note != "" {
+		p.Note = edit.Note
+	}
+
+	return p, body, nil
+}
+
 // applyEdit removes dropped titles, appends added ones, and re-serialises the result onto the
 // proposal. Returns a server-generated summary of what changed.
 //
@@ -352,7 +367,12 @@ func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON s
 	body.Acquisitions, n = keep(body.Acquisitions)
 	droppedTotal += n
 
-	body.Acquisitions = append(body.Acquisitions, edit.Add...)
+	for _, added := range edit.Add {
+		// A review addition has no evidence from this proposal's original run.
+		// The caller cannot grant itself a grounded editorial role.
+		added.EditorialRole = ""
+		body.Acquisitions = append(body.Acquisitions, added)
+	}
 
 	raw, merr := json.Marshal(body)
 	if merr != nil {

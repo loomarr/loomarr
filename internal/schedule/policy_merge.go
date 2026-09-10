@@ -154,7 +154,7 @@ func (p ChannelPolicy) WithApplied(applied []AppliedRelaxation) ChannelPolicy {
 // fresh proposal's rules (which groundRules stamps RuleSourceLLM). So a refine replaces the
 // LLM rules and never drops a hand-authored one.
 func mergeRules(existing, incoming []SchedulingRule) []SchedulingRule {
-	out := make([]SchedulingRule, 0, len(existing)+len(incoming))
+	out := make([]SchedulingRule, 0, len(existing))
 	for _, r := range existing {
 		if !r.Source.isLLM() {
 			out = append(out, r)

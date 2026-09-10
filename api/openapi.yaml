@@ -357,6 +357,92 @@ components:
         - enqueued
         - channelId
       type: object
+    Assessment:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/Assessment.json
+          format: uri
+          readOnly: true
+          type: string
+        fingerprint:
+          type: string
+        firstRepeatMs:
+          format: int64
+          type:
+            - integer
+            - "null"
+        missingAcquisitions:
+          format: int64
+          type: integer
+        missingLibrary:
+          format: int64
+          type: integer
+        mix:
+          $ref: "#/components/schemas/Mix"
+        observedAt:
+          format: date-time
+          type: string
+        ordering:
+          type: string
+        programs:
+          format: int64
+          type: integer
+        relaxations:
+          items:
+            $ref: "#/components/schemas/AppliedRelaxation"
+          type: array
+        scheduledTitles:
+          format: int64
+          type: integer
+        seasons:
+          format: int64
+          type: integer
+        state:
+          enum:
+            - ready
+            - waiting
+            - uncertain
+            - empty
+          type: string
+        thin:
+          type: boolean
+        titles:
+          format: int64
+          type: integer
+        uniqueRuntimeMs:
+          format: int64
+          type: integer
+        unknownTitles:
+          format: int64
+          type: integer
+        windowLimited:
+          type: boolean
+        windowMs:
+          format: int64
+          type: integer
+      required:
+        - fingerprint
+        - observedAt
+        - state
+        - titles
+        - scheduledTitles
+        - missingAcquisitions
+        - missingLibrary
+        - unknownTitles
+        - programs
+        - seasons
+        - uniqueRuntimeMs
+        - firstRepeatMs
+        - windowMs
+        - windowLimited
+        - thin
+        - ordering
+        - relaxations
+        - mix
+      type: object
     AudiencePolicy:
       additionalProperties: false
       properties:
@@ -5700,6 +5786,27 @@ components:
         - local
         - offlineLogin
       type: object
+    Mix:
+      additionalProperties: false
+      properties:
+        adjacent:
+          format: int64
+          type: integer
+        core:
+          format: int64
+          type: integer
+        discovery:
+          format: int64
+          type: integer
+        unknown:
+          format: int64
+          type: integer
+      required:
+        - core
+        - adjacent
+        - discovery
+        - unknown
+      type: object
     NotificationDestinationDeleteInputBody:
       additionalProperties: false
       properties:
@@ -6963,6 +7070,12 @@ components:
           items:
             type: string
           type: array
+        editorialRole:
+          enum:
+            - core
+            - adjacent
+            - discovery
+          type: string
         episodeSelection:
           $ref: "#/components/schemas/EpisodeSelection"
         genres:
@@ -14440,6 +14553,37 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Deny a proposal (admin)
+      tags:
+        - proposals
+  /v1/proposals/{id}/outlook:
+    post:
+      description: Read-only; never approves, acquires or prepares media.
+      operationId: get-proposal-outlook
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalEditDTO"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Assessment"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Observe launch readiness and fresh programming for the exact pending proposal and edits
       tags:
         - proposals
   /v1/readyz:

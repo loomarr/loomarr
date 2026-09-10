@@ -26,7 +26,7 @@ var noticeTextRequirements = map[string][]string{
 		"pin the runtime and build base images by digest",
 		"DejaVu font license",
 		"Prometheus `NOTICE`",
-		"final qualified legal/NOTICE review",
+		"document source distribution mechanics",
 		"inventory, not release clearance",
 		"redistribution-manifest-v1.json",
 		"traceability evidence only: it does not retain corresponding source or provide",

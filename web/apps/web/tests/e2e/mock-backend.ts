@@ -1,4 +1,5 @@
 import type { Page, Route } from "@playwright/test";
+import { outlook } from "../../src/test/fixtures/outlook";
 
 // A stateful stand-in for /v1, installed with Playwright route interception. It is
 // deliberately NOT a second API implementation: it answers only what the wizard calls,
@@ -276,6 +277,24 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           updatedAt: "2026-09-07T12:00:01Z",
         });
       }
+    }
+    if (/^\/v1\/proposals\/[^/]+\/outlook$/.test(path) && method === "POST") {
+      // This mock owns no media inventory. Return an explicit unknown assessment,
+      // using the typed shared fixture, rather than the generic empty success body.
+      return json(
+        route,
+        outlook({
+          state: "uncertain",
+          titles: 1,
+          scheduledTitles: 0,
+          unknownTitles: 1,
+          programs: 0,
+          seasons: 0,
+          uniqueRuntimeMs: 0,
+          firstRepeatMs: null,
+          mix: { core: 0, adjacent: 0, discovery: 0, unknown: 1 },
+        }),
+      );
     }
     if (path === "/v1/proposals" && method === "GET") {
       // Shaped as the real ProposalDTO (`proposal.intent.description`, `.rationale`,

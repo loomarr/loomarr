@@ -10,6 +10,7 @@ import { GenerationProgress } from "@/components/loomarr/feedback/generation-pro
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
+import { LiveProposalOutlook } from "../live-proposal-outlook";
 import { useElapsed } from "../use-elapsed";
 import { useSuggestionRun } from "../use-suggestion-run";
 import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
@@ -151,6 +152,15 @@ const ChannelSuggestPanel = ({
         <div className="flex flex-col gap-4">
           <ProposalReview
             proposal={proposal.proposal}
+            outlook={
+              proposal.status === "submitted" ? (
+                <LiveProposalOutlook
+                  id={proposal.id}
+                  proposal={proposal.proposal}
+                  onAddVariety={approve.isPending || deny.isPending ? undefined : () => run.reset(true)}
+                />
+              ) : undefined
+            }
             status={proposal.status}
             busy={approve.isPending || deny.isPending}
             onEditRequest={() => run.reset(true)}

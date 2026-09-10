@@ -1,5 +1,6 @@
 import type { Proposal } from "@loomarr/api/models/proposal";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { ReactNode } from "react";
 
 // The proposal shape is the orval-generated `Proposal` (from the BE's typed
 // suggest.Proposal — 1:1, §12). Only the review UI's own status and prop interface
@@ -8,6 +9,7 @@ type ProposalStatus = "draft" | "submitted" | "approved" | "denied" | "partially
 
 interface ProposalReviewProps {
   proposal: Proposal;
+  outlook?: ReactNode;
   status?: ProposalStatus;
   busy?: boolean;
   onApprove?: () => void;
