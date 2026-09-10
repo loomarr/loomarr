@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -161,7 +162,8 @@ type Server struct {
 	// approver is the one proposal -> titles + channel gate shared with every
 	// automatic approval path (§7/§8). The API owns authorization and presentation;
 	// the coordinator owns the indivisible domain transition.
-	approver ProposalApprover
+	approver        ProposalApprover
+	proposalOutlook ProposalOutlook
 	// binder serves the explicit channel creation helpers. Proposal approval does
 	// not call it directly; doing so would split the local transaction again.
 	binder ChannelBinder
@@ -798,6 +800,11 @@ type TunarrConnector interface {
 	LibrariesReady(ctx context.Context) (bool, error)
 }
 
+// ProposalOutlook observes pending content without approval or persistence.
+type ProposalOutlook interface {
+	Assess(context.Context, store.Proposal, *suggest.ApprovalEdit) (proposaloutlook.Assessment, error)
+}
+
 // ProposalApprover is the complete approval gate. Its implementation plans the
 // channel and commits proposal, titles, and channel atomically before post-commit
 // runtime work; a handler cannot reproduce or reorder that choreography.
@@ -1018,8 +1025,9 @@ type Options struct {
 	BackendCheckpoint        func(context.Context) (BackendCheckpoint, error) // durable checkpoint, once per operation
 	Guide                    GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
 	Provision                Provisioner                                      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	Approver                 ProposalApprover                                 // atomic proposal + titles + channel gate (§7); required for approval
-	Binder                   ChannelBinder                                    // explicit channel intent/number helpers; not the approval gate
+	ProposalOutlook          ProposalOutlook
+	Approver                 ProposalApprover // atomic proposal + titles + channel gate (§7); required for approval
+	Binder                   ChannelBinder    // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.
 	PlayoutObserver PlayoutObserver
 	// PreparedObserver supplies prepared readiness and retention status without rescanning.

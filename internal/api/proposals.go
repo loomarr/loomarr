@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -47,6 +48,12 @@ func (s *Server) registerProposals(api huma.API) {
 		OperationID: "get-proposal", Method: http.MethodGet, Path: "/v1/proposals/{id}",
 		Summary: "Get a proposal + its job status", Tags: []string{"proposals"},
 	}, RoleMember), s.getProposal)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "get-proposal-outlook", Method: http.MethodPost, Path: "/v1/proposals/{id}/outlook",
+		Summary:     "Observe launch readiness and fresh programming for the exact pending proposal and edits",
+		Description: "Read-only; never approves, acquires or prepares media.", Tags: []string{"proposals"},
+	}, RoleMember), s.getProposalOutlook)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "approve-proposal", Method: http.MethodPost, Path: "/v1/proposals/{id}/approve",
@@ -484,4 +491,25 @@ func approvedLine(enqueued int) string {
 	default:
 		return fmt.Sprintf("Request approved — %d titles queued for download", enqueued)
 	}
+}
+
+func (s *Server) getProposalOutlook(ctx context.Context, in *approveInput) (*struct{ Body proposaloutlook.Assessment }, error) {
+	p, err := s.store.GetProposal(ctx, in.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Suggestion not found", "That suggestion no longer exists.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if p.Status != "submitted" {
+		return nil, errConflict("Already handled", "Only pending suggestions have a pre-approval outlook.")
+	}
+	if s.proposalOutlook == nil {
+		return nil, errFeatureNotConfigured("Outlook unavailable", "Connect the media library to estimate this lineup.")
+	}
+	assessment, err := s.proposalOutlook.Assess(ctx, p, approvalEditFromDTO(in.Body))
+	if err != nil {
+		return nil, err
+	}
+	return &struct{ Body proposaloutlook.Assessment }{Body: assessment}, nil
 }

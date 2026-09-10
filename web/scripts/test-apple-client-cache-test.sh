@@ -59,7 +59,11 @@ if [[ "$*" == -version ]]; then
   exit 0
 fi
 result_bundle=''
+host_arch_selected=false
 while [[ $# -gt 0 ]]; do
+  if [[ "$1" == ARCHS=arm64 ]]; then
+    host_arch_selected=true
+  fi
   if [[ "$1" == -resultBundlePath ]]; then
     result_bundle="$2"
     shift 2
@@ -67,6 +71,7 @@ while [[ $# -gt 0 ]]; do
   fi
   shift
 done
+[[ "$host_arch_selected" == true ]] || exit 64
 if [[ -z "$result_bundle" ]]; then
   printf 'main xcodebuild did not receive -resultBundlePath\n' >&2
   exit 64
@@ -114,6 +119,12 @@ case "$1" in
         printf 'simulator_ready\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
         ;;
       shutdown)
+        ;;
+      install)
+        [[ "$3" == SIM-1 ]]
+        [[ "$4" == "$LOOMARR_APPLE_BUILD_DIR/LoomarrMobilePrototype.app" ]]
+        [[ -f "$4/LoomarrMobilePrototype" ]]
+        printf 'simulator_install\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
         ;;
       launch)
         if [[ "${APPLE_CACHE_TEST_LAUNCH_EXIT:-0}" != 0 ]]; then
@@ -181,6 +192,10 @@ if [[ "$*" != *'expo run:ios'* ]]; then
 fi
 if [[ "$*" != *'--no-install'* ]]; then
   printf 'expo run:ios did not skip the explicit CocoaPods install: %s\n' "$*" >&2
+  exit 64
+fi
+if [[ "$*" != *'--device generic'* ]]; then
+  printf 'simulator build invoked physical-device enumeration: %s\n' "$*" >&2
   exit 64
 fi
 printf 'expo_run\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
@@ -352,7 +367,7 @@ if [[ "$(cat "$test_root/artifacts/phase-timings.tsv")" != \
   exit 1
 fi
 if [[ "$(cat "$test_root/command-order")" != \
-  $'native_contract_hermes-download-test.rb\nnative_contract_native-release-selection-test.rb\nnative_contract_native-artifact-download-test.rb\nsimulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run' ]]; then
+  $'native_contract_hermes-download-test.rb\nnative_contract_native-release-selection-test.rb\nnative_contract_native-artifact-download-test.rb\nsimulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run\nsimulator_install' ]]; then
   printf 'test-apple-client-cache-test: overlap command order got:\n%s\n' \
     "$(cat "$test_root/command-order")" >&2
   exit 1

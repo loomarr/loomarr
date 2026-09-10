@@ -9,6 +9,14 @@ const xcconfig = readFileSync(new URL("apple-simulator.xcconfig", import.meta.ur
 const cacheXcconfig = readFileSync(new URL("apple-compilation-cache.xcconfig", import.meta.url), "utf8");
 
 describe("Apple simulator verifier", () => {
+  it("builds without physical-device discovery and explicitly installs the selected simulator", () => {
+    assert.match(script, /--device generic/);
+    assert.doesNotMatch(script, /--device "\$\{simulator_id\}"/);
+    assert.match(script, /xcrun simctl install "\$\{simulator_id\}" "\$\{BUILD_DIR\}\/\$\{SCHEME\}\.app"/);
+    assert.ok(script.indexOf("xcrun simctl install") < script.indexOf("xcrun simctl launch"));
+    assert.match(script, /args\+=\("ARCHS=\$\(uname -m\)"\)/);
+  });
+
   it("fails closed unless the iOS 27 scene-lifecycle toolchain is active", () => {
     assert.match(script, /xcode_version.*\^27\\\./s);
     assert.match(script, /requires Xcode 27\.x/);

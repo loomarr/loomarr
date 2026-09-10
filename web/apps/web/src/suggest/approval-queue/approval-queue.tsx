@@ -13,6 +13,7 @@ import { PullCard } from "@/components/loomarr/filler/pull-card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DiscoveryFeedbackControls, useDiscoveryFeedback } from "@/discovery-feedback";
+import { LiveProposalOutlook } from "../live-proposal-outlook";
 
 // The admin approval queue (§7, §11) — the human gate every acquisition passes through.
 // It lists everything still `submitted`, which is exactly what the status filter means.
@@ -191,6 +192,14 @@ const ApprovalQueue = () => {
               title={p.proposal.intent?.description ?? "Suggested lineup"}
               requestedBy={p.createdBy}
               summary={p.proposal.rationale}
+              outlook={(openEditor) => (
+                <LiveProposalOutlook
+                  id={p.id}
+                  proposal={p.proposal}
+                  edit={edits[p.id]}
+                  onAddVariety={busy ? undefined : openEditor}
+                />
+              )}
               acquisitions={p.proposal.acquisitions?.length ?? 0}
               lineup={p.proposal.lineup ?? []}
               acquisitionItems={p.proposal.acquisitions ?? []}
