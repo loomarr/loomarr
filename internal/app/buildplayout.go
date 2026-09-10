@@ -75,7 +75,6 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	var preparedObserver api.PreparedObserver
 	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
-	var hwEncodeSlots func(context.Context) int
 	var encodePool *media.EncodePool
 	var playoutGuideSvc api.PlayoutGuide
 	var playoutRes *playoutResolver
@@ -301,19 +300,14 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		})
 	}
 
-	// Wrap the resolver's capacity so the chosen HW-encode slot count is logged once, when the
-	// admission gate first reads it — the operator-facing counterpart to "encoder probed".
-	hwEncodeSlots = func(ctx context.Context) int {
-		n := playoutRes.HWEncodeSlots(ctx)
-		log.Info("playout: hardware encode admission", "hw_slots", n)
-		return n
-	}
-	encodePool = media.NewEncodePool(func() int {
-		if playout.Encoder(set.str("playout.encoder")) == playout.EncoderSoftware {
-			return 0 // an explicit software choice must not start hardware preparation.
-		}
-		return hwEncodeSlots(rootCtx)
-	})
+	encodePool = newPreparedEncodePool(
+		func() playout.Encoder { return playout.Encoder(set.str("playout.encoder")) },
+		func() int {
+			n := playoutBudget()
+			log.Info("playout: hardware encode admission", "effective_hw_slots", n)
+			return n
+		},
+	)
 
 	// Prepared playout is persistent control-plane work feeding the SAME Origin as the live
 	// fallback. Construction may fail on an unwritable volume without taking live TV down; the
@@ -487,4 +481,16 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },
 	}, nil
+}
+
+func newPreparedEncodePool(encoder func() playout.Encoder, effectiveCapacity func() int) *media.EncodePool {
+	return media.NewEncodePool(func() int {
+		if encoder() == playout.EncoderSoftware {
+			return 0 // an explicit software choice must not start hardware preparation.
+		}
+		// Preparation and live children share the same effective host budget. Using the raw
+		// probe result here bypassed the operator cap and VRAM shading: a measured-twelve host
+		// capped at four launched eleven background encodes and starved foreground playback.
+		return effectiveCapacity()
+	})
 }

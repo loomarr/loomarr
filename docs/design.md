@@ -2773,8 +2773,10 @@ publication without changing the identity or scheduler model. A tier change crea
 immutable publication; it never rewrites bytes under an existing key.
 
 Hardware encoding is a **host-wide resource**, not private state inside live playout or preparation.
-One measured encode pool admits both classes. Live program children take foreground leases and may
-use every slot. The readiness planner may fill at most `capacity - 1` background leases, leaving one
+One encode pool admits both classes using the effective capacity after the measured limit, operator
+`playout.max_channels` safety cap, and resident-VRAM shading are applied. Live program children take
+foreground leases and may use every effective slot. The readiness planner may fill at most
+`effective capacity - 1` background leases, leaving one
 separate slot for a cold live tune. Every background lease is independently cancellable and carries
 the publication's need time. The first foreground arrival consumes the idle reserve; each additional
 arrival that finds the pool full cancels exactly one farthest-needed background lease and receives a

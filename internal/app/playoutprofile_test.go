@@ -79,6 +79,39 @@ func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 	}
 }
 
+func TestPreparedEncodePoolUsesEffectiveCapacity(t *testing.T) {
+	pool := newPreparedEncodePool(
+		func() playout.Encoder { return playout.EncoderVAAPI },
+		func() int { return 4 },
+	)
+	var releases []func()
+	for i := range 3 {
+		_, release, ok := pool.AcquireBackground(t.Context(), time.Unix(int64(i), 0))
+		if !ok {
+			t.Fatalf("background lease %d refused below effective capacity reserve", i+1)
+		}
+		releases = append(releases, release)
+	}
+	defer func() {
+		for _, release := range releases {
+			release()
+		}
+	}()
+	if _, _, ok := pool.AcquireBackground(t.Context(), time.Unix(3, 0)); ok {
+		t.Fatal("prepared pool bypassed operator cap: fourth background lease admitted at effective capacity four")
+	}
+}
+
+func TestPreparedEncodePoolDisablesHardwarePreparationForSoftwareOverride(t *testing.T) {
+	pool := newPreparedEncodePool(
+		func() playout.Encoder { return playout.EncoderSoftware },
+		func() int { return 12 },
+	)
+	if _, _, ok := pool.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("software override admitted hardware preparation")
+	}
+}
+
 func TestPlayoutResolver_ProfileUsesMatchingEvidenceBeforeAsyncValidation(t *testing.T) {
 	loadCalls := 0
 	validationStarted := make(chan struct{})
