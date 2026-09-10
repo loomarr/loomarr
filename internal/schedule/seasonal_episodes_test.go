@@ -116,3 +116,25 @@ func TestSeasonalExclusiveHolidaySeriesTitleIsNotEpisodeEvidence(t *testing.T) {
 		t.Fatalf("missing explicit seasonal exclusion: %+v", d.Excluded)
 	}
 }
+
+func TestHolidaySelectionUnavailableEvidenceCannotPopulateOffSeasonLoop(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	entries := []schedule.LineupEntry{{Key: key, Title: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}
+	for _, at := range []time.Time{dec20, jul14, time.Time{}} {
+		for _, unavailable := range []bool{false, true} {
+			avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{key: {Programs: []schedule.ResolvedProgram{{LibraryItemID: "christmas", Title: "A Christmas celebration", Season: 1, Episode: 1, DurationMs: 60000}}, EditorialUnavailable: unavailable}}}
+			policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}, OffSeason: schedule.OffSeasonLoop}}}
+			got := schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, policy, at)
+			want := 1
+			if unavailable {
+				want = 0
+			}
+			if got.ProgramCount() != want {
+				t.Fatalf("at=%v unavailable=%v programs=%d, want%d", at, unavailable, got.ProgramCount(), want)
+			}
+			if got.PendingCount() != 0 {
+				t.Fatal("missing holiday evidence misreported as an acquisition")
+			}
+		}
+	}
+}

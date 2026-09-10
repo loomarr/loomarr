@@ -233,8 +233,8 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
   safe playable deck and whether that evidence is available, rather than encoding freshness by
   blanking episode fields or asking schedulers to inspect cache state. An aged cache is live-refreshed;
   if refresh fails, a non-empty valid cached deck remains subject to the same season, era, and audience
-  filters but `highlights` and `holiday` use that complete safe deck. An aged empty cache with failed
-  refresh is unavailable. Fresh and successfully refreshed decks permit their declared editorial mode.
+  filters; `highlights` may use that complete safe deck, while a `holiday` selector has no
+  current matching evidence and selects no episodes. An aged empty cache with failed refresh is unavailable. Fresh and successfully refreshed decks permit their declared editorial mode.
 
   Selection receives the pool only after season, era, and audience gates. It treats each standalone
   episode or detected multi-part story as one atomic unit, and returns units in canonical order for
@@ -271,10 +271,12 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
   an enumerated series with no playable episodes.
 
   `holiday` matches normalized whole words/phrases in the episode title and bounded overview/tags,
-  restricted to the selected holiday ids (empty means all built-ins). A no-match holiday request,
-  fewer than six rated units in an eight-episode fixture, malformed mode, or sparse/legacy cache row
-  returns the complete already-safe pool. Selection never restores an audience/scope rejection and
-  never manufactures dead air. Proposal review renders the mode before approval as `All episodes`,
+  restricted to the selected holiday ids (empty means all built-ins). Generic `holiday` text and
+  a `Santa` mention naming Santa's Little Helper do not establish Christmas membership; separate
+  Christmas evidence in the same episode still counts. No matching or unavailable holiday evidence
+  selects no episodes, including during an off-season loop. Sparse highlight ratings, malformed
+  mode, or unavailable highlight evidence retain the complete already-safe pool. Selection never
+  restores an audience/scope rejection. An unavailable requested holiday selection is reported honestly. Proposal review renders the mode before approval as `All episodes`,
   `Curated highlights`, or the named/generic holiday episode scope.
 
   `ApplyLineup` same-key replacement preserves the approved mode when the lossy lineup edit DTO

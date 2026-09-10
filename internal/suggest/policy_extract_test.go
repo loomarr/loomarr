@@ -451,3 +451,11 @@ func TestGroundPolicy_AudienceMaximumBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestAudienceConstraintsInvalidateUnrestrictedProposalCache(t *testing.T) {
+	const old = "cbca5d0b2f22e5e3d30eba2f359606433553057c51482782d6053155ac7a7d1e"
+	intent := Intent{Description: "Family movies, capped at PG; exclude unrated titles. Keep the audience cap on every scheduled movie."}
+	if IntentHash(intent) == old {
+		t.Fatal("reused proposal cache identity that lost the requested audience restrictions")
+	}
+}

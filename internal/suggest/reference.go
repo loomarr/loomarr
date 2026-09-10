@@ -41,9 +41,9 @@ var (
 	properNamedSetPattern          = regexp.MustCompile(`\b[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\s+(?i:collection|line-?up|block)\b`)
 	acronymCuePattern              = regexp.MustCompile(`(?i:\b(?:for|from|based\s+on|like)\s+)([A-Z][A-Z0-9&]{2,9})\b`)
 	acronymSetSuffixPattern        = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+(?:lineup|block|channel|like)\b)`)
-	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?]|$)`)
+	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?,;:]|$)`)
 	directNetworkRoleBeforePattern = regexp.MustCompile(`(?i:\b(?:the\s+)?network\s+)$`)
-	directNetworkRolePattern       = regexp.MustCompile(`(?i:^\s+(?:the\s+)?network\b)`)
+	directNetworkRolePattern       = regexp.MustCompile(`(?i:^\s*[,;:]?\s+(?:the\s+)?network\b)`)
 	bareProperNamePattern          = regexp.MustCompile(`\b(?:The\s+)?[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\b`)
 )
 
@@ -621,6 +621,9 @@ func namedBlockLabel(intent Intent) string {
 	labels := make(map[string]string)
 	add := func(label string) {
 		label = strings.TrimSpace(label)
+		if blockDaypartPattern.MatchString(label) {
+			return
+		}
 		if label != "" && freeformTitlePolarity(referenceIntentText(intent), label) >= 0 {
 			labels[strings.ToLower(label)] = label
 		}

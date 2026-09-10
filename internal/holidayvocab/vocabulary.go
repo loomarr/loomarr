@@ -28,7 +28,7 @@ var builtins = [...]definition{
 	{
 		id: "christmas", label: "Christmas",
 		intentAliases:   []string{"christmas", "xmas", "santa", "noel", "yuletide"},
-		evidenceAliases: []string{"christmas", "xmas", "santa", "holiday", "noel", "yuletide"},
+		evidenceAliases: []string{"christmas", "xmas", "santa", "santa claus", "noel", "yuletide"},
 	},
 	{
 		id: "newyear", label: "New Year",
@@ -79,4 +79,18 @@ func EvidenceAliases(id string) []string {
 		}
 	}
 	return nil
+}
+
+// MatchesEvidence applies the shared holiday vocabulary to a complete metadata
+// field set. A character's pet name and a generic holiday are not Christmas proof.
+func MatchesEvidence(id, text string) bool {
+	for _, alias := range EvidenceAliases(id) {
+		if id == "christmas" && alias == "santa" && textmatch.ContainsPhrase(text, "Santa's Little Helper") {
+			continue
+		}
+		if textmatch.ContainsPhrase(text, alias) {
+			return true
+		}
+	}
+	return false
 }

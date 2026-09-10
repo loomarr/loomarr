@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
-	"github.com/loomarr/loomarr/internal/textmatch"
 )
 
 // EpisodeSelection is the approved editorial policy for one series entry.
@@ -42,6 +41,12 @@ func selectEpisodes(episodes []ResolvedProgram, policy EpisodeSelection) []Resol
 // claiming every episode positively matched highlights or a holiday.
 func selectEpisodesWithTrace(entry LineupEntry, episodes []ResolvedProgram, editorialUnavailable bool, trace *scheduleTraceBuilder) []ResolvedProgram {
 	if editorialUnavailable {
+		if entry.EpisodeSelection.Mode == EpisodeHoliday {
+			for _, episode := range episodes {
+				trace.add(episodeFact(entry, episode, StageEpisodeSelection, OutcomeOmitted, ReasonHolidayOmitted))
+			}
+			return nil
+		}
 		for _, episode := range episodes {
 			trace.add(episodeFact(entry, episode, StageEpisodeSelection, OutcomeSelected, ReasonFullRunFallback))
 		}
@@ -57,7 +62,7 @@ func selectEpisodesWithTrace(entry LineupEntry, episodes []ResolvedProgram, edit
 	}
 	// Both selective modes return the original slice unchanged when their evidence cannot
 	// safely narrow it. That is a fallback fact, not N positive matches.
-	if len(selected) == len(episodes) {
+	if len(selected) == len(episodes) && mode != EpisodeHoliday {
 		for _, episode := range selected {
 			trace.add(episodeFact(entry, episode, StageEpisodeSelection, OutcomeSelected, ReasonFullRunFallback))
 		}
@@ -187,15 +192,11 @@ func selectHolidayEpisodes(episodes []ResolvedProgram, holidayIDs []string) []Re
 	for _, id := range holidayIDs {
 		selectedHolidays[strings.ToLower(id)] = true
 	}
-	out := matchingHolidayEpisodes(episodes, selectedHolidays)
-	if len(out) == 0 {
-		return episodes
-	}
-	return out
+	return matchingHolidayEpisodes(episodes, selectedHolidays)
 }
 
 // matchingHolidayEpisodes preserves complete multipart units with supported
-// holiday evidence. Unlike the editorial selector, absence of a match is empty.
+// holiday evidence. Absence of a match is empty.
 func matchingHolidayEpisodes(episodes []ResolvedProgram, selectedHolidays map[string]bool) []ResolvedProgram {
 	groups := make(map[string]bool)
 	selected := make(map[int]bool)
@@ -222,10 +223,8 @@ func episodeMatchesHoliday(episode ResolvedProgram, selected map[string]bool) bo
 		if len(selected) > 0 && !selected[holiday.id] {
 			continue
 		}
-		for _, keyword := range holidayvocab.EvidenceAliases(holiday.id) {
-			if textmatch.ContainsPhrase(haystack, keyword) {
-				return true
-			}
+		if holidayvocab.MatchesEvidence(holiday.id, haystack) {
+			return true
 		}
 	}
 	return false

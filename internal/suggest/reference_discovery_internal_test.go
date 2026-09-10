@@ -8,6 +8,13 @@ import (
 func TestNamedBlockLabelPreservesAmbiguityAndNetworkRoles(t *testing.T) {
 	for _, tc := range []struct{ description, refinement, want string }{
 		{"TGIF", "", "TGIF"},
+		{"TGIF, with Full House, Family Matters, and Step by Step. Keep the sitcoms that actually aired in ABC's 1990s Friday-night block; play episodes from the 1990s in episode order.", "", "TGIF"},
+		{"TGIF: Full House and Family Matters", "", "TGIF"},
+		{"TGIF; include Family Matters", "", "TGIF"},
+		{"Friday-night block", "", ""},
+		{"ABC, network shows", "", ""},
+		{"TGIF, with Full House", "Toonami block", ""},
+
 		{"a TGIF block", "", "TGIF"},
 		{"Make me a channel like ABC's TGIF Friday-night block from the 1990s.", "", "TGIF"},
 		{"TGIF block", "Toonami block", ""},

@@ -1608,6 +1608,12 @@ to repeat its names as tool arguments. Neither recovery invents candidates or wi
 still pass through the same read-only Catalog, surfaced-id chokepoint, acquisition revalidation, quota,
 and approval gate. A second empty answer fails normally, keeping the model loop bounded.
 
+A named-block label remains the submitted label when an acronym is followed by a comma,
+semicolon or colon introducing constituent titles or constraints. Generic dayparts such as
+`Friday-night` and explicit network-role phrases are context, not competing source labels.
+Multiple genuinely named labels still abstain; title existence and model memory do not establish
+block membership.
+
 Policy grounding does not delegate explicit user constraints back to probabilistic output. A rating
 the user writes (for example, `keep it PG-13`) is retained as the exact audience ceiling even on an
 otherwise adult channel, while an unqualified adult channel still has no inferred ceiling.
@@ -1617,12 +1623,21 @@ mentions do not create a maximum. Multiple explicit maxima keep the stricter bou
 `exclude unrated` request also survives omitted or looser model policy and refuses unknown ratings
 before approval, including when no ceiling was requested. Negating that exclusion does not add it.
 These restrictions remain proposal policy and pass through ordinary approval and scheduling.
+Their deterministic values participate in the request cache identity, so a previous proposal that
+lost the constraints cannot be served as the result of a fresh submission.
 A request
 that explicitly promises child or family safety contributes a deterministic `TV-Y7` or `TV-PG`
 maximum even when the model omits policy; unrated or harder picks are refused before approval. A request
 that names a built-in holiday deterministically becomes `seasonal.mode=exclusive` with only that
 holiday id selected; an empty holiday subset would mean all built-ins and is therefore not an honest
 representation of a Christmas-, Halloween-, or other single-holiday channel.
+Holiday episode selection is a content restriction: no supported matching evidence, including
+unavailable editorial evidence, yields no selected episodes rather than the full series. The
+existing explicit off-season loop can repeat that restricted selection; it cannot populate it
+with unrelated episodes. Christmas evidence excludes generic `holiday` language and occurrences
+of `Santa` that only name the pet Santa's Little Helper. Other specific Christmas evidence in
+the same episode still counts, and the ordinary Santa character remains a supported cue.
+
 During an active exclusive window, a series is evaluated through its concrete episode evidence,
 not rejected solely because its series title lacks the holiday name. Programming-design §6 owns
 the deferred seasonal filter, including current evidence, multipart units and explicit exclusions.

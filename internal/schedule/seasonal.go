@@ -125,10 +125,8 @@ func holidayActive(h holiday, now time.Time) bool {
 func isSeasonal(e LineupEntry, holidays []holiday) bool {
 	hay := strings.ToLower(e.Title)
 	for _, h := range holidays {
-		for _, kw := range holidayvocab.EvidenceAliases(h.id) {
-			if strings.Contains(hay, kw) {
-				return true
-			}
+		if holidayvocab.MatchesEvidence(h.id, hay) {
+			return true
 		}
 	}
 	return false

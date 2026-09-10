@@ -378,7 +378,7 @@ func TestComputeDesiredHighlightsCapAndTieOverCapFallback(t *testing.T) {
 	}
 }
 
-func TestComputeDesiredHolidayNoMatchFallsBackToCompletePool(t *testing.T) {
+func TestComputeDesiredHolidayNoMatchRemainsEmpty(t *testing.T) {
 	key := provision.Key("series:tmdb:456")
 	episodes := []schedule.ResolvedProgram{
 		{LibraryItemID: "ep-1", Title: "Ordinary One", DurationMs: 1, Season: 1, Episode: 1},
@@ -397,9 +397,13 @@ func TestComputeDesiredHolidayNoMatchFallsBackToCompletePool(t *testing.T) {
 			ids = append(ids, slot.LibraryItemID)
 		}
 	}
-	if want := []string{"ep-1", "ep-2", "ep-3"}; !slices.Equal(ids, want) {
-		t.Fatalf("holiday no-match programs = %v, want complete pool %v", ids, want)
+	if len(ids) != 0 {
+		t.Fatalf("holiday no-match programs = %v, want none", ids)
 	}
+	if !traceHas(got.Trace.Facts, schedule.StageEpisodeSelection, schedule.ReasonHolidayOmitted, key) {
+		t.Fatal("empty holiday selection omitted its evidence trace")
+	}
+
 }
 
 func TestComputeDesiredUnknownEpisodeModeFallsBackToCompletePool(t *testing.T) {
@@ -848,5 +852,38 @@ func TestChannelValidate(t *testing.T) {
 				t.Fatalf("Validate() err=%v, wantErr=%v", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestComputeDesiredChristmasScopeRejectsPetAndOtherHolidayEvidence(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	negatives := []schedule.ResolvedProgram{
+		{LibraryItemID: "dog", Title: "Dog of Death", Overview: "The family pays for surgery for Santa's Little Helper.", DurationMs: 1, Season: 3, Episode: 19},
+		{LibraryItemID: "dog-curly", Title: "The Canine Mutiny", Overview: "Bart replaces Santa’s Little Helper with a new dog.", DurationMs: 1, Season: 8, Episode: 20},
+		{LibraryItemID: "halloween", Title: "Halloween of Horror", Overview: "Homer brings out the holiday decorations.", DurationMs: 1, Season: 27, Episode: 4},
+	}
+	positives := []schedule.ResolvedProgram{
+		{LibraryItemID: "christmas", Title: "Simpsons Roasting on an Open Fire", Overview: "At Christmas the family adopts Santa's Little Helper.", DurationMs: 1, Season: 1, Episode: 1},
+		{LibraryItemID: "santa", Title: "Winter Visitor", Overview: "The family meets Santa.", DurationMs: 1, Season: 1, Episode: 2},
+	}
+	for _, withPositives := range []bool{false, true} {
+		episodes := append([]schedule.ResolvedProgram(nil), negatives...)
+		if withPositives {
+			episodes = append(episodes, positives...)
+		}
+		got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{Key: key, Title: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill, schedule.ChannelPolicy{}, time.Time{})
+		var ids []string
+		for _, slot := range got.Slots {
+			if slot.IsProgram() {
+				ids = append(ids, slot.LibraryItemID)
+			}
+		}
+		var want []string
+		if withPositives {
+			want = []string{"christmas", "santa"}
+		}
+		if !slices.Equal(ids, want) {
+			t.Fatalf("positives=%v: episodes=%v, want %v", withPositives, ids, want)
+		}
 	}
 }
