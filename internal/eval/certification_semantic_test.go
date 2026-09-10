@@ -52,11 +52,11 @@ func TestV8SemanticProductionPlannerAndSchedule(t *testing.T) {
 			}
 			picks := make([]map[string]any, 0, len(c.ExpectedProposalKeys))
 			for _, key := range c.ExpectedProposalKeys {
-				kind, _, id, ok := provision.ParseKey(key)
+				kind, _, _, ok := provision.ParseKey(key)
 				if !ok {
 					t.Fatalf("invalid fixture key %q", key)
 				}
-				picks = append(picks, map[string]any{"mediaType": kind, "tmdbId": id})
+				picks = append(picks, map[string]any{"mediaType": kind, "key": key})
 			}
 			final, err := json.Marshal(map[string]any{"picks": picks, "dateMeaning": meaning})
 			if err != nil {
@@ -137,7 +137,7 @@ func TestV8SemanticIndexedAnchorRejectedBeforeDiscoveryAndRepaired(t *testing.T)
 			tool := func(m suggest.DateMeaning) llm.Response {
 				return testkit.ToolCallResponse("catalog_search", v8WireArguments(t, map[string]any{"media_type": "movie", "genres": []string{"Drama"}, "dateMeaning": m}))
 			}
-			final, err := json.Marshal(map[string]any{"picks": []map[string]any{{"mediaType": "movie", "tmdbId": 11008}}, "dateMeaning": good})
+			final, err := json.Marshal(map[string]any{"picks": []map[string]any{{"mediaType": "movie", "key": "movie:tmdb:11008"}}, "dateMeaning": good})
 			if err != nil {
 				t.Fatal(err)
 			}

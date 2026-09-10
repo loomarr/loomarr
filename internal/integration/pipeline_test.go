@@ -269,10 +269,10 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 			"rationale":"90s Saturday morning cartoons",
 			"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":3}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]},
 			"picks":[
-				{"mediaType":"movie","tmdbId":5001,"name":"Sunny Toon Hour"},
-				{"mediaType":"movie","tmdbId":5002,"name":"Robo Rangers"},
-				{"mediaType":"movie","tmdbId":5003,"name":"Critter Club"},
-				{"mediaType":"movie","tmdbId":5004,"name":"Midnight Mayhem Toons"}
+				{"mediaType":"movie","key":"movie:tmdb:5001","name":"Sunny Toon Hour"},
+				{"mediaType":"movie","key":"movie:tmdb:5002","name":"Robo Rangers"},
+				{"mediaType":"movie","key":"movie:tmdb:5003","name":"Critter Club"},
+				{"mediaType":"movie","key":"movie:tmdb:5004","name":"Midnight Mayhem Toons"}
 			],
 			"policy":{"audience":{"ceiling":"TV-Y7"},"genres":{"include":["Animation"]},"ordering":"syndication"}
 		}`),

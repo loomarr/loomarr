@@ -14,13 +14,13 @@ import (
 
 const (
 	PlannerSourceVersion             = "reference-source-v1"
-	PlannerPromptVersion             = "suggester-prompt-v10"
-	PlannerToolSchemaVersion         = "catalog-search-v6"
+	PlannerPromptVersion             = "suggester-prompt-v11"
+	PlannerToolSchemaVersion         = "catalog-search-v7"
 	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v3"
 	PlannerDiagnosticToolCallID      = "planner-diagnostic-call-1"
 	plannerDiagnosticSchemaVersion   = 3
 	plannerDiagnosticIntent          = "science fiction"
-	plannerDiagnosticResponseVersion = "single-grounded-candidate-v1"
+	plannerDiagnosticResponseVersion = "single-grounded-candidate-v2"
 )
 
 // ToolFinalizationDiagnostic is a content-safe identity and outcome record for

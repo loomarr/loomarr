@@ -36,7 +36,7 @@ func TestReleaseGateScorecardRecordsBoundedPhasesWithoutRawPrompt(t *testing.T) 
 		t.Fatal(err)
 	}
 	provider := testkit.NewLLM(llm.Response{
-		Content: `{"picks":[{"mediaType":"series","tmdbId":999997,"name":"Full House"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
+		Content: `{"picks":[{"mediaType":"series","key":"series:tmdb:999997","name":"Full House"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
 		Attribution: llm.Attribution{
 			RequestedProvider: "ollama", RequestedModel: "fixture-model",
 			ResolvedProvider: "ollama", ResolvedModel: "fixture-digest",
@@ -79,7 +79,7 @@ func TestReleaseGateCorpusIsFrozenAndReleaseFocused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-release-gate-v7" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
+	if corpus.Version != "planner-release-gate-v8" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
 		corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion || corpus.Fixture.SHA256 == "" || corpus.SourcesFixture.SHA256 == "" {
 		t.Fatalf("release-gate identity = %+v", corpus)
 	}
@@ -160,22 +160,22 @@ func TestReleaseGateStructuralCasesUseProductionGrounding(t *testing.T) {
 	}{
 		{
 			name:      "invented-id-no-tools",
-			response:  `{"picks":[{"mediaType":"series","tmdbId":999999,"name":"Imaginary TGIF Show"}]}`,
+			response:  `{"picks":[{"mediaType":"series","key":"series:tmdb:999999","name":"Imaginary TGIF Show"}]}`,
 			wantError: true,
 		},
 		{
 			name:      "empty-exact-title",
-			response:  `{"picks":[{"mediaType":"series","tmdbId":999998,"name":"The Unfindable Exact Show"}]}`,
+			response:  `{"picks":[{"mediaType":"series","key":"series:tmdb:999998","name":"The Unfindable Exact Show"}]}`,
 			wantError: true,
 		},
 		{
 			name:      "ambiguous-exact-title",
-			response:  `{"picks":[{"mediaType":"series","tmdbId":999997,"name":"Full House"}]}`,
+			response:  `{"picks":[{"mediaType":"series","key":"series:tmdb:999997","name":"Full House"}]}`,
 			wantTitle: "Full House",
 		},
 		{
 			name:      "partial-malformed-intent",
-			response:  `{"picks":[{"mediaType":"series","tmdbId":999999,"name":"Banana Fish"}]}`,
+			response:  `{"picks":[{"mediaType":"series","key":"series:tmdb:999999","name":"Banana Fish"}]}`,
 			wantError: true,
 		},
 	}
@@ -217,7 +217,7 @@ func TestReleaseGateBroaderIntentFamiliesUseProductionRoutes(t *testing.T) {
 			arguments: map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{
 				"Iron Man", "The Incredible Hulk", "Iron Man 2", "Thor", "Captain America: The First Avenger", "The Avengers",
 			}},
-			response: `{"picks":[{"mediaType":"movie","tmdbId":21101,"name":"Iron Man"},{"mediaType":"movie","tmdbId":21102,"name":"The Incredible Hulk"},{"mediaType":"movie","tmdbId":21103,"name":"Iron Man 2"},{"mediaType":"movie","tmdbId":21104,"name":"Thor"},{"mediaType":"movie","tmdbId":21105,"name":"Captain America: The First Avenger"},{"mediaType":"movie","tmdbId":21106,"name":"The Avengers"}]}`,
+			response: `{"picks":[{"mediaType":"movie","key":"movie:tmdb:21101","name":"Iron Man"},{"mediaType":"movie","key":"movie:tmdb:21102","name":"The Incredible Hulk"},{"mediaType":"movie","key":"movie:tmdb:21103","name":"Iron Man 2"},{"mediaType":"movie","key":"movie:tmdb:21104","name":"Thor"},{"mediaType":"movie","key":"movie:tmdb:21105","name":"Captain America: The First Avenger"},{"mediaType":"movie","key":"movie:tmdb:21106","name":"The Avengers"}]}`,
 			want:     6,
 		},
 		{
@@ -225,19 +225,19 @@ func TestReleaseGateBroaderIntentFamiliesUseProductionRoutes(t *testing.T) {
 			arguments: map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{
 				"The Matrix", "The Matrix Reloaded", "The Matrix Revolutions", "The Animatrix",
 			}},
-			response: `{"picks":[{"mediaType":"movie","tmdbId":21201,"name":"The Matrix"},{"mediaType":"movie","tmdbId":21202,"name":"The Matrix Reloaded"},{"mediaType":"movie","tmdbId":21203,"name":"The Matrix Revolutions"},{"mediaType":"movie","tmdbId":21204,"name":"The Animatrix"}]}`,
+			response: `{"picks":[{"mediaType":"movie","key":"movie:tmdb:21201","name":"The Matrix"},{"mediaType":"movie","key":"movie:tmdb:21202","name":"The Matrix Reloaded"},{"mediaType":"movie","key":"movie:tmdb:21203","name":"The Matrix Revolutions"},{"mediaType":"movie","key":"movie:tmdb:21204","name":"The Animatrix"}]}`,
 			want:     4,
 		},
 		{
 			name:      "movie-person",
 			arguments: map[string]any{"media_type": "movie", "cast": []any{"Tom Hanks"}, "era": "1990s"},
-			response:  `{"picks":[{"mediaType":"movie","tmdbId":21301,"name":"Joe Versus the Volcano"},{"mediaType":"movie","tmdbId":21302,"name":"That Thing You Do!"},{"mediaType":"movie","tmdbId":21303,"name":"You've Got Mail"}],"policy":{"era":{"from":1990,"to":1999}}}`,
+			response:  `{"picks":[{"mediaType":"movie","key":"movie:tmdb:21301","name":"Joe Versus the Volcano"},{"mediaType":"movie","key":"movie:tmdb:21302","name":"That Thing You Do!"},{"mediaType":"movie","key":"movie:tmdb:21303","name":"You've Got Mail"}],"policy":{"era":{"from":1990,"to":1999}}}`,
 			want:      3,
 		},
 		{
 			name:      "tv-network",
 			arguments: map[string]any{"media_type": "series", "network": "HBO", "era": "2000s"},
-			response:  `{"picks":[{"mediaType":"series","tmdbId":21401,"name":"The Sopranos"},{"mediaType":"series","tmdbId":21402,"name":"The Wire"},{"mediaType":"series","tmdbId":21403,"name":"Six Feet Under"},{"mediaType":"series","tmdbId":21404,"name":"Deadwood"}],"policy":{"era":{"from":2000,"to":2009}}}`,
+			response:  `{"picks":[{"mediaType":"series","key":"series:tmdb:21401","name":"The Sopranos"},{"mediaType":"series","key":"series:tmdb:21402","name":"The Wire"},{"mediaType":"series","key":"series:tmdb:21403","name":"Six Feet Under"},{"mediaType":"series","key":"series:tmdb:21404","name":"Deadwood"}],"policy":{"era":{"from":2000,"to":2009}}}`,
 			want:      4,
 		},
 		{
@@ -245,13 +245,13 @@ func TestReleaseGateBroaderIntentFamiliesUseProductionRoutes(t *testing.T) {
 			arguments: map[string]any{
 				"mode": "network", "media_type": "series", "network": "Apple TV+", "genres": []any{"Science Fiction"},
 			},
-			response: `{"picks":[{"mediaType":"series","tmdbId":21701,"name":"Foundation"},{"mediaType":"series","tmdbId":21702,"name":"For All Mankind"},{"mediaType":"series","tmdbId":21703,"name":"Silo"},{"mediaType":"series","tmdbId":21704,"name":"Severance"}]}`,
+			response: `{"picks":[{"mediaType":"series","key":"series:tmdb:21701","name":"Foundation"},{"mediaType":"series","key":"series:tmdb:21702","name":"For All Mankind"},{"mediaType":"series","key":"series:tmdb:21703","name":"Silo"},{"mediaType":"series","key":"series:tmdb:21704","name":"Severance"}]}`,
 			want:     4,
 		},
 		{
 			name:      "mood-theme",
 			arguments: map[string]any{"media_type": "series", "keywords": []any{"cozy", "mystery"}},
-			response:  `{"picks":[{"mediaType":"series","tmdbId":21501,"name":"Murder, She Wrote"},{"mediaType":"series","tmdbId":21502,"name":"Father Brown"},{"mediaType":"series","tmdbId":21503,"name":"Miss Fisher's Murder Mysteries"}]}`,
+			response:  `{"picks":[{"mediaType":"series","key":"series:tmdb:21501","name":"Murder, She Wrote"},{"mediaType":"series","key":"series:tmdb:21502","name":"Father Brown"},{"mediaType":"series","key":"series:tmdb:21503","name":"Miss Fisher's Murder Mysteries"}]}`,
 			want:      3,
 		},
 		{
@@ -259,7 +259,7 @@ func TestReleaseGateBroaderIntentFamiliesUseProductionRoutes(t *testing.T) {
 			arguments: map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{
 				"E.T. the Extra-Terrestrial", "Hook", "Jurassic Park",
 			}},
-			response: `{"picks":[{"mediaType":"movie","tmdbId":21601,"name":"E.T. the Extra-Terrestrial"},{"mediaType":"movie","tmdbId":21602,"name":"Hook"},{"mediaType":"movie","tmdbId":21603,"name":"Jurassic Park"}]}`,
+			response: `{"picks":[{"mediaType":"movie","key":"movie:tmdb:21601","name":"E.T. the Extra-Terrestrial"},{"mediaType":"movie","key":"movie:tmdb:21602","name":"Hook"},{"mediaType":"movie","key":"movie:tmdb:21603","name":"Jurassic Park"}]}`,
 			want:     3,
 		},
 	}
@@ -297,45 +297,45 @@ func TestReleaseGateRunsMoreThanOneThousandScriptedInputVariants(t *testing.T) {
 			arguments: map[string]any{"mode": "collection", "media_type": "series", "titles": []any{
 				"Full House", "Family Matters", "Step by Step", "Perfect Strangers", "Boy Meets World", "Sabrina the Teenage Witch",
 			}},
-			final: `{"picks":[{"mediaType":"series","tmdbId":20101,"name":"Full House"},{"mediaType":"series","tmdbId":20102,"name":"Family Matters"},{"mediaType":"series","tmdbId":20103,"name":"Step by Step"},{"mediaType":"series","tmdbId":20104,"name":"Perfect Strangers"},{"mediaType":"series","tmdbId":20105,"name":"Boy Meets World"},{"mediaType":"series","tmdbId":20106,"name":"Sabrina the Teenage Witch"}]}`,
+			final: `{"picks":[{"mediaType":"series","key":"series:tmdb:20101","name":"Full House"},{"mediaType":"series","key":"series:tmdb:20102","name":"Family Matters"},{"mediaType":"series","key":"series:tmdb:20103","name":"Step by Step"},{"mediaType":"series","key":"series:tmdb:20104","name":"Perfect Strangers"},{"mediaType":"series","key":"series:tmdb:20105","name":"Boy Meets World"},{"mediaType":"series","key":"series:tmdb:20106","name":"Sabrina the Teenage Witch"}]}`,
 		},
 		{
 			caseID: "named-collection",
 			arguments: map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{
 				"Iron Man", "The Incredible Hulk", "Iron Man 2",
 			}},
-			final: `{"picks":[{"mediaType":"movie","tmdbId":21101,"name":"Iron Man"},{"mediaType":"movie","tmdbId":21102,"name":"The Incredible Hulk"},{"mediaType":"movie","tmdbId":21103,"name":"Iron Man 2"}]}`,
+			final: `{"picks":[{"mediaType":"movie","key":"movie:tmdb:21101","name":"Iron Man"},{"mediaType":"movie","key":"movie:tmdb:21102","name":"The Incredible Hulk"},{"mediaType":"movie","key":"movie:tmdb:21103","name":"Iron Man 2"}]}`,
 		},
 		{
 			caseID: "known-franchise",
 			arguments: map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{
 				"The Matrix", "The Matrix Reloaded", "The Matrix Revolutions",
 			}},
-			final: `{"picks":[{"mediaType":"movie","tmdbId":21201,"name":"The Matrix"},{"mediaType":"movie","tmdbId":21202,"name":"The Matrix Reloaded"},{"mediaType":"movie","tmdbId":21203,"name":"The Matrix Revolutions"}]}`,
+			final: `{"picks":[{"mediaType":"movie","key":"movie:tmdb:21201","name":"The Matrix"},{"mediaType":"movie","key":"movie:tmdb:21202","name":"The Matrix Reloaded"},{"mediaType":"movie","key":"movie:tmdb:21203","name":"The Matrix Revolutions"}]}`,
 		},
 		{
 			caseID:    "movie-person",
 			arguments: map[string]any{"media_type": "movie", "cast": []any{"Tom Hanks"}, "era": "1990s"},
-			final:     `{"picks":[{"mediaType":"movie","tmdbId":21301,"name":"Joe Versus the Volcano"},{"mediaType":"movie","tmdbId":21302,"name":"That Thing You Do!"},{"mediaType":"movie","tmdbId":21303,"name":"You've Got Mail"}],"policy":{"era":{"from":1990,"to":1999}}}`,
+			final:     `{"picks":[{"mediaType":"movie","key":"movie:tmdb:21301","name":"Joe Versus the Volcano"},{"mediaType":"movie","key":"movie:tmdb:21302","name":"That Thing You Do!"},{"mediaType":"movie","key":"movie:tmdb:21303","name":"You've Got Mail"}],"policy":{"era":{"from":1990,"to":1999}}}`,
 		},
 		{
 			caseID: "tv-network-genre",
 			arguments: map[string]any{
 				"mode": "network", "media_type": "series", "network": "Apple TV+", "genres": []any{"Science Fiction"},
 			},
-			final: `{"picks":[{"mediaType":"series","tmdbId":21701,"name":"Foundation"},{"mediaType":"series","tmdbId":21702,"name":"For All Mankind"},{"mediaType":"series","tmdbId":21703,"name":"Silo"}]}`,
+			final: `{"picks":[{"mediaType":"series","key":"series:tmdb:21701","name":"Foundation"},{"mediaType":"series","key":"series:tmdb:21702","name":"For All Mankind"},{"mediaType":"series","key":"series:tmdb:21703","name":"Silo"}]}`,
 		},
 		{
 			caseID:    "mood-theme",
 			arguments: map[string]any{"media_type": "series", "keywords": []any{"cozy", "mystery"}},
-			final:     `{"picks":[{"mediaType":"series","tmdbId":21501,"name":"Murder, She Wrote"},{"mediaType":"series","tmdbId":21502,"name":"Father Brown"},{"mediaType":"series","tmdbId":21503,"name":"Miss Fisher's Murder Mysteries"}]}`,
+			final:     `{"picks":[{"mediaType":"series","key":"series:tmdb:21501","name":"Murder, She Wrote"},{"mediaType":"series","key":"series:tmdb:21502","name":"Father Brown"},{"mediaType":"series","key":"series:tmdb:21503","name":"Miss Fisher's Murder Mysteries"}]}`,
 		},
 		{
 			caseID: "public-reference",
 			arguments: map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{
 				"E.T. the Extra-Terrestrial", "Hook", "Jurassic Park",
 			}},
-			final: `{"picks":[{"mediaType":"movie","tmdbId":21601,"name":"E.T. the Extra-Terrestrial"},{"mediaType":"movie","tmdbId":21602,"name":"Hook"},{"mediaType":"movie","tmdbId":21603,"name":"Jurassic Park"}]}`,
+			final: `{"picks":[{"mediaType":"movie","key":"movie:tmdb:21601","name":"E.T. the Extra-Terrestrial"},{"mediaType":"movie","key":"movie:tmdb:21602","name":"Hook"},{"mediaType":"movie","key":"movie:tmdb:21603","name":"Jurassic Park"}]}`,
 		},
 	}
 	prefixes := []string{

@@ -369,4 +369,16 @@ for path in internal/suggest/tools.go internal/suggest/prompt.go; do
   fi
 done
 [[ "$fail" -ne 0 ]] && exit 1
+# Separate provider IDs are retired only at the model-selection interface.
+# Public Proposal and Catalog DTOs retain their existing external-ID fields.
+for path in internal/suggest/parse.go internal/suggest/prompt.go; do
+  for id in 'json:"tmdbId' 'json:"tvdbId' '"tmdbId":' '"tvdbId":'; do
+    hits="$(grep -nF "$id" "$path" 2>/dev/null || true)"
+    if [[ -n "$hits" ]]; then
+      fail=1
+      printf '\nRETIRED MODEL SELECTION FIELD: %s in %s\n%s\n' "$id" "$path" "$hits"
+    fi
+  done
+done
+[[ "$fail" -ne 0 ]] && exit 1
 printf 'retired-verify: clean (%d identifiers checked)\n' "${#RETIRED[@]}"

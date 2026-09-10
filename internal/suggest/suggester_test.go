@@ -101,7 +101,7 @@ func (m *unsolicitedFinalizationToolLLM) Chat(_ context.Context, messages []llm.
 			ID: fmt.Sprintf("call-%d", m.calls), Name: "catalog_search", Arguments: map[string]any{"query": "matrix", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}},
 		}}}, nil
 	}
-	return finalResponseWithNone(`{"channelName":"Matrix Signal","rationale":"Grounded science fiction.","picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","rationale":"It is the requested grounded title.","confidence":0.99}],"policy":{}}`), nil
+	return finalResponseWithNone(`{"channelName":"Matrix Signal","rationale":"Grounded science fiction.","picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix","rationale":"It is the requested grounded title.","confidence":0.99}],"policy":{}}`), nil
 }
 
 type emptyThenGroundedLLM struct {
@@ -155,7 +155,7 @@ func (m *emptyThenGroundedLLM) Chat(_ context.Context, _ []llm.Message, opts llm
 		if len(opts.Tools) != 0 {
 			return llm.Response{}, errors.New("catalog tool remained after a grounded result")
 		}
-		return finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`), nil
+		return finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`), nil
 	}
 }
 
@@ -172,7 +172,7 @@ func (m *toolAvailabilitySensitiveLLM) Chat(_ context.Context, _ []llm.Message, 
 		m.final = m.final[1:]
 		return response, nil
 	}
-	return finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`), nil
+	return finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`), nil
 }
 
 // buildSuggester wires a suggester over the real testkit mocks: library search
@@ -196,8 +196,8 @@ func TestGrounding_FabricatedTitleNeverReachesProposal(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "speed"}),
 		finalResponseWithNone(`{"rationale":"90s action","picks":[
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
-			{"mediaType":"movie","tmdbId":77777,"name":"Totally Made Up Film"}
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
+			{"mediaType":"movie","key":"movie:tmdb:77777","name":"Totally Made Up Film"}
 		]}`),
 	)
 	s := buildSuggester(t, llmMock)
@@ -263,7 +263,7 @@ func TestSuggest_DoesNotExecuteUnsolicitedToolCallDuringFinalization(t *testing.
 func TestSuggest_RepairKeepsToolsDisabledAfterGrounding(t *testing.T) {
 	model := &toolAvailabilitySensitiveLLM{final: []llm.Response{
 		finalResponseWithNone(`not json`),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	}}
 	prop, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
 	if err != nil {
@@ -301,7 +301,7 @@ func TestSuggest_RecoversCoherentNetworkRouteFromProviderPopulatedOptionalFields
 			"cast": []any{"Tiffani Thiessen"}, "creators": []any{"Jeff Franklin"},
 			"network": "ABC", "dateMeaning": meaning, "runtime_min": float64(20), "runtime_max": float64(60),
 		}),
-		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"series","tvdbId":760,"name":"Step by Step"}]}`, meaning),
+		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"series","key":"series:tvdb:760","name":"Step by Step"}]}`, meaning),
 	)
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
 		MediaType: provision.Series, TVDBID: 760, Name: "Step by Step", Year: 1991, InLibrary: true,
@@ -398,7 +398,7 @@ func TestSuggest_EmptyRetrievalLimitDoesNotDiscardAdjacentGrounding(t *testing.T
 	model := testkit.NewLLM(
 		emptySearch,
 		emptySearch,
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	prop, err := buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{
 		Description: "science fiction",
@@ -422,7 +422,7 @@ func traceHas(trace suggest.DecisionTrace, key, disposition, reason string) bool
 }
 
 func TestSuggest_AdjacencySelectionCarriesCompleteTraceFacts(t *testing.T) {
-	llmMock := testkit.NewLLM(finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`))
+	llmMock := testkit.NewLLM(finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`))
 	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{
 		Description: "science fiction",
 		Adjacent:    []suggest.AdjacentContext{{Key: "movie:tmdb:603", Name: "The Matrix", Year: 1999, Votes: 3}},
@@ -445,7 +445,7 @@ func TestSuggest_AdjacencySelectionCarriesCompleteTraceFacts(t *testing.T) {
 func TestSuggest_SuccessClearsIntermediateEmptyRetrievalOutcome(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "definitely absent"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{
 		Description: "science fiction",
@@ -505,7 +505,7 @@ func TestGrounding_AcquisitionRevalidatedAgainstTMDB(t *testing.T) {
 	// by confirming a known-good acquisition passes and is present.
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "the rock"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":101,"name":"The Rock"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}]}`),
 	)
 	s := buildSuggester(t, llmMock)
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "action"})
@@ -533,7 +533,7 @@ func TestSuggest_HolidayKeywordDiscoversTitleWithoutHolidayInName(t *testing.T) 
 			"keywords": []any{"Christmas"}, "media_type": "movie",
 		}),
 		finalResponseWithNone(`{"channelName":"Snow Day Cinema","picks":[
-			{"mediaType":"movie","tmdbId":2401,"name":"Snowbound Reunion","confidence":0.91}
+			{"mediaType":"movie","key":"movie:tmdb:2401","name":"Snowbound Reunion","confidence":0.91}
 		],"policy":{"seasonal":{"mode":"auto"}}}`),
 	)
 	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
@@ -566,7 +566,7 @@ func TestSuggest_ExplicitRatingLimitIsEnforced(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "action"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":5011,"name":"Hard Target"}],"policy":{"audience":{"ceiling":"PG-13"}}}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:5011","name":"Hard Target"}],"policy":{"audience":{"ceiling":"PG-13"}}}`),
 	)
 	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
@@ -591,7 +591,7 @@ func TestSuggest_ExplicitFamilySafetyIsEnforcedWhenModelOmitsPolicy(t *testing.T
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "family"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":5012,"name":"Very Scary Night"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:5012","name":"Very Scary Night"}]}`),
 	)
 	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
@@ -617,7 +617,7 @@ func TestSuggest_ClassicSingleSeriesUsesCuratedSyndication(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "simpsons"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","seasonMin":1,"seasonMax":10}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons","seasonMin":1,"seasonMax":10}]}`),
 	)
 	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
@@ -646,7 +646,7 @@ func TestSuggest_BestSingleSeriesSelectsHighlights(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "simpsons"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"}]}`),
 	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Best Simpsons episodes"})
@@ -671,7 +671,7 @@ func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) 
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "simpsons"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","seasonMin":1,"seasonMax":10}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons","seasonMin":1,"seasonMax":10}]}`),
 	)
 	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
@@ -697,7 +697,7 @@ func TestSuggest_CuratedCueDoesNotMatchInsideAnotherWord(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "concerts"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"Great Concerts"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"Great Concerts"}]}`),
 	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Classical concerts"})
@@ -740,7 +740,7 @@ func TestSuggest_EpisodeModeIgnoresNegativeConstraints(t *testing.T) {
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			s := suggest.New(testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"query": "simpsons"}),
-				finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"}]}`),
 			), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
 			prop, err := s.Suggest(context.Background(), tt.intent)
@@ -762,7 +762,7 @@ func TestSuggest_NamedHolidaySeriesSelectsMatchingEpisodes(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "simpsons"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"}]}`),
 	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Christmas Simpsons episodes"})
 	if err != nil {
@@ -812,7 +812,7 @@ func TestSuggest_NamedHolidayEpisodeSelectionUsesAffirmativeWholePhrases(t *test
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			s := suggest.New(testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"query": "simpsons"}),
-				finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"}]}`),
 			), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
 			prop, err := s.Suggest(context.Background(), tt.intent)
@@ -838,7 +838,7 @@ func TestSuggest_GenericHolidaySeriesSelectsBuiltInHolidayEpisodes(t *testing.T)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "simpsons"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"}]}`),
 	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Simpsons holiday episodes"})
@@ -859,7 +859,7 @@ func TestSuggest_ModelSeasonalPolicyCannotChooseHolidayEpisodes(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "simpsons"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}],`+
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"}],`+
 			`"policy":{"seasonal":{"mode":"exclusive","holidays":["christmas"]}}}`),
 	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
@@ -880,7 +880,7 @@ func TestSuggest_UndeclaredSeasonalCueKeepsCompleteEpisodes(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "simpsons"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"}]}`),
 	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Simpsons seasonal episodes"})
@@ -902,7 +902,7 @@ func TestSuggest_RefineAddsDaypartAndHolidayRulesWithoutReplacingChannelIdentity
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "simpsons"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}],"policy":{
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"}],"policy":{
 			"seasonal":{"mode":"auto"},
 			"rules":[
 				{"when":"mornings","what":"family","how":"syndication"},
@@ -941,8 +941,8 @@ func TestSuggest_ExecutesOnlyFirstToolCallFromParallelResponse(t *testing.T) {
 			{ID: "rock", Name: "catalog_search", Arguments: map[string]any{"query": "the rock"}},
 		}},
 		finalResponseWithNone(`{"picks":[
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
-			{"mediaType":"movie","tmdbId":101,"name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
+			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
 		]}`),
 	)
 	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{Description: "90s action"})
@@ -961,7 +961,7 @@ func TestSuggest_RetriesOnceWhenModelNeverSearches(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		finalResponseWithNone(`{"picks":[]}`),
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{Description: "science fiction"})
 	if err != nil {
@@ -994,7 +994,7 @@ func TestSuggest_GroundsToolFreeNamedPickThroughCatalog(t *testing.T) {
 			"rationale":"A family-comedy block.",
 			"picks":[{
 				"mediaType":"series",
-				"tmdbId":12345,
+				"key":"series:tmdb:12345",
 				"name":"Full House",
 				"rationale":"A defining family sitcom.",
 				"confidence":0.95
@@ -1063,7 +1063,7 @@ func TestSuggest_NamedSourceAmbiguitySurvivesModelDiscoveryFilters(t *testing.T)
 			if tt.meaning != nil {
 				tt.arguments["dateMeaning"] = tt.meaning
 			}
-			final := fmt.Sprintf(`{"picks":[{"mediaType":%q,"tmdbId":%d,"name":"Full House","year":1987}]}`, tt.mediaType, tt.tmdbID)
+			final := fmt.Sprintf(`{"picks":[{"mediaType":%q,"key":"%s:tmdb:%d","name":"Full House","year":1987}]}`, tt.mediaType, tt.mediaType, tt.tmdbID)
 			finalResponse := finalResponseWithNone(final)
 			if tt.meaning != nil {
 				finalResponse = finalResponseWithDateMeaning(final, tt.meaning)
@@ -1117,7 +1117,7 @@ func TestSuggest_GroundsToolFreeNamedPickAsAcquisition(t *testing.T) {
 	s := suggest.New(
 		testkit.NewLLM(finalResponseWithNone(`{
 			"channelName":"Friday Night",
-			"picks":[{"mediaType":"series","tmdbId":12345,"name":"Full House","year":1987}]
+			"picks":[{"mediaType":"series","key":"series:tmdb:12345","name":"Full House","year":1987}]
 		}`)),
 		catalog.New(nil, tm),
 		tm,
@@ -1150,7 +1150,7 @@ func TestSuggest_GroundsToolFreeNamedPickBySuppliedYear(t *testing.T) {
 	s := suggest.New(
 		testkit.NewLLM(finalResponseWithNone(`{
 			"channelName":"Friday Night",
-			"picks":[{"mediaType":"series","tmdbId":12345,"name":"Full House","year":1987}]
+			"picks":[{"mediaType":"series","key":"series:tmdb:12345","name":"Full House","year":1987}]
 		}`)),
 		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm),
 		tm,
@@ -1172,8 +1172,8 @@ func TestSuggest_GroundsIndependentToolFreeNamesConcurrently(t *testing.T) {
 		testkit.NewLLM(finalResponseWithNone(`{
 			"channelName":"Friday Night",
 			"picks":[
-				{"mediaType":"series","tmdbId":12345,"name":"Full House"},
-				{"mediaType":"series","tmdbId":67890,"name":"Family Matters"}
+				{"mediaType":"series","key":"series:tmdb:12345","name":"Full House"},
+				{"mediaType":"series","key":"series:tmdb:67890","name":"Family Matters"}
 			]
 		}`)),
 		catalog.New(lib, nil),
@@ -1200,11 +1200,11 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 	}{
 		{
 			name:  "missing exact title",
-			picks: `[{"mediaType":"series","tmdbId":12345,"name":"Full House"}]`,
+			picks: `[{"mediaType":"series","key":"series:tmdb:12345","name":"Full House"}]`,
 		},
 		{
 			name:  "ambiguous title without year",
-			picks: `[{"mediaType":"series","tmdbId":12345,"name":"Full House"}]`,
+			picks: `[{"mediaType":"series","key":"series:tmdb:12345","name":"Full House"}]`,
 			items: []testkit.SearchStub{
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-1987", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762},
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-2020", Name: "Full House", Type: "Series", Year: 2020, TVDBID: 999762},
@@ -1212,7 +1212,7 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 		},
 		{
 			name:  "ambiguous named source with model-only year",
-			picks: `[{"mediaType":"series","tmdbId":12345,"name":"Full House","year":1987}]`,
+			picks: `[{"mediaType":"series","key":"series:tmdb:12345","name":"Full House","year":1987}]`,
 			items: []testkit.SearchStub{
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-1987", Name: "Full House", Type: "Series", Year: 1987, TVDBID: 762},
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-2020", Name: "Full House", Type: "Series", Year: 2020, TVDBID: 999762},
@@ -1220,14 +1220,14 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 		},
 		{
 			name:  "wrong media type",
-			picks: `[{"mediaType":"series","tmdbId":12345,"name":"Full House"}]`,
+			picks: `[{"mediaType":"series","key":"series:tmdb:12345","name":"Full House"}]`,
 			items: []testkit.SearchStub{
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-movie", Name: "Full House", Type: "Movie", Year: 1952, TMDBID: 123},
 			},
 		},
 		{
 			name:  "conflicting supplied year",
-			picks: `[{"mediaType":"series","tmdbId":12345,"name":"Full House","year":1987}]`,
+			picks: `[{"mediaType":"series","key":"series:tmdb:12345","name":"Full House","year":1987}]`,
 			items: []testkit.SearchStub{
 				{Terms: []string{"full house"}, LibraryItemID: "full-house-2020", Name: "Full House", Type: "Series", Year: 2020, TVDBID: 999762},
 			},
@@ -1269,16 +1269,16 @@ func TestSuggest_ToolFreeNameGroundingIsBoundedAndDeduplicated(t *testing.T) {
 		testkit.NewLLM(finalResponseWithNone(`{
 			"channelName":"Friday Night",
 			"picks":[
-				{"mediaType":"movie","tmdbId":90001,"name":"Full House"},
-				{"mediaType":"series","tmdbId":90002,"name":"FULL-HOUSE"},
-				{"mediaType":"series","tmdbId":90003,"name":"Family Matters"},
-				{"mediaType":"series","tmdbId":90004,"name":"Step by Step"},
-				{"mediaType":"series","tmdbId":90005,"name":"Boy Meets World"},
-				{"mediaType":"series","tmdbId":90006,"name":"Perfect Strangers"},
-				{"mediaType":"series","tmdbId":90007,"name":"Sabrina the Teenage Witch"},
-				{"mediaType":"series","tmdbId":90008,"name":"Hangin' with Mr. Cooper"},
-				{"mediaType":"series","tmdbId":90009,"name":"Dinosaurs"},
-				{"mediaType":"series","tmdbId":90010,"name":"Just the Ten of Us"}
+				{"mediaType":"movie","key":"movie:tmdb:90001","name":"Full House"},
+				{"mediaType":"series","key":"series:tmdb:90002","name":"FULL-HOUSE"},
+				{"mediaType":"series","key":"series:tmdb:90003","name":"Family Matters"},
+				{"mediaType":"series","key":"series:tmdb:90004","name":"Step by Step"},
+				{"mediaType":"series","key":"series:tmdb:90005","name":"Boy Meets World"},
+				{"mediaType":"series","key":"series:tmdb:90006","name":"Perfect Strangers"},
+				{"mediaType":"series","key":"series:tmdb:90007","name":"Sabrina the Teenage Witch"},
+				{"mediaType":"series","key":"series:tmdb:90008","name":"Hangin' with Mr. Cooper"},
+				{"mediaType":"series","key":"series:tmdb:90009","name":"Dinosaurs"},
+				{"mediaType":"series","key":"series:tmdb:90010","name":"Just the Ten of Us"}
 			]
 		}`)),
 		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil),
@@ -1305,7 +1305,7 @@ func TestSuggest_ToolFreeNameGroundingPropagatesCallerDeadline(t *testing.T) {
 	s := suggest.New(
 		testkit.NewLLM(finalResponseWithNone(`{
 			"channelName":"Friday Night",
-			"picks":[{"mediaType":"series","tmdbId":12345,"name":"Full House"}]
+			"picks":[{"mediaType":"series","key":"series:tmdb:12345","name":"Full House"}]
 		}`)),
 		catalog.New(lib, nil),
 		nil,
@@ -1342,7 +1342,7 @@ func TestSuggest_ToolFreeNameGroundingAcrossPromptShapes(t *testing.T) {
 			s := suggest.New(
 				testkit.NewLLM(finalResponseWithNone(`{
 					"channelName":"Friday Night",
-					"picks":[{"mediaType":"series","tmdbId":12345,"name":"Full House"}]
+					"picks":[{"mediaType":"series","key":"series:tmdb:12345","name":"Full House"}]
 				}`)),
 				catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil),
 				nil,
@@ -1372,7 +1372,7 @@ func TestGrounding_AcquisitionRatingEnrichedFromTMDB(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "the rock"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":101,"name":"The Rock"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}]}`),
 	), catalog.New(lib, tm), tm, 10).WithRatings(tm)
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "action"})
@@ -1393,7 +1393,7 @@ func TestGrounding_InLibraryPickBecomesLineup(t *testing.T) {
 	// "matrix" is in the library fixture (tmdb 603). The model picks it.
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	s := buildSuggester(t, llmMock)
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "sci-fi"})
@@ -1419,8 +1419,8 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"genres": []any{"Action"}, "media_type": "movie"}),
 		finalResponseWithNone(`{"picks":[
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
-			{"mediaType":"movie","tmdbId":101,"name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
+			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
 		]}`),
 	)
 	ms := testkit.NewMediaServer(t)
@@ -1449,9 +1449,9 @@ func TestSuggest_GroundsEpisodeSelectionAcrossSeriesAlternates(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"genres": []any{"Drama"}}),
 		finalResponseWithNone(`{"picks":[
-			{"mediaType":"series","tmdbId":200,"name":"Alpha Series"},
-			{"mediaType":"series","tmdbId":201,"name":"Beta Series"},
-			{"mediaType":"movie","tmdbId":202,"name":"Companion Movie"}
+			{"mediaType":"series","key":"series:tmdb:200","name":"Alpha Series"},
+			{"mediaType":"series","key":"series:tmdb:201","name":"Beta Series"},
+			{"mediaType":"movie","key":"movie:tmdb:202","name":"Companion Movie"}
 		]}`),
 	)
 	ms := testkit.NewMediaServer(t)
@@ -1485,7 +1485,7 @@ func TestScoring_Deterministic(t *testing.T) {
 	mk := func() *testkit.LLM {
 		return testkit.NewLLM(
 			catalogSearchResponse(map[string]any{"query": "matrix"}),
-			finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+			finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 		)
 	}
 	intent := suggest.Intent{Description: "matrix sci-fi"}
@@ -1541,8 +1541,8 @@ func TestSuggest_ForwardsSamplingControls(t *testing.T) {
 func TestSuggest_RepairsMalformedJSON(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`not json at all, sorry`),                                             // malformed → triggers repair
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`), // repaired
+		finalResponseWithNone(`not json at all, sorry`),                                                       // malformed → triggers repair
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`), // repaired
 	)
 	s := buildSuggester(t, llmMock)
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "sci-fi"})
@@ -1725,8 +1725,8 @@ func TestSuggest_AllFabricated_ErrNoGroundedTitles(t *testing.T) {
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
 		// Every id here is fabricated (never surfaced) → all dropped → empty.
 		finalResponseWithNone(`{"picks":[
-			{"mediaType":"movie","tmdbId":99991,"name":"Fake One"},
-			{"mediaType":"movie","tmdbId":99992,"name":"Fake Two"}
+			{"mediaType":"movie","key":"movie:tmdb:99991","name":"Fake One"},
+			{"mediaType":"movie","key":"movie:tmdb:99992","name":"Fake Two"}
 		]}`),
 	)
 	s := buildSuggester(t, llmMock)
@@ -1764,8 +1764,8 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 			model := testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit"}}),
 				finalResponseWithNone(`{"picks":[
-					{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},
-					{"mediaType":"series","tvdbId":91002,"name":"Kitchen Circuit"}
+					{"mediaType":"series","key":"series:tvdb:91001","name":"Orbital Detectives"},
+					{"mediaType":"series","key":"series:tvdb:91002","name":"Kitchen Circuit"}
 				]}`),
 			)
 			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
@@ -1789,7 +1789,7 @@ func TestSuggest_NamedSetDirectFinalExactIdentityWithoutMembershipIsRecoverable(
 		Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 91001,
 	})
 	s := suggest.New(
-		testkit.NewLLM(finalResponseWithNone(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"}]}`)),
+		testkit.NewLLM(finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tvdb:91001","name":"Orbital Detectives"}]}`)),
 		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil), nil, 10,
 	)
 
@@ -1815,19 +1815,19 @@ func TestSuggest_NamedSetMembershipIsNotAppliedToMixedOrOrdinaryEmptyFailures(t 
 			name: "mixed membership and unsurfaced identity", description: "Criterion Collection",
 			responses: []llm.Response{
 				catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives"}}),
-				finalResponseWithNone(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},{"mediaType":"series","tvdbId":99999,"name":"Invented"}]}`),
+				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tvdb:91001","name":"Orbital Detectives"},{"mediaType":"series","key":"series:tvdb:99999","name":"Invented"}]}`),
 			},
 		},
 		{
 			name: "direct final mixed membership and unresolved title", description: "Criterion Collection",
 			responses: []llm.Response{
-				finalResponseWithNone(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives"},{"mediaType":"series","tvdbId":99999,"name":"Missing Title"}]}`),
+				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tvdb:91001","name":"Orbital Detectives"},{"mediaType":"series","key":"series:tvdb:99999","name":"Missing Title"}]}`),
 			},
 		},
 		{
 			name: "ordinary empty exact-title search", description: "family comedy",
 			responses: []llm.Response{
-				finalResponseWithNone(`{"picks":[{"mediaType":"series","tvdbId":91001,"name":"Missing Title"}]}`),
+				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tvdb:91001","name":"Missing Title"}]}`),
 			},
 		},
 	} {
@@ -1872,7 +1872,7 @@ func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) 
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			model := testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"query": tc.query, "media_type": "movie"}),
-				finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":91001,"name":"`+tc.name+`"}]}`),
+				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:91001","name":"`+tc.name+`"}]}`),
 			)
 			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
@@ -1894,7 +1894,7 @@ func TestSuggest_CuratedKnownGenreRetainsOrdinaryGroundedDiscovery(t *testing.T)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	model := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "comedy", "media_type": "series"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":91002,"name":"Fawlty Towers"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:91002","name":"Fawlty Towers"}]}`),
 	)
 	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
@@ -1917,7 +1917,7 @@ func TestSuggest_BareProperTitleUsesExactUserAnchor(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	model := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "The Matrix", "media_type": "movie"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
 
@@ -1943,10 +1943,10 @@ func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) 
 	model := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "series", "titles": []any{"Orbital Detectives", "Kitchen Circuit", "Banished Comedy", "Forbidden Family"}}),
 		finalResponseWithNone(`{"rationale":"both definitely aired throughout the decade","picks":[
-			{"mediaType":"series","tvdbId":91001,"name":"Orbital Detectives","rationale":"a famous block member"},
-			{"mediaType":"series","tvdbId":91002,"name":"Kitchen Circuit","rationale":"aired every Friday"},
-			{"mediaType":"series","tvdbId":91003,"name":"Banished Comedy"},
-			{"mediaType":"series","tvdbId":91004,"name":"Forbidden Family"}
+			{"mediaType":"series","key":"series:tvdb:91001","name":"Orbital Detectives","rationale":"a famous block member"},
+			{"mediaType":"series","key":"series:tvdb:91002","name":"Kitchen Circuit","rationale":"aired every Friday"},
+			{"mediaType":"series","key":"series:tvdb:91003","name":"Banished Comedy"},
+			{"mediaType":"series","key":"series:tvdb:91004","name":"Forbidden Family"}
 		]}`),
 	)
 	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
@@ -1990,9 +1990,9 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 		TitleAnchors: []string{"Alpha House", "Beta Steps"},
 	}}
 	referenceFinal := `{"picks":[
-			{"mediaType":"series","tvdbId":92001,"name":"Alpha House"},
-			{"mediaType":"series","tvdbId":92002,"name":"Beta Steps"},
-			{"mediaType":"series","tvdbId":92003,"name":"Alpha House Reboot"}
+			{"mediaType":"series","key":"series:tvdb:92001","name":"Alpha House"},
+			{"mediaType":"series","key":"series:tvdb:92002","name":"Beta Steps"},
+			{"mediaType":"series","key":"series:tvdb:92003","name":"Alpha House Reboot"}
 		],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`
 	model := testkit.NewLLM(finalResponseWithNone(referenceFinal), finalResponseWithNone(referenceFinal))
 	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
@@ -2040,8 +2040,8 @@ func TestSuggest_ReferenceTitleAmbiguityDropsOnlyAmbiguousMember(t *testing.T) {
 		TitleAnchors: []string{"Alpha House", "Beta Steps"},
 	}}
 	referenceFinal := `{"picks":[
-		{"mediaType":"series","tvdbId":92001,"name":"Alpha House"},
-		{"mediaType":"series","tvdbId":92002,"name":"Beta Steps"}
+		{"mediaType":"series","key":"series:tvdb:92001","name":"Alpha House"},
+		{"mediaType":"series","key":"series:tvdb:92002","name":"Beta Steps"}
 	],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`
 	model := testkit.NewLLM(finalResponseWithNone(referenceFinal), finalResponseWithNone(referenceFinal))
 	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
@@ -2071,8 +2071,8 @@ func TestSuggest_OrdinaryBroadFamilyComedyRetainsGroundedNeighbors(t *testing.T)
 	model := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "family comedy"}),
 		finalResponseWithNone(`{"rationale":"warm 90s family comedies","picks":[
-		{"mediaType":"series","tvdbId":762,"name":"Full House"},
-		{"mediaType":"series","tvdbId":767,"name":"Family Matters"}
+		{"mediaType":"series","key":"series:tvdb:762","name":"Full House"},
+		{"mediaType":"series","key":"series:tvdb:767","name":"Family Matters"}
 	]}`),
 	)
 	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
@@ -2114,8 +2114,8 @@ func TestSuggest_DiscoversByGenre(t *testing.T) {
 		}),
 		// It grounds two real discovered ids.
 		finalResponseWithDateMeaning(`{"rationale":"90s action","picks":[
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
-			{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
+			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}
 		]}`, meaning),
 	)
 	s := buildSuggester(t, llmMock)
@@ -2158,7 +2158,7 @@ func TestSuggest_DiscoveryAppliesExplicitScalarQualifiers(t *testing.T) {
 			"vote_average_min":  8.0,
 			"vote_count_min":    1000,
 		}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
@@ -2186,7 +2186,7 @@ func TestSuggest_DiscoveryGroundsExplicitMoviePeople(t *testing.T) {
 		catalogSearchResponse(map[string]any{
 			"media_type": "movie", "cast": []any{"Tom Hanks"}, "creators": []any{"Nora Ephron"},
 		}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":100,"name":"Speed"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"}]}`),
 	)
 	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
@@ -2212,7 +2212,7 @@ func TestSuggest_DiscoveryGroundsExplicitTVNetwork(t *testing.T) {
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			llmMock := testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"media_type": "series", "network": "HBO"}),
-				finalResponseWithNone(`{"picks":[{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}]}`),
+				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:1396","name":"Breaking Bad"}]}`),
 			)
 			s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
@@ -2238,7 +2238,7 @@ func TestSuggest_MalformedDiscoveryQualifierDoesNotBroadenOrReachTMDB(t *testing
 			"genres": []any{"Action"}, "origin_country": "United Kingdom",
 		}),
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
@@ -2265,8 +2265,8 @@ func TestSuggest_ThemeFitScoresGenres(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"genres": []any{"Action"}, "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"rationale":"90s action","picks":[
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
-			{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
+			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}
 		]}`, meaning),
 	)
 	s := buildSuggester(t, llmMock)
@@ -2312,7 +2312,7 @@ func TestProgress_PhasesTrackTheToolLoop(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "speed"}),
 		finalResponseWithNone(`{"rationale":"90s action","picks":[
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"}
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"}
 		]}`),
 	)
 	s := buildSuggester(t, llmMock)
@@ -2353,7 +2353,7 @@ func TestProgress_ReasoningIsReportedBeforeTheModelTurn(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "speed"}),
 		finalResponseWithNone(`{"rationale":"x","picks":[
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"}
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"}
 		]}`),
 	)
 	// Snapshot the frames reported so far each time the model is called.
@@ -2401,8 +2401,8 @@ func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "cartoon"}),
 		finalResponseWithNone(`{"rationale":"cartoons","picks":[
-			{"mediaType":"movie","tmdbId":5001,"name":"Sunny Toons"},
-			{"mediaType":"movie","tmdbId":5004,"name":"Midnight Toons"}
+			{"mediaType":"movie","key":"movie:tmdb:5001","name":"Sunny Toons"},
+			{"mediaType":"movie","key":"movie:tmdb:5004","name":"Midnight Toons"}
 		],"policy":{"audience":{"ceiling":"TV-Y7"}}}`),
 	)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
@@ -2436,8 +2436,8 @@ func TestProposal_ChildSafetyRefusesAnUnratedPick(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "cartoon"}),
 		finalResponseWithNone(`{"rationale":"cartoons","picks":[
-			{"mediaType":"movie","tmdbId":5001,"name":"Sunny Toons"},
-			{"mediaType":"movie","tmdbId":5005,"name":"Mystery Toons"}
+			{"mediaType":"movie","key":"movie:tmdb:5001","name":"Sunny Toons"},
+			{"mediaType":"movie","key":"movie:tmdb:5005","name":"Mystery Toons"}
 		],"policy":{"audience":{"ceiling":"TV-Y7"}}}`),
 	)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
@@ -2465,8 +2465,8 @@ func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "simpsons"}),
 		finalResponseWithNone(`{"rationale":"bright cartoons","picks":[
-			{"mediaType":"series","tmdbId":456,"name":"The Simpsons"},
-			{"mediaType":"series","tmdbId":1396,"name":"Breaking Bad"}
+			{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"},
+			{"mediaType":"series","key":"series:tmdb:1396","name":"Breaking Bad"}
 		],"policy":{"audience":{"ceiling":"TV-PG"}}}`),
 	)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
@@ -2508,7 +2508,7 @@ func TestProposal_NoCeilingRefusesNothing(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "action"}),
 		finalResponseWithNone(`{"rationale":"80s action","picks":[
-			{"mediaType":"movie","tmdbId":5010,"name":"Hard Die"}
+			{"mediaType":"movie","key":"movie:tmdb:5010","name":"Hard Die"}
 		],"policy":{"audience":{"ceiling":"TV-PG"}}}`),
 	)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
@@ -2546,10 +2546,10 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 		// forbidden second successful tool call.
 		catalogSearchResponse(map[string]any{"query": "sitcom"}),
 		finalResponseWithNone(`{"channelName":"Friday Night","rationale":"all of these aired in the block throughout the 90s","picks":[
-			{"mediaType":"series","tvdbId":762,"name":"Full House","rationale":"premiered in the 90s"},
-			{"mediaType":"series","tvdbId":767,"name":"Family Matters"},
-			{"mediaType":"series","tvdbId":760,"name":"Step by Step"},
-			{"mediaType":"series","tvdbId":99001,"name":"Full House Secrets"}
+			{"mediaType":"series","key":"series:tvdb:762","name":"Full House","rationale":"premiered in the 90s"},
+			{"mediaType":"series","key":"series:tvdb:767","name":"Family Matters"},
+			{"mediaType":"series","key":"series:tvdb:760","name":"Step by Step"},
+			{"mediaType":"series","key":"series:tvdb:99001","name":"Full House Secrets"}
 		]}`),
 	)
 	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
@@ -2600,7 +2600,7 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 func TestSuggestReportsPartialInterpretationOfGroundedFragment(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"rationale":"Perfectly matches the whole request","picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","rationale":"asdf xqz 999 are all satisfied"}]}`),
+		finalResponseWithNone(`{"rationale":"Perfectly matches the whole request","picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix","rationale":"asdf xqz 999 are all satisfied"}]}`),
 	)
 	prop, err := buildSuggester(t, llmMock).Suggest(context.Background(), suggest.Intent{Description: "asdf matrix xqz 999"})
 	if err != nil {

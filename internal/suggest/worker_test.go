@@ -276,7 +276,7 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	st := newStore(t)
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 
@@ -371,7 +371,7 @@ func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 			name: "accepted grounded proposal",
 			model: testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"query": "matrix"}),
-				finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 			),
 			wantJob: "done", wantCands: true,
 			want: map[quality.Stage]quality.Outcome{
@@ -453,7 +453,7 @@ func TestWorker_QualityRecordingFailureDoesNotFailCommittedProposal(t *testing.T
 	terminal := newDoneEmitter()
 	svc := buildService(t, st, testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)).WithDurableWorkflow(workflow).WithProgressEmitter(terminal).WithQualityRecorder(recorder)
 	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "matrix"}, "alice")
 	if err != nil {
@@ -535,7 +535,7 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 	}}
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	workflow := proposalworkflow.New(st, idGen(), time.Now)
 	ms := testkit.NewMediaServer(t)
@@ -730,7 +730,7 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 			}}
 			llmMock := testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"query": "matrix"}),
-				finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 			)
 			ms := testkit.NewMediaServer(t)
 			mt := testkit.NewTMDB(t)
@@ -923,7 +923,7 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 	st.successErr = store.ErrJobNotRunning
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	terminal := newDoneEmitter()
@@ -1138,7 +1138,7 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
@@ -1221,7 +1221,7 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	}
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
@@ -1268,7 +1268,7 @@ func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 	}
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{PlanError: fmt.Errorf("cannot build local channel")}

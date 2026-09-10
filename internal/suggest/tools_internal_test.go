@@ -23,7 +23,7 @@ func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
 			"mode": "collection", "media_type": "series",
 			"titles": []any{map[string]any{"name": "The Simpsons", "year": float64(1989)}}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
 		}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:456","name":"The Simpsons"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	), catalog.New(nil, corpus), nil, 10)
 
 	_, err := s.Suggest(context.Background(), Intent{Description: "Classic Simpsons"})

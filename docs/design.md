@@ -1308,24 +1308,47 @@ Evaluation pins these values or writes them into the request so identical inputs
 
 ### Grounding — the critical correctness rule
 An AI that can trigger real downloads must never act on a hallucinated title.
-- The LLM does **not** supply trusted identity. Normally it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results; the bounded exact-name fallback below handles providers that ignore the tool. The tool supports **title search**, **genre + era discovery**, **TMDB keyword discovery** for holidays, motifs, franchises, and topics, and validated scalar country/language/runtime/vote qualifiers on discovery — so an abstract intent ("high-energy 90s action") or a thematic one ("cozy Christmas movies") surfaces grounded content instead of depending on an exact title match. Each returned candidate carries the source-backed subset of **genres, short overview, original language/country, runtime, vote average/count, and resolved keyword names** that its corpus supplied. These fields are additive reasoning evidence, never identity or authority: omitted means unknown, not mismatch; invalid/non-finite values are omitted; and sparse metadata cannot exclude a candidate by itself. Network and person anchors require their own grounded resolver and are not inferred from titles, studios, or model prose.
+- The LLM does **not** supply trusted identity. Normally it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **canonical candidate keys**. The model selects from tool results; the bounded exact-name fallback below handles providers that ignore the tool. The tool supports **title search**, **genre + era discovery**, **TMDB keyword discovery** for holidays, motifs, franchises, and topics, and validated scalar country/language/runtime/vote qualifiers on discovery — so an abstract intent ("high-energy 90s action") or a thematic one ("cozy Christmas movies") surfaces grounded content instead of depending on an exact title match. Each returned candidate carries the source-backed subset of **genres, short overview, original language/country, runtime, vote average/count, and resolved keyword names** that its corpus supplied. These fields are additive reasoning evidence, never identity or authority: omitted means unknown, not mismatch; invalid/non-finite values are omitted; and sparse metadata cannot exclude a candidate by itself. Network and person anchors require their own grounded resolver and are not inferred from titles, studios, or model prose.
 - TMDB movie and TV discovery use different genre id namespaces. Human genre names are translated per endpoint (`Science Fiction` → movie `878` but TV `10765`, `Action` → movie `28` but TV `10759`, and `Family` → movie `10751` but TV `10762`) before a mixed search is blended. One shared numeric mapping would silently make valid TV discovery empty.
 - Every proposal item resolves to a real id, tagged `in_library: true|false`; unresolvable items are dropped before display.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
 
 A provider that ignores the offered tool may still return schema-valid picks containing plausible
-title names and invented ids. Those names are useful only as **search input**; neither a name nor the
-model's id is identity evidence. When such a turn has picks but this run has surfaced no candidates,
+title names and invented keys. Those names are useful only as **search input**; neither a name nor the
+model's key is identity evidence. When such a turn has picks but this run has surfaced no candidates,
 the Suggester performs one provider-neutral name-grounding fallback: it coalesces at most eight title
 names, runs their independent `Catalog.Search` operations concurrently under the request context,
 and keeps only one unambiguous normalized exact-title match of the requested media type (and year when
 the pick supplied one). Missing, ambiguous, wrong-media, and year-conflicting results are dropped. The
-canonical ids from the surviving Catalog candidates replace every model-authored id, enter the same
+canonical keys from the surviving Catalog candidates replace every model-authored key, enter the same
 `surfaced` map as native tool results, and pass through the unchanged proposal chokepoint, acquisition
 revalidation, quota, and approval gate. A successful fallback requires no second model call; zero exact
 matches returns the typed no-grounded-title outcome. The fallback is unavailable once another corpus
 has surfaced candidates, so it cannot broaden a successful tool, reference, or adjacency result.
+
+### Model selection identity
+
+The v11 planner contract exposes one canonical provisioning `key` per tool candidate and
+requires that exact string in every evidence-backed final pick. `catalog-search-v7` returns
+`key` plus the existing descriptive metadata; it does not expose separate `tmdbId` or
+`tvdbId` selection fields. The model copies the key byte for byte. Parsing checks its shape;
+the existing surfaced-map lookup decides authority, and public Proposal fields still come
+from that Catalog candidate. A different provider namespace, an alternate known identifier,
+a fabricated key, or a malformed key cannot acquire authority through normalization or
+model memory. There is no legacy identifier-output adapter.
+
+The existing direct-final exact-title recovery remains available only before any candidates
+have been surfaced. Its names-only input retains `mediaType`, `name`, and optional `year`;
+these are search constraints, never identity evidence. After the same bounded, unambiguous
+exact Catalog resolution, code assigns the canonical key and uses the same proposal
+chokepoint. Source ordering, DateMeaning validation, membership evidence, acquisition
+revalidation, approval, repair counts, and completion limits remain unchanged.
+
+Immutable certification v13 and release-gate v8 manifests bind the prompt and tool-output
+change while preserving every case, expected identity, and threshold. The frozen diagnostic
+uses `single-grounded-candidate-v2` for the new tool-result identity shape. Model and route
+qualification must use this committed contract; prior diagnostic passes are not release proof.
 
 ### Reference-backed Intent
 

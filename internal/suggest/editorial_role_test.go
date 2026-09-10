@@ -19,7 +19,7 @@ func TestGroundedProposalPersistsEditorialEvidenceButDropsUnsourcedPicks(t *test
 		"movie:tmdb:2": {MediaType: provision.Movie, TMDBID: 2, Name: "Related", InLibrary: true, Source: catalog.ScopeAdjacent},
 		"movie:tmdb:3": {MediaType: provision.Movie, TMDBID: 3, Name: "Discovered", InLibrary: true, Source: catalog.ScopeLibrary},
 	}
-	out := finalOutput{Picks: []pick{{MediaType: "movie", TMDBID: 1}, {MediaType: "movie", TMDBID: 2}, {MediaType: "movie", TMDBID: 3}, {MediaType: "movie", TMDBID: 999}}}
+	out := finalOutput{Picks: []pick{{Key: "movie:tmdb:1"}, {Key: "movie:tmdb:2"}, {Key: "movie:tmdb:3"}, {Key: "movie:tmdb:999"}}}
 	prop, err := (&Suggester{maxAcq: 3}).buildProposal(context.Background(), intent, out, surfaced, &DecisionTrace{}, meaning)
 	if err != nil {
 		t.Fatal(err)

@@ -39,10 +39,10 @@ func TestJourney_NewAdmin(t *testing.T) {
 			"rationale":"90s Saturday morning cartoons",
 			"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":3}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]},
 			"picks":[
-				{"mediaType":"movie","tmdbId":5001,"name":"Sunny Toon Hour"},
-				{"mediaType":"movie","tmdbId":5002,"name":"Robo Rangers"},
-				{"mediaType":"movie","tmdbId":5003,"name":"Critter Club"},
-				{"mediaType":"movie","tmdbId":5004,"name":"Midnight Mayhem Toons"}
+				{"mediaType":"movie","key":"movie:tmdb:5001","name":"Sunny Toon Hour"},
+				{"mediaType":"movie","key":"movie:tmdb:5002","name":"Robo Rangers"},
+				{"mediaType":"movie","key":"movie:tmdb:5003","name":"Critter Club"},
+				{"mediaType":"movie","key":"movie:tmdb:5004","name":"Midnight Mayhem Toons"}
 			],
 			"policy":{"audience":{"ceiling":"TV-Y7"},"genres":{"include":["Animation"]},"ordering":"syndication"}
 		}`),
@@ -212,7 +212,7 @@ func TestJourney_HolidayKeywordProposalIncludesOutsideLibraryDiscovery(t *testin
 		testkit.FinalResponse(`{
 			"channelName":"Snow Day Cinema",
 			"dateMeaning":{"kind":"none","anchors":[],"axes":[]},
-			"picks":[{"mediaType":"movie","tmdbId":2401,"name":"Snowbound Reunion","confidence":0.91}],
+			"picks":[{"mediaType":"movie","key":"movie:tmdb:2401","name":"Snowbound Reunion","confidence":0.91}],
 			"policy":{"seasonal":{"mode":"exclusive"}}
 		}`),
 	)

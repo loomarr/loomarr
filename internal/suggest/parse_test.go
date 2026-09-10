@@ -22,12 +22,12 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 	}{
 		{
 			name:      "bare json (gpt-4o-mini)",
-			content:   `{"rationale":"r","picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
+			content:   `{"rationale":"r","picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
 			wantPicks: 1, wantRat: "r",
 		},
 		{
 			name:      "markdown-fenced json (claude)",
-			content:   "```json\n{\"rationale\":\"r\",\"picks\":[{\"mediaType\":\"movie\",\"tmdbId\":603,\"name\":\"The Matrix\"}],\"dateMeaning\":{\"kind\":\"none\",\"anchors\":[],\"axes\":[]}}\n```",
+			content:   "```json\n{\"rationale\":\"r\",\"picks\":[{\"mediaType\":\"movie\",\"key\":\"movie:tmdb:603\",\"name\":\"The Matrix\"}],\"dateMeaning\":{\"kind\":\"none\",\"anchors\":[],\"axes\":[]}}\n```",
 			wantPicks: 1, wantRat: "r",
 		},
 		{
@@ -37,7 +37,7 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 		},
 		{
 			name:      "brace inside a string value is not the object end",
-			content:   `{"rationale":"a {weird} title","picks":[{"mediaType":"movie","tmdbId":1,"name":"Brace } Face"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
+			content:   `{"rationale":"a {weird} title","picks":[{"mediaType":"movie","key":"movie:tmdb:1","name":"Brace } Face"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
 			wantPicks: 1, wantRat: "a {weird} title",
 		},
 		{

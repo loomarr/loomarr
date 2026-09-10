@@ -36,9 +36,9 @@ func TestV8BindingSameDescriptionDistinctIncludesAccepted(t *testing.T) {
 	})
 	provider := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Drama"}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":11001}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:11001"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Drama"}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":11003}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:11003"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
 	g, observer, err := newEmbeddedCertificationGenerator(files, provider)
 	if err != nil {
@@ -83,7 +83,7 @@ func TestV8BindingEmptyRuntimeIncludeMatchesAbsentInclude(t *testing.T) {
 	c := certificationCaseByName(t, cases, "date-title-year-none")
 	provider := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Synthetic Matrix", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":10001}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:10001"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
 	g, _, err := NewEmbeddedCertificationGenerator(provider)
 	if err != nil {

@@ -12,11 +12,10 @@ import (
 )
 
 // pick is one entry the model returns in its final JSON. It is UNTRUSTED — the
-// ids are re-grounded against surfaced candidates before use (§8).
+// key is checked against surfaced candidates before use (§8).
 type pick struct {
 	MediaType  string  `json:"mediaType"`
-	TMDBID     int     `json:"tmdbId"`
-	TVDBID     int     `json:"tvdbId"`
+	Key        string  `json:"key"`
 	Name       string  `json:"name"`
 	Year       int     `json:"year"`
 	Rationale  string  `json:"rationale"`
@@ -29,19 +28,13 @@ type pick struct {
 	SeasonMax int `json:"seasonMax"`
 }
 
-// key derives the provisioning key a pick claims. Empty when the pick has no
-// usable id (which makes it ungrounded → dropped).
+// key validates the exact provisioning key a pick claims, without normalization.
+// Empty or malformed keys cannot pass the surfaced-candidate grounding check.
 func (p pick) key() string {
-	mt := provision.MediaType(p.MediaType)
-	if !mt.Valid() {
+	if _, _, _, ok := provision.ParseKey(provision.Key(p.Key)); !ok {
 		return ""
 	}
-	t := provision.Title{MediaType: mt, TMDBID: p.TMDBID, TVDBID: p.TVDBID, Name: p.Name}
-	k, err := t.Key()
-	if err != nil {
-		return ""
-	}
-	return string(k)
+	return p.Key
 }
 
 // pickPolicy is the UNTRUSTED ChannelPolicy the model proposes (programming-design
@@ -144,13 +137,12 @@ func extractJSONObject(s string) string {
 }
 
 // toolResult is the JSON the catalog tool returns to the model — a trimmed
-// candidate view with real ids and the in_library flag. Untrusted text from the
+// candidate view with one canonical key and the in_library flag. Untrusted text from the
 // library/TMDB (names) rides here but can never steer tools or reach secrets
 // (§8): it is data the model selects from, not instructions.
 type toolCandidate struct {
 	MediaType string `json:"mediaType"`
-	TMDBID    int    `json:"tmdbId,omitempty"`
-	TVDBID    int    `json:"tvdbId,omitempty"`
+	Key       string `json:"key"`
 	Name      string `json:"name"`
 	Year      int    `json:"year,omitempty"`
 	InLibrary bool   `json:"inLibrary"`
@@ -177,8 +169,12 @@ const overviewMax = 240
 func toolResult(cands []catalog.Candidate) []toolCandidate {
 	out := make([]toolCandidate, 0, len(cands))
 	for _, c := range cands {
+		key, err := c.Key()
+		if err != nil {
+			continue
+		}
 		out = append(out, toolCandidate{
-			MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
+			MediaType: string(c.MediaType), Key: string(key),
 			Name: c.Name, Year: c.Year, InLibrary: c.InLibrary,
 			Genres: c.Genres, Overview: truncate(c.Overview, overviewMax),
 			OriginalLanguage: c.OriginalLanguage,

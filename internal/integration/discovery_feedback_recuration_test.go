@@ -22,27 +22,27 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
-			{"mediaType":"movie","tmdbId":603,"name":"The Matrix"},
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
-			{"mediaType":"movie","tmdbId":101,"name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"},
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
+			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
 		]}`),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
-			{"mediaType":"movie","tmdbId":603,"name":"The Matrix"},
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
-			{"mediaType":"movie","tmdbId":101,"name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"},
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
+			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
 		]}`),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
-			{"mediaType":"movie","tmdbId":603,"name":"The Matrix"},
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
-			{"mediaType":"movie","tmdbId":101,"name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"},
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
+			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
 		]}`),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
-			{"mediaType":"movie","tmdbId":603,"name":"The Matrix"},
-			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
-			{"mediaType":"movie","tmdbId":101,"name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"},
+			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
+			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
 		]}`),
 	)
 	toolOrders := &toolOrderRecorder{}

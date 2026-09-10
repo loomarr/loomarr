@@ -69,7 +69,7 @@ func TestSuggest_DateSourceOrderReferenceEvidenceTitleAnchorsTheMatrix(t *testin
 		TitleAnchors: []string{"The Matrix"},
 	}}
 	bootstrap, err := json.Marshal(map[string]any{
-		"picks":       []any{map[string]any{"mediaType": "movie", "tmdbId": 999999, "name": "Fabricated Bootstrap Pick"}},
+		"picks":       []any{map[string]any{"mediaType": "movie", "key": "movie:tmdb:999999", "name": "Fabricated Bootstrap Pick"}},
 		"dateMeaning": meaning,
 	})
 	if err != nil {
@@ -234,8 +234,8 @@ func TestSuggest_DateSourceOrderCuratedIdentitySurvivesSourceInitialization(t *t
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{curated, unrelated}}
 	final, err := json.Marshal(map[string]any{
 		"picks": []any{
-			map[string]any{"mediaType": "movie", "tmdbId": curated.TMDBID, "name": curated.Name},
-			map[string]any{"mediaType": "movie", "tmdbId": unrelated.TMDBID, "name": unrelated.Name},
+			map[string]any{"mediaType": "movie", "key": "movie:tmdb:603", "name": curated.Name},
+			map[string]any{"mediaType": "movie", "key": "movie:tmdb:604", "name": unrelated.Name},
 		},
 		"dateMeaning": meaning,
 	})
