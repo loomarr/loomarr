@@ -2060,7 +2060,14 @@ repairs and grounding retries, so neither continuation nor repair repeats refere
 lookups. Existing cancellation, reference-read, catalog-failure, and empty-reference outcomes remain
 distinct, and all existing per-source fanout and invocation limits still apply.
 
-Grounded selection requests select the shared LLM adapter's `grounded-selection-v2` request
+A request centered on a named franchise is limited to that franchise's members unless the Intent
+explicitly invites adjacent discoveries. Sharing performers, creators, genre or tone does not
+establish membership. A surfaced Catalog identity proves that a candidate exists, not that it fits
+the requested set. Selection instructions must keep this boundary above optional diversity and
+playability goals; fewer supported members are preferable to unrelated padding. This instruction
+adds no guessed membership database or deterministic title-name allowlist.
+
+Grounded selection requests select the shared LLM adapter's `grounded-selection-v3` request
 profile. The Suggester supplies no vendor/model roster. For OpenRouter's exact
 `google/gemini-3.8-flash` model, the profile omits optional temperature and requests supported
 `low` reasoning, as the Vertex endpoint does not advertise temperature. For exact
@@ -2068,14 +2075,16 @@ profile. The Suggester supplies no vendor/model roster. For OpenRouter's exact
 sends the unchanged completion bound through Azure's advertised `max_completion_tokens` field
 instead of `max_tokens`. An ordinary OpenRouter client selecting this model for grounded work
 uses singleton `azure/us` routing with fallback disabled, required parameter support, denied data
-collection and ZDR required. An explicitly configured certification route retains its exact route
+collection and ZDR required. For exact `anthropic/claude-haiku-4.5`, ordinary grounded requests
+use singleton `amazon-bedrock/global` with the same strict controls, preserving the supplied
+temperature and `max_tokens` completion bound. An explicitly configured certification route retains its exact route
 and strict controls. These capability entries do not select the model or establish qualification.
 Other models, providers and inference tasks preserve their existing request policy.
 
 Production, live evaluation and the post-result diagnostic share the profile resolver. Diagnostic
 schema v3 reports the completion-limit field and the profile's default upstream separately from
 provider-reported attribution; a default is not evidence of the resolved route. No metadata fetch
-occurs per inference, and no operator setting is added. The v10 prompt contract binds this execution
+occurs per inference, and no operator setting is added. The v12 prompt contract binds this execution
 change in cached Intent identity and immutable evaluation manifests. Model/route changes require
 fresh qualification; tool schemas, the 2048-token bound, retry capacity and acceptance thresholds
 remain unchanged. Strict privacy and explicit route controls cannot be relaxed by this profile.

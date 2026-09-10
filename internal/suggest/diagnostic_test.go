@@ -29,15 +29,15 @@ func TestRunToolFinalizationDiagnosticUsesFrozenPostResultContract(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.PromptVersion != "suggester-prompt-v11" || report.ToolSchemaVersion != "catalog-search-v7" || report.MessageTemplateVersion != "planner-tool-result-finalization-v3" {
+	if report.PromptVersion != "suggester-prompt-v12" || report.ToolSchemaVersion != "catalog-search-v7" || report.MessageTemplateVersion != "planner-tool-result-finalization-v3" {
 		t.Fatalf("contract identity = %+v", report)
 	}
 	if len(report.SystemPromptSHA256) != 64 || len(report.UserPromptSHA256) != 64 || len(report.MessagesSHA256) != 64 || len(report.ToolSchemaSHA256) != 64 {
 		t.Fatalf("diagnostic hashes = system %q user %q messages %q tool %q", report.SystemPromptSHA256, report.UserPromptSHA256, report.MessagesSHA256, report.ToolSchemaSHA256)
 	}
-	if report.SystemPromptSHA256 != "ec52fe87ce8698f3da3faddad595dae104a4d1727014c0cc9ed30384dd09ef33" ||
+	if report.SystemPromptSHA256 != "c5ba18e4dd7b23bf55662b828a181db30711a53810df49aed35414152390f489" ||
 		report.UserPromptSHA256 != "05ad3558029f3b882dbab599fd3e28198f4453346a4fab267ce93988eb95c3fd" ||
-		report.MessagesSHA256 != "8896909e57d16d7729b6bd2414f9ab0f8724557f8c07c1ee11abc9d45a9fadee" ||
+		report.MessagesSHA256 != "c14b13a01676645d636744f92fb3be5737a979318b23837d2c1e8e26e304e82b" ||
 		report.ToolSchemaSHA256 != "595a6ec8416fc9b0cf438cc86897006d69f5f2fcf6de238c0e310e8de8273f86" {
 		t.Fatalf("frozen diagnostic identity drifted without a version change: %+v", report)
 	}

@@ -3,7 +3,7 @@ package llm
 // ChatProfile identifies a versioned request policy, not a model selection.
 type ChatProfile string
 
-const GroundedSelection ChatProfile = "grounded-selection-v2"
+const GroundedSelection ChatProfile = "grounded-selection-v3"
 
 // ChatPolicy describes effective parameters for the selected task and model.
 // Completion bounds remain caller-owned; explicit routes remain authoritative.
@@ -29,6 +29,9 @@ func ResolveChatPolicy(provider, model string, opts ChatOptions) ChatPolicy {
 		sampling.ReasoningEffort = "none"
 		sampling.CompletionLimitParameter = "max_completion_tokens"
 		sampling.DefaultUpstream = "azure/us"
+	}
+	if opts.Profile == GroundedSelection && provider == "openrouter" && model == "anthropic/claude-haiku-4.5" {
+		sampling.DefaultUpstream = "amazon-bedrock/global"
 	}
 	return sampling
 }
