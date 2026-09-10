@@ -449,6 +449,62 @@ func TestPreparedOriginCarriesThePreviousAiringAcrossADiscontinuity(t *testing.T
 	}
 }
 
+// A source may outlast its scheduled airing. Its unscheduled tail must not
+// become DVR history when the next programme starts.
+func TestPreparedManifestDoesNotAdvertiseUnscheduledPreviousSegments(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name                    string
+		scheduledEnd, nextStart time.Duration
+		retained                int
+	}{
+		{"aligned", 6 * time.Second, 6 * time.Second, 3},
+		{"straddling", 5 * time.Second, 5 * time.Second, 2},
+		{"schedule gap", 5 * time.Second, 8 * time.Second, 2},
+		{"next airing bounds overlap", 10 * time.Second, 6 * time.Second, 3},
+		{"next airing supplies boundary", 0, 6 * time.Second, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lib, err := prepared.NewLibrary(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			previousSpec, currentSpec := preparedSpec("long-previous"), preparedSpec("current")
+			previous := publishHLSWithSegments(t, lib, previousSpec, 6)
+			current := publishHLS(t, lib, currentSpec)
+			started := time.Unix(1_000, 0).UTC()
+			var endsAt time.Time
+			if tc.scheduledEnd > 0 {
+				endsAt = started.Add(tc.scheduledEnd)
+			}
+			origin := newPreparedOrigin(lib, fixedPreparedResolver{ok: true, window: PreparedWindow{
+				Previous: []PreparedAiring{{Specification: previousSpec, StartedAt: started, Identity: AiringIdentity{StartedAt: started, EndsAt: endsAt}}},
+				Current:  PreparedAiring{Specification: currentSpec, StartedAt: started.Add(tc.nextStart), Offset: time.Second},
+			}})
+			presentation, hit, err := origin.Tune(t.Context(), TuneRequest{ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS})
+			if err != nil || !hit {
+				t.Fatalf("Tune hit=%t err=%v", hit, err)
+			}
+			manifest := string(presentation.Manifest)
+			for index := 0; index < 6; index++ {
+				token := preparedAssetToken(previous.Key, fmt.Sprintf("seg-%d.m4s", index))
+				if got, want := strings.Contains(manifest, token), index < tc.retained; got != want {
+					t.Errorf("previous segment %d advertised=%t want=%t", index, got, want)
+				}
+			}
+			if !strings.Contains(manifest, preparedAssetToken(current.Key, "seg-0.m4s")) {
+				t.Fatal("current programme missing")
+			}
+			if strings.Count(manifest, "#EXT-X-DISCONTINUITY\n") != 1 || !strings.Contains(manifest, "#EXT-X-PROGRAM-DATE-TIME:"+started.Add(tc.nextStart).Format(time.RFC3339Nano)) {
+				t.Fatal("current boundary coordinates missing")
+			}
+			if got := strings.Count(manifest, "#EXTINF:2.000,\n"); got != tc.retained+1 {
+				t.Fatalf("unaltered fragment durations=%d want=%d", got, tc.retained+1)
+			}
+		})
+	}
+}
+
 // The rendered window must carry BOTH tags a native player needs across a programme boundary. The
 // pre-existing discontinuity test asserts an ordered subsequence, which is structurally blind to a
 // tag that is simply absent — so these assert presence and value instead.
