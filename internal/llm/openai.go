@@ -240,10 +240,14 @@ type openRouterMetadata struct {
 // Chat implements Provider against /v1/chat/completions.
 func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions) (Response, error) {
 	started := time.Now()
+	wireMessages, wireTools, envelopes, err := openAIChatTools(messages, opts.Tools)
+	if err != nil {
+		return Response{}, err
+	}
 	req := openaiChatReq{
 		Model:       o.model,
-		Messages:    toOpenAIMessages(messages),
-		Tools:       toOpenAITools(opts.Tools),
+		Messages:    wireMessages,
+		Tools:       wireTools,
 		Temperature: opts.Temperature,
 		TopP:        opts.TopP,
 		MaxTokens:   opts.MaxTokens,
@@ -302,7 +306,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	msg := out.Choices[0].Message
 	return Response{
 		Content:   msg.Content,
-		ToolCalls: fromOpenAIToolCalls(msg.ToolCalls),
+		ToolCalls: unwrapOpenAIToolCalls(msg.ToolCalls, envelopes),
 		Attribution: attributionFromWire(o.provider, o.model, out.ID, out.Model, out.Usage,
 			out.OpenRouterMetadata, []string{"text"}, time.Since(started)),
 	}, nil

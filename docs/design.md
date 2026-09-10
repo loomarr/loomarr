@@ -1366,7 +1366,11 @@ No brand roster, model-authored URL, arbitrary crawler, or new runtime dependenc
 The discovery operation has one shared 10-second budget and at most two bounded GET operations
 (search and category members); its result is reused within that Suggest invocation. Keep up to 128
 source anchors as membership evidence, but at most eight source-prefetch Catalog lookups. Existing
-model-tool and membership-resolution operation budgets remain separate and unchanged. Validated model title
+model-tool and membership-resolution operation budgets remain separate and unchanged. Evaluation attributes acknowledged model-tool operations to actual provider responses.
+Synthesized reference transcript entries do not become model operations; their real Catalog work
+remains in the independent Catalog operation ledger. Unexecuted final output is not a dispatched
+operation; its inference call and usage remain counted. Scorecard schema 13 separates this attribution
+from older transcript-only counts. Validated model title
 hypotheses may prioritize anchors for lookup only when the source independently contains that name;
 reordering cannot add a member, choose an ambiguous identity, or change source authority.
 Absent or ambiguous sources preserve named-set uncertainty; transport failures remain retrieval
@@ -1597,6 +1601,14 @@ grounded `holiday:<id>` scheduling rule and leaves the year-round seasonal ident
 refine that explicitly turns the object into a holiday *channel* receives the exclusive override.
 Daypart and holiday rules are persisted policy, so both new and existing channels change their
 eligible slice deterministically at clock boundaries without re-running inference each hour.
+
+The OpenAI-compatible chat adapter carries inline object tool schemas with top-level `oneOf`,
+`anyOf` or `allOf` inside a required `input` object envelope on the wire. The complete original
+schema remains nested, with every constraint intact. It unwraps valid responses to the same
+provider-neutral arguments and preserves the envelope in subsequent conversation history, including
+finalization without tool definitions. Malformed envelopes yield invalid tool arguments; they cannot
+bypass canonical validation. Schemas containing `$ref` or `$id` are not relocated automatically and
+fail before inference. This avoids provider-specific schema relaxation or a second planner contract.
 
 **The probe is the arbiter of capability:** tool-calling support varies by runtime and model, and generic endpoints expose no uniform capability API — so the §13 wizard check is *behavioral* (send a trivial tool-call request, assert a real tool call returns). Ollama's declared capabilities are a pre-check only. Keep the tool loop to **sequential single tool calls** (no parallel-call dependence — the least-supported corner of the dialect). An empty or failed catalog result retains the tool so the model can try the alternate discovery mode. The first non-empty grounded result starts a separate finalization phase with tools removed and JSON mode enabled; that phase persists through bounded schema repairs. If a provider nevertheless emits a tool call from conversation history, do not execute it: treat it as malformed final output and use the same bounded repair path. This prevents tool-biased models from repeating a successful search to the hard boundary while preserving empty-result recovery. The grounding pipeline already ensures a weak model degrades to "no valid proposal," never to corruption.
 
