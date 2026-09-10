@@ -2702,7 +2702,11 @@ The rendered manifest derives its media sequence from the Airing start, segment 
 offset, so repeated polls advance on the Channel's wall clock rather than restarting the asset. Its
 live edge is the segment containing that offset: the short window carries prior segments and the
 current segment, never future media. At an Airing boundary it carries the previous publication's
-tail, `EXT-X-DISCONTINUITY`, the new init map, and `EXT-X-PROGRAM-DATE-TIME`; this is the exact shape
+tail, `EXT-X-DISCONTINUITY`, the new init map, and `EXT-X-PROGRAM-DATE-TIME`. Historical segments
+must fit wholly before the Airing's scheduled end and the next Airing's start. A source file that
+outlasts its slot cannot contribute unscheduled media to DVR history. A fragment straddling that
+end is omitted from history; its immutable bytes and `EXTINF` are never shortened or relabelled
+as the next programme. This is the exact shape
 the V55 Chromium/Firefox spike validated. Every init/segment URI is namespaced by the immutable
 publication key. Follow-up requests therefore stay bound to the publication that authored the
 manifest even when the Channel crosses a programme boundary; there is no mutable per-Channel

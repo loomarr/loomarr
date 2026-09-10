@@ -407,14 +407,24 @@ func renderPreparedManifest(current preparedMedia, previous []preparedMedia) ([]
 		}
 		refs = append(refs, preparedSegmentRef{media: current, segment: segment})
 	}
+	endsAt := current.airing.StartedAt
 	for p := len(previous) - 1; p >= 0; p-- {
+		if scheduledEnd := previous[p].airing.Identity.EndsAt; !scheduledEnd.IsZero() && scheduledEnd.Before(endsAt) {
+			endsAt = scheduledEnd
+		}
 		for i := len(previous[p].segments) - 1; i >= 0; i-- {
 			segment := previous[p].segments[i]
+			// Immutable fragments cannot be shortened by changing EXTINF. Only
+			// wholly aired fragments belong to this programme's DVR history.
+			if segment.startsAt.Add(segment.duration).After(endsAt) {
+				continue
+			}
 			if !segment.startsAt.Add(segment.duration).After(cutoff) {
 				break
 			}
 			refs = append(refs, preparedSegmentRef{media: previous[p], segment: segment})
 		}
+		endsAt = previous[p].airing.StartedAt
 	}
 	reversePrepared(refs)
 
