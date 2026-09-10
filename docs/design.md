@@ -679,13 +679,13 @@ gate the Library evidence supports; Loomarr does not infer per-rating vote confi
 did not report. The upper rated quartile is selected, with a floor of four units and a cap of 48. Every unit tied
 at the cutoff is included; if that consumes the whole rated cohort or exceeds the cap, selection
 degrades to `complete` rather than making an arbitrary quality claim. Holiday matching uses
-case-folded whole words/phrases across the episode title and bounded overview/tags. No thematic
-match, insufficient rating coverage, an invalid mode, or sparse/legacy cache evidence returns the
-complete already-safe pool. Selection keeps multi-part stories whole and preserves canonical order;
+case-folded whole words/phrases across the episode title and bounded overview/tags. A holiday
+selection with no matching or unavailable evidence stays empty. Insufficient highlight rating
+coverage, an invalid mode, or unavailable highlight evidence returns the complete already-safe pool. Selection keeps multi-part stories whole and preserves canonical order;
 the existing sequential/shuffle/syndication engine alone decides broadcast order. Thus a fixture
 whose eight episodes have distinct, fully covered ratings can produce four high-rated highlights,
 whereas the same fixture with only five ratings must return all eight; a holiday fixture with one
-Christmas story emits that story, while a fixture with no holiday evidence emits its complete deck.
+Christmas story emits that story, while a fixture with no holiday evidence emits no programs.
 
 - **Read path:** `GetSeriesEpisodes(libraryID)`. A miss (or a row older than the staleness
   horizon) falls back to the live call and writes the result back, so a cold cache degrades to
@@ -2327,7 +2327,7 @@ Turns an approved proposal + live availability into a durable, filled channel on
   runtime code has no legacy epoch branch.
 - `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
 - **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; both internal timeline layout and downstream Tunarr programming require it.
-- **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land. A cached list younger than `episodes.max_age` is complete evidence and avoids enumeration. An aged cache always attempts live enumeration: success replaces it with fresh evidence; failure may retain only its valid cached playable identity, runtime, numbering, and safety fields. That retained deck remains playable, but its editorial evidence is unavailable, so highlights and holiday selection deterministically use the complete already-safe pool. An aged empty cache whose refresh fails is unavailable, never a synthetic deck.
+- **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land. A cached list younger than `episodes.max_age` is complete evidence and avoids enumeration. An aged cache always attempts live enumeration: success replaces it with fresh evidence; failure may retain only its valid cached playable identity, runtime, numbering, and safety fields. That retained deck remains playable, but its editorial evidence is unavailable: highlights may use the complete already-safe pool, while holiday selection remains empty until current matching evidence is available. An aged empty cache whose refresh fails is unavailable, never a synthetic deck.
   - **Season range (intent-level constraint).** A series entry may carry an optional `SeasonMin`/`SeasonMax` (inclusive; 0 = unbounded on that end) — an intent-level filter for channels like "old-school Simpsons" (seasons 1–10) or "just the classic run." Expansion filters the enumerated episodes to that range (by each episode's season number) before producing slots. It's a property of the *approved lineup entry* (the human's intent), not of availability, so it survives re-syncs and applies uniformly under any strategy. A range that matches no in-library episodes yet → a `pending` slot (same as an unavailable series).
 
 ### Scheduling strategies (shared by both playout backends)
@@ -2804,6 +2804,12 @@ runs the full benchmark; any meanwhile-failed hardware child uses the existing s
 ladder. Merely configuring Channels starts no media processes. A successful hardware result and
 measured capacity are written as versioned, bounded evidence beneath the persistent prepared root;
 the record includes an FFmpeg-build fingerprint, GPU identity, profile identity, and observation time.
+The prepared-library layout owns the capability record filename and atomic-write temporary prefix.
+Retention recognizes only regular files at those declared control paths: it preserves the committed
+record and fresh workspaces, and removes abandoned workspaces only after the existing staging grace.
+Unknown files, directories at control-file paths, and symlinks remain errors rather than being
+silently ignored or deleted. The capability writer reuses the same layout identifiers.
+
 On restart Loomarr may publish that result only after the fingerprints match and the evidence is
 still within its bounded freshness window, then a short real keyframe-bearing MPEG-TS trial revalidates
 the chosen encoder asynchronously. A mismatch, expiry, malformed record, or failed validation falls

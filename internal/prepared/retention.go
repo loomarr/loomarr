@@ -78,20 +78,20 @@ func (l *Library) Prune(
 			errs = append(errs, fmt.Errorf("prepared: stat %q: %w", name, statErr))
 			continue
 		}
-		if name == readinessMetadata {
+		if name == readinessMetadata || name == CapabilityEvidenceFile {
 			if !info.Mode().IsRegular() {
 				errs = append(errs, fmt.Errorf("%w: %q", ErrUnknownEntry, name))
 			}
 			continue
 		}
-		if isReadinessTemporary(name) {
+		if isReadinessTemporary(name) || isCapabilityTemporary(name) {
 			if !info.Mode().IsRegular() {
 				errs = append(errs, fmt.Errorf("%w: %q", ErrUnknownEntry, name))
 				continue
 			}
 			if now.Sub(info.ModTime()) > preparedStagingGrace {
 				if removeErr := os.Remove(path); removeErr != nil {
-					errs = append(errs, fmt.Errorf("prepared: remove abandoned readiness workspace %q: %w", name, removeErr))
+					errs = append(errs, fmt.Errorf("prepared: remove abandoned control workspace %q: %w", name, removeErr))
 				} else {
 					result.StagingRemoved++
 				}
@@ -222,5 +222,10 @@ func isOwnedStaging(name string) bool {
 
 func isReadinessTemporary(name string) bool {
 	remainder := strings.TrimPrefix(name, ".readiness-")
+	return remainder != name && remainder != ""
+}
+
+func isCapabilityTemporary(name string) bool {
+	remainder := strings.TrimPrefix(name, CapabilityEvidenceTempPrefix)
 	return remainder != name && remainder != ""
 }

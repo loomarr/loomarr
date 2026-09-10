@@ -623,8 +623,9 @@ wall-clock; a proposal trace must never be relabeled as current-channel or sched
    becomes the configured `pod_fill` / `coming_soon` pending outcome. An empty series resolution
    is unavailable, not an unexplained episode-selection drop.
 3. `episode_selection` — each safe, in-season episode is kept or omitted by `complete`,
-   `highlights`, or `holiday`. A stale editorial cache and the highlights/holiday safety
-   fallbacks are explicit `full_run_fallback` facts; they never masquerade as positive matches.
+   `highlights`, or `holiday`. Highlight fallbacks, including unavailable editorial evidence,
+   are explicit `full_run_fallback` facts. Unsupported holiday episodes instead carry
+   `holiday_omitted`; a complete matching holiday pool still records positive holiday matches.
 4. `placement` — the fact records the effective ordering mode, any relaxation, its pre-window
    deck position, whether the rolling window retained or rotated it out, and its final cycle
    position. Inserted commercial gaps are placement facts with no content key.

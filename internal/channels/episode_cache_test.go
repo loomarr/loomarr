@@ -153,7 +153,7 @@ func TestResolveEpisodesFallsBackToTheLibraryOnAColdCache(t *testing.T) {
 // This is the public availability → ComputeDesiredAt seam. An aged cache still
 // preserves safe playable identity when the live library cannot enumerate, but
 // never presents its stale editorial evidence as a highlights/holiday subset.
-func TestAgedEpisodeCacheFailureUsesCompleteSafeDeckWithoutEditorialSelection(t *testing.T) {
+func TestAgedEpisodeCacheFailurePreservesHolidayScopeAndHighlightFallback(t *testing.T) {
 	st := availTestStore(t)
 	key := provision.Key("series:tvdb:71663")
 	seedSeries(t, st, key, "show-1")
@@ -200,8 +200,14 @@ func TestAgedEpisodeCacheFailureUsesCompleteSafeDeckWithoutEditorialSelection(t 
 			}
 		}
 		want := []string{"ep-1", "ep-2", "ep-3", "ep-4", "ep-5", "ep-6", "ep-7", "ep-8"}
+		if selection.Mode == schedule.EpisodeHoliday {
+			want = nil
+		}
 		if !slices.Equal(ids, want) {
-			t.Fatalf("%s on failed aged refresh = %v, want full safe deck %v", selection.Mode, ids, want)
+			t.Fatalf("%s on failed aged refresh = %v, want %v", selection.Mode, ids, want)
+		}
+		if desired.PendingCount() != 0 {
+			t.Fatal("unavailable editorial evidence became an acquisition")
 		}
 	}
 }
