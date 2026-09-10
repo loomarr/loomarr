@@ -14,11 +14,11 @@ import (
 
 const (
 	PlannerSourceVersion             = "reference-source-v1"
-	PlannerPromptVersion             = "suggester-prompt-v9"
+	PlannerPromptVersion             = "suggester-prompt-v10"
 	PlannerToolSchemaVersion         = "catalog-search-v6"
 	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v3"
 	PlannerDiagnosticToolCallID      = "planner-diagnostic-call-1"
-	plannerDiagnosticSchemaVersion   = 2
+	plannerDiagnosticSchemaVersion   = 3
 	plannerDiagnosticIntent          = "science fiction"
 	plannerDiagnosticResponseVersion = "single-grounded-candidate-v1"
 )
@@ -28,34 +28,36 @@ const (
 // intentionally records hashes rather than prompts, tool results, model output,
 // credentials, or reasoning content.
 type ToolFinalizationDiagnostic struct {
-	SchemaVersion          int             `json:"schemaVersion"`
-	PromptVersion          string          `json:"promptVersion"`
-	ToolSchemaVersion      string          `json:"toolSchemaVersion"`
-	MessageTemplateVersion string          `json:"messageTemplateVersion"`
-	SyntheticResultVersion string          `json:"syntheticResultVersion"`
-	SystemPromptSHA256     string          `json:"systemPromptSha256"`
-	UserPromptSHA256       string          `json:"userPromptSha256"`
-	MessagesSHA256         string          `json:"messagesSha256"`
-	ToolSchemaSHA256       string          `json:"toolSchemaSha256"`
-	MessageRoles           []string        `json:"messageRoles"`
-	ToolCallID             string          `json:"toolCallId"`
-	JSONMode               bool            `json:"jsonMode"`
-	ToolsOff               bool            `json:"toolsOff"`
-	Temperature            *float64        `json:"temperature,omitempty"`
-	ParameterProfile       llm.ChatProfile `json:"parameterProfile"`
-	MaxTokens              int             `json:"maxTokens"`
-	ProviderAdapter        string          `json:"providerAdapter"`
-	ThinkingSetting        string          `json:"thinkingSetting"`
-	RequestedProvider      string          `json:"requestedProvider"`
-	RequestedModel         string          `json:"requestedModel"`
-	ResolvedProvider       string          `json:"resolvedProvider,omitempty"`
-	ResolvedModel          string          `json:"resolvedModel,omitempty"`
-	JSONValid              bool            `json:"jsonValid"`
-	RepeatedToolCall       bool            `json:"repeatedToolCall"`
-	ResponseContentSHA256  string          `json:"responseContentSha256"`
-	AttributionAttempts    int             `json:"attributionAttempts,omitempty"`
-	ChargeAmount           string          `json:"chargeAmount,omitempty"`
-	ChargeCurrency         string          `json:"chargeCurrency,omitempty"`
+	CompletionLimitParameter string          `json:"completionLimitParameter"`
+	DefaultUpstream          string          `json:"defaultUpstream,omitempty"`
+	SchemaVersion            int             `json:"schemaVersion"`
+	PromptVersion            string          `json:"promptVersion"`
+	ToolSchemaVersion        string          `json:"toolSchemaVersion"`
+	MessageTemplateVersion   string          `json:"messageTemplateVersion"`
+	SyntheticResultVersion   string          `json:"syntheticResultVersion"`
+	SystemPromptSHA256       string          `json:"systemPromptSha256"`
+	UserPromptSHA256         string          `json:"userPromptSha256"`
+	MessagesSHA256           string          `json:"messagesSha256"`
+	ToolSchemaSHA256         string          `json:"toolSchemaSha256"`
+	MessageRoles             []string        `json:"messageRoles"`
+	ToolCallID               string          `json:"toolCallId"`
+	JSONMode                 bool            `json:"jsonMode"`
+	ToolsOff                 bool            `json:"toolsOff"`
+	Temperature              *float64        `json:"temperature,omitempty"`
+	ParameterProfile         llm.ChatProfile `json:"parameterProfile"`
+	MaxTokens                int             `json:"maxTokens"`
+	ProviderAdapter          string          `json:"providerAdapter"`
+	ThinkingSetting          string          `json:"thinkingSetting"`
+	RequestedProvider        string          `json:"requestedProvider"`
+	RequestedModel           string          `json:"requestedModel"`
+	ResolvedProvider         string          `json:"resolvedProvider,omitempty"`
+	ResolvedModel            string          `json:"resolvedModel,omitempty"`
+	JSONValid                bool            `json:"jsonValid"`
+	RepeatedToolCall         bool            `json:"repeatedToolCall"`
+	ResponseContentSHA256    string          `json:"responseContentSha256"`
+	AttributionAttempts      int             `json:"attributionAttempts,omitempty"`
+	ChargeAmount             string          `json:"chargeAmount,omitempty"`
+	ChargeCurrency           string          `json:"chargeCurrency,omitempty"`
 }
 
 // RunToolFinalizationDiagnostic executes one model turn using the same rendered
@@ -100,9 +102,10 @@ func RunToolFinalizationDiagnostic(ctx context.Context, provider llm.Provider, m
 		return ToolFinalizationDiagnostic{}, fmt.Errorf("marshal diagnostic tool schema: %w", err)
 	}
 	opts := chatOpts(nil, groundedTemp)
-	sampling := llm.ResolveChatSampling(provider.Name(), model, opts)
+	sampling := llm.ResolveChatPolicy(provider.Name(), model, opts)
 	report := ToolFinalizationDiagnostic{
-		SchemaVersion: plannerDiagnosticSchemaVersion,
+		SchemaVersion:            plannerDiagnosticSchemaVersion,
+		CompletionLimitParameter: sampling.CompletionLimitParameter, DefaultUpstream: sampling.DefaultUpstream,
 		PromptVersion: PlannerPromptVersion, ToolSchemaVersion: PlannerToolSchemaVersion,
 		MessageTemplateVersion: PlannerMessageTemplateVersion,
 		SyntheticResultVersion: plannerDiagnosticResponseVersion,

@@ -2037,18 +2037,25 @@ repairs and grounding retries, so neither continuation nor repair repeats refere
 lookups. Existing cancellation, reference-read, catalog-failure, and empty-reference outcomes remain
 distinct, and all existing per-source fanout and invocation limits still apply.
 
-Grounded selection requests explicitly select the shared LLM adapter's `grounded-selection-v1`
-sampling profile. For OpenRouter's exact `google/gemini-3.8-flash` model, that profile omits optional
-temperature and requests supported `low` reasoning: the Vertex endpoint does not advertise
-temperature, and the model's default medium reasoning exceeded the interactive latency budget.
-This is a bounded compatibility entry, not model selection or qualification. Other models/providers
-and other inference tasks retain their existing sampling. The adapter owns this mapping; the
-Suggester carries no vendor/model roster. Production, live evaluation and the post-result diagnostic
-use the same profile and report its effective sampling. No metadata fetch occurs per inference,
-and no new operator setting is introduced. Model/route changes require fresh qualification; the
-profile never changes tool schemas, the 2048-token completion bound, retry capacity, strict route
-selection, privacy controls or acceptance thresholds. The v8 prompt contract binds this execution
-change in cached Intent identity and immutable evaluation manifests.
+Grounded selection requests select the shared LLM adapter's `grounded-selection-v2` request
+profile. The Suggester supplies no vendor/model roster. For OpenRouter's exact
+`google/gemini-3.8-flash` model, the profile omits optional temperature and requests supported
+`low` reasoning, as the Vertex endpoint does not advertise temperature. For exact
+`openai/gpt-5.6-sol`, it omits optional temperature, requests supported reasoning `none`, and
+sends the unchanged completion bound through Azure's advertised `max_completion_tokens` field
+instead of `max_tokens`. An ordinary OpenRouter client selecting this model for grounded work
+uses singleton `azure/us` routing with fallback disabled, required parameter support, denied data
+collection and ZDR required. An explicitly configured certification route retains its exact route
+and strict controls. These capability entries do not select the model or establish qualification.
+Other models, providers and inference tasks preserve their existing request policy.
+
+Production, live evaluation and the post-result diagnostic share the profile resolver. Diagnostic
+schema v3 reports the completion-limit field and the profile's default upstream separately from
+provider-reported attribution; a default is not evidence of the resolved route. No metadata fetch
+occurs per inference, and no operator setting is added. The v10 prompt contract binds this execution
+change in cached Intent identity and immutable evaluation manifests. Model/route changes require
+fresh qualification; tool schemas, the 2048-token bound, retry capacity and acceptance thresholds
+remain unchanged. Strict privacy and explicit route controls cannot be relaxed by this profile.
 
 A date union is one semantic retrieval, completed before `finalizationOnly` can be set. Each
 normalized scalar provider query returns through the existing bounded discovery machinery;

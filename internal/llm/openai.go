@@ -109,10 +109,12 @@ func NewOpenRouterChat(cfg OpenRouterChatConfig) (*OpenAI, error) {
 		return nil, err
 	}
 	provider := NewOpenAIForProvider("openrouter", cfg.BaseURL, cfg.Model, cfg.APIKey)
-	provider.route = &openRouterChatRoute{
-		Order: []string{cfg.UpstreamProvider}, AllowFallbacks: false, RequireParameters: true, DataCollection: "deny", ZDR: true,
-	}
+	provider.route = strictOpenRouterChatRoute(cfg.UpstreamProvider)
 	return provider, nil
+}
+
+func strictOpenRouterChatRoute(upstream string) *openRouterChatRoute {
+	return &openRouterChatRoute{Order: []string{upstream}, AllowFallbacks: false, RequireParameters: true, DataCollection: "deny", ZDR: true}
 }
 
 // ValidateOpenRouterCertificationRoute is the single fail-closed authority for
@@ -141,15 +143,16 @@ func (o *OpenAI) Name() string { return o.provider }
 // --- wire types (OpenAI /v1/chat/completions) ---
 
 type openaiChatReq struct {
-	Model          string               `json:"model"`
-	Messages       []openaiMessage      `json:"messages"`
-	Tools          []openaiTool         `json:"tools,omitempty"`
-	ResponseFormat *openaiRespFmt       `json:"response_format,omitempty"`
-	Temperature    *float64             `json:"temperature,omitempty"`
-	TopP           *float64             `json:"top_p,omitempty"`
-	MaxTokens      int                  `json:"max_tokens,omitempty"`
-	Provider       *openRouterChatRoute `json:"provider,omitempty"`
-	Reasoning      *openRouterReasoning `json:"reasoning,omitempty"`
+	Model               string               `json:"model"`
+	Messages            []openaiMessage      `json:"messages"`
+	Tools               []openaiTool         `json:"tools,omitempty"`
+	ResponseFormat      *openaiRespFmt       `json:"response_format,omitempty"`
+	Temperature         *float64             `json:"temperature,omitempty"`
+	TopP                *float64             `json:"top_p,omitempty"`
+	MaxTokens           int                  `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int                  `json:"max_completion_tokens,omitempty"`
+	Provider            *openRouterChatRoute `json:"provider,omitempty"`
+	Reasoning           *openRouterReasoning `json:"reasoning,omitempty"`
 }
 
 type openRouterReasoning struct {
@@ -249,7 +252,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	if err != nil {
 		return Response{}, err
 	}
-	sampling := ResolveChatSampling(o.provider, o.model, opts)
+	sampling := ResolveChatPolicy(o.provider, o.model, opts)
 	req := openaiChatReq{
 		Model:       o.model,
 		Messages:    wireMessages,
@@ -258,6 +261,13 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		TopP:        sampling.TopP,
 		MaxTokens:   opts.MaxTokens,
 		Provider:    o.route,
+	}
+	if sampling.CompletionLimitParameter == "max_completion_tokens" {
+		req.MaxTokens = 0
+		req.MaxCompletionTokens = opts.MaxTokens
+	}
+	if req.Provider == nil && sampling.DefaultUpstream != "" {
+		req.Provider = strictOpenRouterChatRoute(sampling.DefaultUpstream)
 	}
 	if sampling.ReasoningEffort != "" {
 		req.Reasoning = &openRouterReasoning{Effort: sampling.ReasoningEffort}
