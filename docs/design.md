@@ -1610,7 +1610,14 @@ and approval gate. A second empty answer fails normally, keeping the model loop 
 
 Policy grounding does not delegate explicit user constraints back to probabilistic output. A rating
 the user writes (for example, `keep it PG-13`) is retained as the exact audience ceiling even on an
-otherwise adult channel, while an unqualified adult channel still has no inferred ceiling. A request
+otherwise adult channel, while an unqualified adult channel still has no inferred ceiling.
+Explicit maximum forms such as `capped at PG`, `nothing above PG`, `PG ceiling`, and
+`PG or gentler` carry the same constraint; rating tokens require word boundaries and unrelated
+mentions do not create a maximum. Multiple explicit maxima keep the stricter bound. An explicit
+`exclude unrated` request also survives omitted or looser model policy and refuses unknown ratings
+before approval, including when no ceiling was requested. Negating that exclusion does not add it.
+These restrictions remain proposal policy and pass through ordinary approval and scheduling.
+A request
 that explicitly promises child or family safety contributes a deterministic `TV-Y7` or `TV-PG`
 maximum even when the model omits policy; unrated or harder picks are refused before approval. A request
 that names a built-in holiday deterministically becomes `seasonal.mode=exclusive` with only that

@@ -2610,3 +2610,35 @@ func TestSuggestReportsPartialInterpretationOfGroundedFragment(t *testing.T) {
 		t.Fatalf("grounded fragment was represented as full understanding: %+v", prop)
 	}
 }
+
+func TestSuggest_ExplicitPGMaximumAndUnratedExclusionReachReview(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-pg", Name: "Family Night", Type: "Movie", Year: 2001, TMDBID: 6001, Genres: []string{"Family"}, OfficialRating: "PG"},
+		testkit.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-r", Name: "Harder Night", Type: "Movie", Year: 2002, TMDBID: 6002, Genres: []string{"Family"}, OfficialRating: "R"},
+		testkit.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-unknown", Name: "Unknown Night", Type: "Movie", Year: 2003, TMDBID: 6003, Genres: []string{"Family"}},
+	)
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	model := testkit.NewLLM(catalogSearchResponse(map[string]any{"query": "family"}), finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:6001","name":"Family Night"},{"mediaType":"movie","key":"movie:tmdb:6002","name":"Harder Night"},{"mediaType":"movie","key":"movie:tmdb:6003","name":"Unknown Night"}]}`))
+	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	p, err := s.Suggest(context.Background(), suggest.Intent{Description: "Family movies, capped at PG; exclude unrated titles. Keep the audience cap on every scheduled movie."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Policy.Audience.Ceiling != "PG" || p.Policy.Audience.Unrated != schedule.UnratedExclude {
+		t.Fatalf("lost explicit policy: %+v", p.Policy.Audience)
+	}
+	if len(p.Lineup) != 1 || p.Lineup[0].TMDBID != 6001 || len(p.Refused) != 2 || len(p.Acquisitions) != 0 {
+		t.Fatalf("unsafe review lineup: %+v", p)
+	}
+	for _, item := range p.Refused {
+		key, err := item.Item.Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !traceHas(p.Trace, string(key), suggest.DispositionRefused, suggest.ReasonOverCeiling) {
+			t.Fatalf("missing refusal trace: %+v", p.Trace)
+		}
+	}
+}
