@@ -89,8 +89,12 @@ func BlockSpawner(ffmpeg string, profile BlockProfile, source BlockSource, log *
 // This process owns continuous AAC state and paces one MPEG-TS timeline.
 func BlockMuxArgs(profile BlockProfile) []string {
 	burst := "0.000001"
+	probeSize := "256k"
 	if profile.PreparedStart {
 		burst = "2"
+		// A validated prepared tail may end before 256 KiB; waiting for successor bytes
+		// adds another child startup before the parent can emit an already available frame.
+		probeSize = "32k"
 	}
 	return []string{
 		"-hide_banner", "-loglevel", "error",
@@ -105,7 +109,7 @@ func BlockMuxArgs(profile BlockProfile) []string {
 		// The children already guarantee the broadcast stream shape. FFmpeg's defaults may
 		// inspect several seconds of this live pipe before the session mux emits anything; these
 		// measured bounds still discover its video and audio streams without adding that delay.
-		"-probesize", "256k", "-analyzeduration", "500000",
+		"-probesize", probeSize, "-analyzeduration", "500000",
 		"-c:a", "s302m", "-f", "mpegts", "-i", "pipe:0",
 		"-map", "0:v:0", "-map", "0:a:0",
 		"-c:v", "copy", "-c:a", "aac", "-b:a", strconv.Itoa(profile.AudioBitrate) + "k",
