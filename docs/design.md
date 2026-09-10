@@ -3696,6 +3696,11 @@ programme-boundary viewers and their warm sessions to converge to that baseline 
 cleanup deadline. It records this convergence separately and refuses the fan-in workload if cleanup
 fails; a prior Channel's grace session cannot be counted as a duplicate fan-in session.
 
+When a programme observer’s context expires while its decoder completion is also ready, the
+observer reports `programme_observation_timeout` rather than a generic `decode_failed`. An already
+established asset-clock mismatch retains its specific failure. Neither outcome can qualify the
+run, and cancellation still closes and joins the owned decoder and transport.
+
 Certification requires 100 or more configured Channels to complete mint and surf with bounded
 failure and resource growth; every admitted stream at measured capacity to yield valid media without
 interrupting an existing held stream; overload to return the documented bounded admission outcome
