@@ -161,8 +161,8 @@ why it is corrected in place rather than quietly rewritten.
 
 ## Open redistribution review — beta blockers
 
-This notice is an inventory, not release clearance. The first beta remains blocked until all of the
-following have evidence on the release commit:
+This notice is an inventory, not release clearance. The following engineering evidence remains
+required on the beta.5 release commit:
 
 - ~~pin the BtbN ffmpeg archive immutably~~ (done — `FFMPEG_RELEASE`/`FFMPEG_BUILD_ID` +
   per-arch SHA256 in [`Dockerfile`](Dockerfile)) and retain the exact corresponding source for FFmpeg,
@@ -184,8 +184,12 @@ following have evidence on the release commit:
   per-package/per-crate texts ride in the release SBOM);
 - ~~inspect and include any required Prometheus `NOTICE` material~~ (done — the upstream NOTICE is
   reproduced above); and
-- complete a final qualified legal/NOTICE review of the assembled image and its downloadable source
-  materials.
+- document source distribution mechanics for the assembled image and its downloadable source
+  materials, including the public source location and any applicable source-link or offer mechanics.
+
+For beta.5, the maintainer removed the separate qualified legal/NOTICE reviewer sign-off requirement.
+Release engineering owns the evidence above; an external reviewer or legal opinion is not a release
+prerequisite. This policy change does not close missing source or notice evidence.
 
 Until those items close, neither this file nor the BuildKit SBOM should be read as a claim that the
 image is ready for redistribution.

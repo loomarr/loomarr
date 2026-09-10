@@ -3795,6 +3795,21 @@ Every run writes one schema-versioned JSON report atomically plus a concise summ
 sample, media validation, cleanup assertion, exact target identity, or credential-redaction audit is
 missing.
 
+**Release scope — beta.5 through beta.7.** The maintainer deferred only the raw MPEG-TS prepared
+startup performance targets (p95 below 100 ms to first transport byte and 500 ms to first decoded
+frame) from beta.5 to beta.7. The certifier, threshold bounds, exit status and original failed
+reports remain unchanged. A report failing raw startup performance remains uncertified; release
+acceptance must not relabel it as a passing certification.
+For beta.5, the release evidence packet binds the exact candidate and declared hardware/client
+profile, identifies the deferred raw measurements explicitly, and proves every non-deferred
+requirement separately: media validity and continuity, admission and measured capacity, readiness,
+recovery, cleanup, credential audit, prepared HLS timing and shipping-browser/installed-client
+acceptance. Missing evidence or another failure still holds release. Browser budgets remain p95
+below 100 ms for OSD acknowledgement, 750 ms for prepared adjacent first frame and 1.5 seconds for
+prepared arbitrary first frame; HLS master-to-first-body remains below 100 ms. No cold-start
+performance guarantee is inferred from this scope change. Beta.7 must meet the original raw targets
+on its exact candidate/profile. The release roadmap and #1037/#1097 retain the deferred work.
+
 Playout report schema version 3 makes the credential-redaction audit executable and part of the
 publication verdict. `Run` retains private workload eligibility and a bounded private audit capsule;
 it returns an uncertified report until publication. Exported fields cannot supply or forge audit
@@ -10969,7 +10984,11 @@ conclusion is made in product documentation. Release verification fails closed i
 metadata, upstream licensing citations, or the explicit open-review section disappear. This is
 packaging honesty, not legal closure: exact corresponding source for ffmpeg and yt-dlp's bundled GPL
 dependencies, DejaVu/font and transitive license texts, Prometheus NOTICE review, immutable base
-images/package inputs, and final legal review remain beta blockers.
+images/package inputs, and documented source distribution mechanics remain beta blockers.
+The maintainer removed the separate qualified legal/NOTICE reviewer sign-off requirement for
+beta.5. Release engineering owns the source, license, notice and distribution evidence; no external
+reviewer or legal opinion is required by the release process. This policy change does not establish
+license compliance or close missing artifact evidence.
 
 **Runtime OS packages the app depends on, and why each is load-bearing.** Beyond the vendored binaries the image installs two package sets, both because *ffmpeg dlopens or reads them at run time* rather than because anything links against them at build time. The first is the vendor-neutral hardware-encode driver set (VAAPI, Vulkan, Intel iHD, and the X11/DRM layers underneath) — without it every hardware family fails the §9.1 capability probe on every host. The second is **a font: `fonts-dejavu-core`.** The offline/test card draws its label with ffmpeg's `drawtext`, which fails at filter *init* on a missing `fontfile`, so `playout.FindFont` stats real paths and degrades to an unlabelled card when it finds none. An image with no font at all makes that degradation total: the card becomes an unlabelled black frame with silent audio, which is indistinguishable from the dead-channel failure the card exists to *replace*. Since §9.1's `SlotFlex` routes genuine shortfalls onto that card — filler unconfigured, empty pod, generated bumper, containment failure, or a runtime pod that unexpectedly cannot cover its accepted break — the font is a functional dependency of the playout fallback path, not a cosmetic one. An ordinarily underfilled internal pod is not such a shortfall: reconcile contracts its break to the playable media duration, as §10 requires.
 

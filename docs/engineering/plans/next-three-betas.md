@@ -55,30 +55,44 @@ Complete these lanes concurrently, with one owner for overlapping planner/scorer
 2. **Honest creation — #1044, #1098 and #1068.** Preserve useful terse requests while exposing
    partial understanding or asking for clarification. Separate Intent adherence, optional diversity
    and unknown evidence; do not reward off-era spread as alignment. Ship the coordinated launch,
-   acquisition and repeat-runway outlook. Reuse #1156 recovery and #1158 date semantics.
+   acquisition and repeat-runway outlook. Reuse #1156 recovery and #1158 date semantics. For bare
+   named blocks such as TGIF, automatically discover trustworthy source evidence through the existing
+   grounded retrieval path; model memory does not establish membership. Missing or conflicting
+   evidence remains explicit uncertainty. Qualify this through #1015/#494.
 3. **Prepared readiness and playback — #1097/#1037.** Reconcile the implemented current/next planner
    and its 100-Channel seam test with every remaining clause: default storage budget, convergence,
    restart/schedule changes, capacity-scaled preparation and foreground preemption. Qualify the
    exact declared hardware/profile with the existing 100+ configured-Channel HLS/raw churn harness,
-   measured active capacity, cleanup and percentile artifacts. Keep the established prepared-hit
-   p95 targets below 100 ms to first transport byte and 500 ms to first decoded frame.
+   measured active capacity, cleanup and percentile artifacts. The maintainer deferred only raw
+   MPEG-TS prepared startup p95 targets (below 100 ms to first transport byte and 500 ms to first
+   decoded frame) to beta.7. Keep the original certifier, thresholds and failed reports. Raw validity,
+   continuity, admission, capacity, recovery and cleanup remain required. Prepared HLS timing and
+   the existing shipping-browser budgets remain beta.5 requirements.
 4. **Approval and login correctness — #955/#688.** Finish durable atomic pull approval/queueing,
    including concurrent decisions, persistence failures and restart. Admission atomicity from
    #1142 does not satisfy pull approval. The Emby header/offline-verifier repair already exists;
    #688's remaining release/homelab login acceptance needs evidence rather than another implementation.
 5. **Release preparation.** Qualify the supported current provider/build with #1015 and #494;
    retain unchanged semantic, latency and resource gates. Complete applicable #661 exact-artifact
-   redistribution evidence and review. Resolve the newly tracked Metro/image-size dependency exposure
+   redistribution evidence and documented source distribution mechanics; a separate qualified
+   legal/NOTICE reviewer sign-off is not required following the maintainer's beta.5 scope decision.
+   Resolve the newly tracked Metro/image-size dependency exposure
    and compatible remedy or explicit release-scoped disposition in #1162; GitHub currently lists no
    patched version. This is a locked-dependency finding, not a demonstrated deployed-service exploit.
    Prepare the installed Shield/browser acceptance packet.
 
 **Exit:** the five journeys exercise creation through actual scheduled playback with honest
 sparse/acquisition/clarification states; the complete current-provider gate passes; declared-profile
-readiness and churn evidence passes; concurrent pull approval is durable; applicable login,
+readiness and every non-deferred churn requirement pass; concurrent pull approval is durable; applicable login,
 artifact and installed-client acceptance is recorded. The candidate identifies precisely which
 filler capabilities remain held. It cannot present uncertified media as admitted or substitute a
 legacy pipeline to populate the catalog.
+
+The exact release packet must distinguish deferred raw startup performance from required evidence.
+A raw performance failure remains an uncertified report with its original unsuccessful exit;
+record it as an explicit beta.5 limitation, never as a green certification. Missing samples or any
+non-deferred failure still hold release. The accepted scope decision does not qualify the existing
+synthetic diagnostics as shipping-browser, codec, restart or physical-device acceptance.
 
 **Parallel improvements:** #1040 can improve trustworthy progress on the same workflow states;
 #1050 should measure the actual full Android job and pursue its existing 15-minute target without
@@ -123,6 +137,11 @@ source and written-text work while beta.5 is being stabilized; do not wait for i
 If applicable certification is missing, beta.6 holds its promised filler outcome.
 
 ## beta.7 — Sustained household use
+
+- **Complete raw startup performance — #1037/#1097.** Meet the original prepared raw MPEG-TS p95
+  targets below 100 ms to first transport byte and 500 ms to first decoded frame on the exact
+  candidate and declared hardware/profile. Reuse retained beta.5 failures and pursue a bounded,
+  sample-correct design if needed; preserve media, lifecycle, capacity and cleanup requirements.
 
 - **Maintenance and repeated curation — #498/#1104.** For all five journeys, exercise baseline,
   sparse/missing Library, failed acquisition, restart, new arrivals and at least three controlled
@@ -232,11 +251,11 @@ optimizations can move without relaxing required release gates.
 | [#1044](https://github.com/loomarr/loomarr/issues/1044) | Partially understood Intent produces a confident Proposal instead of asking for clarification | beta.5 |
 | [#1015](https://github.com/loomarr/loomarr/issues/1015) | Add a local pre-release gate for channel-generation quality and latency | beta.5 |
 | [#494](https://github.com/loomarr/loomarr/issues/494) | Preserve candidate relevance and enrich grounded retrieval evidence | beta.5 |
-| [#1097](https://github.com/loomarr/loomarr/issues/1097) | Make prepared readiness converge across 50–100 channels | beta.5 |
-| [#1037](https://github.com/loomarr/loomarr/issues/1037) | Certify many-channel playout capacity and channel-surf churn | beta.5 |
+| [#1097](https://github.com/loomarr/loomarr/issues/1097) | Make prepared readiness converge across 50–100 channels | beta.5; support raw startup performance beta.7 |
+| [#1037](https://github.com/loomarr/loomarr/issues/1037) | Certify many-channel playout capacity and channel-surf churn | beta.5; raw startup performance beta.7 |
 | [#955](https://github.com/loomarr/loomarr/issues/955) | Make filler pull approval atomically idempotent | beta.5 |
 | [#688](https://github.com/loomarr/loomarr/issues/688) | fix(auth): Emby successful login fails when client scheme is missing | beta.5 |
-| [#661](https://github.com/loomarr/loomarr/issues/661) | Close first-beta GPL redistribution evidence and legal review | beta.5 |
+| [#661](https://github.com/loomarr/loomarr/issues/661) | Complete binary source, notice and distribution evidence | beta.5 |
 | [#1050](https://github.com/loomarr/loomarr/issues/1050) | perf(android): reduce React Native Play AAB CI build time | beta.5 |
 | [#1040](https://github.com/loomarr/loomarr/issues/1040) | Make channel-generation progress calm, trustworthy, and delightful | beta.5 |
 | [#1113](https://github.com/loomarr/loomarr/issues/1113) | Add exact NPS video corpus source authority | beta.6 |
