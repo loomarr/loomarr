@@ -1748,6 +1748,23 @@ Active `planner-certification-v9` preserves v8's exact base, cases, fixture, sco
 while binding `suggester-prompt-v7` and the unchanged `catalog-search-v6` tool contract. Historical
 manifests remain unchanged.
 
+Current `planner-certification-v15` binds a new immutable `planner-certification-v9-base` and
+`suggester-prompt-v13`. The base supplies missing channel context in eight existing families:
+the two season-window families name their series, audience refinement names its current lineup,
+thin results names its documentary subject, and empty-selection repair, fabricated-id,
+unsupported-tool and unnecessary-call cases name the requested movie. Every original instruction
+and variant remains present. Catalog bytes, family and variant counts, expected routes, policy and
+schedule answers, abstention eligibility, hard gates and quality thresholds are unchanged.
+The original base and failed scorecards remain evidence of the earlier incomplete inputs; the
+corrected corpus requires a fresh qualification run and cannot inherit their results.
+The v13 prompt requires catalog lookup even for an unfamiliar explicitly named title. It also
+requires an honest empty selection after bounded grounding when mandatory content conflicts with
+an exclusion or season limit, rather than promising unscheduled exceptions in the rationale.
+Non-date conflicts do not become ambiguous date interpretations. This uses the existing
+no-grounded-title outcome, adds no selection or approval authority, and changes no repair budget.
+`planner-release-gate-v10` retains the exact supplementary release cases, fixtures and gates while
+binding the same prompt; prior manifests remain immutable.
+
 The supplementary `planner-release-gate-v4` release replay retains v1's 18 synthetic cases,
 fixture bytes, acceptable members, hard negatives and thresholds, and binds them explicitly to the
 current production prompt/tool identities. The historical v1–v3 manifests remain unchanged. V4 retains v3's synthetic source-membership

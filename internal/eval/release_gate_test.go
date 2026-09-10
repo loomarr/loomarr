@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,26 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+func TestReleaseGatePromptRevisionPreservesCasesAndGates(t *testing.T) {
+	var contracts []map[string]any
+	for _, path := range []string{"testdata/planner-release-gate-v9.json", releaseGateManifestPath} {
+		blob, err := releaseGateFiles.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var contract map[string]any
+		if err := json.Unmarshal(blob, &contract); err != nil {
+			t.Fatal(err)
+		}
+		delete(contract, "version")
+		delete(contract, "promptVersion")
+		contracts = append(contracts, contract)
+	}
+	if !reflect.DeepEqual(contracts[0], contracts[1]) {
+		t.Fatal("prompt binding changed release cases, fixtures or gates")
+	}
+}
 
 func proposalWithKeys(t *testing.T, values ...string) suggest.Proposal {
 	t.Helper()
@@ -79,7 +100,7 @@ func TestReleaseGateCorpusIsFrozenAndReleaseFocused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-release-gate-v9" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
+	if corpus.Version != "planner-release-gate-v10" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
 		corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion || corpus.Fixture.SHA256 == "" || corpus.SourcesFixture.SHA256 == "" {
 		t.Fatalf("release-gate identity = %+v", corpus)
 	}
