@@ -1,0 +1,15 @@
+{
+  "TGIF": {
+    "url": "https://example.test/tgif-membership",
+    "title": "Synthetic TGIF membership source",
+    "excerpt": "Synthetic source roster; no live source or household data.",
+    "titleAnchors": [
+      "Full House",
+      "Family Matters",
+      "Step by Step",
+      "Perfect Strangers",
+      "Boy Meets World",
+      "Sabrina the Teenage Witch"
+    ]
+  }
+}

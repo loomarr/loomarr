@@ -24,7 +24,7 @@ const (
 	// MaxResponseBytes bounds a public page before any parsing.
 	MaxResponseBytes = 256 << 10
 	maxExcerptBytes  = 16 << 10
-	maxTitleAnchors  = 128
+	MaxTitleAnchors  = 128
 	maxLookupText    = 2048
 	maxRedirects     = 3
 	referenceAgent   = "Loomarr/reference (https://github.com/loomarr/loomarr)"
@@ -79,51 +79,9 @@ func (w *Web) Lookup(ctx context.Context, lookup Lookup) (Evidence, error) {
 	if err != nil {
 		return Evidence{}, fmt.Errorf("reference: parse URL: %w", err)
 	}
-	if err := w.checkPublicURL(ctx, u); err != nil {
+	body, mediaType, err := w.read(ctx, u, "text/html, application/xhtml+xml, text/plain;q=0.9", false)
+	if err != nil {
 		return Evidence{}, err
-	}
-
-	client := *w.client
-	priorRedirect := client.CheckRedirect
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) >= maxRedirects {
-			return fmt.Errorf("reference: too many redirects")
-		}
-		if err := w.checkPublicURL(req.Context(), req.URL); err != nil {
-			return err
-		}
-		if priorRedirect != nil {
-			return priorRedirect(req, via)
-		}
-		return nil
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return Evidence{}, fmt.Errorf("reference: build request: %w", err)
-	}
-	req.Header.Set("User-Agent", referenceAgent)
-	req.Header.Set("Accept", "text/html, application/xhtml+xml, text/plain;q=0.9")
-	resp, err := client.Do(req)
-	if err != nil {
-		return Evidence{}, fmt.Errorf("reference: fetch page: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Evidence{}, fmt.Errorf("reference: upstream returned HTTP %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
-	if err != nil {
-		return Evidence{}, fmt.Errorf("reference: read page: %w", err)
-	}
-	if len(body) > MaxResponseBytes {
-		return Evidence{}, fmt.Errorf("reference: response exceeds %d bytes", MaxResponseBytes)
-	}
-
-	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if mediaType == "" {
-		mediaType = http.DetectContentType(body)
-		mediaType, _, _ = mime.ParseMediaType(mediaType)
 	}
 	var title, excerpt string
 	var anchors []string
@@ -142,6 +100,63 @@ func (w *Web) Lookup(ctx context.Context, lookup Lookup) (Evidence, error) {
 		return Evidence{}, errors.New("reference: page has no usable text")
 	}
 	return Evidence{URL: u.String(), Title: title, Excerpt: excerpt, TitleAnchors: anchors}, nil
+}
+
+// read shares public routing, redirect and byte limits across page and discovery requests.
+func (w *Web) read(ctx context.Context, u *url.URL, accept string, originOnly bool) ([]byte, string, error) {
+	if w == nil || w.client == nil || w.resolver == nil {
+		return nil, "", errors.New("reference: HTTP client is unavailable")
+	}
+	if err := w.checkPublicURL(ctx, u); err != nil {
+		return nil, "", err
+	}
+
+	client := *w.client
+	priorRedirect := client.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if originOnly && (req.URL.Scheme != u.Scheme || req.URL.Host != u.Host) {
+			return errors.New("reference: discovery redirect changed source authority")
+		}
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("reference: too many redirects")
+		}
+		if err := w.checkPublicURL(req.Context(), req.URL); err != nil {
+			return err
+		}
+		if priorRedirect != nil {
+			return priorRedirect(req, via)
+		}
+		return nil
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("reference: build request: %w", err)
+	}
+	req.Header.Set("User-Agent", referenceAgent)
+	req.Header.Set("Accept", accept)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("reference: fetch page: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("reference: upstream returned HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("reference: read page: %w", err)
+	}
+	if len(body) > MaxResponseBytes {
+		return nil, "", fmt.Errorf("reference: response exceeds %d bytes", MaxResponseBytes)
+	}
+
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if mediaType == "" {
+		mediaType = http.DetectContentType(body)
+		mediaType, _, _ = mime.ParseMediaType(mediaType)
+	}
+	return body, mediaType, nil
 }
 
 func (w *Web) checkPublicURL(ctx context.Context, u *url.URL) error {
@@ -268,7 +283,7 @@ func lineAnchors(text string) []string {
 
 func dedupeAnchors(matches []positionedAnchor) []string {
 	seen := make(map[string]bool)
-	result := make([]string, 0, min(len(matches), maxTitleAnchors))
+	result := make([]string, 0, min(len(matches), MaxTitleAnchors))
 	for _, match := range matches {
 		key := strings.ToLower(match.value)
 		if match.value == "" || seen[key] {
@@ -276,7 +291,7 @@ func dedupeAnchors(matches []positionedAnchor) []string {
 		}
 		seen[key] = true
 		result = append(result, match.value)
-		if len(result) == maxTitleAnchors {
+		if len(result) == MaxTitleAnchors {
 			break
 		}
 	}

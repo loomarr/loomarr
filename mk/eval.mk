@@ -741,3 +741,43 @@ filler-eval-cert: ## score captured filler decisions; never contacts a model or 
 	    --max-requests "$$LOOMARR_FILLER_EVAL_MAX_REQUESTS" \
 	    --max-spend-nano-usd "$$LOOMARR_FILLER_EVAL_MAX_SPEND_NANO_USD" \
 	    --max-concurrency "$$LOOMARR_FILLER_EVAL_MAX_CONCURRENCY"
+
+
+eval-planner-release-contract: ## verify the frozen production-intent release corpus without inference
+	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -count=1 -tags=eval -run '^TestReleaseGate' ./internal/eval/
+
+
+eval-planner-release-gate: ## replay release-critical intents 10x with latency gates; explicit, inference-spending, non-CI
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-release-gate.json}"; \
+	  summary="$${LOOMARR_EVAL_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-release-gate.md}"; \
+	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
+	  report="$$(cd "$$(dirname "$$report")" && pwd -P)/$$(basename "$$report")"; \
+	  summary="$$(cd "$$(dirname "$$summary")" && pwd -P)/$$(basename "$$summary")"; \
+	  LOOMARR_EVAL_PLANNER_RELEASE_GATE=1 LOOMARR_EVAL_REQUIRED=1 LOOMARR_EVAL_TRIALS=10 \
+	  LOOMARR_EVAL_OUT="$$report" LOOMARR_EVAL_SUMMARY_OUT="$$summary" \
+	    $(GO) test -count=1 -tags=eval -run '^TestPlannerReleaseGate$$' -v -timeout 32m ./internal/eval/
+
+
+eval-planner-model-canary: ## run one bounded release-holdout trial for one configured planner model; explicit, inference-spending, non-CI
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-model-canary.json}"; \
+	  summary="$${LOOMARR_EVAL_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-model-canary.md}"; \
+	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
+	  report="$$(cd "$$(dirname "$$report")" && pwd -P)/$$(basename "$$report")"; \
+	  summary="$$(cd "$$(dirname "$$summary")" && pwd -P)/$$(basename "$$summary")"; \
+	  LOOMARR_EVAL_PLANNER_MODEL_CANARY=1 LOOMARR_EVAL_REQUIRED=1 LOOMARR_EVAL_TRIALS=1 \
+	  LOOMARR_EVAL_OUT="$$report" LOOMARR_EVAL_SUMMARY_OUT="$$summary" \
+	    $(GO) test -count=1 -tags=eval -run '^TestPlannerModelCanary$$' -v -timeout 12m ./internal/eval/
+
+
+eval-planner-model-finalist: ## repeat the model-canary cases 5x under an exact 1,000-call ceiling; explicit, inference-spending, non-CI
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-model-finalist.json}"; \
+	  summary="$${LOOMARR_EVAL_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-model-finalist.md}"; \
+	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
+	  report="$$(cd "$$(dirname "$$report")" && pwd -P)/$$(basename "$$report")"; \
+	  summary="$$(cd "$$(dirname "$$summary")" && pwd -P)/$$(basename "$$summary")"; \
+	  LOOMARR_EVAL_PLANNER_MODEL_FINALIST=1 LOOMARR_EVAL_REQUIRED=1 LOOMARR_EVAL_TRIALS=5 \
+	  LOOMARR_EVAL_OUT="$$report" LOOMARR_EVAL_SUMMARY_OUT="$$summary" \
+	    $(GO) test -count=1 -tags=eval -run '^TestPlannerModelFinalist$$' -v -timeout 10m ./internal/eval/

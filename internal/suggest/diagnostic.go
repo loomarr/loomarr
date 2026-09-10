@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	PlannerSourceVersion             = "reference-source-v1"
 	PlannerPromptVersion             = "suggester-prompt-v6"
 	PlannerToolSchemaVersion         = "catalog-search-v6"
 	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v2"

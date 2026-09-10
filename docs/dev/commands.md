@@ -125,6 +125,10 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make filler-bakeoff-ollama` |  | capture a digest-pinned local filler prediction ledger (manual) |
 | `make filler-bakeoff-transcribe` |  | capture digest-pinned shared filler transcripts (manual) |
 | `make filler-eval-cert` |  | score captured filler decisions; never contacts a model or media source |
+| `make eval-planner-release-contract` |  | verify the frozen production-intent release corpus without inference |
+| `make eval-planner-release-gate` |  | replay release-critical intents 10x with latency gates; explicit, inference-spending, non-CI |
+| `make eval-planner-model-canary` |  | run one bounded release-holdout trial for one configured planner model; explicit, inference-spending, non-CI |
+| `make eval-planner-model-finalist` |  | repeat the model-canary cases 5x under an exact 1,000-call ceiling; explicit, inference-spending, non-CI |
 
 ## Build / run
 

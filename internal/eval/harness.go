@@ -87,6 +87,9 @@ type observedProvider struct {
 }
 
 type Observation struct {
+	CatalogOperations   int    `json:"catalogOperations,omitempty"`
+	CatalogLatencyNanos int64  `json:"catalogLatencyNanos,omitempty"`
+	SelectedCount       int    `json:"selectedCount,omitempty"`
 	ModelCalls          int    `json:"modelCalls"`
 	ToolCalls           int    `json:"toolCalls"`
 	TitleCalls          int    `json:"titleCalls"`
@@ -358,6 +361,7 @@ func mapIntent(i Intent) suggest.Intent {
 
 // Result is the scored outcome of one case.
 type Result struct {
+	EndToEndLatencyNanos       int64               `json:"endToEndLatencyNanos,omitempty"`
 	Case                       string              `json:"case"`
 	Trial                      int                 `json:"trial"`
 	Failures                   []string            `json:"failures"` // all evaluation failures; empty means the trial passed
@@ -509,6 +513,21 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	for _, forbidden := range c.ForbidKeys {
 		if groundedKeys[forbidden] {
 			f = append(f, fmt.Sprintf("forbidden grounded key %q is present", forbidden))
+		}
+	}
+	if c.MinAcceptableKeys > 0 {
+		acceptable := 0
+		allowed := make(map[provision.Key]bool, len(c.AcceptableKeys))
+		for _, key := range c.AcceptableKeys {
+			allowed[key] = true
+		}
+		for key := range groundedKeys {
+			if allowed[key] {
+				acceptable++
+			}
+		}
+		if acceptable < c.MinAcceptableKeys {
+			f = append(f, fmt.Sprintf("acceptable grounded members %d < required %d", acceptable, c.MinAcceptableKeys))
 		}
 	}
 	if movies < c.MinMovies {

@@ -60,6 +60,13 @@ func NewLLM(responses ...llm.Response) *LLM {
 	return &LLM{turns: responses}
 }
 
+// SetResponses resets the scripted turns for another isolated input using this fixture.
+func (m *LLM) SetResponses(responses ...llm.Response) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.turns = append([]llm.Response(nil), responses...)
+}
+
 func (m *LLM) Name() string { return "mock" }
 
 func (m *LLM) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {

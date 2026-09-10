@@ -69,13 +69,16 @@ type CertificationQualityWeights struct {
 }
 
 type CertificationThresholds struct {
-	MinGroundedCompletionRate   float64 `json:"minGroundedCompletionRate"`
-	MinCorrectToolOperationRate float64 `json:"minCorrectToolOperationRate"`
-	MinSchemaValidityRate       float64 `json:"minSchemaValidityRate"`
-	MinPolicyAccuracyRate       float64 `json:"minPolicyAccuracyRate"`
-	MinProposalQualityRate      float64 `json:"minProposalQualityRate"`
-	MinRecoveryRate             float64 `json:"minRecoveryRate"`
-	MaxP95ToolCalls             int     `json:"maxP95ToolCalls"`
+	MaxP50EndToEndLatencyNanos        int64   `json:"maxP50EndToEndLatencyNanos,omitempty"`
+	MaxP95EndToEndLatencyNanos        int64   `json:"maxP95EndToEndLatencyNanos,omitempty"`
+	MaxSuccessfulEndToEndLatencyNanos int64   `json:"maxSuccessfulEndToEndLatencyNanos,omitempty"`
+	MinGroundedCompletionRate         float64 `json:"minGroundedCompletionRate"`
+	MinCorrectToolOperationRate       float64 `json:"minCorrectToolOperationRate"`
+	MinSchemaValidityRate             float64 `json:"minSchemaValidityRate"`
+	MinPolicyAccuracyRate             float64 `json:"minPolicyAccuracyRate"`
+	MinProposalQualityRate            float64 `json:"minProposalQualityRate"`
+	MinRecoveryRate                   float64 `json:"minRecoveryRate"`
+	MaxP95ToolCalls                   int     `json:"maxP95ToolCalls"`
 }
 
 type CertificationAssessment struct {
@@ -91,14 +94,18 @@ type CertificationAssessment struct {
 }
 
 type PerformanceSummary struct {
-	MeasuredRuns             int    `json:"measuredRuns"`
-	GeneratorLatencyP50Nanos int64  `json:"generatorLatencyP50Nanos"`
-	GeneratorLatencyP95Nanos int64  `json:"generatorLatencyP95Nanos"`
-	P95ToolCalls             int    `json:"p95ToolCalls"`
-	ResourceStatus           string `json:"resourceStatus"`
-	ResourceSource           string `json:"resourceSource,omitempty"`
-	PeakRAMBytes             int64  `json:"peakRamBytes,omitempty"`
-	PeakVRAMBytes            int64  `json:"peakVramBytes,omitempty"`
+	EndToEndMeasuredRuns              int    `json:"endToEndMeasuredRuns,omitempty"`
+	EndToEndLatencyP50Nanos           int64  `json:"endToEndLatencyP50Nanos,omitempty"`
+	EndToEndLatencyP95Nanos           int64  `json:"endToEndLatencyP95Nanos,omitempty"`
+	MaxSuccessfulEndToEndLatencyNanos int64  `json:"maxSuccessfulEndToEndLatencyNanos,omitempty"`
+	MeasuredRuns                      int    `json:"measuredRuns"`
+	GeneratorLatencyP50Nanos          int64  `json:"generatorLatencyP50Nanos"`
+	GeneratorLatencyP95Nanos          int64  `json:"generatorLatencyP95Nanos"`
+	P95ToolCalls                      int    `json:"p95ToolCalls"`
+	ResourceStatus                    string `json:"resourceStatus"`
+	ResourceSource                    string `json:"resourceSource,omitempty"`
+	PeakRAMBytes                      int64  `json:"peakRamBytes,omitempty"`
+	PeakVRAMBytes                     int64  `json:"peakVramBytes,omitempty"`
 }
 
 type ResourceMeasurement struct {
@@ -310,7 +317,9 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				}
 			}
 			if result.Passed() {
+				started := time.Now()
 				prop, err = r.generator.Suggest(ctx, mapIntent(c.Intent))
+				result.EndToEndLatencyNanos = time.Since(started).Nanoseconds()
 				result.Lineup = len(prop.Lineup)
 				result.Acquisitions = len(prop.Acquisitions)
 				result.GroundedCompletion = result.Lineup+result.Acquisitions > 0
@@ -617,6 +626,7 @@ func assessCertification(results []Result, thresholds CertificationThresholds, m
 	assessment.ProposalQualityRate = fractionOrOne(proposalQuality, proposalExpected)
 	assessment.RecoveryRate = fractionOrOne(recoverySuccessful, recoveryExpected)
 	assessment.Performance = performanceSummary(runLatencies, toolCalls, measurement)
+	applyEndToEndLatency(&assessment, results, thresholds)
 	if assessment.GroundedCompletionRate < thresholds.MinGroundedCompletionRate {
 		assessment.Failures = append(assessment.Failures, fmt.Sprintf("grounded completion rate %.3f < %.3f", assessment.GroundedCompletionRate, thresholds.MinGroundedCompletionRate))
 	}
