@@ -56,6 +56,8 @@ type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments map[string]any
+	// wireEnvelope preserves a provider transport shape without exposing it to tool dispatch.
+	wireEnvelope bool
 }
 
 // ToolSchema is a provider-neutral tool definition (JSON-schema parameters). The

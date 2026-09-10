@@ -1602,6 +1602,14 @@ refine that explicitly turns the object into a holiday *channel* receives the ex
 Daypart and holiday rules are persisted policy, so both new and existing channels change their
 eligible slice deterministically at clock boundaries without re-running inference each hour.
 
+The OpenAI-compatible chat adapter carries inline object tool schemas with top-level `oneOf`,
+`anyOf` or `allOf` inside a required `input` object envelope on the wire. The complete original
+schema remains nested, with every constraint intact. It unwraps valid responses to the same
+provider-neutral arguments and preserves the envelope in subsequent conversation history, including
+finalization without tool definitions. Malformed envelopes yield invalid tool arguments; they cannot
+bypass canonical validation. Schemas containing `$ref` or `$id` are not relocated automatically and
+fail before inference. This avoids provider-specific schema relaxation or a second planner contract.
+
 **The probe is the arbiter of capability:** tool-calling support varies by runtime and model, and generic endpoints expose no uniform capability API — so the §13 wizard check is *behavioral* (send a trivial tool-call request, assert a real tool call returns). Ollama's declared capabilities are a pre-check only. Keep the tool loop to **sequential single tool calls** (no parallel-call dependence — the least-supported corner of the dialect). An empty or failed catalog result retains the tool so the model can try the alternate discovery mode. The first non-empty grounded result starts a separate finalization phase with tools removed and JSON mode enabled; that phase persists through bounded schema repairs. If a provider nevertheless emits a tool call from conversation history, do not execute it: treat it as malformed final output and use the same bounded repair path. This prevents tool-biased models from repeating a successful search to the hard boundary while preserving empty-result recovery. The grounding pipeline already ensures a weak model degrades to "no valid proposal," never to corruption.
 
 **Honest quality guidance:** ~7–8B-class models are the practical floor for reliable grounded tool use; local inference yields private, free, serviceable proposals, hosted frontier models yield noticeably better curation — the deterministic scoring below exists partly to narrow that gap.
