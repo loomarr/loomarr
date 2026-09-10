@@ -25,68 +25,9 @@ import (
 // These fixtures start at a submitted, controlled Proposal. They prove the
 // approval-to-schedule seam, not inference or historical membership accuracy.
 func TestReferenceChannelJourneys(t *testing.T) {
-	for _, tc := range channeljourney.Cases() {
+	for _, tc := range append(channeljourney.Cases(), channeljourney.EligibilityControls()...) {
 		t.Run(tc.Name, func(t *testing.T) {
-			ctx := context.Background()
-			st := testkit.MigratedSQLiteStore(t)
-			log := testkit.Logger()
-			b := binder.New(st, nil, nil, log)
-			srv := httptest.NewServer(api.Router(log, api.Options{
-				Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
-				Approver: suggest.NewApprover(st, b, channeljourney.Clock),
-			}))
-			t.Cleanup(srv.Close)
-			body, err := json.Marshal(tc.Proposal)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := st.CreateProposal(ctx, store.Proposal{
-				ID: "reference", JobID: "reference-job", Status: "submitted",
-				ProposalJSON: string(body), CreatedBy: "alice",
-			}); err != nil {
-				t.Fatal(err)
-			}
-			// A fixture may never seed available records or an approved Channel.
-			before, err := st.ListTitlesByState(ctx, provision.Available)
-			if err != nil || len(before) != 0 {
-				t.Fatalf("before approval: %v, %v", before, err)
-			}
-			resp := do(t, srv, http.MethodPost, "/v1/proposals/reference/approve", adminToken, "")
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("approve: %d", resp.StatusCode)
-			}
-			var out struct {
-				ChannelID string `json:"channelId"`
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-				t.Fatal(err)
-			}
-			if out.ChannelID == "" {
-				t.Fatal("approval omitted Channel identity")
-			}
-			episodes := libraryfixture.NewEpisodes(tc.Episodes)
-			avail := channels.NewStoreAvailability(ctx, st,
-				func(context.Context, string) (int64, error) { return time.Hour.Milliseconds(), nil }, episodes.Resolve)
-			engine := channels.New(st, nil, avail, nil, channels.Config{
-				ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
-			}, channeljourney.Clock, log)
-			if err := engine.Reconcile(ctx, out.ChannelID); err != nil {
-				t.Fatal(err)
-			}
-			ch, err := st.GetChannel(ctx, out.ChannelID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if ch.Status != schedule.StatusLive {
-				t.Fatalf("status = %s", ch.Status)
-			}
-			at, slots, _, _, err := engine.CyclePreview(ctx, ch.ID, channeljourney.Clock())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !at.Equal(channeljourney.Clock()) {
-				t.Fatalf("clock drift: %v", at)
-			}
+			ch, slots, _ := approveReferenceJourney(t, tc)
 			var got []string
 			for _, slot := range slots {
 				if slot.IsProgram() {
@@ -113,6 +54,83 @@ func TestReferenceChannelJourneys(t *testing.T) {
 			t.Logf("%s/%s: ordinary approval and concrete schedule PASS (%d programs); provider qualification unrun", channeljourney.Version, tc.Name, len(got))
 		})
 	}
+}
+
+// approveReferenceJourney preserves the ordinary approval boundary for all reference
+// variants. It returns durable scheduling state, the production preview, and the
+// public Channel response so reconciliation notes cannot disappear at the API seam.
+func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channel, []schedule.Slot, api.ChannelDTO) {
+	t.Helper()
+	ctx := context.Background()
+	st := testkit.MigratedSQLiteStore(t)
+	log := testkit.Logger()
+	b := binder.New(st, nil, nil, log)
+	srv := httptest.NewServer(api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
+		Approver: suggest.NewApprover(st, b, channeljourney.Clock),
+	}))
+	t.Cleanup(srv.Close)
+	body, err := json.Marshal(tc.Proposal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateProposal(ctx, store.Proposal{
+		ID: "reference", JobID: "reference-job", Status: "submitted",
+		ProposalJSON: string(body), CreatedBy: "alice",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A fixture may never seed available records or an approved Channel.
+	before, err := st.ListTitlesByState(ctx, provision.Available)
+	if err != nil || len(before) != 0 {
+		t.Fatalf("before approval: %v, %v", before, err)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/reference/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve: %d", resp.StatusCode)
+	}
+	var out struct {
+		ChannelID string `json:"channelId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.ChannelID == "" {
+		t.Fatal("approval omitted Channel identity")
+	}
+	episodes := libraryfixture.NewEpisodes(tc.Episodes)
+	avail := channels.NewStoreAvailability(ctx, st,
+		func(context.Context, string) (int64, error) { return time.Hour.Milliseconds(), nil }, episodes.Resolve)
+	engine := channels.New(st, nil, avail, nil, channels.Config{
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
+	}, channeljourney.Clock, log)
+	if err := engine.Reconcile(ctx, out.ChannelID); err != nil {
+		t.Fatal(err)
+	}
+	ch, err := st.GetChannel(ctx, out.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Status != schedule.StatusLive {
+		t.Fatalf("status = %s", ch.Status)
+	}
+	at, slots, _, _, err := engine.CyclePreview(ctx, ch.ID, channeljourney.Clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !at.Equal(channeljourney.Clock()) {
+		t.Fatalf("clock drift: %v", at)
+	}
+
+	response := do(t, srv, http.MethodGet, "/v1/channels/"+ch.ID, adminToken, "")
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("read Channel: %d", response.StatusCode)
+	}
+	var public api.ChannelDTO
+	if err := json.NewDecoder(response.Body).Decode(&public); err != nil {
+		t.Fatal(err)
+	}
+	return ch, slots, public
 }
 
 func TestReferenceChannelAcquisitionJourney(t *testing.T) {
