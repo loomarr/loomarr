@@ -35,7 +35,7 @@ RULES:
 - HONOR EXPLICITLY NAMED titles: if the intent names specific shows/movies, search for those by name and prefer them; don't substitute lookalikes.
 - A pick whose genres/overview CONTRADICT the intent (wrong country, wrong tone, wrong era, wrong subject) must be dropped even if its title contains the keyword. Matching one word is not fitting the intent.
 - FORMAT/MEDIUM is a hard qualifier, not a vibe. Words like "cartoons", "animated", "anime" mean the title must be ANIMATION; "live-action", "documentary", "docuseries", "stand-up", "reality" name their own medium. A title of the wrong medium does NOT fit no matter how well its tone or audience matches — "Saturday morning cartoons" is animated kids' TV, so a live-action family dramedy (however wholesome and colorful) is WRONG for it and must be dropped. Check the genres/overview for the medium (Animation vs Drama/Comedy) before picking, and never let a warm rationale talk a live-action show into a cartoon channel.
-- Select ONLY from ids the tool returns. Never output a tmdbId or tvdbId that did not appear in a tool result.
+- Select ONLY exact key strings returned by catalog_search. Copy each key byte for byte; it is the sole selection identifier. Never construct a key from memory or return separate tmdbId/tvdbId fields.
 - Use well-matched owned titles as anchors for immediate playability, but do not let the library consume the whole selection. When acquisitions are allowed and strong outside candidates exist, reserve about one-third of a 6-8 pick lineup (at least two picks) for genuinely less-obvious outside-library discoveries—not merely sequels, remakes, or equally obvious staples. Never sacrifice relevance or a hard qualifier to fill that share; a smaller accurate lineup is better.
 - Select at most 8 picks total. Favor a concise, varied lineup over exhausting every candidate; keep each pick rationale to one short sentence so the final grounded JSON fits the bounded completion budget.
 - SEASON WINDOW for a series: when the intent implies an ERA of a long-running show, set "seasonMin"/"seasonMax" on that series pick so ONLY those seasons air. Examples: "Simpsons Classics" or "classic Simpsons" -> the golden-age run, seasonMin:1, seasonMax:10; "early Seinfeld" -> seasonMin:1, seasonMax:4; "first three seasons of X" -> seasonMin:1, seasonMax:3; "late-era X" -> seasonMin only. Use it ONLY when the intent scopes an era of a SERIES; omit both for movies and for "all of a show". This narrows which episodes play; it does NOT change what gets acquired.
@@ -57,13 +57,13 @@ RULES:
   Do NOT give everything 0.9+. If every pick scores the same, the score carries no information and the bar cannot do its job. A pick you were HANDED (see the suggestions below, if any) still needs your own honest score — judge it against the intent exactly as you would one you found yourself, and never omit the field.
 - Also invent a short, catchy "channelName" for the channel (2-4 words, like a real TV network — e.g. "Springfield Classics" for a Simpsons channel, "Fright Night Theater" for horror). NOT the user's raw prompt, and NOT a single title's name.
 When finished, reply with ONLY this JSON (no prose):
-{"channelName":"<2-4 words>","rationale":"<one sentence>","dateMeaning":{"kind":"none|constraints|ambiguous","anchors":[...],"axes":[...]},"picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>","holidays":["<holiday id>"]},"rules":[{"when":"<token>","what":"<token optional>","how":"<token optional>"}]}}`
+{"channelName":"<2-4 words>","rationale":"<one sentence>","dateMeaning":{"kind":"none|constraints|ambiguous","anchors":[...],"axes":[...]},"picks":[{"mediaType":"movie|series","key":"<exact catalog key>","name":"<string>","rationale":"<why it fits>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>","holidays":["<holiday id>"]},"rules":[{"when":"<token>","what":"<token optional>","how":"<token optional>"}]}}`
 
 // repairPrompt nudges the model when its final turn wasn't valid schema JSON (or
 // was empty). Kept short + imperative; it never relaxes the grounding rules.
 const repairPrompt = `Your previous reply was not valid JSON matching the required schema (or was empty). ` +
 	`Reply now with ONLY the JSON object {"rationale":...,"dateMeaning":{"kind":...,"anchors":[...],"axes":[...]},"picks":[...]} and nothing else. ` +
-	`Use ONLY ids that appeared in a catalog_search result.`
+	`Use ONLY exact key strings that appeared in a catalog_search result; copy each key byte for byte.`
 
 // userPrompt renders the intent into the first user turn.
 func userPrompt(i Intent) string {
@@ -88,11 +88,11 @@ func userPrompt(i Intent) string {
 			fmt.Fprintf(&b, "The user wants to change it: %s\n", i.RefineText)
 		}
 		b.WriteString("Keep the titles that still fit, drop the ones that don't, and add new ones as needed. " +
-			"Re-ground EVERY title (kept or new) through the catalog tool — use only ids the tool returns.\n")
+			"Re-ground EVERY title (kept or new) through the catalog tool — copy only exact catalog keys the tool returns.\n")
 		// Adjacency offers (§8.3): titles this channel's own lineup points at, with the
 		// consensus that surfaced them. Presented as SUGGESTIONS, not instructions — the
 		// model weighs them against the intent like any other candidate, and a weak
-		// consensus should read as weaker evidence than a strong one. Their ids are already
+		// consensus should read as weaker evidence than a strong one. Their keys are already
 		// grounded (pre-seeded into `surfaced`), which is why they may be picked directly.
 		if len(i.Adjacent) > 0 {
 			b.WriteString("Viewers of the titles above also watch these — consider them if they fit the channel:\n")
@@ -103,7 +103,7 @@ func userPrompt(i Intent) string {
 					fmt.Fprintf(&b, "  - %s [%s] — suggested by %d of its titles\n", a.Name, a.Key, a.Votes)
 				}
 			}
-			b.WriteString("These ids are already grounded — you may pick them directly. Ignore any that don't fit.\n")
+			b.WriteString("These catalog keys are already grounded — copy them exactly to pick them directly. Ignore any that don't fit.\n")
 		}
 	} else {
 		fmt.Fprintf(&b, "Build a channel: %s\n", i.Description)
@@ -133,8 +133,8 @@ func userPrompt(i Intent) string {
 		b.WriteString("--- BEGIN UNTRUSTED REFERENCE DATA ---\n")
 		b.WriteString(i.referenceEvidence.Excerpt)
 		b.WriteString("\n--- END UNTRUSTED REFERENCE DATA ---\n")
-		b.WriteString("Loomarr exact-matched these reference title anchors to real catalog ids; " +
-			"their following catalog_search results are already grounded. Select only matching ids and do not broaden the set:\n")
+		b.WriteString("Loomarr exact-matched these reference title anchors to real catalog keys; " +
+			"their following catalog_search results are already grounded. Copy only the matching catalog keys exactly and do not broaden the set:\n")
 		for _, candidate := range i.referenceCandidates {
 			key, err := candidate.Key()
 			if err != nil {

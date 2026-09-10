@@ -25,8 +25,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v12" {
-		t.Fatalf("corpus version = %q, want planner-certification-v12", corpus.Version)
+	if corpus.Version != "planner-certification-v13" {
+		t.Fatalf("corpus version = %q, want planner-certification-v13", corpus.Version)
 	}
 	if corpus.SchemaVersion != 8 {
 		t.Fatalf("corpus schema version = %d, want 8", corpus.SchemaVersion)
@@ -230,7 +230,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v12" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v13" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)
@@ -254,7 +254,7 @@ func TestCertificationRunnerConfigRequiresSnapshotIdentity(t *testing.T) {
 func TestRunnerExecutesCertificationCaseAgainstPinnedCatalogFixture(t *testing.T) {
 	provider := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Synthetic Matrix", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":10001,"name":"Synthetic Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:10001","name":"Synthetic Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
 	generator, observer, err := NewEmbeddedCertificationGenerator(provider)
 	if err != nil {
@@ -295,19 +295,19 @@ func TestRunnerExecutesV6QualifierFamiliesThroughProductionSuggester(t *testing.
 		{
 			name: "network", caseName: "network-discovery",
 			arguments: map[string]any{"media_type": "series", "network": "Synthetic Network"},
-			response:  `{"picks":[{"mediaType":"series","tmdbId":10026,"name":"Synthetic Network Drama"}]}`,
+			response:  `{"picks":[{"mediaType":"series","key":"series:tmdb:10026","name":"Synthetic Network Drama"}]}`,
 			calls:     func(o Observation) int { return o.NetworkCalls },
 		},
 		{
 			name: "cast", caseName: "cast-discovery",
 			arguments: map[string]any{"media_type": "movie", "cast": []any{"Synthetic Performer"}},
-			response:  `{"picks":[{"mediaType":"movie","tmdbId":10027,"name":"Synthetic Performer Feature"}]}`,
+			response:  `{"picks":[{"mediaType":"movie","key":"movie:tmdb:10027","name":"Synthetic Performer Feature"}]}`,
 			calls:     func(o Observation) int { return o.CastCalls },
 		},
 		{
 			name: "creator", caseName: "creator-discovery",
 			arguments: map[string]any{"media_type": "movie", "creators": []any{"Synthetic Filmmaker"}},
-			response:  `{"picks":[{"mediaType":"movie","tmdbId":10028,"name":"Synthetic Filmmaker Feature"}]}`,
+			response:  `{"picks":[{"mediaType":"movie","key":"movie:tmdb:10028","name":"Synthetic Filmmaker Feature"}]}`,
 			calls:     func(o Observation) int { return o.CreatorCalls },
 		},
 	}

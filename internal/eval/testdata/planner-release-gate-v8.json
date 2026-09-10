@@ -1,0 +1,325 @@
+{
+  "schemaVersion": 1,
+  "version": "planner-release-gate-v8",
+  "split": "release_holdout",
+  "promptVersion": "suggester-prompt-v11",
+  "toolSchemaVersion": "catalog-search-v7",
+  "scorerVersion": "planner-release-scorer-v1",
+  "hardMetrics": [
+    "unsupported_id_rejection",
+    "grounding",
+    "named_block_membership",
+    "hard_negative_rejection",
+    "latency"
+  ],
+  "qualityMetrics": [
+    "grounded_completion",
+    "catalog_breadth",
+    "end_to_end_latency"
+  ],
+  "thresholds": {
+    "minGroundedCompletionRate": 1,
+    "minSchemaValidityRate": 1,
+    "maxP95ToolCalls": 3,
+    "maxP50EndToEndLatencyNanos": 8000000000,
+    "maxP95EndToEndLatencyNanos": 12000000000,
+    "maxSuccessfulEndToEndLatencyNanos": 20000000000
+  },
+  "fixture": {
+    "path": "testdata/planner-release-catalog-v1.json",
+    "sha256": "f9359386413a28a382c97a5ca3a32aba3a7343fa0f973e9204302c9d64e91077"
+  },
+  "cases": [
+    {
+      "id": "tgif-terse",
+      "lane": "live",
+      "fixtureCase": "tgif",
+      "description": "TGIF",
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "minAcceptableKeys": 5,
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208"
+      ]
+    },
+    {
+      "id": "tgif-conversational",
+      "lane": "live",
+      "fixtureCase": "tgif",
+      "description": "Make me a channel like ABC's TGIF Friday-night block from the 1990s.",
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "minAcceptableKeys": 5,
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208"
+      ]
+    },
+    {
+      "id": "tgif-explicit-anchors",
+      "lane": "live",
+      "fixtureCase": "tgif",
+      "description": "Build a 1990s TGIF channel anchored by Full House, Family Matters, and Step by Step.",
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "minAcceptableKeys": 5,
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208"
+      ]
+    },
+    {
+      "id": "tgif-public-reference",
+      "lane": "live",
+      "fixtureCase": "tgif",
+      "description": "Use https://example.test/tgif as the reference for this channel.",
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "minAcceptableKeys": 5,
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208"
+      ],
+      "referenceUrl": "https://example.test/tgif",
+      "referenceTitles": [
+        "Full House",
+        "Family Matters",
+        "Step by Step",
+        "Perfect Strangers",
+        "Boy Meets World",
+        "Sabrina the Teenage Witch"
+      ]
+    },
+    {
+      "id": "broad-1990s-comedy",
+      "lane": "live",
+      "fixtureCase": "broad-comedy",
+      "description": "Build a broad channel of 1990s television comedies, not just one network block.",
+      "requireKeys": [],
+      "minGrounded": 3,
+      "expectEraFrom": 1989,
+      "expectEraTo": 1999,
+      "acceptableKeys": [
+        "series:tmdb:20301",
+        "series:tmdb:20302",
+        "series:tmdb:20303"
+      ],
+      "minAcceptableKeys": 1
+    },
+    {
+      "id": "known-title",
+      "lane": "live",
+      "fixtureCase": "known-title",
+      "description": "Make a channel built around Full House.",
+      "requireKeys": [
+        "series:tmdb:20101"
+      ],
+      "minGrounded": 1
+    },
+    {
+      "id": "genre-era",
+      "lane": "live",
+      "fixtureCase": "genre-era",
+      "description": "Discover action movies from the 1990s.",
+      "minGrounded": 3,
+      "expectEraFrom": 1990,
+      "expectEraTo": 1999
+    },
+    {
+      "id": "named-collection",
+      "lane": "live",
+      "fixtureCase": "named-collection",
+      "description": "Build an MCU Phase One movies-only channel.",
+      "acceptableKeys": [
+        "movie:tmdb:21101",
+        "movie:tmdb:21102",
+        "movie:tmdb:21103",
+        "movie:tmdb:21104",
+        "movie:tmdb:21105",
+        "movie:tmdb:21106"
+      ],
+      "minAcceptableKeys": 3,
+      "forbidKeys": [
+        "movie:tmdb:21107"
+      ]
+    },
+    {
+      "id": "known-franchise",
+      "lane": "live",
+      "fixtureCase": "known-franchise",
+      "description": "Make a channel built around The Matrix franchise.",
+      "acceptableKeys": [
+        "movie:tmdb:21201",
+        "movie:tmdb:21202",
+        "movie:tmdb:21203",
+        "movie:tmdb:21204"
+      ],
+      "minAcceptableKeys": 3,
+      "forbidKeys": [
+        "movie:tmdb:21205"
+      ]
+    },
+    {
+      "id": "movie-person",
+      "lane": "live",
+      "fixtureCase": "movie-person",
+      "description": "Tom Hanks comedies from the 1990s.",
+      "acceptableKeys": [
+        "movie:tmdb:21301",
+        "movie:tmdb:21302",
+        "movie:tmdb:21303"
+      ],
+      "minAcceptableKeys": 2,
+      "forbidKeys": [
+        "movie:tmdb:21304"
+      ],
+      "expectEraFrom": 1990,
+      "expectEraTo": 1999
+    },
+    {
+      "id": "tv-network",
+      "lane": "live",
+      "fixtureCase": "tv-network",
+      "description": "Prestige HBO dramas from the 2000s.",
+      "acceptableKeys": [
+        "series:tmdb:21401",
+        "series:tmdb:21402",
+        "series:tmdb:21403",
+        "series:tmdb:21404"
+      ],
+      "minAcceptableKeys": 3,
+      "forbidKeys": [
+        "series:tmdb:21405"
+      ],
+      "expectEraFrom": 2000,
+      "expectEraTo": 2009
+    },
+    {
+      "id": "tv-network-genre",
+      "lane": "live",
+      "fixtureCase": "tv-network-genre",
+      "description": "Build a channel with science-fiction shows from Apple TV+.",
+      "acceptableKeys": [
+        "series:tmdb:21701",
+        "series:tmdb:21702",
+        "series:tmdb:21703",
+        "series:tmdb:21704"
+      ],
+      "minAcceptableKeys": 3,
+      "forbidKeys": [
+        "series:tmdb:21705"
+      ]
+    },
+    {
+      "id": "mood-theme",
+      "lane": "live",
+      "fixtureCase": "mood-theme",
+      "description": "Cozy mysteries for a rainy afternoon.",
+      "acceptableKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "minAcceptableKeys": 2,
+      "forbidKeys": [
+        "series:tmdb:21504"
+      ]
+    },
+    {
+      "id": "public-reference",
+      "lane": "live",
+      "fixtureCase": "public-reference",
+      "description": "Use https://example.test/spielberg-family-adventures as the reference for this channel.",
+      "acceptableKeys": [
+        "movie:tmdb:21601",
+        "movie:tmdb:21602",
+        "movie:tmdb:21603"
+      ],
+      "minAcceptableKeys": 3,
+      "referenceUrl": "https://example.test/spielberg-family-adventures",
+      "referenceTitles": [
+        "E.T. the Extra-Terrestrial",
+        "Hook",
+        "Jurassic Park"
+      ]
+    },
+    {
+      "id": "invented-id-no-tools",
+      "lane": "hermetic",
+      "fixtureCase": "invented",
+      "description": "Build a channel around Imaginary TGIF Show."
+    },
+    {
+      "id": "empty-exact-title",
+      "lane": "hermetic",
+      "fixtureCase": "empty-exact",
+      "description": "Build a channel around The Unfindable Exact Show."
+    },
+    {
+      "id": "ambiguous-exact-title",
+      "lane": "hermetic",
+      "fixtureCase": "ambiguous-exact",
+      "description": "I may mean Full House; resolve that exact title before using it."
+    },
+    {
+      "id": "partial-malformed-intent",
+      "lane": "hermetic",
+      "fixtureCase": "invented",
+      "description": "asdf banana xqz 999"
+    }
+  ],
+  "sourcesFixture": {
+    "path": "testdata/planner-release-sources-v1.json",
+    "sha256": "db34b291a15d8a7b5cadfd4441b0da1faa0c27ac86b3fcac9743e408a7661644"
+  },
+  "sourceVersion": "reference-source-v1"
+}

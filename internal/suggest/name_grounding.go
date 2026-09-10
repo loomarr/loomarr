@@ -24,7 +24,7 @@ type nameGroundingQuery struct {
 const maxPickNameQueries = 8
 
 // groundPickNames treats model-authored names only as bounded Catalog search
-// input. It replaces every claimed id with the one unambiguous exact candidate
+// input. It assigns the canonical key of the one unambiguous exact candidate
 // returned by the Catalog before adding that candidate to the surfaced set.
 func (s *Suggester) groundPickNames(
 	ctx context.Context,
@@ -108,8 +108,7 @@ func (s *Suggester) groundPickNames(
 			mergeDecisionTrace(trace, &ranked.Trace)
 			surfaced[key] = candidate
 			proposed.MediaType = string(candidate.MediaType)
-			proposed.TMDBID = candidate.TMDBID
-			proposed.TVDBID = candidate.TVDBID
+			proposed.Key = string(key)
 			proposed.Name = candidate.Name
 			grounded = append(grounded, proposed)
 		}

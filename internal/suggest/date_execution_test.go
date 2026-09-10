@@ -38,7 +38,7 @@ func matrixCandidate() catalog.Candidate {
 func finalWithDateMeaning(t *testing.T, meaning any) string {
 	t.Helper()
 	encoded, err := json.Marshal(map[string]any{
-		"picks":       []any{map[string]any{"mediaType": "movie", "tmdbId": 603, "name": "The Matrix"}},
+		"picks":       []any{map[string]any{"mediaType": "movie", "key": "movie:tmdb:603", "name": "The Matrix"}},
 		"dateMeaning": meaning,
 	})
 	if err != nil {
@@ -143,7 +143,7 @@ func TestSuggest_DateMeaningMismatchNeverDispatchesCatalog(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"must-not-dispatch"}, "dateMeaning": dateMeaning1990()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"later"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaning1990())),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
 	if err != nil {
@@ -317,7 +317,7 @@ func TestSuggest_InvalidToolDoesNotCommitDateMeaning(t *testing.T) {
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{}, "dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
 	)
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
 	if err != nil {
@@ -332,8 +332,8 @@ func TestSuggest_FinalDateMeaningMismatchRepairsBeforeClarifying(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
 	)
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 then 2000 films"})
 	if err != nil {
@@ -387,7 +387,7 @@ func TestSuggest_NoneDateMeaningDropsRawPolicyEra(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaningNone()}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}],"policy":{"era":{"from":1990,"to":1999}},"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"policy":{"era":{"from":1990,"to":1999}},"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action"})
 	if err != nil {
@@ -400,7 +400,7 @@ func TestSuggest_NoneDateMeaningDropsRawPolicyEra(t *testing.T) {
 
 func TestSuggest_ExhaustedFinalDateMeaningMismatchIsProviderFailure(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
-	mismatch := `{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`
+	mismatch := `{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
 		testkit.FinalResponse(mismatch), testkit.FinalResponse(mismatch), testkit.FinalResponse(mismatch),
