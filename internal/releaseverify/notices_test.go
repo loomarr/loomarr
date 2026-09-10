@@ -72,13 +72,13 @@ func TestVerifyNoticesFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Run("missing open review", func(t *testing.T) {
-		incomplete := strings.Replace(string(complete), "final qualified legal/NOTICE review", "review later", 1)
+	t.Run("missing source distribution mechanics", func(t *testing.T) {
+		incomplete := strings.Replace(string(complete), "document source distribution mechanics", "distribution details omitted", 1)
 		if err := os.WriteFile(noticePath, []byte(incomplete), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := VerifyNotices(root); err == nil {
-			t.Fatal("VerifyNotices accepted a removed legal-review blocker")
+			t.Fatal("VerifyNotices accepted removed source distribution mechanics")
 		}
 	})
 	t.Run("unsupported legal conclusion", func(t *testing.T) {
