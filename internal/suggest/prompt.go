@@ -147,7 +147,7 @@ func userPrompt(i Intent) string {
 			}
 		}
 	}
-	return b.String()
+	return b.String() + intentCoordinates(i)
 }
 
 // finalizationMessages renders accepted state for this request only. Keeping the

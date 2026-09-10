@@ -1991,7 +1991,13 @@ semantic cases, rather than a new keyword heuristic, govern that distinction.
 
 The v7 planner prompt spells out the complete anchor and interval object shapes, including the
 mandatory zero-based interval `anchor` index, scalar versus array-field indexing, and copying the
-accepted tool meaning into final output. Each tool-free finalization request also supplies an
+accepted tool meaning into final output. The submitted-Intent prompt also supplies deterministic
+source coordinates for each whitespace-delimited token in the five anchorable fields, retaining
+array element indexes and half-open rune offsets in the original untrimmed strings. These are
+data, not date classifications: the model still selects and interprets date spans, and the
+existing validator remains authoritative. Unicode whitespace separates tokens; a date expression
+may span multiple tokens. Empty fields are omitted without renumbering array elements.
+Each tool-free finalization request also supplies an
 explicit end-of-retrieval instruction and the complete accepted canonical `dateMeaning` to copy.
 This request-only message does not accumulate in conversation history or replace final validation.
 The same renderer serves the frozen post-result diagnostic, versioned as
