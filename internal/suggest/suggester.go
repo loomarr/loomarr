@@ -417,7 +417,15 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		// what is happening now, not what is about to.
 		reportProgress(ctx, PhaseReasoning, round+1)
 		ledger.generationTurns++
-		resp, err := s.llm.Chat(ctx, *messages, chatOpts(tools, temp))
+		requestMessages := *messages
+		if len(tools) == 0 {
+			var err error
+			requestMessages, err = finalizationMessages(requestMessages, *acceptedMeaning)
+			if err != nil {
+				return "", err
+			}
+		}
+		resp, err := s.llm.Chat(ctx, requestMessages, chatOpts(tools, temp))
 		if err != nil {
 			cause := err
 			if errors.Is(ctx.Err(), context.Canceled) && !errors.Is(err, context.Canceled) {

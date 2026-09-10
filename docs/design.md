@@ -1721,9 +1721,13 @@ no-grounded-title abstention. The model
 still has no acquisition, approval, or authorization capability: the evaluator observes a Proposal,
 not an effectful workflow.
 
-The supplementary `planner-release-gate-v3` release replay retains v1's 18 synthetic cases,
+Active `planner-certification-v9` preserves v8's exact base, cases, fixture, scoring and thresholds
+while binding `suggester-prompt-v7` and the unchanged `catalog-search-v6` tool contract. Historical
+manifests remain unchanged.
+
+The supplementary `planner-release-gate-v4` release replay retains v1's 18 synthetic cases,
 fixture bytes, acceptable members, hard negatives and thresholds, and binds them explicitly to the
-current production prompt/tool identities. The historical v1/v2 manifests remain unchanged. V3 separately pins a synthetic source-membership
+current production prompt/tool identities. The historical v1–v3 manifests remain unchanged. V4 retains v3's synthetic source-membership
 fixture for automatic named-block discovery; it is independent of model output and scoring keys.
 The source contract is versioned independently as `reference-source-v1` and participates in the
 proposal cache identity, so prior source behavior cannot reuse a successful cached Proposal.
@@ -1984,6 +1988,15 @@ coalesces overlapping or adjacent `any` windows. Empty same-axis intersections a
 union; words such as “and” or “both” alone do not establish an intersection. A title date is not a
 filter merely because an anchor can select it. The existing validated interpretation and immutable
 semantic cases, rather than a new keyword heuristic, govern that distinction.
+
+The v7 planner prompt spells out the complete anchor and interval object shapes, including the
+mandatory zero-based interval `anchor` index, scalar versus array-field indexing, and copying the
+accepted tool meaning into final output. Each tool-free finalization request also supplies an
+explicit end-of-retrieval instruction and the complete accepted canonical `dateMeaning` to copy.
+This request-only message does not accumulate in conversation history or replace final validation.
+The same renderer serves the frozen post-result diagnostic, versioned as
+`planner-tool-result-finalization-v3`. This is format guidance: it does not infer dates, repair
+model data in code, or change validation, grounding, retry counts, or completion limits.
 
 One submitted Intent owns the interpretation state across tool execution and final repair.
 Accepted tool meanings and the final meaning must canonicalize identically, including their source

@@ -14,9 +14,9 @@ import (
 
 const (
 	PlannerSourceVersion             = "reference-source-v1"
-	PlannerPromptVersion             = "suggester-prompt-v6"
+	PlannerPromptVersion             = "suggester-prompt-v7"
 	PlannerToolSchemaVersion         = "catalog-search-v6"
-	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v2"
+	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v3"
 	PlannerDiagnosticToolCallID      = "planner-diagnostic-call-1"
 	plannerDiagnosticSchemaVersion   = 1
 	plannerDiagnosticIntent          = "science fiction"
@@ -81,6 +81,14 @@ func RunToolFinalizationDiagnostic(ctx context.Context, provider llm.Provider, m
 		assistantToolCallMsg([]llm.ToolCall{toolCall}),
 		{Role: llm.Tool, Content: string(result), ToolCallID: PlannerDiagnosticToolCallID},
 	}
+	meaning, err := ValidateDateMeaning(Intent{Description: plannerDiagnosticIntent}, &DateMeaning{Kind: DateMeaningNone})
+	if err != nil {
+		return ToolFinalizationDiagnostic{}, err
+	}
+	messages, err = finalizationMessages(messages, &meaning)
+	if err != nil {
+		return ToolFinalizationDiagnostic{}, err
+	}
 	tools := []llm.ToolSchema{catalogTool()}
 	messageBlob, err := json.Marshal(messages)
 	if err != nil {
@@ -99,7 +107,7 @@ func RunToolFinalizationDiagnostic(ctx context.Context, provider llm.Provider, m
 		SystemPromptSHA256:     sha256Hex([]byte(messages[0].Content)),
 		UserPromptSHA256:       sha256Hex([]byte(messages[1].Content)),
 		MessagesSHA256:         sha256Hex(messageBlob), ToolSchemaSHA256: sha256Hex(toolBlob),
-		MessageRoles: []string{string(llm.System), string(llm.User), string(llm.Assistant), string(llm.Tool)},
+		MessageRoles: []string{string(llm.System), string(llm.User), string(llm.Assistant), string(llm.Tool), string(llm.User)},
 		ToolCallID:   PlannerDiagnosticToolCallID,
 		JSONMode:     opts.JSONMode, ToolsOff: len(opts.Tools) == 0,
 		Temperature: groundedTemp, MaxTokens: opts.MaxTokens,
