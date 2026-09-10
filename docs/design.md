@@ -1991,7 +1991,11 @@ semantic cases, rather than a new keyword heuristic, govern that distinction.
 
 The v7 planner prompt spells out the complete anchor and interval object shapes, including the
 mandatory zero-based interval `anchor` index, scalar versus array-field indexing, and copying the
-accepted tool meaning into final output. This is format guidance: it does not infer dates, repair
+accepted tool meaning into final output. Each tool-free finalization request also supplies an
+explicit end-of-retrieval instruction and the complete accepted canonical `dateMeaning` to copy.
+This request-only message does not accumulate in conversation history or replace final validation.
+The same renderer serves the frozen post-result diagnostic, versioned as
+`planner-tool-result-finalization-v3`. This is format guidance: it does not infer dates, repair
 model data in code, or change validation, grounding, retry counts, or completion limits.
 
 One submitted Intent owns the interpretation state across tool execution and final repair.

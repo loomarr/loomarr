@@ -1,6 +1,7 @@
 package suggest
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -147,4 +148,19 @@ func userPrompt(i Intent) string {
 		}
 	}
 	return b.String()
+}
+
+// finalizationMessages renders accepted state for this request only. Keeping the
+// note out of history prevents repair turns from accumulating duplicate prompts.
+func finalizationMessages(messages []llm.Message, meaning *ValidatedDateMeaning) ([]llm.Message, error) {
+	if meaning == nil {
+		return messages, nil
+	}
+	blob, err := json.Marshal(meaning.DateMeaning())
+	if err != nil {
+		return nil, fmt.Errorf("marshal accepted date meaning: %w", err)
+	}
+	request := make([]llm.Message, len(messages), len(messages)+1)
+	copy(request, messages)
+	return append(request, llm.Message{Role: llm.User, Content: "Retrieval is complete and no further tools are available. Produce the final JSON now using only the catalog candidates already provided; an incomplete catalog result does not authorize another search. Copy this accepted dateMeaning object unchanged into your final JSON: " + string(blob)}), nil
 }
