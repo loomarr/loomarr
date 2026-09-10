@@ -107,11 +107,20 @@ binds the pinned FFmpeg and yt-dlp asset identities to upstream release, source/
 references. It is traceability evidence only: it does not retain corresponding source or provide
 source-retention, distribution, or legal clearance.
 
+The pinned FFmpeg and yt-dlp source materials are available without authentication or charge in
+[Loomarr's August source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-08-31).
+Download `source-materials.tar.gz` and `ffmpeg-original-download-cache.zip`, then verify them against
+`SHA256SUMS`. `README.txt` explains the contents; `source-package-inventory.json` records all 490
+source/license file hashes. The [distribution record](docs/engineering/evidence/source-distribution-2026-08-31.json)
+binds public asset URLs, sizes and SHA256 digests to the accepted dependency pins. These directions
+ship in the image at `/usr/share/doc/loomarr/THIRD_PARTY_NOTICES.md`. Application release notes link
+the same source location alongside the image and bind the exact application commit/image separately.
+
 | Binary | Upstream | License | Notes |
 | --- | --- | --- | --- |
 | `yt-dlp` standalone executable | https://github.com/yt-dlp/yt-dlp | **GPL-3.0-or-later** for the combined executable | The source project is primarily Unlicense, but upstream states that official PyInstaller executables bundle GPLv3+ dependencies and the combined work is GPLv3+. Loomarr ships `yt-dlp_linux` / `yt-dlp_linux_aarch64`, so the executable terms apply. See upstream's [license section](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#license) and [third-party license inventory](https://github.com/yt-dlp/yt-dlp/blob/master/THIRD_PARTY_LICENSES.txt). |
-| `ffmpeg` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0-or-later** (the BtbN `-gpl-` build enables GPL and version 3) | Serves both yt-dlp stream merging (§10) and the playout encoder (§9.1). Exact corresponding source remains open below. |
-| `ffprobe` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0-or-later** (same build) | Added with internal playout (§9.1). It shares ffmpeg's open corresponding-source blocker. |
+| `ffmpeg` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0-or-later** (the BtbN `-gpl-` build enables GPL and version 3) | Serves both yt-dlp stream merging (§10) and the playout encoder (§9.1). Source materials and build recipes are linked above. |
+| `ffprobe` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0-or-later** (same build) | Added with internal playout (§9.1). It shares ffmpeg's source materials and build recipes above. |
 | `deno` | https://github.com/denoland/deno | MIT | JS runtime yt-dlp requires for YouTube extraction. |
 | `whisper-cli`, `libwhisper`, `libggml` | https://github.com/ggml-org/whisper.cpp | MIT | Pinned `v1.9.1` binary and runtime-selected shared libraries used for compilation splitting and language identification. |
 | `ggml-small.en.bin`, `ggml-tiny.bin` | https://huggingface.co/ggerganov/whisper.cpp | MIT | Revision- and SHA256-pinned Whisper model data; `small.en` transcribes and `tiny` identifies language. |
@@ -136,7 +145,7 @@ in the public domain. The image satisfies the license's notice condition by reta
 > renamed to exclude "Bitstream" and "Vera"]. The full text ships at the path above and at
 > <https://dejavu-fonts.github.io/License.html>.
 
-### GPL source status (ffmpeg; release blocker)
+### GPL source distribution (ffmpeg)
 
 The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n8.1` series. The
 [`Dockerfile`](Dockerfile) pins it to a **retained monthly** archive — release
@@ -150,11 +159,14 @@ The August build replaces July because its original upstream dependency download
 logs were retained before expiry. The [retention record](docs/engineering/evidence/ffmpeg-august-source-retention.md)
 binds those archives to the new pins and records the remaining distribution and validation work.
 
-**Still open (release-artifact action, not a Dockerfile change):** record and provide the exact
-corresponding source for that pinned build — the FFmpeg commit `n8.1.2-50-g1a748fe2cd`, BtbN's
-build scripts at that release, and the bundled GPL dependency sources — and confirm `make test-ffmpeg`
-is green against the pinned build on the release commit. The immutable digest is what makes such a
-corresponding-source offer *possible*; retaining the bundle itself is the remaining step.
+The source release retains the exact FFmpeg commit `1a748fe2cd43e3ead22fafb1b5b7d77f153898a8`,
+BtbN build scripts at `8267213e26c1031621e6e1210fe3aa4867214f6a`, the original dependency source
+cache, supplemental dependency sources and license texts. The unchanged `make test-ffmpeg` gate
+passed on both Linux architectures at source-pin commit `c4c8b6a4`; final release-commit and image
+acceptance remain required. The package does not assert bit-for-bit reproduction of upstream
+outputs; the original rav1e lock predates an upstream build-helper update whose exact graph is
+unproven. The source inventory includes optional/build/test dependencies without claiming every
+listed component is linked into the binaries.
 
 ⚠ This section previously said the opposite — that redistributing the default image
 "carries no such obligation — it contains no ffmpeg", which was true only while ffmpeg
@@ -166,15 +178,14 @@ why it is corrected in place rather than quietly rewritten.
 ## Open redistribution review — beta blockers
 
 This notice is an inventory, not release clearance. The following engineering evidence remains
-required on the beta.5 release commit:
+required on the beta.5 release commit. Release engineering must bind the exact corresponding source
+to the actual shipped artifacts and document source distribution mechanics for that image using the
+public source record above:
 
-- ~~pin the BtbN ffmpeg archive immutably~~ (done — `FFMPEG_RELEASE`/`FFMPEG_BUILD_ID` +
-  per-arch SHA256 in [`Dockerfile`](Dockerfile)) and retain the exact corresponding source for FFmpeg,
-  build scripts, and bundled GPL dependencies at that pinned build; rerun the unchanged full
-  `make test-ffmpeg` gate against it (still open — corresponding-source retention is a release-artifact
-  step, and the gate result must be recorded on the release commit);
-- retain the exact corresponding source and license texts for the GPLv3+ dependencies bundled in
-  both official yt-dlp standalone executables;
+- verify the final candidate uses the exact pinned FFmpeg, ffprobe and yt-dlp binaries tied to the
+  published source materials, and record the unchanged full `make test-ffmpeg` gate on that commit;
+- verify both release-platform images retain the referenced notices/license texts and bind their
+  image digests and SBOM/provenance to the exact release source;
 - ~~pin the runtime and build base images by digest~~ (done — all four `FROM` bases in
   [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag) ~~and make the Debian
   package input reproducible~~ (done — the runtime stage repoints apt at a fixed
@@ -188,8 +199,8 @@ required on the beta.5 release commit:
   per-package/per-crate texts ride in the release SBOM);
 - ~~inspect and include any required Prometheus `NOTICE` material~~ (done — the upstream NOTICE is
   reproduced above); and
-- document source distribution mechanics for the assembled image and its downloadable source
-  materials, including the public source location and any applicable source-link or offer mechanics.
+- verify the final application release notes and image notices point to the public source location
+  above. Source distribution is published; the exact application release binding remains pending.
 
 For beta.5, the maintainer removed the separate qualified legal/NOTICE reviewer sign-off requirement.
 Release engineering owns the evidence above; an external reviewer or legal opinion is not a release

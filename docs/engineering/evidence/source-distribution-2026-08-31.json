@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "sourceRelease": "https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-08-31",
+  "sourceTag": "third-party-sources-2026-08-31",
+  "pinCommit": "e1795541c27b7d6a29c0b1ba83423604e8663a7b",
+  "publishedAt": "2026-09-10T13:39:51Z",
+  "inventoryFilesVerified": 490,
+  "scope": "FFmpeg August 2026 monthly pins and yt-dlp 2026.08.19; application image acceptance remains separate",
+  "assets": [
+    {
+      "name": "ffmpeg-original-download-cache.zip",
+      "bytes": 2024950980,
+      "sha256": "c7c46c41c512872bf4ff3bd6e8165f14209c851149c9824d09241df18b8011cc",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-08-31/ffmpeg-original-download-cache.zip"
+    },
+    {
+      "name": "README.txt",
+      "bytes": 1986,
+      "sha256": "7d94e827fce447fa105140e1d09d4c5c60cfcd89b8c7ea75b3044ed354a76869",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-08-31/README.txt"
+    },
+    {
+      "name": "SHA256SUMS",
+      "bytes": 364,
+      "sha256": "6856f815f8ea75f17bca514360de798ad1d3fef2b8555499e5733e68451ee170",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-08-31/SHA256SUMS"
+    },
+    {
+      "name": "source-materials.tar.gz",
+      "bytes": 1016697561,
+      "sha256": "0556a22cd31eb336db5128fcdd374155be70b104f91ec729ed4599bbf5dfdaa4",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-08-31/source-materials.tar.gz"
+    },
+    {
+      "name": "source-package-inventory.json",
+      "bytes": 91853,
+      "sha256": "51d2f207edbd1ad6cd9ab2c0980b8742b7b74e3d66636db4fd283e0ee213a15f",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-08-31/source-package-inventory.json"
+    }
+  ]
+}
