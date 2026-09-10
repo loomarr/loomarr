@@ -113,14 +113,14 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	// The household surprise target is Matrix (603). It never boosts Matrix itself: when a
 	// Channel override does not exclude it, the grounded Thriller neighbors widen the batch
 	// ahead of the marked Action/Sci-Fi anchor. Channel-scoped never still wins first.
-	if got, want := toolOrders.all(), [][]int{{100, 101}, {101, 603}, {100, 101, 603}, {101, 603}}; !slices.EqualFunc(got, want, slices.Equal) {
+	if got, want := toolOrders.all(), [][]provision.Key{{"movie:tmdb:100", "movie:tmdb:101"}, {"movie:tmdb:101", "movie:tmdb:603"}, {"movie:tmdb:100", "movie:tmdb:101", "movie:tmdb:603"}, {"movie:tmdb:101", "movie:tmdb:603"}}; !slices.EqualFunc(got, want, slices.Equal) {
 		t.Fatalf("grounded rank orders = %v, want %v", got, want)
 	}
 }
 
 type toolOrderRecorder struct {
 	mu     sync.Mutex
-	orders [][]int
+	orders [][]provision.Key
 }
 
 func (r *toolOrderRecorder) capture(messages []llm.Message) {
@@ -129,14 +129,14 @@ func (r *toolOrderRecorder) capture(messages []llm.Message) {
 			continue
 		}
 		var candidates []struct {
-			TMDBID int `json:"tmdbId"`
+			Key provision.Key `json:"key"`
 		}
 		if json.Unmarshal([]byte(message.Content), &candidates) != nil {
 			return
 		}
-		order := make([]int, 0, len(candidates))
+		order := make([]provision.Key, 0, len(candidates))
 		for _, candidate := range candidates {
-			order = append(order, candidate.TMDBID)
+			order = append(order, candidate.Key)
 		}
 		r.mu.Lock()
 		r.orders = append(r.orders, order)
@@ -145,12 +145,12 @@ func (r *toolOrderRecorder) capture(messages []llm.Message) {
 	}
 }
 
-func (r *toolOrderRecorder) all() [][]int {
+func (r *toolOrderRecorder) all() [][]provision.Key {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([][]int, len(r.orders))
+	out := make([][]provision.Key, len(r.orders))
 	for i := range r.orders {
-		out[i] = append([]int(nil), r.orders[i]...)
+		out[i] = append([]provision.Key(nil), r.orders[i]...)
 	}
 	return out
 }

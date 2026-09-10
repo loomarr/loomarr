@@ -63,7 +63,7 @@ When finished, reply with ONLY this JSON (no prose):
 // was empty). Kept short + imperative; it never relaxes the grounding rules.
 const repairPrompt = `Your previous reply was not valid JSON matching the required schema (or was empty). ` +
 	`Reply now with ONLY the JSON object {"rationale":...,"dateMeaning":{"kind":...,"anchors":[...],"axes":[...]},"picks":[...]} and nothing else. ` +
-	`Use ONLY ids that appeared in a catalog_search result.`
+	`Use ONLY exact key strings that appeared in a catalog_search result; copy each key byte for byte.`
 
 // userPrompt renders the intent into the first user turn.
 func userPrompt(i Intent) string {
@@ -88,11 +88,11 @@ func userPrompt(i Intent) string {
 			fmt.Fprintf(&b, "The user wants to change it: %s\n", i.RefineText)
 		}
 		b.WriteString("Keep the titles that still fit, drop the ones that don't, and add new ones as needed. " +
-			"Re-ground EVERY title (kept or new) through the catalog tool — use only ids the tool returns.\n")
+			"Re-ground EVERY title (kept or new) through the catalog tool — copy only exact catalog keys the tool returns.\n")
 		// Adjacency offers (§8.3): titles this channel's own lineup points at, with the
 		// consensus that surfaced them. Presented as SUGGESTIONS, not instructions — the
 		// model weighs them against the intent like any other candidate, and a weak
-		// consensus should read as weaker evidence than a strong one. Their ids are already
+		// consensus should read as weaker evidence than a strong one. Their keys are already
 		// grounded (pre-seeded into `surfaced`), which is why they may be picked directly.
 		if len(i.Adjacent) > 0 {
 			b.WriteString("Viewers of the titles above also watch these — consider them if they fit the channel:\n")
@@ -103,7 +103,7 @@ func userPrompt(i Intent) string {
 					fmt.Fprintf(&b, "  - %s [%s] — suggested by %d of its titles\n", a.Name, a.Key, a.Votes)
 				}
 			}
-			b.WriteString("These ids are already grounded — you may pick them directly. Ignore any that don't fit.\n")
+			b.WriteString("These catalog keys are already grounded — copy them exactly to pick them directly. Ignore any that don't fit.\n")
 		}
 	} else {
 		fmt.Fprintf(&b, "Build a channel: %s\n", i.Description)
@@ -133,8 +133,8 @@ func userPrompt(i Intent) string {
 		b.WriteString("--- BEGIN UNTRUSTED REFERENCE DATA ---\n")
 		b.WriteString(i.referenceEvidence.Excerpt)
 		b.WriteString("\n--- END UNTRUSTED REFERENCE DATA ---\n")
-		b.WriteString("Loomarr exact-matched these reference title anchors to real catalog ids; " +
-			"their following catalog_search results are already grounded. Select only matching ids and do not broaden the set:\n")
+		b.WriteString("Loomarr exact-matched these reference title anchors to real catalog keys; " +
+			"their following catalog_search results are already grounded. Copy only the matching catalog keys exactly and do not broaden the set:\n")
 		for _, candidate := range i.referenceCandidates {
 			key, err := candidate.Key()
 			if err != nil {
