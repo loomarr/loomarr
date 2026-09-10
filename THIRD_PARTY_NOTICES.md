@@ -178,7 +178,9 @@ why it is corrected in place rather than quietly rewritten.
 ## Open redistribution review — beta blockers
 
 This notice is an inventory, not release clearance. The following engineering evidence remains
-required on the beta.5 release commit:
+required on the beta.5 release commit. Release engineering must bind the exact corresponding source
+to the actual shipped artifacts and document source distribution mechanics for that image using the
+public source record above:
 
 - verify the final candidate uses the exact pinned FFmpeg, ffprobe and yt-dlp binaries tied to the
   published source materials, and record the unchanged full `make test-ffmpeg` gate on that commit;
