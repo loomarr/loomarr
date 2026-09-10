@@ -49,8 +49,9 @@ func TestReferencePrefetchPrioritizesDirectlyNamedSourceMembers(t *testing.T) {
 }
 
 func TestNamedSourceContractInvalidatesPriorSuccessfulProposal(t *testing.T) {
-	// Frozen v6/v6 identity for TGIF before automatic source discovery.
-	const prior = "a087119655986fb9016920113442e61448d783eb9ae5db7d34f0e6178b128a21"
+	// Frozen reference-source-v1 identity, before owned-identity resolution and
+	// direct-member prefetch priority changed the named-source result.
+	const prior = "1badcd576e97648da87451ad031a746ee3cc10dc0765387bb9953b6617567704"
 	if IntentHash(Intent{Description: "TGIF"}) == prior {
 		t.Fatal("source contract reused the prior proposal cache identity")
 	}
