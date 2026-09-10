@@ -1983,6 +1983,9 @@ func TestSuggest_RequiredDescriptionMembersSurviveEmptyModelSelection(t *testing
 		{MediaType: provision.Series, Name: "Full House", Year: 1987, TVDBID: 762, InLibrary: true},
 		{MediaType: provision.Series, Name: "Family Matters", Year: 1989, TVDBID: 767, InLibrary: true},
 		{MediaType: provision.Series, Name: "Step by Step", Year: 1991, TVDBID: 760, InLibrary: true},
+		{MediaType: provision.Series, Name: "Full House", Year: 2023, TMDBID: 90001},
+		{MediaType: provision.Movie, Name: "Family Matters", Year: 2025, TMDBID: 90002},
+		{MediaType: provision.Movie, Name: "Step by Step", Year: 1946, TMDBID: 90003},
 	}
 	corpus := &catalogfixture.Corpus{Candidates: candidates}
 	references := &testkit.ReferenceResolver{DiscoveryEvidence: reference.Evidence{

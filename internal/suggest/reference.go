@@ -514,24 +514,34 @@ func requiredIntentNamesTitle(intent Intent, title string) bool {
 		freeformTitlePolarity(intent.RefineText, title) > 1
 }
 
-// unambiguousMembershipCandidate accepts only a single canonical Catalog identity
-// for a source title. It deliberately runs before model-provided type/year or a
-// ranked subset can select a remake; duplicate rows for the same key are harmless.
+// unambiguousMembershipCandidate accepts a single canonical Catalog identity for
+// a source title. If unavailable namesakes make the global result ambiguous, one
+// exact identity already in the Library remains actionable. It deliberately runs
+// before model-provided type/year or a ranked subset can select a remake; duplicate
+// rows for one key are harmless and multiple owned identities still fail closed.
 func unambiguousMembershipCandidate(candidates []catalog.Candidate, title string) (catalog.Candidate, bool) {
 	byKey := make(map[provision.Key]catalog.Candidate)
+	ownedByKey := make(map[provision.Key]catalog.Candidate)
 	for _, candidate := range candidates {
 		if !sameExactTitle(candidate.Name, title) {
 			continue
 		}
 		if key, err := candidate.Key(); err == nil {
 			byKey[key] = candidate
+			if candidate.InLibrary {
+				ownedByKey[key] = candidate
+			}
 		}
 	}
-	if len(byKey) != 1 {
-		return catalog.Candidate{}, false
+	if len(byKey) == 1 {
+		for _, candidate := range byKey {
+			return candidate, true
+		}
 	}
-	for _, candidate := range byKey {
-		return candidate, true
+	if len(ownedByKey) == 1 {
+		for _, candidate := range ownedByKey {
+			return candidate, true
+		}
 	}
 	return catalog.Candidate{}, false
 }

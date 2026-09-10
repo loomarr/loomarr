@@ -318,6 +318,54 @@ func TestRunCollectionToolUsesUnfilteredSourceIdentityBeforeModelYear(t *testing
 	}
 }
 
+func TestMembershipSourcePrefersOneOwnedExactIdentity(t *testing.T) {
+	tests := []struct {
+		name       string
+		candidates []catalog.Candidate
+		wantKey    provision.Key
+		wantFound  bool
+	}{
+		{
+			name: "one owned identity among unavailable namesakes",
+			candidates: []catalog.Candidate{
+				{MediaType: provision.Series, Name: "Full House", Year: 1987, TVDBID: 70500, InLibrary: true},
+				{MediaType: provision.Series, Name: "Full House", Year: 2023, TMDBID: 218324},
+				{MediaType: provision.Series, Name: "Full House", Year: 2009, TMDBID: 31183},
+			},
+			wantKey: provision.Key("series:tvdb:70500"), wantFound: true,
+		},
+		{
+			name: "multiple owned identities remain ambiguous",
+			candidates: []catalog.Candidate{
+				{MediaType: provision.Series, Name: "Full House", Year: 1987, TVDBID: 70500, InLibrary: true},
+				{MediaType: provision.Series, Name: "Full House", Year: 2023, TMDBID: 218324, InLibrary: true},
+			},
+		},
+		{
+			name: "unavailable namesakes remain ambiguous",
+			candidates: []catalog.Candidate{
+				{MediaType: provision.Series, Name: "Full House", Year: 1987, TVDBID: 70500},
+				{MediaType: provision.Series, Name: "Full House", Year: 2023, TMDBID: 218324},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate, found := unambiguousMembershipCandidate(tt.candidates, "Full House")
+			if found != tt.wantFound {
+				t.Fatalf("found = %t, want %t (candidate %+v)", found, tt.wantFound, candidate)
+			}
+			if !found {
+				return
+			}
+			key, err := candidate.Key()
+			if err != nil || key != tt.wantKey {
+				t.Fatalf("key = %q, err = %v, want %q", key, err, tt.wantKey)
+			}
+		})
+	}
+}
+
 func TestRunToolDoesNotProjectMalformedNonEmptyFields(t *testing.T) {
 	tests := []map[string]any{
 		{"media_type": "series", "network": 17, "genres": []any{"Drama"}},

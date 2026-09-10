@@ -1384,7 +1384,11 @@ routing, redirect, timeout and response-size bounds. The category must include t
 subject itself; only its direct article members become title anchors. Historical schedule tables,
 search snippets and unrelated links are not rosters. Category membership is observed for this
 request, not claimed as an immutable historical roster. Parenthetical TV-series disambiguators may
-be removed from display names, but Catalog media/year ambiguity still fails closed.
+be removed from display names. When an exact source title maps to multiple canonical Catalog
+identities, a single exact identity already present in the connected Library is the actionable
+identity for that request; unavailable namesakes cannot make an owned title ambiguous. No match or
+multiple owned exact identities still fails closed, and model-provided media/year filters cannot
+choose between them.
 No brand roster, model-authored URL, arbitrary crawler, or new runtime dependency is added.
 The discovery operation has one shared 10-second budget and at most two bounded GET operations
 (search and category members); its result is reused within that Suggest invocation. Keep up to 128
