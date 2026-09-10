@@ -1427,6 +1427,13 @@ proof. Only unambiguous Catalog identities for explicit user-supplied constituen
 reference anchors are members; an ambiguous anchor remains unproven rather than selecting a remake.
 A model-proposed title can help resolve examples embedded in free-form description text only when its
 exact normalized title is also present in that submitted text (or in a resolved reference anchor).
+For a named set, titles supplied through `mustInclude` or direct inclusion language such as `with`,
+`include`, `keep`, `add`, or `want` are required constituents. Once each title is independently
+resolved to one Catalog identity and admitted by the same source-membership boundary, deterministic
+finalization preserves it even when the provider omits it from the final pick list. The combined
+required and provider-selected list remains bounded to eight picks and passes through the unchanged
+surfaced-key, acquisition, policy, and approval checks. Softer examples introduced by `like`, `think`,
+or `example` remain choices for the model rather than mandatory selections.
 Network, genre, era, adjacent recommendations, and model rationale may help discover a theme, but never
 prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
 rules. A member whose series premiered before a requested decade is not excluded merely by that premiere
@@ -2787,6 +2794,13 @@ that live child takes the existing software fallback rather than waiting behind 
 Unknown, software-only, or one-slot capacity disables hardware preparation — it does not guess and
 it does not consume the only live slot. This priority contract is shared code; adding a second
 semaphore around ffmpeg is forbidden.
+
+The shared pool re-reads effective capacity for every lease attempt. A lowered operator cap or newly
+resident model therefore blocks new work immediately; existing leases finish or yield through the
+same foreground-preemption contract, while capacity becomes available again after the limit grows.
+Before the first background admission, preparation completes the memoized hardware measurement and
+then applies the current cap and VRAM shading. The conservative pre-measurement floor must not become
+a process-lifetime preparation limit.
 
 A session whose current block is prepared or direct-copy holds zero transcode capacity, but that is
 not a promise about its next Airing. Immediately before any later live child starts a video

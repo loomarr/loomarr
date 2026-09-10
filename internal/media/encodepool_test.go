@@ -173,6 +173,65 @@ func TestEncodePoolBackgroundNeedsMeasuredSpareCapacity(t *testing.T) {
 	}
 }
 
+func TestDynamicEncodePoolRefreshesCapacityForEveryAdmission(t *testing.T) {
+	capacity := 1
+	p := NewDynamicEncodePool(func() int { return capacity })
+	if _, _, ok := p.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("background work admitted at the conservative one-slot floor")
+	}
+
+	capacity = 4
+	releases := make([]func(), 0, 3)
+	for i := range 3 {
+		_, release, ok := p.AcquireBackground(t.Context(), time.Unix(int64(i), 0))
+		if !ok {
+			t.Fatalf("background lease %d did not observe increased capacity", i+1)
+		}
+		releases = append(releases, release)
+	}
+	capacity = 2
+	if _, _, ok := p.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("new background work ignored the lowered capacity")
+	}
+	for _, release := range releases {
+		release()
+	}
+
+	_, release, ok := p.AcquireBackground(t.Context(), time.Time{})
+	if !ok {
+		t.Fatal("background reserve was unavailable after leases drained at capacity two")
+	}
+	defer release()
+	if _, _, ok := p.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("capacity two admitted more than one background lease")
+	}
+}
+
+func TestDynamicEncodePoolForegroundObservesLoweredCapacity(t *testing.T) {
+	capacity := 2
+	p := NewDynamicEncodePool(func() int { return capacity })
+	first, firstOK := p.AcquireForeground(t.Context())
+	second, secondOK := p.AcquireForeground(t.Context())
+	if !firstOK || !secondOK {
+		t.Fatalf("initial foreground leases = %v, %v, want both admitted", firstOK, secondOK)
+	}
+	capacity = 1
+	if _, ok := p.AcquireForeground(t.Context()); ok {
+		t.Fatal("new foreground work ignored the lowered capacity")
+	}
+	second()
+	if _, ok := p.AcquireForeground(t.Context()); ok {
+		t.Fatal("lowered one-slot capacity admitted work while one lease remained")
+	}
+	capacity = 2
+	third, ok := p.AcquireForeground(t.Context())
+	if !ok {
+		t.Fatal("foreground work did not observe restored capacity")
+	}
+	third()
+	first()
+}
+
 func TestEncodePoolReleaseIsIdempotentAndRaceSafe(t *testing.T) {
 	const slots = 4
 	p := NewEncodePool(func() int { return slots })

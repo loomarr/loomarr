@@ -14,6 +14,7 @@ const foregroundPreemptionWait = 500 * time.Millisecond
 // live reserve; each lease receives a cancelled context when foreground demand needs its slot.
 type EncodePool struct {
 	capacityFn func() int
+	dynamic    bool
 
 	once     sync.Once
 	capacity int // -1 means unmeasured: foreground is unbounded, background is disabled.
@@ -41,6 +42,16 @@ func NewEncodePool(capacity func() int) *EncodePool {
 	}
 }
 
+// NewDynamicEncodePool creates a pool whose inexpensive effective-capacity
+// callback is evaluated for every lease attempt. Use it when operator limits or
+// shared-resource pressure can change during the process lifetime.
+func NewDynamicEncodePool(capacity func() int) *EncodePool {
+	return &EncodePool{
+		capacityFn: capacity, dynamic: true,
+		backgrounds: make(map[uint64]*backgroundLease), changed: make(chan struct{}),
+	}
+}
+
 func (p *EncodePool) init() {
 	p.once.Do(func() {
 		p.capacity = -1
@@ -50,6 +61,17 @@ func (p *EncodePool) init() {
 	})
 }
 
+func (p *EncodePool) capacityForAdmission() int {
+	if p.dynamic {
+		if p.capacityFn == nil {
+			return -1
+		}
+		return p.capacityFn()
+	}
+	p.init()
+	return p.capacity
+}
+
 // AcquireForeground takes a hardware slot for live playback. When preparation owns the last slot,
 // its context is cancelled and playback waits briefly for the process to release it; a stuck
 // background process therefore degrades this caller to software rather than delaying tune-in.
@@ -57,18 +79,17 @@ func (p *EncodePool) AcquireForeground(ctx context.Context) (release func(), ok 
 	if p == nil {
 		return func() {}, true
 	}
-	p.init()
-
 	timer := time.NewTimer(foregroundPreemptionWait)
 	defer timer.Stop()
 	waiting := false
 	for {
+		capacity := p.capacityForAdmission()
 		p.mu.Lock()
-		if p.capacity < 0 {
+		if capacity < 0 {
 			p.mu.Unlock()
 			return func() {}, true
 		}
-		if p.held < p.capacity {
+		if p.held < capacity {
 			if waiting {
 				p.waiters--
 			}
@@ -126,10 +147,10 @@ func (p *EncodePool) AcquireBackground(ctx context.Context, neededAt time.Time) 
 	if p == nil {
 		return nil, nil, false
 	}
-	p.init()
+	capacity := p.capacityForAdmission()
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.capacity < 2 || p.held >= p.capacity-1 {
+	if capacity < 2 || p.held >= capacity-1 {
 		return nil, nil, false
 	}
 	workCtx, cancel := context.WithCancel(ctx)

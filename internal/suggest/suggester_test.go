@@ -1975,6 +1975,72 @@ func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) 
 	}
 }
 
+func TestSuggest_RequiredDescriptionMembersSurviveEmptyModelSelection(t *testing.T) {
+	description := "TGIF, with Full House, Family Matters, and Step by Step. Keep the sitcoms that actually aired in ABC's 1990s Friday-night block; play episodes from the 1990s in episode order."
+	dateStart := strings.Index(description, "1990s")
+	meaning := fixtureDateMeaning("series_airing", "description", dateStart, dateStart+len("1990s"), 1990, 1999)
+	candidates := []catalog.Candidate{
+		{MediaType: provision.Series, Name: "Full House", Year: 1987, TVDBID: 762, InLibrary: true},
+		{MediaType: provision.Series, Name: "Family Matters", Year: 1989, TVDBID: 767, InLibrary: true},
+		{MediaType: provision.Series, Name: "Step by Step", Year: 1991, TVDBID: 760, InLibrary: true},
+	}
+	corpus := &catalogfixture.Corpus{Candidates: candidates}
+	references := &testkit.ReferenceResolver{DiscoveryEvidence: reference.Evidence{
+		URL: "https://example.test/tgif", Title: "TGIF",
+		TitleAnchors: []string{"Full House", "Family Matters", "Step by Step"},
+	}}
+	model := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{
+			"mode": "collection", "media_type": "series",
+			"titles":      []any{"Full House", "Family Matters", "Step by Step"},
+			"dateMeaning": meaning,
+		}),
+		finalResponseWithDateMeaning(`{"channelName":"Friday Family","picks":[]}`, meaning),
+	)
+
+	proposal, err := suggest.New(model, catalog.New(nil, corpus), nil, 10).
+		WithReferences(references).
+		Suggest(context.Background(), suggest.Intent{Description: description})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.Lineup) != 3 {
+		t.Fatalf("required named lineup = %+v, want three independently grounded titles", proposal.Lineup)
+	}
+	if got := []int{proposal.Lineup[0].TVDBID, proposal.Lineup[1].TVDBID, proposal.Lineup[2].TVDBID}; !slices.Equal(got, []int{767, 762, 760}) {
+		t.Fatalf("required named members = %v, want all three independently grounded titles", got)
+	}
+	if got := references.Discoveries(); !slices.Equal(got, []string{"TGIF"}) {
+		t.Fatalf("named source discoveries = %v, want TGIF", got)
+	}
+	if proposal.Policy.Scope.Dates == nil ||
+		!equalRanges(proposal.Policy.Scope.Dates.SeriesAiring, []schedule.Range{{From: 1990, To: 1999}}) {
+		t.Fatalf("policy dates = %#v, want 1990s series airing scope", proposal.Policy.Scope.Dates)
+	}
+}
+
+func TestSuggest_SoftDescriptionExampleRemainsOptional(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
+		MediaType: provision.Series, Name: "Full House", Year: 1987, TVDBID: 762, InLibrary: true,
+	}}}
+	references := &testkit.ReferenceResolver{DiscoveryEvidence: reference.Evidence{
+		URL: "https://example.test/tgif", Title: "TGIF", TitleAnchors: []string{"Full House"},
+	}}
+	model := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{
+			"mode": "collection", "media_type": "series", "titles": []any{"Full House"},
+		}),
+		finalResponseWithNone(`{"channelName":"Friday Family","picks":[]}`),
+	)
+
+	_, err := suggest.New(model, catalog.New(nil, corpus), nil, 10).
+		WithReferences(references).
+		Suggest(context.Background(), suggest.Intent{Description: "Something like TGIF. Think Full House."})
+	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+		t.Fatalf("soft example error = %v, want empty selection to remain a no-grounded-title result", err)
+	}
+}
+
 func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	ms.SetSearchItems(
