@@ -68,7 +68,9 @@ Complete these lanes concurrently, with one owner for overlapping planner/scorer
    #688's remaining release/homelab login acceptance needs evidence rather than another implementation.
 5. **Release preparation.** Qualify the supported current provider/build with #1015 and #494;
    retain unchanged semantic, latency and resource gates. Complete applicable #661 exact-artifact
-   redistribution evidence and review. Resolve the newly tracked Metro/image-size dependency exposure
+   redistribution evidence and documented source distribution mechanics; a separate qualified
+   legal/NOTICE reviewer sign-off is not required following the maintainer's beta.5 scope decision.
+   Resolve the newly tracked Metro/image-size dependency exposure
    and compatible remedy or explicit release-scoped disposition in #1162; GitHub currently lists no
    patched version. This is a locked-dependency finding, not a demonstrated deployed-service exploit.
    Prepare the installed Shield/browser acceptance packet.
@@ -236,7 +238,7 @@ optimizations can move without relaxing required release gates.
 | [#1037](https://github.com/loomarr/loomarr/issues/1037) | Certify many-channel playout capacity and channel-surf churn | beta.5 |
 | [#955](https://github.com/loomarr/loomarr/issues/955) | Make filler pull approval atomically idempotent | beta.5 |
 | [#688](https://github.com/loomarr/loomarr/issues/688) | fix(auth): Emby successful login fails when client scheme is missing | beta.5 |
-| [#661](https://github.com/loomarr/loomarr/issues/661) | Close first-beta GPL redistribution evidence and legal review | beta.5 |
+| [#661](https://github.com/loomarr/loomarr/issues/661) | Complete binary source, notice and distribution evidence | beta.5 |
 | [#1050](https://github.com/loomarr/loomarr/issues/1050) | perf(android): reduce React Native Play AAB CI build time | beta.5 |
 | [#1040](https://github.com/loomarr/loomarr/issues/1040) | Make channel-generation progress calm, trustworthy, and delightful | beta.5 |
 | [#1113](https://github.com/loomarr/loomarr/issues/1113) | Add exact NPS video corpus source authority | beta.6 |
