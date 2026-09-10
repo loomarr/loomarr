@@ -164,3 +164,9 @@ func finalizationMessages(messages []llm.Message, meaning *ValidatedDateMeaning)
 	copy(request, messages)
 	return append(request, llm.Message{Role: llm.User, Content: "Retrieval is complete and no further tools are available. Produce the final JSON now using only the catalog candidates already provided; an incomplete catalog result does not authorize another search. Copy this accepted dateMeaning object unchanged into your final JSON: " + string(blob)}), nil
 }
+
+func referenceInterpretationMessages(messages []llm.Message) []llm.Message {
+	request := make([]llm.Message, len(messages), len(messages)+1)
+	copy(request, messages)
+	return append(request, llm.Message{Role: llm.User, Content: "This is the reference intent-interpretation phase. No tools are available in this phase. Loomarr will read the submitted reference and resolve its titles through the catalog after validating your dateMeaning. Produce the requested JSON now with dateMeaning interpreted only from the submitted intent and an empty picks array. Do not infer reference contents from its URL or attempt a tool call. Actual source and catalog evidence will follow for final selection."})
+}

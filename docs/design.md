@@ -2017,7 +2017,12 @@ ambiguity, true conflict, and exhausted malformed output therefore dispatch no s
 for reference, curated-title, and explicit-membership requests. Existing source-grounded membership
 authority remains unchanged; model-proposed titles never establish membership by themselves.
 
-A reference request initially exposes no tools. After its first valid final response, resolve the
+A reference request initially exposes no tools. The v8 planner prompt adds a request-only phase
+instruction: interpret the submitted Intent, return the required JSON with an empty picks array,
+and wait for Loomarr's reference and Catalog evidence. A URL is not evidence of its page contents.
+Repeat this instruction during interpretation repairs, then remove it when interpretation is
+accepted; it must not accumulate in history or survive into evidence-backed finalization.
+After its first valid final response, resolve the
 submitted reference and its bounded catalog title anchors, discard the bootstrap picks, and provide
 the actual reference evidence for finalization. This continuation consumes the remaining model turns
 of the same six-turn generation; it grants no extra repair, generation, or work credits. Synthesized
@@ -2025,6 +2030,19 @@ catalog history includes the accepted canonical `dateMeaning`. Source initializa
 repairs and grounding retries, so neither continuation nor repair repeats reference or membership
 lookups. Existing cancellation, reference-read, catalog-failure, and empty-reference outcomes remain
 distinct, and all existing per-source fanout and invocation limits still apply.
+
+Grounded selection requests explicitly select the shared LLM adapter's `grounded-selection-v1`
+sampling profile. For OpenRouter's exact `google/gemini-3.8-flash` model, that profile omits optional
+temperature and requests supported `low` reasoning: the Vertex endpoint does not advertise
+temperature, and the model's default medium reasoning exceeded the interactive latency budget.
+This is a bounded compatibility entry, not model selection or qualification. Other models/providers
+and other inference tasks retain their existing sampling. The adapter owns this mapping; the
+Suggester carries no vendor/model roster. Production, live evaluation and the post-result diagnostic
+use the same profile and report its effective sampling. No metadata fetch occurs per inference,
+and no new operator setting is introduced. Model/route changes require fresh qualification; the
+profile never changes tool schemas, the 2048-token completion bound, retry capacity, strict route
+selection, privacy controls or acceptance thresholds. The v8 prompt contract binds this execution
+change in cached Intent identity and immutable evaluation manifests.
 
 A date union is one semantic retrieval, completed before `finalizationOnly` can be set. Each
 normalized scalar provider query returns through the existing bounded discovery machinery;

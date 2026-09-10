@@ -22,9 +22,9 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-const certificationManifestPath = "testdata/planner-certification-v9.json"
+const certificationManifestPath = "testdata/planner-certification-v10.json"
 
-//go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-certification-v3.json testdata/planner-certification-v4.json testdata/planner-certification-v5.json testdata/planner-certification-v6.json testdata/planner-certification-v7.json testdata/planner-certification-v8.json testdata/planner-certification-v9.json testdata/planner-certification-v6-base.json testdata/planner-certification-v8-base.json testdata/planner-catalog-v1.json testdata/planner-catalog-v2.json testdata/planner-catalog-v3.json
+//go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-certification-v3.json testdata/planner-certification-v4.json testdata/planner-certification-v5.json testdata/planner-certification-v6.json testdata/planner-certification-v7.json testdata/planner-certification-v8.json testdata/planner-certification-v9.json testdata/planner-certification-v10.json testdata/planner-certification-v6-base.json testdata/planner-certification-v8-base.json testdata/planner-catalog-v1.json testdata/planner-catalog-v2.json testdata/planner-catalog-v3.json
 var certificationFiles embed.FS
 
 // CertificationCorpus is the immutable, held-out planner-model corpus contract.
