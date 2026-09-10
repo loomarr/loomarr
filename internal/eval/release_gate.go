@@ -21,9 +21,9 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-const releaseGateManifestPath = "testdata/planner-release-gate-v10.json"
+const releaseGateManifestPath = "testdata/planner-release-gate-v11.json"
 
-//go:embed testdata/planner-release-gate-v1.json testdata/planner-release-gate-v2.json testdata/planner-release-gate-v3.json testdata/planner-release-gate-v4.json testdata/planner-release-gate-v5.json testdata/planner-release-catalog-v1.json testdata/planner-release-sources-v1.json testdata/planner-release-gate-v6.json testdata/planner-release-gate-v7.json testdata/planner-release-gate-v8.json testdata/planner-release-gate-v9.json testdata/planner-release-gate-v10.json
+//go:embed testdata/planner-release-gate-v1.json testdata/planner-release-gate-v2.json testdata/planner-release-gate-v3.json testdata/planner-release-gate-v4.json testdata/planner-release-gate-v5.json testdata/planner-release-catalog-v1.json testdata/planner-release-sources-v1.json testdata/planner-release-gate-v6.json testdata/planner-release-gate-v7.json testdata/planner-release-gate-v8.json testdata/planner-release-gate-v9.json testdata/planner-release-gate-v10.json testdata/planner-release-gate-v11.json
 var releaseGateFiles embed.FS
 
 var releaseGateModelCanaryCaseIDs = []string{

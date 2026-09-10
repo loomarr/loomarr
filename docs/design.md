@@ -1799,14 +1799,16 @@ an exclusion or season limit, rather than promising unscheduled exceptions in th
 Non-date conflicts do not become ambiguous date interpretations. This uses the existing
 no-grounded-title outcome, adds no selection or approval authority, and changes no repair budget.
 `planner-release-gate-v10` retains the exact supplementary release cases, fixtures and gates while
-binding the same prompt; prior manifests remain immutable.
+binding the same prompt. `planner-release-gate-v11` keeps those inputs and thresholds unchanged and
+binds `reference-source-v2`; prior manifests remain immutable.
 
 The supplementary `planner-release-gate-v4` release replay retains v1's 18 synthetic cases,
 fixture bytes, acceptable members, hard negatives and thresholds, and binds them explicitly to the
 current production prompt/tool identities. The historical v1–v3 manifests remain unchanged. V4 retains v3's synthetic source-membership
 fixture for automatic named-block discovery; it is independent of model output and scoring keys.
-The source contract is versioned independently as `reference-source-v1` and participates in the
-proposal cache identity, so prior source behavior cannot reuse a successful cached Proposal.
+The source contract is versioned independently. `reference-source-v2` adds owned exact-identity
+resolution and direct-member prefetch priority. It participates in the proposal cache identity, so
+successful Proposals from prior source behavior cannot be reused.
 Only the configured model is live in this replay; actual source discovery needs separate diagnostic
 and installed-journey evidence. This
 release holdout complements the full active certification corpus; its one-trial canary and

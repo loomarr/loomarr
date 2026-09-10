@@ -100,7 +100,7 @@ func TestReleaseGateCorpusIsFrozenAndReleaseFocused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-release-gate-v10" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
+	if corpus.Version != "planner-release-gate-v11" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
 		corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion || corpus.Fixture.SHA256 == "" || corpus.SourcesFixture.SHA256 == "" {
 		t.Fatalf("release-gate identity = %+v", corpus)
 	}
