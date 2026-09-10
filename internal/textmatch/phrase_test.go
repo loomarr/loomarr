@@ -34,3 +34,22 @@ func TestContainsPhraseFoldsCompatibilityDecomposition(t *testing.T) {
 		}
 	}
 }
+
+func TestContainsPhraseOutsidePreservesOccurrenceBoundaries(t *testing.T) {
+	for _, tt := range []struct {
+		text, phrase, excluded string
+		want                   bool
+	}{
+		{"Santa visits Santa’s Little Helper", "santa", "Santa's Little Helper", true},
+		{"Santa's Little Helper Santa's Little Helper", "santa", "Santa's Little Helper", false},
+		{"Santa's Little Helpers", "santa", "Santa's Little Helper", true},
+		{"A dog holiday", "a holiday", "dog", false},
+		{"ᴬ holiday", "a holiday", "", true},
+		{"Café Noël", "Café Noël", "", true},
+		{"A holiday", "", "dog", false},
+	} {
+		if got := textmatch.ContainsPhraseOutside(tt.text, tt.phrase, tt.excluded); got != tt.want {
+			t.Errorf("ContainsPhraseOutside(%q,%q,%q) = %v", tt.text, tt.phrase, tt.excluded, got)
+		}
+	}
+}

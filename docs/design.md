@@ -1623,6 +1623,8 @@ mentions do not create a maximum. Multiple explicit maxima keep the stricter bou
 `exclude unrated` request also survives omitted or looser model policy and refuses unknown ratings
 before approval, including when no ceiling was requested. Negating that exclusion does not add it.
 These restrictions remain proposal policy and pass through ordinary approval and scheduling.
+An explicit unrated exclusion binds even without a ceiling: mapped ratings remain eligible, while
+unknown title ratings are excluded. Expanded episodes retain the documented parent-rating inheritance.
 Their deterministic values participate in the request cache identity, so a previous proposal that
 lost the constraints cannot be served as the result of a fresh submission.
 A request

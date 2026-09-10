@@ -85,7 +85,10 @@ func EvidenceAliases(id string) []string {
 // field set. A character's pet name and a generic holiday are not Christmas proof.
 func MatchesEvidence(id, text string) bool {
 	for _, alias := range EvidenceAliases(id) {
-		if id == "christmas" && alias == "santa" && textmatch.ContainsPhrase(text, "Santa's Little Helper") {
+		if id == "christmas" && alias == "santa" {
+			if textmatch.ContainsPhraseOutside(text, alias, "Santa's Little Helper") {
+				return true
+			}
 			continue
 		}
 		if textmatch.ContainsPhrase(text, alias) {
