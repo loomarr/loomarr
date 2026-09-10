@@ -20,13 +20,6 @@ func openAIChatTools(messages []Message, schemas []ToolSchema) ([]openaiMessage,
 			}
 		}
 	}
-	for _, message := range messages {
-		for _, call := range message.ToolCalls {
-			if call.wireEnvelope {
-				envelopes[call.Name] = true
-			}
-		}
-	}
 	wireTools := toOpenAITools(schemas)
 	for i := range wireTools {
 		if !envelopes[wireTools[i].Function.Name] {
@@ -41,7 +34,7 @@ func openAIChatTools(messages []Message, schemas []ToolSchema) ([]openaiMessage,
 	for i := range wireMessages {
 		for j := range wireMessages[i].ToolCalls {
 			call := &wireMessages[i].ToolCalls[j]
-			if !envelopes[call.Function.Name] {
+			if !messages[i].ToolCalls[j].wireEnvelope {
 				continue
 			}
 			original := messages[i].ToolCalls[j].Arguments

@@ -37,10 +37,22 @@ func TestOpenAIEnvelopesRootCombinatorsWithoutWeakeningSchema(t *testing.T) {
 					if err := json.Unmarshal([]byte(fn["arguments"].(string)), &args); err != nil {
 						t.Fatal(err)
 					}
-					if _, ok := args["input"]; !ok {
-						t.Errorf("finalization history lost wire envelope: %v", args)
+					_, wrapped := args["input"]
+					expected := rawCall.(map[string]any)["id"] == "call1"
+					if wrapped != expected {
+						t.Errorf("history must preserve each call original shape: %v", args)
 					}
 				}
+			}
+			if calls == 3 {
+				definitions := sent["tools"].([]any)
+				parameters := definitions[0].(map[string]any)["function"].(map[string]any)["parameters"].(map[string]any)
+				properties := parameters["properties"].(map[string]any)
+				if _, wrapped := properties["input"]; wrapped {
+					t.Errorf("old history changed current ordinary schema: %v", parameters)
+				}
+				_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"plain","function":{"name":"catalog_search","arguments":"{\"query\":\"Plain\"}"}}]}}]}`))
+				return
 			}
 			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{}"}}]}`))
 		}
@@ -57,6 +69,11 @@ func TestOpenAIEnvelopesRootCombinatorsWithoutWeakeningSchema(t *testing.T) {
 	history := []llm.Message{{Role: llm.Assistant, ToolCalls: response.ToolCalls}, {Role: llm.Tool, ToolCallID: "call1", Content: "[]"}, {Role: llm.Assistant, ToolCalls: []llm.ToolCall{{ID: "source1", Name: "catalog_search", Arguments: map[string]any{"query": "Source"}}}}}
 	if _, err := provider.Chat(context.Background(), history, llm.ChatOptions{}); err != nil {
 		t.Fatal(err)
+	}
+	ordinary := map[string]any{"type": "object", "properties": schema["properties"]}
+	response, err = provider.Chat(context.Background(), history, llm.ChatOptions{Tools: []llm.ToolSchema{{Name: "catalog_search", Parameters: ordinary}}})
+	if err != nil || len(response.ToolCalls) != 1 || response.ToolCalls[0].Arguments["query"] != "Plain" {
+		t.Fatalf("ordinary same-name schema corrupted: response=%+v err=%v", response, err)
 	}
 	if _, ok := schema["oneOf"]; !ok {
 		t.Fatal("caller schema mutated")
