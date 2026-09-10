@@ -18,9 +18,9 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func TestReleaseGatePromptRevisionPreservesCasesAndGates(t *testing.T) {
+func TestReleaseGateSourceRevisionPreservesCasesAndGates(t *testing.T) {
 	var contracts []map[string]any
-	for _, path := range []string{"testdata/planner-release-gate-v9.json", releaseGateManifestPath} {
+	for _, path := range []string{"testdata/planner-release-gate-v10.json", releaseGateManifestPath} {
 		blob, err := releaseGateFiles.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -30,11 +30,11 @@ func TestReleaseGatePromptRevisionPreservesCasesAndGates(t *testing.T) {
 			t.Fatal(err)
 		}
 		delete(contract, "version")
-		delete(contract, "promptVersion")
+		delete(contract, "sourceVersion")
 		contracts = append(contracts, contract)
 	}
 	if !reflect.DeepEqual(contracts[0], contracts[1]) {
-		t.Fatal("prompt binding changed release cases, fixtures or gates")
+		t.Fatal("source binding changed release cases, fixtures or gates")
 	}
 }
 
