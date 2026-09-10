@@ -183,7 +183,7 @@ func verifyRedistributionArtifact(artifact redistributionArtifact) error {
 		return errors.New("release, source, and build revisions must be immutable git revisions")
 	}
 	want := map[string]struct{ release, releaseCommit, source, build, releaseRev, sourceRev, buildRev string }{
-		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-07-31-14-10", "a99e8230eae00d1cee38f23076a7a1f55cd984e2", "https://github.com/FFmpeg/FFmpeg/commit/9b6c8969e05b4f0b29f0f85cd501be6b3e582e6b", "https://github.com/BtbN/FFmpeg-Builds/tree/a99e8230eae00d1cee38f23076a7a1f55cd984e2", "autobuild-2026-07-31-14-10", "9b6c8969e05b4f0b29f0f85cd501be6b3e582e6b", "a99e8230eae00d1cee38f23076a7a1f55cd984e2"},
+		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-31-13-27", "8267213e26c1031621e6e1210fe3aa4867214f6a", "https://github.com/FFmpeg/FFmpeg/commit/1a748fe2cd43e3ead22fafb1b5b7d77f153898a8", "https://github.com/BtbN/FFmpeg-Builds/tree/8267213e26c1031621e6e1210fe3aa4867214f6a", "autobuild-2026-08-31-13-27", "1a748fe2cd43e3ead22fafb1b5b7d77f153898a8", "8267213e26c1031621e6e1210fe3aa4867214f6a"},
 		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/releases/tag/2026.08.19", "3a08beaf031ab68f966401ead017ac81fe8486cf", "https://github.com/yt-dlp/yt-dlp/tree/3a08beaf031ab68f966401ead017ac81fe8486cf", "https://github.com/yt-dlp/yt-dlp/blob/3a08beaf031ab68f966401ead017ac81fe8486cf/bundle/pyinstaller.py", "2026.08.19", "3a08beaf031ab68f966401ead017ac81fe8486cf", "3a08beaf031ab68f966401ead017ac81fe8486cf"},
 	}
 	w, ok := want[artifact.Name]
@@ -191,7 +191,7 @@ func verifyRedistributionArtifact(artifact redistributionArtifact) error {
 		return errors.New("upstream release, source, or build identity differs from the researched authority")
 	}
 	if artifact.Name == "ffmpeg" {
-		const policyRev = "a99e8230eae00d1cee38f23076a7a1f55cd984e2"
+		const policyRev = "8267213e26c1031621e6e1210fe3aa4867214f6a"
 		if artifact.Upstream.RetentionClass != "monthly" || artifact.Upstream.RetentionPolicyRev != policyRev || artifact.Upstream.RetentionPolicyURL != "https://github.com/BtbN/FFmpeg-Builds/blob/"+policyRev+"/util/prunetags.sh" {
 			return errors.New("FFmpeg release is not bound to BtbN's retained-monthly policy")
 		}
@@ -199,11 +199,11 @@ func verifyRedistributionArtifact(artifact redistributionArtifact) error {
 		return errors.New("unexpected retention policy on non-BtbN artifact")
 	}
 	expectedAssets := map[string]map[string]string{
-		"ffmpeg": {"amd64": "ffmpeg-n8.1.2-34-g9b6c8969e0-linux64-gpl-8.1.tar.xz", "arm64": "ffmpeg-n8.1.2-34-g9b6c8969e0-linuxarm64-gpl-8.1.tar.xz"},
+		"ffmpeg": {"amd64": "ffmpeg-n8.1.2-50-g1a748fe2cd-linux64-gpl-8.1.tar.xz", "arm64": "ffmpeg-n8.1.2-50-g1a748fe2cd-linuxarm64-gpl-8.1.tar.xz"},
 		"yt-dlp": {"amd64": "yt-dlp_linux", "arm64": "yt-dlp_linux_aarch64"},
 	}
 	expectedLicenses := map[string][]string{
-		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/blob/a99e8230eae00d1cee38f23076a7a1f55cd984e2/LICENSE", "https://github.com/FFmpeg/FFmpeg/blob/9b6c8969e05b4f0b29f0f85cd501be6b3e582e6b/COPYING.GPLv3"},
+		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/blob/8267213e26c1031621e6e1210fe3aa4867214f6a/LICENSE", "https://github.com/FFmpeg/FFmpeg/blob/1a748fe2cd43e3ead22fafb1b5b7d77f153898a8/COPYING.GPLv3"},
 		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/blob/3a08beaf031ab68f966401ead017ac81fe8486cf/LICENSE", "https://github.com/yt-dlp/yt-dlp/blob/3a08beaf031ab68f966401ead017ac81fe8486cf/THIRD_PARTY_LICENSES.txt", "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/SHA2-256SUMS"},
 	}
 	if !slices.Equal(artifact.Upstream.LicenseURLs, expectedLicenses[artifact.Name]) {
