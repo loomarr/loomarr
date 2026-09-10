@@ -20,13 +20,69 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
+func TestCertificationContextRevisionPreservesQualificationGates(t *testing.T) {
+	read := func(path string, target any) {
+		t.Helper()
+		blob, err := certificationFiles.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(blob, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var prior, current map[string]any
+	read("testdata/planner-certification-v14.json", &prior)
+	read(certificationManifestPath, &current)
+	for _, key := range []string{"version", "promptVersion", "base"} {
+		delete(prior, key)
+		delete(current, key)
+	}
+	if !reflect.DeepEqual(prior, current) {
+		t.Fatal("context repair changed qualification answers or gates")
+	}
+	var oldBase, newBase CertificationCorpus
+	read("testdata/planner-certification-v8-base.json", &oldBase)
+	read("testdata/planner-certification-v9-base.json", &newBase)
+	contextCases := []string{"season-window-classic", "season-window-conflict", "refine-tightens-audience", "thin-results", "repair-empty-selection", "fabricated-id", "unsupported-tool", "unnecessary-tool-calls"}
+	if len(newBase.Cases) != len(oldBase.Cases) {
+		t.Fatal("context repair changed family count")
+	}
+	changed := 0
+	for index, original := range oldBase.Cases {
+		updated := &newBase.Cases[index]
+		if !slices.Contains(contextCases, original.ID) {
+			continue
+		}
+		prefix := strings.TrimSuffix(updated.Description, original.Description)
+		if prefix == "" || !strings.HasSuffix(updated.Description, original.Description) {
+			t.Fatalf("%s lost its original instruction or lacks context", original.ID)
+		}
+		updated.Description = original.Description
+		if len(updated.Variants) != len(original.Variants) {
+			t.Fatalf("%s changed variant count", original.ID)
+		}
+		for variant, old := range original.Variants {
+			if updated.Variants[variant].Description != prefix+old.Description {
+				t.Fatalf("%s/%s changed its original instruction", original.ID, old.ID)
+			}
+			updated.Variants[variant].Description = old.Description
+		}
+		changed++
+	}
+	newBase.Version = oldBase.Version
+	if changed != len(contextCases) || !reflect.DeepEqual(oldBase, newBase) {
+		t.Fatal("context repair changed other corpus evidence or omitted a family")
+	}
+}
+
 func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.T) {
 	corpus, err := LoadEmbeddedCertificationCorpus()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v14" {
-		t.Fatalf("corpus version = %q, want planner-certification-v14", corpus.Version)
+	if corpus.Version != "planner-certification-v15" {
+		t.Fatalf("corpus version = %q, want planner-certification-v15", corpus.Version)
 	}
 	if corpus.SchemaVersion != 8 {
 		t.Fatalf("corpus schema version = %d, want 8", corpus.SchemaVersion)
@@ -230,7 +286,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v14" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v15" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)
