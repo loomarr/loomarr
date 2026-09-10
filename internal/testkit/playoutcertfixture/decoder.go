@@ -15,6 +15,10 @@ type Decoder struct {
 	FailAfterFrameLimit bool
 	FailAfter           <-chan struct{}
 	CallCompleted       chan<- int
+	FirstFrameGate      <-chan struct{}
+	FirstFrameGateCall  int
+	FirstFrameWaiting   chan<- int
+	FirstFrameFailCall  int
 
 	mu      sync.Mutex
 	active  int
@@ -60,6 +64,22 @@ func (d *Decoder) Decode(ctx context.Context, input io.ReadCloser, reportFrames 
 			observed += int64(n)
 			available := observed / 188
 			for frames < available && (d.FrameLimit == 0 || frames < d.FrameLimit) {
+				if frames == 0 && d.FirstFrameGate != nil && (d.FirstFrameGateCall == 0 || d.FirstFrameGateCall == call) {
+					if d.FirstFrameWaiting != nil {
+						select {
+						case d.FirstFrameWaiting <- call:
+						default:
+						}
+					}
+					select {
+					case <-d.FirstFrameGate:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+				if frames == 0 && d.FirstFrameFailCall == call {
+					return errors.New("controlled first-frame failure")
+				}
 				frames++
 				reportFrames(frames)
 			}

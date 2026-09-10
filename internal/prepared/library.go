@@ -97,7 +97,7 @@ type Library struct {
 }
 
 type keyLock struct {
-	mu   sync.Mutex
+	mu   sync.RWMutex
 	refs int
 }
 
@@ -225,12 +225,13 @@ func (l *Library) Lookup(spec Specification) (Publication, bool, error) {
 // building a plan; only manifests/assets actually served to a viewer count as use. Unlike Lookup,
 // Peek is non-blocking: an in-progress publication is still invisible, so a tune-time probe must
 // report a miss and use live fallback rather than wait for a background encode to finish.
+// Concurrent metadata and asset readers do not hide a complete publication.
 func (l *Library) Peek(spec Specification) (Publication, bool, error) {
 	key, err := keyFor(spec)
 	if err != nil {
 		return Publication{}, false, err
 	}
-	unlock, ok := l.tryLock(key)
+	unlock, ok := l.tryReadLock(key)
 	if !ok {
 		return Publication{}, false, nil
 	}
@@ -243,7 +244,7 @@ func (l *Library) lookup(spec Specification, touch bool) (Publication, bool, err
 	if err != nil {
 		return Publication{}, false, err
 	}
-	unlock := l.lock(key)
+	unlock := l.readLock(key)
 	defer unlock()
 	return l.lookupKey(key, spec, touch)
 }
@@ -316,7 +317,7 @@ func (l *Library) Open(key, name string) (Asset, bool, error) {
 		strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == publicationMetadata {
 		return Asset{}, false, nil
 	}
-	unlock := l.lock(key)
+	unlock := l.readLock(key)
 	defer unlock()
 
 	entry, ok := l.cached(key, false)
@@ -360,6 +361,10 @@ func (l *Library) remember(spec Specification, pub Publication, lastUsed time.Ti
 		files[name] = struct{}{}
 	}
 	l.mu.Lock()
+	// Another reader may have populated or touched this entry after our cache miss.
+	if previous, ok := l.catalog[pub.Key]; ok && previous.lastUsed.After(lastUsed) {
+		lastUsed = previous.lastUsed
+	}
 	l.catalog[pub.Key] = catalogEntry{
 		specification: spec, publication: clonePublication(pub), files: files, lastUsed: lastUsed,
 	}
@@ -469,53 +474,57 @@ func syncDir(path string) error {
 	return nil
 }
 
-func (l *Library) lock(key string) func() {
+// retainLock pins the per-key lock before waiting or trying, so its map entry
+// cannot be retired while any reader, writer, or waiter still references it.
+func (l *Library) retainLock(key string) *keyLock {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	kl := l.locks[key]
 	if kl == nil {
 		kl = &keyLock{}
 		l.locks[key] = kl
 	}
 	kl.refs++
-	l.mu.Unlock()
+	return kl
+}
 
-	kl.mu.Lock()
-	return func() {
-		kl.mu.Unlock()
-		l.mu.Lock()
-		kl.refs--
-		if kl.refs == 0 {
-			delete(l.locks, key)
-		}
-		l.mu.Unlock()
+func (l *Library) releaseLock(key string, kl *keyLock) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	kl.refs--
+	if kl.refs == 0 {
+		delete(l.locks, key)
 	}
 }
 
-// tryLock takes a publication-key lock only when it is immediately available. The key-lock map's
-// own mutex stays held across TryLock so a zero-ref lock cannot be deleted between discovery and
-// acquisition. This is the tune-safe counterpart to lock: callers that may build, prune, or open
-// committed bytes wait; a readiness probe treats work still being staged as absent.
-func (l *Library) tryLock(key string) (func(), bool) {
-	l.mu.Lock()
-	kl := l.locks[key]
-	if kl == nil {
-		kl = &keyLock{}
-		l.locks[key] = kl
-	}
-	if !kl.mu.TryLock() {
-		l.mu.Unlock()
-		return nil, false
-	}
-	kl.refs++
-	l.mu.Unlock()
-
+func (l *Library) lock(key string) func() {
+	kl := l.retainLock(key)
+	kl.mu.Lock()
 	return func() {
 		kl.mu.Unlock()
-		l.mu.Lock()
-		kl.refs--
-		if kl.refs == 0 {
-			delete(l.locks, key)
-		}
-		l.mu.Unlock()
+		l.releaseLock(key, kl)
+	}
+}
+
+func (l *Library) readLock(key string) func() {
+	kl := l.retainLock(key)
+	kl.mu.RLock()
+	return func() {
+		kl.mu.RUnlock()
+		l.releaseLock(key, kl)
+	}
+}
+
+// tryReadLock permits ordinary playback readers while remaining non-blocking
+// behind publication or eviction, which exclusively own the committed bytes.
+func (l *Library) tryReadLock(key string) (func(), bool) {
+	kl := l.retainLock(key)
+	if !kl.mu.TryRLock() {
+		l.releaseLock(key, kl)
+		return nil, false
+	}
+	return func() {
+		kl.mu.RUnlock()
+		l.releaseLock(key, kl)
 	}, true
 }

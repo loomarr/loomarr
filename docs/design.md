@@ -2398,7 +2398,7 @@ not another encoder rung: it can recover both an unusable HEVC software encoder 
 copy while keeping the stable-format invariant above.
 
 All children entering a shared session use zero video decoder reordering, matching prepared
-packaging version 2. The existing bounded copy-start probe must positively observe zero
+packaging's no-reordering contract. The existing bounded copy-start probe must positively observe zero
 `has_b_frames`; missing or nonzero observations require the ordinary admitted video transcode.
 Session video transcodes and generated cards explicitly set zero B-frames. This prevents a
 card/prepared-to-live handoff from forcing the parent to rewrite copied decode timestamps.
@@ -2406,6 +2406,10 @@ card/prepared-to-live handoff from forcing the parent to rewrite copied decode t
 Raw/live sessions own one continuous AAC encoder and the final input pacing clock. Only a session whose initial prepared readiness lookup succeeds uses a one-time
 two-second parent startup burst. It covers the portable prepared rendition's keyframe interval so a
 mid-fragment tune does not wait at real-time speed for its first decodable copied frame.
+That prepared-start proof also bounds the parent transport probe to 32 KiB: the validated child
+already supplies the broadcast video and private PCM stream shape, so a short valid programme tail
+must not wait for its successor merely to fill a 256 KiB probe. Ordinary live starts retain the
+256 KiB probe. Neither path changes source timestamps, stream mapping or decoded-frame qualification.
 Ordinary live starts use a one-microsecond burst so short sources do not run ahead and then stall
 waiting for the next scheduled Airing. Finite live,
 prepared and fallback-card children decode selected audio to a private 48 kHz stereo SMPTE 302M
@@ -2559,13 +2563,27 @@ a private schedule. A tune resolves in this order:
    not uninterrupted delivery of all later media. Current-time retries acquire a fresh seek; they
    never reuse a prospective target or erase its elapsed offset. Existing admission, format checks
    and instrumentation apply to every prospective opening as they do to an ordinary opening.
-   Prepared packaging version 2 establishes a no-reordering video contract for continuous copied
+   Prepared packaging version 3 establishes a no-reordering video contract for continuous copied
    handoffs. The packager applies zero B-frames after either software or injected encoder arguments,
    then probes the local output before publication and requires exactly one video stream with
    explicitly zero decoder reordering. Missing, failed or nonzero observations reject preparation;
    the bounded probe uses ffprobe beside the configured ffmpeg, with no original-source access.
-   Version 1 publications cannot
-   satisfy a version 2 readiness binding and must be prepared again by the ordinary control plane.
+   Prepared random access is independent of HLS segment duration: consecutive video access points
+   are at most 200 ms apart, including the interval from the last access point to video EOF. The
+   packager applies this cadence after software or hardware encoder arguments while retaining the
+   rendition's HLS segment duration and bitrate policy. A bounded, streaming packet inspection of
+   the newly packaged local output verifies increasing video timestamps, an initial access point,
+   and the access-point/tail bound before publication. A missing or violated observation rejects
+   preparation. This background inspection never opens the original source on the tune path.
+   A seek in the last partial GOP may have no remaining video access point; the existing adjacent
+   Airing handoff supplies the next programme at its actual boundary. Arbitrarily trimmed Airings
+   obey the same 200 ms bound without duration-specific encodes or preceding-GOP replay. The
+   unchanged 500 ms decoded-frame qualification includes process startup and this boundary wait;
+   a short GOP alone is not certification. More frequent keyframes trade compression efficiency
+   for bounded random access, so declared-hardware evidence includes output size and picture-quality
+   comparison as well as startup and preparation capacity.
+   Version 1 and 2 publications cannot satisfy a version 3 readiness binding and must be prepared
+   again by the ordinary control plane.
    The prepared child preserves source timestamps, applies its Airing start relative to the shared
    session origin equally to audio and video, and ends at the absolute source offset plus remaining
    duration. For a positive seek that copies either stream, an output seek also discards copied
@@ -2708,6 +2726,11 @@ map, source revision, or publication is an immediate prepared miss. Tune never o
 source, contacts the media server, probes audio, hashes bytes, encodes, or waits for the scheduler.
 An MPEG-TS prepared hit may start only the video-copy/private-PCM child described above; an HLS
 prepared-only probe remains process-free.
+
+Publication readiness permits concurrent metadata lookups and asset opens: ordinary viewer reads
+must not turn a complete publication into a prepared miss. Publication and eviction retain exclusive
+ownership of that key; a readiness probe never waits behind either operation. Concurrent readers
+preserve the latest playback-use timestamp when populating the shared metadata cache.
 
 The accelerated packaging driver reuses the live playout encoder's device setup, hardware decode and
 upload, filter, preset, rate-control, and GOP builders. Its driver contract separates pre-input
@@ -3529,6 +3552,25 @@ the app-owned target to those contracts. Observed programme-boundary recording a
 resource sampling may expose small operational ports needed by this composition; private test
 access belongs in test-only files. Moving the target preserves real-route coverage, lifecycle
 ownership, and the existing admission, cleanup and certification requirements.
+Declared-profile qualification selects an explicit existing quality tier on the disposable target.
+Before generating its workload it runs the production encoder probe at that tier's highest live
+rendition, requires a successful measured encoder, and uses the resulting admission capacity;
+the fixture-only capacity override cannot substitute for measurement. Live encoding follows the
+production load-dependent quality ladder, while preparation uses the tier's canonical rendition.
+Generated inputs use the declared top-rung dimensions and frame rate. The report binds the tier,
+encoder, probe profile, canonical prepared profile and measured admission budget as bounded fields.
+The small software fixture mode remains a deterministic harness check, with no declared-hardware
+qualification claim. A probe or a successful small fixture run never certifies concurrent capacity.
+
+Prepared readiness on the declared-profile target is produced by the normal runtime resolver,
+persistent readiness index, Preparer and Planner under the shared foreground/background encode
+pool. It is observed through the ordinary status API rather than supplied as invented ready counts.
+The target keeps intentionally cold copy/transcode Channels outside its preparation cohort, and
+waits for the declared prepared cohort to converge before the transport workload. Independent
+programme truth is frozen from source/publication evidence before observing transported bytes.
+Restart, schedule changes, retention and foreground preemption require their own integrated
+evidence; the initial convergence pass alone does not certify those lifecycle clauses. Every
+background task is cancelled and joined before the target's owned directories are disposed.
 The target includes the production live HLS manager beside prepared delivery and live sessions,
 using the same observed process owner and an isolated scratch directory. An explicitly cold cohort
 must miss prepared-only delivery and reach the ordinary signed HLS remux. Terminal shutdown joins
@@ -3775,6 +3817,12 @@ When a programme observer’s context expires while its decoder completion is al
 observer reports `programme_observation_timeout` rather than a generic `decode_failed`. An already
 established asset-clock mismatch retains its specific failure. Neither outcome can qualify the
 run, and cancellation still closes and joins the owned decoder and transport.
+
+Raw burst observers record every viewer’s first decoded frame (or startup failure) before any
+metadata-validation subprocess starts. Validation remains mandatory for every successful observer,
+uses the original request deadline, and holds the viewers through resource sampling. This separates
+first-frame measurement from cross-viewer metadata-probe contention without moving the request clock,
+prestarting decoders, reducing concurrency or relaxing stream validity and latency requirements.
 
 Certification requires 100 or more configured Channels to complete mint and surf with bounded
 failure and resource growth; every admitted stream at measured capacity to yield valid media without

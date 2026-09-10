@@ -27,7 +27,7 @@ func TestFFmpegPackageArgsPinTheReusableRendition(t *testing.T) {
 	for _, want := range []string{
 		"-map 0:v:0", "-map 0:a:2", "-c:v libx264", "-profile:v high", "-level:v 4.1",
 		"-pix_fmt yuv420p", "-r 25", "-b:v 5000k", "-c:a aac", "-b:a 160k", "-ac 2",
-		"-force_key_frames expr:gte(t,n_forced*2.000)", "-hls_time 2.000",
+		"-force_key_frames expr:gte(t,n_forced*0.200)", "-hls_time 2.000",
 		"-hls_playlist_type vod", "-hls_segment_type fmp4", "-hls_fmp4_init_filename init.mp4",
 		filepath.Join(workspace, "segment-%06d.m4s"), filepath.Join(workspace, MediaManifestName),
 	} {
@@ -49,7 +49,7 @@ func TestFFmpegPackageArgsEncodeHEVCForCompatibleRendition(t *testing.T) {
 	}
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "-c:v libx265") || !strings.Contains(joined, "-tag:v hvc1") ||
-		!strings.Contains(joined, "-x265-params keyint=50:min-keyint=50:scenecut=0") || strings.Contains(joined, "-sc_threshold") {
+		!strings.Contains(joined, "-x265-params keyint=5:min-keyint=5:scenecut=0:open-gop=0") || strings.Contains(joined, "-sc_threshold") {
 		t.Fatalf("HEVC args do not emit hvc1-compatible libx265: %s", joined)
 	}
 }
@@ -83,7 +83,7 @@ func TestFFmpegPackagerUsesInjectedHardwareVideoArgs(t *testing.T) {
 	if !strings.Contains(joined, "-hwaccel cuda -probesize 256k -analyzeduration 500000 -i /media/movie.mkv") {
 		t.Fatalf("hardware input args are not before -i: %s", joined)
 	}
-	if !strings.Contains(joined, "-bf 3 -bf 0 -c:a aac") {
+	if !strings.Contains(joined, "-bf 3 -bf 0 -g 5 -keyint_min 5 -force_key_frames expr:gte(t,n_forced*0.200) -c:a aac") {
 		t.Fatalf("packaging contract did not override the injected reorder depth: %s", joined)
 	}
 }

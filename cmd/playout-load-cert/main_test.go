@@ -336,6 +336,21 @@ func TestCommandRejectsSharedInputsBeforeSyntheticSetup(t *testing.T) {
 	}
 }
 
+func TestDeclaredTierRejectsCapacityOverrideBeforeOpeningInputs(t *testing.T) {
+	for _, flags := range [][]string{
+		{"--synthetic", "--quality-tier", "balanced", "--synthetic-capacity", "12"},
+		{"--quality-tier", "balanced"},
+		{"--synthetic", "--quality-tier", "unknown"},
+	} {
+		stderr := &bytes.Buffer{}
+		args := append([]string{"--manifest", "does-not-exist"}, flags...)
+		code := run(context.Background(), args, func(string) string { return "" }, &bytes.Buffer{}, stderr)
+		if code != 2 || !strings.Contains(stderr.String(), "measured capacity") {
+			t.Fatalf("unsafe declared tier reached source setup: code=%d stderr=%q", code, stderr.String())
+		}
+	}
+}
+
 func TestWriteArtifactIsPrivate(t *testing.T) {
 	dir := t.TempDir()
 	output, err := openContainedOutput(dir, filepath.Join(dir, "nested", "report.json"))

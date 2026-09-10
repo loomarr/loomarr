@@ -34,6 +34,7 @@ type Fixture struct {
 	HeldProgressAfterAdmission                int
 	ResponsePadding                           map[string]string
 	MintRelativeURL                           string
+	Expiry                                    string
 	PreparedMissChannels                      map[string]bool
 	ZeroCostChannels                          map[string]bool
 	ContinuousRawChannels                     map[string]bool
@@ -55,6 +56,13 @@ type session struct {
 	faultOnce    sync.Once
 	continued    chan struct{}
 	continueOnce sync.Once
+}
+
+func (f *Fixture) expiry() string {
+	if f.Expiry != "" {
+		return f.Expiry
+	}
+	return "1"
 }
 
 func New(t testing.TB, channels int) *Fixture {
@@ -169,7 +177,7 @@ func (f *Fixture) mint(w http.ResponseWriter, r *http.Request) {
 	relativeURL := f.MintRelativeURL
 	f.mu.Unlock()
 	if relativeURL == "" {
-		relativeURL = "/v1/playout/hls/" + id + "/master.m3u8?exp=1&sig=signed-secret"
+		relativeURL = "/v1/playout/hls/" + id + "/master.m3u8?exp=" + f.expiry() + "&sig=signed-secret"
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"relativeUrl": relativeURL})
 	f.writePadding(w, r.URL.Path)
@@ -186,7 +194,7 @@ func (f *Fixture) hls(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		_, _ = io.WriteString(w, "#EXTM3U\n#EXTINF:2,\nsegment.m4s?exp=1&sig=signed-secret\n")
+		_, _ = io.WriteString(w, "#EXTM3U\n#EXTINF:2,\nsegment.m4s?exp="+f.expiry()+"&sig=signed-secret\n")
 		f.writePadding(w, r.URL.Path)
 		return
 	}

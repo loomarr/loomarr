@@ -792,3 +792,158 @@ func fixtureChannels(n int) []Channel {
 	}
 	return out
 }
+
+func TestRawBurstDefersMetadataUntilEveryViewerFinishesStartup(t *testing.T) {
+	fixture := playoutcertfixture.New(t, 2)
+	channels := fixtureChannels(2)
+	fixture.ContinuousRawChannels = map[string]bool{channels[0].ID: true, channels[1].ID: true}
+	gate := make(chan struct{})
+	waiting := make(chan int, 1)
+	validation := make(chan int, 2)
+	decoder := &playoutcertfixture.Decoder{FirstFrameGate: gate, FirstFrameGateCall: 2, FirstFrameWaiting: waiting}
+	validator := &playoutcertfixture.ShapeValidator[MediaShape]{Shapes: []MediaShape{{VideoStreams: 1, AudioStreams: 1}}, CallStarted: validation}
+	config := fixtureConfig(fixture, channels)
+	config.Decoder = decoder
+	config.Validator = validator
+	config = config.normalized()
+	endpoint, err := newEndpoint(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := make(chan []observation, 1)
+	go func() { results, _ := rawBurst(t.Context(), endpoint, config, []int{0, 1}); finished <- results }()
+	select {
+	case <-waiting:
+	case <-time.After(time.Second):
+		t.Fatal("second viewer did not reach frame gate")
+	}
+	early := false
+	select {
+	case <-validation:
+		early = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(gate)
+	results := <-finished
+	if early {
+		t.Error("metadata validator ran while another viewer was still awaiting its first frame")
+	}
+	if len(results) != 2 || results[0].class != "ok" || results[1].class != "ok" || validator.Calls() != 2 {
+		t.Fatalf("results=%+v validations=%d", results, validator.Calls())
+	}
+	active, started, stopped := decoder.Counts()
+	if active != 0 || started != 2 || stopped != 2 {
+		t.Fatalf("decoder lifecycle=%d/%d/%d", active, started, stopped)
+	}
+}
+
+func TestRawBurstStartupFailureReleasesPeers(t *testing.T) {
+	for _, kind := range []string{"open", "decode"} {
+		t.Run(kind, func(t *testing.T) {
+			count := 2
+			if kind == "open" {
+				count = 5
+			}
+			fixture := playoutcertfixture.New(t, count)
+			channels := fixtureChannels(count)
+			fixture.ContinuousRawChannels = map[string]bool{}
+			indexes := make([]int, count)
+			for i, ch := range channels {
+				fixture.ContinuousRawChannels[ch.ID] = true
+				indexes[i] = i
+			}
+			decoder := &playoutcertfixture.Decoder{}
+			wantClass := "http_503"
+			wantDecoders := 4
+			wantValidations := 4
+			if kind == "decode" {
+				decoder.FirstFrameFailCall = 2
+				wantClass = "decode_failed"
+				wantDecoders = 2
+				wantValidations = 1
+			}
+			validator := &playoutcertfixture.ShapeValidator[MediaShape]{Shapes: []MediaShape{{VideoStreams: 1, AudioStreams: 1}}}
+			config := fixtureConfig(fixture, channels)
+			config.Decoder = decoder
+			config.Validator = validator
+			config = config.normalized()
+			endpoint, err := newEndpoint(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan []observation, 1)
+			go func() { results, _ := rawBurst(t.Context(), endpoint, config, indexes); done <- results }()
+			select {
+			case results := <-done:
+				classes := make([]string, len(results))
+				for i, result := range results {
+					classes[i] = result.class
+				}
+				slices.Sort(classes)
+				want := []string{wantClass}
+				for range wantValidations {
+					want = append(want, "ok")
+				}
+				slices.Sort(want)
+				if !slices.Equal(classes, want) || validator.Calls() != wantValidations {
+					t.Fatalf("classes=%v validations=%d", classes, validator.Calls())
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("startup failure did not release barrier")
+			}
+			active, started, stopped := decoder.Counts()
+			if active != 0 || started != wantDecoders || stopped != wantDecoders {
+				t.Fatalf("decoder lifecycle=%d/%d/%d", active, started, stopped)
+			}
+		})
+	}
+}
+
+func TestRawBurstStartupBarrierPreservesCancellationAndOriginalDeadline(t *testing.T) {
+	for _, cancelEarly := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cancel-%t", cancelEarly), func(t *testing.T) {
+			fixture := playoutcertfixture.New(t, 2)
+			channels := fixtureChannels(2)
+			fixture.ContinuousRawChannels = map[string]bool{channels[0].ID: true, channels[1].ID: true}
+			gate := make(chan struct{})
+			waiting := make(chan int, 1)
+			decoder := &playoutcertfixture.Decoder{FirstFrameGate: gate, FirstFrameGateCall: 2, FirstFrameWaiting: waiting}
+			validator := &playoutcertfixture.ShapeValidator[MediaShape]{Shapes: []MediaShape{{VideoStreams: 1, AudioStreams: 1}}}
+			config := fixtureConfig(fixture, channels)
+			config.Decoder = decoder
+			config.Validator = validator
+			config.RequestTimeout = 150 * time.Millisecond
+			config = config.normalized()
+			endpoint, err := newEndpoint(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			done := make(chan []observation, 1)
+			go func() { results, _ := rawBurst(ctx, endpoint, config, []int{0, 1}); done <- results }()
+			select {
+			case <-waiting:
+			case <-time.After(time.Second):
+				t.Fatal("viewer did not reach startup gate")
+			}
+			if cancelEarly {
+				cancel()
+			}
+			select {
+			case results := <-done:
+				classes := []string{results[0].class, results[1].class}
+				slices.Sort(classes)
+				if !slices.Equal(classes, []string{"body_failed", "decode_failed"}) || validator.Calls() != 0 {
+					t.Fatalf("classes=%v validations=%d", classes, validator.Calls())
+				}
+			case <-time.After(time.Second):
+				t.Fatal("startup barrier ignored cancellation/deadline")
+			}
+			active, started, stopped := decoder.Counts()
+			if active != 0 || started != 2 || stopped != 2 {
+				t.Fatalf("decoder lifecycle=%d/%d/%d", active, started, stopped)
+			}
+		})
+	}
+}

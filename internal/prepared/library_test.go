@@ -83,6 +83,52 @@ func baseline(source string) prepared.Specification {
 	}
 }
 
+// Prepared-only tuning probes readiness while other viewers open the same immutable
+// publication. Ordinary reads must never make a committed publication look absent.
+func TestLibraryPeekRemainsReadyDuringConcurrentPlaybackReads(t *testing.T) {
+	for _, operation := range []string{"lookup", "open"} {
+		t.Run(operation, func(t *testing.T) {
+			lib, err := prepared.NewLibrary(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			spec := baseline("shared-playback-source")
+			pub, err := lib.Publish(t.Context(), spec, writeOne("segment.m4s", "media"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var readers sync.WaitGroup
+			for range 12 {
+				readers.Go(func() {
+					for range 1000 {
+						if operation == "lookup" {
+							if _, ok, err := lib.Lookup(spec); err != nil || !ok {
+								t.Errorf("playback lookup: ready=%t err=%v", ok, err)
+								return
+							}
+						} else {
+							asset, ok, err := lib.Open(pub.Key, "segment.m4s")
+							if err != nil || !ok {
+								t.Errorf("playback open: ready=%t err=%v", ok, err)
+								return
+							}
+							if err := asset.Content.Close(); err != nil {
+								t.Error(err)
+								return
+							}
+						}
+						if _, ok, err := lib.Peek(spec); err != nil || !ok {
+							t.Errorf("ready publication disappeared during %s: ready=%t err=%v", operation, ok, err)
+							return
+						}
+					}
+				})
+			}
+			readers.Wait()
+		})
+	}
+}
+
 func TestLibraryPublishMakesOneImmutablePublicationReusable(t *testing.T) {
 	t.Parallel()
 	lib, err := prepared.NewLibrary(t.TempDir())

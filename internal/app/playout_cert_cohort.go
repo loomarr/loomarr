@@ -86,9 +86,13 @@ func prepareGeneratedCertificationSources(ctx context.Context, config PlayoutCer
 	var ordinary, copyPaths [2]string
 	var ordinaryFormats [2]playout.MediaFormat
 	probe := playout.FFprobeSourceNextTo(ffmpeg)
+	var duration time.Duration
+	if config.QualityTier != "" {
+		duration = config.ProgrammeDuration
+	}
 	for variant := range ordinary {
 		ordinary[variant] = filepath.Join(root, fmt.Sprintf("source-%d.mp4", variant))
-		if err := generateSyntheticSource(ctx, ffmpeg, ordinary[variant], variant, syntheticSourceProfile{keyframeInterval: 25, audioChannels: 1}); err != nil {
+		if err := generateSyntheticSource(ctx, ffmpeg, ordinary[variant], variant, syntheticSourceProfile{keyframeInterval: config.sourceProfile().Framerate, audioChannels: 1, video: config.sourceProfile(), duration: duration}); err != nil {
 			return certificationSources{}, err
 		}
 		observed, err := probe(ctx, ordinary[variant])
@@ -111,7 +115,7 @@ func prepareGeneratedCertificationSources(ctx context.Context, config PlayoutCer
 			if copyPaths[0] == "" {
 				for variant := range copyPaths {
 					copyPaths[variant] = filepath.Join(root, fmt.Sprintf("copy-source-%d.mp4", variant))
-					if err := generateSyntheticSource(ctx, ffmpeg, copyPaths[variant], variant, syntheticSourceProfile{keyframeInterval: 1, audioChannels: 2}); err != nil {
+					if err := generateSyntheticSource(ctx, ffmpeg, copyPaths[variant], variant, syntheticSourceProfile{keyframeInterval: 1, audioChannels: 2, video: config.sourceProfile(), duration: duration}); err != nil {
 						return certificationSources{}, err
 					}
 					observed, err := probe(ctx, copyPaths[variant])

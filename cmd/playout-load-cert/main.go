@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/app"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playoutcert"
 )
 
@@ -44,6 +45,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	var faultNames repeatedFlag
 	flags.Var(&faultNames, "fault-profile", "selected fault profile (repeatable)")
 	syntheticCapacity := flags.Int("synthetic-capacity", 4, "isolated target transcode capacity (1..64)")
+	qualityTier := flags.String("quality-tier", "", "measure an isolated target at an existing production tier: efficient, balanced, quality")
 	syntheticGrace := flags.Duration("synthetic-grace", 2*time.Second, "isolated target warm-session grace")
 	syntheticProgramme := flags.Duration("synthetic-programme-duration", 6*time.Second, "isolated recurring programme duration (2s..30s)")
 	remote := flags.Bool("remote-ok", false, "acknowledge that the named origin is not loopback")
@@ -77,6 +79,13 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 2
 	}
 	isolatedMode := *synthetic || operatorSelected
+	capacitySelected := false
+	flags.Visit(func(f *flag.Flag) { capacitySelected = capacitySelected || f.Name == "synthetic-capacity" })
+	if *qualityTier != "" && (!isolatedMode || capacitySelected ||
+		(*qualityTier != "efficient" && *qualityTier != "balanced" && *qualityTier != "quality")) {
+		_, _ = fmt.Fprintln(stderr, "playout-load-cert: quality tier requires an isolated target and measured capacity")
+		return 2
+	}
 	faultProfiles, err := playoutcert.ParseFaultProfiles(faultNames)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "playout-load-cert: invalid fault profile selection")
@@ -150,7 +159,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	if isolatedMode {
 		isolated, err = app.NewPlayoutCertificationTarget(runCtx, app.PlayoutCertificationConfig{
 			Scope: controllerScope, Channels: channels, FFmpeg: *ffmpeg, Capacity: *syntheticCapacity, Grace: *syntheticGrace, ProgrammeDuration: *syntheticProgramme,
-			Cohort: cohort,
+			Cohort: cohort, QualityTier: playout.Tier(*qualityTier),
 		})
 		if err != nil {
 			_, _ = fmt.Fprintln(stderr, "playout-load-cert: isolated target setup failed")
@@ -177,6 +186,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	if isolated != nil {
 		config.WarmGrace = *syntheticGrace
 		config.ProgrammeEvidence = isolated.ProgrammeEvidence()
+		config.Profile = isolated.ProfileEvidence()
 		config.FaultController = isolated
 	}
 	var isolatedTarget isolatedCloser

@@ -23,7 +23,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/buildinfo"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playoutcert"
@@ -42,6 +44,7 @@ type PlayoutCertificationConfig struct {
 	Grace             time.Duration
 	ProgrammeDuration time.Duration
 	Cohort            *playoutcert.OperatorCohort
+	QualityTier       playout.Tier
 }
 
 type PlayoutCertificationTarget struct {
@@ -60,6 +63,12 @@ type PlayoutCertificationTarget struct {
 	programmeEvidence *syntheticProgrammeEvidence
 	lifecycle         syntheticLifecycle
 	scope             string
+	encoder           playout.Encoder
+	profileEvidence   *playoutcert.ProfileEvidence
+	encodePool        *media.EncodePool
+	preparation       *prepared.Planner
+	preparationCancel context.CancelFunc
+	preparationDone   chan struct{}
 	parentsMu         sync.Mutex
 	// stopping closes registration admission before either WaitGroup starts waiting.
 	stopping             bool
@@ -87,6 +96,12 @@ type syntheticChild struct {
 }
 
 func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificationConfig) (*PlayoutCertificationTarget, error) {
+	if err := config.validateTier(); err != nil {
+		return nil, err
+	}
+	if config.QualityTier != "" && (certificationBuildRevision() == "" || buildinfo.Get().Dirty) {
+		return nil, errors.New("declared qualification requires an identifiable clean build")
+	}
 	if len(config.Channels) == 0 || len(config.Channels) > 1000 {
 		return nil, errors.New("synthetic target requires 1..1000 Channels")
 	}
@@ -106,6 +121,7 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	if ffmpeg == "" {
 		ffmpeg = "ffmpeg"
 	}
+	config.FFmpeg = ffmpeg
 	if _, err := exec.LookPath(ffmpeg); err != nil {
 		return nil, errors.New("synthetic target requires ffmpeg")
 	}
@@ -132,6 +148,14 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 		return fail(err)
 	}
 	target.store = st
+	logger := slog.New(slog.DiscardHandler)
+	processManager := diagnostics.NewProcessManager(st, nil, diagnostics.ProcessOptions{
+		OutputDir: filepath.Join(root, "diagnostics"), InstanceID: "synthetic-cert",
+	})
+	target.diagnostics = processManager
+	if err := target.measureProfile(ctx, &config, ffmpeg); err != nil {
+		return fail(err)
+	}
 	for index, channel := range config.Channels {
 		row := store.Channel{Channel: schedule.Channel{ID: channel.ID, Name: fmt.Sprintf("Synthetic %03d", index+1), Number: index + 1, Status: schedule.StatusLive}}
 		row.Policy.Playout = &schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal}
@@ -151,55 +175,58 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	if err != nil {
 		return fail(err)
 	}
-	rendition := prepared.RenditionContract{
-		VideoCodec: "h264", VideoProfile: "high", VideoLevel: "4.1", PixelFormat: "yuv420p", HDR: "sdr",
-		AudioCodec: "aac", AudioLayout: "stereo", Width: 320, Height: 180, FrameRate: 25,
-		VideoBitrateKbps: 600, AudioBitrateKbps: 96, SegmentDurationMS: 1000, PackagingVersion: prepared.CurrentPackagingVersion,
-	}
+	rendition := config.rendition()
 	preparedSpecs := make(map[string][2]prepared.Specification)
 	preparedIndexes := playoutcert.PreparedChannelIndexes(config.Channels)
 	packager := prepared.NewFFmpegPackager(ffmpeg)
-	type sourceTemplate struct {
-		publication prepared.Publication
-		truth       map[string]syntheticAssetTruth
+	if config.QualityTier != "" {
+		packager = prepared.NewFFmpegPackager(ffmpeg, func(contract prepared.RenditionContract) (prepared.VideoPlan, error) {
+			return playout.PreparedVideoArgs(target.encoder, contract)
+		}).WithDiagnostics(processManager)
 	}
-	templates := make(map[string]sourceTemplate)
-	for _, index := range preparedIndexes {
-		channel := config.Channels[index]
-		var specs [2]prepared.Specification
-		var truths [2]map[string]syntheticAssetTruth
-		for variant, source := range sources.paths[channel.ID] {
-			spec := syntheticPreparedSpecification(channel.ID, variant, rendition)
-			cached, exists := templates[source]
-			publication, publishErr := library.Publish(ctx, spec, func(buildCtx context.Context, workspace string) (prepared.Output, error) {
-				if !exists {
-					return packager.Package(buildCtx, workspace, prepared.LocalInput(source), 0, rendition)
-				}
-				for _, name := range cached.publication.Files {
-					from, to := filepath.Join(cached.publication.Directory, name), filepath.Join(workspace, name)
-					if err := os.Link(from, to); err != nil {
-						if err := copyRegularFile(from, to); err != nil {
-							return prepared.Output{}, err
+	if config.QualityTier == "" {
+		type sourceTemplate struct {
+			publication prepared.Publication
+			truth       map[string]syntheticAssetTruth
+		}
+		templates := make(map[string]sourceTemplate)
+		for _, index := range preparedIndexes {
+			channel := config.Channels[index]
+			var specs [2]prepared.Specification
+			var truths [2]map[string]syntheticAssetTruth
+			for variant, source := range sources.paths[channel.ID] {
+				spec := syntheticPreparedSpecification(channel.ID, variant, rendition)
+				cached, exists := templates[source]
+				publication, publishErr := library.Publish(ctx, spec, func(buildCtx context.Context, workspace string) (prepared.Output, error) {
+					if !exists {
+						return packager.Package(buildCtx, workspace, prepared.LocalInput(source), 0, rendition)
+					}
+					for _, name := range cached.publication.Files {
+						from, to := filepath.Join(cached.publication.Directory, name), filepath.Join(workspace, name)
+						if err := os.Link(from, to); err != nil {
+							if err := copyRegularFile(from, to); err != nil {
+								return prepared.Output{}, err
+							}
 						}
 					}
+					return prepared.Output{Files: append([]string(nil), cached.publication.Files...)}, nil
+				})
+				if publishErr != nil {
+					return fail(publishErr)
 				}
-				return prepared.Output{Files: append([]string(nil), cached.publication.Files...)}, nil
-			})
-			if publishErr != nil {
-				return fail(publishErr)
-			}
-			if !exists {
-				truth, err := readCertificationPublicationTruth(ctx, ffmpeg, publication)
-				if err != nil {
-					return fail(err)
+				if !exists {
+					truth, err := readCertificationPublicationTruth(ctx, ffmpeg, publication)
+					if err != nil {
+						return fail(err)
+					}
+					cached = sourceTemplate{publication: publication, truth: truth}
+					templates[source] = cached
 				}
-				cached = sourceTemplate{publication: publication, truth: truth}
-				templates[source] = cached
+				specs[variant], truths[variant] = spec, cached.truth
 			}
-			specs[variant], truths[variant] = spec, cached.truth
+			preparedSpecs[channel.ID] = specs
+			target.programmeEvidence.assets[channel.ID] = truths
 		}
-		preparedSpecs[channel.ID] = specs
-		target.programmeEvidence.assets[channel.ID] = truths
 	}
 
 	admin, err := randomCredential()
@@ -218,27 +245,37 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	target.listener = listener
 	target.BaseURL = "http://" + listener.Addr().String()
 
-	logger := slog.New(slog.DiscardHandler)
-	processManager := diagnostics.NewProcessManager(st, nil, diagnostics.ProcessOptions{
-		OutputDir: filepath.Join(root, "diagnostics"), InstanceID: "synthetic-cert",
-	})
-	target.diagnostics = processManager
 	processLog := diagnostics.NewProcessLog(st, diagnostics.ProcessReadOptions{OutputDir: filepath.Join(root, "diagnostics")})
 	scheduleEpoch := time.Now().UTC().Add(-config.ProgrammeDuration / 2)
 	programmeSchedule := syntheticProgrammeSchedule{epoch: scheduleEpoch, duration: config.ProgrammeDuration}
-	preparedResolver := syntheticPreparedResolver{specs: preparedSpecs, schedule: programmeSchedule}
+	var preparedResolver playout.PreparedResolver = syntheticPreparedResolver{specs: preparedSpecs, schedule: programmeSchedule}
+	if config.QualityTier != "" {
+		preparedResolver, programmeSchedule, err = target.prepareDeclared(ctx, config, sources, library, packager, programmeSchedule, preparedIndexes)
+		if err != nil {
+			return fail(err)
+		}
+	}
 	preparedCount := len(preparedIndexes)
 	preparedStatus := syntheticPreparedStatus{count: preparedCount}
 	preparedOrigin := playout.NewPreparedOrigin(library, preparedResolver)
 	target.programmeEvidence.schedule = programmeSchedule
 	target.programmeEvidence.origin = preparedOrigin
-	for channel := range preparedSpecs {
-		target.programmeEvidence.prepared[channel] = true
+	for _, index := range preparedIndexes {
+		target.programmeEvidence.prepared[config.Channels[index].ID] = true
 	}
 	preparedBlock := preparedOrigin.MPEGTSBlockSource(ffmpeg, logger, processManager)
 	liveResolver := syntheticLiveResolver{channels: st, sources: sources.paths, formats: sources.formats, tracks: sources.tracks, schedule: programmeSchedule, copyStart: playout.FFprobeCopyStartNextTo(ffmpeg, processManager)}
 
 	var manager *playout.Manager
+	if config.QualityTier != "" {
+		liveResolver.profile = func() playout.Profile {
+			active := 0
+			if manager != nil {
+				active = manager.ActiveCount()
+			}
+			return playout.Resolve(config.QualityTier, target.encoder, config.Capacity, active)
+		}
+	}
 	spawner := func(spawnCtx context.Context, channelID string, plan playout.EncodePlan) (*playout.Process, error) {
 		sourceID := target.nextSourceID.Add(1)
 		var process *playout.Process
@@ -282,11 +319,15 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	// remains inside the target root, which Close disposes after final sampling.
 	origin := playout.NewOrigin(playout.OriginDependencies{Prepared: preparedOrigin, LiveSessions: manager, LiveHLS: liveHLS, Observer: recorder})
 	target.origin = origin
+	var preparedObserver api.PreparedObserver = preparedStatus
+	if target.preparation != nil {
+		preparedObserver = target.preparation
+	}
 	handler := api.Router(logger, api.Options{
 		Store: st, Auth: api.NewTokenAuthorizer(admin), Log: logger, Metrics: recorder,
 		PlayoutSecret: func() string { return device }, Playout: origin, PlayoutObserver: manager,
-		PreparedObserver: preparedStatus,
-		PlayoutResolver:  liveResolver,
+		PreparedObserver: preparedObserver, EncodePool: target.encodePool,
+		PlayoutResolver: liveResolver,
 		PlayoutEncoder: func(encodeCtx context.Context, args []string, progress func(playout.Progress)) (*playout.Process, error) {
 			spec, _ := diagnostics.ProcessSpecFromContext(encodeCtx)
 			process, spawnErr := playout.StartObserved(encodeCtx, ffmpeg, args, logger, progress, processManager, spec)
@@ -314,6 +355,11 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 		// target still has to return its linker-stamped Loomarr revision.
 		if r.URL.Path == "/v1/system/version" && r.Method == http.MethodGet && r.Header.Get("Authorization") == "Bearer "+admin {
 			w.Header().Set("Content-Type", "application/json")
+			if config.QualityTier != "" {
+				info := buildinfo.Get()
+				_ = json.NewEncoder(w).Encode(map[string]any{"version": info.Version, "commit": certificationBuildRevision(), "ready": true})
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"version": "synthetic", "commit": strings.Repeat("0", 40), "ready": true,
 			})
@@ -323,6 +369,7 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	})
 	target.server = &http.Server{Handler: syntheticHandler, ReadHeaderTimeout: 5 * time.Second}
 	target.handler = syntheticHandler
+	target.startPreparation(ctx)
 	go func() { _ = target.server.Serve(listener) }()
 	return target, nil
 }
@@ -516,6 +563,10 @@ func (t *PlayoutCertificationTarget) Shutdown(ctx context.Context, request playo
 }
 
 func (t *PlayoutCertificationTarget) stop() (playoutcert.ShutdownReceipt, error) {
+	if t.preparationCancel != nil {
+		t.preparationCancel()
+		<-t.preparationDone
+	}
 	if t.origin != nil {
 		t.origin.Quiesce()
 	}
@@ -742,6 +793,7 @@ func (r syntheticPreparedResolver) currentTime() time.Time {
 type syntheticProgrammeSchedule struct {
 	epoch    time.Time
 	duration time.Duration
+	items    map[string][2]string
 }
 
 func (s syntheticProgrammeSchedule) ordinal(now time.Time) int64 {
@@ -755,6 +807,11 @@ func (s syntheticProgrammeSchedule) airings(now time.Time, channelID string) (pl
 	ordinal := s.ordinal(now)
 	started := s.epoch.Add(time.Duration(ordinal) * s.duration)
 	makeIdentity := func(index int64, start time.Time) playout.AiringIdentity {
+		if s.items != nil {
+			broadcast := s.broadcast(channelID, index)
+			return playout.AiringIdentity{StartedAt: broadcast.Start, EndsAt: broadcast.Stop, Kind: broadcast.Kind,
+				ContentID: broadcast.ContentIdentity(), ScheduleBlockID: broadcast.ScheduleBlockID(channelID)}
+		}
 		return playout.AiringIdentity{
 			StartedAt: start, EndsAt: start.Add(s.duration), Kind: schedule.SlotProgram,
 			ContentID:       fmt.Sprintf("%s-programme-%d", channelID, index%2),
@@ -762,6 +819,11 @@ func (s syntheticProgrammeSchedule) airings(now time.Time, channelID string) (pl
 		}
 	}
 	return makeIdentity(ordinal, started), makeIdentity(ordinal+1, started.Add(s.duration)), now.Sub(started)
+}
+
+func (s syntheticProgrammeSchedule) broadcast(channel string, ordinal int64) playout.Broadcast {
+	start := s.epoch.Add(time.Duration(ordinal) * s.duration)
+	return playout.Broadcast{Kind: schedule.SlotProgram, LibraryItemID: s.items[channel][ordinal%2], Start: start, Stop: start.Add(s.duration), RuntimeMs: s.duration.Milliseconds()}
 }
 
 type syntheticLiveResolver struct {
@@ -772,6 +834,7 @@ type syntheticLiveResolver struct {
 	tracks    map[string]playout.MediaTracks
 	schedule  syntheticProgrammeSchedule
 	now       func() time.Time
+	profile   func() playout.Profile
 }
 
 func (r syntheticLiveResolver) AiringNow(_ context.Context, channelID string) (playout.Airing, string, error) {
@@ -789,14 +852,11 @@ func (r syntheticLiveResolver) currentTime() time.Time {
 	}
 	return time.Now().UTC()
 }
-func (syntheticLiveResolver) Profile(context.Context) playout.Profile {
-	p := playout.DefaultProfile()
-	p.Width = 320
-	p.Height = 180
-	p.VideoBitrate = 600
-	p.AudioBitrate = 96
-	p.Encoder = playout.EncoderSoftware
-	return p
+func (r syntheticLiveResolver) Profile(context.Context) playout.Profile {
+	if r.profile != nil {
+		return r.profile()
+	}
+	return certificationFixtureProfile()
 }
 func (syntheticLiveResolver) AudioTrackFor(context.Context, string, string, string) int { return 0 }
 func (r syntheticLiveResolver) Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error) {
@@ -914,6 +974,8 @@ func (s syntheticProgrammeSchedule) variant(now time.Time) int {
 type syntheticSourceProfile struct {
 	keyframeInterval int
 	audioChannels    int
+	video            playout.Profile
+	duration         time.Duration
 }
 
 func generateSyntheticSource(ctx context.Context, ffmpeg, output string, variant int, profile syntheticSourceProfile) error {
@@ -921,8 +983,17 @@ func generateSyntheticSource(ctx context.Context, ffmpeg, output string, variant
 	if variant == 1 {
 		colour, frequency = "white", "880"
 	}
-	filter := fmt.Sprintf("testsrc2=size=320x180:rate=25:duration=60,drawbox=x=0:y=0:w=64:h=64:color=%s:t=fill", colour)
-	cmd := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", filter, "-f", "lavfi", "-i", "sine=frequency="+frequency+":sample_rate=48000:duration=60", "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", fmt.Sprint(profile.keyframeInterval), "-c:a", "aac", "-ac", fmt.Sprint(profile.audioChannels), "-b:a", "96k", output)
+	video := profile.video
+	if video.Width == 0 {
+		video = certificationFixtureProfile()
+	}
+	duration := profile.duration
+	if duration <= 0 {
+		duration = time.Minute
+	}
+	seconds := fmt.Sprintf("%.3f", duration.Seconds())
+	filter := fmt.Sprintf("testsrc2=size=%dx%d:rate=%d:duration=%s,drawbox=x=0:y=0:w=64:h=64:color=%s:t=fill", video.Width, video.Height, video.Framerate, seconds, colour)
+	cmd := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", filter, "-f", "lavfi", "-i", "sine=frequency="+frequency+":sample_rate=48000:duration="+seconds, "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", fmt.Sprint(profile.keyframeInterval), "-c:a", "aac", "-ac", fmt.Sprint(profile.audioChannels), "-b:a", "96k", output)
 	if err := cmd.Run(); err != nil {
 		return errors.New("generate deterministic synthetic media")
 	}
