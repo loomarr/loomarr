@@ -46,6 +46,24 @@ tag evidence, reject a holiday-named series whose episodes lack evidence, and ke
 distinct from pending acquisition. The minimal seasonal test failed on the accepted base with
 `Reason:out_of_season` for the entire series; the full API journey failed with `status = empty`.
 
+The separation acceptance extension reuses those same fixtures and approval boundary. A mixed
+named-member pool has two 22-minute episodes per series, a two-hour episode repeat window,
+44-minute series gap and one-episode block limit. Every concrete episode must appear exactly once,
+and the persisted cycle and preview must honor both spacing rules through the last-to-first wrap
+without relaxation. A sparse single-show control retains its explicit season exclusions and
+records the existing 48-hour to 24-hour repeat-window relaxation; its actual 44-minute cycle is
+not evidence that either requested repeat window is attainable. The genre/era movie variant's
+two one-hour movies satisfy an explicit two-hour movie repeat window without relaxation; the
+wrong-genre and out-of-era movies remain excluded. Submitted policies remain intact while the
+reconciler's applied notes explain any shortfall.
+
+Eligibility controls change one relevant source fact or explicit season limit on a fresh copy of
+each reference fixture. The previously excluded item must then reach the schedule. These controls
+show that the original negative was present and eligible for binding, rather than absent from the
+fixture. They do not change production policy, invent named-block membership, or certify model
+interpretation. Known duplicate, missing, adjacent-series and cycle-wrap defects also challenge
+the separation assertions directly.
+
 ## Reproduction and remaining acceptance
 
 Capture machine-readable test events through Go's existing harness; do not create another evaluator:
@@ -64,6 +82,6 @@ Current evaluator scorer/prompt/tool versions and all existing full-corpus gates
 
 This first integration contribution does not close #1103 by itself. Remaining release acceptance
 includes reviewed complete named-block hard-negative coverage, a complete mapping of generation
-and schedule assertions to all five journeys, causal negative evidence for every new assertion,
-repeat/separation and applicable filler expectations, and exact-build scheduled playback alongside
+and schedule assertions to all five journeys, remaining causal negative and applicable filler
+expectations, and exact-build scheduled playback alongside
 the full provider and installed-client qualification. Do not call a fixture PASS a beta release PASS.
