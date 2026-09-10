@@ -1397,9 +1397,10 @@ model-tool and membership-resolution operation budgets remain separate and uncha
 Synthesized reference transcript entries do not become model operations; their real Catalog work
 remains in the independent Catalog operation ledger. Unexecuted final output is not a dispatched
 operation; its inference call and usage remain counted. Scorecard schema 13 separates this attribution
-from older transcript-only counts. Validated model title
-hypotheses may prioritize anchors for lookup only when the source independently contains that name;
-reordering cannot add a member, choose an ambiguous identity, or change source authority.
+from older transcript-only counts. Exact source anchors that the operator directly names consume the
+bounded prefetch slots first. Validated model title hypotheses may then prioritize remaining anchors
+for lookup only when the source independently contains that name; reordering cannot add a member,
+choose an ambiguous identity, or change source authority.
 Absent or ambiguous sources preserve named-set uncertainty; transport failures remain retrieval
 failures. Existing operator-supplied pages keep their site-neutral lookup behavior.
 

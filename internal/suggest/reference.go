@@ -198,7 +198,7 @@ func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent,
 
 	byKey := make(map[provision.Key]catalog.Candidate)
 	messages := make([]llm.Message, 0, len(titles)*2)
-	for index, title := range prioritizedReferenceTitles(titles, hints) {
+	for index, title := range prioritizedReferenceTitles(*intent, titles, hints) {
 		candidates, searchErr := s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
 		if searchErr != nil {
 			return referenceGrounding{}, true, fmt.Errorf("search reference title %q: %w", title, searchErr)
@@ -769,8 +769,13 @@ func namedBlockLabel(intent Intent) string {
 	return ""
 }
 
-func prioritizedReferenceTitles(titles, hints []string) []string {
+func prioritizedReferenceTitles(intent Intent, titles, hints []string) []string {
 	ordered := make([]string, 0, len(titles))
+	for _, title := range titles {
+		if requiredIntentNamesTitle(intent, title) {
+			ordered = append(ordered, title)
+		}
+	}
 	for _, hint := range boundedReferenceTitles(hints) {
 		for _, title := range titles {
 			if sameExactTitle(title, hint) {

@@ -1990,7 +1990,11 @@ func TestSuggest_RequiredDescriptionMembersSurviveEmptyModelSelection(t *testing
 	corpus := &catalogfixture.Corpus{Candidates: candidates}
 	references := &testkit.ReferenceResolver{DiscoveryEvidence: reference.Evidence{
 		URL: "https://example.test/tgif", Title: "TGIF",
-		TitleAnchors: []string{"Full House", "Family Matters", "Step by Step"},
+		TitleAnchors: []string{
+			"Camp Wilder", "Boy Meets World", "Hangin' with Mr. Cooper", "Sister, Sister",
+			"Sabrina the Teenage Witch", "Clueless", "Teen Angel", "You Wish",
+			"Full House", "Family Matters", "Step by Step",
+		},
 	}}
 	model := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{
