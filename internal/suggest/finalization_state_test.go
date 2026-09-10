@@ -9,10 +9,64 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
+
+func TestSuggest_ReferenceInterpretationPhaseSurvivesRepairThenEnds(t *testing.T) {
+	for _, dated := range []bool{false, true} {
+		name, meaning := "none", dateMeaningNone()
+		intent := suggest.Intent{Description: "Use https://lineups.example/friday"}
+		if dated {
+			name, meaning = "dated", dateMeaning1990()
+			intent.Description = "1990s films from https://lineups.example/friday"
+		}
+		t.Run(name, func(t *testing.T) {
+			bootstrap, err := json.Marshal(map[string]any{"dateMeaning": meaning, "picks": []any{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			model := testkit.NewLLM(testkit.FinalResponse(""), testkit.FinalResponse(string(bootstrap)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
+			references := &testkit.ReferenceResolver{Evidence: reference.Evidence{TitleAnchors: []string{"The Matrix"}}}
+			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+			const prefix = "This is the reference intent-interpretation phase."
+			model.OnChat = func() {
+				if model.Calls == 1 || model.Calls == 2 {
+					notes := 0
+					for _, m := range model.LastMessages {
+						if strings.HasPrefix(m.Content, prefix) {
+							notes++
+						}
+					}
+					last := model.LastMessages[len(model.LastMessages)-1]
+					if notes != 1 || !strings.HasPrefix(last.Content, prefix) || last.Role != llm.User {
+						t.Errorf("interpretation request %d has %d phase notes; last=%s", model.Calls, notes, last.Role)
+					}
+					if len(model.LastOpts.Tools) != 0 || !model.LastOpts.JSONMode {
+						t.Error("interpretation enabled tools or omitted JSON mode")
+					}
+				}
+				if model.Calls < 2 && (len(references.Calls()) != 0 || len(corpus.Searches()) != 0) {
+					t.Error("invalid interpretation dispatched source work")
+				}
+			}
+			proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), intent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if model.Calls != 3 || len(proposal.Lineup) != 1 || len(references.Calls()) != 1 {
+				t.Fatalf("calls=%d lineup=%v sources=%d", model.Calls, proposal.Lineup, len(references.Calls()))
+			}
+			for _, m := range model.LastMessages {
+				if strings.HasPrefix(m.Content, prefix) {
+					t.Fatal("interpretation note leaked into evidence-backed finalization")
+				}
+			}
+		})
+	}
+}
 
 // A grounded tool result must reach the finalizer with the complete accepted
 // interpretation. The live failure returned empty turns or lost interval anchor

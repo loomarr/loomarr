@@ -120,6 +120,7 @@ func (r Response) WantsTools() bool { return len(r.ToolCalls) > 0 }
 
 // ChatOptions tune a single Chat call.
 type ChatOptions struct {
+	Profile  ChatProfile  // zero preserves the caller's existing sampling
 	Tools    []ToolSchema // tools the model may call this turn
 	JSONMode bool         // force the final content to be valid JSON (§8 output contract)
 	// Sampling controls (provider-neutral). Pointers so "unset" is distinct from a

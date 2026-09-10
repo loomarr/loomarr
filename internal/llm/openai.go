@@ -149,6 +149,11 @@ type openaiChatReq struct {
 	TopP           *float64             `json:"top_p,omitempty"`
 	MaxTokens      int                  `json:"max_tokens,omitempty"`
 	Provider       *openRouterChatRoute `json:"provider,omitempty"`
+	Reasoning      *openRouterReasoning `json:"reasoning,omitempty"`
+}
+
+type openRouterReasoning struct {
+	Effort string `json:"effort"`
 }
 
 type openRouterChatRoute struct {
@@ -244,14 +249,18 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	if err != nil {
 		return Response{}, err
 	}
+	sampling := ResolveChatSampling(o.provider, o.model, opts)
 	req := openaiChatReq{
 		Model:       o.model,
 		Messages:    wireMessages,
 		Tools:       wireTools,
-		Temperature: opts.Temperature,
-		TopP:        opts.TopP,
+		Temperature: sampling.Temperature,
+		TopP:        sampling.TopP,
 		MaxTokens:   opts.MaxTokens,
 		Provider:    o.route,
+	}
+	if sampling.ReasoningEffort != "" {
+		req.Reasoning = &openRouterReasoning{Effort: sampling.ReasoningEffort}
 	}
 	if opts.JSONMode {
 		// Best-effort JSON hint (lenient): a provider that ignores it is fine — the

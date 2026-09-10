@@ -59,7 +59,8 @@ const groundedMaxTokens = 2048
 // on a themed intent — correct genres, but the call landed in content, not tool_calls.)
 func chatOpts(tools []llm.ToolSchema, temp float64) llm.ChatOptions {
 	return llm.ChatOptions{
-		Tools: tools, JSONMode: len(tools) == 0, Temperature: &temp, MaxTokens: groundedMaxTokens,
+		Profile: llm.GroundedSelection,
+		Tools:   tools, JSONMode: len(tools) == 0, Temperature: &temp, MaxTokens: groundedMaxTokens,
 	}
 }
 
@@ -418,6 +419,9 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		reportProgress(ctx, PhaseReasoning, round+1)
 		ledger.generationTurns++
 		requestMessages := *messages
+		if sources.hasReference && *acceptedMeaning == nil {
+			requestMessages = referenceInterpretationMessages(requestMessages)
+		}
 		if len(tools) == 0 {
 			var err error
 			requestMessages, err = finalizationMessages(requestMessages, *acceptedMeaning)
