@@ -6,7 +6,8 @@ for the August pin update. It does not establish final beta.5 artifact acceptanc
 The July build's original dependency cache had expired. The replacement remains on BtbN's
 retained monthly **n8.1** line, preserving the concat compatibility requirement in `Dockerfile`.
 The exact binaries, FFmpeg source, build recipe, original dependency cache and build logs have
-been retained in the maintainer's release-evidence archive. Public distribution is still pending.
+been retained in the maintainer's release-evidence archive. The source materials are now [publicly distributed](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-08-31);
+[asset URLs and SHA256 digests](source-distribution-2026-08-31.json) bind the publication to the pins.
 
 | Artifact | Immutable identity | SHA256 |
 | --- | --- | --- |
@@ -39,11 +40,16 @@ Cached build stages do not expose the complete resolved compiler graph. In parti
 retained Cargo.lock predates the recipe's `cargo update cc`; the exact updated build-helper version
 is unproven. This record does not claim bit-for-bit upstream build reproducibility.
 
-## Remaining release work
+## Source distribution and remaining release work
 
-Retaining the original cache is evidence preservation, not a completed source package. Release
-engineering must finish the bundled-source/license inventory, publish the corresponding source
-materials at a stable public location, and bind that location to the release. The unchanged full
-`make test-ffmpeg` gate must pass on the final release commit with the exact pins, alongside both
-release-platform image notice and SBOM checks. The yt-dlp pins remain unchanged and their source
-materials remain part of #661. No separate external reviewer sign-off is required.
+The source-only release contains the original FFmpeg download cache, exact FFmpeg and BtbN source,
+yt-dlp source and retained runtime/dependency sources, Cargo crates and license texts. All 490
+inventoried source/license files were hash-verified during assembly; GitHub's uploaded-asset hashes
+and sizes match the local publication. Public README, checksums and inventory downloads were
+verified without authentication. Supplemental optional/build/test sources do not assert linkage.
+
+The unchanged full `make test-ffmpeg` passed for Linux amd64 and arm64 using source-pin commit
+`c4c8b6a4` and the exact August archives. Final release-commit, image notice and SBOM checks remain,
+as does binding the application image to these public sources in the application release notes.
+The source-only release publishes no application binary and does not certify beta.5. No separate
+external reviewer sign-off is required.
