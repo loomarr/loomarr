@@ -215,7 +215,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the single image reference used by Postgres testcontainers and the Make pre-pull that runs before those tests.
 - **`testkit/recordfixture`**
   A shared generic call recorder for isolated tests without depending on application packages.
-- **`textmatch`** · 3 importers
+- **`textmatch`** · 2 importers
   Owns deterministic, Unicode-aware whole-word phrase matching.
 - **`web`** · 1 importer
   Embeds the built SPA and serves it same-origin at / (main doc §12).
@@ -245,7 +245,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 18 importers · → `holidayvocab`, `provision`, `textmatch`
+- **`schedule`** · 18 importers · → `holidayvocab`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 **Layer 3**
