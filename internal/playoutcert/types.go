@@ -337,7 +337,7 @@ type ProgrammeBoundaryObservation struct {
 }
 
 // HeldContinuityObservation is bounded viewer-side evidence collected after
-// overload admission. It makes no producer-liveness claim behind buffers.
+// overload admission or a parent/child fault. It makes no producer-liveness claim behind buffers.
 type HeldContinuityObservation struct {
 	Outcome        string     `json:"outcome"`
 	ObservationMS  float64    `json:"observationMs"`

@@ -39,7 +39,7 @@ func fixedReportString(path, value string) bool {
 	case "faultProfiles.*.outcome":
 		return oneOf(value, "complete", "not_selected", "controller_not_exercised", "controller_unavailable", "run_failed", "cleanup_failed")
 	case "faultProfiles.*.receiptOutcome":
-		return oneOf(value, "exited", "not_observed", "fault_budget_expired")
+		return oneOf(value, "exited", "not_observed", "fault_budget_expired", "binding_mismatch")
 	case "faultProfiles.*.selectedContinuity", "faultProfiles.*.peerContinuity", "faultProfiles.*.recovery":
 		return oneOf(value, "interrupted", "continued", "recovered", "not_applicable", "not_observed")
 	}
