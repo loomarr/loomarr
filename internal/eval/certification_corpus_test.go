@@ -25,8 +25,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v8" {
-		t.Fatalf("corpus version = %q, want planner-certification-v8", corpus.Version)
+	if corpus.Version != "planner-certification-v9" {
+		t.Fatalf("corpus version = %q, want planner-certification-v9", corpus.Version)
 	}
 	if corpus.SchemaVersion != 8 {
 		t.Fatalf("corpus schema version = %d, want 8", corpus.SchemaVersion)
@@ -230,7 +230,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v8" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v9" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)
