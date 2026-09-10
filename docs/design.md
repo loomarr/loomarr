@@ -3914,6 +3914,15 @@ HTTP has drained, the application **finalizes** schedulers, diagnostics, workers
 other owned resources in reverse construction order while their dependencies and the store remain
 open. The store closes only after finalization; a replacement generation cannot start earlier.
 
+Live HLS separates acquiring a shared remux lease from waiting for its first playable segment.
+Admission and lease acquisition remain ordered atomically against channel retirement and
+generation quiescence; media readiness waits happen after releasing that lifecycle lock. Each
+wait observes its request cancellation and the remux's retirement. Cancelling one request releases
+only that request's lease and must not stop another viewer's shared delivery. Channel retirement,
+reusable fail-closed `StopAll`, and terminal quiescence retire pending remuxes as well as ready ones,
+so an abandoned first-segment request cannot consume the HTTP drain or shutdown deadline.
+Neither cancellation nor shutdown permits a header-only playlist to become playable.
+
 Quiescers are a distinct, narrow lifecycle registry rather than ordinary finalizers run early.
 They are idempotent, safe under signal, operator restart, database migration and repeated calls,
 and reject new admission before taking their snapshot. A caller may wait again after its context

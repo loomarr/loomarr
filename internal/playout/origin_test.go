@@ -46,9 +46,9 @@ type tuneHLS struct {
 	stopped string
 }
 
-func (h *tuneHLS) Playlist(channel string, _ EncodePlan) (string, func(), error) {
+func (h *tuneHLS) acquirePlaylist(channel string, _ EncodePlan) (hlsPlaylistLease, error) {
 	h.channel = channel
-	return h.path, func() {}, nil
+	return hlsPlaylistLease{path: h.path, release: func() {}, await: func(ctx context.Context) error { return ctx.Err() }}, nil
 }
 
 func (h *tuneHLS) AssetPath(string, EncodePlan, string) (string, bool) { return "", false }
