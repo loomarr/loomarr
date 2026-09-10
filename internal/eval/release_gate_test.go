@@ -20,7 +20,7 @@ import (
 
 func TestReleaseGateSourceRevisionPreservesCasesAndGates(t *testing.T) {
 	var contracts []map[string]any
-	for _, path := range []string{"testdata/planner-release-gate-v10.json", releaseGateManifestPath} {
+	for _, path := range []string{"testdata/planner-release-gate-v11.json", releaseGateManifestPath} {
 		blob, err := releaseGateFiles.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -100,7 +100,7 @@ func TestReleaseGateCorpusIsFrozenAndReleaseFocused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-release-gate-v11" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
+	if corpus.Version != "planner-release-gate-v12" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
 		corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion || corpus.Fixture.SHA256 == "" || corpus.SourcesFixture.SHA256 == "" {
 		t.Fatalf("release-gate identity = %+v", corpus)
 	}
@@ -450,8 +450,12 @@ func releaseScriptedResponses(t *testing.T, c Case, arguments map[string]any, fi
 		delete(args, "mode")
 	}
 	meaning := map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}
-	if c.ExpectEraFrom > 0 {
-		decade := fmt.Sprintf("%ds", c.ExpectEraFrom)
+	eraFrom, eraTo := c.ExpectEraFrom, c.ExpectEraTo
+	if eraFrom == 0 && strings.Contains(c.Intent.Description, "1990s") {
+		eraFrom, eraTo = 1990, 1999
+	}
+	if eraFrom > 0 {
+		decade := fmt.Sprintf("%ds", eraFrom)
 		start := strings.Index(c.Intent.Description, decade)
 		if start < 0 {
 			t.Fatalf("scripted date anchor %q missing in %q", decade, c.Intent.Description)
@@ -462,7 +466,7 @@ func releaseScriptedResponses(t *testing.T, c Case, arguments map[string]any, fi
 		}
 		meaning = map[string]any{
 			"kind": "constraints", "anchors": []any{map[string]any{"field": "description", "start": start, "end": start + len(decade)}},
-			"axes": []any{map[string]any{"kind": axis, "combine": "any", "intervals": []any{map[string]any{"anchor": 0, "start": c.ExpectEraFrom, "end": c.ExpectEraTo}}}},
+			"axes": []any{map[string]any{"kind": axis, "combine": "any", "intervals": []any{map[string]any{"anchor": 0, "start": eraFrom, "end": eraTo}}}},
 		}
 	}
 	args["dateMeaning"] = meaning

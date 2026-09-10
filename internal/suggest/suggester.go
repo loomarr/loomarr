@@ -297,7 +297,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		}
 		out, perr := parsePicks(final)
 		if perr == nil {
-			meaning, meaningErr := ValidateDateMeaning(intent, out.DateMeaning)
+			meaning, meaningErr := validateIntentDateMeaning(intent, out.DateMeaning)
 			if meaningErr != nil {
 				if acceptedMeaning == nil && isDateMeaningConflict(meaningErr) {
 					trace.Terminal = TerminalConstraintsConflict

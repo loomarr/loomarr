@@ -35,6 +35,39 @@ func matrixCandidate() catalog.Candidate {
 	return catalog.Candidate{MediaType: "movie", TMDBID: 603, Name: "The Matrix", Year: 1999, InLibrary: true}
 }
 
+func TestSuggest_ExplicitEpisodeDecadeRejectsNoneThenRecovers(t *testing.T) {
+	const description = "Play sitcom episodes from the 1990s in episode order."
+	meaning := map[string]any{
+		"kind":    "constraints",
+		"anchors": []any{map[string]any{"field": "description", "start": 30, "end": 35}},
+		"axes": []any{map[string]any{
+			"kind": "series_airing", "combine": "any",
+			"intervals": []any{map[string]any{"anchor": 0, "start": 1990, "end": 1999}},
+		}},
+	}
+	candidate := catalog.Candidate{MediaType: "series", TMDBID: 3452, Name: "Frasier", Year: 1993, InLibrary: true, Genres: []string{"Comedy"}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{candidate}}
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Comedy"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Comedy"}, "media_type": "series", "dateMeaning": meaning}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:3452","name":"Frasier"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":30,"end":35}],"axes":[{"kind":"series_airing","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
+	)
+
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: description})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.Calls != 3 {
+		t.Fatalf("model calls = %d, want rejected none, corrected tool call, and final response", model.Calls)
+	}
+	if got := corpus.Discoveries(); len(got) != 1 {
+		t.Fatalf("catalog dispatches = %#v, want only the corrected dated search", got)
+	}
+	if proposal.Policy.Scope.Dates == nil || !equalRanges(proposal.Policy.Scope.Dates.SeriesAiring, []schedule.Range{{From: 1990, To: 1999}}) {
+		t.Fatalf("date scope = %#v, want series-airing 1990-1999", proposal.Policy.Scope.Dates)
+	}
+}
+
 func finalWithDateMeaning(t *testing.T, meaning any) string {
 	t.Helper()
 	encoded, err := json.Marshal(map[string]any{

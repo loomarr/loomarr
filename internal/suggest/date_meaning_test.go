@@ -40,6 +40,33 @@ func TestValidateDateMeaningRejectsMalformedValues(t *testing.T) {
 	}
 }
 
+func TestValidateIntentDateMeaningRequiresExplicitDateAcknowledgement(t *testing.T) {
+	for name, intent := range map[string]Intent{
+		"episode decade": {Description: "Play sitcom episodes from the 1990s in episode order."},
+		"year range":     {Description: "Show films from 1990 through 1999."},
+		"era field":      {Description: "Build an action channel.", Era: "1990s"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := validateIntentDateMeaning(intent, &DateMeaning{Kind: DateMeaningNone})
+			var meaningErr *DateMeaningError
+			if !errors.As(err, &meaningErr) || meaningErr.Code != "unacknowledged_date" {
+				t.Fatalf("error = %#v, want unacknowledged_date", err)
+			}
+		})
+	}
+}
+
+func TestValidateIntentDateMeaningDoesNotTreatBareTitleYearAsFilter(t *testing.T) {
+	for _, description := range []string{
+		"Build a channel around 2001: A Space Odyssey.",
+		"Build a channel around That '70s Show.",
+	} {
+		if _, err := validateIntentDateMeaning(Intent{Description: description}, &DateMeaning{Kind: DateMeaningNone}); err != nil {
+			t.Fatalf("description %q: %v", description, err)
+		}
+	}
+}
+
 func TestValidateDateMeaningIndexesArrayAnchorsByRunes(t *testing.T) {
 	meaning := &DateMeaning{Kind: DateMeaningAmbiguous, Anchors: []DateAnchor{{Field: DateAnchorMustInclude, Index: ptr(0), Start: 0, End: 3}}}
 	got, err := ValidateDateMeaning(Intent{MustInclude: []string{"été films"}}, meaning)

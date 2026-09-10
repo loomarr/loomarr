@@ -1800,7 +1800,8 @@ Non-date conflicts do not become ambiguous date interpretations. This uses the e
 no-grounded-title outcome, adds no selection or approval authority, and changes no repair budget.
 `planner-release-gate-v10` retains the exact supplementary release cases, fixtures and gates while
 binding the same prompt. `planner-release-gate-v11` keeps those inputs and thresholds unchanged and
-binds `reference-source-v2`; prior manifests remain immutable.
+binds `reference-source-v2`. `planner-release-gate-v12` keeps those inputs and thresholds unchanged
+and binds `reference-source-v3`; prior manifests remain immutable.
 
 The supplementary `planner-release-gate-v4` release replay retains v1's 18 synthetic cases,
 fixture bytes, acceptable members, hard negatives and thresholds, and binds them explicitly to the
@@ -1809,6 +1810,9 @@ fixture for automatic named-block discovery; it is independent of model output a
 The source contract is versioned independently. `reference-source-v2` adds owned exact-identity
 resolution and direct-member prefetch priority. It participates in the proposal cache identity, so
 successful Proposals from prior source behavior cannot be reused.
+`reference-source-v3` adds the date-omission guard at both producer boundaries. It likewise
+invalidates successful cached Proposals that could have accepted `kind: none` for an explicit date
+request.
 Only the configured model is live in this replay; actual source discovery needs separate diagnostic
 and installed-journey evidence. This
 release holdout complements the full active certification corpus; its one-trial canary and
@@ -2065,7 +2069,16 @@ coalesces overlapping or adjacent `any` windows. Empty same-axis intersections a
 `constraints_conflict`. Different axes remain independent. Ordinary “90s and 2000s movies” is a
 union; words such as “and” or “both” alone do not establish an intersection. A title date is not a
 filter merely because an anchor can select it. The existing validated interpretation and immutable
-semantic cases, rather than a new keyword heuristic, govern that distinction.
+semantic cases govern that distinction.
+
+At the tool and final Proposal boundaries, `kind: none` must acknowledge unmistakable submitted
+date-filter syntax. A nonempty dedicated `Era` field, a four-digit decade such as `1990s`, an
+explicit year range, or a relation such as `from`, `during`, `before`, `after`, `since`, or `until`
+governing a 1900–2099 year requires `constraints` or anchored `ambiguous`; `none` is malformed and
+uses the existing bounded repair path. This omission guard proves only that the request contains a
+date requirement. It does not select an axis, invent a range, create an anchor, or turn a bare year
+inside a title such as *2001: A Space Odyssey* into a filter. The model and validator still own the
+actual interpretation.
 
 The v7 planner prompt spells out the complete anchor and interval object shapes, including the
 mandatory zero-based interval `anchor` index, scalar versus array-field indexing, and copying the
