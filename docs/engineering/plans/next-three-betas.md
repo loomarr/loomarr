@@ -1,18 +1,22 @@
-# Next three beta releases
+# Beta release roadmap
 
-Roadmap owner: [#1105](https://github.com/loomarr/loomarr/issues/1105). Planning baseline:
-2026-09-09, accepted main `e11be5a5bddcb9eb2fa6c67d6b9bcca9f862cda1`.
+Roadmap owner: [#1105](https://github.com/loomarr/loomarr/issues/1105). Beta.6 release
+execution: [#1204](https://github.com/loomarr/loomarr/issues/1204). Planning baseline:
+2026-09-11, accepted main `2f73c5ff9790d4bd05975729e4ce5d6479f51596`.
 `PROGRESS.md` owns current phase status; this document owns the release sequence and exit criteria.
 Existing design documents and issue acceptance criteria retain their authority.
 
 ## Release baseline and intent
 
-The latest published server release is [v0.2.0-beta.4](https://github.com/loomarr/loomarr/releases/tag/v0.2.0-beta.4),
-tagged at `3fe21a63`. There are 39 accepted commits between that tag and this planning baseline.
-The PR backlog is reconciled through #1116; accepted implementation is available for the next
-release, but merge evidence does not establish household, provider, corpus or device acceptance.
+The latest published server release is
+[v0.2.0-beta.5](https://github.com/loomarr/loomarr/releases/tag/v0.2.0-beta.5), tagged at
+`0019257f42556101fa0a16743e70b6c459725c40` on 2026-09-10. The default desktop Guide repair
+[#1202](https://github.com/loomarr/loomarr/pull/1202) is accepted after that tag. The idle encoder
+capability repair [#1201](https://github.com/loomarr/loomarr/pull/1201) remains in protected
+integration at this baseline. Neither repair is present in the published beta.5 image.
 
-Plan the next server releases as **v0.2.0-beta.5, beta.6 and beta.7**. Android TV keeps its separate
+The remaining planned server releases are **v0.2.0-beta.6 and beta.7**; the beta.5 section below
+preserves its accepted release contract and explicit carry-forwards. Android TV keeps its separate
 version authority in `web/apps/tv/android-release.json` (currently `0.1.0-beta.4`); each release
 candidate records the exact server/client pairing and follows the existing protected promotion
 workflow. This plan neither edits versions nor publishes a release.
@@ -32,6 +36,28 @@ These are release outcomes, not a serial queue of one PR per issue. The many fil
 parents, delivered tooling and independent evidence tasks. Reuse accepted code; complete the
 remaining clauses instead of rebuilding the old stack or treating every open issue as missing code.
 
+## beta.6 execution checkpoint — 2026-09-11
+
+Beta.6 is the active release goal. [#1204](https://github.com/loomarr/loomarr/issues/1204) groups the
+43 milestone issues into five release-evidence lanes without replacing their existing acceptance
+criteria. Work proceeds in this order where dependencies require it and concurrently where source,
+truth, safety, structure, enrichment, UI and release seams do not overlap:
+
+1. Land the post-beta.5 Guide and encoder-reporting repairs and bind the beta.6 branch to their
+   accepted merge commits.
+2. Reconcile the retained filler worktrees and immutable artifacts before recovering or replacing
+   any work. Old local work is evidence, not authority to overwrite current owners or reuse burned
+   holdouts.
+3. Complete the source and truth prerequisites for a fresh production envelope, led by
+   #899/#1085/#1089/#1093/#1100/#1102/#1106/#1108/#1113.
+4. Run the applicable structure, spoken, written, visual, audience and suitability certification
+   gates. Missing, stale, operationally failed or unsupported evidence keeps media held.
+5. Finish grounded enrichment, the coherent operator lifecycle and the 32-clip product-acceptance
+   cohort, then freeze one exact candidate for source-to-air, browser, homelab and Shield acceptance.
+
+Provider runs, acquisition and human adjudication use their existing bounded authorities. This
+checkpoint grants no model spend, truth decision, media clearance or admission shortcut.
+
 ## What the delivery already provides
 
 | Accepted work | Evidence | Consequence for this plan |
@@ -45,6 +71,10 @@ remaining clauses instead of rebuilding the old stack or treating every open iss
 | Proportional verification, dependency patches and concurrent delivery workflow | #1154/#1155, #1120 | Keep affected PR checks, protected integration gates and parallel disjoint work. #1050 remains a measured build-speed improvement. |
 
 ## beta.5 — Trustworthy creation and playback
+
+**Status:** published as `v0.2.0-beta.5` on 2026-09-10. This section retains the accepted release
+contract. Open parent and evidence issues continue under their assigned later-release scope; their
+open state does not revoke the published beta.5 acceptance packet.
 
 Complete these lanes concurrently, with one owner for overlapping planner/scorer/UI interfaces:
 
