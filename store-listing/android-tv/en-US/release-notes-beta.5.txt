@@ -1,0 +1,1 @@
+Recover from an unreachable saved server without losing the working pairing until a replacement succeeds. Retry, change server, or explicitly forget a stale local pairing when remote revocation is unavailable.
