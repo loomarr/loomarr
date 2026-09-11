@@ -118,10 +118,12 @@ func remoteRightsInventory(t *testing.T, ids ...string) (fillercorpus.Inventory,
 	snapshot := time.Date(2026, 9, 5, 10, 0, 0, 0, time.UTC)
 	lane := fillercorpus.Lane{Authority: "archive.org/prelinger", MaxRequests: 10, RequestsUsed: 1, MaxResponseBytes: 10_000, ResponseBytes: 100, MaxPredictedMediaBytes: int64(len(ids)) * 1_000, PredictedMediaBytes: int64(len(ids)) * 100, MaxWallTimeMS: 1_000, WallTimeMS: 10}
 	for _, id := range ids {
+		representation := fillercorpus.Representation{Name: id + ".mp4", URL: "https://archive.org/download/" + id + "/" + id + ".mp4", MIMEType: "video/mp4", Bytes: 100}
+		representation.Soundtrack = fillercorpus.BindRepresentationSoundtrack(representation, fillercorpus.SoundtrackPresentExpected, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, strings.Repeat("a", 64), "fixture metadata")
 		lane.Cases = append(lane.Cases, fillercorpus.Candidate{
 			ItemID: id, Title: id, RoleHints: []string{"commercial"}, ItemURL: "https://archive.org/details/" + id,
 			MetadataURL: "https://archive.org/metadata/" + id, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat("a", 64),
-			RightsAssertions: []string{"CC0"}, Representation: fillercorpus.Representation{Name: id + ".mp4", URL: "https://archive.org/download/" + id + "/" + id + ".mp4", MIMEType: "video/mp4", Bytes: 100},
+			RightsAssertions: []string{"CC0"}, Representation: representation,
 		})
 	}
 	inventory, err := fillercorpus.InventoryFromLane(lane, fillercorpus.LaneInventoryOptions{SnapshotAt: snapshot, Collection: "prelinger", AllowedMediaHosts: []string{"archive.org", ".archive.org"}})
@@ -141,6 +143,8 @@ func localRightsInventory(t *testing.T) (fillercorpus.Inventory, []byte) {
 	authority, collection, role := "direct-license", "fixture", "commercial"
 	captureID := fillercorpus.NewCaptureID(authority, collection, role)
 	media := []byte("direct media")
+	representation := fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: "local.mp4", Path: "local.mp4", MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)}
+	representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, fillercorpus.SoundtrackPresentExpected, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, strings.Repeat("a", 64), "fixture metadata")
 	inventory := fillercorpus.Inventory{
 		SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: snapshot,
 		Captures: []fillercorpus.Capture{{CaptureID: captureID, Transport: fillercorpus.TransportLocal, Authority: authority, Collection: collection, RoleHint: role, SnapshotAt: snapshot, MaxPredictedMediaBytes: int64(len(media)), PredictedMediaBytes: int64(len(media)), MaxWallTimeMS: 1_000}},
@@ -148,7 +152,7 @@ func localRightsInventory(t *testing.T) (fillercorpus.Inventory, []byte) {
 			CaseID: fillercorpus.CaseID(authority, "local"), CaptureIDs: []string{captureID}, Authority: authority, ItemID: "local", Title: "local", RoleHints: []string{role}, RightsAssertions: []string{"signed grant"},
 			MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat("a", 64),
 			Evidence:       []fillercorpus.InventoryEvidence{{Kind: "rights", Path: "rights.txt", Bytes: 1, SHA256: strings.Repeat("b", 64)}, {Kind: "provenance", Path: "provenance.txt", Bytes: 1, SHA256: strings.Repeat("c", 64)}},
-			Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: "local.mp4", Path: "local.mp4", MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)},
+			Representation: representation,
 		}},
 	}
 	raw, err := json.Marshal(inventory)

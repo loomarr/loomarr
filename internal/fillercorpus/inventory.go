@@ -18,8 +18,9 @@ import (
 // InventorySchemaVersion is deliberately not backward compatible. Schema 1
 // could describe only one Archive.org collection; schema 2 let split planning
 // invent campaign and source-family identity after acquisition; schema 3 could
-// not represent one immutable item discovered by multiple bounded captures.
-const InventorySchemaVersion = 4
+// not represent one immutable item discovered by multiple bounded captures;
+// schema 4 did not bind soundtrack expectation to the exact representation.
+const InventorySchemaVersion = 5
 
 const (
 	TransportHTTPS = "https"
@@ -99,19 +100,20 @@ type InventoryCase struct {
 }
 
 type InventoryRepresentation struct {
-	Transport  string `json:"transport"`
-	Name       string `json:"name"`
-	URL        string `json:"url"`
-	Path       string `json:"path,omitempty"`
-	MIMEType   string `json:"mimeType"`
-	Origin     string `json:"origin,omitempty"`
-	Bytes      int64  `json:"bytes"`
-	SHA256     string `json:"sha256,omitempty"`
-	SHA1       string `json:"sha1,omitempty"`
-	MD5        string `json:"md5,omitempty"`
-	DurationMS int64  `json:"durationMs,omitempty"`
-	Width      int    `json:"width,omitempty"`
-	Height     int    `json:"height,omitempty"`
+	Transport  string                `json:"transport"`
+	Name       string                `json:"name"`
+	URL        string                `json:"url"`
+	Path       string                `json:"path,omitempty"`
+	MIMEType   string                `json:"mimeType"`
+	Origin     string                `json:"origin,omitempty"`
+	Bytes      int64                 `json:"bytes"`
+	SHA256     string                `json:"sha256,omitempty"`
+	SHA1       string                `json:"sha1,omitempty"`
+	MD5        string                `json:"md5,omitempty"`
+	DurationMS int64                 `json:"durationMs,omitempty"`
+	Width      int                   `json:"width,omitempty"`
+	Height     int                   `json:"height,omitempty"`
+	Soundtrack SoundtrackExpectation `json:"soundtrack"`
 }
 
 type InventoryEvidence struct {
@@ -152,7 +154,7 @@ func InventorySHA256(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// DecodeInventory accepts exactly one strict schema-v4 JSON value. Older
+// DecodeInventory accepts exactly one strict schema-v5 JSON value. Older
 // single-source artifacts fail closed rather than being silently adapted.
 func DecodeInventory(reader io.Reader) (Inventory, error) {
 	var value Inventory
@@ -272,7 +274,7 @@ func InventoryFromLane(lane Lane, opts LaneInventoryOptions) (Inventory, error) 
 			RightsAssertions: item.RightsAssertions, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,
 			MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
 			AllowedMediaHosts: append([]string(nil), opts.AllowedMediaHosts...),
-			Representation:    InventoryRepresentation{Transport: TransportHTTPS, Name: item.Representation.Name, URL: item.Representation.URL, MIMEType: item.Representation.MIMEType, Bytes: item.Representation.Bytes, SHA1: item.Representation.SHA1, MD5: item.Representation.MD5},
+			Representation:    InventoryRepresentation{Transport: TransportHTTPS, Name: item.Representation.Name, URL: item.Representation.URL, MIMEType: item.Representation.MIMEType, Bytes: item.Representation.Bytes, SHA1: item.Representation.SHA1, MD5: item.Representation.MD5, Soundtrack: item.Representation.Soundtrack},
 		})
 	}
 	if failures := ValidateInventory(result); len(failures) != 0 {
@@ -359,6 +361,9 @@ func ValidateInventory(value Inventory) []string {
 		}
 		if item.Representation.Bytes <= 0 || strings.TrimSpace(item.Representation.Name) == "" || strings.TrimSpace(item.Representation.MIMEType) == "" || !digestOptional(item.Representation.SHA256, 64) || !digestOptional(item.Representation.SHA1, 40) || !digestOptional(item.Representation.MD5, 32) {
 			failures = append(failures, fmt.Sprintf("case %q has incomplete representation identity", item.CaseID))
+		}
+		if !validateRepresentationSoundtrack(item.Representation) || !soundtrackEvidenceBound(item) {
+			failures = append(failures, fmt.Sprintf("case %q has invalid soundtrack expectation", item.CaseID))
 		}
 		if item.Representation.Transport != transport {
 			failures = append(failures, fmt.Sprintf("case %q representation transport does not match its capture", item.CaseID))

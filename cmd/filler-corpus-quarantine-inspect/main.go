@@ -20,7 +20,7 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("filler-corpus-quarantine-inspect", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	inventory := flags.String("inventory", "", "exact frozen schema-v4 inventory")
+	inventory := flags.String("inventory", "", "exact frozen schema-v5 inventory")
 	ledger := flags.String("ledger", "", "schema-v2 quarantine download ledger")
 	downloadRoot := flags.String("download-root", "", "root containing quarantine downloads")
 	priorPublic := flags.String("prior-public", "", "prior holdout public manifest")

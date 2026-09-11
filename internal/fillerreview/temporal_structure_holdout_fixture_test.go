@@ -278,12 +278,15 @@ func newTemporalStructureHoldoutFixtureWithEvidenceAndProgrammeParentDuration(t 
 		itemID := "test-programme-" + string(rune('a'+index))
 		relativePath := filepath.ToSlash(path[len(base.root)+1:])
 		relativeMetadataPath := filepath.ToSlash(metadataPath[len(base.root)+1:])
+		metadataSHA256 := hashBytes(metadata)
+		representation := fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: filepath.Base(path), Path: relativePath, MIMEType: "video/mp4", Bytes: int64(len(raw)), SHA256: hashBytes(raw), DurationMS: parentDurationMS + int64(index)*10_000}
+		representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, fillercorpus.SoundtrackPresentExpected, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, metadataSHA256, "fixture metadata")
 		record.Cases = append(record.Cases, fillercorpus.InventoryCase{
 			CaseID: fillercorpus.CaseID("test-programme-authority", itemID), CaptureIDs: []string{record.Captures[0].CaptureID},
 			Authority: "test-programme-authority", ItemID: itemID, Title: itemID, RoleHints: []string{"programme"}, RightsAssertions: []string{"fixture"},
 			ItemURL: "https://example.invalid/items/" + itemID, MetadataURL: "https://example.invalid/metadata/" + itemID,
-			MetadataCache: relativeMetadataPath, MetadataRetrievedAt: inventory.GeneratedAt.Add(-time.Hour), MetadataSHA256: hashBytes(metadata),
-			Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: filepath.Base(path), Path: relativePath, MIMEType: "video/mp4", Bytes: int64(len(raw)), SHA256: hashBytes(raw), DurationMS: parentDurationMS + int64(index)*10_000},
+			MetadataCache: relativeMetadataPath, MetadataRetrievedAt: inventory.GeneratedAt.Add(-time.Hour), MetadataSHA256: metadataSHA256,
+			Representation: representation,
 			Evidence:       []fillercorpus.InventoryEvidence{{Kind: "rights", Path: relativeMetadataPath, Bytes: int64(len(metadata)), SHA256: hashBytes(metadata)}, {Kind: "provenance", Path: relativeMetadataPath, Bytes: int64(len(metadata)), SHA256: hashBytes(metadata)}},
 		})
 		inventory.Sources = append(inventory.Sources, TemporalStructureChallengeSource{

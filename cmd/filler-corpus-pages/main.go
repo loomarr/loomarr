@@ -23,7 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillercorpus"
 )
 
-const seedSchemaVersion = 1
+const seedSchemaVersion = 2
 
 type seed struct {
 	SchemaVersion int        `json:"schemaVersion"`
@@ -32,13 +32,15 @@ type seed struct {
 }
 
 type seedCase struct {
-	ItemID           string   `json:"itemId"`
-	Title            string   `json:"title"`
-	RoleHints        []string `json:"roleHints"`
-	ItemURL          string   `json:"itemUrl"`
-	MediaURL         string   `json:"mediaUrl"`
-	RightsAssertions []string `json:"rightsAssertions"`
-	RequiredPageText []string `json:"requiredPageText"`
+	ItemID                    string   `json:"itemId"`
+	Title                     string   `json:"title"`
+	RoleHints                 []string `json:"roleHints"`
+	ItemURL                   string   `json:"itemUrl"`
+	MediaURL                  string   `json:"mediaUrl"`
+	RightsAssertions          []string `json:"rightsAssertions"`
+	RequiredPageText          []string `json:"requiredPageText"`
+	SoundtrackStatus          string   `json:"soundtrackStatus"`
+	SoundtrackEvidenceLocator string   `json:"soundtrackEvidenceLocator"`
 }
 
 type options struct {
@@ -134,7 +136,7 @@ func readSeed(filename string) (seed, error) {
 		return seed{}, err
 	}
 	if value.SchemaVersion != seedSchemaVersion || value.Authority == "" || len(value.Cases) == 0 {
-		return seed{}, fmt.Errorf("schema 1, authority, and at least one case are required")
+		return seed{}, fmt.Errorf("schema 2, authority, and at least one case are required")
 	}
 	return value, nil
 }
@@ -181,7 +183,10 @@ func capture(ctx context.Context, draft seed, opts options) (fillercorpus.Lane, 
 		if mediaType != "video/mp4" || head.ContentLength > opts.maxItemBytes || head.ContentLength > opts.maxTotalBytes-lane.PredictedMediaBytes {
 			return fillercorpus.Lane{}, fmt.Errorf("media %s violates type or byte ceiling", candidate.MediaURL)
 		}
-		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: candidate.ItemID, Title: candidate.Title, RoleHints: candidate.RoleHints, ItemURL: candidate.ItemURL, MetadataURL: candidate.ItemURL, MetadataRetrievedAt: retrievedAt, MetadataSHA256: sha256Hex(pageRaw), RightsAssertions: candidate.RightsAssertions, Representation: fillercorpus.Representation{Name: path.Base(media.Path), URL: candidate.MediaURL, MIMEType: mediaType, Bytes: head.ContentLength}})
+		metadataSHA256 := sha256Hex(pageRaw)
+		representation := fillercorpus.Representation{Name: path.Base(media.Path), URL: candidate.MediaURL, MIMEType: mediaType, Bytes: head.ContentLength}
+		representation.Soundtrack = fillercorpus.BindRepresentationSoundtrack(representation, candidate.SoundtrackStatus, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, metadataSHA256, candidate.SoundtrackEvidenceLocator)
+		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: candidate.ItemID, Title: candidate.Title, RoleHints: candidate.RoleHints, ItemURL: candidate.ItemURL, MetadataURL: candidate.ItemURL, MetadataRetrievedAt: retrievedAt, MetadataSHA256: metadataSHA256, RightsAssertions: candidate.RightsAssertions, Representation: representation})
 		lane.PredictedMediaBytes += head.ContentLength
 	}
 	lane.RequestsUsed, lane.ResponseBytes, lane.WallTimeMS = client.RequestsUsed(), client.ResponseBytes(), time.Since(started).Milliseconds()
@@ -189,8 +194,8 @@ func capture(ctx context.Context, draft seed, opts options) (fillercorpus.Lane, 
 }
 
 func validateSeedCase(candidate seedCase, pageHost, mediaHost string) error {
-	if strings.TrimSpace(candidate.ItemID) == "" || strings.TrimSpace(candidate.Title) == "" || len(candidate.RoleHints) == 0 || len(candidate.RightsAssertions) == 0 || len(candidate.RequiredPageText) == 0 {
-		return fmt.Errorf("identity, role hint, source assertion, and page evidence are required")
+	if strings.TrimSpace(candidate.ItemID) == "" || strings.TrimSpace(candidate.Title) == "" || len(candidate.RoleHints) == 0 || len(candidate.RightsAssertions) == 0 || len(candidate.RequiredPageText) == 0 || !fillercorpus.KnownSoundtrackStatus(candidate.SoundtrackStatus) || strings.TrimSpace(candidate.SoundtrackEvidenceLocator) == "" {
+		return fmt.Errorf("identity, role hint, source assertion, page evidence, and soundtrack expectation are required")
 	}
 	if !exactHTTPSHost(candidate.ItemURL, pageHost) || !exactHTTPSHost(candidate.MediaURL, mediaHost) {
 		return fmt.Errorf("page and media URLs require HTTPS and their exact declared hosts")

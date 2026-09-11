@@ -335,7 +335,10 @@ func preparationFixture(t *testing.T) (options, fakeDeriver) {
 			t.Fatal(err)
 		}
 		inv.Captures[0].PredictedMediaBytes += int64(len(media))
-		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{CaseID: fillercorpus.CaseID(authority, id), CaptureIDs: []string{captureID}, Authority: authority, ItemID: id, Title: "Case " + id, RoleHints: []string{role}, Creator: []string{"creator-" + id}, Campaign: "campaign-" + id, SourceFamily: "family-" + id, RightsAssertions: []string{"signed redistribution grant"}, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat(string(rune('a'+index)), 64), Evidence: []fillercorpus.InventoryEvidence{{Kind: "rights", Path: "rights.txt", Bytes: 1, SHA256: strings.Repeat("c", 64)}, {Kind: "provenance", Path: "provenance.txt", Bytes: 1, SHA256: strings.Repeat("d", 64)}}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: rel, Path: rel, MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)}})
+		metadataSHA256 := strings.Repeat(string(rune('a'+index)), 64)
+		representation := fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: rel, Path: rel, MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)}
+		representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, fillercorpus.SoundtrackPresentExpected, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, metadataSHA256, "fixture metadata")
+		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{CaseID: fillercorpus.CaseID(authority, id), CaptureIDs: []string{captureID}, Authority: authority, ItemID: id, Title: "Case " + id, RoleHints: []string{role}, Creator: []string{"creator-" + id}, Campaign: "campaign-" + id, SourceFamily: "family-" + id, RightsAssertions: []string{"signed redistribution grant"}, MetadataRetrievedAt: snapshot, MetadataSHA256: metadataSHA256, Evidence: []fillercorpus.InventoryEvidence{{Kind: "rights", Path: "rights.txt", Bytes: 1, SHA256: strings.Repeat("c", 64)}, {Kind: "provenance", Path: "provenance.txt", Bytes: 1, SHA256: strings.Repeat("d", 64)}}, Representation: representation})
 	}
 	inventoryRaw, err := json.Marshal(inv)
 	if err != nil {
@@ -473,6 +476,7 @@ func remotePreparationFixture(t *testing.T) (options, fakeDeriver, string) {
 	item.Representation.URL = "https://archive.org/download/" + item.ItemID + "/" + item.Representation.Name
 	item.Representation.Path = ""
 	item.Representation.SHA256 = ""
+	item.Representation.Soundtrack = fillercorpus.BindInventorySoundtrack(item.Representation, fillercorpus.SoundtrackPresentExpected, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, item.MetadataSHA256, "fixture metadata")
 	remoteName := fillercorpus.InventorySHA256([]byte(item.CaseID))[:16] + filepath.Ext(item.Representation.Name)
 	remotePath := filepath.Join(opts.remoteRoot, remoteName)
 	if err := os.WriteFile(remotePath, media, 0o600); err != nil {

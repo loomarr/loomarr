@@ -257,6 +257,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsSeventhProgrammeSo
 		item.Representation.Bytes = int64(len(media))
 		item.Representation.SHA256 = seventh.SHA256
 		item.Representation.DurationMS = seventh.DurationMS
+		item.Representation.Soundtrack = fillercorpus.BindInventorySoundtrack(item.Representation, fillercorpus.SoundtrackPresentExpected, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, item.MetadataSHA256, "fixture metadata")
 		item.Evidence[0].Path, item.Evidence[0].Bytes, item.Evidence[0].SHA256 = metadataPath, int64(len(metadata)), hashBytes(metadata)
 		item.Evidence[1].Path, item.Evidence[1].Bytes, item.Evidence[1].SHA256 = metadataPath, int64(len(metadata)), hashBytes(metadata)
 		record.Cases = append(record.Cases, item)

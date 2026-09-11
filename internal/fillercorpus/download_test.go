@@ -52,6 +52,7 @@ func quarantineDownloadFixture() (Inventory, []byte, DownloadLedger) {
 	caseID := CaseID("loc.gov/national-screening-room", "fixture")
 	captureID := NewCaptureID("loc.gov/national-screening-room", "fixture", "commercial")
 	representation := InventoryRepresentation{Transport: TransportHTTPS, Name: "fixture.mp4", URL: "https://tile.loc.gov/fixture.mp4", MIMEType: "video/mp4", Bytes: 100, SHA1: strings.Repeat("1", 40)}
+	representation = testInventoryRepresentation(representation, strings.Repeat("a", 64))
 	inventory := Inventory{SchemaVersion: InventorySchemaVersion, SnapshotAt: snapshot, Captures: []Capture{{
 		CaptureID: captureID, Transport: TransportHTTPS, Authority: "loc.gov/national-screening-room", Collection: "fixture", RoleHint: "commercial", SnapshotAt: snapshot,
 		MaxRequests: 1, RequestsUsed: 1, MaxResponseBytes: 1024, ResponseBytes: 100, MaxPredictedMediaBytes: 100, PredictedMediaBytes: 100, MaxWallTimeMS: 1_000, WallTimeMS: 1,

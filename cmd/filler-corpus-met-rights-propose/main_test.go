@@ -35,6 +35,7 @@ func TestRunPublishesPrivateNonAuthorizingReportAndRefusesOverwrite(t *testing.T
 			Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "valid.jpg", URL: "https://images.metmuseum.org/valid.jpg?loomarr=" + hex.EncodeToString(metadataDigest[:]), MIMEType: "image/jpeg", Bytes: 100},
 		}},
 	}
+	inventory.Cases[0].Representation.Soundtrack = fillercorpus.BindInventorySoundtrack(inventory.Cases[0].Representation, fillercorpus.SoundtrackIntentionallySilent, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, hex.EncodeToString(metadataDigest[:]), "Met object metadata identifies a still-image representation")
 	policy := fillercorpus.MetOpenAccessPolicyEvidence{
 		SchemaVersion: fillercorpus.MetOpenAccessPolicyEvidenceSchemaVersion, EvidenceID: "met-open-access-metadata-prescreen-v1", CapturedAt: snapshot,
 		Sources: []fillercorpus.MetOpenAccessPolicySource{

@@ -179,7 +179,10 @@ func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 			assertions = append(assertions, "NASA creator assertion: "+creator)
 		}
 		digestInput := append(append(append([]byte(nil), candidate.raw...), '\n'), manifestRaw...)
-		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: data.NASAID, Title: data.Title, RoleHints: []string{opts.roleHint}, ItemURL: "https://images.nasa.gov/details/" + url.PathEscape(data.NASAID), MetadataURL: manifestURL, MetadataRetrievedAt: retrievedAt, MetadataSHA256: sha256Hex(digestInput), RightsAssertions: assertions, Representation: fillercorpus.Representation{Name: representationName(mediaURL), URL: mediaURL, MIMEType: mediaType, Bytes: head.ContentLength}})
+		metadataSHA256 := sha256Hex(digestInput)
+		representation := fillercorpus.Representation{Name: representationName(mediaURL), URL: mediaURL, MIMEType: mediaType, Bytes: head.ContentLength}
+		representation.Soundtrack = fillercorpus.BindRepresentationSoundtrack(representation, fillercorpus.SoundtrackUnknown, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, metadataSHA256, "NASA item and asset metadata do not establish soundtrack presence")
+		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: data.NASAID, Title: data.Title, RoleHints: []string{opts.roleHint}, ItemURL: "https://images.nasa.gov/details/" + url.PathEscape(data.NASAID), MetadataURL: manifestURL, MetadataRetrievedAt: retrievedAt, MetadataSHA256: metadataSHA256, RightsAssertions: assertions, Representation: representation})
 		lane.PredictedMediaBytes += head.ContentLength
 	}
 	lane.RequestsUsed, lane.ResponseBytes, lane.WallTimeMS = client.RequestsUsed(), client.ResponseBytes(), time.Since(started).Milliseconds()

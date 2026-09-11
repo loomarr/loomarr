@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	directManifestSchema  = 2
+	directManifestSchema  = 3
 	directAuthorityPrefix = "direct-license/"
 )
 
@@ -36,19 +36,21 @@ type manifest struct {
 }
 
 type manifestCase struct {
-	ItemID           string             `json:"itemId"`
-	Title            string             `json:"title"`
-	RoleHints        []string           `json:"roleHints"`
-	MediaPath        string             `json:"mediaPath"`
-	MIMEType         string             `json:"mimeType"`
-	RightsAssertions []string           `json:"rightsAssertions"`
-	LicenseURL       string             `json:"licenseUrl,omitempty"`
-	ItemURL          string             `json:"itemUrl,omitempty"`
-	Creator          []string           `json:"creator,omitempty"`
-	Campaign         string             `json:"campaign"`
-	SourceFamily     string             `json:"sourceFamily"`
-	Date             string             `json:"date,omitempty"`
-	Evidence         []manifestEvidence `json:"evidence"`
+	ItemID                    string             `json:"itemId"`
+	Title                     string             `json:"title"`
+	RoleHints                 []string           `json:"roleHints"`
+	MediaPath                 string             `json:"mediaPath"`
+	MIMEType                  string             `json:"mimeType"`
+	RightsAssertions          []string           `json:"rightsAssertions"`
+	LicenseURL                string             `json:"licenseUrl,omitempty"`
+	ItemURL                   string             `json:"itemUrl,omitempty"`
+	Creator                   []string           `json:"creator,omitempty"`
+	Campaign                  string             `json:"campaign"`
+	SourceFamily              string             `json:"sourceFamily"`
+	Date                      string             `json:"date,omitempty"`
+	Evidence                  []manifestEvidence `json:"evidence"`
+	SoundtrackStatus          string             `json:"soundtrackStatus"`
+	SoundtrackEvidenceLocator string             `json:"soundtrackEvidenceLocator"`
 }
 
 type manifestEvidence struct {
@@ -144,7 +146,7 @@ func freeze(opts options) (fillercorpus.Inventory, error) {
 	authority := directAuthorityPrefix + source.Authority
 	var totalBytes int64
 	for _, authored := range source.Cases {
-		if !directID.MatchString(authored.ItemID) || strings.TrimSpace(authored.Title) == "" || len(authored.RoleHints) == 0 || strings.TrimSpace(authored.RoleHints[0]) == "" || len(authored.Creator) == 0 || slices.Contains(authored.Creator, "") || strings.TrimSpace(authored.Campaign) == "" || strings.TrimSpace(authored.SourceFamily) == "" || len(authored.RightsAssertions) == 0 || slices.Contains(authored.RightsAssertions, "") || strings.TrimSpace(authored.MIMEType) == "" {
+		if !directID.MatchString(authored.ItemID) || strings.TrimSpace(authored.Title) == "" || len(authored.RoleHints) == 0 || strings.TrimSpace(authored.RoleHints[0]) == "" || len(authored.Creator) == 0 || slices.Contains(authored.Creator, "") || strings.TrimSpace(authored.Campaign) == "" || strings.TrimSpace(authored.SourceFamily) == "" || len(authored.RightsAssertions) == 0 || slices.Contains(authored.RightsAssertions, "") || strings.TrimSpace(authored.MIMEType) == "" || !fillercorpus.KnownSoundtrackStatus(authored.SoundtrackStatus) || strings.TrimSpace(authored.SoundtrackEvidenceLocator) == "" {
 			return fillercorpus.Inventory{}, fmt.Errorf("case %q has incomplete authored identity", authored.ItemID)
 		}
 		if _, duplicate := seen[authored.ItemID]; duplicate {
@@ -185,12 +187,14 @@ func freeze(opts options) (fillercorpus.Inventory, error) {
 			return fillercorpus.Inventory{}, err
 		}
 		captureID := fillercorpus.NewCaptureID(authority, source.Cohort, role)
+		representation := fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: filepath.Base(media), Path: authored.MediaPath, MIMEType: authored.MIMEType, Bytes: mediaBytes, SHA256: mediaDigest}
+		representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, authored.SoundtrackStatus, fillercorpus.SoundtrackEvidenceReviewedManifest, fillercorpus.InventorySHA256(identity), authored.SoundtrackEvidenceLocator)
 		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{
 			CaseID: fillercorpus.CaseID(authority, authored.ItemID), CaptureIDs: []string{captureID}, Authority: authority,
 			ItemID: authored.ItemID, Title: authored.Title, RoleHints: append([]string(nil), authored.RoleHints...), Creator: append([]string(nil), authored.Creator...), Campaign: authored.Campaign, SourceFamily: authored.SourceFamily, Date: authored.Date,
 			LicenseURL: authored.LicenseURL, RightsAssertions: append([]string(nil), authored.RightsAssertions...), ItemURL: authored.ItemURL,
 			MetadataRetrievedAt: opts.snapshotAt, MetadataSHA256: fillercorpus.InventorySHA256(identity), Evidence: evidence,
-			Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: filepath.Base(media), Path: authored.MediaPath, MIMEType: authored.MIMEType, Bytes: mediaBytes, SHA256: mediaDigest},
+			Representation: representation,
 		})
 	}
 	if len(source.RoleQuotas) == 0 || len(roleCounts) != len(source.RoleQuotas) {

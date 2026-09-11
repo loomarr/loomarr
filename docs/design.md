@@ -7725,7 +7725,7 @@ promos, bumpers, station IDs, trailers, and PSAs. Rights clarity, API convenienc
 scale do not by themselves make a source representative.
 
 The LOC, NASA, CDC first-party-page, and Commons commands share one promotion seam: the bounded lane
-remains the ten-case qualification artifact, while an explicitly requested schema-v4 output carries
+remains the ten-case qualification artifact, while an explicitly requested schema-v5 output carries
 the same frozen evidence into full-corpus rights review. Full capture counts stay positive and
 bounded but are not hard-coded to ten; request ceilings must cover the declared item count. The CDC
 adapter still consumes authored first-party page/media pairs and therefore cannot manufacture extra
@@ -7733,7 +7733,7 @@ cases to meet a quota. Multiple role-specific captures combine only through the 
 combiner, never by concatenating JSON or discarding their individual ceilings.
 
 Direct/static acquisition is an authored local capture, not a source adapter and not a licence
-shortcut. Its schema-v2 manifest predeclares an exact item count and positive quotas for the known
+shortcut. Its schema-v3 manifest predeclares an exact item count and positive quotas for the known
 corpus roles and identifies one contracting owner or first-party origin; separate owners use
 separate manifests so the emitted source authority is not collapsed into a generic direct bucket.
 Those acquisition quotas may describe any bounded lane and do not duplicate the final truth-denominator
@@ -7742,7 +7742,7 @@ separate rights and provenance evidence files beneath one declared root, along w
 campaign, and source-family identity that survives rights review unchanged.
 `filler-corpus-direct` resolves symlinks, rejects root escapes and quota drift, streams SHA-256 over
 every file under aggregate byte and wall-time ceilings, and emits local transport records into the
-same strict schema-v4 inventory. It never creates media, infers a grant from a directory or
+same strict schema-v5 inventory. It never creates media, infers a grant from a directory or
 collection, or turns authored assertions into approval. The combined public-plus-direct inventory
 still goes through one independent rights review; local media is already acquired and is therefore
 skipped by the network downloader. No direct-manifest schema-v1 reader or fixed 100-item compatibility
@@ -7789,6 +7789,31 @@ that an adjudicator does not select. A third reviewer therefore resolves a real 
 disagreement; adjudication cannot turn an incomplete or malformed second review into evidence of
 independent labeling.
 
+Schema-v5 inventory gives every exact representation a required **soundtrack expectation**. Its
+closed status is `present_expected`, `intentionally_silent`, or `unknown`; the claim also binds a
+closed evidence kind, the SHA-256 of already-frozen first-party descriptive, encoded-stream, or
+reviewed source-manifest
+metadata, a bounded evidence locator, and the SHA-256 of the representation identity. The
+representation identity includes transport, name, URL/path, media type, origin, byte and source-hash
+facts, duration, and dimensions. Changing any of those facts therefore invalidates the soundtrack
+claim instead of carrying it onto different bytes. Publication year, title, a URL, or an unbound
+free-text assertion is never soundtrack authority. A newly captured lane must state the claim
+explicitly; omission does not become `unknown`. Historical schema-v4 inventories and discovery lanes
+remain immutable evidence, but cannot authorize a new download or be silently upgraded to v5.
+
+Soundtrack expectation is pre-download selection evidence, not decoded-audio proof. The generic
+inventory accepts all three statuses and production does not globally reject intentionally silent
+works. The versioned `temporal_structure_replacement_v1` quarantine-acquisition purpose is narrower:
+only `present_expected` may enter its default download plan. `intentionally_silent` and `unknown`
+remain visible with the closed `soundtrack_intentionally_silent` and `soundtrack_unknown` hold
+reasons, and the rights locker and downloader reproduce the representation and
+evidence binding before it creates an output directory or sends the first request. The rights
+worksheet exposes the exact soundtrack fields and binds the acquisition purpose; its locked decision
+must carry the same purpose. The ordinary `local_quarantine_inspection` purpose preserves the generic
+inspection lane. A decoded file can still fail the independent full-source audio, silence, and
+quality gates. Restoration, synthesized music, or separately licensed soundtracks require a new
+designed purpose with their own rights, lineage, inspection, suitability, and admission authority.
+
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
 authority. The caller names one of three non-interchangeable profiles: `quarantine`, `development`,
 or `certification`. Every `approved` row binds the inventory digest, authority-qualified case ID,
@@ -7807,7 +7832,7 @@ ledger remain external to Git.
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
 
-`quarantine` is the narrow pre-review acquisition profile. Its schema-v5 worksheet locks a
+`quarantine` is the narrow pre-review acquisition profile. Its schema-v6 worksheet locks a
 schema-v1 quarantine contract that must grant only local copying/storage and local technical
 inspection. Provider transfer, redistribution,
 development/certification corpus preparation, training, catalog ingestion, scheduling, and
@@ -7820,7 +7845,7 @@ surviving source requires a new development or certification rights decision aga
 frozen inventory; a quarantine decision is never upgraded in place.
 
 `filler-corpus-quarantine-inspect` is the sole post-download quarantine gate. It consumes the exact
-schema-v4 inventory, schema-v2 quarantine download ledger, and the complete public/private authority
+schema-v5 inventory, schema-v2 quarantine download ledger, and the complete public/private authority
 pair for the named prior holdout. It strictly re-establishes those identities before opening media,
 resolves each ledger path beneath its declared root without symlink escape, and rechecks byte count,
 ledger SHA-256, and every available inventory checksum. One full-source probe and decode then records duration,
@@ -7842,13 +7867,13 @@ production admission remain explicitly false. The command never repairs, transco
 or promotes media, and any failed mechanical check leaves the case held in quarantine.
 
 Development and certification rights review consume that quarantine disposition as a fail-closed
-authority input. Schema-v5 `quarantine` review remains the pre-download local-copy/inspection path
+authority input. Schema-v6 `quarantine` review remains the pre-download local-copy/inspection path
 and cannot consume a report that does not exist yet. A development or certification worksheet that
 can select any non-local case instead requires one strict schema-v1 quarantine-inspection report.
-The worksheet freezes the raw report SHA-256 and all four report input identities; development
-worksheets advance from schema v3 to v6 and certification worksheets from schema v4 to v7.
-Historical v3/v4 worksheets and their decisions remain readable evidence, but cannot authorize new
-preparation.
+The worksheet freezes the raw report SHA-256 and all four report input identities. Report binding
+advanced development worksheets from schema v3 to v6 and certification worksheets from schema v4
+to v7; the soundtrack authority advances their current schemas to v7 and v8 respectively.
+Historical worksheets and their decisions remain readable evidence, but cannot authorize new preparation.
 
 Selection is transport-aware and deterministic: it is the union of valid direct
 `transport=local` cases and non-local cases that occur exactly once in the bound report as
@@ -7945,8 +7970,8 @@ copied into the worksheet nor accepted by the locker. The board is development e
 candidate-blind certification review, and the locker still reopens every source byte after the
 review.
 
-The certification holdout uses a distinct schema-v7 worksheet and schema-v1 rights contract, while
-quarantine uses its schema-v5 worksheet and schema-v1 acquisition contract. Historical schema-v3
+The certification holdout uses a distinct schema-v8 worksheet and schema-v1 rights contract, while
+quarantine uses its schema-v6 worksheet and schema-v1 acquisition contract. Historical schema-v3
 development and schema-v4 certification artifacts remain readable evidence but cannot authorize new
 preparation. The caller must name
 the `quarantine`, `development`, or `certification` profile before either locking rights decisions or

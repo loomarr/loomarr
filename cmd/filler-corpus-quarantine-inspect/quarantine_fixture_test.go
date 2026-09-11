@@ -104,6 +104,9 @@ func writePriorChallengeFixture(t *testing.T, root string, generatedAt time.Time
 func quarantineFixtureInventory(snapshot time.Time, name string, data []byte) fillercorpus.Inventory {
 	authority, itemID, role := "loc.gov/national-screening-room", "candidate", "commercial"
 	captureID := fillercorpus.NewCaptureID(authority, "fixture", role)
+	metadataSHA256 := strings.Repeat("e", 64)
+	representation := fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: name, URL: "https://tile.loc.gov/candidate.mp4", MIMEType: "video/mp4", Bytes: int64(len(data)), SHA256: quarantineHash(data), DurationMS: 6_000, Width: 320, Height: 180}
+	representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, fillercorpus.SoundtrackPresentExpected, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, metadataSHA256, "fixture metadata")
 	return fillercorpus.Inventory{
 		SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: snapshot,
 		Captures: []fillercorpus.Capture{{
@@ -113,8 +116,8 @@ func quarantineFixtureInventory(snapshot time.Time, name string, data []byte) fi
 		Cases: []fillercorpus.InventoryCase{{
 			CaseID: fillercorpus.CaseID(authority, itemID), CaptureIDs: []string{captureID}, Authority: authority, ItemID: itemID, Title: "Candidate", RoleHints: []string{role},
 			RightsAssertions: []string{"local quarantine review required"}, ItemURL: "https://www.loc.gov/item/candidate/", MetadataURL: "https://www.loc.gov/item/candidate/?fo=json",
-			MetadataRetrievedAt: snapshot.Add(-time.Hour), MetadataSHA256: strings.Repeat("e", 64), AllowedMediaHosts: []string{"tile.loc.gov"},
-			Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: name, URL: "https://tile.loc.gov/candidate.mp4", MIMEType: "video/mp4", Bytes: int64(len(data)), SHA256: quarantineHash(data), DurationMS: 6_000, Width: 320, Height: 180},
+			MetadataRetrievedAt: snapshot.Add(-time.Hour), MetadataSHA256: metadataSHA256, AllowedMediaHosts: []string{"tile.loc.gov"},
+			Representation: representation,
 		}},
 	}
 }

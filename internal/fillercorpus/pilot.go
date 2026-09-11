@@ -55,12 +55,13 @@ type Candidate struct {
 }
 
 type Representation struct {
-	Name     string `json:"name"`
-	URL      string `json:"url"`
-	MIMEType string `json:"mimeType"`
-	Bytes    int64  `json:"bytes"`
-	SHA1     string `json:"sha1,omitempty"`
-	MD5      string `json:"md5,omitempty"`
+	Name       string                `json:"name"`
+	URL        string                `json:"url"`
+	MIMEType   string                `json:"mimeType"`
+	Bytes      int64                 `json:"bytes"`
+	SHA1       string                `json:"sha1,omitempty"`
+	MD5        string                `json:"md5,omitempty"`
+	Soundtrack SoundtrackExpectation `json:"soundtrack"`
 }
 
 func ValidatePilot(p Pilot) []string {
@@ -96,6 +97,9 @@ func ValidatePilot(p Pilot) []string {
 			seenItems[key] = struct{}{}
 			if strings.TrimSpace(c.ItemID) == "" || strings.TrimSpace(c.Title) == "" || len(c.RoleHints) == 0 || c.MetadataRetrievedAt.IsZero() || !digest(c.MetadataSHA256, 64) || len(c.RightsAssertions) == 0 || c.Representation.Bytes <= 0 || strings.TrimSpace(c.Representation.Name) == "" || strings.TrimSpace(c.Representation.MIMEType) == "" || !httpsURL(c.ItemURL) || !httpsURL(c.MetadataURL) || !httpsURL(c.Representation.URL) || (c.LicenseURL != "" && !httpsURL(c.LicenseURL)) {
 				failures = append(failures, fmt.Sprintf("pilot item %q has incomplete frozen metadata", key))
+			}
+			if c.Representation.Soundtrack != (SoundtrackExpectation{}) && (!validateLaneSoundtrack(c.Representation) || c.Representation.Soundtrack.EvidenceSHA256 != c.MetadataSHA256) {
+				failures = append(failures, fmt.Sprintf("pilot item %q has invalid soundtrack expectation", key))
 			}
 			if lane.Authority == "commons.wikimedia.org" && (len(c.DiscoveryPath) == 0 || slices.Contains(c.DiscoveryPath, "")) {
 				failures = append(failures, fmt.Sprintf("pilot item %q is missing its Commons category path", key))

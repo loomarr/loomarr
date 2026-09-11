@@ -218,6 +218,8 @@ func metInventoryCase(object metObject, discoveryTerms []string, raw []byte, met
 	}
 	slices.Sort(subjectTerms)
 	subjectTerms = slices.Compact(subjectTerms)
+	representation := InventoryRepresentation{Transport: TransportHTTPS, Name: metRepresentationName(object.PrimaryImage), URL: metOpenAccessDownloadURL(object.PrimaryImage, raw), MIMEType: mediaType, Bytes: bytes}
+	representation.Soundtrack = BindInventorySoundtrack(representation, SoundtrackIntentionallySilent, SoundtrackEvidenceFirstPartyMetadata, hex.EncodeToString(metadataHash[:]), "Met object metadata identifies a still-image representation")
 	return InventoryCase{
 		CaseID: CaseID(MetAuthority, id), CaptureIDs: []string{captureID}, Authority: MetAuthority, ItemID: id,
 		Title: object.Title, RoleHints: []string{roleHint}, Collection: collections,
@@ -226,6 +228,6 @@ func metInventoryCase(object metObject, discoveryTerms []string, raw []byte, met
 		MetadataCache: sourceCacheKey(metadataURL) + ".json", MetadataRetrievedAt: retrievedAt.UTC(),
 		MetadataSHA256:    hex.EncodeToString(metadataHash[:]),
 		AllowedMediaHosts: []string{metImageHost},
-		Representation:    InventoryRepresentation{Transport: TransportHTTPS, Name: metRepresentationName(object.PrimaryImage), URL: metOpenAccessDownloadURL(object.PrimaryImage, raw), MIMEType: mediaType, Bytes: bytes},
+		Representation:    representation,
 	}
 }

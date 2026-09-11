@@ -259,7 +259,10 @@ func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 			return fillercorpus.Lane{}, fmt.Errorf("MediaInfo licence for M%d: %w", item.page.PageID, err)
 		}
 		digestInput := append(append(append([]byte(nil), item.raw...), '\n'), entityRaw...)
-		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: strconv.FormatInt(item.page.PageID, 10), Title: strings.TrimPrefix(item.page.Title, "File:"), RoleHints: []string{opts.roleHint}, DiscoveryPath: []string{"Category:" + opts.category}, ItemURL: info.DescriptionURL, MetadataURL: entityURL, MetadataRetrievedAt: retrievedAt, MetadataSHA256: sha256Hex(digestInput), RightsAssertions: assertions, LicenseURL: licenseURL, Representation: fillercorpus.Representation{Name: path.Base(mustURL(info.URL).Path), URL: info.URL, MIMEType: info.MIME, Bytes: info.Size, SHA1: info.SHA1}})
+		metadataSHA256 := sha256Hex(digestInput)
+		representation := fillercorpus.Representation{Name: path.Base(mustURL(info.URL).Path), URL: info.URL, MIMEType: info.MIME, Bytes: info.Size, SHA1: info.SHA1}
+		representation.Soundtrack = fillercorpus.BindRepresentationSoundtrack(representation, fillercorpus.SoundtrackUnknown, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, metadataSHA256, "Commons file and entity metadata do not establish soundtrack presence")
+		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: strconv.FormatInt(item.page.PageID, 10), Title: strings.TrimPrefix(item.page.Title, "File:"), RoleHints: []string{opts.roleHint}, DiscoveryPath: []string{"Category:" + opts.category}, ItemURL: info.DescriptionURL, MetadataURL: entityURL, MetadataRetrievedAt: retrievedAt, MetadataSHA256: metadataSHA256, RightsAssertions: assertions, LicenseURL: licenseURL, Representation: representation})
 	}
 	lane.RequestsUsed, lane.ResponseBytes, lane.WallTimeMS = client.RequestsUsed(), client.ResponseBytes(), time.Since(started).Milliseconds()
 	return lane, nil

@@ -35,7 +35,7 @@ func TestRightsApprovedMetImageFlowsIntoVisualNominationWorksheet(t *testing.T) 
 		ItemURL:          "https://www.metmuseum.org/art/collection/search/195733", MetadataURL: "https://collectionapi.metmuseum.org/public/collection/v1/objects/195733",
 		MetadataCache: "objects/example.json", MetadataRetrievedAt: snapshot.Add(-time.Minute), MetadataSHA256: strings.Repeat("a", 64),
 		AllowedMediaHosts: []string{"images.metmuseum.org"},
-		Representation:    fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "image.jpg", URL: "https://images.metmuseum.org/image.jpg", MIMEType: "image/jpeg", Bytes: int64(len(imageRaw))},
+		Representation:    bindTestSoundtrack(fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "image.jpg", URL: "https://images.metmuseum.org/image.jpg", MIMEType: "image/jpeg", Bytes: int64(len(imageRaw))}, fillercorpus.SoundtrackIntentionallySilent, strings.Repeat("a", 64)),
 	}
 	inventory := fillercorpus.Inventory{
 		SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: snapshot,

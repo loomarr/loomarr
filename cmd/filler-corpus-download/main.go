@@ -34,7 +34,7 @@ type plannedDownload struct {
 
 type options struct {
 	inventoryPath, approvalsPath, outputDir, ledgerPath, userAgent string
-	profile, processorID, processorTermsSHA256                     string
+	profile, quarantinePurpose, processorID, processorTermsSHA256  string
 	inventorySHA256                                                string
 	generatedAt                                                    time.Time
 	maxRequests, maxItems                                          int
@@ -59,14 +59,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	maxImagePixels := flags.Int64("max-image-pixels", maximumDownloadedImagePixels, "hard decoded-image pixel ceiling")
 	delay := flags.Duration("delay", time.Second, "minimum delay between HTTP requests")
 	profile := flags.String("profile", "", "required rights profile: quarantine, development, or certification")
+	quarantinePurpose := flags.String("quarantine-purpose", "", "required quarantine acquisition purpose")
 	processorID := flags.String("processor-id", "", "exact approved inference processor identifier (certification only)")
 	processorTermsSHA256 := flags.String("processor-terms-sha256", "", "SHA-256 of approved processor terms snapshot (certification only)")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
 	profileValid := fillercorpus.KnownRightsProfile(*profile)
+	purposeValid := (*profile == fillercorpus.RightsProfileQuarantine && fillercorpus.KnownQuarantinePurpose(*quarantinePurpose)) || (*profile != fillercorpus.RightsProfileQuarantine && *quarantinePurpose == "")
 	certificationIdentityValid := *profile != fillercorpus.RightsProfileCertification || (strings.TrimSpace(*processorID) != "" && fillercorpus.IsSHA256(*processorTermsSHA256))
-	if *inventoryPath == "" || *approvalsPath == "" || *outputDir == "" || *ledgerPath == "" || *userAgent == "" || *generatedAtText == "" || *maxRequests <= 0 || *maxItems <= 0 || *maxBytes <= 0 || *maxImagePixels <= 0 || *maxImagePixels > maximumDownloadedImagePixels || *delay < 500*time.Millisecond || !profileValid || !certificationIdentityValid {
+	if *inventoryPath == "" || *approvalsPath == "" || *outputDir == "" || *ledgerPath == "" || *userAgent == "" || *generatedAtText == "" || *maxRequests <= 0 || *maxItems <= 0 || *maxBytes <= 0 || *maxImagePixels <= 0 || *maxImagePixels > maximumDownloadedImagePixels || *delay < 500*time.Millisecond || !profileValid || !purposeValid || !certificationIdentityValid {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-download: inventory, rights approvals, private output, ledger, identified User-Agent, generation time, explicit quarantine/development/certification profile, positive ceilings, <=50m image pixels, >=500ms delay, and certification processor identity are required")
 		return 2
 	}
@@ -78,7 +80,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	opts := options{
 		inventoryPath: *inventoryPath, approvalsPath: *approvalsPath, outputDir: *outputDir,
 		ledgerPath: *ledgerPath, userAgent: *userAgent, generatedAt: generatedAt,
-		profile: *profile, processorID: *processorID, processorTermsSHA256: *processorTermsSHA256,
+		profile: *profile, quarantinePurpose: *quarantinePurpose, processorID: *processorID, processorTermsSHA256: *processorTermsSHA256,
 		maxRequests: *maxRequests, maxItems: *maxItems, maxBytes: *maxBytes,
 		maxImagePixels: *maxImagePixels, delay: *delay,
 	}
@@ -143,6 +145,9 @@ func validateDecisionProfile(approval fillercorpus.RightsDecision, opts options)
 		}
 		if approval.Decision == "held" && len(approval.QuarantineContract.HoldReasons) == 0 {
 			return fmt.Errorf("held quarantine decision has no hold reasons")
+		}
+		if approval.QuarantineContract.Purpose != opts.quarantinePurpose {
+			return fmt.Errorf("decision is bound to quarantine purpose %q; want %q", approval.QuarantineContract.Purpose, opts.quarantinePurpose)
 		}
 	case fillercorpus.RightsProfileCertification:
 		if approval.QuarantineContract != nil || approval.HoldoutContract == nil {

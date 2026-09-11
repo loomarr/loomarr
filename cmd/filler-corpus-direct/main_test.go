@@ -110,7 +110,7 @@ func validManifest(t *testing.T, root string) manifest {
 			id := fmt.Sprintf("%s-%03d", role, index)
 			mediaPath := filepath.Join("media", id+".mp4")
 			writeFixture(t, root, mediaPath, "media bytes "+id)
-			value.Cases = append(value.Cases, manifestCase{ItemID: id, Title: id, RoleHints: []string{role}, MediaPath: filepath.ToSlash(mediaPath), MIMEType: "video/mp4", RightsAssertions: []string{"written redistribution grant"}, Creator: []string{"Example Broadcaster"}, Campaign: id, SourceFamily: "master-" + id, Evidence: []manifestEvidence{{Kind: "rights", Path: "evidence/rights.txt"}, {Kind: "provenance", Path: "evidence/provenance.json"}}})
+			value.Cases = append(value.Cases, manifestCase{ItemID: id, Title: id, RoleHints: []string{role}, MediaPath: filepath.ToSlash(mediaPath), MIMEType: "video/mp4", RightsAssertions: []string{"written redistribution grant"}, Creator: []string{"Example Broadcaster"}, Campaign: id, SourceFamily: "master-" + id, Evidence: []manifestEvidence{{Kind: "rights", Path: "evidence/rights.txt"}, {Kind: "provenance", Path: "evidence/provenance.json"}}, SoundtrackStatus: fillercorpus.SoundtrackPresentExpected, SoundtrackEvidenceLocator: "authored source manifest"})
 		}
 	}
 	return value
