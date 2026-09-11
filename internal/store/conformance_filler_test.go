@@ -4405,10 +4405,10 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 			CreatedAt: at,
 		}
 	}
-	seed := func(hash, path string, withPipeline bool) {
+	seedKind := func(hash, path string, kind filler.Kind, withPipeline bool) {
 		t.Helper()
 		if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
-			Hash: hash, Path: path, Name: "Applied candidate", Kind: filler.Commercial,
+			Hash: hash, Path: path, Name: "Applied candidate", Kind: kind,
 			DurationMs: 30_000, Held: true,
 		}, UpdatedAt: at}); err != nil {
 			t.Fatal(err)
@@ -4421,6 +4421,10 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 				t.Fatal(err)
 			}
 		}
+	}
+	seed := func(hash, path string, withPipeline bool) {
+		t.Helper()
+		seedKind(hash, path, filler.Commercial, withPipeline)
 	}
 
 	hash := strings.Repeat("a", 64)
@@ -4642,6 +4646,52 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 	actions, err = s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: rollbackDecision.ID, Limit: 10})
 	if err != nil || actions.Total != 0 {
 		t.Fatalf("rolled-back action persisted = %+v, err = %v", actions, err)
+	}
+
+	// A terminal decision cannot publish bytes whose exact filler role remains unclassified.
+	// The catalog predicate and transaction rollback keep clip, pipeline, and action history closed
+	// even when every otherwise-required applied admission authority is supplied.
+	unclassifiedHash := strings.Repeat("8", 64)
+	seedKind(unclassifiedHash, "88/88/"+unclassifiedHash+".mp4", filler.Unclassified, true)
+	unclassifiedClip, err := s.GetClip(ctx, unclassifiedHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unheld := unclassifiedClip
+	unheld.Held = false
+	if err := s.UpsertClip(ctx, unheld); err == nil {
+		t.Fatal("application boundary accepted an unheld unclassified clip")
+	}
+	if err := s.SetClipComposite(ctx, unclassifiedHash, true, at.Add(6*time.Minute+time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReleaseCompositeHolds(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err == nil {
+		t.Fatal("database boundary released an unclassified clip through the composite exception")
+	}
+	unclassifiedDecision := newDecision("applied-unclassified", unclassifiedHash)
+	if err := s.PutFillerDecision(ctx, unclassifiedDecision); err != nil {
+		t.Fatal(err)
+	}
+	unclassifiedAction := fillerdecision.Action{
+		ID: "applied-unclassified-admit", DecisionID: unclassifiedDecision.ID,
+		Kind: fillerdecision.ActionAdmit, ActorID: "admin-1", CreatedAt: at.Add(7 * time.Minute),
+	}
+	unclassifiedReceipt := *rightsReceipt
+	unclassifiedReceipt.DecisionID, unclassifiedReceipt.ClipHash = unclassifiedDecision.ID, unclassifiedHash
+	if err := s.CommitAppliedFillerDecisionAction(ctx, unclassifiedAction, &unclassifiedReceipt); !errors.Is(err, fillerdecision.ErrActionStale) {
+		t.Fatalf("unclassified applied admission = %v, want stale", err)
+	}
+	unclassifiedClip, err = s.GetClip(ctx, unclassifiedHash)
+	if err != nil || !unclassifiedClip.Held || unclassifiedClip.Kind != filler.Unclassified {
+		t.Fatalf("unclassified admission changed clip = %+v, err = %v", unclassifiedClip, err)
+	}
+	unclassifiedPipeline, found, err := s.GetClipPipeline(ctx, unclassifiedHash)
+	if err != nil || !found || unclassifiedPipeline.Disposition != filler.DispositionReview {
+		t.Fatalf("unclassified admission changed pipeline = %+v, found = %t, err = %v", unclassifiedPipeline, found, err)
+	}
+	unclassifiedActions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: unclassifiedDecision.ID, Limit: 10})
+	if err != nil || unclassifiedActions.Total != 0 {
+		t.Fatalf("unclassified admission persisted action = %+v, err = %v", unclassifiedActions, err)
 	}
 }
 

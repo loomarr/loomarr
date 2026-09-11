@@ -477,6 +477,12 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		// build a filler-list referencing programs Tunarr no longer has.
 		merged.TunarrProgramID = rc.TunarrProgramID
 		if found {
+			// A filename with no explicit role token cannot erase a concrete kind from an already
+			// admitted row. Its terminal admission remains the stronger authority. Held legacy rows
+			// do move to Unclassified so the old default-commercial inference cannot survive review.
+			if rc.Kind == Unclassified && !existing.Held && validConcreteKind(existing.Kind) {
+				merged.Kind = existing.Kind
+			}
 			// PRESERVE loomarr-owned match tags across syncs (§10) — never clobber a
 			// hand-edited or AI-assigned era/audience/category.
 			merged.Era = existing.Era
@@ -535,6 +541,11 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			res.Added++
 		}
 		if rc.LineageInvalid || rc.ConditioningHold {
+			merged.Held = true
+		}
+		// A legacy or reconstructed row may predate the held-only role state. Close it here as
+		// soon as this scan discovers that no concrete role authority survives.
+		if merged.Kind == Unclassified {
 			merged.Held = true
 		}
 		if err := s.store.UpsertClip(ctx, merged); err != nil {

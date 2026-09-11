@@ -603,6 +603,7 @@ const FillerCatalog = ({ isAdmin, onEditTags, onProposePull }: FillerCatalogProp
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="any">Any</SelectItem>
+              <SelectItem value="unclassified">Unclassified</SelectItem>
               <SelectItem value="commercial">Commercial</SelectItem>
               <SelectItem value="bumper">Bumper</SelectItem>
               <SelectItem value="station_id">Station ID</SelectItem>

@@ -259,6 +259,24 @@ func TestAssemble_PinForcesInOffLadderClip(t *testing.T) {
 	}
 }
 
+// Unclassified is a held lifecycle state, not a role. This defense stays in assembly so a
+// caller that accidentally includes held rows, explicitly requests the token, and pins one still
+// cannot project it into a schedule.
+func TestAssemble_UnclassifiedCannotBeForcedIntoAPod(t *testing.T) {
+	unknown := filler.Clip{
+		Hash: "unknown", Path: "unknown.mp4", TunarrProgramID: "tun-unknown",
+		Name: "Mystery clip", Kind: filler.Unclassified, Era: 1992, Audience: filler.Kids,
+		DurationMs: 30_000, Held: false,
+	}
+	w := kidsWindow(7)
+	w.Kinds = []string{string(filler.Unclassified), string(filler.Commercial)}
+	w.Pinned = []string{unknown.ID()}
+	p := filler.Assemble(append(sampleCatalog(), unknown), w, filler.Policy{}, nil)
+	if containsID(p, unknown.ID()) {
+		t.Fatal("unclassified clip reached a pod through an explicit kind request and pin")
+	}
+}
+
 // Exclude WINS over pin: a clip that is both pinned and excluded is dropped (the safe
 // default — exclude is the stronger, "never play this" intent).
 func TestAssemble_ExcludeBeatsPin(t *testing.T) {

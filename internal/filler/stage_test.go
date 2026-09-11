@@ -268,6 +268,7 @@ func TestScoreStage_ScoresWithoutPublishing(t *testing.T) {
 	s := filler.NewScoreStage(st, func() bool { return false }, nil)
 
 	clip := heldClipWith(func(c *filler.Clip) {
+		c.Kind = filler.Unclassified
 		c.AITagged, c.Era, c.Audience, c.Category = true, 1987, filler.Kids, "toys"
 	})
 	out, err := s.Run(context.Background(), clip)

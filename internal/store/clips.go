@@ -211,6 +211,9 @@ func clipOrderBy(f ClipFilter) (string, error) {
 }
 
 func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
+	if c.Kind == filler.Unclassified && !c.Held {
+		return fmt.Errorf("upsert clip %s: unclassified filler must remain held", c.Hash)
+	}
 	_, err := s.db.ExecContext(ctx, s.ph(
 		// ⚠ play_count / last_played_at are INSERTed (so a new row starts at 0) but deliberately
 		// NOT in the DO UPDATE list. A re-sync knows nothing about plays, so writing
@@ -224,7 +227,9 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// (V38). The folder scan re-upserts every file it finds with `held = false`; if that rode
 		// along in the update list, one scan pass would file every held clip — clearing the
 		// review queue and putting untagged, unreviewed clips straight into channels, with no
-		// operator action and nothing in the logs. HoldClips and terminal admission own changes.
+		// operator action and nothing in the logs. The one-way CASE below is the narrow exception:
+		// discovering an unclassified role may impose a hold, but an upsert can never lift one.
+		// HoldClips and terminal admission own every other change.
 		//
 		// `confidence` is omitted too. A scan knows nothing about tagging, and the Clip it builds
 		// carries a zero score — so leaving it in the update list would blank a tagged clip's
@@ -271,7 +276,9 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
-		   name=excluded.name, kind=excluded.kind, era=excluded.era, audience=excluded.audience,
+		   name=excluded.name, kind=excluded.kind,
+		   held=CASE WHEN excluded.kind = 'unclassified' THEN TRUE ELSE clips.held END,
+		   era=excluded.era, audience=excluded.audience,
 		   category=excluded.category, duration_ms=excluded.duration_ms, rating=excluded.rating,
 		   source=excluded.source, ai_tagged=excluded.ai_tagged, quality=excluded.quality,
 		   license=excluded.license,

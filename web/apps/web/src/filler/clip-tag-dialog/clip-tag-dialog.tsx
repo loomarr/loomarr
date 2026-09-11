@@ -1,6 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ClipGeographyDTO } from "@loomarr/api/models/clipGeographyDTO";
+import type { PatchClipInputBodyKind } from "@loomarr/api/models/patchClipInputBodyKind";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -86,7 +87,9 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
       data: {
         // The clip is identified by `hash` in the body (§10 V45a) — no {id} URL segment.
         hash: clip.hash,
-        kind: kind as ClipDTO["kind"],
+        // Unclassified is a held lifecycle state, not a role an operator may assert. Omitting
+        // kind keeps that state intact while still allowing independent metadata corrections.
+        ...(kind === "unclassified" ? {} : { kind: kind as PatchClipInputBodyKind }),
         // An empty era means "unset", which the API takes as 0 — not "leave alone".
         era: era ? Number(era) : 0,
         audience: audience as ClipDTO["audience"],
@@ -138,6 +141,9 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="unclassified" disabled>
+                  Unclassified — choose a role
+                </SelectItem>
                 <SelectItem value="commercial">Commercial</SelectItem>
                 <SelectItem value="bumper">Bumper</SelectItem>
                 <SelectItem value="station_id">Station ID</SelectItem>

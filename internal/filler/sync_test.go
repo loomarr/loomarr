@@ -473,6 +473,36 @@ func TestSync_ReScanDoesNotReHoldAFiledClip(t *testing.T) {
 	}
 }
 
+func TestSync_UnknownNamePreservesAnAdmittedConcreteKindButClosesHeldLegacyDefault(t *testing.T) {
+	source := &fakeSource{clips: []filler.RawClip{raw("clip", "Mystery", filler.Unclassified, 31_000, 0)}}
+	for _, tc := range []struct {
+		name     string
+		kind     filler.Kind
+		held     bool
+		wantKind filler.Kind
+		wantHeld bool
+	}{
+		{name: "admitted authority survives rescan", kind: filler.Commercial, wantKind: filler.Commercial},
+		{name: "held legacy default is retired", kind: filler.Commercial, held: true, wantKind: filler.Unclassified, wantHeld: true},
+		{name: "legacy empty role is re-held", wantKind: filler.Unclassified, wantHeld: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newMemStore()
+			st.clips["clip"] = filler.StoreClip{Clip: filler.Clip{
+				Hash: "clip", Path: "clip", Name: "Old name", Kind: tc.kind,
+				DurationMs: 30_000, Held: tc.held,
+			}}
+			if _, err := newSyncer(source, st).Sync(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			got := st.clips["clip"]
+			if got.Kind != tc.wantKind || got.Held != tc.wantHeld || got.DurationMs != 31_000 {
+				t.Fatalf("rescanned clip = kind %q held %t duration %d, want %q/%t/31000", got.Kind, got.Held, got.DurationMs, tc.wantKind, tc.wantHeld)
+			}
+		})
+	}
+}
+
 // Two watched folders each holding `ads/coke.mp4` — different adverts that happen to share a
 // relative path. THE case V38c moved identity off the path for (§10).
 //

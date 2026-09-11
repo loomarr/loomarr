@@ -94,7 +94,7 @@ func (i AcquisitionIntent) Validate() error {
 		return fmt.Errorf("unknown rights preference %q", i.Rights)
 	}
 	for _, role := range i.Roles {
-		if !validKind(role) {
+		if !validConcreteKind(role) {
 			return fmt.Errorf("unknown content role %q", role)
 		}
 	}
@@ -277,11 +277,15 @@ func uniqueAudiences(in []Audience) []Audience {
 
 func validKind(value Kind) bool {
 	switch value {
-	case Commercial, Bumper, StationID, PSA, Trailer, Interstitial:
+	case Unclassified, Commercial, Bumper, StationID, PSA, Trailer, Interstitial:
 		return true
 	default:
 		return false
 	}
+}
+
+func validConcreteKind(value Kind) bool {
+	return value != Unclassified && validKind(value)
 }
 
 func validAudience(value Audience) bool {

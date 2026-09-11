@@ -286,7 +286,7 @@ type ClipDTO struct {
 	// empty on an install with no Tunarr. NOT an identity — clients must key on Path.
 	TunarrProgramID string `json:"tunarrProgramId,omitempty"`
 	Name            string `json:"name"`
-	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
+	Kind            string `json:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial"`
 	Era             int    `json:"era,omitempty"`
 	Audience        string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
 	GeographicScope string `json:"geographicScope,omitempty" enum:"unknown,national,local"`
@@ -478,7 +478,7 @@ func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) Clip
 }
 
 type listFillerInput struct {
-	Kind            string `query:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
+	Kind            string `query:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial"`
 	Era             int    `query:"era"`
 	Audience        string `query:"audience" enum:"kids,family,general,late_night"`
 	Category        string `query:"category"`

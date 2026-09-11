@@ -120,6 +120,7 @@ func TestPlanAcquisition_RejectsConstraintsOutsideTheClosedVocabulary(t *testing
 		{EraStart: 1799},
 		{EraEnd: 2201},
 		{MinHeight: 4321},
+		{Roles: []filler.Kind{filler.Unclassified}},
 	} {
 		if _, err := filler.PlanAcquisition(intent, nil, nil); err == nil {
 			t.Errorf("PlanAcquisition(%+v) succeeded, want validation error", intent)

@@ -52,9 +52,12 @@ const useProductCategories = (): { slug: string; label: string }[] => {
 
 // Audiences from the generated ClipDTOAudience enum, minus the "" (any) sentinel — "Any"
 // is the Select's own placeholder value, not a listed option (Radix forbids an empty item
-// value). Kinds likewise from ClipDTOKind: all six clip kinds are selectable.
+// value). Unclassified is a held lifecycle state rather than a selectable pod role.
 const AUDIENCES = Object.values(ClipDTOAudience).filter((a): a is Exclude<typeof a, ""> => a !== "");
-const KINDS = Object.values(ClipDTOKind);
+const KINDS = Object.values(ClipDTOKind).filter((kind) => kind !== "unclassified") as Exclude<
+  (typeof ClipDTOKind)[keyof typeof ClipDTOKind],
+  "unclassified"
+>[];
 
 const KIND_LABEL: Record<(typeof KINDS)[number], string> = {
   commercial: "Commercials",
@@ -640,7 +643,7 @@ const FillerCriteria = ({
         )}
       </div>
 
-      {/* Kinds — checkboxes over the six clip kinds. None checked means the default set
+      {/* Kinds — checkboxes over the six playable clip kinds. None checked means the default set
           (commercials + bumpers + station IDs). */}
       <div className="flex flex-col gap-1.5 sm:col-span-2">
         <FieldLabel help="Which clips a break may use. None checked uses the default mix (commercials, bumpers, station IDs).">

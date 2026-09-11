@@ -252,9 +252,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			// tagging tier (§10). ⚠ Must be `heuristicName`: the display `name` now prefers the
 			// sidecar title, which often drops the year ("Campbell's Soup Advert" has no 1993), and
 			// §8 grounds an era only when the year is literally in the text. Reading Era off the
-			// clean title would silently lose filename-encoded eras. Without this a clip lands as a
-			// generic interstitial the pod assembler can never place, so filler would silently never
-			// build unless AI tagging is on.
+			// clean title would silently lose filename-encoded eras. An absent explicit role leaves the
+			// clip held and unclassified until exact role authority exists.
 			Kind:            kind,
 			Era:             EraFromName(heuristicName),
 			GeographicScope: GeographicScope(tags.GeographicScope),

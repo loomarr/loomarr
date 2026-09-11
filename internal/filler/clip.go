@@ -33,6 +33,9 @@ import (
 type Kind string
 
 const (
+	// Unclassified is held work whose exact filler role has not been established. It is not a
+	// generic filler role and must never be selected for playout (§10).
+	Unclassified Kind = "unclassified"
 	Commercial   Kind = "commercial"
 	Bumper       Kind = "bumper"
 	StationID    Kind = "station_id"
@@ -92,7 +95,7 @@ type Clip struct {
 	// internal playout reads Path, Tunarr reads this.
 	TunarrProgramID string
 	Name            string   // display name (from the filename)
-	Kind            Kind     // commercial | bumper | station_id | psa | trailer | interstitial
+	Kind            Kind     // unclassified (held-only) | commercial | bumper | station_id | psa | trailer | interstitial
 	Era             int      // decade/year, e.g. 1994; 0 = untagged
 	Audience        Audience // kids | family | general | late_night; "" = untagged
 	GeographicScope GeographicScope
@@ -303,25 +306,34 @@ func (c Clip) IsBumper() bool { return c.Kind == Bumper || c.Kind == StationID }
 // operator asked for a decade. `EraRange.Widened` — ten years at each end — replaces it and is
 // strictly wider than `exact` for every range, which is what a fallback rung has to be.
 
-// KindFromName infers a clip Kind from its filename/folder convention (§10 — the
-// cheapest tagging tier, applied by the sync to Tunarr-`local` clips whose scan
-// reports no kind). It DEFAULTS TO Commercial (the common case) so an unclassified
-// clip is still pod-eligible as an ad — never left as a generic interstitial that
-// the pod assembler can't place. AI tagging (§10) refines era/audience/category.
+// KindFromName records an explicit filler-role token from the filename convention (§10 — the
+// cheapest tagging tier). Absence is Unclassified, never a placement default: acquisition and
+// unrelated grounding do not prove that unknown bytes are a commercial.
 func KindFromName(name string) Kind {
-	hay := strings.ToLower(name)
-	switch {
-	case strings.Contains(hay, "bumper"):
-		return Bumper
-	case strings.Contains(hay, "station") || strings.Contains(hay, "ident"):
-		return StationID
-	case strings.Contains(hay, "psa"):
-		return PSA
-	case strings.Contains(hay, "trailer"):
-		return Trailer
-	default:
-		return Commercial
+	tokens := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+		return r < 'a' || r > 'z'
+	})
+	for index, token := range tokens {
+		switch token {
+		case "bumper", "bumpers":
+			return Bumper
+		case "ident", "idents":
+			return StationID
+		case "station":
+			if index+1 < len(tokens) && (tokens[index+1] == "id" || tokens[index+1] == "ident") {
+				return StationID
+			}
+		case "psa", "psas":
+			return PSA
+		case "trailer", "trailers":
+			return Trailer
+		case "interstitial", "interstitials":
+			return Interstitial
+		case "commercial", "commercials", "advert", "adverts", "ad", "ads":
+			return Commercial
+		}
 	}
+	return Unclassified
 }
 
 // EraFromName best-effort extracts a 4-digit year (1930–2035) from a filename
