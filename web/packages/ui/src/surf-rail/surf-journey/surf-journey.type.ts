@@ -15,6 +15,7 @@ interface SurfJourneyProps {
   favoriteChannelIds?: readonly string[];
   now?: () => number;
   onDisconnect?: () => Promise<void> | void;
+  onForget?: () => Promise<void> | void;
   onTune: (channelId: string) => void;
   playableChannelIds: readonly string[];
   recentChannelIds: readonly string[];

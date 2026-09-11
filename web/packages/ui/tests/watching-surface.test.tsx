@@ -41,6 +41,7 @@ const renderSurface = (
     density?: "touch" | "tv";
     loading?: boolean;
     loadError?: string;
+    onChangeServer?: () => void;
     schedule?: Parameters<typeof WatchingSurface>[0]["schedule"];
   } = {},
 ) =>
@@ -54,6 +55,7 @@ const renderSurface = (
         loadError={options.loadError}
         onChannelDown={vi.fn()}
         onChannelUp={vi.fn()}
+        onChangeServer={options.onChangeServer}
         onDismissControls={vi.fn()}
         onGoLive={vi.fn()}
         onOpenGuide={vi.fn()}
@@ -219,9 +221,19 @@ describe("WatchingSurface", () => {
   it("states empty Channel data separately from an authoritative catalog failure", () => {
     const empty: PlayerSnapshot = { catalog: [], recentChannelIds: [], status: "empty" };
     expect(renderSurface(empty)).toContain("No playable channels");
-    const failedLoad = renderSurface(empty, { loadError: "Could not load channels." });
+    const failedLoad = renderSurface(empty, {
+      loadError: "Could not load channels.",
+      onChangeServer: vi.fn(),
+    });
     expect(failedLoad).toContain("Could not load channels.");
     expect(failedLoad).toContain("Retry");
+    expect(failedLoad).toContain("Change server");
+
+    const failedPlayback = renderSurface(
+      { ...playing, error: "The stream could not be decoded.", status: "failed" },
+      { onChangeServer: vi.fn() },
+    );
+    expect(failedPlayback).not.toContain("Change server");
   });
 
   it("does not announce an empty catalog before the authoritative request resolves", () => {

@@ -38,6 +38,69 @@ describe("pairing contract", () => {
 
     expect(session.snapshot()).toEqual({ status: "needs-server" });
   });
+  it("keeps the saved credential until replacement pairing succeeds", async () => {
+    const previous = { deviceName: "Shield", serverUrl: "https://old.example", token: "old-token" };
+    const store = memoryStore(previous);
+    const transport: PairingTransport = {
+      poll: vi.fn(
+        async (): Promise<PairingPoll> => ({
+          body: { deviceName: "Shield", token: "new-token" },
+          status: "paired",
+        }),
+      ),
+      start: vi.fn(async () => ({
+        body: {
+          deviceCode: "new-device-code",
+          expiresAt: "2026-08-24T12:10:00Z",
+          interval: 1,
+          userCode: "BCDF-GHJK",
+        },
+        serverDate: "Sun, 24 Aug 2026 12:00:00 GMT",
+      })),
+    };
+    const session = new PairingSession({
+      createTransport: () => transport,
+      deviceName: "Shield",
+      sleep: async () => {},
+      store,
+      validateCredential: vi.fn(async () => true),
+    });
+    await session.initialize(undefined);
+
+    session.chooseServer();
+
+    expect(store.clear).not.toHaveBeenCalled();
+    expect(await store.read()).toEqual(previous);
+    await session.pair("https://new.example");
+    expect(store.write).toHaveBeenCalledWith({
+      deviceName: "Shield",
+      serverUrl: "https://new.example",
+      token: "new-token",
+    });
+  });
+  it("forgets an unreachable server locally without attempting remote revocation", async () => {
+    const credential = { deviceName: "Shield", serverUrl: "https://old.example", token: "old-token" };
+    const store = memoryStore(credential);
+    const revokeCredential = vi.fn(async () => {
+      throw new Error("must not revoke remotely");
+    });
+    const session = new PairingSession({
+      createTransport: () => {
+        throw new Error("must not start a pairing");
+      },
+      deviceName: "Shield",
+      revokeCredential,
+      store,
+      validateCredential: vi.fn(async () => true),
+    });
+    await session.initialize(undefined);
+
+    await session.forgetServer();
+
+    expect(revokeCredential).not.toHaveBeenCalled();
+    expect(store.clear).toHaveBeenCalledOnce();
+    expect(session.snapshot()).toEqual({ status: "needs-server" });
+  });
   it("accepts only origin-like http addresses", () => {
     expect(normalizeServerUrl(" https://loomarr.media/// ")).toBe("https://loomarr.media");
     expect(normalizeServerUrl("https://user:secret@loomarr.media")).toBeUndefined();

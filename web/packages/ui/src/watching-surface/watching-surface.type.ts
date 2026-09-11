@@ -32,6 +32,8 @@ interface WatchingSurfaceProps {
   numberEntry?: ChannelNumberEntry;
   onChannelDown: () => void;
   onChannelUp: () => void;
+  /** Returns to server selection while preserving the current credential as a restart fallback. */
+  onChangeServer?: () => void;
   onDismissControls: () => void;
   onGoLive: () => void;
   onOpenGuide: () => void;

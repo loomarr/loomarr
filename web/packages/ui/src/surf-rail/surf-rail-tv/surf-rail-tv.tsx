@@ -105,6 +105,7 @@ const TvSurfRail = ({
   groups,
   onFocusSelection,
   onDisconnect,
+  onForget,
   onTune,
   selection,
   serverName,
@@ -179,7 +180,12 @@ const TvSurfRail = ({
             </Surface>
           ))}
           {onDisconnect ? (
-            <DeviceDisconnectAction density="tv" onDisconnect={onDisconnect} serverName={serverName} />
+            <DeviceDisconnectAction
+              density="tv"
+              onDisconnect={onDisconnect}
+              onForget={onForget}
+              serverName={serverName}
+            />
           ) : null}
         </ScrollFrame>
         <Text density="tv" textRole="metadata" tone="muted">
