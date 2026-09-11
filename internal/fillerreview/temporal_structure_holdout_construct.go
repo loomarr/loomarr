@@ -30,12 +30,18 @@ func constructTemporalStructureHoldout(config TemporalStructureHoldoutConfig, lo
 		FutureTrainingExclusion: cloneTemporalStructureTrainingExclusion(loaded.prior.exposure),
 		BlindHumanAuditRequired: new(bool), TrainingAllowed: new(bool), ProductionAdmissionAllowed: new(bool),
 	}
+	if loaded.prior.planKind == TemporalStructureHoldoutPlanReplacement {
+		receipt.SchemaVersion = TemporalStructureReplacementSchemaVersion
+		receipt.ContractVersion = TemporalStructureReplacementContractVersion
+	}
 	for index := range anchors {
-		relative, err := temporalStructureHoldoutRelativeEvidencePath(config.SourceRoot, config.EvidenceManifestPath, anchors[index].source.Path)
-		if err != nil {
-			return TemporalStructureChallengeAuthoring{}, TemporalStructureHoldoutReceipt{}, err
+		if !loaded.sourcePathsRelative {
+			relative, err := temporalStructureHoldoutRelativeEvidencePath(config.SourceRoot, config.EvidenceManifestPath, anchors[index].source.Path)
+			if err != nil {
+				return TemporalStructureChallengeAuthoring{}, TemporalStructureHoldoutReceipt{}, err
+			}
+			anchors[index].source.Path = relative
 		}
-		anchors[index].source.Path = relative
 		authoring.Sources = append(authoring.Sources, anchors[index].source)
 		receipt.SelectedAnchors = append(receipt.SelectedAnchors, anchors[index].receipt)
 		receipt.StandaloneRoleCounts[anchors[index].receipt.Role]++

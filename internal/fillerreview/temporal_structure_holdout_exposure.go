@@ -16,6 +16,22 @@ type temporalStructureHoldoutPrior struct {
 	inputs   []TemporalStructureHoldoutInput
 }
 
+// OpenTemporalStructurePriorExposure validates the complete immutable
+// adjudication chain and returns its canonical cumulative exposure and input
+// digests for composition modules such as the replacement pool builder.
+func OpenTemporalStructurePriorExposure(paths []string, plannedAt time.Time) (TemporalStructureHoldoutTrainingExclusion, []TemporalStructureHoldoutInput, error) {
+	if len(paths) == 0 || plannedAt.IsZero() {
+		return TemporalStructureHoldoutTrainingExclusion{}, nil, fmt.Errorf("replacement prior exposure requires adjudication paths and planning time")
+	}
+	prior, err := loadTemporalStructureHoldoutPrior(TemporalStructureHoldoutConfig{
+		PriorAdjudicationPaths: paths, PlannedAt: plannedAt,
+	})
+	if err != nil {
+		return TemporalStructureHoldoutTrainingExclusion{}, nil, err
+	}
+	return cloneTemporalStructureTrainingExclusion(prior.exposure), append([]TemporalStructureHoldoutInput(nil), prior.inputs...), nil
+}
+
 func loadTemporalStructureHoldoutPrior(config TemporalStructureHoldoutConfig) (temporalStructureHoldoutPrior, error) {
 	if config.Genesis {
 		return temporalStructureHoldoutPrior{

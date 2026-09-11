@@ -11,13 +11,15 @@ import (
 )
 
 const (
-	TemporalStructureHoldoutSchemaVersion   = 3
-	TemporalStructureHoldoutContractVersion = "filler-temporal-structure-holdout-plan-v7"
-	TemporalStructureHoldoutPlanGenesis     = "genesis"
-	TemporalStructureHoldoutPlanReplacement = "replacement"
-	TemporalStructureHoldoutCases           = 60
-	temporalStructureHoldoutClassCases      = 12
-	temporalStructureHoldoutParentSources   = 6
+	TemporalStructureHoldoutSchemaVersion       = 3
+	TemporalStructureHoldoutContractVersion     = "filler-temporal-structure-holdout-plan-v7"
+	TemporalStructureReplacementSchemaVersion   = 4
+	TemporalStructureReplacementContractVersion = "filler-temporal-structure-holdout-plan-v8"
+	TemporalStructureHoldoutPlanGenesis         = "genesis"
+	TemporalStructureHoldoutPlanReplacement     = "replacement"
+	TemporalStructureHoldoutCases               = 60
+	temporalStructureHoldoutClassCases          = 12
+	temporalStructureHoldoutParentSources       = 6
 )
 
 type TemporalStructureHoldoutConfig struct {
@@ -33,6 +35,7 @@ type TemporalStructureHoldoutConfig struct {
 	FamilyAuditPath             string
 	TransitionAuthorityPath     string
 	ProgrammeInventoryPath      string
+	CandidatePoolPath           string
 	SourceRoot                  string
 	Seed                        string
 	Genesis                     bool
@@ -168,11 +171,19 @@ func BuildTemporalStructureHoldoutPlan(config TemporalStructureHoldoutConfig) (T
 	if err != nil {
 		return TemporalStructureHoldoutResult{}, err
 	}
-	anchors, err := selectTemporalStructureHoldoutAnchors(config.Seed, loaded)
-	if err != nil {
-		return TemporalStructureHoldoutResult{}, err
+	var anchors []temporalStructureHoldoutSelectedAnchor
+	var parents []TemporalStructureChallengeSource
+	if config.Genesis {
+		anchors, err = selectTemporalStructureHoldoutAnchors(config.Seed, loaded)
+		if err == nil {
+			parents, err = selectTemporalStructureHoldoutParents(config.Seed, loaded.programmeInventory, loaded.prior.exposure)
+		}
+	} else {
+		anchors, err = selectTemporalStructureReplacementAnchors(config.Seed, loaded)
+		if err == nil {
+			parents, err = selectTemporalStructureReplacementParents(config.Seed, loaded)
+		}
 	}
-	parents, err := selectTemporalStructureHoldoutParents(config.Seed, loaded.programmeInventory, loaded.prior.exposure)
 	if err != nil {
 		return TemporalStructureHoldoutResult{}, err
 	}
@@ -186,7 +197,11 @@ func BuildTemporalStructureHoldoutPlan(config TemporalStructureHoldoutConfig) (T
 	}
 	authoringRaw = append(authoringRaw, '\n')
 	receipt.AuthoringSHA256 = hashBytes(authoringRaw)
-	if err := validateTemporalStructureHoldoutReceipt(receipt, authoring, &loaded.transition); err != nil {
+	var validationTransition *TemporalTransitionAuthority
+	if config.Genesis {
+		validationTransition = &loaded.transition
+	}
+	if err := validateTemporalStructureHoldoutReceipt(receipt, authoring, validationTransition); err != nil {
 		return TemporalStructureHoldoutResult{}, err
 	}
 	receiptRaw, err := json.MarshalIndent(receipt, "", "  ")
@@ -207,20 +222,32 @@ func BuildTemporalStructureHoldoutPlan(config TemporalStructureHoldoutConfig) (T
 }
 
 func validateTemporalStructureHoldoutConfig(config TemporalStructureHoldoutConfig) error {
-	paths := []string{
+	validLineage := config.Genesis && len(config.PriorAdjudicationPaths) == 0 || !config.Genesis && len(config.PriorAdjudicationPaths) > 0
+	if strings.TrimSpace(config.Seed) == "" || config.PlannedAt.IsZero() || !validLineage {
+		return fmt.Errorf("temporal structure holdout requires a private seed, fixed planning time, and exactly one genesis or prior-adjudication lineage mode")
+	}
+	common := []string{config.SourceRoot, config.OutputDir}
+	genesis := []string{
 		config.SelectionPath, config.EvidenceManifestPath, config.EvidencePrivateMapPath,
 		config.HumanAssessmentPath, config.HumanAttestationPath, config.MediaQualityPath,
-		config.SuitabilityPath, config.ReferenceAuditPath, config.ReferenceDownloadLedgerPath, config.FamilyAuditPath, config.TransitionAuthorityPath, config.ProgrammeInventoryPath,
-		config.SourceRoot, config.OutputDir,
+		config.SuitabilityPath, config.ReferenceAuditPath, config.ReferenceDownloadLedgerPath,
+		config.FamilyAuditPath, config.TransitionAuthorityPath, config.ProgrammeInventoryPath,
+	}
+	paths := append(common, genesis...)
+	if !config.Genesis {
+		paths = append(common, config.CandidatePoolPath)
+		for _, forbidden := range genesis {
+			if strings.TrimSpace(forbidden) != "" {
+				return fmt.Errorf("replacement temporal structure holdout accepts candidate sources only through the replacement candidate pool")
+			}
+		}
+	} else if strings.TrimSpace(config.CandidatePoolPath) != "" {
+		return fmt.Errorf("genesis temporal structure holdout cannot consume a replacement candidate pool")
 	}
 	for _, path := range paths {
 		if strings.TrimSpace(path) == "" {
 			return fmt.Errorf("temporal structure holdout requires every authority path, source root, and output")
 		}
-	}
-	validLineage := config.Genesis && len(config.PriorAdjudicationPaths) == 0 || !config.Genesis && len(config.PriorAdjudicationPaths) > 0
-	if strings.TrimSpace(config.Seed) == "" || config.PlannedAt.IsZero() || !validLineage {
-		return fmt.Errorf("temporal structure holdout requires a private seed, fixed planning time, and exactly one genesis or prior-adjudication lineage mode")
 	}
 	return nil
 }

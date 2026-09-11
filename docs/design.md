@@ -126,8 +126,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
 | `fillerbakeoff` | 8 | `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
-| `fillercorpus` | 6 | — |
-| `fillereval` | 6 | — |
+| `fillercorpus` | 7 | — |
+| `fillereval` | 7 | — |
 | `fillersafety` | 8 | `mediatools`, `openroutermedia` |
 | `fillerstructure` | 8 | — |
 | `fillerstructurewindow` | 6 | `fillerstructure` |
@@ -169,9 +169,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
-- **`fillercorpus`** · 6 importers
+- **`fillercandidatepool`** · 2 importers
+  Owns the immutable replacement-candidate-pool contract.
+- **`fillercorpus`** · 7 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillereval`** · 6 importers
+- **`fillereval`** · 7 importers
   Owns the hermetic certification contract for filler admission.
 - **`fillerstructure`** · 8 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
@@ -334,7 +336,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 6 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`fillerreview`** · 2 importers · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillerreference`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
+- **`fillerreview`** · 3 importers · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerreference`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
   Materializes identity-blind evidence for independent semantic review.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
@@ -353,7 +355,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`devbootstrap`** · → `auth`, `store`
   Prepares an isolated agent worktree for UI development.
-- **`fillerquarantine`** · 1 importer · → `fillercorpus`, `fillerreference`, `fillerreview`, `mediatools`
+- **`fillerquarantine`** · 2 importers · → `fillercorpus`, `fillerreference`, `fillerreview`, `mediatools`
   Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
 - **`images`** · 2 importers · → `images/rustgen`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
@@ -368,6 +370,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
+- **`fillercandidatepool/build`** · → `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerquarantine`, `fillerreview`
+  Composes the independent corpus, quarantine, review, and prior-exposure authorities into one replacement candidate pool.
 - **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`testkit`** · 1 importer · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
@@ -6400,6 +6404,71 @@ filler unit. The combined construction receipt uses schema 3 and contract
 `filler-temporal-structure-holdout-plan-v7`: it retains the accepted provenance, transition, and
 holdout-exclusion authorities while binding the expanded cohort. Older receipts are not upgraded
 by inference and cannot authorize construction under this contract.
+
+Replacement planning receives new source material through one immutable **replacement candidate
+pool**, never through the historical programme inventory or a second raw inventory. The leaf
+`fillercandidatepool` package owns the strict schema, canonical validation, and digest of
+`filler-replacement-candidate-pool-v1`. A separate composition package owns its one build interface
+and may depend on `fillercandidatepool`, `fillercorpus`, `fillerquarantine`, `fillerreference`, and
+`fillerreview`; the planner depends only on the leaf pool contract. This direction keeps quarantine
+and review independent of their consumer and avoids the existing `fillerquarantine` to
+`fillerreview` dependency becoming a cycle. The review package exposes one normalized, read-only
+authority view from its existing strict loaders so the builder reuses the owning validators instead
+of copying their policy.
+
+The builder considers every row in one current schema-v5 corpus inventory and emits exactly one
+sorted candidate record for it. Each record has the closed kind `standalone_anchor` or
+`programme_parent`, the closed disposition `eligible` or `held`, and sorted unique hold reasons.
+Structural corruption or a digest-swapped authority invalidates the entire build. A valid authority
+that denies one candidate instead produces a held record, so absence cannot disguise a failed
+qualification gate. Eligible records bind the case, source content SHA-256, byte count, duration,
+canonical path beneath the declared source root, transport, exact source authority/item/page/media
+identity, metadata digest, soundtrack expectation and frozen evidence, duplicate-family identity,
+and the raw digest of every authority used to derive the record. Standalone records additionally
+bind the locked semantic unit and role plus their measured transition edges. Programme parents have
+no standalone role or transition claim. Adapter labels such as `PSA` and `Trailer`, hand-authored
+pool fields, and projected worksheet columns are never semantic, rights, quality, soundtrack, or
+audience authority.
+
+The authority matrix is closed and transport-aware:
+
+| Candidate | Required authority |
+|---|---|
+| Remote standalone anchor | Current inventory; applicable development or certification rights lock; exact materialization ledger; exact quarantine-inspection report; inspected source bytes; full-decode audiovisual quality; bound `present_expected` soundtrack claim and decoded audio; duplicate-family and prior-exposure clearance; explicit suitability/audience clearance; locked `standalone` unit and role; measured transition edges |
+| Local standalone anchor | The same authorities except that the inventory's direct local representation replaces the materialization ledger and quarantine report; source bytes are still confined, rehashed, and fully decoded |
+| Remote programme parent | The remote standalone authorities except semantic role and transition edges; explicit programme-parent kind authority replaces the standalone semantic claim |
+| Local programme parent | The local standalone authorities except semantic role and transition edges; explicit programme-parent kind authority replaces the standalone semantic claim |
+
+`present_expected` remains pre-download selection evidence; eligible candidates must also have an
+audio stream and a successful full-source decode. `intentionally_silent`, `unknown`, absent audio,
+failed or incomplete decode, prohibited suitability evidence, held rights, missing quarantine
+evidence for remote bytes, duplicate or related-family collision, and every prior-exposure form have
+closed hold reasons. Prior exposure covers exact source bytes, duplicate family, and programme
+provenance across the cumulative adjudication chain. A family with any exposed or otherwise eligible
+member resolves deterministically to at most one eligible representative; the others remain visible
+as held collisions. Local media never receives a fabricated download ledger or quarantine report,
+but no downstream authority is waived because of its transport.
+
+Pool construction strictly reopens the generic inventory, rights decision, materialization ledger
+where applicable, quarantine report where applicable, source bytes, quality, soundtrack, semantic,
+transition, family, suitability, and cumulative prior-adjudication authorities through their owning
+decoders. It binds their raw hashes as sorted named inputs and hashes canonical JSON with a fixed
+build time. The same inputs and build time produce byte-identical output and digest. Frozen CDC,
+Blender, USGS, and LOC fixtures exercise this join without network access. Building the pool creates
+no request, download, media mutation, model call, training data, catalog item, schedule, certification
+result, or production-admission grant; all corresponding authority flags are present and false.
+
+Genesis planning retains the schema-v3/v7 receipt and its exact historical selection, review,
+reference, transition, and programme-inventory inputs so the burned challenge remains reproducible.
+Replacement planning uses the next current receipt contract, requires one exact current pool plus
+the complete prior-adjudication chain, rejects every historical programme inventory and all raw
+candidate-authority paths, and selects both anchors and programme parents only from eligible pool
+records. It independently reproduces the pool digest, requires the pool's prior-exposure binding to
+equal the reopened cumulative chain, and records the pool hash as `replacement_candidate_pool` in
+the receipt. Candidate selection remains seed-deterministic, while the cumulative future-training
+exclusion continues to include prior and newly selected source hashes, families, and programme
+provenance. Historical pool or receipt schemas remain readable evidence only and are never upgraded
+by inference.
 
 **Transition evidence is a prior measurement authority, not a label inferred from the chosen
 corpus.** A development-only generator measures all 48 exact evidence cases before role, safety, or

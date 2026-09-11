@@ -62,7 +62,8 @@ func validateTemporalStructureChallenge(publicRoot string, manifest TemporalStru
 	if authority.SchemaVersion != manifest.SchemaVersion || authority.ContractVersion != manifest.ContractVersion || authority.ChallengeID != manifest.ChallengeID || !authority.GeneratedAt.Equal(manifest.GeneratedAt) || !reviewSHA256(authority.AuthoringSHA256) || !reviewSHA256(authority.SeedSHA256) || authority.PublicManifestSHA256 != manifestSHA || len(authority.Cases) != expectedCases {
 		return fmt.Errorf("private challenge authority does not bind the public manifest")
 	}
-	if requireCurrentFields && (authority.PlanContractVersion != TemporalStructureHoldoutContractVersion || !reviewSHA256(authority.PlanReceiptSHA256)) || !requireCurrentFields && (authority.PlanContractVersion != "" || authority.PlanReceiptSHA256 != "") {
+	currentPlanContract := authority.PlanContractVersion == TemporalStructureHoldoutContractVersion || authority.PlanContractVersion == TemporalStructureReplacementContractVersion
+	if requireCurrentFields && (!currentPlanContract || !reviewSHA256(authority.PlanReceiptSHA256)) || !requireCurrentFields && (authority.PlanContractVersion != "" || authority.PlanReceiptSHA256 != "") {
 		return fmt.Errorf("private challenge authority has invalid plan binding")
 	}
 	if requireCurrentFields {
