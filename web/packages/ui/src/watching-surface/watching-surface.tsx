@@ -65,6 +65,7 @@ const TouchWatchingSurface = ({
   numberEntry,
   onChannelDown,
   onChannelUp,
+  onChangeServer,
   onDismissControls,
   onGoLive,
   onOpenGuide,
@@ -204,6 +205,11 @@ const TouchWatchingSurface = ({
                   Retry
                 </Action>
               ) : null}
+              {loadError && onChangeServer ? (
+                <Action density={density} onPress={onChangeServer} tone="secondary">
+                  Change server
+                </Action>
+              ) : null}
             </View>
           </TransientOverlay>
         </>
@@ -219,6 +225,7 @@ const TvWatchingSurface = ({
   loading = false,
   loadError,
   numberEntry,
+  onChangeServer,
   onDismissControls,
   onGoLive,
   onOpenGuide,
@@ -430,6 +437,11 @@ const TvWatchingSurface = ({
                     {recoverableFailure ? (
                       <Action density="tv" onPress={onRetry} tone="primary">
                         Retry
+                      </Action>
+                    ) : null}
+                    {loadError && onChangeServer ? (
+                      <Action density="tv" onPress={onChangeServer} tone="secondary">
+                        Change server
                       </Action>
                     ) : null}
                   </Surface>

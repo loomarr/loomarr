@@ -6,6 +6,7 @@ import { ModalOverlay } from "../overlay";
 interface DeviceDisconnectActionProps {
   density: Density;
   onDisconnect: () => Promise<void> | void;
+  onForget?: () => Promise<void> | void;
   preferredFocus?: boolean;
   serverName?: string;
 }
@@ -13,6 +14,7 @@ interface DeviceDisconnectActionProps {
 const DeviceDisconnectAction = ({
   density,
   onDisconnect,
+  onForget,
   preferredFocus = false,
   serverName,
 }: DeviceDisconnectActionProps) => {
@@ -24,6 +26,16 @@ const DeviceDisconnectAction = ({
     setDisconnectError(false);
     try {
       await onDisconnect();
+    } catch {
+      setDisconnectError(true);
+      setDisconnecting(false);
+    }
+  };
+  const forget = async () => {
+    if (!onForget) return;
+    setDisconnecting(true);
+    try {
+      await onForget();
     } catch {
       setDisconnectError(true);
       setDisconnecting(false);
@@ -56,10 +68,20 @@ const DeviceDisconnectAction = ({
           },
           {
             disabled: disconnecting,
-            label: disconnecting ? "Disconnecting…" : "Disconnect",
+            label: disconnecting ? "Disconnecting…" : disconnectError ? "Try disconnect again" : "Disconnect",
             onPress: () => void disconnect(),
             tone: "danger",
           },
+          ...(disconnectError && onForget
+            ? [
+                {
+                  disabled: disconnecting,
+                  label: "Forget locally",
+                  onPress: () => void forget(),
+                  tone: "secondary" as const,
+                },
+              ]
+            : []),
         ]}
         density={density}
         description={`Loomarr will revoke this device’s credential on ${serverName ?? "the connected server"}. You can pair it again later.`}
@@ -70,7 +92,7 @@ const DeviceDisconnectAction = ({
       >
         {disconnectError ? (
           <Text density={density} textRole="metadata" tone="danger">
-            Loomarr couldn’t disconnect this device. Check the connection and try again.
+            {`Loomarr couldn’t reach the server. Try again, or forget locally. The device may remain authorized on ${serverName ?? "the old server"}.`}
           </Text>
         ) : null}
       </ModalOverlay>

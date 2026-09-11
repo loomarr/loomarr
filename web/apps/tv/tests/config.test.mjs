@@ -221,6 +221,7 @@ test("drives every Watching state from the generated catalog and authoritative G
   assert.match(appSource, /loadError=\{loadError\}/);
   assert.match(appSource, /if \(loadError\) refreshSafely\(\)/);
   assert.match(appSource, /else void controller\.retry\(\)/);
+  assert.match(appSource, /onChangeServer=\{\(\) => runtime\.session\.chooseServer\(\)\}/);
 });
 
 test("mounts the bounded authoritative Guide and returns tune intent to Watching", async () => {
@@ -291,6 +292,7 @@ test("wires authenticated artwork, channel invalidation, identity, versions, and
   assert.match(appSource, /void guide\.refresh/);
   assert.match(appSource, /<PairedNativeImage/);
   assert.match(appSource, /onDisconnect=\{\(\) => runtime\.session\.disconnect\(\)\}/);
+  assert.match(appSource, /onForget=\{\(\) => runtime\.session\.forgetServer\(\)\}/);
   assert.match(appSource, /appConfig\.expo\.version/);
   assert.match(appSource, /serverVersion=\{serverVersion\}/);
 });

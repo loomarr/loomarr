@@ -266,6 +266,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
         loadError={loadError}
         onChannelDown={() => void controller.step(-1)}
         onChannelUp={() => void controller.step(1)}
+        onChangeServer={() => runtime.session.chooseServer()}
         onDismissControls={dismissControls}
         onGoLive={() => void controller.goLive()}
         onOpenGuide={() => dispatchRemoteEvent({ key: "select" })}
@@ -335,6 +336,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               density="tv"
               focusRegistry={surfFocusRegistry}
               onDisconnect={() => runtime.session.disconnect()}
+              onForget={() => runtime.session.forgetServer()}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
                 showControlsForActivity();

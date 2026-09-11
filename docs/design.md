@@ -3320,6 +3320,17 @@ starts a fresh bounded window. Android's `NsdManager` owns platform discovery be
 React Native adapter; this does not restore the retired Kotlin application or put discovery mechanics
 into pairing state.
 
+A paired TV is never trapped behind an unreachable saved address. A Channel-catalog connection
+failure offers **Retry** and **Change server**; the latter returns to the same discovery/manual-entry
+screen without first deleting the saved credential. The old credential remains the restart-safe
+fallback until a newly approved device pairing atomically replaces it, and discovery never redirects
+an authenticated request or moves a credential between origins. Normal **Disconnect device** still
+revokes remotely before clearing local state. If that revocation cannot reach the paired server, the
+confirmation exposes a separate **Forget locally** escape hatch: it names that the old server may
+still list an authorized device, requires an explicit second action, clears only the local credential,
+and returns to server selection without claiming remote revocation. An authoritative 401 continues
+to clear the rejected credential automatically.
+
 Watching, Surf, and Guide share one app-scoped **playable Channel catalog**; no surface snapshots
 its own lineup. The catalog treats authenticated `/v1/events` `channel` frames only as invalidation
 signals and always re-reads `GET /v1/channels` as the authority. It performs the same full read when

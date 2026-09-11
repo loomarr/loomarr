@@ -243,6 +243,11 @@ class PairingSession {
     this.stop();
     this.emit({ status: "needs-server" });
   }
+  async forgetServer() {
+    this.stop();
+    await this.options.store.clear();
+    this.emit({ status: "needs-server" });
+  }
   async revoked() {
     const current = this.state;
     await this.options.store.clear();

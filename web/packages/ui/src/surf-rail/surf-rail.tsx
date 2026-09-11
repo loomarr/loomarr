@@ -32,6 +32,7 @@ const SurfRail = ({
   groups,
   onFocusSelection,
   onDisconnect,
+  onForget,
   onTune,
   renderArtwork,
   renderChannelLogo,
@@ -53,6 +54,7 @@ const SurfRail = ({
         groups={groups}
         onFocusSelection={onFocusSelection}
         onDisconnect={onDisconnect}
+        onForget={onForget}
         onTune={onTune}
         renderArtwork={renderArtwork}
         renderChannelLogo={renderChannelLogo}

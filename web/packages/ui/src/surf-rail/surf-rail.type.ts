@@ -39,6 +39,7 @@ interface SurfRailProps {
   groups: readonly SurfGroupData[];
   onFocusSelection: (selection: SurfSelection) => void;
   onDisconnect?: () => Promise<void> | void;
+  onForget?: () => Promise<void> | void;
   onTune: (channelId: string) => void;
   renderArtwork?: (channel: SurfChannelData) => ReactNode;
   renderChannelLogo?: (channel: SurfChannelData) => ReactNode;

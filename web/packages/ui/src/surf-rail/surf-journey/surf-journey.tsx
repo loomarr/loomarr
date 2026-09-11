@@ -16,6 +16,7 @@ const SurfJourney = ({
   focusRegistry,
   now = Date.now,
   onDisconnect,
+  onForget,
   onTune,
   playableChannelIds,
   recentChannelIds,
@@ -105,6 +106,7 @@ const SurfJourney = ({
           <DeviceDisconnectAction
             density={density}
             onDisconnect={onDisconnect}
+            onForget={onForget}
             preferredFocus={density === "tv" && kind !== "error"}
             serverName={serverName}
           />
@@ -122,6 +124,7 @@ const SurfJourney = ({
       groups={groups}
       onFocusSelection={setSelection}
       onDisconnect={onDisconnect}
+      onForget={onForget}
       onTune={onTune}
       renderArtwork={renderArtwork}
       renderChannelLogo={renderChannelLogo}
