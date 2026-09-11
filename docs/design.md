@@ -7725,7 +7725,7 @@ promos, bumpers, station IDs, trailers, and PSAs. Rights clarity, API convenienc
 scale do not by themselves make a source representative.
 
 The LOC, NASA, CDC first-party-page, and Commons commands share one promotion seam: the bounded lane
-remains the ten-case qualification artifact, while an explicitly requested schema-v4 output carries
+remains the ten-case qualification artifact, while an explicitly requested schema-v5 output carries
 the same frozen evidence into full-corpus rights review. Full capture counts stay positive and
 bounded but are not hard-coded to ten; request ceilings must cover the declared item count. The CDC
 adapter still consumes authored first-party page/media pairs and therefore cannot manufacture extra
@@ -7742,7 +7742,7 @@ separate rights and provenance evidence files beneath one declared root, along w
 campaign, and source-family identity that survives rights review unchanged.
 `filler-corpus-direct` resolves symlinks, rejects root escapes and quota drift, streams SHA-256 over
 every file under aggregate byte and wall-time ceilings, and emits local transport records into the
-same strict schema-v4 inventory. It never creates media, infers a grant from a directory or
+same strict schema-v5 inventory. It never creates media, infers a grant from a directory or
 collection, or turns authored assertions into approval. The combined public-plus-direct inventory
 still goes through one independent rights review; local media is already acquired and is therefore
 skipped by the network downloader. No direct-manifest schema-v1 reader or fixed 100-item compatibility
@@ -7789,6 +7789,29 @@ that an adjudicator does not select. A third reviewer therefore resolves a real 
 disagreement; adjudication cannot turn an incomplete or malformed second review into evidence of
 independent labeling.
 
+Schema-v5 inventory gives every exact representation a required **soundtrack expectation**. Its
+closed status is `present_expected`, `intentionally_silent`, or `unknown`; the claim also binds a
+closed evidence kind, the SHA-256 of already-frozen first-party descriptive or encoded-stream
+metadata, a bounded evidence locator, and the SHA-256 of the representation identity. The
+representation identity includes transport, name, URL/path, media type, origin, byte and source-hash
+facts, duration, and dimensions. Changing any of those facts therefore invalidates the soundtrack
+claim instead of carrying it onto different bytes. Publication year, title, a URL, or an unbound
+free-text assertion is never soundtrack authority. A newly captured lane must state the claim
+explicitly; omission does not become `unknown`. Historical schema-v4 inventories and discovery lanes
+remain immutable evidence, but cannot authorize a new download or be silently upgraded to v5.
+
+Soundtrack expectation is pre-download selection evidence, not decoded-audio proof. The generic
+inventory accepts all three statuses and production does not globally reject intentionally silent
+works. The versioned `temporal_structure_replacement_v1` quarantine-acquisition purpose is narrower:
+only `present_expected` may enter its default download plan. `intentionally_silent` and `unknown`
+remain visible with closed hold reasons, and the downloader reproduces the representation and
+evidence binding before it creates an output directory or sends the first request. The rights
+worksheet exposes the exact soundtrack fields and binds the acquisition purpose; its locked decision
+must carry the same purpose. The ordinary `local_quarantine_inspection` purpose preserves the generic
+inspection lane. A decoded file can still fail the independent full-source audio, silence, and
+quality gates. Restoration, synthesized music, or separately licensed soundtracks require a new
+designed purpose with their own rights, lineage, inspection, suitability, and admission authority.
+
 Media acquisition consumes a separate rights-review ledger; discovery output is never download
 authority. The caller names one of three non-interchangeable profiles: `quarantine`, `development`,
 or `certification`. Every `approved` row binds the inventory digest, authority-qualified case ID,
@@ -7820,7 +7843,7 @@ surviving source requires a new development or certification rights decision aga
 frozen inventory; a quarantine decision is never upgraded in place.
 
 `filler-corpus-quarantine-inspect` is the sole post-download quarantine gate. It consumes the exact
-schema-v4 inventory, schema-v2 quarantine download ledger, and the complete public/private authority
+schema-v5 inventory, schema-v2 quarantine download ledger, and the complete public/private authority
 pair for the named prior holdout. It strictly re-establishes those identities before opening media,
 resolves each ledger path beneath its declared root without symlink escape, and rechecks byte count,
 ledger SHA-256, and every available inventory checksum. One full-source probe and decode then records duration,
