@@ -169,6 +169,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
+- **`fillercandidatepool`**
+  Owns the immutable replacement-candidate-pool contract.
 - **`fillercorpus`** · 6 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 6 importers
