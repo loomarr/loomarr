@@ -218,7 +218,7 @@ func Validate(pool Pool) error {
 		}
 		eligibleSources[candidate.Source.SHA256], eligibleFamilies[candidate.FamilyID] = struct{}{}, struct{}{}
 		if candidate.Kind == KindProgrammeParent {
-			key := candidate.Source.Authority + "\x00" + candidate.Source.ItemURL
+			key := candidate.Source.Authority + "\x00" + SourceReference(candidate)
 			if _, exposed := priorProgrammeProvenance[key]; exposed {
 				return errors.New("eligible programme parent repeats prior provenance")
 			}
@@ -331,7 +331,7 @@ func validateCandidate(candidate Candidate) error {
 func validateSource(caseID string, source Source, eligible bool) error {
 	if (source.Transport != TransportHTTPS && source.Transport != TransportLocal) ||
 		source.Authority == "" || source.ItemID == "" || caseID != source.Authority+"/"+source.ItemID ||
-		!canonicalHTTPS(source.ItemURL) || !SHA256(source.MetadataSHA256) ||
+		(source.ItemURL != "" && !canonicalHTTPS(source.ItemURL)) || source.Transport == TransportHTTPS && source.ItemURL == "" || !SHA256(source.MetadataSHA256) ||
 		source.MetadataRetrievedAt.IsZero() || source.MetadataRetrievedAt.Location() != time.UTC ||
 		!knownSoundtrack(source.SoundtrackStatus) || source.SoundtrackEvidence == "" || !SHA256(source.SoundtrackEvidenceSHA) {
 		return errors.New("source authority is incomplete or invalid")
@@ -358,6 +358,15 @@ func validateSource(caseID string, source Source, eligible bool) error {
 
 func knownSoundtrack(value string) bool {
 	return value == "present_expected" || value == "intentionally_silent" || value == "unknown"
+}
+
+// SourceReference returns the canonical provenance reference used by planning.
+// Direct local cases without a first-party URL retain their inventory case ID.
+func SourceReference(candidate Candidate) string {
+	if candidate.Source.ItemURL != "" {
+		return candidate.Source.ItemURL
+	}
+	return candidate.CaseID
 }
 
 func validateTransition(transition Transition, durationMS int64) error {

@@ -35,6 +35,12 @@ type RightsSelection struct {
 	Cases                []EligibleRightsCase
 }
 
+// InspectionBinding returns the exact report/input identity reproduced by
+// this authority. It is nil only for a local-only inventory.
+func (authority RightsEligibility) InspectionBinding() *fillercorpus.QuarantineInspectionBinding {
+	return cloneReportBinding(authority.reportBinding)
+}
+
 // OpenRightsEligibility strictly decodes the exact inventory and inspection
 // report, validates their identity relationship, and builds the private case
 // index used by every later authority transition. inspectionRaw may be absent

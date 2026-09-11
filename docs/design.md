@@ -126,8 +126,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 8 | — |
 | `fillerbakeoff` | 8 | `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
-| `fillercorpus` | 6 | — |
-| `fillereval` | 6 | — |
+| `fillercorpus` | 7 | — |
+| `fillereval` | 7 | — |
 | `fillersafety` | 8 | `mediatools`, `openroutermedia` |
 | `fillerstructure` | 8 | — |
 | `fillerstructurewindow` | 6 | `fillerstructure` |
@@ -169,11 +169,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
-- **`fillercandidatepool`**
+- **`fillercandidatepool`** · 2 importers
   Owns the immutable replacement-candidate-pool contract.
-- **`fillercorpus`** · 6 importers
+- **`fillercorpus`** · 7 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillereval`** · 6 importers
+- **`fillereval`** · 7 importers
   Owns the hermetic certification contract for filler admission.
 - **`fillerstructure`** · 8 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
@@ -336,7 +336,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 6 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`fillerreview`** · 2 importers · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `fillerreference`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
+- **`fillerreview`** · 3 importers · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerreference`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
   Materializes identity-blind evidence for independent semantic review.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
@@ -355,7 +355,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`devbootstrap`** · → `auth`, `store`
   Prepares an isolated agent worktree for UI development.
-- **`fillerquarantine`** · 1 importer · → `fillercorpus`, `fillerreference`, `fillerreview`, `mediatools`
+- **`fillerquarantine`** · 2 importers · → `fillercorpus`, `fillerreference`, `fillerreview`, `mediatools`
   Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
 - **`images`** · 2 importers · → `images/rustgen`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
@@ -370,6 +370,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 11**
 
+- **`fillercandidatepool/build`** · → `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerquarantine`, `fillerreview`
+  Composes the independent corpus, quarantine, review, and prior-exposure authorities into one replacement candidate pool.
 - **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`testkit`** · 1 importer · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`

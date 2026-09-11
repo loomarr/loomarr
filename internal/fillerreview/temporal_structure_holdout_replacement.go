@@ -116,7 +116,7 @@ func temporalStructureCandidatePoolSource(candidate fillercandidatepool.Candidat
 		DurationMS: candidate.Source.DurationMS, StandaloneRole: fillereval.TemporalRole(candidate.Role),
 		Provenance: TemporalStructureSourceProvenance{
 			Kind: kind, Authority: candidate.Source.Authority, ItemID: candidate.Source.ItemID,
-			Reference: candidate.Source.ItemURL, MetadataSHA256: candidate.Source.MetadataSHA256,
+			Reference: fillercandidatepool.SourceReference(candidate), MetadataSHA256: candidate.Source.MetadataSHA256,
 			RetrievedAt: candidate.Source.MetadataRetrievedAt,
 		},
 	}
