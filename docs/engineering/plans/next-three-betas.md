@@ -17,7 +17,7 @@ integration at this baseline. Neither repair is present in the published beta.5 
 
 The remaining planned server releases are **v0.2.0-beta.6 and beta.7**; the beta.5 section below
 preserves its accepted release contract and explicit carry-forwards. Android TV keeps its separate
-version authority in `web/apps/tv/android-release.json` (currently `0.1.0-beta.4`); each release
+version authority in `web/apps/tv/android-release.json` (currently `0.1.0-beta.5`); each release
 candidate records the exact server/client pairing and follows the existing protected promotion
 workflow. This plan neither edits versions nor publishes a release.
 
