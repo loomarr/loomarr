@@ -7653,7 +7653,7 @@ ceiling as hosted vision, while a model that cannot accept that unchanged route 
 failure rather than receiving a smaller favorable prompt.
 
 Source inventory is a separate, non-certifying preflight. Its only live contract is strict
-source-neutral schema v4: one snapshot may combine multiple captures, and every case carries the
+source-neutral schema v5: one snapshot may combine multiple captures, and every case carries the
 authority, authority-qualified stable case ID, all capture IDs that discovered it, role hints, frozen metadata evidence, exact selected
 representation, acquisition-time campaign and source-family identity when known, and the adapter's
 explicit media-host allowlist. Capture-level request,
@@ -7731,6 +7731,17 @@ bounded but are not hard-coded to ten; request ceilings must cover the declared 
 adapter still consumes authored first-party page/media pairs and therefore cannot manufacture extra
 cases to meet a quota. Multiple role-specific captures combine only through the strict inventory
 combiner, never by concatenating JSON or discarding their individual ceilings.
+
+The generic first-party-page seam also recognizes one closed USGS video authority,
+`usgs.gov/media/videos`. Every case binds the matching item slug to an exact
+`https://www.usgs.gov/media/videos/<slug>` item and metadata URL. Its representation uses only the
+exact `usgs-ocapsv2-public-output-media.s3.us-west-2.amazonaws.com` host, stays beneath the canonical
+`/assets/palladium/production/s3fs-public/` output namespace, and ends in an `MP4` directory with an
+`.mp4` object. The contract rejects other USGS paths, wildcard or lookalike hosts, sibling or input
+S3 buckets, credentials, ports, query strings, fragments, encoded path separators or traversal, and
+redirects outside the exact page and media hosts. Recognizing this authority permits only inventory
+publication: page assertions, soundtrack evidence, rights review, quality review, suitability, media
+acquisition, provider processing, certification, and production admission remain independent gates.
 
 Direct/static acquisition is an authored local capture, not a source adapter and not a licence
 shortcut. Its schema-v3 manifest predeclares an exact item count and positive quotas for the known

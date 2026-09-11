@@ -158,6 +158,111 @@ func TestInventoryFromLanePreservesCaptureEvidenceWithoutGrantingAuthority(t *te
 	}
 }
 
+func TestInventoryFromFrozenUSGSLaneUsesExactAuthority(t *testing.T) {
+	lane, snapshot := frozenUSGSLane()
+	got, err := InventoryFromLane(lane, LaneInventoryOptions{
+		SnapshotAt: snapshot, Collection: "usgs-audible-seed.json", AllowedMediaHosts: []string{usgsMediaHost},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != InventorySchemaVersion || len(got.Cases) != 2 || got.Captures[0].PredictedMediaBytes != 98_690_824 {
+		t.Fatalf("inventory = %+v", got)
+	}
+	if got.Cases[0].CaseID != "usgs.gov/media/videos/november-2021-yellowstone-volcano" || got.Cases[1].CaseID != "usgs.gov/media/videos/usgs-gas-hydrates-lab" {
+		t.Fatalf("case IDs = %q, %q", got.Cases[0].CaseID, got.Cases[1].CaseID)
+	}
+}
+
+func TestValidateInventoryRejectsUSGSAuthorityEscapes(t *testing.T) {
+	for name, mutate := range map[string]func(*InventoryCase){
+		"lookalike page host": func(item *InventoryCase) {
+			item.ItemURL = "https://www.usgs.gov.example/media/videos/" + item.ItemID
+		},
+		"arbitrary USGS path": func(item *InventoryCase) {
+			item.ItemURL = "https://www.usgs.gov/programs/" + item.ItemID
+		},
+		"page query": func(item *InventoryCase) {
+			item.ItemURL += "?download=1"
+		},
+		"credentialed page": func(item *InventoryCase) {
+			item.ItemURL = "https://user@www.usgs.gov/media/videos/" + item.ItemID
+		},
+		"HTTP page": func(item *InventoryCase) {
+			item.ItemURL = strings.Replace(item.ItemURL, "https://", "http://", 1)
+		},
+		"lookalike media host": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, usgsMediaHost, usgsMediaHost+".example", 1)
+		},
+		"sibling output bucket": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, usgsMediaHost, "usgs-ocapsv2-public-output-media.s3.us-east-1.amazonaws.com", 1)
+		},
+		"input media bucket": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, usgsMediaHost, "usgs-ocapsv2-public-input-media.s3.us-west-2.amazonaws.com", 1)
+		},
+		"wildcard media rule": func(item *InventoryCase) {
+			item.AllowedMediaHosts = []string{".amazonaws.com"}
+		},
+		"HTTP media": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, "https://", "http://", 1)
+		},
+		"credentialed media": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, "https://", "https://user@", 1)
+		},
+		"media query": func(item *InventoryCase) {
+			item.Representation.URL += "?download=1"
+		},
+		"media port": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, usgsMediaHost, usgsMediaHost+":443", 1)
+		},
+		"encoded traversal": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, "/atoms/video/", "/atoms/%2e%2e/", 1)
+		},
+		"outside output namespace": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, usgsMediaPathRoot, "/private/", 1)
+		},
+		"non-MP4 derivative": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, "/MP4/", "/original/", 1)
+		},
+		"representation name mismatch": func(item *InventoryCase) {
+			item.Representation.Name = "other.mp4"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			lane, snapshot := frozenUSGSLane()
+			inventory, err := InventoryFromLane(lane, LaneInventoryOptions{SnapshotAt: snapshot, Collection: "fixture", AllowedMediaHosts: []string{usgsMediaHost}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(&inventory.Cases[0])
+			if failures := ValidateInventory(inventory); !slices.ContainsFunc(failures, func(failure string) bool { return strings.Contains(failure, "USGS video authority") }) {
+				t.Fatalf("failures = %v", failures)
+			}
+		})
+	}
+}
+
+func frozenUSGSLane() (Lane, time.Time) {
+	snapshot := time.Date(2026, 9, 5, 19, 56, 0, 0, time.UTC)
+	first := Candidate{
+		ItemID: "november-2021-yellowstone-volcano", Title: "November (2021) Yellowstone Volcano", RoleHints: []string{"programme_parent"},
+		ItemURL: "https://www.usgs.gov/media/videos/november-2021-yellowstone-volcano", MetadataURL: "https://www.usgs.gov/media/videos/november-2021-yellowstone-volcano",
+		MetadataRetrievedAt: time.Date(2026, 9, 5, 19, 55, 0, 832_179_000, time.UTC), MetadataSHA256: "7fbd7e3a7c5033260132dcbefd268ba543894eaac657b3e3b42ef640b9ff540e",
+		RightsAssertions: []string{"Exact USGS item page states Sources/Usage: Public Domain.", "Exact USGS item page credits video editing to Liz Westby."},
+		Representation:   Representation{Name: "2021_Nov_1_YVO_Monthly_Update.mp4", URL: "https://" + usgsMediaHost + usgsMediaPathRoot + "atoms/video/2021_Nov_1_YVO_Monthly_Update/MP4/2021_Nov_1_YVO_Monthly_Update.mp4", MIMEType: "video/mp4", Bytes: 33_805_660},
+	}
+	first.Representation.Soundtrack = BindRepresentationSoundtrack(first.Representation, SoundtrackUnknown, SoundtrackEvidenceFirstPartyMetadata, first.MetadataSHA256, "frozen page capture did not establish audio")
+	second := Candidate{
+		ItemID: "usgs-gas-hydrates-lab", Title: "USGS Gas Hydrates Lab", RoleHints: []string{"programme_parent"},
+		ItemURL: "https://www.usgs.gov/media/videos/usgs-gas-hydrates-lab", MetadataURL: "https://www.usgs.gov/media/videos/usgs-gas-hydrates-lab",
+		MetadataRetrievedAt: time.Date(2026, 9, 5, 19, 55, 3, 116_095_000, time.UTC), MetadataSHA256: "d902343c3b70479cd91db966a20160f2a9620d04e70cfa3b5eb71942e1cf8ea2",
+		RightsAssertions: []string{"Exact USGS item page states Sources/Usage: Public Domain.", "Exact USGS item page identifies Stephen M. Wessells of the U.S. Geological Survey as contact."},
+		Representation:   Representation{Name: "Gas_Hydrates_2012.mp4", URL: "https://" + usgsMediaHost + usgsMediaPathRoot + "Gas_Hydrates_2012/MP4/Gas_Hydrates_2012.mp4", MIMEType: "video/mp4", Bytes: 64_885_164},
+	}
+	second.Representation.Soundtrack = BindRepresentationSoundtrack(second.Representation, SoundtrackUnknown, SoundtrackEvidenceFirstPartyMetadata, second.MetadataSHA256, "frozen page capture did not establish audio")
+	return Lane{Authority: usgsVideoAuthority, MaxRequests: 4, RequestsUsed: 4, MaxResponseBytes: 2_000_000, ResponseBytes: 166_726, MaxPredictedMediaBytes: 100_000_000, PredictedMediaBytes: 98_690_824, MaxWallTimeMS: 120_000, WallTimeMS: 3_429, Cases: []Candidate{first, second}}, snapshot
+}
+
 func TestHistoricalPilotLanesCannotPromoteWithoutSoundtrackAuthority(t *testing.T) {
 	snapshot := time.Date(2026, 8, 27, 0, 0, 0, 0, time.UTC)
 	lanes := map[string]string{"prelinger": "archive.org", "loc": "tile.loc.gov", "nasa": "images-assets.nasa.gov", "cdc": "www.cdc.gov", "commons": "upload.wikimedia.org"}

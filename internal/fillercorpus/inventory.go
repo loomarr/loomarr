@@ -25,6 +25,11 @@ const InventorySchemaVersion = 5
 const (
 	TransportHTTPS = "https"
 	TransportLocal = "local"
+
+	usgsVideoAuthority = "usgs.gov/media/videos"
+	usgsPageHost       = "www.usgs.gov"
+	usgsMediaHost      = "usgs-ocapsv2-public-output-media.s3.us-west-2.amazonaws.com"
+	usgsMediaPathRoot  = "/assets/palladium/production/s3fs-public/"
 )
 
 var authorityMediaHosts = map[string][]string{
@@ -32,6 +37,7 @@ var authorityMediaHosts = map[string][]string{
 	"images.nasa.gov":                 {"images-assets.nasa.gov"},
 	"cdc.gov":                         {"www.cdc.gov"},
 	"commons.wikimedia.org":           {"upload.wikimedia.org"},
+	usgsVideoAuthority:                {usgsMediaHost},
 	MetAuthority:                      {metImageHost},
 }
 
@@ -382,6 +388,9 @@ func ValidateInventory(value Inventory) []string {
 					}
 				}
 			}
+			if err := validateAuthorityCase(item); err != nil {
+				failures = append(failures, fmt.Sprintf("case %q: %v", item.CaseID, err))
+			}
 		} else if item.Representation.URL != "" || len(item.AllowedMediaHosts) != 0 || !safeRelativePath(item.Representation.Path) || !digest(item.Representation.SHA256, 64) || !validDirectEvidence(item.Evidence) {
 			failures = append(failures, fmt.Sprintf("case %q has incomplete local media or evidence identity", item.CaseID))
 		}
@@ -393,6 +402,66 @@ func ValidateInventory(value Inventory) []string {
 	}
 	slices.Sort(failures)
 	return failures
+}
+
+func validateAuthorityCase(item InventoryCase) error {
+	if item.Authority != usgsVideoAuthority {
+		return nil
+	}
+	if !validUSGSSlug(item.ItemID) {
+		return fmt.Errorf("USGS video authority requires a canonical item slug")
+	}
+	wantPageURL := "https://" + usgsPageHost + "/media/videos/" + item.ItemID
+	if item.ItemURL != wantPageURL || item.MetadataURL != wantPageURL {
+		return fmt.Errorf("USGS video authority requires the exact matching item and metadata page")
+	}
+	if !slices.Equal(item.AllowedMediaHosts, []string{usgsMediaHost}) {
+		return fmt.Errorf("USGS video authority requires its exact media host")
+	}
+	media, err := url.Parse(item.Representation.URL)
+	if err != nil || media.Scheme != "https" || media.Host != usgsMediaHost || media.User != nil || media.Opaque != "" || media.RawPath != "" || media.RawQuery != "" || media.ForceQuery || media.Fragment != "" || media.RawFragment != "" {
+		return fmt.Errorf("USGS video authority has an invalid representation URL")
+	}
+	if !strings.HasPrefix(media.Path, usgsMediaPathRoot) || path.Clean(media.Path) != media.Path || strings.Contains(media.Path, "\\") {
+		return fmt.Errorf("USGS video authority requires the canonical public output namespace")
+	}
+	segments := strings.Split(strings.TrimPrefix(media.Path, usgsMediaPathRoot), "/")
+	if len(segments) < 3 || segments[len(segments)-2] != "MP4" || !strings.HasSuffix(segments[len(segments)-1], ".mp4") || strings.TrimSuffix(segments[len(segments)-1], ".mp4") == "" {
+		return fmt.Errorf("USGS video authority requires an MP4 derivative object")
+	}
+	for _, segment := range segments {
+		if !validUSGSPathSegment(segment) {
+			return fmt.Errorf("USGS video authority has a non-canonical representation path")
+		}
+	}
+	if item.Representation.Name != segments[len(segments)-1] {
+		return fmt.Errorf("USGS video authority representation name does not match its object")
+	}
+	return nil
+}
+
+func validUSGSSlug(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '-' {
+			return false
+		}
+	}
+	return value[0] != '-' && value[len(value)-1] != '-'
+}
+
+func validUSGSPathSegment(value string) bool {
+	if value == "" || value == "." || value == ".." {
+		return false
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && !strings.ContainsRune("._~-", char) {
+			return false
+		}
+	}
+	return true
 }
 
 func canonicalOptionalStrings(values []string) bool {
