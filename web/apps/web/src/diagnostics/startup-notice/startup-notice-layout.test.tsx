@@ -38,10 +38,10 @@ describe("startup notice layout", () => {
     mocks.render.mockReset();
   });
 
-  it("places persistent health notices away from the bottom Settings commit bar", async () => {
+  it("places notices away from Guide controls and the bottom Settings commit bar", async () => {
     await import("@/main");
 
     const app = mocks.render.mock.calls[0]?.[0] as ReactNode;
-    expect(findToaster(app)?.props.position).toBe("top-right");
+    expect(findToaster(app)?.props.position).toBe("top-center");
   });
 });
