@@ -112,6 +112,20 @@ func TestSourceClientRejectsUnlistedHostBeforeRequest(t *testing.T) {
 	}
 }
 
+func TestSourceClientRejectsRedirectToUnlistedHost(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://example.invalid/media.mp4", http.StatusFound)
+	}))
+	defer server.Close()
+	client, err := NewSourceClient(testSourceConfig(t, server, 1, 100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := client.Get(context.Background(), server.URL); err == nil || !strings.Contains(err.Error(), "redirect host") {
+		t.Fatalf("redirect error = %v", err)
+	}
+}
+
 func testSourceConfig(t *testing.T, server *httptest.Server, maxRequests int, maxBytes int64) SourceClientConfig {
 	t.Helper()
 	u, err := url.Parse(server.URL)
