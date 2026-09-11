@@ -7743,6 +7743,17 @@ redirects outside the exact page and media hosts. Recognizing this authority per
 publication: page assertions, soundtrack evidence, rights review, quality review, suitability, media
 acquisition, provider processing, certification, and production admission remain independent gates.
 
+The Blender Open Movie authority is narrower still. `blender.org/open-movies` currently recognizes
+only item `sintel-trailer-720p`: the exact `https://durian.blender.org/download/` project download
+page and exact `https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4` representation.
+The inventory must retain the representation name and `video/mp4` type. Other Blender projects,
+subdomains, download paths, mirrors, directory listings, and generic project or licence pages are
+outside this authority. The generic page adapter still requires authored page text, bounded page
+and HEAD capture, immutable metadata identity, exact HTTPS hosts, and closed redirect handling.
+This source rule grants only inventory publication. Soundtrack evidence, exact CC BY 3.0 scope and
+attribution, music and embedded-work review, suitability screening, acquisition, provider
+processing, certification, and production admission remain independent gates.
+
 Direct/static acquisition is an authored local capture, not a source adapter and not a licence
 shortcut. Its schema-v3 manifest predeclares an exact item count and positive quotas for the known
 corpus roles and identifies one contracting owner or first-party origin; separate owners use
