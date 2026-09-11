@@ -13,6 +13,7 @@ type Story = StoryObj<typeof PlayoutPanel>;
 const status = (over: Partial<PlayoutStatus>): PlayoutStatus =>
   ({
     running: true,
+    capability: { encoder: "h264_nvenc", hardware: true, maxChannels: 4 },
     gpu: { name: "NVIDIA GeForce RTX 3080 Ti", vramGiB: 12, contended: false },
     prepared: {
       available: true,
@@ -102,6 +103,7 @@ export const TunarrBacked: Story = {
 export const SoftwareOnly: Story = {
   args: {
     status: status({
+      capability: { encoder: "libx264", hardware: false, maxChannels: 1 },
       gpu: { vramGiB: 0, contended: false },
       channels: [
         {
