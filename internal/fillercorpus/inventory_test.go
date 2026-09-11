@@ -174,6 +174,118 @@ func TestInventoryFromFrozenUSGSLaneUsesExactAuthority(t *testing.T) {
 	}
 }
 
+func TestHistoricalNPSFrozenLaneRemainsReadableEvidenceOnly(t *testing.T) {
+	lane, snapshot := frozenNPSLane()
+	inventory, err := InventoryFromLane(lane, LaneInventoryOptions{
+		SnapshotAt: snapshot, Collection: "nps-toilet-paper-burning.json", AllowedMediaHosts: []string{npsVideoHost},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory.SchemaVersion = HistoricalInventorySchemaVersion
+	inventory.Cases[0].Representation.Soundtrack = SoundtrackExpectation{}
+	raw, err := json.Marshal(inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := DecodeHistoricalInventoryEvidence(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence.SchemaVersion != HistoricalInventorySchemaVersion || !slices.Equal(evidence.CaseIDs, []string{CaseID(npsVideoAuthority, "1B73C91D-BB70-E6B1-8FBCB1221A3C6BCE")}) {
+		t.Fatalf("historical evidence = %+v", evidence)
+	}
+	if _, err := DecodeInventoryBytes(raw); err == nil {
+		t.Fatal("historical NPS inventory authorized a current workflow")
+	}
+}
+
+func TestValidNPSItemIDUsesTheExactNPSIdentifierGrammar(t *testing.T) {
+	for value, want := range map[string]bool{
+		"1B73C91D-BB70-E6B1-8FBCB1221A3C6BCE":  true,
+		"1B73C91D-BB70-E6B1-8FBC-B1221A3C6BCE": false,
+		"1B73C91D-BB70-E6B1-8FBCB1221A3C6BCE-": false,
+		"1b73c91d-bb70-e6b1-8fbcb1221a3c6bce":  false,
+		"1B73C91D-BB70-E6B1-8FBCB1221A3C6BCG":  false,
+	} {
+		if got := validNPSItemID(value); got != want {
+			t.Errorf("validNPSItemID(%q) = %t; want %t", value, got, want)
+		}
+	}
+}
+
+func TestValidateInventoryRejectsNPSAuthorityEscapes(t *testing.T) {
+	for name, mutate := range map[string]func(*InventoryCase){
+		"lookalike host": func(item *InventoryCase) {
+			item.ItemURL = "https://www.nps.gov.example/media/video/view.htm?id=" + item.ItemID
+		},
+		"sibling item path": func(item *InventoryCase) {
+			item.ItemURL = "https://www.nps.gov/media/video/index.htm?id=" + item.ItemID
+		},
+		"query target change": func(item *InventoryCase) {
+			item.MetadataURL += "&other=1"
+		},
+		"HTTP page": func(item *InventoryCase) {
+			item.ItemURL = strings.Replace(item.ItemURL, "https://", "http://", 1)
+		},
+		"credentialed page": func(item *InventoryCase) {
+			item.ItemURL = strings.Replace(item.ItemURL, "https://", "https://user@", 1)
+		},
+		"lowercase UUID": func(item *InventoryCase) {
+			item.ItemID = strings.ToLower(item.ItemID)
+			item.CaseID = CaseID(item.Authority, item.ItemID)
+		},
+		"mismatched media UUID": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, item.ItemID, "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA", 1)
+		},
+		"sibling media path": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, npsMediaPathRoot, "/nps-audiovideo/current/articles/", 1)
+		},
+		"encoded traversal": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, "/"+item.ItemID+"/", "/%2e%2e/", 1)
+		},
+		"media query": func(item *InventoryCase) {
+			item.Representation.URL += "?download=1"
+		},
+		"media port": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, npsVideoHost, npsVideoHost+":443", 1)
+		},
+		"wildcard media host": func(item *InventoryCase) {
+			item.AllowedMediaHosts = []string{".nps.gov"}
+		},
+		"representation name drift": func(item *InventoryCase) {
+			item.Representation.Name = "other.mp4"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			lane, snapshot := frozenNPSLane()
+			inventory, err := InventoryFromLane(lane, LaneInventoryOptions{SnapshotAt: snapshot, Collection: "fixture", AllowedMediaHosts: []string{npsVideoHost}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(&inventory.Cases[0])
+			if failures := ValidateInventory(inventory); !slices.ContainsFunc(failures, func(failure string) bool { return strings.Contains(failure, "NPS video authority") }) {
+				t.Fatalf("failures = %v", failures)
+			}
+		})
+	}
+}
+
+func frozenNPSLane() (Lane, time.Time) {
+	snapshot := time.Date(2026, 9, 5, 20, 30, 0, 0, time.UTC)
+	const itemID = "1B73C91D-BB70-E6B1-8FBCB1221A3C6BCE"
+	itemURL := "https://" + npsVideoHost + npsItemPath + "?id=" + itemID
+	mediaURL := "https://" + npsVideoHost + npsMediaPathRoot + itemID + "/PSA_Toilet_Paper_Burning.mp4"
+	item := Candidate{
+		ItemID: itemID, Title: "PSA Toilet Paper Burning", RoleHints: []string{"PSA"}, ItemURL: itemURL, MetadataURL: itemURL,
+		MetadataRetrievedAt: time.Date(2026, 9, 5, 20, 29, 30, 0, time.UTC), MetadataSHA256: "e7d18daaaf033094303cdfbd46382e5d752282dc2a235c5b183abe952f0c4c8f",
+		RightsAssertions: []string{"Exact NPS item page credits National Park Service.", "Exact NPS item page preserves the copyright-symbol exception for multimedia credits."},
+		Representation:   Representation{Name: "PSA_Toilet_Paper_Burning.mp4", URL: mediaURL, MIMEType: "video/mp4", Bytes: 2_042_251},
+	}
+	item.Representation.Soundtrack = BindRepresentationSoundtrack(item.Representation, SoundtrackUnknown, SoundtrackEvidenceFirstPartyMetadata, item.MetadataSHA256, "frozen NPS item page did not establish audio")
+	return Lane{Authority: npsVideoAuthority, MaxRequests: 2, RequestsUsed: 2, MaxResponseBytes: 1_000_000, ResponseBytes: 39_125, MaxPredictedMediaBytes: 3_000_000, PredictedMediaBytes: 2_042_251, MaxWallTimeMS: 30_000, WallTimeMS: 854, Cases: []Candidate{item}}, snapshot
+}
+
 func TestValidateInventoryRejectsUSGSAuthorityEscapes(t *testing.T) {
 	for name, mutate := range map[string]func(*InventoryCase){
 		"lookalike page host": func(item *InventoryCase) {

@@ -7812,6 +7812,22 @@ redirects outside the exact page and media hosts. Recognizing this authority per
 publication: page assertions, soundtrack evidence, rights review, quality review, suitability, media
 acquisition, provider processing, certification, and production admission remain independent gates.
 
+The same seam recognizes the closed National Park Service video authority,
+`nps.gov/media/video`. Every case uses the exact `www.nps.gov` host and binds one
+canonical uppercase NPS 8-4-4-16 item ID to the exact
+`https://www.nps.gov/media/video/view.htm?id=<UUID>` item and metadata URL. Its
+representation stays beneath
+`/nps-audiovideo/legacy/articles/<matching-UUID>/` on that same exact host. The
+contract rejects other NPS paths, UUIDs that do not match the item, lookalike or
+wildcard hosts, credentials, ports, query strings, fragments, encoded path
+separators or traversal, and redirects outside the exact host. Required page text,
+metadata digest, bounded response and predicted-media ceilings, and HEAD evidence
+remain mandatory. This authority permits only inventory publication: NPS credit and
+the copyright-symbol exception remain rights-review evidence, while soundtrack
+evidence, complete-span fire or unsafe-act suitability evidence, media acquisition,
+provider processing, certification, and production admission remain independent
+gates.
+
 The Blender Open Movie authority is narrower still. `blender.org/open-movies` currently recognizes
 only item `sintel-trailer-720p`: the exact `https://durian.blender.org/download/` project download
 page and exact `https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4` representation.
