@@ -29,6 +29,7 @@ const playoutGPUIdentityTimeout = 250 * time.Millisecond
 
 type playoutBuild struct {
 	observer          api.PlayoutObserver
+	capability        func() playout.Capacity
 	preparedObserver  api.PreparedObserver
 	service           api.Playout
 	resolverService   api.PlayoutResolver
@@ -480,7 +481,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}
 
 	return playoutBuild{
-		observer: playoutObserver, preparedObserver: preparedObserver, service: playoutSvc,
+		observer: playoutObserver, capability: playoutRes.PublishedCapability,
+		preparedObserver: preparedObserver, service: playoutSvc,
 		resolverService: playoutResolverSvc, encodePool: encodePool, guide: playoutGuideSvc,
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },

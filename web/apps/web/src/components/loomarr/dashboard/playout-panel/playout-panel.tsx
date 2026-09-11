@@ -1,4 +1,5 @@
 import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
+import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
 import type { PreparedReadiness } from "@loomarr/api/models/preparedReadiness";
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
@@ -46,31 +47,32 @@ const formatColdStart = (ms: number): string => (ms > 0 ? `${(ms / 1000).toFixed
 // the channel is not in the store (a just-deleted channel still finishing its stream).
 const channelLabel = (c: ChannelHealth): string => (c.name ? `#${c.number} · ${c.name}` : c.channelId);
 
-// GpuRow is the shared-GPU CONTEXT HEADER for the channel rows below it — not another row. It gets a
-// tinted band + a mono "GPU" eyebrow so the eye parses it as the header it is, distinct from the
-// per-channel list.
-const GpuRow = ({ gpu }: { gpu: PlayoutGPU }) => {
-  if (!gpu.vramGiB) {
-    return (
-      <div className="border-border border-b bg-static-900/40 px-4 py-2">
-        <p className="font-mono text-2xs text-muted-foreground uppercase tracking-wide">GPU</p>
-        <p className="mt-0.5 text-muted-foreground text-sm">Software encoding — no GPU on this host</p>
-      </div>
-    );
-  }
+// EncoderRow leads with the capability Loomarr actually proved. GPU/VRAM is optional context:
+// Intel and AMD hardware encoders work through /dev/dri without NVIDIA-style VRAM telemetry.
+const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: PlayoutGPU }) => {
+  const capacity = pluralize(capability.maxChannels, "channel");
+  const summary = !capability.encoder
+    ? "Encoder capability is still being measured."
+    : capability.hardware
+      ? `Hardware encoding · ${capability.encoder} · ${capacity}`
+      : `Software encoding · ${capability.encoder} · ${capacity}`;
+
   return (
     <div className="flex items-center justify-between gap-3 border-border border-b bg-static-900/40 px-4 py-2.5">
       <div className="min-w-0">
-        <p className="font-mono text-2xs text-muted-foreground uppercase tracking-wide">GPU</p>
-        <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="truncate font-medium text-sm">{gpu.name ?? "GPU"}</span>
-          <span className="text-muted-foreground text-xs">{formatVram(gpu.vramGiB)} total</span>
-          {gpu.llmModel && (
-            <span className="text-muted-foreground text-xs">
-              · {gpu.llmModel} holding {formatVram(gpu.llmVramGiB ?? 0)}
-            </span>
-          )}
-        </p>
+        <p className="font-mono text-2xs text-muted-foreground uppercase tracking-wide">Encoder</p>
+        <p className="mt-0.5 text-muted-foreground text-sm">{summary}</p>
+        {!!gpu.vramGiB && (
+          <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-muted-foreground text-xs">
+            <span>{gpu.name ?? "GPU"}</span>
+            <span>{formatVram(gpu.vramGiB)} total</span>
+            {gpu.llmModel && (
+              <span className="text-muted-foreground text-xs">
+                · {gpu.llmModel} holding {formatVram(gpu.llmVramGiB ?? 0)}
+              </span>
+            )}
+          </p>
+        )}
       </div>
       {/* The whole reason the GPU header exists: a resident LLM sharing VRAM with the encoders is a
           real, silent cause of stutter, and nothing else on the dashboard says so. */}
@@ -225,7 +227,7 @@ const PlayoutPanel = ({ status, loading, title = "Playout", className }: Playout
         </p>
       )}
 
-      {!loading && status?.running && <GpuRow gpu={status.gpu} />}
+      {!loading && status?.running && <EncoderRow capability={status.capability} gpu={status.gpu} />}
 
       {!loading && status?.running && <PreparedRow prepared={status.prepared} />}
 

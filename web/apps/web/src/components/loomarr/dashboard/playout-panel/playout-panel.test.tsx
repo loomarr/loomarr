@@ -34,6 +34,7 @@ const channel = (over: Partial<ChannelHealth> = {}): ChannelHealth => ({
 const status = (over: Partial<PlayoutStatus> = {}): PlayoutStatus =>
   ({
     running: true,
+    capability: { encoder: "h264_nvenc", hardware: true, maxChannels: 4 },
     gpu: { name: "NVIDIA GeForce RTX 3080 Ti", vramGiB: 12, contended: false },
     prepared: {
       available: true,
@@ -74,7 +75,7 @@ describe("PlayoutPanel", () => {
   it("folds in throughput and cold-start on the row", () => {
     renderPanel(<PlayoutPanel status={status()} />);
     expect(screen.getByText(/2 viewers/)).toBeInTheDocument();
-    expect(screen.getByText(/h264_nvenc/)).toBeInTheDocument();
+    expect(screen.getByText(/transcode · h264_nvenc/)).toBeInTheDocument();
     expect(screen.getByText(/1\.3s to play/)).toBeInTheDocument();
   });
 
@@ -99,6 +100,33 @@ describe("PlayoutPanel", () => {
       />,
     );
     expect(screen.getByText("LLM sharing VRAM")).toBeInTheDocument();
+  });
+
+  it("reports retained VAAPI hardware capability without requiring VRAM telemetry", () => {
+    renderPanel(
+      <PlayoutPanel
+        status={status({
+          capability: { encoder: "h264_vaapi", hardware: true, maxChannels: 3 },
+          gpu: { contended: false },
+          channels: [],
+        })}
+      />,
+    );
+    expect(screen.getByText("Hardware encoding · h264_vaapi · 3 channels")).toBeInTheDocument();
+    expect(screen.queryByText(/no GPU on this host/i)).not.toBeInTheDocument();
+  });
+
+  it("reports a capability probe that selected software", () => {
+    renderPanel(
+      <PlayoutPanel
+        status={status({
+          capability: { encoder: "libx264", hardware: false, maxChannels: 1 },
+          gpu: { contended: false },
+          channels: [],
+        })}
+      />,
+    );
+    expect(screen.getByText("Software encoding · libx264 · 1 channel")).toBeInTheDocument();
   });
 
   it("does not mistake prepared viewers for an idle channel", () => {

@@ -6331,6 +6331,23 @@ components:
         - relativeUrl
         - expiresAt
       type: object
+    PlayoutCapability:
+      additionalProperties: false
+      properties:
+        encoder:
+          description: Encoder selected by the retained capability probe
+          type: string
+        hardware:
+          description: Whether the selected encoder is hardware-accelerated
+          type: boolean
+        maxChannels:
+          description: Measured concurrent transcode capacity
+          format: int64
+          type: integer
+      required:
+        - hardware
+        - maxChannels
+      type: object
     PlayoutEvent:
       additionalProperties: false
       properties:
@@ -6380,6 +6397,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        capability:
+          $ref: "#/components/schemas/PlayoutCapability"
         channels:
           items:
             $ref: "#/components/schemas/ChannelHealth"
@@ -6393,6 +6412,7 @@ components:
           type: boolean
       required:
         - running
+        - capability
         - gpu
         - channels
         - prepared

@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -199,6 +200,9 @@ type Server struct {
 	guide GuideReader
 	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
 	playoutObserver PlayoutObserver
+	// playoutCapability supplies the retained encoder probe result without starting a probe.
+	// Unlike live session stats, it remains available while playout is idle.
+	playoutCapability func() playout.Capacity
 	// preparedObserver supplies the readiness planner's immutable operational snapshot.
 	preparedObserver PreparedObserver
 	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
@@ -1030,6 +1034,9 @@ type Options struct {
 	Binder                   ChannelBinder    // explicit channel intent/number helpers; not the approval gate
 	// PlayoutObserver supplies operational snapshots and program progress.
 	PlayoutObserver PlayoutObserver
+	// PlayoutCapability returns the already-published host encoder capability. It must not
+	// perform or await a probe on this observational request path.
+	PlayoutCapability func() playout.Capacity
 	// PreparedObserver supplies prepared readiness and retention status without rescanning.
 	PreparedObserver PreparedObserver
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a

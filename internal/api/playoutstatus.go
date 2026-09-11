@@ -85,6 +85,15 @@ type PlayoutGPU struct {
 	Contended  bool    `json:"contended" doc:"A model is resident AND channels are transcoding on hardware"`
 }
 
+// PlayoutCapability is the retained result of Loomarr's real encoder trial. It is separate from
+// GPU telemetry because VAAPI/QSV hosts can prove hardware encoding without exposing VRAM through
+// the NVIDIA-oriented system probe, and because it remains useful while no session is active.
+type PlayoutCapability struct {
+	Encoder     string `json:"encoder,omitempty" doc:"Encoder selected by the retained capability probe"`
+	Hardware    bool   `json:"hardware" doc:"Whether the selected encoder is hardware-accelerated"`
+	MaxChannels int    `json:"maxChannels" doc:"Measured concurrent transcode capacity"`
+}
+
 // PreparedReadiness is the planner's most recently completed six-hour schedule window plus the
 // current pass flag. It is copied from memory; this API never scans schedules or media storage.
 type PreparedReadiness struct {
@@ -111,10 +120,11 @@ type PreparedObserver interface {
 
 // PlayoutStatus is the whole health picture.
 type PlayoutStatus struct {
-	Running  bool              `json:"running" doc:"Internal playout is wired (false on a Tunarr-only install)"`
-	GPU      PlayoutGPU        `json:"gpu"`
-	Channels []ChannelHealth   `json:"channels"`
-	Prepared PreparedReadiness `json:"prepared"`
+	Running    bool              `json:"running" doc:"Internal playout is wired (false on a Tunarr-only install)"`
+	Capability PlayoutCapability `json:"capability"`
+	GPU        PlayoutGPU        `json:"gpu"`
+	Channels   []ChannelHealth   `json:"channels"`
+	Prepared   PreparedReadiness `json:"prepared"`
 }
 
 type playoutStatusOutput struct {
@@ -170,7 +180,17 @@ func (s *Server) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus
 	// (§8.2) — worth flagging distinctly from "a model happens to be loaded" (harmless when idle).
 	gpu.Contended = gpu.LLMVRAMGiB > 0 && hwTranscoding
 
-	status.Running, status.GPU, status.Channels = true, gpu, channels
+	capability := PlayoutCapability{}
+	if s.playoutCapability != nil {
+		measured := s.playoutCapability()
+		capability = PlayoutCapability{
+			Encoder:     string(measured.Chosen),
+			Hardware:    measured.Chosen != "" && !playout.IsSoftwareEncoder(measured.Chosen),
+			MaxChannels: measured.MaxChannels,
+		}
+	}
+
+	status.Running, status.Capability, status.GPU, status.Channels = true, capability, gpu, channels
 	return status
 }
 
