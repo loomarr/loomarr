@@ -53,6 +53,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 	refreshBackendSettings, desiredBackend := deps.channels.refreshBackendSettings, deps.channels.desiredBackend
 	checkpointSnapshot := deps.channels.checkpoint
 	playoutObserver, preparedObserver := deps.channels.playoutObserver, deps.channels.preparedObserver
+	playoutCapability := deps.channels.playoutCapability
 	playoutSvc, playoutResolverSvc := deps.channels.playout, deps.channels.playoutResolverService
 	playoutGuideSvc, encodePool := deps.channels.playoutGuide, deps.channels.encodePool
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
@@ -175,8 +176,9 @@ func buildHTTP(deps httpBuild) http.Handler {
 		LiveConfigBoolOn: set.boolOn,
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
-		PlayoutObserver:  playoutObserver,
-		PreparedObserver: preparedObserver,
+		PlayoutObserver:   playoutObserver,
+		PlayoutCapability: playoutCapability,
+		PreparedObserver:  preparedObserver,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
 		Playout:         playoutSvc,
 		PlayoutResolver: playoutResolverSvc,

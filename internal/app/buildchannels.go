@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/reconcile"
@@ -38,6 +39,7 @@ type channelBuild struct {
 	appliedBackend         func(context.Context) (string, error)
 	checkpoint             func(context.Context) (backendtransition.Snapshot, error)
 	playoutObserver        api.PlayoutObserver
+	playoutCapability      func() playout.Capacity
 	preparedObserver       api.PreparedObserver
 	playout                api.Playout
 	playoutResolverService api.PlayoutResolver
@@ -117,6 +119,7 @@ func buildChannels(
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
 	var playoutObserver api.PlayoutObserver
+	var playoutCapability func() playout.Capacity
 	// Prepared readiness is observed through the planner itself; the API only snapshots it.
 	var preparedObserver api.PreparedObserver
 	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
@@ -282,6 +285,7 @@ func buildChannels(
 			return channelBuild{}, err
 		}
 		playoutObserver, preparedObserver = playoutBuilt.observer, playoutBuilt.preparedObserver
+		playoutCapability = playoutBuilt.capability
 		playoutSvc, playoutResolverSvc = playoutBuilt.service, playoutBuilt.resolverService
 		encodePool, playoutGuideSvc = playoutBuilt.encodePool, playoutBuilt.guide
 		playoutRes, backendController = playoutBuilt.resolver, playoutBuilt.backendController
@@ -301,8 +305,9 @@ func buildChannels(
 		tunarrConnector: tunarrConnectSvc, backendController: backendController,
 		refreshBackendSettings: refreshBackendSettings, desiredBackend: desiredBackend,
 		appliedBackend: appliedBackendContext, checkpoint: checkpointSnapshot,
-		playoutObserver:  playoutObserver,
-		preparedObserver: preparedObserver, playout: playoutSvc,
+		playoutObserver:   playoutObserver,
+		playoutCapability: playoutCapability,
+		preparedObserver:  preparedObserver, playout: playoutSvc,
 		playoutResolverService: playoutResolverSvc, encodePool: encodePool,
 		playoutGuide: playoutGuideSvc, playoutResolver: playoutRes,
 		setResidentVRAM: setResidentVRAM,

@@ -1566,6 +1566,15 @@ func (r *playoutResolver) publishedEncoder() playout.Encoder {
 	return r.detected
 }
 
+// PublishedCapability returns only the encoder result already published by the asynchronous
+// capability probe. Dashboard polling must never start or wait for a benchmark.
+func (r *playoutResolver) PublishedCapability() playout.Capacity {
+	if !r.detectReady.Load() {
+		return playout.Capacity{}
+	}
+	return playout.Capacity{Chosen: r.publishedEncoder(), MaxChannels: int(r.maxChannels.Load())}
+}
+
 // HWEncodeSlots is how many concurrent HARDWARE encodes this box sustains — the capability probe's
 // measured_max_channels. It drives the playout admission gate: a transcode that cannot get a slot
 // goes straight to software rather than piling onto a saturated GPU and stalling. Runs the same

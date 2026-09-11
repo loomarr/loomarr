@@ -310,6 +310,7 @@ const stubReachable = () => {
     getListLibraryCollectionsMockHandler({ collections: [] }),
     getGetPlayoutStatusMockHandler({
       running: false,
+      capability: { encoder: "", hardware: false, maxChannels: 0 },
       channels: [],
       gpu: { contended: false },
       prepared: {

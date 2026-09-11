@@ -12,6 +12,47 @@ type fixedPreparedObserver struct{ status prepared.PlannerStatus }
 
 func (f fixedPreparedObserver) Status() prepared.PlannerStatus { return f.status }
 
+type fixedPlayoutCapability struct{ capability playout.Capacity }
+
+func (f fixedPlayoutCapability) Capability() playout.Capacity { return f.capability }
+
+type idlePlayoutObserver struct{ fixedPlayoutCapability }
+
+func (idlePlayoutObserver) Stats(time.Time) []playout.SessionStat { return nil }
+func (idlePlayoutObserver) Capacity() int                         { return 0 }
+func (idlePlayoutObserver) ReportProgram(string, playout.EncodePlan, playout.Encoder, bool, playout.Progress) {
+}
+func (idlePlayoutObserver) AdmitProgram(string, playout.EncodePlan, bool) bool { return true }
+
+// An idle host has no session row to infer its encoder from. Its retained, measured capability is
+// still operational truth: VAAPI/QSV is hardware even when NVIDIA-only VRAM telemetry is unknown.
+func TestPlayoutStatusProjectsIdleHardwareCapabilityWithoutVRAM(t *testing.T) {
+	capability := fixedPlayoutCapability{capability: playout.Capacity{
+		Chosen: playout.EncoderVAAPI, MaxChannels: 3,
+	}}
+	s := &Server{playoutObserver: idlePlayoutObserver{capability}, playoutCapability: capability.Capability}
+
+	got := s.playoutStatus(t.Context(), time.Now())
+	if !got.Capability.Hardware || got.Capability.Encoder != string(playout.EncoderVAAPI) || got.Capability.MaxChannels != 3 {
+		t.Fatalf("idle capability = %+v, want retained VAAPI hardware capacity", got.Capability)
+	}
+	if got.GPU.VRAMGiB != 0 {
+		t.Fatalf("idle VAAPI must not invent NVIDIA VRAM, got %+v", got.GPU)
+	}
+}
+
+func TestPlayoutStatusProjectsIdleSoftwareCapability(t *testing.T) {
+	capability := fixedPlayoutCapability{capability: playout.Capacity{
+		Chosen: playout.EncoderSoftware, MaxChannels: 1,
+	}}
+	s := &Server{playoutObserver: idlePlayoutObserver{capability}, playoutCapability: capability.Capability}
+
+	got := s.playoutStatus(t.Context(), time.Now())
+	if got.Capability.Hardware || got.Capability.Encoder != string(playout.EncoderSoftware) || got.Capability.MaxChannels != 1 {
+		t.Fatalf("idle capability = %+v, want retained software capacity", got.Capability)
+	}
+}
+
 // The verdict is the doctor's whole point — mapping a raw speed to ok|degraded|stalled with a
 // reason an operator can act on. These cases pin the thresholds and the copy-is-always-ok rule.
 func TestVerdict(t *testing.T) {
