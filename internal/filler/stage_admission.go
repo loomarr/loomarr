@@ -3,7 +3,6 @@ package filler
 import (
 	"context"
 	"strconv"
-	"strings"
 
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
@@ -62,31 +61,23 @@ func (s *AdmissionStage) Run(ctx context.Context, clip StoreClip) (StageResult, 
 	return StageResult{Verdict: VerdictContinue}, nil
 }
 
-// explicitContentRole refuses KindFromName's useful catalog default. A default is placement policy,
-// not evidence; only an explicit token in the original filename can support a V61 claim.
+// explicitContentRole translates only KindFromName's explicit concrete result into evidence.
+// Unclassified is the absence of role authority, never a content-role claim.
 func explicitContentRole(name string) string {
-	tokens := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
-		return r < 'a' || r > 'z'
-	})
-	for i, token := range tokens {
-		switch token {
-		case "bumper", "bumpers":
-			return filleradmission.RoleBumper
-		case "ident", "idents":
-			return filleradmission.RoleStationID
-		case "station":
-			if i+1 < len(tokens) && (tokens[i+1] == "id" || tokens[i+1] == "ident") {
-				return filleradmission.RoleStationID
-			}
-		case "psa", "psas":
-			return filleradmission.RolePSA
-		case "trailer", "trailers":
-			return filleradmission.RoleTrailer
-		case "interstitial", "interstitials":
-			return filleradmission.RoleInterstitial
-		case "commercial", "commercials", "advert", "adverts":
-			return filleradmission.RoleCommercial
-		}
+	switch KindFromName(name) {
+	case Bumper:
+		return filleradmission.RoleBumper
+	case StationID:
+		return filleradmission.RoleStationID
+	case PSA:
+		return filleradmission.RolePSA
+	case Trailer:
+		return filleradmission.RoleTrailer
+	case Interstitial:
+		return filleradmission.RoleInterstitial
+	case Commercial:
+		return filleradmission.RoleCommercial
+	default:
+		return ""
 	}
-	return ""
 }

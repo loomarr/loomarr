@@ -38,6 +38,12 @@ type fakePods struct {
 	fitChannels   map[string]bool
 }
 
+type fixedClipCatalog []filler.Clip
+
+func (catalog fixedClipCatalog) AllClips(context.Context) ([]filler.Clip, error) {
+	return catalog, nil
+}
+
 func (f *fakePods) FitForChannel(channelID string, _ filler.Selection, _ filler.Clip) filler.Fit {
 	if f.fitChannels == nil || f.fitChannels[channelID] {
 		return filler.Fit{}
@@ -104,6 +110,41 @@ func TestReconcile_PodsBuildAndAttachFillerList(t *testing.T) {
 	// The program slot is untouched (filler never displaces a program).
 	if programCount(ch) != 1 {
 		t.Errorf("program count changed: %+v", ch.Desired)
+	}
+}
+
+func TestReconcile_UnclassifiedClipCannotProjectCommercialBreak(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	// Deliberately bypass persistence and its held invariant. Even if a caller supplies this
+	// impossible unheld row, the real pod adapter must not turn it into a scheduled break.
+	pods := filler.NewPodAdapter(fixedClipCatalog{{
+		Hash: "unclassified", Path: "unclassified.mp4", TunarrProgramID: "unclassified-program",
+		Name: "Unknown clip", Kind: filler.Unclassified, DurationMs: 30_000,
+	}}, nil, func() filler.Policy {
+		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
+	}, testkit.Logger())
+	e := newEngine(st, tun, mapAvail{
+		"movie:tmdb:1": "lib-1",
+		"movie:tmdb:2": "lib-2",
+	}, nil).WithPods(pods)
+	seedChannel(t, st, "unclassified", 5,
+		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+
+	if err := e.Reconcile(t.Context(), "unclassified"); err != nil {
+		t.Fatal(err)
+	}
+	channel, err := st.GetChannel(t.Context(), "unclassified")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, slot := range channel.Desired {
+		if slot.Kind == schedule.SlotFiller {
+			t.Fatalf("unclassified clip projected a scheduled break: %+v", channel.Desired)
+		}
+	}
+	if got := tun.FillerListFor(chTunarrID(t, st, "unclassified")); len(got) != 0 {
+		t.Fatalf("unclassified clip projected into a backend filler list: %v", got)
 	}
 }
 

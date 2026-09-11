@@ -394,7 +394,7 @@ func filterAudienceWithUngrounded(clips []Clip, aud Audience) []Clip {
 	return out
 }
 
-// filterKinds keeps only clips whose kind is in the selected set (§10 per-channel
+// filterKinds keeps only playable concrete clips whose kind is in the selected set (§10 per-channel
 // "kinds to include"). Empty selection = the default kinds (commercial + the two
 // bumper kinds), which is what a channel with no kind preference should draw: ads
 // with bumper bookends. Applied catalog-wide BEFORE pickBumper/candidatePools, so a
@@ -411,7 +411,9 @@ func filterKinds(clips []Clip, kinds []string) []Clip {
 	}
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
-		if allow[c.Kind] {
+		// Unclassified is held work, not a selectable role. Keep this independent of the store's
+		// held filter so an IncludeHeld mistake, explicit kind request, or pin cannot make it air.
+		if c.Kind != Unclassified && allow[c.Kind] {
 			out = append(out, c)
 		}
 	}

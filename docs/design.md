@@ -4323,7 +4323,11 @@ Titles come from TMDB via Seerr/Sonarr/Radarr. Commercials, bumpers, and station
 
 ### Filler catalog (metadata is what enables matching)
 Each clip carries metadata so the scheduler can place it well, persisted in the store (§5):
-- `kind`: commercial | bumper | station_id | psa | trailer | interstitial
+- `kind`: unclassified | commercial | bumper | station_id | psa | trailer | interstitial.
+  `unclassified` is a closed held-work lifecycle state, not a generic filler role: it records that
+  no exact role authority has yet projected one of the concrete kinds. Filename inference may retain
+  an explicit concrete token as diagnostic metadata, but an unknown filename defaults to
+  `unclassified`, never `commercial`.
 - `era`: decade / year (e.g., 1994)
 - `audience`: kids | family | general | late_night
 - `category`: toys | cereal | cars | tech | fast_food | movie_trailer | …
@@ -4460,6 +4464,15 @@ not, right or wrong. V38 gives an arriving clip a **state**:
   terminal admission or rejection.
 - **admitted** — the catalog proper. Everything that plays was admitted by the one terminal
   applied-decision transaction after it reproduced the exact safety, playback and rights proof.
+
+An `unclassified` clip is always held. It cannot be matched into a pod, attached to a filler-list,
+projected into a schedule, or accepted as terminal admission output, even if a caller accidentally
+lifts the ordinary held filter. Admission observation, score, auto-file policy, unrelated grounding,
+and source trust can record evidence or route review but cannot change either fact. A future
+final-conditioned-child role authority may project a verified concrete kind while the clip remains
+held; only the terminal admission transaction removes that hold after reproducing every required
+proof. Until the role authority exists, the state remains held and unclassified. Existing admitted
+clips that already carry a concrete kind retain their playback behavior.
 
 ⚠ **The V38 compatibility exceptions are retired.** Acquisition intent is not publication
 authority, whether the bytes came from a downloader, a watched folder, or a hand copy. Every new

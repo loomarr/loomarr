@@ -1478,6 +1478,7 @@ components:
           type: boolean
         kind:
           enum:
+            - unclassified
             - commercial
             - bumper
             - station_id
@@ -12113,6 +12114,7 @@ paths:
           name: kind
           schema:
             enum:
+              - unclassified
               - commercial
               - bumper
               - station_id

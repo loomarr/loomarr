@@ -227,6 +227,12 @@ What kind of non-program item a Clip is, such as commercial, promo, bumper, PSA,
 trailer, or interstitial. A Filler role says nothing about Media quality or Airworthiness.
 _Avoid_: category, approval, suitability
 
+**Unclassified filler**:
+A held Clip whose exact Filler role has not been established by the authority required for
+admission. `unclassified` is a closed lifecycle state, not a catch-all Filler role, and it can never
+be selected for a Pod or projected into a Schedule.
+_Avoid_: commercial, generic filler, unknown role
+
 **Media quality**:
 Whether a Clip is technically intact, complete, and presentable enough for its intended playout.
 Media quality says nothing about the Clip's Filler role or Airworthiness.

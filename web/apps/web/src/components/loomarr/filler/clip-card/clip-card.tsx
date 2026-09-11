@@ -15,6 +15,7 @@ import type { ClipCardProps } from "./clip-card.type";
 // clips flag caution with a "Tag" action; aiTagged clips wear a `suggest` marker
 // (§2.1) and offer a one-click confirm — the human still gates the AI's guess (§8).
 const KIND_LABEL: Record<ClipDTO["kind"], string> = {
+  unclassified: "Unclassified",
   commercial: "Commercial",
   bumper: "Bumper",
   station_id: "Station ID",

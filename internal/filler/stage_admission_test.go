@@ -85,3 +85,28 @@ func TestAdmissionStageRequiresAnExplicitFilenameRoleToken(t *testing.T) {
 		}
 	}
 }
+
+func TestAdmissionStageObservationCannotProjectAnUnclassifiedClip(t *testing.T) {
+	observer := &captureShadowObserver{}
+	stage := filler.NewAdmissionStage(observer)
+	clip := filler.StoreClip{Clip: filler.Clip{
+		Hash: "clip-1", Name: "Acme Commercial.mov", Kind: filler.Unclassified, Held: true,
+	}, UpdatedAt: time.Now()}
+	out, err := stage.Run(t.Context(), clip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Verdict != filler.VerdictContinue || out.Clip.Hash != "" {
+		t.Fatalf("admission observation projected lifecycle state: %+v", out)
+	}
+	if len(observer.observations) != 1 {
+		t.Fatalf("observations = %d", len(observer.observations))
+	}
+	foundRole := false
+	for _, fact := range observer.observations[0].Evidence {
+		foundRole = foundRole || fact.Claim == filleradmission.ClaimContentRole
+	}
+	if !foundRole || clip.Kind != filler.Unclassified || !clip.Held {
+		t.Fatalf("role observation altered unclassified hold: clip=%+v evidence=%+v", clip, observer.observations[0].Evidence)
+	}
+}

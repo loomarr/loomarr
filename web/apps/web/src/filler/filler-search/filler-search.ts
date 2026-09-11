@@ -11,7 +11,7 @@ type FillerSearch = {
   parent?: string;
 };
 
-const KINDS = ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"];
+const KINDS = ["unclassified", "commercial", "bumper", "station_id", "psa", "trailer", "interstitial"];
 const AUDIENCES = ["kids", "family", "general", "late_night"];
 const TAXONOMY_AXES = ["product", "format", "seasonal", "audience-cue"] as const;
 

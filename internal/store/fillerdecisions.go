@@ -393,8 +393,8 @@ func (s *sqlStore) applyFillerDecisionCatalogEffect(ctx context.Context, tx *sql
 	case action.Kind == fillerdecision.ActionAdmit ||
 		action.Kind == fillerdecision.ActionCorrect && action.CorrectedVerdict == filleradmission.VerdictAdmit:
 		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ?
-			WHERE hash = ? AND held = ? AND removed_at = 0`
-		clipArgs = []any{false, false, timestamp, clipHash, true}
+			WHERE hash = ? AND held = ? AND removed_at = 0 AND kind <> ?`
+		clipArgs = []any{false, false, timestamp, clipHash, true, string(filler.Unclassified)}
 		pipelineFrom, pipelineTo = []filler.Disposition{filler.DispositionReview}, filler.DispositionFiled
 	case action.Kind == fillerdecision.ActionRestore:
 		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, removed_at = 0, updated_at = ?

@@ -269,12 +269,12 @@ func TestScanDir_UnsetIsEmptyButMissingIsAnError(t *testing.T) {
 	}
 }
 
-// Filename tagging is the cheapest tier (§10). Without it a clip lands as a generic
-// interstitial the pod assembler can never place, so filler would silently never build.
+// Filename tagging is the cheapest tier (§10), but only an explicit role token is authority.
 func TestScanDir_InfersKindAndEraFromTheFilename(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "1994-toys-ad.mp4")
 	writeFile(t, dir, "bumper-back-soon.mp4")
+	writeFile(t, dir, "mystery-1994.mp4")
 
 	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(20000))
 	if err != nil {
@@ -289,6 +289,9 @@ func TestScanDir_InfersKindAndEraFromTheFilename(t *testing.T) {
 	}
 	if got := byPath["bumper-back-soon.mp4"]; got.Kind != filler.Bumper {
 		t.Errorf("kind not inferred from the filename: %+v", got)
+	}
+	if got := byPath["mystery-1994.mp4"]; got.Kind != filler.Unclassified || got.Era != 1994 {
+		t.Errorf("unknown role did not remain unclassified with independent era evidence: %+v", got)
 	}
 }
 
