@@ -263,6 +263,100 @@ func frozenUSGSLane() (Lane, time.Time) {
 	return Lane{Authority: usgsVideoAuthority, MaxRequests: 4, RequestsUsed: 4, MaxResponseBytes: 2_000_000, ResponseBytes: 166_726, MaxPredictedMediaBytes: 100_000_000, PredictedMediaBytes: 98_690_824, MaxWallTimeMS: 120_000, WallTimeMS: 3_429, Cases: []Candidate{first, second}}, snapshot
 }
 
+func TestInventoryFromFrozenBlenderLaneUsesExactAuthority(t *testing.T) {
+	lane, snapshot := frozenBlenderLane()
+	got, err := InventoryFromLane(lane, LaneInventoryOptions{
+		SnapshotAt: snapshot, Collection: "blender-trailer-seed.json", AllowedMediaHosts: []string{blenderSintelMediaHost},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != InventorySchemaVersion || len(got.Cases) != 1 || got.Captures[0].PredictedMediaBytes != 7_608_204 || got.Cases[0].CaseID != "blender.org/open-movies/sintel-trailer-720p" {
+		t.Fatalf("inventory = %+v", got)
+	}
+}
+
+func TestValidateInventoryRejectsBlenderAuthorityEscapes(t *testing.T) {
+	for name, mutate := range map[string]func(*InventoryCase){
+		"arbitrary Blender subdomain": func(item *InventoryCase) {
+			item.ItemURL = "https://studio.blender.org/download/"
+		},
+		"generic licence page": func(item *InventoryCase) {
+			item.MetadataURL = "https://www.blender.org/about/license/"
+		},
+		"HTTP page": func(item *InventoryCase) {
+			item.ItemURL = strings.Replace(item.ItemURL, "https://", "http://", 1)
+		},
+		"credentialed page": func(item *InventoryCase) {
+			item.ItemURL = strings.Replace(item.ItemURL, "https://", "https://user@", 1)
+		},
+		"mirror": func(item *InventoryCase) {
+			item.Representation.URL = "https://mirror.example/sintel_trailer-720p.mp4"
+		},
+		"other Blender object": func(item *InventoryCase) {
+			item.Representation.URL = "https://download.blender.org/durian/trailer/other.mp4"
+		},
+		"directory listing": func(item *InventoryCase) {
+			item.Representation.URL = "https://download.blender.org/durian/trailer/"
+		},
+		"wildcard host": func(item *InventoryCase) {
+			item.AllowedMediaHosts = []string{".blender.org"}
+		},
+		"HTTP media": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, "https://", "http://", 1)
+		},
+		"credentialed media": func(item *InventoryCase) {
+			item.Representation.URL = strings.Replace(item.Representation.URL, "https://", "https://user@", 1)
+		},
+		"unsupported MIME type": func(item *InventoryCase) {
+			item.Representation.MIMEType = "application/octet-stream"
+		},
+		"representation name drift": func(item *InventoryCase) {
+			item.Representation.Name = "other.mp4"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			lane, snapshot := frozenBlenderLane()
+			inventory, err := InventoryFromLane(lane, LaneInventoryOptions{SnapshotAt: snapshot, Collection: "fixture", AllowedMediaHosts: []string{blenderSintelMediaHost}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(&inventory.Cases[0])
+			if failures := ValidateInventory(inventory); !slices.ContainsFunc(failures, func(failure string) bool { return strings.Contains(failure, "blender Open Movie authority") }) {
+				t.Fatalf("failures = %v", failures)
+			}
+		})
+	}
+}
+
+func TestValidateInventoryRejectsUnreviewedBlenderAuthority(t *testing.T) {
+	lane, snapshot := frozenBlenderLane()
+	inventory, err := InventoryFromLane(lane, LaneInventoryOptions{SnapshotAt: snapshot, Collection: "fixture", AllowedMediaHosts: []string{blenderSintelMediaHost}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory.Captures[0].Authority = "blender.org"
+	inventory.Captures[0].CaptureID = NewCaptureID("blender.org", "fixture", "trailer")
+	inventory.Cases[0].Authority = "blender.org"
+	inventory.Cases[0].CaseID = CaseID("blender.org", blenderSintelItemID)
+	inventory.Cases[0].CaptureIDs = []string{inventory.Captures[0].CaptureID}
+	if failures := ValidateInventory(inventory); !slices.ContainsFunc(failures, func(failure string) bool { return strings.Contains(failure, "no supported authority host policy") }) {
+		t.Fatalf("failures = %v", failures)
+	}
+}
+
+func frozenBlenderLane() (Lane, time.Time) {
+	snapshot := time.Date(2026, 9, 5, 20, 10, 0, 0, time.UTC)
+	item := Candidate{
+		ItemID: blenderSintelItemID, Title: "Sintel Trailer", RoleHints: []string{"trailer"}, ItemURL: blenderSintelPageURL, MetadataURL: blenderSintelPageURL,
+		MetadataRetrievedAt: time.Date(2026, 9, 5, 20, 9, 49, 147_481_000, time.UTC), MetadataSHA256: "ae7f8471316a597fbffa2bc39f3560790aa0f968f4788d7b1bbe64d020b04b0f",
+		RightsAssertions: []string{"Exact official Blender project download page classifies the representation under Trailer and links the Sintel trailer MP4 path.", "Official Sintel project pages state that the film and project-created work are released under Creative Commons Attribution 3.0; exact trailer/music attribution and any third-party elements remain for rights review."},
+		Representation:   Representation{Name: blenderSintelMediaName, URL: blenderSintelMediaURL, MIMEType: "video/mp4", Bytes: 7_608_204},
+	}
+	item.Representation.Soundtrack = BindRepresentationSoundtrack(item.Representation, SoundtrackUnknown, SoundtrackEvidenceFirstPartyMetadata, item.MetadataSHA256, "frozen project download page did not establish audio")
+	return Lane{Authority: blenderOpenMovieAuthority, MaxRequests: 2, RequestsUsed: 2, MaxResponseBytes: 1_000_000, ResponseBytes: 27_556, MaxPredictedMediaBytes: 10_000_000, PredictedMediaBytes: 7_608_204, MaxWallTimeMS: 60_000, WallTimeMS: 978, Cases: []Candidate{item}}, snapshot
+}
+
 func TestHistoricalPilotLanesCannotPromoteWithoutSoundtrackAuthority(t *testing.T) {
 	snapshot := time.Date(2026, 8, 27, 0, 0, 0, 0, time.UTC)
 	lanes := map[string]string{"prelinger": "archive.org", "loc": "tile.loc.gov", "nasa": "images-assets.nasa.gov", "cdc": "www.cdc.gov", "commons": "upload.wikimedia.org"}
