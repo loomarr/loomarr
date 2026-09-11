@@ -197,9 +197,39 @@ describe("GuideGrid", () => {
         ]}
       />,
     );
-    expect(leftPct(block(/InProgress/))).toBe(0);
+    const inProgress = block(/InProgress/);
+    expect(leftPct(inProgress)).toBe(0);
     // Only the visible remainder: 20 of 120 minutes.
-    expect(widthPct(block(/InProgress/))).toBeCloseTo(16.67, 1);
+    expect(widthPct(inProgress)).toBeCloseTo(16.67, 1);
+    expect(inProgress.dataset.clippedStart).toBe("true");
+    expect(inProgress).toHaveClass("rounded-l-none", "border-l-0");
+  });
+
+  it("does not inflate a tiny remainder at the window edge", () => {
+    render(
+      <GuideGrid
+        fromMs={FROM}
+        toMs={TO}
+        channels={[
+          row("ch1", [
+            airing({ kind: "program", title: "NearlyFinished", startMs: at(-30), stopMs: at(0.12) }),
+          ]),
+        ]}
+      />,
+    );
+    // 0.12 of 120 minutes = 0.1%, below the ordinary 0.25% visibility floor.
+    expect(widthPct(block(/NearlyFinished/))).toBeCloseTo(0.1, 3);
+  });
+
+  it("fits the requested window at default zoom and overflows only when magnified", () => {
+    const channels = [row("ch1", [])];
+    const { rerender } = render(<GuideGrid fromMs={FROM} toMs={TO} zoom={1} channels={channels} />);
+    const grid = screen.getByTestId("guide-grid");
+    const content = grid.firstElementChild as HTMLElement;
+    expect(content.style.width).toBe("1280px");
+
+    rerender(<GuideGrid fromMs={FROM} toMs={TO} zoom={1.5} channels={channels} />);
+    expect(content.style.width).toBe("1790px");
   });
 
   it("marks the current instant only when it falls inside the window", () => {
@@ -213,8 +243,8 @@ describe("GuideGrid", () => {
     expect(screen.queryByTestId("guide-now-line")).not.toBeInTheDocument();
   });
 
-  // Zoom scales the CHROME, not the time scale: the window still fits, rows just get taller
-  // and more legible. A block's share of the window must therefore not change.
+  // Zoom scales the time axis in pixels while preserving its percentage geometry. A block's
+  // share of the requested window must therefore not change.
   it("keeps block proportions constant across zoom", () => {
     const channels = [
       row("ch1", [airing({ kind: "program", title: "Heat", startMs: at(0), stopMs: at(30) })]),

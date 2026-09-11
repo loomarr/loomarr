@@ -40,17 +40,13 @@ const TICK_MINUTES_LONG = 60;
 const LONG_WINDOW_MINUTES = 180;
 
 // Fixed chrome (see the ZOOM IS TIME note): the rail and row heights zoom no longer touches.
-const RAIL_W = 220;
+const RAIL_W = 260;
 const ROW_H = 56;
 // The time axis never collapses below this, so a very narrow viewport still shows a schedule
 // rather than a sliver.
 const MIN_TIME_W = 480;
 // Stand-in viewport width before the real one is measured (and in jsdom, which reports 0×0).
 const FALLBACK_VIEWPORT_W = 1280;
-// How many viewports wide the time axis is at zoom 1. 1.6 is enough that the scrollbar is
-// always present and there is real room to move forward and back, without making the default
-// view so dense that the window you asked for is mostly off screen.
-const OVERSCAN_FACTOR = 1.6;
 
 // tickStep — how many minutes between ruler ticks, given the window and the zoom.
 //
@@ -186,20 +182,11 @@ const GuideGrid = ({
   const effectiveViewportW = viewportW || FALLBACK_VIEWPORT_W;
   const availW = Math.max(MIN_TIME_W, effectiveViewportW - railW);
 
-  // THE TIME AXIS IS ALWAYS WIDER THAN THE VIEWPORT — that is what gives the guide a horizontal
-  // scrollbar, and it is deliberate rather than incidental.
-  //
-  // An earlier version defined zoom 1 as "the requested window fits exactly", which quietly
-  // coupled two independent things: how much time you ASKED for (the 2h/4h/6h chips) and
-  // whether you could scroll within it. At 100% there was nothing to scroll, so "scroll forward
-  // or back in time" was only possible after zooming in — the control existed but the everyday
-  // view could not use it.
-  //
-  // So the axis renders the requested window at a readable density and then keeps going: the
-  // window is guaranteed at least OVERSCAN_FACTOR viewports wide, which is the scrollable
-  // headroom. Zoom multiplies on top of that, so it still magnifies, but scrolling through time
-  // never depends on having zoomed first.
-  const timeW = Math.max(MIN_TIME_W, Math.round(availW * OVERSCAN_FACTOR * zoom));
+  // At zoom 1 the requested window fits the available time viewport. Zoom above 1 magnifies
+  // that same window and creates horizontal overflow; the View control already marks that
+  // non-default state. Forcing overflow at zoom 1 made the everyday view look accidentally
+  // clipped and hid almost 40% of the requested window off screen.
+  const timeW = Math.max(MIN_TIME_W, Math.round(availW * zoom));
   // What one percent of the time axis is worth in pixels — the bridge between the percentage
   // geometry (which keeps ticks and blocks aligned) and the px legibility thresholds.
   const pxPerPct = timeW / 100;
@@ -481,7 +468,14 @@ const GuideGrid = ({
                     const left = Math.max(0, pctOf(a.startMs));
                     const right = Math.min(100, pctOf(a.stopMs));
                     if (right <= 0 || left >= 100) return null;
-                    const width = Math.max(MIN_BLOCK_PCT, right - left);
+                    const clippedAtStart = a.startMs < fromMs;
+                    const clippedAtEnd = a.stopMs > toMs;
+                    const visibleWidth = right - left;
+                    // A minimum width helps an ordinary short block remain perceptible, but an
+                    // edge-clipped block must keep its true remainder. Inflating a few seconds
+                    // left at the boundary creates the stray vertical fragments seen in beta.5.
+                    const width =
+                      clippedAtStart || clippedAtEnd ? visibleWidth : Math.max(MIN_BLOCK_PCT, visibleWidth);
 
                     const airing = nowMs !== undefined && nowMs >= a.startMs && nowMs < a.stopMs;
                     // The block's REAL rendered width, which is what legibility depends on.
@@ -502,6 +496,8 @@ const GuideGrid = ({
                         key={`${ch.channelId}-${a.startMs}`}
                         data-kind={a.kind}
                         data-airing={airing || undefined}
+                        data-clipped-start={clippedAtStart || undefined}
+                        data-clipped-end={clippedAtEnd || undefined}
                         // The real element is the anchor: unlike a row-index estimate, its
                         // bounding box stays truthful through scrolling, zoom and virtualization.
                         onMouseEnter={(event) => onInspect?.(a, ch.channelId, event.currentTarget)}
@@ -529,6 +525,8 @@ const GuideGrid = ({
                         }}
                         className={cn(
                           "absolute top-1.5 bottom-1.5 flex cursor-pointer flex-col justify-center overflow-hidden rounded border border-l-2 text-left",
+                          clippedAtStart && "rounded-l-none border-l-0",
+                          clippedAtEnd && "rounded-r-none",
                           // Hover/focus: the border brightens and a 1px ring lifts the block off
                           // the row. Blocks sit edge to edge, so a fill change alone is ambiguous
                           // about WHICH block is under the pointer — the outline is what makes

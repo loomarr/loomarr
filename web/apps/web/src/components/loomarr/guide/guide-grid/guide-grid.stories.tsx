@@ -1,18 +1,24 @@
+import type { GuideChannelTimeline } from "@loomarr/api";
 import { guideChannels, guideFrom, guideNow, guideTo } from "@loomarr/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { widthFrame } from "@/test/story-utils";
 import { GuideGrid } from "./guide-grid";
+import type { GuideGridProps } from "./guide-grid.type";
 
 // The cross-channel schedule (§12): a fixed channel rail, then one flexed time area per row
 // where every block's width IS its duration. The fixture window is FIXED epoch ms — every
 // position is relative to `fromMs`, so a clock-derived origin would move every block and the
 // visual suite would diff on nothing but the time of day.
+const GuideGridStory = ({ frameWidth = 1000, ...props }: GuideGridProps & { frameWidth?: number }) => (
+  <div style={{ width: frameWidth, maxWidth: "100%" }}>
+    <GuideGrid {...props} />
+  </div>
+);
+
 const meta = {
   title: "Guide/GuideGrid",
-  component: GuideGrid,
+  component: GuideGridStory,
   args: { channels: guideChannels, fromMs: guideFrom, toMs: guideTo, nowMs: guideNow },
-  decorators: [widthFrame(1000)],
-} satisfies Meta<typeof GuideGrid>;
+} satisfies Meta<typeof GuideGridStory>;
 
 type Story = StoryObj<typeof meta>;
 
@@ -21,6 +27,69 @@ type Story = StoryObj<typeof meta>;
 // rather than the boolean it replaced. The now-line crosses every row, and whatever is airing
 // at that instant is highlighted.
 const Default: Story = {};
+
+const at = (minutes: number) => guideFrom + minutes * 60_000;
+const fourHourChannels: GuideChannelTimeline[] = [
+  ...guideChannels.map((channel) => ({
+    ...channel,
+    airings: [
+      ...channel.airings,
+      {
+        kind: "program" as const,
+        scheduleBlockId: `block_${channel.channelId}_late`,
+        title: channel.channelId === "ch-action" ? "Die Hard" : "Evening lineup continues",
+        startMs: Math.max(...channel.airings.map((airing) => airing.stopMs)),
+        stopMs: at(240),
+      },
+    ],
+  })),
+  {
+    channelId: "ch-comedy",
+    name: "Saturday Night Comedy",
+    number: 4,
+    status: "live",
+    pendingCount: 0,
+    airings: [
+      {
+        kind: "program",
+        scheduleBlockId: "block_comedy_coming_to_america",
+        title: "Coming to America",
+        startMs: at(-8),
+        stopMs: at(112),
+        year: 1988,
+      },
+      {
+        kind: "filler",
+        scheduleBlockId: "block_comedy_break",
+        title: "Commercials",
+        startMs: at(112),
+        stopMs: at(116),
+      },
+      {
+        kind: "program",
+        scheduleBlockId: "block_comedy_planes_trains",
+        title: "Planes, Trains and Automobiles",
+        startMs: at(116),
+        stopMs: at(240),
+        year: 1987,
+      },
+    ],
+  },
+];
+
+// The production-shaped desktop contract: four populated channels over the default four-hour
+// span, including programmes continuing through the left edge. A dedicated Playwright check
+// captures this at 1440×900 because the beta.5 defect only became obvious at page scale.
+const DesktopFourChannels: Story = {
+  args: {
+    channels: fourHourChannels,
+    frameWidth: 1400,
+    fromMs: guideFrom,
+    toMs: at(240),
+    nowMs: guideNow,
+    zoom: 1,
+  },
+};
 
 // Zoom magnifies the TIME AXIS, not the chrome. At 2× an hour occupies twice the pixels, so the
 // grid overflows its viewport and scrolls horizontally — which is what makes a short commercial
@@ -53,4 +122,4 @@ const EmptyChannel: Story = {
 };
 
 export default meta;
-export { Default, EmptyChannel, FullDay, NowOutsideWindow, ZoomedIn, ZoomedOut };
+export { Default, DesktopFourChannels, EmptyChannel, FullDay, NowOutsideWindow, ZoomedIn, ZoomedOut };
