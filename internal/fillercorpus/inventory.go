@@ -30,6 +30,13 @@ const (
 	usgsPageHost       = "www.usgs.gov"
 	usgsMediaHost      = "usgs-ocapsv2-public-output-media.s3.us-west-2.amazonaws.com"
 	usgsMediaPathRoot  = "/assets/palladium/production/s3fs-public/"
+
+	blenderOpenMovieAuthority = "blender.org/open-movies"
+	blenderSintelItemID       = "sintel-trailer-720p"
+	blenderSintelPageURL      = "https://durian.blender.org/download/"
+	blenderSintelMediaHost    = "download.blender.org"
+	blenderSintelMediaURL     = "https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4"
+	blenderSintelMediaName    = "sintel_trailer-720p.mp4"
 )
 
 var authorityMediaHosts = map[string][]string{
@@ -38,6 +45,7 @@ var authorityMediaHosts = map[string][]string{
 	"cdc.gov":                         {"www.cdc.gov"},
 	"commons.wikimedia.org":           {"upload.wikimedia.org"},
 	usgsVideoAuthority:                {usgsMediaHost},
+	blenderOpenMovieAuthority:         {blenderSintelMediaHost},
 	MetAuthority:                      {metImageHost},
 }
 
@@ -405,9 +413,17 @@ func ValidateInventory(value Inventory) []string {
 }
 
 func validateAuthorityCase(item InventoryCase) error {
-	if item.Authority != usgsVideoAuthority {
+	switch item.Authority {
+	case usgsVideoAuthority:
+		return validateUSGSAuthorityCase(item)
+	case blenderOpenMovieAuthority:
+		return validateBlenderAuthorityCase(item)
+	default:
 		return nil
 	}
+}
+
+func validateUSGSAuthorityCase(item InventoryCase) error {
 	if !validUSGSSlug(item.ItemID) {
 		return fmt.Errorf("USGS video authority requires a canonical item slug")
 	}
@@ -436,6 +452,19 @@ func validateAuthorityCase(item InventoryCase) error {
 	}
 	if item.Representation.Name != segments[len(segments)-1] {
 		return fmt.Errorf("USGS video authority representation name does not match its object")
+	}
+	return nil
+}
+
+func validateBlenderAuthorityCase(item InventoryCase) error {
+	if item.ItemID != blenderSintelItemID || item.ItemURL != blenderSintelPageURL || item.MetadataURL != blenderSintelPageURL {
+		return fmt.Errorf("blender Open Movie authority requires the exact Sintel trailer item and project page")
+	}
+	if !slices.Equal(item.AllowedMediaHosts, []string{blenderSintelMediaHost}) {
+		return fmt.Errorf("blender Open Movie authority requires the exact download host")
+	}
+	if item.Representation.URL != blenderSintelMediaURL || item.Representation.Name != blenderSintelMediaName || item.Representation.MIMEType != "video/mp4" {
+		return fmt.Errorf("blender Open Movie authority requires the exact Sintel MP4 representation")
 	}
 	return nil
 }
