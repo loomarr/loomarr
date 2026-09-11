@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,157 @@ import (
 	"github.com/loomarr/loomarr/internal/fillereval"
 	"github.com/loomarr/loomarr/internal/fillerquarantine"
 	"github.com/loomarr/loomarr/internal/fillerreview"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+func TestFrozenSourceFixturesProduceClosedCandidateDispositions(t *testing.T) {
+	root := t.TempDir()
+	snapshot := time.Date(2026, 9, 11, 4, 0, 0, 0, time.UTC)
+	metadata := strings.Repeat("a", 64)
+	lanes := []struct {
+		name       string
+		lane       fillercorpus.Lane
+		collection string
+		hosts      []string
+		want       string
+		wantHold   string
+	}{
+		{
+			name: "CDC", collection: "cdc-audible-seed-v1.json", hosts: []string{"www.cdc.gov"},
+			lane: frozenCandidateLane(snapshot, "cdc.gov", "charge-your-phone", "PSA", "https://www.cdc.gov/natural-disasters/psa-toolkit/charge-your-phone.html", "https://www.cdc.gov/wcms/video/low-res/disasters/2023/378637863-ATSDR-PSAs-Charge-your-Phone-1200-by-645.mp4", "378637863-ATSDR-PSAs-Charge-your-Phone-1200-by-645.mp4", 352_384, fillercorpus.SoundtrackPresentExpected, metadata),
+			want: fillercandidatepool.DispositionEligible,
+		},
+		{
+			name: "Blender", collection: "blender-trailer-seed.json", hosts: []string{"download.blender.org"},
+			lane: frozenCandidateLane(snapshot, "blender.org/open-movies", "sintel-trailer-720p", "trailer", "https://durian.blender.org/download/", "https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4", "sintel_trailer-720p.mp4", 7_608_204, fillercorpus.SoundtrackUnknown, "ae7f8471316a597fbffa2bc39f3560790aa0f968f4788d7b1bbe64d020b04b0f"),
+			want: fillercandidatepool.DispositionHeld, wantHold: fillercandidatepool.HoldSoundtrackUnknown,
+		},
+		{
+			name: "USGS", collection: "usgs-audible-seed.json", hosts: []string{"usgs-ocapsv2-public-output-media.s3.us-west-2.amazonaws.com"},
+			lane: frozenCandidateLane(snapshot, "usgs.gov/media/videos", "november-2021-yellowstone-volcano", "programme_parent", "https://www.usgs.gov/media/videos/november-2021-yellowstone-volcano", "https://usgs-ocapsv2-public-output-media.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/video/2021_Nov_1_YVO_Monthly_Update/MP4/2021_Nov_1_YVO_Monthly_Update.mp4", "2021_Nov_1_YVO_Monthly_Update.mp4", 33_805_660, fillercorpus.SoundtrackUnknown, "7fbd7e3a7c5033260132dcbefd268ba543894eaac657b3e3b42ef640b9ff540e"),
+			want: fillercandidatepool.DispositionHeld, wantHold: fillercandidatepool.HoldSoundtrackUnknown,
+		},
+		{
+			name: "LOC", collection: "loc-historical-v4.json", hosts: []string{"tile.loc.gov"},
+			lane: frozenCandidateLane(snapshot, "loc.gov/national-screening-room", "97516784", "commercial", "https://www.loc.gov/item/97516784/", "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00007341/00007341.mp4", "00007341.mp4", 16_028_110, fillercorpus.SoundtrackUnknown, "b34773cb4f00ce9735c48ac76204c25aa951867c41cf6ef13e847f5d92e862df"),
+			want: fillercandidatepool.DispositionHeld, wantHold: fillercandidatepool.HoldSoundtrackUnknown,
+		},
+	}
+
+	inventories := make([]fillercorpus.Inventory, 0, len(lanes))
+	fixtureByCase := make(map[string]int, len(lanes))
+	for index, fixture := range lanes {
+		inventory, err := fillercorpus.InventoryFromLane(fixture.lane, fillercorpus.LaneInventoryOptions{SnapshotAt: snapshot, Collection: fixture.collection, AllowedMediaHosts: fixture.hosts})
+		if err != nil {
+			t.Fatalf("%s frozen inventory: %v", fixture.name, err)
+		}
+		inventories = append(inventories, inventory)
+		fixtureByCase[inventory.Cases[0].CaseID] = index
+	}
+	inventory, err := fillercorpus.MergeInventories(inventories...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventoryRaw, err := json.Marshal(inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventorySHA := fillercorpus.InventorySHA256(inventoryRaw)
+	dispositions := make(map[string]string, len(inventory.Cases))
+	contentByCase := make(map[string]string, len(inventory.Cases))
+	for index, item := range inventory.Cases {
+		media := []byte("frozen inspected media for " + item.CaseID)
+		localFile := "source-" + string(rune('a'+index)) + ".mp4"
+		if err := os.WriteFile(filepath.Join(root, localFile), media, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		dispositions[item.CaseID] = fillerquarantine.DispositionEligibleForRightsReview
+		contentByCase[item.CaseID] = fillercandidatepool.Digest(media)
+	}
+	quarantineRaw := testkit.FillerQuarantineReport(t, inventoryRaw, dispositions, contentByCase)
+	quarantine, err := fillerquarantine.OpenRightsEligibility(inventoryRaw, quarantineRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := quarantine.Selected(len(inventory.Cases), len(inventory.Cases))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindingByCase := make(map[string]*fillercorpus.QuarantineInspectionCaseBinding, len(selection.Cases))
+	for _, selected := range selection.Cases {
+		bindingByCase[selected.Inventory.CaseID] = selected.QuarantineInspection
+	}
+
+	prior := fillercandidatepool.Exposure{SourceSHA256: []string{}, FamilyIDs: []string{}, ProgrammeProvenance: []fillercandidatepool.ProgrammeProvenance{}}
+	for index, item := range inventory.Cases {
+		fixture := lanes[fixtureByCase[item.CaseID]]
+		t.Run(fixture.name, func(t *testing.T) {
+			media := []byte("frozen inspected media for " + item.CaseID)
+			localFile := "source-" + string(rune('a'+index)) + ".mp4"
+			contentSHA := fillercandidatepool.Digest(media)
+			decision := fillercorpus.RightsDecision{
+				InventorySHA256: inventorySHA, CaseID: item.CaseID, CaptureIDs: item.CaptureIDs,
+				Authority: item.Authority, ItemID: item.ItemID, MetadataSHA256: item.MetadataSHA256,
+				ReviewerID: "frozen-fixture-reviewer", ReviewedAt: snapshot.Add(time.Hour), Decision: "approved", Basis: "frozen fixture rights", Redistributable: true,
+				QuarantineInspection: bindingByCase[item.CaseID],
+			}
+			materialized := fillercorpus.MaterializedCase{CaseID: item.CaseID, LocalFile: localFile, ContentSHA256: contentSHA}
+			role := fillereval.TemporalRoleCommercial
+			unit := fillereval.UnitStandalone
+			switch fixture.name {
+			case "CDC":
+				role = fillereval.TemporalRolePSA
+			case "Blender":
+				role = fillereval.TemporalRoleTrailer
+			case "USGS":
+				unit = fillereval.UnitProgrammeExcerpt
+			}
+			review := fillerreview.ReplacementCandidateReviewCase{
+				CaseID: item.CaseID, EvidenceAlias: "evidence-" + string(rune('a'+index)), InspectedSourceFile: localFile, InspectedSourceSHA: contentSHA,
+				ReviewedMediaPath: localFile, ReviewedMediaSHA: contentSHA, ReviewedMediaBytes: int64(len(media)), DurationMS: 180_000,
+				Unit: unit, TechnicalVerdict: "continue", HadAudio: true, FullDecodeMeasured: true,
+				Suitability: "candidate_no_signal_observed", FamilyID: "singleton-" + string(rune('a'+index)),
+			}
+			if unit == fillereval.UnitStandalone {
+				review.Role = &role
+				review.Transition = fillerreview.TemporalTransitionAuthorityCase{
+					EvidenceAlias: review.EvidenceAlias, CaseID: item.CaseID, SourceSHA256: contentSHA, DurationMS: review.DurationMS,
+					Head: fillerreview.TemporalTransitionEdge{StartMS: 0, EndMS: 1_000}, Tail: fillerreview.TemporalTransitionEdge{StartMS: 179_000, EndMS: 180_000},
+				}
+			}
+			candidate, err := buildCandidate(Config{SourceRoot: root}, item, decision, materialized, review, quarantine, prior)
+			if err != nil {
+				t.Fatal(err)
+			}
+			repeated, err := buildCandidate(Config{SourceRoot: root}, item, decision, materialized, review, quarantine, prior)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(candidate, repeated) {
+				t.Fatalf("candidate did not reproduce for identical frozen authorities:\nfirst: %+v\nsecond: %+v", candidate, repeated)
+			}
+			if candidate.Disposition != fixture.want {
+				t.Fatalf("disposition = %q, holds=%v; want %q", candidate.Disposition, candidate.HoldReasons, fixture.want)
+			}
+			if fixture.wantHold != "" && !reflect.DeepEqual(candidate.HoldReasons, []string{fixture.wantHold}) {
+				t.Fatalf("holds = %v; want only %q", candidate.HoldReasons, fixture.wantHold)
+			}
+		})
+	}
+}
+
+func frozenCandidateLane(snapshot time.Time, authority, itemID, role, itemURL, mediaURL, mediaName string, mediaBytes int64, soundtrack, metadataSHA string) fillercorpus.Lane {
+	representation := fillercorpus.Representation{Name: mediaName, URL: mediaURL, MIMEType: "video/mp4", Bytes: mediaBytes}
+	representation.Soundtrack = fillercorpus.BindRepresentationSoundtrack(representation, soundtrack, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, metadataSHA, "frozen source metadata")
+	return fillercorpus.Lane{
+		Authority: authority, MaxRequests: 2, RequestsUsed: 2, MaxResponseBytes: 2_000_000, ResponseBytes: 1,
+		MaxPredictedMediaBytes: mediaBytes, PredictedMediaBytes: mediaBytes, MaxWallTimeMS: 60_000, WallTimeMS: 1,
+		Cases: []fillercorpus.Candidate{{
+			ItemID: itemID, Title: itemID, RoleHints: []string{role}, ItemURL: itemURL, MetadataURL: itemURL,
+			MetadataRetrievedAt: snapshot, MetadataSHA256: metadataSHA, RightsAssertions: []string{"frozen source rights assertion"}, Representation: representation,
+		}},
+	}
+}
 
 func TestBuildCandidateRequiresEveryLocalDownstreamAuthority(t *testing.T) {
 	root := t.TempDir()

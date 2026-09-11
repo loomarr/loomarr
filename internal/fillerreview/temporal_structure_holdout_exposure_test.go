@@ -1,6 +1,7 @@
 package fillerreview
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"sort"
@@ -10,6 +11,41 @@ import (
 
 	"github.com/loomarr/loomarr/internal/fillercandidatepool"
 )
+
+func TestBuildTemporalStructureReplacementHoldoutReproducesBytes(t *testing.T) {
+	fixture := newTemporalStructureHoldoutFixture(t)
+	prior := emptyTemporalStructureHoldoutExposure()
+	prior.SourceSHA256 = []string{strings.Repeat("e", 64)}
+	prior.FamilyIDs = []string{"prior-family"}
+	prior.ProgrammeProvenance = []TemporalStructureHoldoutProgrammeProvenance{{Authority: "prior-authority", Reference: "prior-reference"}}
+	priorPath := writeTemporalStructurePriorAdjudicationFixture(t, fixture, prior)
+	poolPath := writeTemporalStructureCandidatePoolFixture(t, fixture, prior)
+
+	outputs := []string{filepath.Join(t.TempDir(), "first"), filepath.Join(t.TempDir(), "second")}
+	for _, output := range outputs {
+		config := fixture.config(output)
+		config.Genesis = false
+		config.PriorAdjudicationPaths = []string{priorPath}
+		config.CandidatePoolPath = poolPath
+		clearTemporalStructureGenesisInputs(&config)
+		if _, err := BuildTemporalStructureHoldoutPlan(config); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"authoring.json", "receipt.json"} {
+		first, err := os.ReadFile(filepath.Join(outputs[0], name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := os.ReadFile(filepath.Join(outputs[1], name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(first, second) {
+			t.Fatalf("replacement %s differs for identical pool, prior exposure, seed, and time", name)
+		}
+	}
+}
 
 func TestLoadTemporalStructureHoldoutPriorAcceptsPublishedAdjudication(t *testing.T) {
 	fixture := newTemporalStructureAnchorAdjudicationFixture(t)
