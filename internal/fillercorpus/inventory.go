@@ -31,6 +31,11 @@ const (
 	usgsMediaHost      = "usgs-ocapsv2-public-output-media.s3.us-west-2.amazonaws.com"
 	usgsMediaPathRoot  = "/assets/palladium/production/s3fs-public/"
 
+	npsVideoAuthority = "nps.gov/media/video"
+	npsVideoHost      = "www.nps.gov"
+	npsItemPath       = "/media/video/view.htm"
+	npsMediaPathRoot  = "/nps-audiovideo/legacy/articles/"
+
 	blenderOpenMovieAuthority = "blender.org/open-movies"
 	blenderSintelItemID       = "sintel-trailer-720p"
 	blenderSintelPageURL      = "https://durian.blender.org/download/"
@@ -45,6 +50,7 @@ var authorityMediaHosts = map[string][]string{
 	"cdc.gov":                         {"www.cdc.gov"},
 	"commons.wikimedia.org":           {"upload.wikimedia.org"},
 	usgsVideoAuthority:                {usgsMediaHost},
+	npsVideoAuthority:                 {npsVideoHost},
 	blenderOpenMovieAuthority:         {blenderSintelMediaHost},
 	MetAuthority:                      {metImageHost},
 }
@@ -416,11 +422,70 @@ func validateAuthorityCase(item InventoryCase) error {
 	switch item.Authority {
 	case usgsVideoAuthority:
 		return validateUSGSAuthorityCase(item)
+	case npsVideoAuthority:
+		return validateNPSAuthorityCase(item)
 	case blenderOpenMovieAuthority:
 		return validateBlenderAuthorityCase(item)
 	default:
 		return nil
 	}
+}
+
+func validateNPSAuthorityCase(item InventoryCase) error {
+	if !validNPSItemID(item.ItemID) {
+		return fmt.Errorf("NPS video authority requires a canonical NPS item ID")
+	}
+	wantPageURL := "https://" + npsVideoHost + npsItemPath + "?id=" + item.ItemID
+	if item.ItemURL != wantPageURL || item.MetadataURL != wantPageURL {
+		return fmt.Errorf("NPS video authority requires the exact matching item and metadata page")
+	}
+	if !slices.Equal(item.AllowedMediaHosts, []string{npsVideoHost}) {
+		return fmt.Errorf("NPS video authority requires its exact media host")
+	}
+	media, err := url.Parse(item.Representation.URL)
+	if err != nil || media.Scheme != "https" || media.Host != npsVideoHost || media.User != nil || media.Opaque != "" || media.RawPath != "" || media.RawQuery != "" || media.ForceQuery || media.Fragment != "" || media.RawFragment != "" {
+		return fmt.Errorf("NPS video authority has an invalid representation URL")
+	}
+	wantRoot := npsMediaPathRoot + item.ItemID + "/"
+	if !strings.HasPrefix(media.Path, wantRoot) || path.Clean(media.Path) != media.Path || strings.Contains(media.Path, "\\") {
+		return fmt.Errorf("NPS video authority requires the matching canonical legacy media namespace")
+	}
+	name := strings.TrimPrefix(media.Path, wantRoot)
+	if name == "" || strings.Contains(name, "/") || !strings.HasSuffix(name, ".mp4") || strings.TrimSuffix(name, ".mp4") == "" || !validNPSMediaName(name) {
+		return fmt.Errorf("NPS video authority requires one canonical MP4 object")
+	}
+	if item.Representation.Name != name || item.Representation.MIMEType != "video/mp4" {
+		return fmt.Errorf("NPS video authority representation does not match its MP4 object")
+	}
+	return nil
+}
+
+func validNPSItemID(value string) bool {
+	// NPS item IDs are uppercase 8-4-4-16 identifiers, rather than RFC UUIDs.
+	if len(value) != 35 {
+		return false
+	}
+	for index, char := range value {
+		if index == 8 || index == 13 || index == 18 {
+			if char != '-' {
+				return false
+			}
+			continue
+		}
+		if (char < '0' || char > '9') && (char < 'A' || char > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+func validNPSMediaName(value string) bool {
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && !strings.ContainsRune("._-", char) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateUSGSAuthorityCase(item InventoryCase) error {
