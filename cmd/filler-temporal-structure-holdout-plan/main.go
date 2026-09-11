@@ -41,6 +41,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	families := flags.String("families", "", "duplicate-family audit JSON")
 	transitions := flags.String("transitions", "", "content-bound transition-edge authority JSON")
 	programmes := flags.String("programmes", "", "programme-parent inventory JSON")
+	candidatePool := flags.String("candidate-pool", "", "replacement candidate pool JSON")
 	sourceRoot := flags.String("source-root", "", "common root containing bounded and programme source media")
 	seed := flags.String("seed", "", "private deterministic selection seed")
 	seedFile := flags.String("seed-file", "", "file containing the private deterministic selection seed")
@@ -54,8 +55,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	plannedAt, err := time.Parse(time.RFC3339, *plannedText)
 	validLineage := *genesis && len(priorAdjudications) == 0 || !*genesis && len(priorAdjudications) > 0
-	if err != nil || *selection == "" || *evidence == "" || *evidenceMap == "" || *human == "" || *humanAttestation == "" || *quality == "" || *suitability == "" || *referenceAudit == "" || *referenceDownloadLedger == "" || *families == "" || *transitions == "" || *programmes == "" || *sourceRoot == "" || (*seed == "") == (*seedFile == "") || !validLineage || *output == "" {
-		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-holdout-plan: selection, evidence, evidence map, human assessment, human attestation, media quality, suitability, reference audit, reference download ledger, families, transitions, programmes, source root, private seed, exactly one --genesis or --prior-adjudication lineage mode, fixed planning time, and output are required")
+	genesisInputs := *selection != "" && *evidence != "" && *evidenceMap != "" && *human != "" && *humanAttestation != "" && *quality != "" && *suitability != "" && *referenceAudit != "" && *referenceDownloadLedger != "" && *families != "" && *transitions != "" && *programmes != "" && *candidatePool == ""
+	replacementInputs := *candidatePool != "" && *selection == "" && *evidence == "" && *evidenceMap == "" && *human == "" && *humanAttestation == "" && *quality == "" && *suitability == "" && *referenceAudit == "" && *referenceDownloadLedger == "" && *families == "" && *transitions == "" && *programmes == ""
+	if err != nil || (*genesis && !genesisInputs) || (!*genesis && !replacementInputs) || *sourceRoot == "" || (*seed == "") == (*seedFile == "") || !validLineage || *output == "" {
+		_, _ = fmt.Fprintln(stderr, "filler-temporal-structure-holdout-plan: genesis requires selection, evidence, evidence map, human assessment, human attestation, media quality, suitability, reference audit, reference download ledger, families, transitions, and programmes; replacement requires only candidate pool and prior adjudication; source root, private seed, lineage mode, fixed planning time, and output are always required")
 		return 2
 	}
 	seedValue := *seed
@@ -71,7 +74,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		HumanAssessmentPath: *human, HumanAttestationPath: *humanAttestation, MediaQualityPath: *quality,
 		SuitabilityPath: *suitability, ReferenceAuditPath: *referenceAudit, ReferenceDownloadLedgerPath: *referenceDownloadLedger,
 		FamilyAuditPath: *families, TransitionAuthorityPath: *transitions, ProgrammeInventoryPath: *programmes,
-		SourceRoot: *sourceRoot, Seed: seedValue, Genesis: *genesis, PriorAdjudicationPaths: priorAdjudications,
+		CandidatePoolPath: *candidatePool,
+		SourceRoot:        *sourceRoot, Seed: seedValue, Genesis: *genesis, PriorAdjudicationPaths: priorAdjudications,
 		PlannedAt: plannedAt.UTC(), OutputDir: *output,
 	})
 	if err != nil {

@@ -69,6 +69,7 @@ func TestValidateAcceptsExplicitHeldCandidate(t *testing.T) {
 func testPool() Pool {
 	at := time.Date(2026, 9, 11, 4, 0, 0, 0, time.UTC)
 	sha := strings.Repeat("a", 64)
+	programmeSHA := strings.Repeat("b", 64)
 	return Pool{
 		SchemaVersion: SchemaVersion, ContractVersion: ContractVersion, GeneratedAt: at,
 		Inputs:        []Input{{Name: "inventory", SHA256: sha}},
@@ -81,7 +82,7 @@ func testPool() Pool {
 			},
 			{
 				CaseID: "example.org/programme", Kind: KindProgrammeParent, Disposition: DispositionEligible, HoldReasons: []string{}, FamilyID: "family-2",
-				Source: Source{ID: "candidate-programme", Path: "media/programme.mp4", SHA256: sha, Bytes: 200, DurationMS: 120_000, Transport: TransportLocal, Authority: "example.org", ItemID: "programme", ItemURL: "https://example.org/items/programme", MetadataSHA256: sha, MetadataRetrievedAt: at, SoundtrackStatus: "present_expected", SoundtrackEvidence: "reviewed_source_manifest", SoundtrackEvidenceSHA: sha},
+				Source: Source{ID: "candidate-programme", Path: "media/programme.mp4", SHA256: programmeSHA, Bytes: 200, DurationMS: 120_000, Transport: TransportLocal, Authority: "example.org", ItemID: "programme", ItemURL: "https://example.org/items/programme", MetadataSHA256: sha, MetadataRetrievedAt: at, SoundtrackStatus: "present_expected", SoundtrackEvidence: "reviewed_source_manifest", SoundtrackEvidenceSHA: sha},
 			},
 		},
 	}

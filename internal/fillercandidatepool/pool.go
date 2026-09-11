@@ -177,6 +177,16 @@ func Validate(pool Pool) error {
 		return errors.New("candidate set is empty or unordered")
 	}
 	seen := make(map[string]struct{}, len(pool.Candidates))
+	seenSourceIDs := make(map[string]struct{}, len(pool.Candidates))
+	eligibleSources := make(map[string]struct{}, len(pool.Candidates))
+	eligibleFamilies := make(map[string]struct{}, len(pool.Candidates))
+	eligibleProgrammeProvenance := make(map[string]struct{}, len(pool.Candidates))
+	priorSources := stringSet(pool.PriorExposure.SourceSHA256)
+	priorFamilies := stringSet(pool.PriorExposure.FamilyIDs)
+	priorProgrammeProvenance := make(map[string]struct{}, len(pool.PriorExposure.ProgrammeProvenance))
+	for _, provenance := range pool.PriorExposure.ProgrammeProvenance {
+		priorProgrammeProvenance[provenance.Authority+"\x00"+provenance.Reference] = struct{}{}
+	}
 	for _, candidate := range pool.Candidates {
 		if _, duplicate := seen[candidate.CaseID]; duplicate {
 			return fmt.Errorf("candidate set repeats %q", candidate.CaseID)
@@ -184,6 +194,38 @@ func Validate(pool Pool) error {
 		seen[candidate.CaseID] = struct{}{}
 		if err := validateCandidate(candidate); err != nil {
 			return fmt.Errorf("candidate %q: %w", candidate.CaseID, err)
+		}
+		if candidate.Source.ID != "" {
+			if _, duplicate := seenSourceIDs[candidate.Source.ID]; duplicate {
+				return fmt.Errorf("candidate set repeats source id %q", candidate.Source.ID)
+			}
+			seenSourceIDs[candidate.Source.ID] = struct{}{}
+		}
+		if candidate.Disposition != DispositionEligible {
+			continue
+		}
+		if _, exposed := priorSources[candidate.Source.SHA256]; exposed {
+			return errors.New("eligible candidate repeats prior source bytes")
+		}
+		if _, exposed := priorFamilies[candidate.FamilyID]; exposed {
+			return errors.New("eligible candidate repeats a prior family")
+		}
+		if _, duplicate := eligibleSources[candidate.Source.SHA256]; duplicate {
+			return errors.New("eligible candidates repeat source bytes")
+		}
+		if _, duplicate := eligibleFamilies[candidate.FamilyID]; duplicate {
+			return errors.New("eligible candidates repeat a duplicate family")
+		}
+		eligibleSources[candidate.Source.SHA256], eligibleFamilies[candidate.FamilyID] = struct{}{}, struct{}{}
+		if candidate.Kind == KindProgrammeParent {
+			key := candidate.Source.Authority + "\x00" + candidate.Source.ItemURL
+			if _, exposed := priorProgrammeProvenance[key]; exposed {
+				return errors.New("eligible programme parent repeats prior provenance")
+			}
+			if _, duplicate := eligibleProgrammeProvenance[key]; duplicate {
+				return errors.New("eligible programme parents repeat provenance")
+			}
+			eligibleProgrammeProvenance[key] = struct{}{}
 		}
 	}
 	return nil
@@ -261,7 +303,7 @@ func validateCandidate(candidate Candidate) error {
 	if candidate.FamilyID == "" || candidate.FamilyID != strings.TrimSpace(candidate.FamilyID) {
 		return errors.New("family identity is invalid")
 	}
-	if err := validateSource(candidate.CaseID, candidate.Source); err != nil {
+	if err := validateSource(candidate.CaseID, candidate.Source, candidate.Disposition == DispositionEligible); err != nil {
 		return err
 	}
 	if candidate.Kind == KindProgrammeParent {
@@ -286,24 +328,36 @@ func validateCandidate(candidate Candidate) error {
 	return nil
 }
 
-func validateSource(caseID string, source Source) error {
-	if source.ID == "" || source.ID != strings.TrimSpace(source.ID) || source.Path == "" ||
-		path.Clean(source.Path) != source.Path || path.IsAbs(source.Path) || source.Path == ".." || strings.HasPrefix(source.Path, "../") ||
-		!SHA256(source.SHA256) || source.Bytes <= 0 || source.DurationMS <= 0 ||
-		(source.Transport != TransportHTTPS && source.Transport != TransportLocal) ||
+func validateSource(caseID string, source Source, eligible bool) error {
+	if (source.Transport != TransportHTTPS && source.Transport != TransportLocal) ||
 		source.Authority == "" || source.ItemID == "" || caseID != source.Authority+"/"+source.ItemID ||
 		!canonicalHTTPS(source.ItemURL) || !SHA256(source.MetadataSHA256) ||
 		source.MetadataRetrievedAt.IsZero() || source.MetadataRetrievedAt.Location() != time.UTC ||
-		source.SoundtrackStatus != "present_expected" || source.SoundtrackEvidence == "" || !SHA256(source.SoundtrackEvidenceSHA) {
+		!knownSoundtrack(source.SoundtrackStatus) || source.SoundtrackEvidence == "" || !SHA256(source.SoundtrackEvidenceSHA) {
 		return errors.New("source authority is incomplete or invalid")
 	}
-	if source.Transport == TransportHTTPS && !canonicalHTTPS(source.MediaURL) {
+	if eligible && (source.ID == "" || source.ID != strings.TrimSpace(source.ID) || source.Path == "" ||
+		path.Clean(source.Path) != source.Path || path.IsAbs(source.Path) || source.Path == ".." || strings.HasPrefix(source.Path, "../") ||
+		!SHA256(source.SHA256) || source.Bytes <= 0 || source.DurationMS <= 0 || source.SoundtrackStatus != "present_expected") {
+		return errors.New("eligible source bytes or soundtrack authority is incomplete")
+	}
+	if !eligible && (source.ID != "" && source.ID != strings.TrimSpace(source.ID) || source.Path != "" && (path.Clean(source.Path) != source.Path || path.IsAbs(source.Path) || source.Path == ".." || strings.HasPrefix(source.Path, "../")) || source.SHA256 != "" && !SHA256(source.SHA256) || source.Bytes < 0 || source.DurationMS < 0) {
+		return errors.New("held source contains malformed optional byte authority")
+	}
+	if source.Transport == TransportHTTPS && source.MediaURL != "" && !canonicalHTTPS(source.MediaURL) {
 		return errors.New("remote source media URL is invalid")
+	}
+	if eligible && source.Transport == TransportHTTPS && source.MediaURL == "" {
+		return errors.New("eligible remote source media URL is missing")
 	}
 	if source.Transport == TransportLocal && source.MediaURL != "" {
 		return errors.New("local source carries a remote media URL")
 	}
 	return nil
+}
+
+func knownSoundtrack(value string) bool {
+	return value == "present_expected" || value == "intentionally_silent" || value == "unknown"
 }
 
 func validateTransition(transition Transition, durationMS int64) error {
@@ -355,6 +409,14 @@ func hasAdjacentDuplicate(values []string) bool {
 		}
 	}
 	return false
+}
+
+func stringSet(values []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		result[value] = struct{}{}
+	}
+	return result
 }
 
 func SHA256(value string) bool {

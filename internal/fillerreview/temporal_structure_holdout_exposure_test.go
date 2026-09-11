@@ -1,10 +1,14 @@
 package fillerreview
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/fillercandidatepool"
 )
 
 func TestLoadTemporalStructureHoldoutPriorAcceptsPublishedAdjudication(t *testing.T) {
@@ -36,6 +40,8 @@ func TestBuildTemporalStructureReplacementHoldoutCarriesCumulativeExposure(t *te
 	config := fixture.config(filepath.Join(t.TempDir(), "replacement"))
 	config.Genesis = false
 	config.PriorAdjudicationPaths = []string{priorPath}
+	config.CandidatePoolPath = writeTemporalStructureCandidatePoolFixture(t, fixture, prior)
+	clearTemporalStructureGenesisInputs(&config)
 	if _, err := BuildTemporalStructureHoldoutPlan(config); err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +102,7 @@ func TestBuildTemporalStructureReplacementHoldoutRejectsPriorRequestLeakage(t *t
 				Split: "holdout", SourceSHA256: []string{strings.Repeat("e", 64)}, FamilyIDs: []string{"prior-family"},
 				ProgrammeProvenance: []TemporalStructureHoldoutProgrammeProvenance{programme},
 			},
-			want: "needs six programme parents",
+			want: "needs six eligible programme parents",
 		},
 	}
 	for _, test := range tests {
@@ -105,12 +111,146 @@ func TestBuildTemporalStructureReplacementHoldoutRejectsPriorRequestLeakage(t *t
 			config := fixture.config(filepath.Join(t.TempDir(), "replacement"))
 			config.Genesis = false
 			config.PriorAdjudicationPaths = []string{priorPath}
+			config.CandidatePoolPath = writeTemporalStructureCandidatePoolFixture(t, fixture, test.exposure)
+			clearTemporalStructureGenesisInputs(&config)
 			_, err := BuildTemporalStructureHoldoutPlan(config)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want %q", err, test.want)
 			}
 		})
 	}
+}
+
+func clearTemporalStructureGenesisInputs(config *TemporalStructureHoldoutConfig) {
+	config.SelectionPath = ""
+	config.EvidenceManifestPath = ""
+	config.EvidencePrivateMapPath = ""
+	config.HumanAssessmentPath = ""
+	config.HumanAttestationPath = ""
+	config.MediaQualityPath = ""
+	config.SuitabilityPath = ""
+	config.ReferenceAuditPath = ""
+	config.ReferenceDownloadLedgerPath = ""
+	config.FamilyAuditPath = ""
+	config.TransitionAuthorityPath = ""
+	config.ProgrammeInventoryPath = ""
+}
+
+func writeTemporalStructureCandidatePoolFixture(t *testing.T, fixture temporalStructureHoldoutFixture, prior TemporalStructureHoldoutTrainingExclusion) string {
+	t.Helper()
+	genesisRoot := filepath.Join(t.TempDir(), "pool-genesis")
+	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(genesisRoot)); err != nil {
+		t.Fatal(err)
+	}
+	authoring := readStrictTestJSON[TemporalStructureChallengeAuthoring](t, filepath.Join(genesisRoot, "authoring.json"))
+	receipt := readStrictTestJSON[TemporalStructureHoldoutReceipt](t, filepath.Join(genesisRoot, "receipt.json"))
+	transition := readStrictTestJSON[TemporalTransitionAuthority](t, fixture.transition)
+	transitionByAlias := make(map[string]TemporalTransitionAuthorityCase, len(transition.Cases))
+	for _, item := range transition.Cases {
+		transitionByAlias[item.EvidenceAlias] = item
+	}
+	sourceByID := make(map[string]TemporalStructureChallengeSource, len(authoring.Sources))
+	for _, source := range authoring.Sources {
+		sourceByID[source.ID] = source
+	}
+	pool := fillercandidatepool.Pool{
+		SchemaVersion: fillercandidatepool.SchemaVersion, ContractVersion: fillercandidatepool.ContractVersion,
+		GeneratedAt:   fixture.plannedAt.Add(-time.Minute),
+		Inputs:        []fillercandidatepool.Input{{Name: "fixture_authority_bundle", SHA256: strings.Repeat("f", 64)}},
+		PriorExposure: candidatePoolExposure(prior),
+	}
+	for _, anchor := range receipt.SelectedAnchors {
+		source := sourceByID[anchor.SourceID]
+		measured := transitionByAlias[anchor.EvidenceAlias]
+		candidate := fillercandidatepool.Candidate{
+			CaseID: "fixture.example/" + source.ID, Kind: fillercandidatepool.KindStandaloneAnchor,
+			Disposition: fillercandidatepool.DispositionEligible, HoldReasons: []string{}, FamilyID: anchor.FamilyID,
+			Role: string(anchor.Role), Transition: candidatePoolTransitionFixture(measured),
+			Source: candidatePoolSourceFixture(t, fixture.root, source, "fixture.example", source.ID),
+		}
+		if containsString(prior.SourceSHA256, source.SHA256) {
+			candidate.Disposition, candidate.HoldReasons = fillercandidatepool.DispositionHeld, []string{fillercandidatepool.HoldPriorSource}
+			candidate.Role, candidate.Transition = "", nil
+		} else if containsString(prior.FamilyIDs, anchor.FamilyID) {
+			candidate.Disposition, candidate.HoldReasons = fillercandidatepool.DispositionHeld, []string{fillercandidatepool.HoldPriorFamily}
+			candidate.Role, candidate.Transition = "", nil
+		}
+		pool.Candidates = append(pool.Candidates, candidate)
+	}
+	for _, source := range authoring.Sources {
+		if source.Provenance.Kind != TemporalStructureSourceProgrammeParent {
+			continue
+		}
+		candidate := fillercandidatepool.Candidate{
+			CaseID: source.Provenance.Authority + "/" + source.Provenance.ItemID,
+			Kind:   fillercandidatepool.KindProgrammeParent, Disposition: fillercandidatepool.DispositionEligible,
+			HoldReasons: []string{}, FamilyID: "programme-family-" + source.SHA256[:24],
+			Source: candidatePoolSourceFixture(t, fixture.root, source, source.Provenance.Authority, source.Provenance.ItemID),
+		}
+		provenance := TemporalStructureHoldoutProgrammeProvenance{Authority: source.Provenance.Authority, Reference: source.Provenance.Reference}
+		if containsString(prior.SourceSHA256, source.SHA256) {
+			candidate.Disposition, candidate.HoldReasons = fillercandidatepool.DispositionHeld, []string{fillercandidatepool.HoldPriorSource}
+		} else if containsProgrammeProvenance(prior.ProgrammeProvenance, provenance) {
+			candidate.Disposition, candidate.HoldReasons = fillercandidatepool.DispositionHeld, []string{fillercandidatepool.HoldPriorProgrammeProvenance}
+		}
+		pool.Candidates = append(pool.Candidates, candidate)
+	}
+	sort.Slice(pool.Candidates, func(i, j int) bool { return pool.Candidates[i].CaseID < pool.Candidates[j].CaseID })
+	return writeTemporalHumanJSON(t, t.TempDir(), "candidate-pool.json", pool)
+}
+
+func candidatePoolSourceFixture(t *testing.T, root string, source TemporalStructureChallengeSource, authority, itemID string) fillercandidatepool.Source {
+	t.Helper()
+	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(source.Path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	itemURL := source.Provenance.Reference
+	if !strings.HasPrefix(itemURL, "https://") {
+		itemURL = "https://fixture.example/items/" + itemID
+	}
+	return fillercandidatepool.Source{
+		ID: source.ID, Path: source.Path, SHA256: source.SHA256, Bytes: info.Size(), DurationMS: source.DurationMS,
+		Transport: fillercandidatepool.TransportLocal, Authority: authority, ItemID: itemID,
+		ItemURL: itemURL, MetadataSHA256: source.Provenance.MetadataSHA256,
+		MetadataRetrievedAt: source.Provenance.RetrievedAt, SoundtrackStatus: "present_expected",
+		SoundtrackEvidence: "reviewed_source_manifest", SoundtrackEvidenceSHA: source.Provenance.MetadataSHA256,
+	}
+}
+
+func candidatePoolTransitionFixture(value TemporalTransitionAuthorityCase) *fillercandidatepool.Transition {
+	return &fillercandidatepool.Transition{
+		EvidenceAlias: value.EvidenceAlias, Head: candidatePoolEdgeFixture(value.Head), Tail: candidatePoolEdgeFixture(value.Tail),
+	}
+}
+
+func candidatePoolEdgeFixture(value TemporalTransitionEdge) fillercandidatepool.Edge {
+	result := fillercandidatepool.Edge{StartMS: value.StartMS, EndMS: value.EndMS, RMSMilliDBFS: value.RMSMilliDBFS, PeakMilliDBFS: value.PeakMilliDBFS}
+	for _, interval := range value.Black {
+		result.Black = append(result.Black, fillercandidatepool.Interval{StartMS: interval.StartMs, EndMS: interval.EndMs})
+	}
+	for _, interval := range value.Silence {
+		result.Silence = append(result.Silence, fillercandidatepool.Interval{StartMS: interval.StartMs, EndMS: interval.EndMs})
+	}
+	return result
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsProgrammeProvenance(values []TemporalStructureHoldoutProgrammeProvenance, want TemporalStructureHoldoutProgrammeProvenance) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func writeTemporalStructurePriorAdjudicationFixture(t *testing.T, fixture temporalStructureHoldoutFixture, exposure TemporalStructureHoldoutTrainingExclusion) string {

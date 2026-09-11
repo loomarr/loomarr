@@ -12,22 +12,28 @@ import (
 )
 
 type temporalStructureHoldoutLoaded struct {
-	selection          fillereval.TemporalTruthSelection
-	evidence           TemporalTruthEvidenceManifest
-	evidenceSHA        string
-	privateMap         TemporalTruthEvidencePrivateMap
-	human              TemporalHumanAssessmentSet
-	humanSHA           string
-	quality            TemporalMediaQualityReport
-	suitability        TemporalSuitabilityComparisonReport
-	family             temporalStructureHoldoutFamilyAudit
-	transition         TemporalTransitionAuthority
-	programmeInventory TemporalStructureHoldoutProgrammeInventory
-	prior              temporalStructureHoldoutPrior
-	inputs             []TemporalStructureHoldoutInput
+	selection           fillereval.TemporalTruthSelection
+	evidence            TemporalTruthEvidenceManifest
+	evidenceSHA         string
+	privateMap          TemporalTruthEvidencePrivateMap
+	human               TemporalHumanAssessmentSet
+	humanSHA            string
+	quality             TemporalMediaQualityReport
+	suitability         TemporalSuitabilityComparisonReport
+	family              temporalStructureHoldoutFamilyAudit
+	transition          TemporalTransitionAuthority
+	programmeInventory  TemporalStructureHoldoutProgrammeInventory
+	prior               temporalStructureHoldoutPrior
+	inputs              []TemporalStructureHoldoutInput
+	replacementAnchors  []temporalStructureHoldoutSelectedAnchor
+	replacementParents  []TemporalStructureChallengeSource
+	sourcePathsRelative bool
 }
 
 func loadTemporalStructureHoldout(config TemporalStructureHoldoutConfig) (temporalStructureHoldoutLoaded, error) {
+	if !config.Genesis {
+		return loadTemporalStructureReplacement(config)
+	}
 	selectionRaw, err := os.ReadFile(config.SelectionPath)
 	if err != nil {
 		return temporalStructureHoldoutLoaded{}, fmt.Errorf("read temporal structure holdout selection: %w", err)
