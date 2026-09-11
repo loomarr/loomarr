@@ -7733,7 +7733,7 @@ cases to meet a quota. Multiple role-specific captures combine only through the 
 combiner, never by concatenating JSON or discarding their individual ceilings.
 
 Direct/static acquisition is an authored local capture, not a source adapter and not a licence
-shortcut. Its schema-v2 manifest predeclares an exact item count and positive quotas for the known
+shortcut. Its schema-v3 manifest predeclares an exact item count and positive quotas for the known
 corpus roles and identifies one contracting owner or first-party origin; separate owners use
 separate manifests so the emitted source authority is not collapsed into a generic direct bucket.
 Those acquisition quotas may describe any bounded lane and do not duplicate the final truth-denominator
@@ -7791,7 +7791,8 @@ independent labeling.
 
 Schema-v5 inventory gives every exact representation a required **soundtrack expectation**. Its
 closed status is `present_expected`, `intentionally_silent`, or `unknown`; the claim also binds a
-closed evidence kind, the SHA-256 of already-frozen first-party descriptive or encoded-stream
+closed evidence kind, the SHA-256 of already-frozen first-party descriptive, encoded-stream, or
+reviewed source-manifest
 metadata, a bounded evidence locator, and the SHA-256 of the representation identity. The
 representation identity includes transport, name, URL/path, media type, origin, byte and source-hash
 facts, duration, and dimensions. Changing any of those facts therefore invalidates the soundtrack
@@ -7804,7 +7805,8 @@ Soundtrack expectation is pre-download selection evidence, not decoded-audio pro
 inventory accepts all three statuses and production does not globally reject intentionally silent
 works. The versioned `temporal_structure_replacement_v1` quarantine-acquisition purpose is narrower:
 only `present_expected` may enter its default download plan. `intentionally_silent` and `unknown`
-remain visible with closed hold reasons, and the downloader reproduces the representation and
+remain visible with the closed `soundtrack_intentionally_silent` and `soundtrack_unknown` hold
+reasons, and the rights locker and downloader reproduce the representation and
 evidence binding before it creates an output directory or sends the first request. The rights
 worksheet exposes the exact soundtrack fields and binds the acquisition purpose; its locked decision
 must carry the same purpose. The ordinary `local_quarantine_inspection` purpose preserves the generic
@@ -7830,7 +7832,7 @@ ledger remain external to Git.
 An incomplete, stale, oversized, or checksum-mismatched plan fails without producing a completed
 ledger and cannot flow into blind semantic review.
 
-`quarantine` is the narrow pre-review acquisition profile. Its schema-v5 worksheet locks a
+`quarantine` is the narrow pre-review acquisition profile. Its schema-v6 worksheet locks a
 schema-v1 quarantine contract that must grant only local copying/storage and local technical
 inspection. Provider transfer, redistribution,
 development/certification corpus preparation, training, catalog ingestion, scheduling, and
@@ -7865,13 +7867,13 @@ production admission remain explicitly false. The command never repairs, transco
 or promotes media, and any failed mechanical check leaves the case held in quarantine.
 
 Development and certification rights review consume that quarantine disposition as a fail-closed
-authority input. Schema-v5 `quarantine` review remains the pre-download local-copy/inspection path
+authority input. Schema-v6 `quarantine` review remains the pre-download local-copy/inspection path
 and cannot consume a report that does not exist yet. A development or certification worksheet that
 can select any non-local case instead requires one strict schema-v1 quarantine-inspection report.
-The worksheet freezes the raw report SHA-256 and all four report input identities; development
-worksheets advance from schema v3 to v6 and certification worksheets from schema v4 to v7.
-Historical v3/v4 worksheets and their decisions remain readable evidence, but cannot authorize new
-preparation.
+The worksheet freezes the raw report SHA-256 and all four report input identities. Report binding
+advanced development worksheets from schema v3 to v6 and certification worksheets from schema v4
+to v7; the soundtrack authority advances their current schemas to v7 and v8 respectively.
+Historical worksheets and their decisions remain readable evidence, but cannot authorize new preparation.
 
 Selection is transport-aware and deterministic: it is the union of valid direct
 `transport=local` cases and non-local cases that occur exactly once in the bound report as
@@ -7968,8 +7970,8 @@ copied into the worksheet nor accepted by the locker. The board is development e
 candidate-blind certification review, and the locker still reopens every source byte after the
 review.
 
-The certification holdout uses a distinct schema-v7 worksheet and schema-v1 rights contract, while
-quarantine uses its schema-v5 worksheet and schema-v1 acquisition contract. Historical schema-v3
+The certification holdout uses a distinct schema-v8 worksheet and schema-v1 rights contract, while
+quarantine uses its schema-v6 worksheet and schema-v1 acquisition contract. Historical schema-v3
 development and schema-v4 certification artifacts remain readable evidence but cannot authorize new
 preparation. The caller must name
 the `quarantine`, `development`, or `certification` profile before either locking rights decisions or

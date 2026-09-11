@@ -57,7 +57,13 @@ func TestExecuteDownloadsPublishesSharedProvenanceCompleteLedger(t *testing.T) {
 func downloadableInventory(retrieved time.Time, id, license string) fillercorpus.Inventory {
 	authority := "loc.gov/national-screening-room"
 	captureID := fillercorpus.NewCaptureID(authority, "", "commercial")
-	return fillercorpus.Inventory{SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: retrieved, Captures: []fillercorpus.Capture{{CaptureID: captureID, Transport: fillercorpus.TransportHTTPS, Authority: authority, RoleHint: "commercial", SnapshotAt: retrieved, MaxRequests: 2, RequestsUsed: 1, MaxResponseBytes: 2048, ResponseBytes: 10, MaxPredictedMediaBytes: 2048, PredictedMediaBytes: 1024, MaxWallTimeMS: 1000, WallTimeMS: 10}}, Cases: []fillercorpus.InventoryCase{{CaseID: fillercorpus.CaseID(authority, id), CaptureIDs: []string{captureID}, Authority: authority, ItemID: id, Title: "Clip", RoleHints: []string{"commercial"}, LicenseURL: license, RightsAssertions: []string{"review required"}, ItemURL: "https://www.loc.gov/item/" + id, MetadataURL: "https://www.loc.gov/item/" + id + "/?fo=json", MetadataSHA256: strings.Repeat("a", 64), MetadataRetrievedAt: retrieved, AllowedMediaHosts: []string{"tile.loc.gov"}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: id + ".mp4", URL: "https://tile.loc.gov/" + id + ".mp4?download=1", MIMEType: "video/mp4", Bytes: 1024}}}}
+	representation := bindTestSoundtrack(fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: id + ".mp4", URL: "https://tile.loc.gov/" + id + ".mp4?download=1", MIMEType: "video/mp4", Bytes: 1024}, fillercorpus.SoundtrackPresentExpected, strings.Repeat("a", 64))
+	return fillercorpus.Inventory{SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: retrieved, Captures: []fillercorpus.Capture{{CaptureID: captureID, Transport: fillercorpus.TransportHTTPS, Authority: authority, RoleHint: "commercial", SnapshotAt: retrieved, MaxRequests: 2, RequestsUsed: 1, MaxResponseBytes: 2048, ResponseBytes: 10, MaxPredictedMediaBytes: 2048, PredictedMediaBytes: 1024, MaxWallTimeMS: 1000, WallTimeMS: 10}}, Cases: []fillercorpus.InventoryCase{{CaseID: fillercorpus.CaseID(authority, id), CaptureIDs: []string{captureID}, Authority: authority, ItemID: id, Title: "Clip", RoleHints: []string{"commercial"}, LicenseURL: license, RightsAssertions: []string{"review required"}, ItemURL: "https://www.loc.gov/item/" + id, MetadataURL: "https://www.loc.gov/item/" + id + "/?fo=json", MetadataSHA256: strings.Repeat("a", 64), MetadataRetrievedAt: retrieved, AllowedMediaHosts: []string{"tile.loc.gov"}, Representation: representation}}}
+}
+
+func bindTestSoundtrack(representation fillercorpus.InventoryRepresentation, status, evidenceSHA256 string) fillercorpus.InventoryRepresentation {
+	representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, status, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, evidenceSHA256, "fixture metadata")
+	return representation
 }
 
 func approvalFor(inv fillercorpus.Inventory, retrieved time.Time) fillercorpus.RightsDecision {
@@ -73,6 +79,7 @@ func TestPlanDownloadsSkipsRightsApprovedLocalMedia(t *testing.T) {
 	local.CaseID = fillercorpus.CaseID(local.Authority, local.ItemID)
 	local.CaptureIDs = []string{fillercorpus.NewCaptureID(local.Authority, "direct", "commercial")}
 	local.Representation = fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: "local.mp4", Path: "media/local.mp4", MIMEType: "video/mp4", Bytes: 10, SHA256: strings.Repeat("b", 64)}
+	local.Representation = bindTestSoundtrack(local.Representation, fillercorpus.SoundtrackPresentExpected, local.MetadataSHA256)
 	local.AllowedMediaHosts = nil
 	local.ItemURL = ""
 	local.MetadataURL = ""
@@ -146,7 +153,7 @@ func TestPlanDownloadsAcceptsRightsApprovedMetImageWithCanonicalExtension(t *tes
 		RoleHints: []string{"policy-positive-nomination"}, Creator: []string{"Artist"}, SubjectTerms: []string{"Female Nudes"}, SourceFamily: "met-object:195733",
 		RightsAssertions: []string{"Met object record isPublicDomain=true."}, ItemURL: "https://www.metmuseum.org/art/collection/search/195733",
 		MetadataURL: "https://collectionapi.metmuseum.org/public/collection/v1/objects/195733", MetadataRetrievedAt: retrieved, MetadataSHA256: strings.Repeat("b", 64),
-		AllowedMediaHosts: []string{"images.metmuseum.org"}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "misleading.bin", URL: "https://images.metmuseum.org/object.jpg", MIMEType: "image/jpeg", Bytes: 1024},
+		AllowedMediaHosts: []string{"images.metmuseum.org"}, Representation: bindTestSoundtrack(fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "misleading.bin", URL: "https://images.metmuseum.org/object.jpg", MIMEType: "image/jpeg", Bytes: 1024}, fillercorpus.SoundtrackIntentionallySilent, strings.Repeat("b", 64)),
 	}}}
 	approval := approvalFor(inv, retrieved)
 	opts := planOptions(retrieved)
@@ -196,6 +203,7 @@ func TestPlanDownloadsQuarantineCannotGrantOrInheritDownstreamUse(t *testing.T) 
 	}
 	opts := planOptions(retrieved)
 	opts.profile = fillercorpus.RightsProfileQuarantine
+	opts.quarantinePurpose = fillercorpus.QuarantinePurposeLocalInspection
 	if plan, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, opts); err != nil || len(plan) != 1 {
 		t.Fatalf("quarantine plan = %v, %v", plan, err)
 	}
@@ -239,6 +247,100 @@ func TestPlanDownloadsQuarantineCannotGrantOrInheritDownstreamUse(t *testing.T) 
 	}
 }
 
+func TestPlanDownloadsPreflightsTemporalReplacementSoundtrackBeforeExecution(t *testing.T) {
+	retrieved := time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC)
+	inspectionSHA256 := "c03bb3ebd40c0c33de9791549e847293024c7e96787e6b7d39ff81e781c20f1c"
+	frozenSilentCases := []struct {
+		itemID string
+		bytes  int64
+	}{
+		{itemID: "00694220", bytes: 274118177},
+		{itemID: "00694236", bytes: 404702028},
+		{itemID: "00694366", bytes: 104341214},
+		{itemID: "00694408", bytes: 323007667},
+	}
+	var excludedBytes int64
+	for _, frozen := range frozenSilentCases {
+		t.Run(frozen.itemID, func(t *testing.T) {
+			inv := downloadableInventory(retrieved, frozen.itemID, "")
+			inv.Cases[0].Representation.Bytes = frozen.bytes
+			inv.Cases[0].Evidence = []fillercorpus.InventoryEvidence{{
+				Kind: "prior_quarantine_inspection", Path: "private/quarantine-inspection.json", Bytes: 1, SHA256: inspectionSHA256,
+			}}
+			inv.Cases[0].Representation.Soundtrack = fillercorpus.BindInventorySoundtrack(
+				inv.Cases[0].Representation,
+				fillercorpus.SoundtrackIntentionallySilent,
+				fillercorpus.SoundtrackEvidenceEncodedStream,
+				inspectionSHA256,
+				"full-source decode reports effectively complete silence",
+			)
+			inv.Captures[0].PredictedMediaBytes = frozen.bytes
+			inv.Captures[0].MaxPredictedMediaBytes = frozen.bytes
+			approval := approvalFor(inv, retrieved)
+			approval.Redistributable = false
+			approval.QuarantineContract = &fillercorpus.QuarantineAcquisitionContract{
+				SchemaVersion:  fillercorpus.QuarantineAcquisitionContractSchemaVersion,
+				Purpose:        fillercorpus.QuarantinePurposeTemporalStructureReplacement,
+				CopyAndStorage: true, LocalTechnicalInspection: true,
+			}
+			opts := planOptions(retrieved)
+			opts.profile = fillercorpus.RightsProfileQuarantine
+			opts.quarantinePurpose = fillercorpus.QuarantinePurposeTemporalStructureReplacement
+			opts.maxBytes = frozen.bytes
+			opts.outputDir = filepath.Join(t.TempDir(), "corpus")
+			if _, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, opts); err == nil || !strings.Contains(err.Error(), fillercorpus.HoldReasonSoundtrackIntentionallySilent) {
+				t.Fatalf("preflight error = %v", err)
+			}
+			if _, err := os.Stat(opts.outputDir); !os.IsNotExist(err) {
+				t.Fatalf("soundtrack preflight created download output: %v", err)
+			}
+		})
+		excludedBytes += frozen.bytes
+	}
+	if excludedBytes != 1_106_169_086 {
+		t.Fatalf("excluded bytes = %d", excludedBytes)
+	}
+
+	t.Run(fillercorpus.SoundtrackUnknown, func(t *testing.T) {
+		inv := downloadableInventory(retrieved, "unknown", "")
+		inv.Cases[0].Representation = bindTestSoundtrack(inv.Cases[0].Representation, fillercorpus.SoundtrackUnknown, inv.Cases[0].MetadataSHA256)
+		approval := approvalFor(inv, retrieved)
+		approval.Redistributable = false
+		approval.QuarantineContract = &fillercorpus.QuarantineAcquisitionContract{
+			SchemaVersion:  fillercorpus.QuarantineAcquisitionContractSchemaVersion,
+			Purpose:        fillercorpus.QuarantinePurposeTemporalStructureReplacement,
+			CopyAndStorage: true, LocalTechnicalInspection: true,
+		}
+		opts := planOptions(retrieved)
+		opts.profile = fillercorpus.RightsProfileQuarantine
+		opts.quarantinePurpose = fillercorpus.QuarantinePurposeTemporalStructureReplacement
+		if _, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, opts); err == nil || !strings.Contains(err.Error(), fillercorpus.HoldReasonSoundtrackUnknown) {
+			t.Fatalf("preflight error = %v", err)
+		}
+	})
+
+	inv := downloadableInventory(retrieved, "audible", "")
+	approval := approvalFor(inv, retrieved)
+	approval.Redistributable = false
+	approval.QuarantineContract = &fillercorpus.QuarantineAcquisitionContract{
+		SchemaVersion:  fillercorpus.QuarantineAcquisitionContractSchemaVersion,
+		Purpose:        fillercorpus.QuarantinePurposeTemporalStructureReplacement,
+		CopyAndStorage: true, LocalTechnicalInspection: true,
+	}
+	opts := planOptions(retrieved)
+	opts.profile = fillercorpus.RightsProfileQuarantine
+	opts.quarantinePurpose = fillercorpus.QuarantinePurposeTemporalStructureReplacement
+	if plan, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, opts); err != nil || len(plan) != 1 {
+		t.Fatalf("known-audible plan = %+v, %v", plan, err)
+	}
+
+	drifted := opts
+	drifted.quarantinePurpose = fillercorpus.QuarantinePurposeLocalInspection
+	if _, err := planDownloads(inv, []fillercorpus.RightsDecision{approval}, drifted); err == nil || !strings.Contains(err.Error(), "bound to quarantine purpose") {
+		t.Fatalf("purpose drift error = %v", err)
+	}
+}
+
 func TestExecuteDownloadsRecordsQuarantineProfile(t *testing.T) {
 	retrieved := time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC)
 	data := []byte("exact quarantine bytes")
@@ -249,6 +351,7 @@ func TestExecuteDownloadsRecordsQuarantineProfile(t *testing.T) {
 	inv := downloadableInventory(retrieved, "quarantine", "")
 	item := inv.Cases[0]
 	item.Representation.Bytes = int64(len(data))
+	item.Representation = bindTestSoundtrack(item.Representation, fillercorpus.SoundtrackPresentExpected, item.MetadataSHA256)
 	inv.Cases[0] = item
 	inv.Captures[0].PredictedMediaBytes = int64(len(data))
 	approval := approvalFor(inv, retrieved)
@@ -258,7 +361,7 @@ func TestExecuteDownloadsRecordsQuarantineProfile(t *testing.T) {
 		Purpose:       fillercorpus.QuarantinePurposeLocalInspection, CopyAndStorage: true, LocalTechnicalInspection: true,
 	}
 	materialized, err := executeDownloadsWithAccounting(t.Context(), &http.Client{}, []plannedDownload{{candidate: item, approval: approval, path: path}}, options{
-		profile: fillercorpus.RightsProfileQuarantine, inventorySHA256: strings.Repeat("f", 64), generatedAt: retrieved.Add(2 * time.Minute),
+		profile: fillercorpus.RightsProfileQuarantine, quarantinePurpose: fillercorpus.QuarantinePurposeLocalInspection, inventorySHA256: strings.Repeat("f", 64), generatedAt: retrieved.Add(2 * time.Minute),
 		maxRequests: 1, maxItems: 1, maxBytes: int64(len(data)), maxImagePixels: maximumDownloadedImagePixels, outputDir: filepath.Dir(path),
 	})
 	ledger := quarantineDownloadLedger(materialized)

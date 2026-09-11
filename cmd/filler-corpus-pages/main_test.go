@@ -29,10 +29,10 @@ func TestCaptureFreezesOnlyAuthoredFirstPartyPageMediaPairs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft := seed{SchemaVersion: 1, Authority: "cdc.gov"}
+	draft := seed{SchemaVersion: seedSchemaVersion, Authority: "cdc.gov"}
 	for i := range 10 {
 		value := strconv.Itoa(i)
-		draft.Cases = append(draft.Cases, seedCase{ItemID: "case-" + value, Title: "Case " + value, RoleHints: []string{"PSA"}, ItemURL: server.URL + "/page?case=" + value, MediaURL: server.URL + "/media.mp4?case=" + value, RightsAssertions: []string{"CDC page source assertion"}, RequiredPageText: []string{"Content Source: NCEH"}})
+		draft.Cases = append(draft.Cases, seedCase{ItemID: "case-" + value, Title: "Case " + value, RoleHints: []string{"PSA"}, ItemURL: server.URL + "/page?case=" + value, MediaURL: server.URL + "/media.mp4?case=" + value, RightsAssertions: []string{"CDC page source assertion"}, RequiredPageText: []string{"Content Source: NCEH"}, SoundtrackStatus: "present_expected", SoundtrackEvidenceLocator: "published PSA script"})
 	}
 	opts := options{cacheDir: t.TempDir(), userAgent: "test", pageHost: u.Hostname(), mediaHost: u.Hostname(), maxRequests: 20, maxItems: 10, maxResponseBytes: 1 << 20, maxItemBytes: 1000, maxTotalBytes: 10000, maxWallTime: time.Second, http: server.Client()}
 	lane, err := capture(context.Background(), draft, opts)
@@ -45,7 +45,7 @@ func TestCaptureFreezesOnlyAuthoredFirstPartyPageMediaPairs(t *testing.T) {
 }
 
 func TestValidateSeedCaseRejectsForeignMedia(t *testing.T) {
-	candidate := seedCase{ItemID: "x", Title: "x", RoleHints: []string{"PSA"}, ItemURL: "https://www.cdc.gov/page", MediaURL: "https://example.com/media.mp4", RightsAssertions: []string{"source"}, RequiredPageText: []string{"source"}}
+	candidate := seedCase{ItemID: "x", Title: "x", RoleHints: []string{"PSA"}, ItemURL: "https://www.cdc.gov/page", MediaURL: "https://example.com/media.mp4", RightsAssertions: []string{"source"}, RequiredPageText: []string{"source"}, SoundtrackStatus: "present_expected", SoundtrackEvidenceLocator: "published script"}
 	if err := validateSeedCase(candidate, "www.cdc.gov", "www.cdc.gov"); err == nil {
 		t.Fatal("foreign media passed")
 	}

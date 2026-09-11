@@ -175,7 +175,10 @@ func capture(ctx context.Context, opts options) (fillercorpus.Lane, error) {
 		if !ok || item.Item.AccessRestricted || len(item.Item.Rights) == 0 {
 			continue
 		}
-		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: id, Title: item.Item.Title, RoleHints: []string{opts.roleHint}, ItemURL: itemURL, MetadataURL: itemURL + "?fo=json", MetadataRetrievedAt: retrievedAt, MetadataSHA256: sha256Hex(string(raw)), RightsAssertions: item.Item.Rights, Representation: fillercorpus.Representation{Name: filepath.Base(media.URL), URL: media.URL, MIMEType: media.MIMEType, Bytes: media.Size}})
+		metadataSHA256 := sha256Hex(string(raw))
+		representation := fillercorpus.Representation{Name: filepath.Base(media.URL), URL: media.URL, MIMEType: media.MIMEType, Bytes: media.Size}
+		representation.Soundtrack = fillercorpus.BindRepresentationSoundtrack(representation, fillercorpus.SoundtrackUnknown, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, metadataSHA256, "LOC item metadata does not establish soundtrack presence")
+		lane.Cases = append(lane.Cases, fillercorpus.Candidate{ItemID: id, Title: item.Item.Title, RoleHints: []string{opts.roleHint}, ItemURL: itemURL, MetadataURL: itemURL + "?fo=json", MetadataRetrievedAt: retrievedAt, MetadataSHA256: metadataSHA256, RightsAssertions: item.Item.Rights, Representation: representation})
 		lane.PredictedMediaBytes += media.Size
 	}
 	lane.RequestsUsed, lane.ResponseBytes, lane.WallTimeMS = f.RequestsUsed(), f.ResponseBytes(), time.Since(started).Milliseconds()

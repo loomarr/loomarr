@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const RightsWorksheetSchemaVersion = 6
+const RightsWorksheetSchemaVersion = 7
 
 // QuarantineInspectionBinding identifies the exact immutable quarantine report
 // and every authority input that report validated. It is nil only for an
@@ -32,6 +32,7 @@ type QuarantineInspectionCaseBinding struct {
 type RightsWorksheet struct {
 	SchemaVersion        int                          `json:"schemaVersion"`
 	Profile              string                       `json:"profile,omitempty"`
+	AcquisitionPurpose   string                       `json:"acquisitionPurpose,omitempty"`
 	InventorySHA256      string                       `json:"inventorySha256"`
 	SnapshotAt           time.Time                    `json:"snapshotAt"`
 	PreparedAt           time.Time                    `json:"preparedAt"`
@@ -82,6 +83,7 @@ var rightsReviewCSVHeader = []string{
 	"rank", "inventory_sha256", "case_id", "capture_ids_json", "authority", "item_id", "metadata_sha256", "title", "role_hints_json", "collection_json", "creator_json", "subject_terms_json", "campaign", "source_family", "date",
 	"license_url", "rights_assertions_json", "possible_copyright_status_json", "item_url", "metadata_url", "metadata_retrieved_at", "evidence_json",
 	"representation_transport", "representation_name", "representation_url", "representation_path", "representation_mime_type", "representation_origin", "representation_bytes", "representation_sha256", "representation_sha1", "representation_md5", "allowed_media_hosts_json",
+	"soundtrack_status", "soundtrack_evidence_kind", "soundtrack_evidence_sha256", "soundtrack_evidence_locator", "soundtrack_representation_sha256",
 	"quarantine_inspection_json",
 	"reviewer_id", "reviewed_at", "decision", "basis", "redistributable", "required_credit", "restrictions_json",
 }
@@ -144,6 +146,7 @@ func ImmutableRightsReviewRecord(row RightsReviewRow) []string {
 		strconv.Itoa(row.Rank), row.InventorySHA256, row.CaseID, JSONCell(row.CaptureIDs), row.Authority, row.ItemID, row.MetadataSHA256, SpreadsheetSafe(row.Title), JSONCell(row.RoleHints), JSONCell(row.Collection), JSONCell(row.Creator), JSONCell(row.SubjectTerms), SpreadsheetSafe(row.Campaign), SpreadsheetSafe(row.SourceFamily), SpreadsheetSafe(row.Date),
 		row.LicenseURL, JSONCell(row.RightsAssertions), JSONCell(row.PossibleCopyrightStatus), row.ItemURL, row.MetadataURL, row.MetadataRetrievedAt.UTC().Format(time.RFC3339), JSONCell(row.Evidence),
 		row.Representation.Transport, SpreadsheetSafe(row.Representation.Name), row.Representation.URL, SpreadsheetSafe(row.Representation.Path), SpreadsheetSafe(row.Representation.MIMEType), SpreadsheetSafe(row.Representation.Origin), strconv.FormatInt(row.Representation.Bytes, 10), row.Representation.SHA256, row.Representation.SHA1, row.Representation.MD5, JSONCell(row.AllowedMediaHosts),
+		row.Representation.Soundtrack.Status, row.Representation.Soundtrack.EvidenceKind, row.Representation.Soundtrack.EvidenceSHA256, SpreadsheetSafe(row.Representation.Soundtrack.EvidenceLocator), row.Representation.Soundtrack.RepresentationSHA256,
 		JSONCell(row.QuarantineInspection),
 	}
 }

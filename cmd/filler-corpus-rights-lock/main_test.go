@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,7 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 	authority := "archive.org/prelinger"
 	captureID := fillercorpus.NewCaptureID(authority, "prelinger", "commercial")
 	item := fillercorpus.InventoryCase{CaseID: fillercorpus.CaseID(authority, "soda-ad"), CaptureIDs: []string{captureID}, Authority: authority, ItemID: "soda-ad", Title: "Mountain Dew", RoleHints: []string{"commercial"}, LicenseURL: "https://creativecommons.org/publicdomain/zero/1.0/", RightsAssertions: []string{"CC0"}, ItemURL: "https://archive.org/details/soda-ad", MetadataURL: "https://archive.org/metadata/soda-ad", MetadataRetrievedAt: retrievedTime, MetadataSHA256: metadataDigest, AllowedMediaHosts: []string{"archive.org", ".archive.org"}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "soda.mp4", URL: "https://archive.org/download/soda-ad/soda.mp4", MIMEType: "video/mp4", Origin: "original", Bytes: 1024}}
+	item.Representation = lockTestSoundtrack(item.Representation, fillercorpus.SoundtrackPresentExpected, metadataDigest)
 	inventory := fillercorpus.Inventory{SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: retrievedTime, Captures: []fillercorpus.Capture{{CaptureID: captureID, Transport: fillercorpus.TransportHTTPS, Authority: authority, Collection: "prelinger", RoleHint: "commercial", SnapshotAt: retrievedTime, MaxRequests: 2, RequestsUsed: 1, MaxResponseBytes: 2048, ResponseBytes: 100, MaxPredictedMediaBytes: 2048, PredictedMediaBytes: 1024, MaxWallTimeMS: 1000, WallTimeMS: 10}}, Cases: []fillercorpus.InventoryCase{item}}
 	inventoryRaw, err := json.Marshal(inventory)
 	if err != nil {
@@ -166,6 +168,37 @@ func TestRunLocksCompleteSpreadsheetReviewToDownloaderJSONL(t *testing.T) {
 	}
 }
 
+func TestTemporalReplacementRightsLockPreservesSoundtrackHold(t *testing.T) {
+	retrieved := time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC)
+	representation := lockTestSoundtrack(fillercorpus.InventoryRepresentation{
+		Transport: fillercorpus.TransportHTTPS, Name: "silent.mp4", URL: "https://tile.loc.gov/silent.mp4",
+		MIMEType: "video/mp4", Bytes: 1024,
+	}, fillercorpus.SoundtrackIntentionallySilent, strings.Repeat("a", 64))
+	row := fillercorpus.RightsReviewRow{
+		InventorySHA256: strings.Repeat("f", 64), CaseID: "loc.gov/national-screening-room/00694220",
+		CaptureIDs: []string{"capture"}, Authority: "loc.gov/national-screening-room", ItemID: "00694220",
+		MetadataSHA256: strings.Repeat("a", 64), MetadataRetrievedAt: retrieved, Representation: representation,
+	}
+	heldFields := []string{
+		"rights-reviewer", retrieved.Add(time.Minute).Format(time.RFC3339), "held", "full-source decode establishes intentional silence",
+		"false", "false", "false", "false", "false", "false", "false", "false", "false", "", "[]",
+	}
+	decision, err := parseQuarantineDecision(row, heldFields, retrieved.Add(2*time.Minute), fillercorpus.QuarantinePurposeTemporalStructureReplacement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.QuarantineContract == nil || !slices.Contains(decision.QuarantineContract.HoldReasons, fillercorpus.HoldReasonSoundtrackIntentionallySilent) {
+		t.Fatalf("locked decision = %+v", decision)
+	}
+
+	approvedFields := append([]string(nil), heldFields...)
+	approvedFields[2] = "approved"
+	approvedFields[4], approvedFields[5] = "true", "true"
+	if _, err := parseQuarantineDecision(row, approvedFields, retrieved.Add(2*time.Minute), fillercorpus.QuarantinePurposeTemporalStructureReplacement); err == nil || !strings.Contains(err.Error(), fillercorpus.HoldReasonSoundtrackIntentionallySilent) {
+		t.Fatalf("approved silent soundtrack error = %v", err)
+	}
+}
+
 func TestMetBatchCompletionStillPassesThroughOrdinaryItemLevelLocker(t *testing.T) {
 	dir := t.TempDir()
 	snapshot := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
@@ -183,6 +216,7 @@ func TestMetBatchCompletionStillPassesThroughOrdinaryItemLevelLocker(t *testing.
 		AllowedMediaHosts: []string{"images.metmuseum.org"},
 		Representation:    fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: "image.jpg", URL: "https://images.metmuseum.org/image.jpg", MIMEType: "image/jpeg", Bytes: 100},
 	}
+	item.Representation = lockTestSoundtrack(item.Representation, fillercorpus.SoundtrackIntentionallySilent, item.MetadataSHA256)
 	inventory := fillercorpus.Inventory{
 		SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: snapshot,
 		Captures: []fillercorpus.Capture{{
@@ -414,7 +448,7 @@ func TestParseQuarantineDecisionAllowsOnlyLocalCopyAndInspection(t *testing.T) {
 		"rights-reviewer", retrievedAt.Add(time.Hour).Format(time.RFC3339), "approved", "Exact source terms permit a local quarantine copy and inspection.",
 		"true", "true", "false", "false", "false", "false", "false", "false", "false", "", "[]",
 	}
-	decision, err := parseQuarantineDecision(row, valid, lockedAt)
+	decision, err := parseQuarantineDecision(row, valid, lockedAt, fillercorpus.QuarantinePurposeLocalInspection)
 	if err != nil || decision.QuarantineContract == nil || decision.Redistributable || len(decision.QuarantineContract.HoldReasons) != 0 {
 		t.Fatalf("decision = %+v, %v", decision, err)
 	}
@@ -422,7 +456,7 @@ func TestParseQuarantineDecisionAllowsOnlyLocalCopyAndInspection(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			fields := append([]string(nil), valid...)
 			fields[6+index] = "true"
-			if _, err := parseQuarantineDecision(row, fields, lockedAt); err == nil {
+			if _, err := parseQuarantineDecision(row, fields, lockedAt, fillercorpus.QuarantinePurposeLocalInspection); err == nil {
 				t.Fatal("downstream authority was accepted")
 			}
 		})
@@ -430,7 +464,7 @@ func TestParseQuarantineDecisionAllowsOnlyLocalCopyAndInspection(t *testing.T) {
 	for _, index := range []int{4, 5} {
 		fields := append([]string(nil), valid...)
 		fields[index] = "false"
-		if _, err := parseQuarantineDecision(row, fields, lockedAt); err == nil {
+		if _, err := parseQuarantineDecision(row, fields, lockedAt, fillercorpus.QuarantinePurposeLocalInspection); err == nil {
 			t.Fatalf("required local authority field %d was omitted", index)
 		}
 	}
@@ -440,7 +474,7 @@ func TestParseQuarantineDecisionAllowsOnlyLocalCopyAndInspection(t *testing.T) {
 		for index := 4; index <= 12; index++ {
 			fields[index] = "false"
 		}
-		decision, err := parseQuarantineDecision(row, fields, lockedAt)
+		decision, err := parseQuarantineDecision(row, fields, lockedAt, fillercorpus.QuarantinePurposeLocalInspection)
 		if err != nil || decision.QuarantineContract == nil || len(decision.QuarantineContract.HoldReasons) == 0 {
 			t.Fatalf("held decision = %+v, %v", decision, err)
 		}
@@ -494,4 +528,9 @@ func TestParseHoldoutDecisionRequiresEveryIndependentAuthorityAxis(t *testing.T)
 			t.Fatalf("held decision = %+v, %v", decision, err)
 		}
 	})
+}
+
+func lockTestSoundtrack(representation fillercorpus.InventoryRepresentation, status, evidenceSHA256 string) fillercorpus.InventoryRepresentation {
+	representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, status, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, evidenceSHA256, "fixture metadata")
+	return representation
 }

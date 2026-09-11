@@ -216,6 +216,7 @@ func newVisualNominationFixture(t *testing.T) visualNominationFixture {
 		Transport: fillercorpus.TransportHTTPS, Name: "DP-392067.jpg",
 		URL: "https://images.metmuseum.org/CRDImages/ep/original/DP-392067.jpg", MIMEType: "image/jpeg", Bytes: int64(len(imageRaw)),
 	}
+	representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, fillercorpus.SoundtrackIntentionallySilent, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, strings.Repeat("a", 64), "Met object metadata identifies a still image")
 	inventory := fillercorpus.Inventory{
 		SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: snapshot,
 		Captures: []fillercorpus.Capture{{
@@ -311,6 +312,7 @@ func addDuplicateFamilyNominationCase(t *testing.T, fixture *visualNominationFix
 	secondInventory.Representation.Name = "DP-492067.jpg"
 	secondInventory.Representation.URL = "https://images.metmuseum.org/CRDImages/ep/original/DP-492067.jpg"
 	secondInventory.Representation.Bytes = int64(len(secondRaw))
+	secondInventory.Representation.Soundtrack = fillercorpus.BindInventorySoundtrack(secondInventory.Representation, fillercorpus.SoundtrackIntentionallySilent, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, secondInventory.MetadataSHA256, "Met object metadata identifies a still image")
 	inventory.Cases = append(inventory.Cases, secondInventory)
 	inventory.Captures[0].PredictedMediaBytes += int64(len(secondRaw))
 	inventory.Captures[0].MaxPredictedMediaBytes = inventory.Captures[0].PredictedMediaBytes

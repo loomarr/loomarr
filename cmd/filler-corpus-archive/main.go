@@ -300,15 +300,17 @@ func prelingerPilotLane(inv inventory, roleHint string) fillercorpus.Lane {
 		assertions := append([]string(nil), item.Rights...)
 		assertions = append(assertions, item.PossibleCopyrightStatus...)
 		assertions = append(assertions, "Archive license assertion: "+item.LicenseURL)
+		representation := fillercorpus.Representation{
+			Name: item.File.Name, URL: item.File.URL, MIMEType: "video/mp4", Bytes: item.File.Bytes,
+			SHA1: item.File.SHA1, MD5: item.File.MD5,
+		}
+		representation.Soundtrack = fillercorpus.BindRepresentationSoundtrack(representation, fillercorpus.SoundtrackUnknown, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, item.MetadataSHA256, "Archive item metadata does not establish soundtrack presence")
 		lane.Cases = append(lane.Cases, fillercorpus.Candidate{
 			ItemID: item.Identifier, Title: item.Title, RoleHints: []string{roleHint}, ItemURL: item.ItemURL,
 			MetadataURL: item.MetadataURL, MetadataRetrievedAt: item.MetadataRetrievedAt,
 			MetadataSHA256: item.MetadataSHA256, RightsAssertions: assertions,
-			LicenseURL: strings.Replace(item.LicenseURL, "http://", "https://", 1),
-			Representation: fillercorpus.Representation{
-				Name: item.File.Name, URL: item.File.URL, MIMEType: "video/mp4", Bytes: item.File.Bytes,
-				SHA1: item.File.SHA1, MD5: item.File.MD5,
-			},
+			LicenseURL:     strings.Replace(item.LicenseURL, "http://", "https://", 1),
+			Representation: representation,
 		})
 	}
 	return lane
@@ -333,6 +335,11 @@ func sourceNeutralInventory(inv inventory, roleHint string) fillercorpus.Invento
 		assertions := append([]string(nil), item.Rights...)
 		assertions = append(assertions, item.PossibleCopyrightStatus...)
 		assertions = append(assertions, "Archive license assertion: "+item.LicenseURL)
+		representation := fillercorpus.InventoryRepresentation{
+			Transport: fillercorpus.TransportHTTPS, Name: item.File.Name, URL: item.File.URL, MIMEType: "video/mp4", Origin: item.File.Source,
+			Bytes: item.File.Bytes, SHA1: item.File.SHA1, MD5: item.File.MD5,
+		}
+		representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, fillercorpus.SoundtrackUnknown, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, item.MetadataSHA256, "Archive item metadata does not establish soundtrack presence")
 		result.Cases = append(result.Cases, fillercorpus.InventoryCase{
 			CaseID: fillercorpus.CaseID(authority, item.Identifier), CaptureIDs: []string{captureID}, Authority: authority, ItemID: item.Identifier,
 			Title: item.Title, RoleHints: []string{roleHint}, Collection: item.Collection, Creator: item.Creator, Date: item.Date,
@@ -340,10 +347,7 @@ func sourceNeutralInventory(inv inventory, roleHint string) fillercorpus.Invento
 			PossibleCopyrightStatus: item.PossibleCopyrightStatus, ItemURL: item.ItemURL, MetadataURL: item.MetadataURL,
 			MetadataCache: item.MetadataCache, MetadataRetrievedAt: item.MetadataRetrievedAt, MetadataSHA256: item.MetadataSHA256,
 			AllowedMediaHosts: []string{"archive.org", ".archive.org"},
-			Representation: fillercorpus.InventoryRepresentation{
-				Transport: fillercorpus.TransportHTTPS, Name: item.File.Name, URL: item.File.URL, MIMEType: "video/mp4", Origin: item.File.Source,
-				Bytes: item.File.Bytes, SHA1: item.File.SHA1, MD5: item.File.MD5,
-			},
+			Representation:    representation,
 		})
 	}
 	return result

@@ -12,8 +12,8 @@ const (
 	RightsProfileDevelopment   = "development"
 	RightsProfileCertification = "certification"
 
-	QuarantineRightsWorksheetSchemaVersion     = 5
-	HoldoutRightsWorksheetSchemaVersion        = 7
+	QuarantineRightsWorksheetSchemaVersion     = 6
+	HoldoutRightsWorksheetSchemaVersion        = 8
 	HoldoutRightsContractSchemaVersion         = 1
 	QuarantineAcquisitionContractSchemaVersion = 1
 	QuarantinePurposeLocalInspection           = "local_quarantine_inspection"
@@ -80,7 +80,7 @@ func QuarantineAcquisitionHoldReasons(value *QuarantineAcquisitionContract) []st
 		}
 	}
 	add(value.SchemaVersion != QuarantineAcquisitionContractSchemaVersion, "contract_schema_invalid")
-	add(value.Purpose != QuarantinePurposeLocalInspection, "purpose_invalid")
+	add(!KnownQuarantinePurpose(value.Purpose), "purpose_invalid")
 	add(!value.CopyAndStorage, "copy_storage_missing")
 	add(!value.LocalTechnicalInspection, "local_technical_inspection_missing")
 	add(value.ProviderTransfer, "provider_transfer_forbidden")
@@ -92,6 +92,12 @@ func QuarantineAcquisitionHoldReasons(value *QuarantineAcquisitionContract) []st
 	add(value.ProductionAdmission, "production_admission_forbidden")
 	sort.Strings(reasons)
 	return reasons
+}
+
+// KnownQuarantinePurpose reports whether value is a supported, versioned
+// pre-download acquisition purpose.
+func KnownQuarantinePurpose(value string) bool {
+	return value == QuarantinePurposeLocalInspection || value == QuarantinePurposeTemporalStructureReplacement
 }
 
 type HoldoutRightsTemplate struct {

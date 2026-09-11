@@ -39,6 +39,11 @@ func planDownloads(inv fillercorpus.Inventory, approvals []fillercorpus.RightsDe
 		if approval.Decision == "held" || candidate.Representation.Transport == fillercorpus.TransportLocal {
 			continue
 		}
+		if opts.quarantinePurpose == fillercorpus.QuarantinePurposeTemporalStructureReplacement {
+			if reason := fillercorpus.TemporalReplacementSoundtrackHoldReason(candidate.Representation.Soundtrack.Status); reason != "" {
+				return nil, fmt.Errorf("approved item %s is held before download: %s", approval.CaseID, reason)
+			}
+		}
 		if err := fillercorpus.ValidateMediaURL(candidate.Representation.URL, candidate.AllowedMediaHosts); err != nil {
 			return nil, err
 		}

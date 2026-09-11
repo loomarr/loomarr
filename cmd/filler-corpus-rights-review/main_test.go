@@ -21,7 +21,8 @@ func reviewInventory(snapshot time.Time, ids ...string) fillercorpus.Inventory {
 	captureID := fillercorpus.NewCaptureID("archive.org/prelinger", "prelinger", "commercial")
 	inv := fillercorpus.Inventory{SchemaVersion: fillercorpus.InventorySchemaVersion, SnapshotAt: snapshot, Captures: []fillercorpus.Capture{{CaptureID: captureID, Transport: fillercorpus.TransportHTTPS, Authority: "archive.org/prelinger", Collection: "prelinger", RoleHint: "commercial", SnapshotAt: snapshot, MaxRequests: 10, RequestsUsed: 1, MaxResponseBytes: 10_000, ResponseBytes: 100, MaxPredictedMediaBytes: 10_000, PredictedMediaBytes: int64(len(ids)) * 1024, MaxWallTimeMS: 1000, WallTimeMS: 10}}}
 	for _, id := range ids {
-		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{CaseID: fillercorpus.CaseID("archive.org/prelinger", id), CaptureIDs: []string{captureID}, Authority: "archive.org/prelinger", ItemID: id, Title: id, RoleHints: []string{"commercial"}, RightsAssertions: []string{"CC0"}, ItemURL: "https://archive.org/details/" + id, MetadataURL: "https://archive.org/metadata/" + id, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat("a", 64), AllowedMediaHosts: []string{"archive.org", ".archive.org"}, Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: id + ".mp4", URL: "https://archive.org/download/" + id + "/" + id + ".mp4", MIMEType: "video/mp4", Bytes: 1024}})
+		representation := reviewTestSoundtrack(fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportHTTPS, Name: id + ".mp4", URL: "https://archive.org/download/" + id + "/" + id + ".mp4", MIMEType: "video/mp4", Bytes: 1024}, strings.Repeat("a", 64))
+		inv.Cases = append(inv.Cases, fillercorpus.InventoryCase{CaseID: fillercorpus.CaseID("archive.org/prelinger", id), CaptureIDs: []string{captureID}, Authority: "archive.org/prelinger", ItemID: id, Title: id, RoleHints: []string{"commercial"}, RightsAssertions: []string{"CC0"}, ItemURL: "https://archive.org/details/" + id, MetadataURL: "https://archive.org/metadata/" + id, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat("a", 64), AllowedMediaHosts: []string{"archive.org", ".archive.org"}, Representation: representation})
 	}
 	return inv
 }
@@ -87,6 +88,7 @@ func TestRunRefusesCollidingOrExistingOutputsBeforeReadingInventory(t *testing.T
 				"--csv-out", test.csvOutput,
 				"--prepared-at", "2026-09-05T12:00:00Z",
 				"--profile", "quarantine",
+				"--quarantine-purpose", fillercorpus.QuarantinePurposeLocalInspection,
 				"--min-items", "1",
 				"--max-items", "1",
 			}, &stdout, &stderr)
@@ -128,11 +130,11 @@ func TestPrepareWorksheetIsDeterministicAndInert(t *testing.T) {
 	raw, _ := json.Marshal(inv)
 	selection := eligibleSelection(t, raw, inv, 2, 2)
 	digest := fillercorpus.InventorySHA256(raw)
-	first, err := prepareWorksheetForProfile(inv, digest, snapshot.Add(time.Minute), 2, 2, fillercorpus.RightsProfileDevelopment, nil, &selection)
+	first, err := prepareWorksheetForProfile(inv, digest, snapshot.Add(time.Minute), 2, 2, fillercorpus.RightsProfileDevelopment, "", nil, &selection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := prepareWorksheetForProfile(inv, digest, snapshot.Add(time.Minute), 2, 2, fillercorpus.RightsProfileDevelopment, nil, &selection)
+	second, err := prepareWorksheetForProfile(inv, digest, snapshot.Add(time.Minute), 2, 2, fillercorpus.RightsProfileDevelopment, "", nil, &selection)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +216,7 @@ func TestRunPreparesInertQuarantineWorksheetWithExplicitDeniedUses(t *testing.T)
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--inventory", inventoryPath, "--out", worksheetPath, "--csv-out", csvPath, "--prepared-at", snapshot.Add(time.Minute).Format(time.RFC3339), "--profile", "quarantine", "--min-items", "1", "--max-items", "1"}, &stdout, &stderr)
+	code := run([]string{"--inventory", inventoryPath, "--out", worksheetPath, "--csv-out", csvPath, "--prepared-at", snapshot.Add(time.Minute).Format(time.RFC3339), "--profile", "quarantine", "--quarantine-purpose", fillercorpus.QuarantinePurposeLocalInspection, "--min-items", "1", "--max-items", "1"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run() = %d, stderr = %s", code, stderr.String())
 	}
@@ -223,7 +225,7 @@ func TestRunPreparesInertQuarantineWorksheetWithExplicitDeniedUses(t *testing.T)
 	if err != nil || json.Unmarshal(worksheetRaw, &worksheet) != nil {
 		t.Fatalf("worksheet read = %v", err)
 	}
-	if worksheet.SchemaVersion != fillercorpus.QuarantineRightsWorksheetSchemaVersion || worksheet.Profile != fillercorpus.RightsProfileQuarantine || worksheet.HoldoutTemplate != nil {
+	if worksheet.SchemaVersion != fillercorpus.QuarantineRightsWorksheetSchemaVersion || worksheet.Profile != fillercorpus.RightsProfileQuarantine || worksheet.AcquisitionPurpose != fillercorpus.QuarantinePurposeLocalInspection || worksheet.HoldoutTemplate != nil {
 		t.Fatalf("worksheet = %+v", worksheet)
 	}
 	records, err := csv.NewReader(mustOpen(t, csvPath)).ReadAll()
@@ -336,7 +338,12 @@ func directReviewInventory(snapshot time.Time, id string) fillercorpus.Inventory
 			CaseID: fillercorpus.CaseID(authority, id), CaptureIDs: []string{captureID}, Authority: authority, ItemID: id, Title: id, RoleHints: []string{role},
 			RightsAssertions: []string{"signed grant"}, MetadataRetrievedAt: snapshot, MetadataSHA256: strings.Repeat("e", 64),
 			Evidence:       []fillercorpus.InventoryEvidence{{Kind: "rights", Path: "rights.txt", Bytes: 1, SHA256: strings.Repeat("a", 64)}, {Kind: "provenance", Path: "provenance.txt", Bytes: 1, SHA256: strings.Repeat("b", 64)}},
-			Representation: fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: id + ".mp4", Path: id + ".mp4", MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)},
+			Representation: reviewTestSoundtrack(fillercorpus.InventoryRepresentation{Transport: fillercorpus.TransportLocal, Name: id + ".mp4", Path: id + ".mp4", MIMEType: "video/mp4", Bytes: int64(len(media)), SHA256: fillercorpus.InventorySHA256(media)}, strings.Repeat("e", 64)),
 		}},
 	}
+}
+
+func reviewTestSoundtrack(representation fillercorpus.InventoryRepresentation, evidenceSHA256 string) fillercorpus.InventoryRepresentation {
+	representation.Soundtrack = fillercorpus.BindInventorySoundtrack(representation, fillercorpus.SoundtrackPresentExpected, fillercorpus.SoundtrackEvidenceFirstPartyMetadata, evidenceSHA256, "fixture metadata")
+	return representation
 }

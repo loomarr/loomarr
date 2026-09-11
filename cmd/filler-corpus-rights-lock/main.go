@@ -100,6 +100,9 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 		sheet.PreparedAt.Before(sheet.SnapshotAt) || sheet.MinItems <= 0 || sheet.MaxItems < sheet.MinItems {
 		return nil, fmt.Errorf("worksheet identity is invalid")
 	}
+	if (profile == fillercorpus.RightsProfileQuarantine && !fillercorpus.KnownQuarantinePurpose(sheet.AcquisitionPurpose)) || (profile != fillercorpus.RightsProfileQuarantine && sheet.AcquisitionPurpose != "") {
+		return nil, fmt.Errorf("worksheet acquisition purpose is invalid")
+	}
 	if profile == fillercorpus.RightsProfileCertification {
 		if err := fillercorpus.ValidateHoldoutRightsTemplate(sheet.HoldoutTemplate); err != nil {
 			return nil, err
@@ -211,7 +214,7 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 		var decision fillercorpus.RightsDecision
 		switch profile {
 		case fillercorpus.RightsProfileQuarantine:
-			decision, err = parseQuarantineDecision(row, fields, lockedAt)
+			decision, err = parseQuarantineDecision(row, fields, lockedAt, sheet.AcquisitionPurpose)
 		case fillercorpus.RightsProfileCertification:
 			decision, err = parseHoldoutDecision(row, sheet.HoldoutTemplate, fields, lockedAt)
 		default:
@@ -235,7 +238,7 @@ func lockDecisionsForProfile(inventoryPath, worksheetPath, csvPath string, locke
 	return decisions, nil
 }
 
-func parseQuarantineDecision(row fillercorpus.RightsReviewRow, fields []string, lockedAt time.Time) (fillercorpus.RightsDecision, error) {
+func parseQuarantineDecision(row fillercorpus.RightsReviewRow, fields []string, lockedAt time.Time, acquisitionPurpose string) (fillercorpus.RightsDecision, error) {
 	if len(fields) != 15 {
 		return fillercorpus.RightsDecision{}, fmt.Errorf("quarantine review has %d fields; want 15", len(fields))
 	}
@@ -262,12 +265,17 @@ func parseQuarantineDecision(row fillercorpus.RightsReviewRow, fields []string, 
 	}
 	contract := &fillercorpus.QuarantineAcquisitionContract{
 		SchemaVersion:  fillercorpus.QuarantineAcquisitionContractSchemaVersion,
-		Purpose:        fillercorpus.QuarantinePurposeLocalInspection,
+		Purpose:        acquisitionPurpose,
 		CopyAndStorage: values[0], LocalTechnicalInspection: values[1], ProviderTransfer: values[2],
 		Redistribution: values[3], CorpusPreparation: values[4], Training: values[5],
 		CatalogIngestion: values[6], Scheduling: values[7], ProductionAdmission: values[8],
 	}
 	contract.HoldReasons = fillercorpus.QuarantineAcquisitionHoldReasons(contract)
+	if acquisitionPurpose == fillercorpus.QuarantinePurposeTemporalStructureReplacement {
+		if reason := fillercorpus.TemporalReplacementSoundtrackHoldReason(row.Representation.Soundtrack.Status); reason != "" {
+			contract.HoldReasons = append(contract.HoldReasons, reason)
+		}
+	}
 	if decision == "approved" && len(contract.HoldReasons) != 0 {
 		return fillercorpus.RightsDecision{}, fmt.Errorf("approval is held by: %s", strings.Join(contract.HoldReasons, ", "))
 	}

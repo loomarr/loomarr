@@ -31,6 +31,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	csvOutputPath := flags.String("csv-out", "", "spreadsheet-safe non-authorizing rights worksheet CSV")
 	preparedAtText := flags.String("prepared-at", "", "worksheet preparation time in RFC3339 format")
 	profile := flags.String("profile", "", "required rights profile: quarantine, development, or certification")
+	quarantinePurpose := flags.String("quarantine-purpose", "", "required quarantine acquisition purpose")
 	agreementID := flags.String("agreement-id", "", "maintainer/counsel-approved agreement identifier (certification only)")
 	agreementSHA256 := flags.String("agreement-sha256", "", "SHA-256 of the approved agreement form (certification only)")
 	processorID := flags.String("processor-id", "", "exact approved inference processor identifier (certification only)")
@@ -40,7 +41,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	if *inventoryPath == "" || *outputPath == "" || *preparedAtText == "" || *minItems <= 0 || *maxItems < *minItems || !fillercorpus.KnownRightsProfile(*profile) {
+	purposeValid := (*profile == fillercorpus.RightsProfileQuarantine && fillercorpus.KnownQuarantinePurpose(*quarantinePurpose)) || (*profile != fillercorpus.RightsProfileQuarantine && *quarantinePurpose == "")
+	if *inventoryPath == "" || *outputPath == "" || *preparedAtText == "" || *minItems <= 0 || *maxItems < *minItems || !fillercorpus.KnownRightsProfile(*profile) || !purposeValid {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: inventory, output, preparation time, explicit quarantine/development/certification profile, and positive min/max item bounds are required")
 		return 2
 	}
@@ -96,7 +98,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review: quarantine profile cannot consume a post-download inspection")
 		return 2
 	}
-	result, err := prepareWorksheetForProfile(inv, sha256Hex(raw), preparedAt, *minItems, *maxItems, *profile, template, selection)
+	result, err := prepareWorksheetForProfile(inv, sha256Hex(raw), preparedAt, *minItems, *maxItems, *profile, *quarantinePurpose, template, selection)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "filler-corpus-rights-review:", err)
 		return 1
@@ -137,7 +139,7 @@ func writeReviewCSV(path string, sheet fillercorpus.RightsWorksheet) error {
 	})
 }
 
-func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, preparedAt time.Time, minItems, maxItems int, profile string, template *fillercorpus.HoldoutRightsTemplate, selection *fillerquarantine.RightsSelection) (fillercorpus.RightsWorksheet, error) {
+func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, preparedAt time.Time, minItems, maxItems int, profile, acquisitionPurpose string, template *fillercorpus.HoldoutRightsTemplate, selection *fillerquarantine.RightsSelection) (fillercorpus.RightsWorksheet, error) {
 	if failures := fillercorpus.ValidateInventory(inv); len(failures) != 0 || preparedAt.Before(inv.SnapshotAt) {
 		return fillercorpus.RightsWorksheet{}, fmt.Errorf("inventory identity or worksheet time is invalid")
 	}
@@ -176,7 +178,7 @@ func prepareWorksheetForProfile(inv fillercorpus.Inventory, digest string, prepa
 		cases = selection.Cases
 	}
 	result := fillercorpus.RightsWorksheet{
-		SchemaVersion: schemaVersion, Profile: profile, InventorySHA256: digest,
+		SchemaVersion: schemaVersion, Profile: profile, AcquisitionPurpose: acquisitionPurpose, InventorySHA256: digest,
 		SnapshotAt: inv.SnapshotAt.UTC(), PreparedAt: preparedAt.UTC(), MinItems: minItems, MaxItems: maxItems,
 		HoldoutTemplate: template, QuarantineInspection: selectionReportBinding(selection),
 		Instructions: []string{
