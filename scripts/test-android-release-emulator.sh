@@ -168,6 +168,23 @@ wait_for_ui() {
 	return 1
 }
 
+focus_ui() {
+	local description=$1
+	local expected=$2
+	local attempts=${3:-20}
+	for ((attempt = 1; attempt <= attempts; attempt += 1)); do
+		dump_ui
+		if grep -Eq "content-desc=\"${expected}\"[^>]*focused=\"true\"" "${temp_dir}/window.xml"; then
+			printf 'android-emulator: focused %s\n' "${description}"
+			return 0
+		fi
+		key KEYCODE_DPAD_DOWN
+	done
+	printf 'emulator never focused %s (%s)\n' "${description}" "${expected}" >&2
+	cat "${temp_dir}/window.xml" >&2
+	return 1
+}
+
 wait_for_state() {
 	local description=$1
 	local expression=$2
@@ -255,9 +272,9 @@ wait_for_launcher_identity
 adb -s "${EMULATOR_SERIAL}" exec-out screencap -p >"${evidence_dir}/launcher-surface.png"
 measure_launcher_identity
 launch
-wait_for_ui "automatic LAN discovery" "Connect to ${DISCOVERY_NAME}"
+wait_for_ui "automatic LAN discovery" "${DISCOVERY_NAME}&#10;"
 dump_ui
-grep -Eq "content-desc=\"Connect to ${DISCOVERY_NAME}[^\"]*\"[^>]*focused=\"true\"" "${temp_dir}/window.xml" || {
+grep -Eq "content-desc=\"(Connect to )?${DISCOVERY_NAME}&#10;[^\"]*\"[^>]*focused=\"true\"" "${temp_dir}/window.xml" || {
 	printf 'discovered server was not the preferred TV focus target\n' >&2
 	exit 1
 }
@@ -277,9 +294,10 @@ adb -s "${EMULATOR_SERIAL}" reverse "tcp:${JOURNEY_PORT}" "tcp:${JOURNEY_PORT}" 
 adb -s "${EMULATOR_SERIAL}" shell pm clear "${PACKAGE_ID}" >/dev/null
 launch
 wait_for_ui "manual-entry fallback" "Enter address manually"
+focus_ui "manual-entry fallback" "Enter address manually"
 key KEYCODE_DPAD_CENTER
 wait_for_ui "TV URL field" "Loomarr server address"
-key KEYCODE_DPAD_UP
+focus_ui "TV URL field" "Loomarr server address"
 key KEYCODE_DPAD_CENTER
 adb -s "${EMULATOR_SERIAL}" shell input text "http://127.0.0.1:${JOURNEY_PORT}"
 key KEYCODE_ENTER
