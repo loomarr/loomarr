@@ -17,7 +17,7 @@ type workflowActionKey struct {
 // Each JSON object is also YAML and binds the complete mapping at its absolute
 // steps[] index: name/id, exact pinned uses, inputs, condition, and environment.
 func workflowActionAuthorityEntries() map[workflowActionKey]string {
-	return map[workflowActionKey]string{
+	entries := map[workflowActionKey]string{
 		{workflow: "android-beta.yml", job: "release", step: 0}:             `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "android-beta.yml", job: "release", step: 1}:             `{"uses":"actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c","with":{"distribution":"temurin","java-version":"21"}}`,
 		{workflow: "android-beta.yml", job: "release", step: 2}:             `{"uses":"android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699"}`,
@@ -124,6 +124,25 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "rust-maintenance.yml", job: "fuzz", step: 0}:         `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "rust-maintenance.yml", job: "fuzz", step: 4}:         `{"name":"Keep crash and timeout artifacts","if":"failure()","uses":"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","with":{"name":"rust-image-fuzz-artifacts","path":"rust/loomarr-image/fuzz/artifacts/protocol_decoder","if-no-files-found":"ignore","retention-days":30}}`,
 	}
+	entries[workflowActionKey{workflow: "codeql.yml", job: "changes", step: 0}] = `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"fetch-depth":0}}`
+	codeQLJobs := map[string][2]string{
+		"analyze-actions":               {"actions", "none"},
+		"analyze-go":                    {"go", "autobuild"},
+		"analyze-javascript-typescript": {"javascript-typescript", "none"},
+		"analyze-python":                {"python", "none"},
+		"analyze-ruby":                  {"ruby", "none"},
+		"analyze-rust":                  {"rust", "none"},
+	}
+	for job, config := range codeQLJobs {
+		entries[workflowActionKey{workflow: "codeql.yml", job: job, step: 0}] = `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`
+		entries[workflowActionKey{workflow: "codeql.yml", job: job, step: 1}] = fmt.Sprintf(
+			`{"uses":"github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63","with":{"languages":%q,"build-mode":%q}}`, config[0], config[1],
+		)
+		entries[workflowActionKey{workflow: "codeql.yml", job: job, step: 2}] = fmt.Sprintf(
+			`{"uses":"github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63","with":{"category":%q}}`, "/language:"+config[0],
+		)
+	}
+	return entries
 }
 
 func verifyRegisteredWorkflowActionCardinality(workflowName string, jobs *yaml.Node) error {

@@ -187,6 +187,8 @@ the fail-closed CI classifier. Its output distinguishes the complete CI impact, 
 gates, protected gates, and the local gates that actually completed; it never presents protected
 Postgres, browser, native-client, or release-image evidence as a local success. The PR fast lane and
 merge queue provide the protected final evidence.
+Affected-test output also reports per-owner and total wall time. A 30-second advisory threshold calls
+out slow owners without failing the run; set `AFFECTED_TEST_WARN_SECONDS=<seconds>` to tune it locally.
 Run `make verify SCOPE=all` or `make agent-baseline` only for a deliberately requested complete-repository audit,
 changes to classifier/gate machinery, or boundary diagnosis—not merely because a worktree is new.
 

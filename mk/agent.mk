@@ -44,6 +44,7 @@ doctor: ## verify toolchain and Docker readiness; report worktrees, ports, cache
 agent-harness-test: agent-assets-verify ## regression-test coordination, worktree isolation, and shared-output claims
 	@./scripts/changed-paths-test.sh
 	@./scripts/go-direct-impact-test.sh
+	@./scripts/codeql-impact-test.sh
 	@./scripts/test-affected-test.sh
 	@./scripts/agent-harness-test.sh
 
