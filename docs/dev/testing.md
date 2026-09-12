@@ -7,14 +7,25 @@ extend it rather than writing a private mock.
 
 ```bash
 go test -race -run TestName ./internal/<pkg>/ # while editing
-make verify BASE=origin/main                  # once the change is stable
+make test-affected BASE=origin/main            # fallback when the exact test is unknown
+make verify BASE=origin/main                   # once, when the change is stable
 ```
+
+`make test-affected` is non-authoritative edit-loop feedback. It collects committed branch changes,
+staged changes, unstaged changes, and untracked files. It runs directly owning Go packages without
+reverse dependants; Vitest tests related through the import graph; conventionally paired shell and Node
+script tests; the small native-app unit suites selected by shared-client impact; and Rust unit tests only
+when Rust inputs changed. It does not run lint, Rust preparation for Go, evaluation contracts, browser
+suites, native builds, image checks, or other publication evidence. Prefer an exact named test when one
+is known.
 
 `make verify` classifies the diff through the same fail-closed impact policy as CI and runs the
 affected local evidence. It reports locally executable gates separately from specialized and
 platform-dependent gates owned by protected CI, and its completion line names only local evidence
 that ran successfully. For Go changes, both golangci-lint and tests consume the affected
 reverse-dependency package closure. Pull-request and merge-queue lanes provide protected remote evidence.
+Run it once after the diff is stable. If it fails, use the named failing command for the repair loop and
+rerun `make verify` once at the end; do not use it after each edit or commit.
 
 `make verify SCOPE=all` is the explicit complete-repository audit. Run it when a maintainer requests a full
 audit, when changing the gate/classifier machinery, or when diagnosing a selection boundary. It is

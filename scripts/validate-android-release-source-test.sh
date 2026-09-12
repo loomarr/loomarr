@@ -88,10 +88,14 @@ run_case shallow-android-ancestor "$ancestor_run" "$qualified_job" \
   $'web/apps/web/src/main.tsx\n' true pass true
 run_case changed-android-ancestor "$ancestor_run" "$qualified_job" \
   $'web/apps/tv/src/app.tsx\n' true fail
-run_case changed-impact-authority "$ancestor_run" "$qualified_job" \
-  $'scripts/ci-impact.sh\n' true fail
+run_case changed-ci-impact-authority "$ancestor_run" "$qualified_job" \
+  $'scripts/ci-impact.sh\n' true pass
 run_case changed-source-validator "$ancestor_run" "$qualified_job" \
-  $'scripts/validate-android-release-source.sh\n' true fail
+  $'scripts/validate-android-release-source.sh\n' true pass
+run_case changed-artifact-downloader "$ancestor_run" "$qualified_job" \
+  $'scripts/download-android-ci-artifact.sh\n' true pass
+run_case changed-artifact-signer "$ancestor_run" "$qualified_job" \
+  $'scripts/sign-android-ci-artifact.sh\n' true fail
 run_case unrelated-history "$ancestor_run" "$qualified_job" '' false fail
 run_case failed-android-job "$current_run" \
   $'Android TV — React Native Play bundle / Android TV — React Native Play bundle\tfailure' '' true fail

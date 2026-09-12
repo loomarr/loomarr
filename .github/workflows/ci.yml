@@ -165,13 +165,12 @@ jobs:
           # The React Native Android TV client (§11, Shield). `api/openapi.yaml` gates it because
           # the client is generated from that spec, and every shared native input can affect the
           # generated Play bundle.
-          # ⚠ `ci\.yml$`, not the whole `.github/workflows/` tree — same reasoning as the web
-          # filter below. The Android job is defined only in ci.yml and consumes no other workflow,
-          # so a release.yml / pages.yml edit cannot change the bundle and must not spend an
-          # Android runner.
-          # The impact classifier and Android source validator are part of the evidence authority:
-          # until produced evidence binds their exact identity, either changing invalidates reuse.
-          if echo "$changed" | grep -qE '^store-listing/android-tv/|^web/(apps/tv/|packages/(api|core|design-system|fixtures|ui|ui-tv|player)/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.gitignore$|biome\.json$|tsconfig\.base\.json$)|^scripts/(android-version-code|build-android-beta|check-android-release-env|generate-android-tv-brand|publish-android-beta|test-android-release|ci-impact|validate-android-release-source)\.sh$|^api/openapi\.yaml$|^Makefile$|^mk/android\.mk$|^\.github/workflows/(android-beta|ci-android|ci)\.yml$'; then
+          # `ci-android.yml` is the product gate implementation. Root admission (`ci.yml`) and
+          # beta publication (`android-beta.yml`) are control-plane policy; neither builds the
+          # bundle, so changing them must not spend an Android runner.
+          # Control-plane classifiers and release admission validators are policy inputs, not
+          # bundle inputs. The always-on policy job validates them independently.
+          if echo "$changed" | grep -qE '^store-listing/android-tv/|^web/(apps/tv/|packages/(api|core|design-system|fixtures|ui|ui-tv|player)/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.gitignore$|biome\.json$|tsconfig\.base\.json$)|^scripts/(android-version-code|build-android-beta|check-android-release-env|generate-android-tv-brand|publish-android-beta|test-android-release)\.sh$|^api/openapi\.yaml$|^Makefile$|^mk/android\.mk$|^\.github/workflows/ci-android\.yml$'; then
             echo "android=true" >> "$GITHUB_OUTPUT"
           else
             echo "android=false" >> "$GITHUB_OUTPUT"
@@ -317,7 +316,9 @@ jobs:
   ci-policy:
     name: CI policy — workflow, harness, and docs contracts
     needs: changes
-    if: needs.changes.outputs.impact_policy == 'true'
+    # This is the independent bootstrap for the classifier itself. A broken classifier must not
+    # be able to skip the job that verifies its routing, workflow, and release-policy contracts.
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

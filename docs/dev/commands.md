@@ -32,6 +32,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make agent-env` |  | show this worktree's isolated ports, database, compose project, and artifact path |
 | `make agent-baseline` |  | share one cached make verify SCOPE=all result per clean commit/toolchain |
 | `make agent-verify` |  | compatibility alias for make verify <br>*runs:* `verify` |
+| `make test-affected` |  | run unit tests related to changed files during editing (not final evidence) |
 | `make agent-worktree` |  | create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks) |
 | `make agent-gc` |  | audit worktrees; APPLY=1 retires only exact clean merged PR heads |
 | `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |

@@ -542,8 +542,7 @@ worktree() {
 
 verify_changed() {
 	base="${BASE:-origin/main}"
-	git -C "$ROOT" rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || { echo "verify: unknown BASE=$base" >&2; exit 2; }
-	changed="$( { git -C "$ROOT" diff --name-only "$base"...HEAD; git -C "$ROOT" diff --name-only; git -C "$ROOT" ls-files --others --exclude-standard; } | sort -u )"
+	changed="$(LOOMARR_REPO_ROOT="$ROOT" "$SCRIPT_DIR/changed-paths.sh" "$base")"
 	[ -n "$changed" ] || { echo 'verify: no changes'; return; }
 	echo 'verify: affected local evidence selected by CI impact'
 	printf '%s\n' "$changed"

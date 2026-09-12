@@ -1,8 +1,8 @@
 # name	paths separated by semicolons	expected true gates in classifier order
 leaf-go	internal/suggest/score.go	contracts,go,postgres,image
-releaseverify-production	internal/releaseverify/ci_container_downloads.go	go,policy
-releaseverify-red-tests	internal/releaseverify/ci_container_downloads_test.go	go,policy
-releaseverify-policy-fixtures	internal/releaseverify/testdata/make_policy_normalization.mk;internal/releaseverify/testdata/make_policy_normalization.golden	go,policy
+releaseverify-production	internal/releaseverify/ci_container_downloads.go	policy
+releaseverify-red-tests	internal/releaseverify/ci_container_downloads_test.go	policy
+releaseverify-policy-fixtures	internal/releaseverify/testdata/make_policy_normalization.mk;internal/releaseverify/testdata/make_policy_normalization.golden	policy
 store-go	internal/store/store.go	contracts,go,postgres,image
 postgres-test-image-authority	internal/testkit/postgresimage/image.txt	contracts,go,go_full,postgres,image,policy
 postgres-test-image-owner	internal/testkit/postgresimage/image.go	contracts,go,go_full,postgres,image,policy
@@ -44,9 +44,9 @@ web-tooling	web/apps/web/package.json	web,visual,e2e,tuner,image
 workspace-tooling	web/package.json	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 openapi	api/openapi.yaml	contracts,go,go_full,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 android-listing	store-listing/android-tv/en-US/short-description.txt	android
-android-impact-authority	scripts/ci-impact.sh	android,policy
-android-source-validator	scripts/validate-android-release-source.sh	android,policy
-android-artifact-downloader	scripts/download-android-ci-artifact.sh	android,policy
+ci-impact-authority	scripts/ci-impact.sh	policy
+android-source-validator	scripts/validate-android-release-source.sh	policy
+android-artifact-downloader	scripts/download-android-ci-artifact.sh	policy
 android-artifact-signer	scripts/sign-android-ci-artifact.sh	android,policy
 android-emulator-acceptance	scripts/test-android-release-emulator.sh	android
 release-image	Dockerfile	contracts,go,go_full,image,policy
@@ -61,6 +61,9 @@ install-contract	docs/install/docker.md	docs,policy
 readme-contract	README.md	docs,policy
 embedded-help	docs/help/quickstart.md	contracts,go,go_full,image,docs
 agent-script	scripts/agent.sh	agent,policy
+agent-make-module	mk/agent.mk	agent,policy
+affected-test-tooling	scripts/changed-paths.sh;scripts/go-direct-impact.sh;scripts/test-affected.sh	agent,policy
+affected-loop-control-plane	AGENTS.md;docs/dev/agents.md;docs/dev/commands.md;docs/dev/testing.md;docs/dev/ci.md;mk/agent.mk;scripts/agent-harness-test.sh;scripts/agent.sh;scripts/changed-paths-test.sh;scripts/changed-paths.sh;scripts/ci-impact.sh;scripts/go-direct-impact-test.sh;scripts/go-direct-impact.sh;scripts/test-affected-test.sh;scripts/test-affected.sh;scripts/testdata/ci-impact.tsv;scripts/validate-android-release-source-test.sh;.github/workflows/ci.yml;internal/releaseverify/ci.go;internal/releaseverify/ci_container_bootstrap.go;internal/releaseverify/ci_container_bootstrap_test.go;internal/releaseverify/ci_container_workflow_authority.go;internal/releaseverify/ci_test.go	docs,agent,policy
 release-workflow	.github/workflows/release.yml	policy
 ci-workflow	.github/workflows/ci.yml	policy
 ci-agent-workflow	.github/workflows/ci-agent.yml	agent,policy
@@ -90,7 +93,7 @@ container-image-acquisition	scripts/ensure-container-image.sh	contracts,postgres
 playwright-container-runner	scripts/run-playwright-container.sh	contracts,visual,e2e,tuner,policy
 merge-queue-policy	scripts/ci-merge-queue-policy.sh;scripts/ci-merge-queue-policy-test.sh	policy
 ci-policy-bootstrap	.github/workflows/ci.yml	policy
-ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/dev/ci.md	go,docs,agent,policy
+ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/dev/ci.md	docs,agent,policy
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/suggest/score.go;docs/dev/testing.md	contracts,go,postgres,image,docs
