@@ -240,6 +240,9 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
 - Pull requests own fast affected feedback; the merge queue owns complete affected integration
   evidence. Normal queue-produced pushes to `main` publish only and must not restore a third product
   validation run. Keep `CI` required and strict for both PR and `merge_group` commits.
+- CodeQL uses checked-in advanced setup. Trusted PR/main diffs select only changed languages;
+  scheduled/manual runs, unknown paths, and unusable bases scan all six. Keep GitHub default setup
+  disabled because it overrides advanced workflows and restores all-language scans on every change.
 - Frontend work uses the Vite server, not the stale SPA embedded on the backend port.
 
 ## Stop points

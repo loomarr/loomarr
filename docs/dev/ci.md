@@ -21,6 +21,14 @@ manual runs retain release-candidate and full recovery scopes plus an isolated A
 cache portability scope. A normal queue-produced push to
 `main` runs publication workflows only rather than validating the admitted commit again.
 
+CodeQL is a separate security workflow because its unit of selection is a language database, not a
+product gate. Pull requests and pushes to `main` diff from a trustworthy base and scan only changed
+CodeQL languages. A workflow/classifier edit, an unknown path, or an unusable base fails closed to all
+six repository languages. The Wednesday schedule and every manual dispatch always scan all six, so
+selective change feedback cannot erode periodic repository coverage. The repository uses CodeQL
+advanced setup for this path-aware policy; enabling GitHub's default setup would disable the checked-in
+workflow and restore an all-language scan on every change.
+
 The root workflow owns triggering, classification, admission, manual scopes, and the required
 aggregate. The lightweight **CI policy** job always runs independently of classifier output, so a
 broken classifier cannot skip its own verification. Product job implementations live in

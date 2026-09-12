@@ -67,6 +67,19 @@ const cacheCleanupWorkflowCommand = "set -uo pipefail\n" +
 
 const appleCacheFingerprintCommand = `echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"`
 
+const codeQLImpactCommand = `set -uo pipefail
+if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
+  ./scripts/codeql-impact.sh --all >> "$GITHUB_OUTPUT"
+elif [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+  || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+  echo "no usable CodeQL diff base ($BASE) — selecting every language"
+  ./scripts/codeql-impact.sh --all >> "$GITHUB_OUTPUT"
+elif ! git diff --name-only "$BASE" HEAD | ./scripts/codeql-impact.sh >> "$GITHUB_OUTPUT"; then
+  echo "CodeQL impact classification failed — selecting every language"
+  ./scripts/codeql-impact.sh --all >> "$GITHUB_OUTPUT"
+fi
+`
+
 const appleCachePublisherPreflightCommand = `set -euo pipefail
 gh api "repos/$REPO/actions/cache/usage" > "$RUNNER_TEMP/apple-cache-usage.json"
 ./scripts/apple-compilation-cache.sh admit-capacity "$RUNNER_TEMP/apple-cache-usage.json"
@@ -289,6 +302,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-install":     exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
 			"make tuner-e2e-host": exactWorkflowStep(5, "100-Channel controller matrix", workflowStepAuthority{targets: []string{"tuner-e2e-host"}}),
 		}),
+		"codeql.yml": codeQLWorkflowAuthority(),
 		"ci.yml": {
 			environment: standardWorkflowEnvironment(),
 			permissions: standardWorkflowPermissions(),
@@ -374,6 +388,27 @@ func exactWorkflowStep(index int, name string, authority workflowStepAuthority) 
 	authority.exactStepIndex = true
 	authority.stepIndex = index
 	return authority
+}
+
+func codeQLWorkflowAuthority() workflowAuthority {
+	analysisPermissions := map[string]string{"actions": "read", "contents": "read", "security-events": "write"}
+	return workflowAuthority{
+		permissions: standardWorkflowPermissions(),
+		jobs: map[string]workflowJobAuthority{
+			"changes": {steps: map[string]workflowStepAuthority{
+				codeQLImpactCommand: exactWorkflowStep(1, "Select CodeQL languages", workflowStepAuthority{environment: map[string]string{
+					"EVENT_NAME": "${{ github.event_name }}",
+					"BASE":       "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}",
+				}}),
+			}},
+			"analyze-actions":               {condition: "needs.changes.outputs.actions == 'true'", permissions: analysisPermissions},
+			"analyze-go":                    {condition: "needs.changes.outputs.go == 'true'", permissions: analysisPermissions},
+			"analyze-javascript-typescript": {condition: "needs.changes.outputs.javascript-typescript == 'true'", permissions: analysisPermissions},
+			"analyze-python":                {condition: "needs.changes.outputs.python == 'true'", permissions: analysisPermissions},
+			"analyze-ruby":                  {condition: "needs.changes.outputs.ruby == 'true'", permissions: analysisPermissions},
+			"analyze-rust":                  {condition: "needs.changes.outputs.rust == 'true'", permissions: analysisPermissions},
+		},
+	}
 }
 
 func standardRunWorkflow(steps map[string]workflowStepAuthority) workflowAuthority {

@@ -104,6 +104,9 @@ func VerifyCIContainerDownloads(root string) error {
 	if err := VerifyCIFamilyWorkflows(filepath.Join(root, ".github", "workflows", "ci.yml")); err != nil {
 		return fmt.Errorf("CI reusable workflow acquisition closure: %w", err)
 	}
+	if err := VerifyCodeQLWorkflow(filepath.Join(root, ".github", "workflows", "codeql.yml")); err != nil {
+		return fmt.Errorf("CodeQL workflow: %w", err)
+	}
 	if err := verifyRepositoryWorkflowContainerAcquisition(filepath.Join(root, ".github", "workflows"), protectedContainerMakeTargets(repositoryMake, repositoryScripts), repositoryScripts); err != nil {
 		return err
 	}

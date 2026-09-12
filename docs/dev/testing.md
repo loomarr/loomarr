@@ -19,6 +19,11 @@ when Rust inputs changed. It does not run lint, Rust preparation for Go, evaluat
 suites, native builds, image checks, or other publication evidence. Prefer an exact named test when one
 is known.
 
+The runner reports wall time for each selected owner and the whole run. Go's own package durations
+are also reported without splitting the existing batched test command. Owners over 30 seconds are
+flagged as advisory slow owners; tune that feedback with `AFFECTED_TEST_WARN_SECONDS=<seconds>`.
+The threshold never changes the command's exit status—test failures remain the only failures.
+
 `make verify` classifies the diff through the same fail-closed impact policy as CI and runs the
 affected local evidence. It reports locally executable gates separately from specialized and
 platform-dependent gates owned by protected CI, and its completion line names only local evidence

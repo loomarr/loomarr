@@ -38,6 +38,11 @@ cat >"$TEST_BIN/go" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == test ]]; then
 	printf 'go %s\n' "$*" >>"$RUN_LOG"
+	for arg in "$@"; do
+		if [[ "$arg" == example.test/affected/* ]]; then
+			printf 'ok  %s  35.125s\n' "$arg"
+		fi
+	done
 	exit 0
 fi
 exec "$REAL_GO" "$@"
@@ -58,9 +63,13 @@ printf 'export const shared = 2;\n' >"$TEST_REPO/web/packages/core/src/shared.ts
 printf 'pub const VALUE: u8 = 2;\n' >"$TEST_REPO/rust/fixture/src/lib.rs"
 printf '#!/usr/bin/env bash\n# changed\n' >"$TEST_REPO/scripts/tool.sh"
 output="$(PATH="$TEST_BIN:$PATH" REAL_GO="$REAL_GO" RUN_LOG="$RUN_LOG" \
-	LOOMARR_REPO_ROOT="$TEST_REPO" "$RUNNER" HEAD)"
+	LOOMARR_REPO_ROOT="$TEST_REPO" "$RUNNER" HEAD 2>&1)"
 grep -q 'development feedback only' <<<"$output"
 grep -q 'make verify BASE=HEAD before handoff' <<<"$output"
+grep -q 'timing go:example.test/affected/internal/leaf 35.125s' <<<"$output"
+grep -q 'slow owner go:example.test/affected/internal/leaf 35.125s (advisory threshold 30s)' <<<"$output"
+grep -q 'advisory slow owners: go:example.test/affected/internal/leaf' <<<"$output"
+grep -q 'timing total ' <<<"$output"
 grep -q 'go test -race .*example.test/affected/internal/leaf' "$RUN_LOG"
 if grep -q 'internal/consumer' "$RUN_LOG"; then
 	echo 'test-affected-test: direct edit loop selected a reverse dependant' >&2
@@ -90,8 +99,14 @@ printf 'package leaf\n\nconst Staged = true\n' >"$TEST_REPO/internal/leaf/leaf.g
 git -C "$TEST_REPO" add internal/leaf/leaf.go
 : >"$RUN_LOG"
 staged_output="$(PATH="$TEST_BIN:$PATH" REAL_GO="$REAL_GO" RUN_LOG="$RUN_LOG" \
-	LOOMARR_REPO_ROOT="$TEST_REPO" "$RUNNER" HEAD)"
+	LOOMARR_REPO_ROOT="$TEST_REPO" "$RUNNER" HEAD 2>&1)"
 grep -q 'internal/leaf/leaf.go' <<<"$staged_output"
 grep -q 'go test -race .*example.test/affected/internal/leaf' "$RUN_LOG"
+
+if PATH="$TEST_BIN:$PATH" REAL_GO="$REAL_GO" RUN_LOG="$RUN_LOG" \
+	LOOMARR_REPO_ROOT="$TEST_REPO" AFFECTED_TEST_WARN_SECONDS=fast "$RUNNER" HEAD >/dev/null 2>&1; then
+	echo 'test-affected-test: invalid advisory threshold was accepted' >&2
+	exit 1
+fi
 
 echo 'test-affected-test: ok'
