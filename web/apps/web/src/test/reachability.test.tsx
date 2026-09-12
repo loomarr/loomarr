@@ -552,6 +552,9 @@ describe("feature-gated panels mount when their flag is on", () => {
     renderAt("/channels/ch-1/filler");
     const found = await screen.findAllByText(/preview break/i, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
+    const sectionBar = screen.getByRole("navigation", { name: /channel sections/i });
+    expect(within(sectionBar).getAllByRole("link", { current: "page" })).toHaveLength(1);
+    expect(within(sectionBar).getByRole("link", { name: "Filler" })).toHaveAttribute("aria-current", "page");
   });
 
   // ⚠ And the section must be reachable FROM the channel page, or the deep-link test above only

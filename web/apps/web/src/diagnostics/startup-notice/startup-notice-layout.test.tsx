@@ -22,7 +22,11 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("react-dom/client", () => ({ createRoot: () => ({ render: mocks.render }) }));
 vi.mock("sonner", () => ({ Toaster: mocks.toaster }));
 
-const findToaster = (node: ReactNode): ReactElement<{ position?: string }> | undefined => {
+const findToaster = (
+  node: ReactNode,
+):
+  | ReactElement<{ position?: string; offset?: { bottom?: number }; mobileOffset?: { bottom?: number } }>
+  | undefined => {
   if (!node || typeof node !== "object") return undefined;
   const element = node as ReactElement<{ children?: ReactNode; position?: string }>;
   if (element.type === mocks.toaster) return element;
@@ -38,10 +42,13 @@ describe("startup notice layout", () => {
     mocks.render.mockReset();
   });
 
-  it("places notices away from Guide controls and the bottom Settings commit bar", async () => {
+  it("places notices below page headings and above persistent bottom actions", async () => {
     await import("@/main");
 
     const app = mocks.render.mock.calls[0]?.[0] as ReactNode;
-    expect(findToaster(app)?.props.position).toBe("top-center");
+    const toaster = findToaster(app);
+    expect(toaster?.props.position).toBe("bottom-center");
+    expect(toaster?.props.offset?.bottom).toBe(84);
+    expect(toaster?.props.mobileOffset?.bottom).toBe(84);
   });
 });

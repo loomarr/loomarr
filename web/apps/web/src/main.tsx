@@ -57,7 +57,13 @@ createRoot(document.getElementById("root")!, {
     <LoomarrProvider theme="dark">
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
-        <Toaster theme="dark" position="top-center" richColors />
+        <Toaster
+          theme="dark"
+          position="bottom-center"
+          offset={{ bottom: 84 }}
+          mobileOffset={{ bottom: 84 }}
+          richColors
+        />
       </QueryClientProvider>
     </LoomarrProvider>
   </StrictMode>,

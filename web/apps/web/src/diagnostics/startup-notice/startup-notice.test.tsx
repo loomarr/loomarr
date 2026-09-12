@@ -66,14 +66,11 @@ describe("HealthNotice", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => vi.clearAllMocks());
 
-  it("shows a calm healthy notice once and records automatic acknowledgement", async () => {
+  it("keeps an initially healthy shell silent", async () => {
     server.use(getGetCurrentHealthMockHandler(report("healthy")));
     renderNotice();
-    await waitFor(() => expect(mocks.success).toHaveBeenCalledOnce());
-    const options = mocks.success.mock.calls[0]?.[1];
-    expect(options?.duration).toBe(6_000);
-    act(() => options?.onAutoClose?.());
-    expect(localStorage.getItem("loomarr.health.ack.startup-1:1:healthy:")).toBe("1");
+    await waitFor(() => expect(localStorage.getItem("loomarr.health.ack.startup-1:1:healthy:")).toBe("1"));
+    expect(mocks.success).not.toHaveBeenCalled();
   });
 
   it("keeps a degraded incident visible until the operator acknowledges it", async () => {

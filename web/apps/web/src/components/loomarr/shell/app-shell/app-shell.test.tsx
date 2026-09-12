@@ -18,10 +18,10 @@ describe("AppShell", () => {
       />,
     );
 
-    expect(await screen.findByRole("link", { name: "Loomarr v0.9.3 (modified) — About" })).toHaveAttribute(
-      "href",
-      "/settings/system/about",
-    );
+    const version = await screen.findByRole("link", { name: "Loomarr v0.9.3 (modified) — About" });
+    expect(version).toHaveAttribute("href", "/settings/system/about");
+    expect(version).toHaveClass("text-static-400");
+    expect(version).not.toHaveClass("text-static-500");
     expect(
       within(screen.getByRole("navigation", { name: "Primary" })).queryByRole("link", {
         name: /loomarr v0\.9\.3/i,

@@ -285,6 +285,18 @@ const renderAt = (path: string) => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Filler page", () => {
+  it("exposes one current Filler destination and one document heading on Incoming", async () => {
+    stubFiller();
+    renderAt("/filler/incoming");
+
+    const sectionNavigation = await screen.findByRole("navigation", { name: "Filler sections" });
+    const incoming = within(sectionNavigation).getByRole("link", { name: /^incoming/i });
+
+    expect(screen.getByRole("heading", { level: 1, name: "Filler" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(within(sectionNavigation).getAllByRole("link", { current: "page" })).toHaveLength(1);
+    expect(incoming).toHaveAttribute("aria-current", "page");
+  });
   it("lists the catalog with each clip's match tags", async () => {
     stubFiller();
     renderAt("/filler/library");

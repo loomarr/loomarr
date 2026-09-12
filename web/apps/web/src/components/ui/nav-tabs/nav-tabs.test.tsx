@@ -8,11 +8,13 @@ const anchorLink = ({
   to,
   className,
   children,
+  activeOptions: _activeOptions,
   ...rest
 }: {
   to: string;
   className?: string;
   children?: React.ReactNode;
+  activeOptions?: { exact: boolean; includeSearch?: boolean };
   [key: string]: unknown;
 }) => (
   <a href={to} className={className} {...rest}>
@@ -27,6 +29,16 @@ const tabs = [
 ];
 
 describe("NavTabs", () => {
+  it("wraps destinations into a discoverable mobile navigation", () => {
+    render(<NavTabs tabs={tabs} activeId="flight" linkComponent={anchorLink} label="Queue sections" />);
+
+    expect(screen.getByRole("navigation", { name: "Queue sections" })).toHaveClass(
+      "flex-wrap",
+      "sm:flex-nowrap",
+      "sm:overflow-x-auto",
+    );
+  });
+
   it("renders a real link per tab with its count", () => {
     render(<NavTabs tabs={tabs} activeId="flight" linkComponent={anchorLink} label="Queue sections" />);
 

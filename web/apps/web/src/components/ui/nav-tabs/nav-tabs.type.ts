@@ -32,6 +32,7 @@ interface NavTab {
 type LinkLike = (props: {
   to: string;
   search?: Record<string, unknown>;
+  activeOptions?: { exact: boolean; includeSearch?: boolean };
   className?: string;
   children?: ReactNode;
   "aria-current"?: "page";

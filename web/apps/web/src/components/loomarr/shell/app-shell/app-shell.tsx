@@ -121,10 +121,10 @@ const AppShell = ({
                 <Link
                   to="/settings/system/about"
                   aria-label={`Loomarr ${serverVersion} — About`}
-                  className="mt-auto flex min-w-0 items-center justify-center gap-2 rounded-md px-2 py-1.5 font-mono text-static-500 text-xs transition-colors hover:bg-accent hover:text-foreground md:justify-start md:px-3"
+                  className="mt-auto flex min-w-0 items-center justify-center gap-2 rounded-md px-2 py-1.5 font-mono text-static-400 text-xs transition-colors hover:bg-accent hover:text-foreground md:justify-start md:px-3"
                 />
               ) : (
-                <span className="mt-auto flex min-w-0 items-center justify-center gap-2 px-2 py-1.5 font-mono text-static-500 text-xs md:justify-start md:px-3" />
+                <span className="mt-auto flex min-w-0 items-center justify-center gap-2 px-2 py-1.5 font-mono text-static-400 text-xs md:justify-start md:px-3" />
               )
             }
           >

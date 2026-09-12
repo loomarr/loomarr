@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { installMockBackend } from "./mock-backend";
 
@@ -36,6 +37,45 @@ const viewports = [
   { name: "mobile", width: 390, height: 844, navWidth: 56 },
 ] as const;
 
+const sectionDestinations: Record<string, Array<{ navigation: string; current: string }>> = {
+  "/queue/approval": [{ navigation: "Queue sections", current: "Needs approval" }],
+  "/queue/flight": [{ navigation: "Queue sections", current: "In flight" }],
+  "/queue/history": [{ navigation: "Queue sections", current: "History" }],
+  "/settings/connections": [{ navigation: "Settings", current: "Connections" }],
+  "/settings/ai": [{ navigation: "Settings", current: "AI" }],
+  "/settings/defaults": [{ navigation: "Settings", current: "Defaults" }],
+  "/settings/security": [{ navigation: "Settings", current: "Security" }],
+  "/settings/all": [{ navigation: "Settings", current: "All settings" }],
+  "/settings/system/tasks": [
+    { navigation: "Settings", current: "System" },
+    { navigation: "System settings", current: "Tasks" },
+  ],
+  "/settings/system/playback": [
+    { navigation: "Settings", current: "System" },
+    { navigation: "System settings", current: "Playback" },
+  ],
+  "/settings/system/database": [
+    { navigation: "Settings", current: "System" },
+    { navigation: "System settings", current: "Database" },
+  ],
+  "/settings/system/backup": [
+    { navigation: "Settings", current: "System" },
+    { navigation: "System settings", current: "Backup" },
+  ],
+  "/settings/system/storage": [
+    { navigation: "Settings", current: "System" },
+    { navigation: "System settings", current: "Storage" },
+  ],
+  "/settings/system/diagnostics": [
+    { navigation: "Settings", current: "System" },
+    { navigation: "System settings", current: "Diagnostics" },
+  ],
+  "/settings/system/about": [
+    { navigation: "Settings", current: "System" },
+    { navigation: "System settings", current: "About" },
+  ],
+};
+
 test("pages share one navigation and header geometry at desktop and mobile widths", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
 
@@ -64,6 +104,13 @@ test("pages share one navigation and header geometry at desktop and mobile width
         );
       } else {
         await expect(primary.locator('a[data-status="active"]')).toHaveCount(1);
+      }
+
+      for (const expected of sectionDestinations[entry.path] ?? []) {
+        const navigation = page.getByRole("navigation", { name: expected.navigation, exact: true });
+        const current = navigation.locator('a[aria-current="page"]');
+        await expect(current).toHaveCount(1);
+        await expect(current).toHaveAccessibleName(new RegExp(`^${expected.current}`));
       }
 
       const [mainBox, navBox, headerBox, titleBox] = await Promise.all([
@@ -95,5 +142,62 @@ test("pages share one navigation and header geometry at desktop and mobile width
       );
       expect(overflowsHorizontally, `${entry.path} should fit the ${viewport.name} viewport`).toBe(false);
     }
+  }
+});
+
+test("Filler stays simple, discoverable, and accessible at desktop and mobile widths", async ({ page }) => {
+  await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
+  const destinations = [
+    { path: "/filler", current: "Overview", title: "Filler" },
+    { path: "/filler/sources", current: "Sources", title: "Filler" },
+    { path: "/filler/incoming", current: "Incoming", title: "Filler" },
+    { path: "/filler/library", current: "Library", title: "Filler" },
+    { path: "/filler/manage", current: "Manage", title: "Filler" },
+    // Compatibility deep link: settings is part of the canonical Manage destination.
+    { path: "/filler/settings", current: "Manage", title: "Filler settings" },
+  ] as const;
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    if (page.url() !== "about:blank") await page.evaluate(() => localStorage.clear());
+
+    for (const destination of destinations) {
+      await page.goto(destination.path);
+
+      const sections = page.getByRole("navigation", { name: "Filler sections" });
+      await expect(
+        page.getByRole("heading", { level: 1, name: destination.title, exact: true }),
+      ).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+      await expect(sections.locator('a[aria-current="page"]')).toHaveCount(1);
+      await expect(
+        sections.getByRole("link", { name: new RegExp(`^${destination.current}`) }),
+      ).toHaveAttribute("aria-current", "page");
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+
+      const navigationFits = await sections.evaluate((navigation) => {
+        const bounds = navigation.getBoundingClientRect();
+        return [...navigation.querySelectorAll("a")].every((link) => {
+          const linkBounds = link.getBoundingClientRect();
+          return linkBounds.left >= bounds.left - 1 && linkBounds.right <= bounds.right + 1;
+        });
+      });
+      expect(navigationFits, `${destination.path} destinations fit at ${viewport.name} width`).toBe(true);
+    }
+
+    await page.goto("/filler");
+    const contextualLink = page.getByRole("link", { name: "uses its own grounded selection" });
+    await expect(contextualLink).toBeVisible();
+    expect(await contextualLink.evaluate((link) => getComputedStyle(link).textDecorationLine)).toContain(
+      "underline",
+    );
+
+    const results = await new AxeBuilder({ page }).analyze();
+    const blocking = results.violations.filter(
+      (violation) => violation.impact === "serious" || violation.impact === "critical",
+    );
+    expect(blocking, `${viewport.name} axe: ${blocking.map((violation) => violation.id).join(", ")}`).toEqual(
+      [],
+    );
   }
 });
