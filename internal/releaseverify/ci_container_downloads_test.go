@@ -11,6 +11,7 @@ import (
 )
 
 func TestRepositoryCIContainerDownloadsAreBounded(t *testing.T) {
+	t.Parallel()
 	_, source, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(source), "..", "..")
 	if err := VerifyCIContainerDownloads(root); err != nil {
@@ -19,6 +20,7 @@ func TestRepositoryCIContainerDownloadsAreBounded(t *testing.T) {
 }
 
 func TestTestcontainersRyukImageMatchesBoundedMakeAuthority(t *testing.T) {
+	t.Parallel()
 	//nolint:staticcheck // The deprecated symbol is the only public accessor for the pinned dependency's Ryuk default.
 	if "docker.io/"+testcontainers.ReaperDefaultImage != testcontainersRyukImage {
 		t.Fatalf("qualified testcontainers Ryuk default = %q, bounded Make authority = %q",
@@ -32,6 +34,7 @@ func TestTestcontainersRyukImageMatchesBoundedMakeAuthority(t *testing.T) {
 }
 
 func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	if err := VerifyCIContainerDownloads(root); err != nil {
 		t.Fatalf("complete CI container download policy: %v", err)
@@ -352,6 +355,7 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 }
 
 func TestVerifyCIContainerDownloadsRequiresBoundedRyukAcquisition(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	storePath := filepath.Join(root, "mk", "store.mk")
 	store := readFixtureFile(t, storePath)
@@ -363,6 +367,7 @@ func TestVerifyCIContainerDownloadsRequiresBoundedRyukAcquisition(t *testing.T) 
 }
 
 func TestVerifyCIContainerDownloadsRejectsHelperSemanticDrift(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	helperPath := filepath.Join(root, "scripts", "ensure-container-image.sh")
 	tests := map[string]string{
@@ -394,6 +399,7 @@ exit "$status"
 }
 
 func TestVerifyCIContainerDownloadsRejectsTransitiveMakeAcquisitionSurfaces(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"container runtime":   "docker run --rm busybox:stable true",
 		"acquisition helper":  "./scripts/ensure-container-image.sh busybox:stable",

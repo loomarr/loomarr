@@ -8,6 +8,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsContainerEngineGrammar(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"Docker image pull":         "docker image pull attacker.invalid/image:pinned",
 		"Podman image pull":         "podman image pull attacker.invalid/image:pinned",
@@ -62,6 +63,7 @@ func TestVerifyCIContainerDownloadsRejectsContainerEngineGrammar(t *testing.T) {
 }
 
 func TestVerifyCIContainerDownloadsRejectsExistingComposeMakeRoutes(t *testing.T) {
+	t.Parallel()
 	for _, target := range []string{"dev", "dev-gpu"} {
 		t.Run(target, func(t *testing.T) {
 			root := writeCIContainerDownloadsFixture(t)

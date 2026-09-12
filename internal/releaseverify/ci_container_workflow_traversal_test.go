@@ -7,6 +7,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsTraversesDynamicAndEngineShellRoutesWithParity(t *testing.T) {
+	t.Parallel()
 	tests := map[string][2]string{
 		"interpreter": {
 			`bash -c 'docker image pull attacker.invalid/image:pinned'`,

@@ -12,6 +12,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsBindsEveryPinnedActionAtItsExactStep(t *testing.T) {
+	t.Parallel()
 	workflowJobs := map[string]string{
 		"ci-agent.yml":               "run",
 		"ci-android.yml":             "run",
@@ -66,6 +67,7 @@ func TestVerifyCIContainerDownloadsBindsEveryPinnedActionAtItsExactStep(t *testi
 }
 
 func TestVerifyCIContainerDownloadsRegistersEveryPinnedRepositoryAction(t *testing.T) {
+	t.Parallel()
 	_, source, _, _ := runtime.Caller(0)
 	workflowsDir := filepath.Join(filepath.Dir(source), "..", "..", ".github", "workflows")
 	entries, err := os.ReadDir(workflowsDir)
@@ -116,6 +118,7 @@ func TestVerifyCIContainerDownloadsRegistersEveryPinnedRepositoryAction(t *testi
 }
 
 func TestVerifyCIContainerDownloadsBindsPinnedActionShapeAndContext(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, *yaml.Node, []*yaml.Node) []*yaml.Node{
 		"checkout replaced by safe run": func(t *testing.T, _ *yaml.Node, steps []*yaml.Node) []*yaml.Node {
 			steps[0] = workflowRunStep(t, "echo safe")

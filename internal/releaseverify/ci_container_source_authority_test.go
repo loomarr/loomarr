@@ -9,6 +9,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsClosesRecursiveMakeGraphOptionsAndSubstitutions(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"shell command substitution":         `echo "$$(make test-pg)"`,
 		"short makefile option":              `$(MAKE) -f attacker.mk safe`,
@@ -36,6 +37,7 @@ func TestVerifyCIContainerDownloadsClosesRecursiveMakeGraphOptionsAndSubstitutio
 }
 
 func TestVerifyCIContainerDownloadsRequiresBenignRunAuthorities(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		workflow string
 		command  string
@@ -57,6 +59,7 @@ func TestVerifyCIContainerDownloadsRequiresBenignRunAuthorities(t *testing.T) {
 }
 
 func TestVerifyCIContainerDownloadsBindsSourceJobsToExactExecutionContext(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		workflow string
 		mutate   func(string) string

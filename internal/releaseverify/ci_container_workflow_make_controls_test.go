@@ -7,6 +7,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsProtectedWorkflowMakeControls(t *testing.T) {
+	t.Parallel()
 	type workflowMutation struct {
 		workflow string
 		command  string

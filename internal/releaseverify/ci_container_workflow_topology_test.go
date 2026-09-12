@@ -9,6 +9,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRequiresExactWorkflowTopology(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, string){
 		"extra workflow": func(t *testing.T, root string) {
 			writeFixtureFile(t, filepath.Join(root, ".github", "workflows", "ci-extra.yml"), `name: unregistered
@@ -49,6 +50,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRequiresExactReusableWorkflowCallerShape(t *testing.T) {
+	t.Parallel()
 	fields := map[string]string{
 		"inherited secrets":  "    secrets: inherit\n",
 		"caller inputs":      "    with:\n      attacker: value\n",
@@ -72,6 +74,7 @@ func TestVerifyCIContainerDownloadsRequiresExactReusableWorkflowCallerShape(t *t
 }
 
 func TestVerifyCIContainerDownloadsBindsCacheCleanupCommandAndContext(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*yaml.Node){
 		"changed run command": func(workflow *yaml.Node) {
 			job := workflowJobNode(t, workflow, "cleanup")

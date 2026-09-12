@@ -7,6 +7,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsRequestPointerAggregateEscapes(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"slice aggregate": `package store
 
@@ -172,6 +173,7 @@ func escaped() *testcontainers.ContainerRequest {
 }
 
 func TestVerifyCIContainerDownloadsRejectsUnrelatedLiteralInAllowedFile(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureFile(t, filepath.Join(root, "internal", "auth", "sso_authentik_test.go"), `package auth
 
@@ -184,6 +186,7 @@ const unrelatedDuplicate = "postgres:17-alpine"
 }
 
 func TestVerifyCIContainerDownloadsAllowsExplicitUnrelatedGenericImage(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureFile(t, filepath.Join(root, "internal", "cache", "container_test.go"), `package cache
 
@@ -203,6 +206,7 @@ func startRedis() {
 }
 
 func TestVerifyCIContainerDownloadsAllowsMatchedTrackedRequestAssignment(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureFile(t, filepath.Join(root, "internal", "cache", "container_assignment_test.go"), `package cache
 
@@ -223,6 +227,7 @@ func startRedis() {
 }
 
 func TestVerifyCIContainerDownloadsAllowsExactPostgresImageAuthority(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureFile(t, filepath.Join(root, "internal", "store", "generic_postgres_test.go"), `package store
 
@@ -244,6 +249,7 @@ func startPostgresGeneric() {
 }
 
 func TestVerifyCIContainerDownloadsAllowsPointerMutationAuthorities(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureFile(t, filepath.Join(root, "internal", "store", "pointer_authority_test.go"), `package store
 
@@ -279,6 +285,7 @@ func startTrackedWholeRequest() {
 }
 
 func TestVerifyCIContainerDownloadsSkipsOnlyRepositoryCachesAndGeneratedGo(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	badSource := `package ignored
 
@@ -301,6 +308,7 @@ var unchecked = postgres.Run
 }
 
 func TestVerifyCIContainerDownloadsIgnoresCommentedWorkflowAcquisition(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	workflowPath := filepath.Join(root, ".github", "workflows", "ci-postgres.yml")
 	workflow := readFixtureFile(t, workflowPath)

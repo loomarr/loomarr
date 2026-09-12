@@ -9,18 +9,21 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 const (
-	postgresImageAuthorityPath = "internal/testkit/postgresimage/image.txt"
-	postgresImageOwnerPath     = "internal/testkit/postgresimage/image.go"
-	ryukImageAuthorityPath     = "internal/testkit/ryukimage/image.txt"
-	postgresImagePackagePath   = "github.com/loomarr/loomarr/internal/testkit/postgresimage"
-	testcontainersPackagePath  = "github.com/testcontainers/testcontainers-go"
-	testcontainersPostgresPath = "github.com/testcontainers/testcontainers-go/modules/postgres"
-	postgresTestImage          = "library/postgres:16-alpine"
-	testcontainersRyukImage    = "docker.io/testcontainers/ryuk:0.14.0"
+	repositoryGoAuditWorkerLimit = 8
+	postgresImageAuthorityPath   = "internal/testkit/postgresimage/image.txt"
+	postgresImageOwnerPath       = "internal/testkit/postgresimage/image.go"
+	ryukImageAuthorityPath       = "internal/testkit/ryukimage/image.txt"
+	postgresImagePackagePath     = "github.com/loomarr/loomarr/internal/testkit/postgresimage"
+	testcontainersPackagePath    = "github.com/testcontainers/testcontainers-go"
+	testcontainersPostgresPath   = "github.com/testcontainers/testcontainers-go/modules/postgres"
+	postgresTestImage            = "library/postgres:16-alpine"
+	testcontainersRyukImage      = "docker.io/testcontainers/ryuk:0.14.0"
 )
 
 type containerRequestKind uint8
@@ -67,7 +70,11 @@ func verifyPostgresImageAuthority(root string, makefile *activeMakefile) error {
 }
 
 func verifyPostgresContainerSeams(root string) error {
-	seams := 0
+	type candidate struct {
+		path     string
+		relative string
+	}
+	var candidates []candidate
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -86,26 +93,58 @@ func verifyPostgresContainerSeams(root string) error {
 		if entry.Type()&os.ModeSymlink != 0 || filepath.Ext(path) != ".go" {
 			return nil
 		}
-		source, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if generatedGoSource(path, source) {
-			return nil
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
-		if err != nil {
-			return fmt.Errorf("parse %s: %w", relative, err)
-		}
-		fileSeams, err := auditGoContainerFile(file, relative)
-		if err != nil {
-			return err
-		}
-		seams += fileSeams
+		candidates = append(candidates, candidate{path: path, relative: relative})
 		return nil
 	})
 	if err != nil {
 		return err
+	}
+
+	type result struct {
+		seams int
+		err   error
+	}
+	results := make([]result, len(candidates))
+	workers := min(runtime.GOMAXPROCS(0), repositoryGoAuditWorkerLimit, len(candidates))
+	work := make(chan int)
+	var group sync.WaitGroup
+	group.Add(workers)
+	for range workers {
+		go func() {
+			defer group.Done()
+			for index := range work {
+				candidate := candidates[index]
+				source, readErr := os.ReadFile(candidate.path)
+				if readErr != nil {
+					results[index].err = readErr
+					continue
+				}
+				if generatedGoSource(candidate.path, source) {
+					continue
+				}
+				file, parseErr := parser.ParseFile(token.NewFileSet(), candidate.path, source, 0)
+				if parseErr != nil {
+					results[index].err = fmt.Errorf("parse %s: %w", candidate.relative, parseErr)
+					continue
+				}
+				results[index].seams, results[index].err = auditGoContainerFile(file, candidate.relative)
+			}
+		}()
+	}
+	for index := range candidates {
+		work <- index
+	}
+	close(work)
+	group.Wait()
+
+	// WalkDir supplies lexical path order. Fold in that order after workers
+	// finish so concurrency cannot change which policy error is reported first.
+	seams := 0
+	for _, result := range results {
+		if result.err != nil {
+			return result.err
+		}
+		seams += result.seams
 	}
 	if seams == 0 {
 		return fmt.Errorf("no postgres testcontainers callsites found")

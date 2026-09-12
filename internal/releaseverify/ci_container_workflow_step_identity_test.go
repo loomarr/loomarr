@@ -10,6 +10,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRequiresEachContainerAuthorityExactlyOnce(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(string) string{
 		"removed Postgres route": func(workflow string) string {
 			return strings.Replace(workflow, "      - run: make test-pg\n", "      - run: echo safe\n", 1)
@@ -60,6 +61,7 @@ func TestVerifyCIContainerDownloadsRequiresEachContainerAuthorityExactlyOnce(t *
 }
 
 func TestVerifyCIContainerDownloadsBindsRequiredAuthoritiesToAbsoluteWorkflowSteps(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		workflow string
 		mutate   func(*testing.T, []*yaml.Node) []*yaml.Node
@@ -159,6 +161,7 @@ func TestVerifyCIContainerDownloadsBindsRequiredAuthoritiesToAbsoluteWorkflowSte
 }
 
 func TestVerifyCIContainerDownloadsBindsEverySourceBoundAuthorityToItsStep(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, []*yaml.Node) []*yaml.Node{
 		"insert action before benign authority": func(t *testing.T, steps []*yaml.Node) []*yaml.Node {
 			checkout := steps[workflowUsesStepIndex(t, steps, "actions/checkout")]
@@ -184,6 +187,7 @@ func TestVerifyCIContainerDownloadsBindsEverySourceBoundAuthorityToItsStep(t *te
 }
 
 func TestVerifyCIContainerDownloadsRejectsLegacyBacktickAmbiguity(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"variable executable":             "echo `$HELPER attacker.invalid/image:pinned`",
 		"braced variable executable":      "echo `${HELPER} attacker.invalid/image:pinned`",

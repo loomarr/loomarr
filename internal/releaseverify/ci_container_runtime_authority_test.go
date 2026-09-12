@@ -14,6 +14,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsClosesTestcontainersRuntimeImageSubstitution(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, string){
 		"missing runtime Hub authority": func(t *testing.T, root string) {
 			path := filepath.Join(root, "mk", "store.mk")
@@ -62,6 +63,7 @@ func TestVerifyCIContainerDownloadsClosesTestcontainersRuntimeImageSubstitution(
 }
 
 func TestTestcontainersHubPrefixRequiresUnqualifiedPostgresAuthority(t *testing.T) {
+	t.Parallel()
 	const want = "library/postgres:16-alpine"
 
 	_, source, _, _ := runtime.Caller(0)
@@ -77,6 +79,7 @@ func TestTestcontainersHubPrefixRequiresUnqualifiedPostgresAuthority(t *testing.
 }
 
 func TestTestcontainersRuntimeImageAuthorityOverridesAttackerUserProperties(t *testing.T) {
+	t.Parallel()
 	const helper = "LOOMARR_TESTCONTAINERS_CONFIG_HELPER"
 	if os.Getenv(helper) == "1" {
 		config := testcontainers.ReadConfig()

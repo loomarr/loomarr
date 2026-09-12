@@ -57,6 +57,7 @@ func TestVerifyCIContainerDownloadsHasNoHostGNUmakeDependency(t *testing.T) {
 }
 
 func TestMakePolicyNormalizationClosureOracle(t *testing.T) {
+	t.Parallel()
 	_, source, _, _ := runtime.Caller(0)
 	directory := filepath.Join(filepath.Dir(source), "testdata")
 	parsed, err := readActiveMakefile(filepath.Join(directory, "make_policy_normalization.mk"))
@@ -93,6 +94,7 @@ func TestMakePolicyNormalizationClosureOracle(t *testing.T) {
 }
 
 func TestVerifyCIContainerDownloadsUsesGNUmakeCommentsForContainerClosure(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"adjacent assignment comment": `.PHONY: android acquire
 ENGINE := docker#comment
@@ -126,6 +128,7 @@ android: acquire # comment
 }
 
 func TestVerifyCIContainerDownloadsDistinguishesEscapedMakeHashesFromShellHashes(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"escaped assignment hash is data": `.PHONY: android acquire
 ENGINE := docker\#comment
@@ -150,6 +153,7 @@ android:
 }
 
 func TestVerifyCIContainerDownloadsRejectsUnauditedMakeHashContexts(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"continued assignment":       ".PHONY: android\nENGINE := dock\\\ner#comment\nandroid:\n\t@true\n",
 		"commented target separator": ".PHONY: android\nandroid#comment:\n\t@true\n",
