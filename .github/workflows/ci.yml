@@ -162,15 +162,15 @@ jobs:
           else
             echo "agent=false" >> "$GITHUB_OUTPUT"
           fi
-          # The React Native Android TV client (§11, Shield). `api/openapi.yaml` gates it because
-          # the client is generated from that spec, and every shared native input can affect the
-          # generated Play bundle.
+          # The React Native Android TV client (§11, Shield). Schema-only OpenAPI changes regenerate,
+          # typecheck, test, and bundle every TypeScript consumer in the shared-client gate; they do
+          # not change a native product binary unless an app or shared native/runtime input changes too.
           # `ci-android.yml` is the product gate implementation. Root admission (`ci.yml`) and
           # beta publication (`android-beta.yml`) are control-plane policy; neither builds the
           # bundle, so changing them must not spend an Android runner.
           # Control-plane classifiers and release admission validators are policy inputs, not
           # bundle inputs. The always-on policy job validates them independently.
-          if echo "$changed" | grep -qE '^store-listing/android-tv/|^web/(apps/tv/|packages/(api|core|design-system|fixtures|ui|ui-tv|player)/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.gitignore$|biome\.json$|tsconfig\.base\.json$)|^scripts/(android-version-code|build-android-beta|check-android-release-env|generate-android-tv-brand|publish-android-beta|test-android-release)\.sh$|^api/openapi\.yaml$|^Makefile$|^mk/android\.mk$|^\.github/workflows/ci-android\.yml$'; then
+          if echo "$changed" | grep -qE '^store-listing/android-tv/|^web/(apps/tv/|packages/(api|core|design-system|fixtures|ui|ui-tv|player)/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.gitignore$|biome\.json$|tsconfig\.base\.json$)|^scripts/(android-version-code|build-android-beta|check-android-release-env|generate-android-tv-brand|publish-android-beta|test-android-release)\.sh$|^Makefile$|^mk/android\.mk$|^\.github/workflows/ci-android\.yml$'; then
             echo "android=true" >> "$GITHUB_OUTPUT"
           else
             echo "android=false" >> "$GITHUB_OUTPUT"
