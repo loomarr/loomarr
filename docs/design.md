@@ -10333,7 +10333,7 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   **Gaps are preserved, never filtered.** Dropping a block would leave a hole that every later block slides into, so the timeline would stop matching the clock — the one thing a guide must never do. (`GET …/{id}/upcoming` *does* filter gaps; that is right for a "what's on next" strip and wrong here.)
 
-  A **now-line** marks the current instant and advances client-side from the block timestamps rather than by polling — the browser already knows the wall clock, so pushing "time passed" over the wire would be pure waste. **Lineup changes** are the genuine invalidation, and those arrive on the existing `channel` SSE frame (§7 live updates): the grid refetches its window when a channel reconciles. The primary toolbar answers the everyday questions directly: which day, where now is, and how much time is visible (2H/4H/6H/12H). Precise start-time and zoom controls are secondary **View** options, closed by default; when either is non-default the View trigger visibly indicates and accessibly announces the custom state, so a hidden control can never silently explain a surprising grid. At zoom 1 the requested window fits the available time viewport; zoom above 1 magnifies that same time axis and introduces horizontal scrolling, while span independently asks the API for a different window. The fixed channel rail is wide enough to distinguish ordinary channel names. A block continuing from before the requested window keeps its true clipped duration and a square continuation edge rather than being inflated into a stray fragment. Shell notices anchor at the top center so they do not cover the Guide's right-aligned controls or Settings' fixed bottom actions. Scrolling backwards is bounded (the past is recomputed from the *current* lineup, so a distant past would be fiction rather than history).
+  A **now-line** marks the current instant and advances client-side from the block timestamps rather than by polling — the browser already knows the wall clock, so pushing "time passed" over the wire would be pure waste. **Lineup changes** are the genuine invalidation, and those arrive on the existing `channel` SSE frame (§7 live updates): the grid refetches its window when a channel reconciles. The primary toolbar answers the everyday questions directly: which day, where now is, and how much time is visible (2H/4H/6H/12H). Precise start-time and zoom controls are secondary **View** options, closed by default; when either is non-default the View trigger visibly indicates and accessibly announces the custom state, so a hidden control can never silently explain a surprising grid. At zoom 1 the requested window fits the available time viewport; zoom above 1 magnifies that same time axis and introduces horizontal scrolling, while span independently asks the API for a different window. The fixed channel rail is wide enough to distinguish ordinary channel names. A block continuing from before the requested window keeps its true clipped duration and a square continuation edge rather than being inflated into a stray fragment. Shell notices anchor at the bottom center with enough clearance for persistent Settings actions; they do not cover page headings, destination navigation, or the Guide's controls. Scrolling backwards is bounded (the past is recomputed from the *current* lineup, so a distant past would be fiction rather than history).
 
 - **Queue** (route `/queue`) — **three tabs, per the v2 mock: `Needs approval · In flight · History`** (V27). *Needs approval* is the admin approval gate (§7) with per-row review/edit and **bulk approve**; *In flight* is the tracked titles below; *History* is the decided proposals — each carrying **when** it was approved (`approvedAt`), who by, what they changed, and any deny reason. This is what "the approvals queue as its own surface" means: **Queue is that surface**, which is why the mock hangs a pending-proposal count badge off this nav entry and not a separate one. Tab counts come from the same queries that fill the tabs, so a count cannot disagree with its list. Tracked titles by provisioning state keep their **retry** on a stalled acquisition, and each title's journey (*pending approval → acquiring (3/7) → live on channel N*). Named for what it holds — work waiting on someone — rather than "Board", which named a layout. Per §342's global-read model this list is **not per-member**: every authenticated user sees every tracked title, because `TitleDTO` carries no requester and the store has no per-user index to scope by. "My requests" as a heading would therefore be a promise the data cannot keep — scoping it is a schema change (a requester column + a filtered list route), not a UI filter.
 
@@ -10349,11 +10349,23 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   playable clips. Automatic outcomes, human exceptions, operational failures, and admitted clips
   stay visibly distinct.
 
+  **Wave 0 shell contract.** Backend-owned lifecycle complexity must present one simple, hands-off
+  normal experience: automatic preparation and routine recovery do not become operator chores.
+  Human work is reserved for a genuine authority ambiguity, never an inferred question assembled
+  from browser-visible text or reason codes. One typed, server-owned attention projection will name
+  that work; until it exists, the client must not invent an attention action. Advanced material is
+  progressive disclosure under Manage, not a competing normal path. Before public release this
+  shell replaces the superseded experience rather than accumulating speculative compatibility
+  surfaces. Each destination has one current navigation landmark, one document-level page heading,
+  and remains discoverable at 390px; notices cannot obscure its heading or navigation.
+
   - **Sources** — registered sources, source-scoped discovery, explicit acquisition planning, and
     current fetch state. This is routine intake work, not an expert panel nested under Manage.
-  - **Incoming** — the one source-to-admission workbench. One exact clip or reel appears once while
-    it is prepared, split, screened, held, reviewed, rejected, or recovered. Expanding a rendered
-    child loads its exact playable bytes and the server-owned five-axis screening projection:
+  - **Incoming** — the evidence desk for genuine authority ambiguity. An exact clip or reel appears
+    once when the server says a person must decide something automation is not authorized to infer;
+    routine preparation and recovery may be summarized as context but never form a second actionable
+    queue. Expanding a rendered child loads its exact playable bytes and the server-owned five-axis
+    screening projection:
     visual safety, spoken safety, written safety, current-use rights, and playback integrity remain
     independent rows with pass/reject/hold, safe reason codes, assessment time, and evidence
     identities. Closed Airworthiness flags and bounded trigger intervals may be shown; raw provider
@@ -10362,16 +10374,18 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
     policy scope is server-owned, the browser hashes a locally selected review file without uploading it,
     and an append or supersession uses the exact current grant digest. Recording the grant leaves the old
     screen immutable and requires an explicit screen-stage rerun. Provider failures, budget ceilings,
-    missing evidence, and stale authorities are operational
-    recovery states, never questions asking a person to guess whether the content is safe. The
+    missing evidence, and stale authorities are operational recovery states in Manage → Diagnostics,
+    never questions asking a person to guess whether the content is safe. Overview may rank one of
+    those states as the next action, but its link opens the owning diagnostic detail rather than
+    manufacturing an Incoming decision. The
     former `/filler/attention` path is a compatibility redirect to `/filler/incoming`.
   - **Library** — the clips themselves, in a grid or a dense list. Multi-select drives bulk retagging and removal; a card carries its thumbnail, duration, quality, tags, and **how often it has actually aired**. Legacy catalog filters on `/filler?...` redirect here without losing the filter.
   - **Manage** — progressive disclosure over **Activity · Automation · Taxonomy · Diagnostics**.
     Activity is the normal audit of automatic outcomes and human corrections. Automation links to
     system-wide defaults and bounded processing. Taxonomy is expert vocabulary maintenance.
-    Diagnostics exposes provider/budget internals and detailed stage history; routine holds and
-    their exact recovery action still appear in Incoming, so a normal operator is never sent to a
-    diagnostic console to finish intake. The legacy `/filler/advanced`, `/filler/taxonomy`, and
+    Diagnostics exposes provider/budget internals, detailed stage history, routine holds, and their
+    exact recovery action. Those controls stay collapsed until an operational problem requires them;
+    ordinary intake proceeds without a diagnostic chore. The legacy `/filler/advanced`, `/filler/taxonomy`, and
     `/filler/settings` deep links stay valid here; `/filler/sources` resolves to Sources.
 
   ⚠ **There is no Discover tab.** Finding clips used to be its own destination; it is now something you do *to a source*, which is the only place the answer differs. ⚠ **Incoming does not replace the split-review route** — `/filler/splits/{proposalId}` remains a **sibling** of `/filler`, because the catalog page renders no `<Outlet/>` and nesting it would make the whole surface unreachable while every unit test stayed green (PROGRESS.md records the near-miss). The tab is an additional door.

@@ -373,9 +373,9 @@ const FillerReviewQueue = ({ hideEmpty = false }: { hideEmpty?: boolean }) => {
   return (
     <section aria-labelledby="review-queue-heading" className="flex flex-col gap-4">
       <div>
-        <h1 id="review-queue-heading" className="font-semibold text-xl">
+        <h2 id="review-queue-heading" className="font-semibold text-xl">
           A few clips need your judgment
-        </h1>
+        </h2>
         <p className="mt-1 text-muted-foreground text-sm">
           {pluralize(body.total, "plain question")}. Preparation and recoverable processing work continue
           below.

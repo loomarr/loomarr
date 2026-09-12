@@ -19,11 +19,13 @@ const storyLink = ({
   to,
   className,
   children,
+  activeOptions: _activeOptions,
   ...rest
 }: {
   to: string;
   className?: string;
   children?: ReactNode;
+  activeOptions?: { exact: boolean; includeSearch?: boolean };
   [key: string]: unknown;
 }) => (
   <a href={to} className={className} {...rest}>

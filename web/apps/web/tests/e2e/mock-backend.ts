@@ -37,6 +37,9 @@ interface MockOptions {
   // Which setup/status checks are green before the operator does anything. The two
   // REQUIRED ones default green so the flow can reach the wiring steps.
   checks?: Record<string, boolean>;
+  // Expose the configured Filler shell for page-level navigation and accessibility
+  // contracts. Most wizard flows intentionally leave this capability out of scope.
+  fillerEnabled?: boolean;
 }
 
 interface MockBackend {
@@ -362,6 +365,69 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       });
     }
 
+    // --- configured Filler shell -------------------------------------------------
+    // Page-level browser contracts need complete empty DTOs, not a loose `{}`: the real
+    // client deliberately trusts generated response shapes once the capability is enabled.
+    if (opts.fillerEnabled) {
+      if (path === "/v1/filler/watch") {
+        return json(route, { health: "healthy", sourcesOn: 1, sourcesTotal: 1, clips: 0, held: 0 });
+      }
+      if (path === "/v1/filler/decisions/reviews") return json(route, { rows: [], total: 0 });
+      if (path === "/v1/filler/decisions/activity") return json(route, { rows: [], total: 0 });
+      if (path === "/v1/filler/decisions/diagnostics") return json(route, { rows: [], total: 0 });
+      if (path === "/v1/filler/sources") return json(route, { sources: [], total: 0 });
+      if (path === "/v1/filler/pool") {
+        return json(route, { clips: 0, commercials: 0, eligible: 0, untagged: 0, channels: [] });
+      }
+      if (path === "/v1/filler/incoming") {
+        return json(route, {
+          clips: [],
+          reels: [],
+          rejected: [],
+          stageOrder: [],
+          clipsTotal: 0,
+          decisionsTotal: 0,
+          reelsTotal: 0,
+          rejectedTotal: 0,
+        });
+      }
+      if (path === "/v1/filler/decisions/overview") {
+        return json(route, {
+          healthy: true,
+          nextAction: "none",
+          actionCount: 0,
+          counts: {
+            admitted: 0,
+            rejected: 0,
+            reviews: 0,
+            unresolvedReviews: 0,
+            operational: 0,
+            retryable: 0,
+          },
+        });
+      }
+      if (path === "/v1/filler/readiness") {
+        return json(route, {
+          ready: false,
+          nextAction: "add_filler",
+          fetch: { enabled: false, catalogClips: 0 },
+          pipeline: {
+            runnable: 0,
+            scheduled: 0,
+            inProgress: 0,
+            needsDecision: 0,
+            recoverable: 0,
+            admitted: 0,
+            rejected: 0,
+            dismissed: 0,
+          },
+          pool: { clips: 0, commercials: 0, eligible: 0, untagged: 0, channels: [] },
+          acquisitions: [],
+        });
+      }
+      if (path === "/v1/filler") return json(route, { clips: [], total: 0 });
+    }
+
     // --- settings (the wizard's terminal act writes setup.completed here) ---------
     if (path === "/v1/settings" && method === "PATCH") {
       Object.assign(state.edits, (body().edits as Record<string, string>) ?? {});
@@ -384,7 +450,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         value: state.edits[key] ?? "",
       });
       return json(route, {
-        features: {},
+        features: opts.fillerEnabled ? { filler: true } : {},
         settings: [
           connEntry("media_server.url", "connections.media_server", "Media server base URL."),
           connEntry("media_server.token", "connections.media_server", "Media server API token."),
@@ -433,6 +499,21 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             provenance: "db",
             value: state.edits["setup.completed"] ?? "false",
           },
+          ...(opts.fillerEnabled
+            ? [
+                {
+                  key: "filler.dir",
+                  group: "filler",
+                  kind: "path",
+                  doc: "Filler library directory.",
+                  advanced: false,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: "/data/filler",
+                },
+              ]
+            : []),
         ],
       });
     }

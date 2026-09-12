@@ -23,7 +23,13 @@ import type { NavTabsProps } from "./nav-tabs.type";
 // The active pill is the Settings treatment (maintainer's pick, 2026-08-02): `signal-tint-15`
 // fill, `signal` text, `rounded-md`. It replaced an underline-only bar on Filler and Queue.
 const NavTabs = ({ tabs, activeId, linkComponent: Link, label, className }: NavTabsProps) => (
-  <nav aria-label={label} className={cn("flex gap-1 overflow-x-auto border-border border-b pb-2", className)}>
+  <nav
+    aria-label={label}
+    className={cn(
+      "flex flex-wrap gap-1 border-border border-b pb-2 sm:flex-nowrap sm:overflow-x-auto",
+      className,
+    )}
+  >
     {tabs.map((tab) => {
       const active = tab.id === activeId;
       return (
@@ -31,6 +37,10 @@ const NavTabs = ({ tabs, activeId, linkComponent: Link, label, className }: NavT
           key={tab.id}
           to={tab.to}
           {...(tab.search ? { search: tab.search } : {})}
+          // The injected router link otherwise prefix-matches a parent destination such as
+          // `/filler` while the operator is on `/filler/incoming`, creating two current pages.
+          // Search params refine a destination; they never make its navigation entry inactive.
+          activeOptions={{ exact: true, includeSearch: false }}
           id={`tab-${tab.id}`}
           // ⚠ `aria-current` marks the active destination for a screen reader. Without it the
           // amber fill is the ONLY signal, which is invisible to anyone not looking at colour.

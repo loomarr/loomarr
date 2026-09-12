@@ -46,6 +46,12 @@ const HealthNotice = ({ enabled }: { enabled: boolean }) => {
     if (localStorage.getItem(key)) return;
 
     const acknowledge = () => localStorage.setItem(key, "1");
+    // Healthy is the normal state, not an interruption. Remember the initial observation
+    // silently; a healthy transition after a visible incident is still useful feedback.
+    if (state === "healthy" && !lastSignature) {
+      acknowledge();
+      return;
+    }
     const action = {
       label: "View health",
       onClick: () => {
