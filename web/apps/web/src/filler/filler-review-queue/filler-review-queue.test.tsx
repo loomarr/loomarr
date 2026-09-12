@@ -1,7 +1,7 @@
-import type { ClipDTO, FillerScreeningDTO } from "@loomarr/api";
+import type { ClipDTO, FillerAttentionTaskDTO, FillerScreeningDTO } from "@loomarr/api";
 import {
-  getActOnFillerDecisionMockHandler,
-  getFillerDecisionReviewsMockHandler,
+  getActOnFillerAttentionMockHandler,
+  getFillerAttentionMockHandler,
   getGetFillerScreeningMockHandler,
   getListFillerMockHandler,
 } from "@loomarr/api/msw";
@@ -18,10 +18,12 @@ import { FillerReviewQueue } from "./filler-review-queue";
 const HASH = "abcdef0123456789".repeat(4);
 const DIGEST = "1".repeat(64);
 
-const review = {
+const review: FillerAttentionTaskDTO = {
   id: "decision-1",
   clipHash: HASH,
   applicationMode: "shadow" as const,
+  taskKind: "identity_role" as const,
+  allowedActions: ["admit", "reject", "correct", "abandon"],
   createdAt: "2026-08-25T12:00:00Z",
   question: "Is this a soda commercial?",
   reasonCodes: ["brand_category_conflict"],
@@ -106,7 +108,7 @@ const prepareForPositiveDecision = async () => {
 
 describe("FillerReviewQueue", () => {
   it("renders one plain evidence-first question without operational state", async () => {
-    server.use(getFillerDecisionReviewsMockHandler({ rows: [review], total: 1 }));
+    server.use(getFillerAttentionMockHandler({ rows: [review], total: 1 }));
     render(<FillerReviewQueue />, { wrapper });
 
     expect(await screen.findByRole("heading", { name: "Is this a soda commercial?" })).toBeInTheDocument();
@@ -126,7 +128,7 @@ describe("FillerReviewQueue", () => {
   it("loads and presents the five independent screens only when evidence is opened", async () => {
     let screeningReads = 0;
     server.use(
-      getFillerDecisionReviewsMockHandler({ rows: [review], total: 1 }),
+      getFillerAttentionMockHandler({ rows: [review], total: 1 }),
       getGetFillerScreeningMockHandler(() => {
         screeningReads += 1;
         return screening;
@@ -151,7 +153,7 @@ describe("FillerReviewQueue", () => {
     const secondHash = "b".repeat(64);
     let catalogReads = 0;
     server.use(
-      getFillerDecisionReviewsMockHandler({
+      getFillerAttentionMockHandler({
         rows: [review, { ...review, id: "decision-2", clipHash: secondHash, question: "Is this a promo?" }],
         total: 2,
       }),
@@ -201,7 +203,7 @@ describe("FillerReviewQueue", () => {
     ];
     const requests: URL[] = [];
     server.use(
-      http.get("*/v1/filler/decisions/reviews", ({ request }) => {
+      http.get("*/v1/filler/attention", ({ request }) => {
         const url = new URL(request.url);
         requests.push(url);
         return HttpResponse.json({
@@ -230,7 +232,7 @@ describe("FillerReviewQueue", () => {
   });
 
   it("requires exact playback before recording any semantic answer", async () => {
-    server.use(getFillerDecisionReviewsMockHandler({ rows: [review], total: 1 }));
+    server.use(getFillerAttentionMockHandler({ rows: [review], total: 1 }));
     render(<FillerReviewQueue />, { wrapper });
 
     expect(await screen.findByRole("button", { name: "Record as not filler" })).toBeDisabled();
@@ -254,8 +256,8 @@ describe("FillerReviewQueue", () => {
   it("records skip for now without inventing an accept or reject answer", async () => {
     const bodies: unknown[] = [];
     server.use(
-      getFillerDecisionReviewsMockHandler({ rows: [review], total: 1 }),
-      getActOnFillerDecisionMockHandler(async ({ request }) => {
+      getFillerAttentionMockHandler({ rows: [review], total: 1 }),
+      getActOnFillerAttentionMockHandler(async ({ request }) => {
         bodies.push(await request.json());
         return { id: "action-skip" };
       }),
@@ -279,13 +281,13 @@ describe("FillerReviewQueue", () => {
     });
     let reviewRequests = 0;
     server.use(
-      http.get("*/v1/filler/decisions/reviews", () => {
+      http.get("*/v1/filler/attention", () => {
         reviewRequests += 1;
         if (reviewRequests === 1) return HttpResponse.json({ rows: [review], total: 1 });
         resolvePostSkipRefetch();
         return HttpResponse.json({ rows: [], total: 0 });
       }),
-      getActOnFillerDecisionMockHandler(async ({ request }) => {
+      getActOnFillerAttentionMockHandler(async ({ request }) => {
         actions.push(await request.json());
         return { id: "action-skip" };
       }),
@@ -305,8 +307,8 @@ describe("FillerReviewQueue", () => {
   it("records a correction as a distinct append-only action", async () => {
     const bodies: unknown[] = [];
     server.use(
-      getFillerDecisionReviewsMockHandler({ rows: [review], total: 1 }),
-      getActOnFillerDecisionMockHandler(async ({ request }) => {
+      getFillerAttentionMockHandler({ rows: [review], total: 1 }),
+      getActOnFillerAttentionMockHandler(async ({ request }) => {
         bodies.push(await request.json());
         return { id: "action-1" };
       }),
@@ -331,11 +333,11 @@ describe("FillerReviewQueue", () => {
   it("records a shadow filler answer without claiming that it filed the clip", async () => {
     const bodies: Record<string, unknown>[] = [];
     server.use(
-      getFillerDecisionReviewsMockHandler({
+      getFillerAttentionMockHandler({
         rows: [{ ...review, question: "Which product is this commercial advertising?" }],
         total: 1,
       }),
-      getActOnFillerDecisionMockHandler(async ({ request }) => {
+      getActOnFillerAttentionMockHandler(async ({ request }) => {
         bodies.push((await request.json()) as Record<string, unknown>);
         return { id: "action-admit" };
       }),
@@ -352,14 +354,14 @@ describe("FillerReviewQueue", () => {
   });
 
   it("renders a healthy zero-work state", async () => {
-    server.use(getFillerDecisionReviewsMockHandler({ rows: [], total: 0 }));
+    server.use(getFillerAttentionMockHandler({ rows: [], total: 0 }));
     render(<FillerReviewQueue />, { wrapper });
     expect(await screen.findByText("Nothing needs your attention")).toBeInTheDocument();
   });
 
   it("shows all five screens and keeps positive confirmation closed when evidence is unavailable", async () => {
     server.use(
-      getFillerDecisionReviewsMockHandler({ rows: [review], total: 1 }),
+      getFillerAttentionMockHandler({ rows: [review], total: 1 }),
       getGetFillerScreeningMockHandler({
         state: "unavailable",
         reasonCode: "screening_evidence_drift",
@@ -379,14 +381,42 @@ describe("FillerReviewQueue", () => {
 
   it("fails closed if an applied review arrives before terminal catalog effects exist", async () => {
     server.use(
-      getFillerDecisionReviewsMockHandler({ rows: [{ ...review, applicationMode: "applied" }], total: 1 }),
+      getFillerAttentionMockHandler({
+        rows: [{ ...review, applicationMode: "applied", allowedActions: [] }],
+        total: 1,
+      }),
     );
     render(<FillerReviewQueue />, { wrapper });
 
     expect(await screen.findByText("Applied review unavailable")).toBeInTheDocument();
     expect(screen.getByText(/terminal catalog effect/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirm for library" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Correct" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Confirm for library" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Correct" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).not.toBeInTheDocument();
+  });
+
+  it("renders a rights task without generic editorial actions", async () => {
+    server.use(
+      getFillerAttentionMockHandler({
+        rows: [
+          {
+            ...review,
+            taskKind: "rights_provenance",
+            allowedActions: ["abandon"],
+            question: "Is this source and item licensed for use as filler?",
+            reasonCodes: ["missing_source_license"],
+          },
+        ],
+        total: 1,
+      }),
+    );
+    render(<FillerReviewQueue />, { wrapper });
+
+    expect(await screen.findByText("Rights and provenance decision")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record as filler" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Correct answer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record as not filler" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Skip for now" })).toBeInTheDocument();
   });
 });

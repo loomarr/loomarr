@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,8 @@ type decisionListBody[T any] struct {
 type reviewWire struct {
 	ID, ClipHash, Question string
 	ApplicationMode        string   `json:"applicationMode"`
+	TaskKind               string   `json:"taskKind"`
+	AllowedActions         []string `json:"allowedActions"`
 	ReasonCodes            []string `json:"reasonCodes"`
 	EvidenceRefs           []string `json:"evidenceRefs"`
 }
@@ -74,7 +77,7 @@ func TestFillerDecisionProjectionsSeparateHumanWorkFromDiagnostics(t *testing.T)
 		}
 	}
 
-	for _, path := range []string{"/v1/filler/decisions/reviews", "/v1/filler/decisions/diagnostics"} {
+	for _, path := range []string{"/v1/filler/attention", "/v1/filler/decisions/diagnostics"} {
 		res := do(t, srv, http.MethodGet, path, memberToken, "")
 		if res.StatusCode != http.StatusForbidden {
 			_ = res.Body.Close()
@@ -83,23 +86,25 @@ func TestFillerDecisionProjectionsSeparateHumanWorkFromDiagnostics(t *testing.T)
 		_ = res.Body.Close()
 	}
 
-	res := do(t, srv, http.MethodGet, "/v1/filler/decisions/reviews?limit=10", adminToken, "")
+	res := do(t, srv, http.MethodGet, "/v1/filler/attention?limit=10", adminToken, "")
 	var reviews decisionListBody[reviewWire]
 	decodeDecisionResponse(t, res, &reviews)
 	if reviews.Total != 1 || len(reviews.Rows) != 1 || reviews.Rows[0].Question == "" ||
 		reviews.Rows[0].ApplicationMode != "shadow" ||
+		reviews.Rows[0].TaskKind != "identity_role" ||
+		!slices.Equal(reviews.Rows[0].AllowedActions, []string{"admit", "reject", "correct", "abandon"}) ||
 		len(reviews.Rows[0].ReasonCodes) != 1 || len(reviews.Rows[0].EvidenceRefs) != 2 {
 		t.Fatalf("reviews = %+v", reviews)
 	}
-	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/reviews?limit=10", adminToken, "")
+	res = do(t, srv, http.MethodGet, "/v1/filler/attention?limit=10", adminToken, "")
 	reviewJSON, err := io.ReadAll(res.Body)
 	_ = res.Body.Close()
 	if err != nil || strings.Contains(string(reviewJSON), `"conflicts":null`) || !strings.Contains(string(reviewJSON), `"conflicts":[]`) {
 		t.Fatalf("review arrays are not canonical: %s (%v)", reviewJSON, err)
 	}
 	for _, path := range []string{
-		"/v1/filler/decisions/reviews?limit=101",
-		"/v1/filler/decisions/reviews?beforeAt=" + url.QueryEscape(time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)),
+		"/v1/filler/attention?limit=101",
+		"/v1/filler/attention?beforeAt=" + url.QueryEscape(time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)),
 	} {
 		res = do(t, srv, http.MethodGet, path, adminToken, "")
 		if res.StatusCode != http.StatusUnprocessableEntity {
@@ -143,7 +148,7 @@ func TestFillerDecisionActionsRequireAdminAndAreIdempotent(t *testing.T) {
 	seedDecisionAPI(t, st)
 	body := `{"actionId":"action-1","kind":"admit","reason":"closing card confirms it"}`
 
-	res := do(t, srv, http.MethodPost, "/v1/filler/decisions/review-1/actions", memberToken, body)
+	res := do(t, srv, http.MethodPost, "/v1/filler/attention/review-1/actions", memberToken, body)
 	if res.StatusCode != http.StatusForbidden {
 		_ = res.Body.Close()
 		t.Fatalf("member action = %d, want 403", res.StatusCode)
@@ -155,7 +160,7 @@ func TestFillerDecisionActionsRequireAdminAndAreIdempotent(t *testing.T) {
 	}
 
 	for range 2 {
-		res = do(t, srv, http.MethodPost, "/v1/filler/decisions/review-1/actions", adminToken, body)
+		res = do(t, srv, http.MethodPost, "/v1/filler/attention/review-1/actions", adminToken, body)
 		if res.StatusCode != http.StatusOK {
 			raw, _ := io.ReadAll(res.Body)
 			_ = res.Body.Close()
@@ -168,7 +173,7 @@ func TestFillerDecisionActionsRequireAdminAndAreIdempotent(t *testing.T) {
 		t.Fatalf("idempotent action audit = %+v, %v", actions, err)
 	}
 
-	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/reviews?limit=10", adminToken, "")
+	res = do(t, srv, http.MethodGet, "/v1/filler/attention?limit=10", adminToken, "")
 	var reviews decisionListBody[reviewWire]
 	decodeDecisionResponse(t, res, &reviews)
 	if reviews.Total != 0 || len(reviews.Rows) != 0 {
@@ -203,7 +208,7 @@ func TestAppliedFillerDecisionFailsClosedWithoutTerminalAdmission(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	res := do(t, srv, http.MethodPost, "/v1/filler/decisions/applied-review/actions", adminToken,
+	res := do(t, srv, http.MethodPost, "/v1/filler/attention/applied-review/actions", adminToken,
 		`{"actionId":"applied-action","kind":"admit","answer":"The closing card identifies soda."}`)
 	if res.StatusCode != http.StatusConflict {
 		raw, _ := io.ReadAll(res.Body)
@@ -221,7 +226,7 @@ func TestFillerDecisionAbandonIsMeasurableWithoutResolvingTheReview(t *testing.T
 	srv, st := newServer(t)
 	seedDecisionAPI(t, st)
 
-	res := do(t, srv, http.MethodPost, "/v1/filler/decisions/review-1/actions", adminToken,
+	res := do(t, srv, http.MethodPost, "/v1/filler/attention/review-1/actions", adminToken,
 		`{"actionId":"skip-1","kind":"abandon","reason":"skip for now"}`)
 	if res.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(res.Body)
@@ -230,7 +235,7 @@ func TestFillerDecisionAbandonIsMeasurableWithoutResolvingTheReview(t *testing.T
 	}
 	_ = res.Body.Close()
 
-	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/reviews?limit=10", adminToken, "")
+	res = do(t, srv, http.MethodGet, "/v1/filler/attention?limit=10", adminToken, "")
 	var reviews decisionListBody[reviewWire]
 	decodeDecisionResponse(t, res, &reviews)
 	if reviews.Total != 1 {
@@ -244,7 +249,7 @@ func TestFillerDecisionAbandonIsMeasurableWithoutResolvingTheReview(t *testing.T
 		t.Fatalf("abandon was not measurable: %+v", activity)
 	}
 
-	res = do(t, srv, http.MethodPost, "/v1/filler/decisions/review-1/actions", adminToken,
+	res = do(t, srv, http.MethodPost, "/v1/filler/attention/review-1/actions", adminToken,
 		`{"actionId":"answer-after-skip","kind":"admit","answer":"yes"}`)
 	if res.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(res.Body)

@@ -38,21 +38,23 @@ type fillerDecisionPageInput struct {
 	BeforeID string    `query:"beforeId,omitempty" maxLength:"137" doc:"Opaque id from the last row of the previous page"`
 }
 
-type fillerDecisionReviewDTO struct {
-	ID              string                         `json:"id"`
-	ClipHash        string                         `json:"clipHash"`
-	Question        string                         `json:"question"`
-	ApplicationMode fillerdecision.ApplicationMode `json:"applicationMode" enum:"shadow,applied"`
-	ReasonCodes     []filleradmission.ReasonCode   `json:"reasonCodes"`
-	EvidenceRefs    []string                       `json:"evidenceRefs"`
-	Conflicts       []filleradmission.Conflict     `json:"conflicts"`
-	CreatedAt       time.Time                      `json:"createdAt"`
+type fillerAttentionTaskDTO struct {
+	ID              string                           `json:"id"`
+	ClipHash        string                           `json:"clipHash"`
+	Question        string                           `json:"question"`
+	TaskKind        fillerdecision.AttentionTaskKind `json:"taskKind" enum:"identity_role,rights_provenance,suitability_exception,split_boundary"`
+	ApplicationMode fillerdecision.ApplicationMode   `json:"applicationMode" enum:"shadow,applied"`
+	AllowedActions  []fillerdecision.ActionKind      `json:"allowedActions" enum:"admit,reject,correct,abandon"`
+	ReasonCodes     []filleradmission.ReasonCode     `json:"reasonCodes"`
+	EvidenceRefs    []string                         `json:"evidenceRefs"`
+	Conflicts       []filleradmission.Conflict       `json:"conflicts"`
+	CreatedAt       time.Time                        `json:"createdAt"`
 }
 
-type fillerDecisionReviewsOutput struct {
+type fillerAttentionOutput struct {
 	Body struct {
-		Rows  []fillerDecisionReviewDTO `json:"rows"`
-		Total int                       `json:"total"`
+		Rows  []fillerAttentionTaskDTO `json:"rows"`
+		Total int                      `json:"total"`
 	}
 }
 
@@ -115,9 +117,9 @@ func (s *Server) registerFillerDecisions(api huma.API) {
 		Summary: "Admission decision health and next action", Description: "Member-readable server-owned V63 health and priority projection. Clients render nextAction; they do not reconstruct it from counts.", Tags: []string{"filler"},
 	}, RoleMember), s.fillerDecisionOverview)
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "filler-decision-reviews", Method: http.MethodGet, Path: "/v1/filler/decisions/reviews",
-		Summary: "Semantic filler decisions needing attention", Description: "Admin-only bounded semantic exceptions. Every row asks exactly one question and excludes machine work and provider failures (§10 V63).", Tags: []string{"filler"},
-	}, RoleAdmin), s.fillerDecisionReviews)
+		OperationID: "filler-attention", Method: http.MethodGet, Path: "/v1/filler/attention",
+		Summary: "Filler Attention tasks", Description: "Admin-only bounded semantic exceptions. Every task names its server-owned kind and currently allowed actions; machine work and operational holds are structurally excluded (§10 V63).", Tags: []string{"filler"},
+	}, RoleAdmin), s.fillerAttention)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-decision-activity", Method: http.MethodGet, Path: "/v1/filler/decisions/activity",
 		Summary: "Filler admission decision activity", Description: "Member-readable bounded audit of automatic semantic decisions and subsequent operator actions (§10 V63).", Tags: []string{"filler"},
@@ -127,9 +129,9 @@ func (s *Server) registerFillerDecisions(api huma.API) {
 		Summary: "Filler admission processing diagnostics", Description: "Admin-only operational holds. Raw provider responses, prompts, paths, evidence locations, and secrets are never projected (§10 V63).", Tags: []string{"filler"},
 	}, RoleAdmin), s.fillerDecisionDiagnostics)
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "act-on-filler-decision", Method: http.MethodPost, Path: "/v1/filler/decisions/{id}/actions",
-		Summary: "Resolve or reverse a filler decision", Description: "Admin-only append-only action. The server records the authenticated actor and rejects stale or invalid state transitions. Shadow actions are audit-only; an applied action can change the catalog only after terminal release replay and commits that effect atomically (§10 V63).", Tags: []string{"filler"},
-	}, RoleAdmin), s.actOnFillerDecision)
+		OperationID: "act-on-filler-attention", Method: http.MethodPost, Path: "/v1/filler/attention/{id}/actions",
+		Summary: "Act on a Filler Attention task", Description: "Admin-only append-only action from the task's allowed action set. The server records the authenticated actor and rejects stale or invalid state transitions. Shadow actions are audit-only; an applied action can change the catalog only after terminal release replay and commits that effect atomically (§10 V63).", Tags: []string{"filler"},
+	}, RoleAdmin), s.actOnFillerAttention)
 }
 
 func (s *Server) fillerDecisionOverview(ctx context.Context, _ *struct{}) (*fillerDecisionOverviewOutput, error) {
@@ -150,24 +152,25 @@ func (s *Server) fillerDecisionOverview(ctx context.Context, _ *struct{}) (*fill
 	}}, nil
 }
 
-func (s *Server) fillerDecisionReviews(ctx context.Context, in *fillerDecisionPageInput) (*fillerDecisionReviewsOutput, error) {
+func (s *Server) fillerAttention(ctx context.Context, in *fillerDecisionPageInput) (*fillerAttentionOutput, error) {
 	if s.fillerDecisions == nil {
 		return nil, errFeatureNotConfigured("Filler decision audit unavailable", "The durable filler decision service is not configured.")
 	}
-	page, err := s.fillerDecisions.Reviews(ctx, decisionCursor(in), in.Limit)
+	page, err := s.fillerDecisions.Attention(ctx, decisionCursor(in), in.Limit)
 	if err != nil {
 		return nil, fillerDecisionError(err)
 	}
-	out := &fillerDecisionReviewsOutput{}
+	out := &fillerAttentionOutput{}
 	out.Body.Total = page.Total
-	out.Body.Rows = make([]fillerDecisionReviewDTO, 0, len(page.Rows))
-	for _, item := range page.Rows {
-		out.Body.Rows = append(out.Body.Rows, fillerDecisionReviewDTO{
+	out.Body.Rows = make([]fillerAttentionTaskDTO, 0, len(page.Tasks))
+	for _, item := range page.Tasks {
+		out.Body.Rows = append(out.Body.Rows, fillerAttentionTaskDTO{
 			ID: item.ID, ClipHash: item.ClipHash, Question: item.Question,
-			ApplicationMode: item.ApplicationMode,
-			ReasonCodes:     append([]filleradmission.ReasonCode{}, item.ReasonCodes...),
-			EvidenceRefs:    append([]string{}, item.EvidenceRefs...),
-			Conflicts:       append([]filleradmission.Conflict{}, item.Conflicts...), CreatedAt: item.CreatedAt,
+			TaskKind: item.Kind, ApplicationMode: item.ApplicationMode,
+			AllowedActions: append([]fillerdecision.ActionKind{}, item.AllowedActions...),
+			ReasonCodes:    append([]filleradmission.ReasonCode{}, item.ReasonCodes...),
+			EvidenceRefs:   append([]string{}, item.EvidenceRefs...),
+			Conflicts:      append([]filleradmission.Conflict{}, item.Conflicts...), CreatedAt: item.CreatedAt,
 		})
 	}
 	return out, nil
@@ -213,7 +216,7 @@ func (s *Server) fillerDecisionActivity(ctx context.Context, in *fillerDecisionP
 	return out, nil
 }
 
-func (s *Server) actOnFillerDecision(ctx context.Context, in *fillerDecisionActionInput) (*fillerDecisionActionOutput, error) {
+func (s *Server) actOnFillerAttention(ctx context.Context, in *fillerDecisionActionInput) (*fillerDecisionActionOutput, error) {
 	if s.fillerDecisions == nil {
 		return nil, errFeatureNotConfigured("Filler decision audit unavailable", "The durable filler decision service is not configured.")
 	}
@@ -226,7 +229,7 @@ func (s *Server) actOnFillerDecision(ctx context.Context, in *fillerDecisionActi
 		ActorID: actor, Reason: strings.TrimSpace(in.Body.Reason), Answer: strings.TrimSpace(in.Body.Answer),
 		CorrectedVerdict: in.Body.CorrectedVerdict, SupersedesID: in.Body.SupersedesID, CreatedAt: time.Now().UTC(),
 	}
-	if err := s.fillerDecisions.Act(ctx, action); err != nil {
+	if err := s.fillerDecisions.ActOnAttention(ctx, action); err != nil {
 		return nil, fillerDecisionError(err)
 	}
 	out := &fillerDecisionActionOutput{}

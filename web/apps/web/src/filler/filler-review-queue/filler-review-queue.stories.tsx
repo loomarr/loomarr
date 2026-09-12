@@ -1,4 +1,4 @@
-import type { FillerDecisionReviewsOutputBody, FillerScreeningDTO } from "@loomarr/api";
+import type { FillerAttentionOutputBody, FillerAttentionTaskDTO, FillerScreeningDTO } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -7,10 +7,12 @@ import { Card } from "@/components/ui/card";
 import { withRouter } from "@/test/story-utils";
 import { FillerReviewQueue } from "./filler-review-queue";
 
-const row = (index: number) => ({
+const row = (index: number): FillerAttentionTaskDTO => ({
   id: `decision-${index}`,
   clipHash: `${"a".repeat(63)}${index % 10}`,
   applicationMode: "shadow" as const,
+  taskKind: "identity_role" as const,
+  allowedActions: ["admit", "reject", "correct", "abandon"],
   createdAt: new Date().toISOString(),
   question: index % 2 === 0 ? "Is this a soda commercial?" : "Is this a programme promo?",
   reasonCodes: ["brand_category_conflict"],
@@ -80,15 +82,15 @@ const screeningFor = (clipHash: string): FillerScreeningDTO => ({
   },
 });
 
-const withReviews =
-  (body: FillerDecisionReviewsOutputBody, screening?: FillerScreeningDTO): Decorator =>
+const withAttention =
+  (body: FillerAttentionOutputBody, screening?: FillerScreeningDTO): Decorator =>
   (Story) => {
     window.fetch = (async (input, init) => {
       const request = input instanceof Request ? input : new Request(input, init);
       const url = new URL(request.url);
       const response = (value: unknown) =>
         new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
-      if (url.pathname === "/v1/filler/decisions/reviews") return response(body);
+      if (url.pathname === "/v1/filler/attention") return response(body);
       if (url.pathname === "/v1/filler/screening") {
         const hash = url.searchParams.get("hash") ?? body.rows[0]?.clipHash ?? "";
         return response(screening ?? screeningFor(hash));
@@ -139,16 +141,16 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const GenuineReview: Story = { decorators: [withReviews({ rows: [row(1)], total: 1 })] };
-export const Empty: Story = { decorators: [withReviews({ rows: [], total: 0 })] };
+export const GenuineReview: Story = { decorators: [withAttention({ rows: [row(1)], total: 1 })] };
+export const Empty: Story = { decorators: [withAttention({ rows: [], total: 0 })] };
 export const LargeQueue: Story = {
-  decorators: [withReviews({ rows: Array.from({ length: 10 }, (_, index) => row(index)), total: 24 })],
+  decorators: [withAttention({ rows: Array.from({ length: 10 }, (_, index) => row(index)), total: 24 })],
   play: async ({ canvas }) => {
     await canvas.findByText("Station promo 10");
   },
 };
 export const Correction: Story = {
-  decorators: [withReviews({ rows: [row(2)], total: 1 })],
+  decorators: [withAttention({ rows: [row(2)], total: 1 })],
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(await canvas.findByRole("button", { name: "Correct answer" }));
     await canvas.findByLabelText("Correction");
@@ -156,7 +158,7 @@ export const Correction: Story = {
 };
 
 export const FiveAxisEvidence: Story = {
-  decorators: [withReviews({ rows: [row(2)], total: 1 })],
+  decorators: [withAttention({ rows: [row(2)], total: 1 })],
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(await canvas.findByRole("button", { name: "Review evidence" }));
     await canvas.findByText("Playback integrity");
@@ -165,7 +167,7 @@ export const FiveAxisEvidence: Story = {
 
 export const EvidenceDrift: Story = {
   decorators: [
-    withReviews(
+    withAttention(
       { rows: [row(3)], total: 1 },
       {
         state: "unavailable",
@@ -185,7 +187,7 @@ export const EvidenceDrift: Story = {
 
 export const RightsRemediation: Story = {
   decorators: [
-    withReviews(
+    withAttention(
       { rows: [row(4)], total: 1 },
       {
         ...screeningFor(row(4).clipHash),

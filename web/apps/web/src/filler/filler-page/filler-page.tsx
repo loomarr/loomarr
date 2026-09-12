@@ -21,7 +21,6 @@ import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
 import { FillerReviewQueue } from "../filler-review-queue";
 import type { FillerSearch } from "../filler-search";
-import { IncomingTab } from "../incoming-tab";
 import { SourcesTab } from "../sources-tab";
 import { TaxonomyTab } from "../taxonomy-tab";
 import { useFillerInvalidate } from "../use-filler-invalidate";
@@ -57,10 +56,6 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const watch = unwrap(fillerApi.useFillerWatch().data, (body) => body);
   const poolQuery = fillerApi.useFillerPool({ query: { enabled: tab === "library" } });
   const pool = unwrap(poolQuery.data, (body) => body);
-  const reviewsQuery = fillerApi.useFillerDecisionReviews({ limit: 100 }, { query: { enabled: isAdmin } });
-  const reviewRows = unwrap(reviewsQuery.data, (body) => body.rows) ?? [];
-  const reviewTotal = unwrap(reviewsQuery.data, (body) => body.total) ?? 0;
-  const reviewHashes = new Set(reviewRows.map((review) => review.clipHash));
 
   // Shared exact-identity editor. Always resolving by hash avoids coupling the shell to whichever
   // Library page happens to be mounted, and includeHeld is required for Incoming clips.
@@ -162,7 +157,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             ...(isAdmin
               ? [
                   { id: "sources", label: "Sources", to: "/filler/sources" },
-                  { id: "incoming", label: "Incoming", to: "/filler/incoming", count: reviewTotal },
+                  { id: "incoming", label: "Incoming", to: "/filler/incoming" },
                 ]
               : []),
             {
@@ -180,14 +175,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         {tab === "overview" ? (
           <FillerOverview />
         ) : tab === "incoming" && isAdmin ? (
-          <div className="flex flex-col gap-8">
-            <FillerReviewQueue hideEmpty />
-            <IncomingTab
-              onEditTags={setTagging}
-              excludedHashes={reviewHashes}
-              semanticReviewCount={reviewRows.length}
-            />
-          </div>
+          <FillerReviewQueue />
         ) : tab === "manage" ? (
           <FillerManage />
         ) : tab === "sources" ? (

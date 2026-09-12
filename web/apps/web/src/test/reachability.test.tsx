@@ -5,8 +5,7 @@ import {
   getDiscoverFillerMockHandler,
   getFillerDecisionActivityMockHandler,
   getFillerDecisionDiagnosticsMockHandler,
-  getFillerDecisionReviewsMockHandler,
-  getFillerIncomingMockHandler,
+  getFillerAttentionMockHandler,
   getGetChannelMockHandler,
   getGetFillerSplitMockHandler,
   getGetPlayoutStatusMockHandler,
@@ -141,56 +140,14 @@ const stubReachable = () => {
       ],
       total: 1,
     }),
-    getFillerIncomingMockHandler({
-      overview: {
-        runnable: 0,
-        inProgress: 0,
-        scheduled: 0,
-        needsDecision: 1,
-        recoverable: 0,
-        admitted: 1,
-        rejected: 0,
-        dismissed: 0,
-      },
-      // ⚠ `hash` is REQUIRED on an incoming clip — it is the content identity (§10, the
-      // filler-path-identity rule), and every row action keys on it. Both of these fixtures
-      // omitted it, so the queue rendered rows whose identity was undefined.
-      //
-      // ⚠ These were `asks` until §10 V51e made Incoming ONE conveyor: `asks` and `pipeline` were
-      // separate arrays over overlapping populations (84 of 85 clips appeared in both on a fresh
-      // scan), and they collapsed into `clips`, where `needsDecision` says which end a clip is at.
-      // The old field name is now a BANNED identifier — see `scripts/check-retired.sh`.
-      clips: [
-        {
-          hash: "held-hash",
-          path: "held.mp4",
-          name: "Unidentified toy spot",
-          durationMs: 30000,
-          kind: "commercial",
-          reason: "Loomarr couldn't work out what this is, so it will only match broadly.",
-          confidence: 45,
-          // ⚠ `needsDecision: true` is the FAITHFUL translation of the old `asks` array, not a
-          // detail to leave off. On one belt the flag is the only thing saying which end a clip is
-          // at, and the panel counts exactly this (`clips.filter(c => c.needsDecision)`) — a clip
-          // without it lands in the queue as already-handled, which is the opposite of an ask.
-          needsDecision: true,
-        },
-      ],
-      clipsTotal: 1,
-      decisionsTotal: 1,
-      reels: [],
-      reelsTotal: 0,
-      rejected: [],
-      rejectedTotal: 0,
-      stageOrder: [],
-      total: 1,
-    }),
-    getFillerDecisionReviewsMockHandler({
+    getFillerAttentionMockHandler({
       rows: [
         {
           id: "decision-review",
           clipHash: "held-hash",
           applicationMode: "shadow",
+          taskKind: "identity_role",
+          allowedActions: ["admit", "reject", "correct", "abandon"],
           createdAt: "2026-08-25T12:00:00Z",
           question: "Is this a toy commercial?",
           reasonCodes: ["unidentified"],

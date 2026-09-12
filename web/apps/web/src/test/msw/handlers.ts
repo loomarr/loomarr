@@ -7,8 +7,7 @@ import {
   getFillerDecisionActivityMockHandler,
   getFillerDecisionDiagnosticsMockHandler,
   getFillerDecisionOverviewMockHandler,
-  getFillerDecisionReviewsMockHandler,
-  getFillerIncomingMockHandler,
+  getFillerAttentionMockHandler,
   getFillerPoolMockHandler,
   getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
@@ -141,29 +140,6 @@ const appHandlers = (): RequestHandler[] => [
   // The generated client is the coupling, and neither diff mentions the other's file.
   getListFillerMockHandler({ clips: [], total: 0 }),
   getListFillerSourcesMockHandler({ sources: [], total: 0 }),
-  // ⚠ `clips` is the whole conveyor (§10 V51e) — being-prepared and needs-a-decision in ONE list,
-  // where this used to carry `asks` and `pipeline` as separate arrays over overlapping populations.
-  getFillerIncomingMockHandler({
-    overview: {
-      runnable: 0,
-      inProgress: 0,
-      scheduled: 0,
-      needsDecision: 0,
-      recoverable: 0,
-      admitted: 0,
-      rejected: 0,
-      dismissed: 0,
-    },
-    clips: [],
-    clipsTotal: 0,
-    decisionsTotal: 0,
-    reels: [],
-    reelsTotal: 0,
-    rejected: [],
-    rejectedTotal: 0,
-    stageOrder: [],
-    total: 0,
-  }),
   // The guide grid's window read. `fromMs`/`toMs` are required, so an empty grid still has to
   // carry a coherent window rather than `{}`.
   getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),
@@ -208,7 +184,7 @@ const appHandlers = (): RequestHandler[] => [
     nextAction: "none",
     counts: { admitted: 0, rejected: 0, reviews: 0, unresolvedReviews: 0, operational: 0, retryable: 0 },
   }),
-  getFillerDecisionReviewsMockHandler({ rows: [], total: 0 }),
+  getFillerAttentionMockHandler({ rows: [], total: 0 }),
   getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
   getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
 ];

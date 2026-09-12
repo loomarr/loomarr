@@ -217,6 +217,12 @@ RETIRED=(
   'FILLER_AUTOFILE_MIN_CONFIDENCE|retired: classification confidence is diagnostic'
   'FILLER_AUTOFILE_NORMALIZE_LOUDNESS|retired: use FILLER_CONDITIONING_NORMALIZE_LOUDNESS'
   'TunePanel|retired: Sources owns acquisition policy; Incoming owns evidence review and terminal decisions'
+  # Wave 0 gives human authority work one typed server-owned interface. Restoring either review
+  # route recreates the untyped queue whose task kind and actions the browser had to infer.
+  '/v1/filler/decisions/reviews|retired: unresolved human work is projected by GET /v1/filler/attention'
+  'filler-decision-reviews|retired with /v1/filler/decisions/reviews'
+  '/v1/filler/decisions/{id}/actions|retired: task-scoped actions use /v1/filler/attention/{id}/actions'
+  'act-on-filler-decision|retired with the untyped decision action route'
   '"reconcile.every"|V55: superseded by the active channel and library schedules'
   $'\x60reconcile.every\x60|V55: superseded by the active channel and library schedules'
   'RECONCILE_EVERY=5m|V55: superseded by the active channel and library schedules'

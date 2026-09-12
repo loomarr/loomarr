@@ -222,6 +222,16 @@ Loomarr-owned non-program content as a whole. It lives in a Tunarr-local media s
 in the operator's Library, so it structurally cannot leak into a programming Lineup (§10).
 _Avoid_: bumpers, interstitials (both are *kinds* of filler, not the category)
 
+**Attention task**:
+One unresolved filler authority ambiguity that requires a person's bounded decision. It names the
+exact subject, question, decisive evidence, and allowed outcomes; routine processing is not a task.
+_Avoid_: review queue item, Incoming item, work item
+
+**Operational hold**:
+A recorded condition that prevents automated filler work from progressing without changing the
+semantic verdict. It is diagnostic state, not an Attention task.
+_Avoid_: review, rejection, failed decision
+
 **Filler role**:
 What kind of non-program item a Clip is, such as commercial, promo, bumper, PSA, station ID,
 trailer, or interstitial. A Filler role says nothing about Media quality or Airworthiness.

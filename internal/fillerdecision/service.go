@@ -70,6 +70,34 @@ func (s *Service) Act(ctx context.Context, action Action) error {
 	}
 }
 
+// ActOnAttention accepts only an action advertised by the current typed task. Persistence still
+// owns the transactional stale/current check, so a race between projection and action fails closed.
+func (s *Service) ActOnAttention(ctx context.Context, action Action) error {
+	if err := ValidateAction(action); err != nil {
+		return err
+	}
+	record, err := s.repo.GetFillerDecision(ctx, action.DecisionID)
+	if err != nil {
+		return err
+	}
+	if record.ApplicationMode == ApplicationModeApplied {
+		existing, found, err := s.repo.FindFillerDecisionAction(ctx, action.ID)
+		if err != nil {
+			return err
+		}
+		if found {
+			if SameAction(existing, action) {
+				return nil
+			}
+			return ErrConflict
+		}
+	}
+	if !containsAction(s.attentionActions(record), action.Kind) {
+		return ErrActionNotAllowed
+	}
+	return s.Act(ctx, action)
+}
+
 func (s *Service) Overview(ctx context.Context) (Overview, error) {
 	counts, err := s.repo.FillerDecisionCounts(ctx)
 	if err != nil {
@@ -90,30 +118,74 @@ func (s *Service) Overview(ctx context.Context) (Overview, error) {
 	return overview, nil
 }
 
-func (s *Service) Reviews(ctx context.Context, cursor Cursor, limit int) (ReviewPage, error) {
+// Attention is the one typed projection of unresolved semantic work that
+// genuinely requires a person. Operational holds never enter this interface.
+func (s *Service) Attention(ctx context.Context, cursor Cursor, limit int) (AttentionPage, error) {
 	limit, err := validLimit(limit)
 	if err != nil {
-		return ReviewPage{}, err
+		return AttentionPage{}, err
 	}
 	page, err := s.repo.ListFillerDecisions(ctx, DecisionFilter{
 		Kind: OutcomeSemantic, Verdict: filleradmission.VerdictReview,
 		CurrentOnly: true, UnresolvedOnly: true, Cursor: cursor, Limit: limit,
 	})
 	if err != nil {
-		return ReviewPage{}, err
+		return AttentionPage{}, err
 	}
-	out := ReviewPage{Rows: make([]ReviewItem, 0, len(page.Rows)), Total: page.Total}
+	out := AttentionPage{Tasks: make([]AttentionTask, 0, len(page.Rows)), Total: page.Total}
 	for _, record := range page.Rows {
 		decision := record.Result.Decision
-		out.Rows = append(out.Rows, ReviewItem{
+		out.Tasks = append(out.Tasks, AttentionTask{
 			ID: record.ID, ClipHash: record.ClipHash, Question: decision.ReviewQuestion,
+			Kind:            attentionTaskKind(decision.ReasonCodes),
 			ApplicationMode: record.ApplicationMode,
+			AllowedActions:  s.attentionActions(record),
 			ReasonCodes:     append([]filleradmission.ReasonCode{}, decision.ReasonCodes...),
 			EvidenceRefs:    append([]string{}, decision.EvidenceRefs...),
-			Conflicts:       append([]filleradmission.Conflict{}, decision.Conflicts...), CreatedAt: record.CreatedAt,
+			Conflicts:       append([]filleradmission.Conflict{}, decision.Conflicts...),
+			CreatedAt:       record.CreatedAt,
 		})
 	}
 	return out, nil
+}
+
+func attentionTaskKind(reasons []filleradmission.ReasonCode) AttentionTaskKind {
+	for _, reason := range reasons {
+		if reason == filleradmission.ReasonMissingSourceLicense ||
+			reason == filleradmission.ReasonConflictSourceLicense {
+			return AttentionRightsProvenance
+		}
+	}
+	for _, reason := range reasons {
+		if reason == filleradmission.ReasonInsufficientSensitiveEvidence {
+			return AttentionSuitabilityException
+		}
+	}
+	return AttentionIdentityRole
+}
+
+func (s *Service) attentionActions(record Record) []ActionKind {
+	decision := record.Result.Decision
+	if decision == nil || decision.Verdict != filleradmission.VerdictReview || strings.TrimSpace(decision.ReviewQuestion) == "" {
+		return []ActionKind{}
+	}
+	if record.ApplicationMode == ApplicationModeApplied && s.applied == nil {
+		return []ActionKind{}
+	}
+	actions := []ActionKind{ActionAbandon}
+	if attentionTaskKind(decision.ReasonCodes) != AttentionIdentityRole {
+		return actions
+	}
+	return []ActionKind{ActionAdmit, ActionReject, ActionCorrect, ActionAbandon}
+}
+
+func containsAction(actions []ActionKind, wanted ActionKind) bool {
+	for _, action := range actions {
+		if action == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) Diagnostics(ctx context.Context, cursor Cursor, limit int) (DiagnosticPage, error) {

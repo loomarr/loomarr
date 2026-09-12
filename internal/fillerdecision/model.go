@@ -180,17 +180,28 @@ type Overview struct {
 	Counts      Counts
 }
 
-type ReviewItem struct {
+type AttentionTaskKind string
+
+const (
+	AttentionIdentityRole         AttentionTaskKind = "identity_role"
+	AttentionRightsProvenance     AttentionTaskKind = "rights_provenance"
+	AttentionSuitabilityException AttentionTaskKind = "suitability_exception"
+	AttentionSplitBoundary        AttentionTaskKind = "split_boundary"
+)
+
+type AttentionTask struct {
 	ID, ClipHash, Question string
+	Kind                   AttentionTaskKind
 	ApplicationMode        ApplicationMode
+	AllowedActions         []ActionKind
 	ReasonCodes            []filleradmission.ReasonCode
 	EvidenceRefs           []string
 	Conflicts              []filleradmission.Conflict
 	CreatedAt              time.Time
 }
 
-type ReviewPage struct {
-	Rows  []ReviewItem
+type AttentionPage struct {
+	Tasks []AttentionTask
 	Total int
 }
 

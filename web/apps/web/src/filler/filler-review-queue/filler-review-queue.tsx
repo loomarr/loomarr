@@ -1,6 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
-import type { FillerDecisionReviewDTO } from "@loomarr/api/models/fillerDecisionReviewDTO";
+import type { FillerAttentionTaskDTO } from "@loomarr/api/models/fillerAttentionTaskDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatRelative, pluralize } from "@loomarr/core/format";
@@ -21,6 +21,19 @@ import { ScreeningSummary } from "./screening-summary";
 const humanize = (value: string) => value.replaceAll("_", " ");
 const REVIEW_PAGE_SIZE = 10;
 
+const taskLabel = (task: FillerAttentionTaskDTO) => {
+  switch (task.taskKind) {
+    case "rights_provenance":
+      return "Rights and provenance decision";
+    case "suitability_exception":
+      return "Suitability decision";
+    case "split_boundary":
+      return "Compilation boundary decision";
+    default:
+      return "Identity and role decision";
+  }
+};
+
 interface ReviewCursor {
   beforeAt?: string;
   beforeId?: string;
@@ -33,7 +46,7 @@ const ReviewCard = ({
   clipUnavailable,
   onAbandon,
 }: {
-  review: FillerDecisionReviewDTO;
+  review: FillerAttentionTaskDTO;
   clip?: ClipDTO;
   clipLoading: boolean;
   clipUnavailable: boolean;
@@ -47,14 +60,16 @@ const ReviewCard = ({
   const [playing, setPlaying] = useState(false);
   const [playbackStarted, setPlaybackStarted] = useState(false);
   const shadowReview = review.applicationMode === "shadow";
+  const allows = (kind: "admit" | "reject" | "correct" | "abandon") =>
+    review.allowedActions.includes(kind);
   const exactHash = /^[0-9a-f]{64}$/.test(review.clipHash);
   const screeningQuery = fillerApi.useGetFillerScreening(
     { hash: review.clipHash },
     { query: { enabled: exactHash && evidenceOpen } },
   );
   const screening = unwrap(screeningQuery.data, (body) => body);
-  const canRecordAnswer = Boolean(shadowReview && playbackStarted && clip);
-  const action = fillerApi.useActOnFillerDecision({
+  const canRecordAnswer = Boolean(playbackStarted && clip);
+  const action = fillerApi.useActOnFillerAttention({
     mutation: {
       onSuccess: (_result, variables) => {
         toast.success(
@@ -64,7 +79,7 @@ const ReviewCard = ({
               ? "Shadow answer recorded"
               : "Decision recorded",
         );
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerDecisionReviewsQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerAttentionQueryKey() });
         void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerDecisionOverviewQueryKey() });
         void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerDecisionActivityQueryKey() });
       },
@@ -78,6 +93,7 @@ const ReviewCard = ({
   });
 
   const submit = (kind: "admit" | "reject" | "correct" | "abandon") => {
+    if (!allows(kind)) return;
     action.mutate(
       {
         id: review.id,
@@ -102,6 +118,7 @@ const ReviewCard = ({
               ? `${clip.name} · ${formatClipDuration(clip.durationMs)}`
               : `Clip ${review.clipHash.slice(0, 10)}…`}
           </p>
+          <p className="mt-1 font-medium text-signal text-xs">{taskLabel(review)}</p>
           <h2 id={`review-${review.id}`} className="mt-1 font-semibold text-lg">
             {review.question}
           </h2>
@@ -203,7 +220,7 @@ const ReviewCard = ({
         ) : null}
       </div>
 
-      {correcting ? (
+      {correcting && allows("correct") ? (
         <form
           className="mt-5 rounded-md border border-border bg-muted/20 p-4"
           onSubmit={(event) => {
@@ -263,39 +280,39 @@ const ReviewCard = ({
         </form>
       ) : (
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button
-            onClick={() => submit("admit")}
-            disabled={action.isPending || !canRecordAnswer}
-            title={
-              canRecordAnswer
-                ? "Record that this exact clip is filler; this does not file it"
-                : shadowReview
-                  ? "Play the exact clip before recording an answer"
-                  : "Applied terminal admission is not available"
-            }
-          >
-            {shadowReview ? "Record as filler" : "Confirm for library"}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setCorrecting(true)}
-            disabled={action.isPending || !shadowReview}
-          >
-            {shadowReview ? "Correct answer" : "Correct"}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => submit("reject")}
-            disabled={action.isPending || !canRecordAnswer}
-            title={
-              canRecordAnswer ? "Record that this exact clip is not filler" : "Play the exact clip first"
-            }
-          >
-            {shadowReview ? "Record as not filler" : "Reject"}
-          </Button>
-          <Button variant="ghost" onClick={() => submit("abandon")} disabled={action.isPending}>
-            Skip for now
-          </Button>
+          {allows("admit") ? (
+            <Button
+              onClick={() => submit("admit")}
+              disabled={action.isPending || !canRecordAnswer}
+              title={
+                canRecordAnswer
+                  ? "Record that this exact clip is filler; this does not file it"
+                  : "Play the exact clip before recording an answer"
+              }
+            >
+              {shadowReview ? "Record as filler" : "Confirm for library"}
+            </Button>
+          ) : null}
+          {allows("correct") ? (
+            <Button variant="outline" onClick={() => setCorrecting(true)} disabled={action.isPending}>
+              {shadowReview ? "Correct answer" : "Correct"}
+            </Button>
+          ) : null}
+          {allows("reject") ? (
+            <Button
+              variant="ghost"
+              onClick={() => submit("reject")}
+              disabled={action.isPending || !canRecordAnswer}
+              title={canRecordAnswer ? "Record that this exact clip is not filler" : "Play the exact clip first"}
+            >
+              {shadowReview ? "Record as not filler" : "Reject"}
+            </Button>
+          ) : null}
+          {allows("abandon") ? (
+            <Button variant="ghost" onClick={() => submit("abandon")} disabled={action.isPending}>
+              Skip for now
+            </Button>
+          ) : null}
         </div>
       )}
       <ClipPlayer
@@ -312,7 +329,7 @@ const FillerReviewQueue = ({ hideEmpty = false }: { hideEmpty?: boolean }) => {
   const [pageCursors, setPageCursors] = useState<ReviewCursor[]>([{}]);
   const [selectedReviewID, setSelectedReviewID] = useState<string>();
   const cursor = pageCursors.at(-1) ?? {};
-  const query = fillerApi.useFillerDecisionReviews({ limit: REVIEW_PAGE_SIZE, ...cursor });
+  const query = fillerApi.useFillerAttention({ limit: REVIEW_PAGE_SIZE, ...cursor });
   const body = unwrap(query.data, (value) => value);
   const reviewHashes = body?.rows.map((review) => review.clipHash) ?? [];
   // Resolve the rendered identities in one bounded catalog read. A per-card query turned a
@@ -377,8 +394,8 @@ const FillerReviewQueue = ({ hideEmpty = false }: { hideEmpty?: boolean }) => {
           A few clips need your judgment
         </h2>
         <p className="mt-1 text-muted-foreground text-sm">
-          {pluralize(body.total, "plain question")}. Preparation and recoverable processing work continue
-          below.
+          {pluralize(body.total, "plain question")}. Automatic preparation and recovery continue without
+          joining this list.
         </p>
       </div>
       <div

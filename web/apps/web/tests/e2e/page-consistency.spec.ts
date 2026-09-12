@@ -147,6 +147,11 @@ test("pages share one navigation and header geometry at desktop and mobile width
 
 test("Filler stays simple, discoverable, and accessible at desktop and mobile widths", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
+  const fillerRequests: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/v1/filler/")) fillerRequests.push(path);
+  });
   const destinations = [
     { path: "/filler", current: "Overview", title: "Filler" },
     { path: "/filler/sources", current: "Sources", title: "Filler" },
@@ -200,4 +205,9 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
       [],
     );
   }
+
+  expect(fillerRequests.filter((path) => path === "/v1/filler/attention").length).toBeGreaterThanOrEqual(
+    viewports.length,
+  );
+  expect(fillerRequests).not.toContain("/v1/filler/incoming");
 });
