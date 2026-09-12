@@ -96,6 +96,30 @@ describe("TaxonomyTab", () => {
     expect(screen.queryByRole("button", { name: /add/i })).not.toBeInTheDocument();
   });
 
+  it("does not claim complete coverage when there are no playable clips", async () => {
+    server.use(
+      getListTaxonomyMockHandler({
+        totalClips: 0,
+        taggedClips: 0,
+        unclassifiedClips: 0,
+        axisCoverage: [
+          { axis: "product", taggedClips: 0, untaggedClips: 0 },
+          { axis: "format", taggedClips: 0, untaggedClips: 0 },
+          { axis: "seasonal", taggedClips: 0, untaggedClips: 0 },
+          { axis: "audience-cue", taggedClips: 0, untaggedClips: 0 },
+        ],
+        taxa: [],
+      }),
+    );
+    renderTab();
+
+    expect(await screen.findByText("No playable clips yet")).toBeInTheDocument();
+    expect(screen.getByText(/coverage will appear after clips pass admission/i)).toBeInTheDocument();
+    expect(screen.queryByText(/every playable clip/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/all playable clips/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("0 / 0")).not.toBeInTheDocument();
+  });
+
   it("preserves semantic list hierarchy for deep trees and long labels", async () => {
     server.use(
       getListTaxonomyMockHandler({

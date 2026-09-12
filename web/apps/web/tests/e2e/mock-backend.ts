@@ -370,12 +370,61 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     // client deliberately trusts generated response shapes once the capability is enabled.
     if (opts.fillerEnabled) {
       if (path === "/v1/filler/watch") {
-        return json(route, { health: "healthy", sourcesOn: 1, sourcesTotal: 1, clips: 0, held: 0 });
+        return json(route, { health: "attention", sourcesOn: 2, sourcesTotal: 2, clips: 0, held: 0 });
       }
       if (path === "/v1/filler/attention") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/decisions/activity") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/decisions/diagnostics") return json(route, { rows: [], total: 0 });
-      if (path === "/v1/filler/sources") return json(route, { sources: [], total: 0 });
+      if (path === "/v1/filler/sources") {
+        return json(route, {
+          sources: [
+            {
+              id: "folder",
+              uri: "/data/filler/a-deliberately-long-folder-name",
+              kind: "folder",
+              target: "/data/filler/a-deliberately-long-folder-name",
+              detail: "watched directly — new files appear on the next pass",
+              count: 0,
+              configured: true,
+              fetchable: true,
+              enabled: true,
+              switchable: true,
+              removable: false,
+              searchable: false,
+            },
+            {
+              id: "provider:archive",
+              kind: "archive",
+              target: "Archive.org",
+              detail: "collections you added",
+              count: 0,
+              configured: true,
+              fetchable: false,
+              enabled: true,
+              switchable: false,
+              removable: false,
+              searchable: false,
+              group: true,
+            },
+            {
+              id: "archive:long",
+              uri: "classic_tv_commercials",
+              kind: "archive",
+              target: "Classic television commercials from a deliberately long collection name",
+              detail: "an archive.org collection",
+              count: 0,
+              configured: true,
+              fetchable: true,
+              enabled: true,
+              switchable: true,
+              removable: true,
+              searchable: true,
+              parentId: "provider:archive",
+            },
+          ],
+          total: 0,
+        });
+      }
       if (path === "/v1/filler/pool") {
         return json(route, { clips: 0, commercials: 0, eligible: 0, untagged: 0, channels: [] });
       }

@@ -23,6 +23,12 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
 });
 
 describe("FillerSources", () => {
+  it("keeps the source section in the page heading hierarchy", () => {
+    render(<FillerSources sources={[]} onFetch={vi.fn()} />);
+
+    expect(screen.getByRole("heading", { level: 2, name: "Where filler comes from" })).toBeInTheDocument();
+  });
+
   // ⚠ The reason the read-model returns unconfigured rows at all: "no drop-folder configured"
   // is the answer to "why is my catalog empty". Hiding the row leaves that unanswered.
   it("shows an unconfigured source rather than hiding it", () => {
