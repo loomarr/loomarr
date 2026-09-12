@@ -246,6 +246,9 @@ func validateFamilyInputs(source Audit, fingerprints []FamilyFingerprint, genera
 		if fingerprint.ContentSHA256 != item.ContentSHA256 || fingerprint.LocalFile != item.SourceLocalFile || len(fingerprint.FrameHashes) == 0 || len(fingerprint.AudioRMS) == 0 {
 			return fmt.Errorf("family inventory case %q is not content-bound to the source audit", fingerprint.CaseID)
 		}
+		if !VisualFingerprintComparable(fingerprint.FrameHashes) && !AudioFingerprintComparable(fingerprint.AudioRMS) {
+			return fmt.Errorf("family inventory case %q has neither comparable visual nor audio fingerprint", fingerprint.CaseID)
+		}
 		if _, duplicate := seenContent[fingerprint.ContentSHA256]; duplicate {
 			return fmt.Errorf("family inventory repeats content identity %q", fingerprint.ContentSHA256)
 		}

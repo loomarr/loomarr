@@ -91,6 +91,52 @@ func TestFingerprintComparabilityMatchesEvidenceRequirements(t *testing.T) {
 	}
 }
 
+func TestBuildFamilyAuditRequiresComparableFingerprintEvidence(t *testing.T) {
+	when := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	visual := make([]uint64, duplicateMinFrames)
+	for index := range visual {
+		visual[index] = 0x0f0f0f0f0f0f0f0f ^ uint64(index)
+	}
+	audio := make([]uint32, duplicateAudioMinBins)
+	for index := range audio {
+		audio[index] = uint32(index)
+	}
+
+	tests := []struct {
+		name    string
+		frames  []uint64
+		audio   []uint32
+		wantErr string
+	}{
+		{
+			name:    "neither modality comparable",
+			frames:  []uint64{0},
+			audio:   []uint32{1},
+			wantErr: `family inventory case "case" has neither comparable visual nor audio fingerprint`,
+		},
+		{name: "visual only comparable", frames: visual, audio: []uint32{1}},
+		{name: "audio only comparable", frames: []uint64{0}, audio: audio},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fingerprints := []FamilyFingerprint{{
+				CaseID: "case", ContentSHA256: repeatedSHA('c'), LocalFile: "case.mp4",
+				FrameHashes: test.frames, AudioRMS: test.audio,
+			}}
+			_, err := BuildFamilyAudit(familySourceAudit(t, fingerprints, when.Add(-time.Hour)), fingerprints, when)
+			if test.wantErr == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || err.Error() != test.wantErr {
+				t.Fatalf("error = %v, want %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestBuildFamilyAuditReportsTransitiveNonCliqueWithoutChoosingRendition(t *testing.T) {
 	base := make([]uint64, 20)
 	for i := range base {

@@ -55,7 +55,7 @@ func inspectionInputs(t *testing.T) (RawInspectionInputs, InspectionSeed) {
 		id := fmt.Sprintf("case-%02d", i)
 		frames := make([]uint64, 12)
 		for index := range frames {
-			frames[index] = uint64(index+5+i*97) * 0x0102040810204081
+			frames[index] = 0x0f0f0f0f0f0f0f0f ^ uint64(index+5+i*97)
 		}
 		if i == 1 {
 			frames = append([]uint64(nil), fingerprints[0].FrameHashes...)
