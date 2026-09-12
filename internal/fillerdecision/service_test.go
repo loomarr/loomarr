@@ -129,6 +129,59 @@ func (e *appliedActionExecutor) ActOnAppliedFillerDecision(_ context.Context, _ 
 	return err
 }
 
+type attentionRepository struct {
+	Repository
+	page DecisionPage
+}
+
+func (r *attentionRepository) ListFillerDecisions(context.Context, DecisionFilter) (DecisionPage, error) {
+	return r.page, nil
+}
+
+func TestAttentionProjectsTaskKindAndOnlyCurrentlyAllowedActions(t *testing.T) {
+	at := time.Date(2026, 9, 12, 13, 0, 0, 0, time.UTC)
+	review := func(id string, mode ApplicationMode, reasons ...filleradmission.ReasonCode) Record {
+		record := validRecord()
+		record.ID = id
+		record.ApplicationMode = mode
+		record.CreatedAt = at
+		record.Result.Decision.Verdict = filleradmission.VerdictReview
+		record.Result.Decision.ReviewQuestion = "What should Loomarr record?"
+		record.Result.Decision.ReasonCodes = reasons
+		return record
+	}
+	repo := &attentionRepository{page: DecisionPage{Rows: []Record{
+		review("identity", ApplicationModeShadow, filleradmission.ReasonConflictContentRole),
+		review("rights", ApplicationModeShadow, filleradmission.ReasonMissingSourceLicense),
+		review("suitability", ApplicationModeShadow, filleradmission.ReasonInsufficientSensitiveEvidence),
+		review("applied-unavailable", ApplicationModeApplied, filleradmission.ReasonMissingCommercialIdentity),
+	}, Total: 4}}
+	service, err := New(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := service.Attention(t.Context(), Cursor{}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []AttentionTask{
+		{ID: "identity", Kind: AttentionIdentityRole, AllowedActions: []ActionKind{ActionAdmit, ActionReject, ActionCorrect, ActionAbandon}},
+		{ID: "rights", Kind: AttentionRightsProvenance, AllowedActions: []ActionKind{ActionAbandon}},
+		{ID: "suitability", Kind: AttentionSuitabilityException, AllowedActions: []ActionKind{ActionAbandon}},
+		{ID: "applied-unavailable", Kind: AttentionIdentityRole, AllowedActions: []ActionKind{}},
+	}
+	if len(page.Tasks) != len(want) || page.Total != len(want) {
+		t.Fatalf("Attention = %+v, want %d tasks", page, len(want))
+	}
+	for i := range want {
+		if page.Tasks[i].ID != want[i].ID || page.Tasks[i].Kind != want[i].Kind ||
+			!slices.Equal(page.Tasks[i].AllowedActions, want[i].AllowedActions) {
+			t.Errorf("task %d = %+v, want identity/kind/actions %+v", i, page.Tasks[i], want[i])
+		}
+	}
+}
+
 func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
 	action := Action{
 		ID: "action-1", DecisionID: "decision-1", ActorID: "admin-1", Kind: ActionAdmit,
@@ -147,6 +200,21 @@ func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
 			t.Fatalf("recorded actions = %+v", actions)
 		}
 	})
+	t.Run("action absent from attention projection", func(t *testing.T) {
+		record := validRecord()
+		record.Result.Decision.ReasonCodes = []filleradmission.ReasonCode{filleradmission.ReasonMissingSourceLicense}
+		repo := &actionRoutingRepository{record: fillerdecisionRecordResult{value: record}}
+		service, err := New(repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := service.ActOnAttention(t.Context(), action); !errors.Is(err, ErrActionNotAllowed) {
+			t.Fatalf("ActOnAttention = %v, want ErrActionNotAllowed", err)
+		}
+		if repo.actions.Calls() != 0 {
+			t.Fatal("an action absent from Attention reached the writer")
+		}
+	})
 	t.Run("applied unavailable", func(t *testing.T) {
 		record := validRecord()
 		record.ApplicationMode = ApplicationModeApplied
@@ -155,8 +223,8 @@ func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := service.Act(t.Context(), action); !errors.Is(err, ErrAppliedUnavailable) {
-			t.Fatalf("Act = %v, want ErrAppliedUnavailable", err)
+		if err := service.ActOnAttention(t.Context(), action); !errors.Is(err, ErrActionNotAllowed) {
+			t.Fatalf("ActOnAttention = %v, want ErrActionNotAllowed", err)
 		}
 		if repo.actions.Calls() != 0 {
 			t.Fatal("applied action used the shadow writer")
@@ -170,8 +238,8 @@ func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := service.Act(t.Context(), action); err != nil {
-			t.Fatalf("Act = %v, want recorded result", err)
+		if err := service.ActOnAttention(t.Context(), action); err != nil {
+			t.Fatalf("ActOnAttention = %v, want recorded result", err)
 		}
 		if repo.actions.Calls() != 0 {
 			t.Fatal("exact retry used the shadow writer")

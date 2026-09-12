@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api";
 import {
-  getFillerDecisionReviewsMockHandler,
+  getFillerAttentionMockHandler,
   getFillerPoolMockHandler,
   getFillerWatchMockHandler,
   getListFillerMockHandler,
@@ -11,6 +11,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { me } from "@/test/fixtures/users";
@@ -58,19 +59,14 @@ const clip = (hash: string, name: string): ClipDTO => ({
 // simultaneously carrying a field the API never sends and missing three it always does.
 //
 // ⚠ The `me` fixture omitted `local`, which MeBody requires.
-const stubFillerPage = (over: { clips?: ClipDTO[]; incomingTotal?: number; total?: number } = {}) => {
+const stubFillerPage = (over: { clips?: ClipDTO[]; total?: number } = {}) => {
   const catalogQueries: string[] = [];
   const defaultClips = [clip("hash-a1", "One"), clip("hash-a2", "Two")];
 
   server.use(
     getMeMockHandler(me({ name: "Admin" })),
     getFillerWatchMockHandler({ sourcesOn: 4, sourcesTotal: 5, clips: 200, held: 0, health: "healthy" }),
-    // ⚠ `total` is deliberately NOT derived from the arrays here — this file's whole point is that
-    // the Incoming badge follows the SERVER's semantic-review count rather than the rendered
-    // rows, and equal fixtures could not tell those two rules apart. So the belt stays empty and
-    // the count says 3. (§10 V51e renamed `asks`+`pipeline` → `clips`; the badge reads `total`
-    // either way, which is why this survived the rename as a pure field swap.)
-    getFillerDecisionReviewsMockHandler({ rows: [], total: over.incomingTotal ?? 3 }),
+    getFillerAttentionMockHandler({ rows: [], total: 0 }),
     getFillerPoolMockHandler({ clips: 200, commercials: 200, eligible: 200, untagged: 0, channels: [] }),
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),
     getSettingsListMockHandler({ settings: [], features: { filler: true } }),
@@ -112,16 +108,40 @@ describe("FillerPage shell", () => {
     expect(within(catalogTab).getByText("200")).toBeInTheDocument();
   });
 
-  // ⚠ Admin-only, so this must WAIT for `/v1/auth/me`. Asserting on the link alone would pass
-  // instantly against a member's (countless) tab and prove nothing.
-  it("counts the Incoming badge from the semantic review total", async () => {
-    stubFillerPage({ incomingTotal: 7 });
+  it("does not fetch Attention for an inactive destination", async () => {
+    stubFillerPage();
+    let attentionReads = 0;
+    server.use(
+      http.get("*/v1/filler/attention", () => {
+        attentionReads += 1;
+        return HttpResponse.json({ rows: [], total: 0 });
+      }),
+    );
     renderPage("library");
 
-    await waitFor(() => {
-      const incomingTab = screen.getByRole("link", { name: /incoming/i });
-      expect(within(incomingTab).getByText("7")).toBeInTheDocument();
-    });
+    await screen.findByRole("link", { name: /^library/i });
+    expect(attentionReads).toBe(0);
+  });
+
+  it("renders only the Attention projection on Incoming", async () => {
+    stubFillerPage();
+    let attentionReads = 0;
+    let legacyIncomingReads = 0;
+    server.use(
+      http.get("*/v1/filler/attention", () => {
+        attentionReads += 1;
+        return HttpResponse.json({ rows: [], total: 0 });
+      }),
+      http.get("*/v1/filler/incoming", () => {
+        legacyIncomingReads += 1;
+        return HttpResponse.json({ clips: [], reels: [], rejected: [], stageOrder: [], total: 0 });
+      }),
+    );
+    renderPage("incoming", "/filler/incoming");
+
+    expect(await screen.findByText("Nothing needs your attention")).toBeInTheDocument();
+    expect(attentionReads).toBe(1);
+    expect(legacyIncomingReads).toBe(0);
   });
 
   it("makes Sources a routine top-level destination", async () => {

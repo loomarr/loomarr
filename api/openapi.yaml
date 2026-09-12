@@ -3203,6 +3203,84 @@ components:
         - effect
         - evidenceSha256
       type: object
+    FillerAttentionOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerAttentionOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        rows:
+          items:
+            $ref: "#/components/schemas/FillerAttentionTaskDTO"
+          type: array
+        total:
+          format: int64
+          type: integer
+      required:
+        - rows
+        - total
+      type: object
+    FillerAttentionTaskDTO:
+      additionalProperties: false
+      properties:
+        allowedActions:
+          items:
+            enum:
+              - admit
+              - reject
+              - correct
+              - abandon
+            type: string
+          type: array
+        applicationMode:
+          enum:
+            - shadow
+            - applied
+          type: string
+        clipHash:
+          type: string
+        conflicts:
+          items:
+            $ref: "#/components/schemas/Conflict"
+          type: array
+        createdAt:
+          format: date-time
+          type: string
+        evidenceRefs:
+          items:
+            type: string
+          type: array
+        id:
+          type: string
+        question:
+          type: string
+        reasonCodes:
+          items:
+            type: string
+          type: array
+        taskKind:
+          enum:
+            - identity_role
+            - rights_provenance
+            - suitability_exception
+            - split_boundary
+          type: string
+      required:
+        - id
+        - clipHash
+        - question
+        - taskKind
+        - applicationMode
+        - allowedActions
+        - reasonCodes
+        - evidenceRefs
+        - conflicts
+        - createdAt
+      type: object
     FillerClipEvent:
       additionalProperties: false
       properties:
@@ -3476,66 +3554,6 @@ components:
         - healthy
         - nextAction
         - counts
-      type: object
-    FillerDecisionReviewDTO:
-      additionalProperties: false
-      properties:
-        applicationMode:
-          enum:
-            - shadow
-            - applied
-          type: string
-        clipHash:
-          type: string
-        conflicts:
-          items:
-            $ref: "#/components/schemas/Conflict"
-          type: array
-        createdAt:
-          format: date-time
-          type: string
-        evidenceRefs:
-          items:
-            type: string
-          type: array
-        id:
-          type: string
-        question:
-          type: string
-        reasonCodes:
-          items:
-            type: string
-          type: array
-      required:
-        - id
-        - clipHash
-        - question
-        - applicationMode
-        - reasonCodes
-        - evidenceRefs
-        - conflicts
-        - createdAt
-      type: object
-    FillerDecisionReviewsOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDecisionReviewsOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        rows:
-          items:
-            $ref: "#/components/schemas/FillerDecisionReviewDTO"
-          type: array
-        total:
-          format: int64
-          type: integer
-      required:
-        - rows
-        - total
       type: object
     FillerFetchStatusDTO:
       additionalProperties: false
@@ -12307,6 +12325,85 @@ paths:
       summary: List filler clips
       tags:
         - filler
+  /v1/filler/attention:
+    get:
+      description: Admin-only bounded semantic exceptions. Every task names its server-owned kind and currently allowed actions; machine work and operational holds are structurally excluded (§10 V63).
+      operationId: filler-attention
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: Created-at value from the last row of the previous page
+          explode: false
+          in: query
+          name: beforeAt
+          schema:
+            description: Created-at value from the last row of the previous page
+            format: date-time
+            type: string
+        - description: Opaque id from the last row of the previous page
+          explode: false
+          in: query
+          name: beforeId
+          schema:
+            description: Opaque id from the last row of the previous page
+            maxLength: 137
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerAttentionOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Filler Attention tasks
+      tags:
+        - filler
+  /v1/filler/attention/{id}/actions:
+    post:
+      description: Admin-only append-only action from the task's allowed action set. The server records the authenticated actor and rejects stale or invalid state transitions. Shadow actions are audit-only; an applied action can change the catalog only after terminal release replay and commits that effect atomically (§10 V63).
+      operationId: act-on-filler-attention
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FillerDecisionActionInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerDecisionActionOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Act on a Filler Attention task
+      tags:
+        - filler
   /v1/filler/bulk/remove:
     post:
       description: "Admin only (§10 V35). ⚠ A TOMBSTONE, not a delete: the clip stops appearing in the catalog and stops being used in commercial breaks, and **the file is left exactly where it is**. Nothing in Loomarr deletes an operator's media. It survives re-scans, which a row delete could not — the next scan would find the file and put it back. Pass `restore:true` to undo."
@@ -12471,85 +12568,6 @@ paths:
       summary: Admission decision health and next action
       tags:
         - filler
-  /v1/filler/decisions/reviews:
-    get:
-      description: Admin-only bounded semantic exceptions. Every row asks exactly one question and excludes machine work and provider failures (§10 V63).
-      operationId: filler-decision-reviews
-      parameters:
-        - explode: false
-          in: query
-          name: limit
-          schema:
-            default: 100
-            format: int64
-            maximum: 100
-            minimum: 1
-            type: integer
-        - description: Created-at value from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeAt
-          schema:
-            description: Created-at value from the last row of the previous page
-            format: date-time
-            type: string
-        - description: Opaque id from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeId
-          schema:
-            description: Opaque id from the last row of the previous page
-            maxLength: 137
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDecisionReviewsOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Semantic filler decisions needing attention
-      tags:
-        - filler
-  /v1/filler/decisions/{id}/actions:
-    post:
-      description: Admin-only append-only action. The server records the authenticated actor and rejects stale or invalid state transitions. Shadow actions are audit-only; an applied action can change the catalog only after terminal release replay and commits that effect atomically (§10 V63).
-      operationId: act-on-filler-decision
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 128
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FillerDecisionActionInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDecisionActionOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Resolve or reverse a filler decision
-      tags:
-        - filler
   /v1/filler/discover:
     get:
       description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates WITHOUT downloading anything — the operator is deciding what to fetch, and making them download to find out would defeat the point. Results carry only what the source's search index knows: no tags, no licence (see below), and no duration or quality — those cost a metadata call per row, so ask GET /v1/filler/discover/stats for the rows you are showing. Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll."
@@ -12660,7 +12678,7 @@ paths:
         - channels
   /v1/filler/incoming:
     get:
-      description: Admin only (§10 V35) — the Filler page's Incoming tab. One bounded read for the clip conveyor, reviewable reels, and rejected clips. Each list carries its full total so a large import cannot make the response unbounded or make the badge report only the first page.
+      description: Admin only (§10 V35) — legacy operational projection, not the Attention task interface. One bounded read for the clip conveyor, reviewable reels, and rejected clips. Each list carries its full total so a large import cannot make the response unbounded or make the badge report only the first page.
       operationId: filler-incoming
       responses:
         "200":

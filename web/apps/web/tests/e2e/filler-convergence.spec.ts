@@ -22,11 +22,13 @@ test("a fetched arrival becomes playable only after terminal admission completes
   let fetched = false;
   let terminalAdmissionApplied = false;
   const calls: string[] = [];
+  const requestedPaths: string[] = [];
 
   await page.route("**/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const { pathname: path } = url;
+    requestedPaths.push(path);
     const method = request.method();
     const reply = (body: unknown) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
@@ -159,11 +161,14 @@ test("a fetched arrival becomes playable only after terminal admission completes
         },
       });
     }
-    if (path === "/v1/filler/decisions/reviews") {
+    if (path === "/v1/filler/attention") {
       const rows = [
         {
           id: "review-1",
           clipHash: "ambiguous-spot",
+          taskKind: "identity_role",
+          applicationMode: "shadow",
+          allowedActions: ["admit", "reject", "correct", "abandon"],
           question: "Is this a toy commercial?",
           reasonCodes: ["conflict_product"],
           evidenceRefs: ["closing-frame"],
@@ -180,7 +185,7 @@ test("a fetched arrival becomes playable only after terminal admission completes
       ];
       return reply({ rows, total: rows.length });
     }
-    if (path === "/v1/filler/decisions/review-1/actions" && method === "POST") {
+    if (path === "/v1/filler/attention/review-1/actions" && method === "POST") {
       const body = request.postDataJSON();
       expect(body).toMatchObject({ kind: "abandon", reason: "skip for now" });
       calls.push("review skipped without verdict");
@@ -355,10 +360,13 @@ test("a fetched arrival becomes playable only after terminal admission completes
   await page.getByRole("button", { name: /fetch now from trusted commercials/i }).click();
   await expect.poll(() => fetched).toBe(true);
 
+  const legacyIncomingRequests = requestedPaths.filter((path) => path === "/v1/filler/incoming").length;
   await page.goto("/filler/incoming");
-  await expect(page.getByText("Trusted Toy Spot", { exact: true })).toBeVisible();
-  await expect(page.getByText("Record the admission check", { exact: true })).toBeVisible();
-  await expect(page.getByRole("status")).toHaveText("Trusted Toy Spot: Record the admission check");
+  await expect(page.getByRole("heading", { name: "Is this a toy commercial?" })).toBeVisible();
+  await expect(page.getByText("Trusted Toy Spot", { exact: true })).toHaveCount(0);
+  expect(requestedPaths.filter((path) => path === "/v1/filler/incoming")).toHaveLength(
+    legacyIncomingRequests,
+  );
 
   await page.goto("/filler");
   await expect(page.getByText("A few clips need your judgment")).toBeVisible();

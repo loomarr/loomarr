@@ -11,7 +11,9 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-// The Incoming tab — the ingest conveyor (§10 V35).
+// The legacy ingest conveyor (§10 V35), retained as an operational projection while its machine
+// state moves under Manage → Diagnostics. The ordinary Incoming experience consumes the typed
+// Attention projection and never presents this mixed feed as human work.
 //
 // What has been downloaded but is not yet terminally admitted:
 //
@@ -20,9 +22,8 @@ import (
 //   - **reels**: compilations mid-split — the persisted split proposals V34 already writes.
 //   - **rejected**: refusal history for machine decisions an operator may need to inspect.
 //
-// ⚠ **One read behind the tab, not a fan-out the client assembles.** The two halves answer one
-// question ("what is waiting on me?"), and a client that fetched them separately would render a
-// half-empty queue whenever one call was slower — which is exactly when the queue matters.
+// ⚠ This remains one bounded read for operational inspection, not an authority interface. Clients
+// must not infer Attention tasks or allowed actions from this payload.
 //
 // ⚠ **The "nothing here invents a confidence score" rule is RETIRED (V38), not weakened.** It
 // stood for two phases and was right the whole time: the mock drew a confidence bar, the tagger
@@ -229,7 +230,7 @@ func (s *Server) registerFillerIncoming(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-incoming", Method: http.MethodGet, Path: "/v1/filler/incoming",
 		Summary: "What has been downloaded but isn't terminally admitted",
-		Description: "Admin only (§10 V35) — the Filler page's Incoming tab. One bounded read for the clip conveyor, " +
+		Description: "Admin only (§10 V35) — legacy operational projection, not the Attention task interface. One bounded read for the clip conveyor, " +
 			"reviewable reels, and rejected clips. Each list carries its full total so a " +
 			"large import cannot make the response unbounded or make the badge report only the first page.",
 		Tags: []string{"filler"},

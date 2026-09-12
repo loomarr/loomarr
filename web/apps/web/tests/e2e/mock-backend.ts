@@ -372,7 +372,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       if (path === "/v1/filler/watch") {
         return json(route, { health: "healthy", sourcesOn: 1, sourcesTotal: 1, clips: 0, held: 0 });
       }
-      if (path === "/v1/filler/decisions/reviews") return json(route, { rows: [], total: 0 });
+      if (path === "/v1/filler/attention") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/decisions/activity") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/decisions/diagnostics") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/sources") return json(route, { sources: [], total: 0 });
