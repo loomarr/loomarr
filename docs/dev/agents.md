@@ -179,8 +179,10 @@ files before it appeared in the roster. If the worktree already exists, register
 make agent-start TASK=filler-refresh CLAIMS=openapi-client
 ```
 
-During implementation, run focused tests for the edited surface. Before publication,
-`make verify BASE=origin/main` reports the changed-file scope and runs affected local evidence through
+During implementation, run focused tests for the edited surface. When no exact test is known,
+`make test-affected BASE=origin/main` runs direct and related unit feedback without publication
+prerequisites or reverse dependants. Before publication, run `make verify BASE=origin/main` once after
+the diff is stable. It reports the changed-file scope and runs affected local evidence through
 the fail-closed CI classifier. Its output distinguishes the complete CI impact, locally executed
 gates, protected gates, and the local gates that actually completed; it never presents protected
 Postgres, browser, native-client, or release-image evidence as a local success. The PR fast lane and
@@ -263,8 +265,10 @@ always run the gate and never populate the cache. The harness rechecks the commi
 state after the gate and refuses to cache if implementation began while the baseline was running;
 mixed-tree output is not evidence for either version.
 
-Run small affected tests while editing, formatting and `git diff --check` before commit, then
-`make verify BASE=<base>` once the diff is stable. CI owns expensive native and platform matrices.
+Run exact tests or `make test-affected BASE=<base>` while editing, formatting and `git diff --check`
+before commit, then `make verify BASE=<base>` once the diff is stable. A failed final verification is
+debugged with its failing focused command before one final rerun. CI owns expensive native and platform
+matrices.
 Never run `make smoke*` from an agent session; those commands drive the maintainer's live stack.
 
 ## Finish and clean up

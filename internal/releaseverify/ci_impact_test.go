@@ -92,7 +92,7 @@ func TestAndroidReleaseSourceEvidence(t *testing.T) {
 	}
 }
 
-func TestLegacyAndroidImpactIncludesEvidenceAuthorities(t *testing.T) {
+func TestLegacyAndroidImpactExcludesControlPlaneAuthorities(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Clean(filepath.Join("..", ".."))
@@ -100,7 +100,7 @@ func TestLegacyAndroidImpactIncludesEvidenceAuthorities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(workflow), "ci-impact|validate-android-release-source") {
-		t.Fatal("legacy Android impact filter must invalidate evidence when its classifier or source validator changes")
+	if strings.Contains(string(workflow), "ci-impact|validate-android-release-source") {
+		t.Fatal("legacy Android impact filter treats control-plane policy as a bundle input")
 	}
 }

@@ -9,7 +9,7 @@ every top-level result, including jobs that correctly skipped.
 
 ## Fast PR feedback, authoritative queued integration
 
-Ordinary pull-request pushes run affected policy, repository-contract, static-analysis,
+Ordinary pull-request pushes run the always-on policy bootstrap plus affected repository-contract, static-analysis,
 compile/type, unit, documentation, shared-client, and Android feedback and return the required `CI`
 result quickly. They do not run race-policy shards, Postgres conformance, Playwright, release-image
 builds, runtime image certification, Apple mobile, Apple TV, the tuner matrix, or the macOS harness.
@@ -22,13 +22,14 @@ cache portability scope. A normal queue-produced push to
 `main` runs publication workflows only rather than validating the admitted commit again.
 
 The root workflow owns triggering, classification, admission, manual scopes, and the required
-aggregate. Product job implementations live in family-named reusable workflows, so an edit to one
-family selects only its owning product gate plus the lightweight **CI policy** job. Workflow
-adapters, the release-policy verifier, agent harness, and design-contract prose likewise select
-policy plus only the family they actually affect. They do not select unrelated Rust, Android,
-Apple, image, browser, frontend, Postgres, or application-Go builds. The root workflow selects
-policy, where structural verification covers admission, aggregation, and family wiring without
-rebuilding unchanged products. The root Make interface and unknown paths still select everything.
+aggregate. The lightweight **CI policy** job always runs independently of classifier output, so a
+broken classifier cannot skip its own verification. Product job implementations live in
+family-named reusable workflows, so an edit to one family selects only its owning product gate.
+Classifier, admission, and release-evidence control-plane code selects policy rather than a product
+build that does not execute it. Agent harness and design-contract prose likewise select only their
+real consumers. They do not select unrelated Rust, Android, Apple, image, browser, frontend,
+Postgres, or application-Go builds. The root Make interface and unknown paths still select
+everything.
 
 The Go repository-contract job keeps the stable `make privacy-verify` interface, but its captured
 fixture guard is one in-process tracked-tree scan in `releaseverify`. The previous shell loop
@@ -81,6 +82,13 @@ The `changes` job also runs `scripts/ci-impact.sh` and publishes `impact_*` outp
 specialized contract, Go, full-Go, Rust, Postgres, web, shared-client, iOS, tvOS, Expo
 Android mobile, Expo Android TV, visual, e2e, tuner, image, docs, agent, and legacy Android TV
 gates. Its run summary places those proposed decisions beside the current broad families.
+
+Classification follows execution ownership. A product gate is selected when a changed path is an
+input to the product or to the gate implementation that executes it. A path that only decides which
+gates run, admits a release, or interprets existing evidence is control-plane policy and does not
+borrow an unrelated product build as proof. Unknown paths still select every gate. Local edit-loop
+test planning is a separate interface: it shares changed-path collection but deliberately chooses
+fast direct or related unit tests rather than authoritative CI gates.
 
 Postgres was the first active specialized output. `store-postgres` consumes `impact_postgres`
 directly while remaining in the required `CI` aggregate. The explicit release-candidate scope
@@ -322,9 +330,10 @@ literal path with recipe-time `cat` immediately before the bounded helper rather
 overridable variable or exempting a parse-time `file` function.
 `GO ?= go` and `CARGO ?= cargo` are fixed, and global shell, executable, flag, recipe-prefix, and
 special-target controls that could suppress or redirect a protected recipe are forbidden.
-The `ci-policy` job has a source-bound bootstrap chain: exact pinned checkout and setup-go actions,
+The always-on `ci-policy` job has a source-bound bootstrap chain: exact pinned checkout and setup-go actions,
 then `go run ./cmd/releaseverify -root .` as the first shell step, followed by the three exact Make/Go
-policy commands. The workflow root admits only exact Go and Node version environment values and no
+policy commands. Its `always()` condition is source-bound and independent of impact-classifier
+output. The workflow root admits only exact Go and Node version environment values and no
 defaults; the job and all six steps admit no inherited environment, alternate shell, working
 directory, tolerance, or unknown execution keys; the job's existing needs, condition, and runner are
 source-bound, and no step may add a condition. Setup-go's exact inputs are also bound, so a preceding

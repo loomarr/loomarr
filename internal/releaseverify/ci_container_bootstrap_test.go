@@ -10,6 +10,9 @@ import (
 
 func TestVerifyCIContainerDownloadsRequiresDirectCIBootstrap(t *testing.T) {
 	mutations := map[string]func(string) string{
+		"classifier-gated policy": func(workflow string) string {
+			return strings.Replace(workflow, "    if: always()\n", "    if: needs.changes.outputs.impact_policy == 'true'\n", 1)
+		},
 		"Make invocation": func(workflow string) string {
 			return strings.Replace(workflow, "go run ./cmd/releaseverify -root .", "make release-verify", 1)
 		},
@@ -109,7 +112,7 @@ func TestVerifyCIContainerDownloadsRejectsBootstrapInheritedContext(t *testing.T
 	}
 }
 
-const ciPolicyStepsAnchor = "    if: needs.changes.outputs.impact_policy == 'true'\n    runs-on: ubuntu-latest\n    steps:\n"
+const ciPolicyStepsAnchor = "    if: always()\n    runs-on: ubuntu-latest\n    steps:\n"
 
 func insertBeforeCIPolicySteps(workflow, insertion string) string {
 	return strings.Replace(workflow, ciPolicyStepsAnchor, strings.TrimSuffix(ciPolicyStepsAnchor, "    steps:\n")+insertion+"    steps:\n", 1)

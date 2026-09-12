@@ -67,7 +67,7 @@ func VerifyDirectCIPolicyBootstrap(path string) error {
 	}
 	if scalarValue(job, "name") != "CI policy — workflow, harness, and docs contracts" ||
 		scalarValue(job, "needs") != "changes" ||
-		scalarValue(job, "if") != "needs.changes.outputs.impact_policy == 'true'" ||
+		scalarValue(job, "if") != "always()" ||
 		scalarValue(job, "runs-on") != "ubuntu-latest" {
 		return fmt.Errorf("root CI workflow ci-policy job differs from the fail-closed execution contract")
 	}

@@ -1,6 +1,6 @@
 ## ---- agent / worktree harness --------------------------------------------
 
-.PHONY: agent-start agent-status agent-renew agent-prune agent-stop agent-env agent-baseline agent-verify agent-worktree agent-gc bootstrap doctor agent-harness-test agent-assets-verify
+.PHONY: agent-start agent-status agent-renew agent-prune agent-stop agent-env agent-baseline agent-verify test-affected agent-worktree agent-gc bootstrap doctor agent-harness-test agent-assets-verify
 agent-start: ## register this worktree and its seams (TASK=... CLAIMS=a,b; optional DEPENDS_ON=task)
 	@./scripts/agent.sh start "$(TASK)" "$(CLAIMS)" "$(DEPENDS_ON)"
 
@@ -24,6 +24,9 @@ agent-baseline: ## share one cached make verify SCOPE=all result per clean commi
 
 agent-verify: verify ## compatibility alias for make verify
 
+test-affected: ## run unit tests related to changed files during editing (not final evidence)
+	@BASE="$(or $(BASE),origin/main)" ./scripts/test-affected.sh
+
 agent-worktree: ## create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks)
 	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" BASE="$(BASE)" \
 		AGENT_WORKTREE_LIMIT="$(or $(AGENT_WORKTREE_LIMIT),16)" ALLOW_WORKTREE_BACKLOG="$(or $(ALLOW_WORKTREE_BACKLOG),0)" \
@@ -39,6 +42,9 @@ doctor: ## verify toolchain and Docker readiness; report worktrees, ports, cache
 	@./scripts/agent.sh doctor
 
 agent-harness-test: agent-assets-verify ## regression-test coordination, worktree isolation, and shared-output claims
+	@./scripts/changed-paths-test.sh
+	@./scripts/go-direct-impact-test.sh
+	@./scripts/test-affected-test.sh
 	@./scripts/agent-harness-test.sh
 
 agent-assets-verify: ## verify the curated skill catalog and agent adapters agree

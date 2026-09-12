@@ -113,7 +113,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
       impact_expo_android_mobile: ${{ steps.impact.outputs.expo_android_mobile }}
   ci-policy:
     needs: changes
-    if: needs.changes.outputs.impact_policy == 'true'
+    if: always()
   rust-contracts:
     needs: changes
     if: needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'

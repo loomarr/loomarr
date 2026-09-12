@@ -25,6 +25,8 @@ compat_verify="$(make -C "$project_root" -n agent-verify BASE=origin/main)"
 }
 all_verify="$(make -C "$project_root" -n verify SCOPE=all)"
 printf '%s\n' "$all_verify" | grep -q './scripts/agent.sh verify-all'
+affected_tests="$(make -C "$project_root" -n test-affected BASE=origin/main)"
+printf '%s\n' "$affected_tests" | grep -q './scripts/test-affected.sh'
 if make -C "$project_root" verify SCOPE=invalid >/dev/null 2>&1; then
 	echo 'agent-harness-test: invalid verification scope silently selected a gate' >&2
 	exit 1
@@ -295,6 +297,7 @@ git -C "$TMP" add -A
 git -C "$TMP" commit -qm 'focused verification fixture'
 mkdir -p "$TMP/internal/suggest"
 printf 'package suggest\n' > "$TMP/internal/suggest/probe.go"
+git -C "$TMP" add internal/suggest/probe.go
 verify_log="$TMP-wt/verify-runs"
 real_go="$(command -v go)"
 verify_bin="$TMP-wt/verify-bin"
@@ -304,6 +307,14 @@ printf '%s\n' '#!/usr/bin/env sh' 'if [ "$1" = test ]; then echo "go $*" >> "$VE
 # shellcheck disable=SC2016 # VERIFY_LOG expands when the generated fixture executes.
 printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' > "$verify_bin/make"
 chmod +x "$verify_bin/go" "$verify_bin/make"
+staged_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
+	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
+printf '%s\n' "$staged_output" | grep -q 'internal/suggest/probe.go'
+printf '%s\n' "$staged_output" | grep -q 'affected Go packages:'
+git -C "$TMP" reset --hard -q HEAD
+mkdir -p "$TMP/internal/suggest"
+printf 'package suggest\n' > "$TMP/internal/suggest/probe.go"
+: > "$verify_log"
 verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
 	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
 printf '%s\n' "$verify_output" | grep -q 'CI impact gates: contracts,go,postgres,image'

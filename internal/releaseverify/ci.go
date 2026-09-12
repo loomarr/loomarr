@@ -174,8 +174,7 @@ func VerifyCIImpactActivation(path string) error {
 		condition string
 	}{
 		"ci-policy": {
-			outputs:   []classifierOutput{{name: "impact_policy", source: "policy"}},
-			condition: "needs.changes.outputs.impact_policy == 'true'",
+			condition: "always()",
 		},
 		"rust-contracts": {
 			outputs:   []classifierOutput{{name: "impact_rust", source: "rust"}},
