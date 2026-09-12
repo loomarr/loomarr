@@ -7,6 +7,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsBindsCacheCleanupWorkflowIdentityAndTrigger(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(string) string{
 		"changed workflow name": func(source string) string {
 			return strings.Replace(source, "name: Cache cleanup", "name: Attacker cleanup", 1)
@@ -34,6 +35,7 @@ func TestVerifyCIContainerDownloadsBindsCacheCleanupWorkflowIdentityAndTrigger(t
 }
 
 func TestRepositoryCacheCleanupCoversPullRequestAndMergeQueueRefs(t *testing.T) {
+	t.Parallel()
 	source := readRepositoryWorkflow(t, "cache-cleanup.yml")
 	for _, want := range []string{
 		"refs/pull/${{ github.event.pull_request.number }}/merge",

@@ -9,6 +9,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRequiresDirectCIBootstrap(t *testing.T) {
+	t.Parallel()
 	mutations := map[string]func(string) string{
 		"classifier-gated policy": func(workflow string) string {
 			return strings.Replace(workflow, "    if: always()\n", "    if: needs.changes.outputs.impact_policy == 'true'\n", 1)
@@ -44,6 +45,7 @@ func TestVerifyCIContainerDownloadsRequiresDirectCIBootstrap(t *testing.T) {
 }
 
 func TestVerifyCIContainerDownloadsRejectsBootstrapInheritedContext(t *testing.T) {
+	t.Parallel()
 	mutations := map[string]func(string) string{
 		"workflow BASH_ENV": func(workflow string) string {
 			return strings.Replace(workflow, "jobs:\n", "env:\n  BASH_ENV: attacker.sh\njobs:\n", 1)

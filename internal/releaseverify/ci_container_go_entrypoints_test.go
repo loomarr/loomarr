@@ -6,6 +6,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsAlternateTestcontainersAcquisitionEntrypoints(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"ParallelContainers": `package tooling
 

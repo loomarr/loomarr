@@ -11,6 +11,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsTargetAndPatternSpecificShellAssignments(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		assignment string
 		target     string
@@ -56,6 +57,7 @@ func TestVerifyCIContainerDownloadsRejectsTargetAndPatternSpecificShellAssignmen
 }
 
 func TestVerifyCIContainerDownloadsAllowsHarmlessTargetAndPatternSpecificAssignments(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		assignment string
@@ -97,6 +99,7 @@ func runGNUmake(t *testing.T, makefile string, targets ...string) ([]byte, error
 }
 
 func TestVerifyCIContainerDownloadsRejectsTargetSpecificExpansionAndIndirection(t *testing.T) {
+	t.Parallel()
 	mutations := map[string]string{
 		"parenthesized shell": `parse-hook: SIDE_EFFECT := $(shell printf harmless)`,
 		"braced shell":        `%.probe: SIDE_EFFECT := ${shell printf harmless}`,
@@ -116,6 +119,7 @@ func TestVerifyCIContainerDownloadsRejectsTargetSpecificExpansionAndIndirection(
 }
 
 func TestVerifyCIContainerDownloadsRejectsMultiTargetSpecificRemovedAuthority(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	path := filepath.Join(root, "Makefile")
 	writeFixtureFile(t, path, "parse-hook sample.probe: PW_IMAGE := attacker.invalid/image:pinned\n"+readFixtureFile(t, path))
@@ -125,6 +129,7 @@ func TestVerifyCIContainerDownloadsRejectsMultiTargetSpecificRemovedAuthority(t 
 }
 
 func TestTargetSpecificAssignmentsDoNotMasqueradeAsPrerequisites(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "GNUmakefile")
 	writeFixtureFile(t, path, "protected companion: HARMLESS := value\nprotected: actual-prerequisite\ncompanion: companion-prerequisite\n")
 	parsed, err := readActiveMakefile(path)

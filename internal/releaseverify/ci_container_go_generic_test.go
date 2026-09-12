@@ -6,6 +6,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsGenericContainerEvasions(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		path   string
 		source string

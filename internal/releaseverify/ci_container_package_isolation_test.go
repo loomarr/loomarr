@@ -7,6 +7,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRequiresIsolatedCompletePostgresTests(t *testing.T) {
+	t.Parallel()
 	for name, replacement := range map[string]string{
 		"package concurrency restored": "test -p=2 -race",
 		"race disabled":                "test -p=1",
@@ -32,6 +33,7 @@ func TestVerifyCIContainerDownloadsRequiresIsolatedCompletePostgresTests(t *test
 }
 
 func TestVerifyCIContainerDownloadsRequiresExactGoShardFlags(t *testing.T) {
+	t.Parallel()
 	for name, replacement := range map[string]string{
 		"package concurrency restored": "GOFLAGS: -p=2",
 		"tests filtered out":           "GOFLAGS: -p=1 -run=^$",

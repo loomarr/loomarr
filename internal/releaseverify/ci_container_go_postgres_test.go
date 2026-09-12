@@ -7,6 +7,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRequiresExactPostgresImageOwner(t *testing.T) {
+	t.Parallel()
 	implementations := map[string]string{
 		"environment return": `package postgresimage
 
@@ -57,6 +58,7 @@ func Name() string { return "attacker.invalid/postgres:pinned" }
 }
 
 func TestVerifyCIContainerDownloadsRequiresUniqueUntaggedPostgresImageOwner(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, string){
 		"build-constrained canonical owner": func(t *testing.T, root string) {
 			path := filepath.Join(root, "internal", "testkit", "postgresimage", "image.go")
@@ -97,6 +99,7 @@ func Name() string { return os.Getenv("POSTGRES_TEST_IMAGE") }
 }
 
 func TestVerifyCIContainerDownloadsIgnoresTestOnlyPostgresImageFilesForOwnership(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureFile(t, filepath.Join(root, "internal", "testkit", "postgresimage", "image_test.go"), `package postgresimage
 
@@ -110,6 +113,7 @@ func TestNameIsPresent(t *testing.T) { _ = Name() }
 }
 
 func TestVerifyCIContainerDownloadsRejectsPostgresAuthorityBypasses(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"postgres Run function value": `package store
 
@@ -179,6 +183,7 @@ var uncheckedGenericRun = testcontainers.Run
 }
 
 func TestVerifyCIContainerDownloadsRejectsImageAndPullCustomizers(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"postgres WithImage": `package store
 
@@ -332,6 +337,7 @@ func unchecked() {
 }
 
 func TestVerifyCIContainerDownloadsAllowsExactPostgresCustomizers(t *testing.T) {
+	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)
 	writeFixtureFile(t, filepath.Join(root, "internal", "store", "allowed_customizer_test.go"), `package store
 

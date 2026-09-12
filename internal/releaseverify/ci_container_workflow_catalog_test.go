@@ -3,6 +3,7 @@ package releaseverify
 import "testing"
 
 func TestWorkflowAuthorityCatalogIsFreshAndRejectsRegistryDrift(t *testing.T) {
+	t.Parallel()
 	if err := verifyWorkflowAuthorityCatalog(workflowAuthorityCatalog()); err != nil {
 		t.Fatalf("checked-in workflow authority catalog: %v", err)
 	}
