@@ -246,12 +246,10 @@ classify() {
       select_gate go_full
       select_gate web
       select_gate clients
-      select_all_native_clients
       select_gate visual
       select_gate e2e
       select_gate tuner
       select_gate image
-      select_gate android
       ;;
     api/vendor/*)
       known=true

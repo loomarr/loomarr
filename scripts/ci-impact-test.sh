@@ -31,6 +31,29 @@ while IFS=$'\t' read -r name path_set want; do
   fi
 done <"$FIXTURES"
 
+# Keep the non-authoritative legacy Android summary filter aligned with the specialized classifier.
+# Product jobs consume only impact_android, but a stale shadow decision misdiagnoses selection and
+# previously preserved the same unnecessary OpenAPI-to-native coupling in two places.
+legacy_android_filter="$(
+  sed -n '/# The React Native Android TV client/,/echo "android=false"/p' \
+    "$ROOT/.github/workflows/ci.yml"
+)"
+if grep -q 'api/openapi' <<<"$legacy_android_filter"; then
+  echo 'ci-impact-test: legacy Android summary still selects schema-only OpenAPI changes' >&2
+  exit 1
+fi
+if ! grep -q 'web/(apps/tv/' <<<"$legacy_android_filter"; then
+  echo 'ci-impact-test: legacy Android summary lost the real TV app input' >&2
+  exit 1
+fi
+
+clients_workflow="$(<"$ROOT/.github/workflows/ci-clients.yml")"
+if ! grep -q 'run: make fe-codegen' <<<"$clients_workflow" ||
+  ! grep -q 'run: make clients' <<<"$clients_workflow"; then
+  echo 'ci-impact-test: shared-client gate no longer regenerates and verifies OpenAPI consumers' >&2
+  exit 1
+fi
+
 all_gates='contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy'
 unknown="$(selected_gates unexpected/new-runtime/file.xyz)"
 if [[ "$unknown" != "$all_gates" ]]; then

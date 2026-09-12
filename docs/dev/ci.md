@@ -407,6 +407,12 @@ native platforms because those packages are transitive inputs to both. The share
 also selects Web, Tuner, Image, and Android TV because its browser and native adapters share one
 transport contract. Browser-only client-proof and Turborepo contract changes select the shared
 JavaScript gate without spending a native runner.
+The committed OpenAPI document is a schema input rather than a native binary input. An OpenAPI-only
+change regenerates the client, then the shared-client gate typechecks, tests, and bundles the browser,
+iOS, Android, and TV JavaScript consumers. A mobile or TV app change, a shared native/runtime package,
+native build tooling, or a platform workflow still selects the corresponding native compilation.
+This keeps additive unused endpoints from compiling product binaries while a real consumer change
+continues to fail closed through its own path.
 Apple mobile, Apple TV, and Expo Android mobile are active. The mobile Android job consumes only
 `impact_expo_android_mobile`, builds `CLIENT_APP=mobile`, and retains its standalone debug APK for
 seven days. Expo Android TV remains a classifier decision until its independently required job and

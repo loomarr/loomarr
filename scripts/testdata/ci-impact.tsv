@@ -42,7 +42,11 @@ tuner-web	web/apps/web/src/channels/use-hls-player/use-hls-player.ts	web,visual,
 web-build-config	web/apps/web/vite.config.ts	web,visual,e2e,tuner,image
 web-tooling	web/apps/web/package.json	web,visual,e2e,tuner,image
 workspace-tooling	web/package.json	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
-openapi	api/openapi.yaml	contracts,go,go_full,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
+openapi	api/openapi.yaml	contracts,go,go_full,web,clients,visual,e2e,tuner,image
+openapi-plus-mobile	api/openapi.yaml;web/apps/mobile/app/index.tsx	contracts,go,go_full,web,clients,apple_mobile,expo_android_mobile,visual,e2e,tuner,image
+openapi-plus-tv	api/openapi.yaml;web/apps/tv/src/app.tsx	contracts,go,go_full,web,clients,apple_tv,expo_android_tv,visual,e2e,tuner,image,android
+openapi-plus-shared-player	api/openapi.yaml;web/packages/player/src/browser/browser.ts	contracts,go,go_full,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
+openapi-plus-android-tooling	api/openapi.yaml;web/scripts/build-android-client.sh	contracts,go,go_full,web,clients,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 android-listing	store-listing/android-tv/en-US/short-description.txt	android
 ci-impact-authority	scripts/ci-impact.sh	policy
 android-source-validator	scripts/validate-android-release-source.sh	policy
