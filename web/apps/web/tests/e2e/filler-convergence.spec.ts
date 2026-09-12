@@ -364,7 +364,9 @@ test("a fetched arrival becomes playable only after terminal admission completes
   await page.goto("/filler/incoming");
   await expect(page.getByRole("heading", { name: "Is this a toy commercial?" })).toBeVisible();
   await expect(page.getByText("Trusted Toy Spot", { exact: true })).toHaveCount(0);
-  expect(requestedPaths.filter((path) => path === "/v1/filler/incoming")).toHaveLength(legacyIncomingRequests);
+  expect(requestedPaths.filter((path) => path === "/v1/filler/incoming")).toHaveLength(
+    legacyIncomingRequests,
+  );
 
   await page.goto("/filler");
   await expect(page.getByText("A few clips need your judgment")).toBeVisible();

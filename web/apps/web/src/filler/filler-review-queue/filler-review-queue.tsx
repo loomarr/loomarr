@@ -60,8 +60,7 @@ const ReviewCard = ({
   const [playing, setPlaying] = useState(false);
   const [playbackStarted, setPlaybackStarted] = useState(false);
   const shadowReview = review.applicationMode === "shadow";
-  const allows = (kind: "admit" | "reject" | "correct" | "abandon") =>
-    review.allowedActions.includes(kind);
+  const allows = (kind: "admit" | "reject" | "correct" | "abandon") => review.allowedActions.includes(kind);
   const exactHash = /^[0-9a-f]{64}$/.test(review.clipHash);
   const screeningQuery = fillerApi.useGetFillerScreening(
     { hash: review.clipHash },
@@ -303,7 +302,9 @@ const ReviewCard = ({
               variant="ghost"
               onClick={() => submit("reject")}
               disabled={action.isPending || !canRecordAnswer}
-              title={canRecordAnswer ? "Record that this exact clip is not filler" : "Play the exact clip first"}
+              title={
+                canRecordAnswer ? "Record that this exact clip is not filler" : "Play the exact clip first"
+              }
             >
               {shadowReview ? "Record as not filler" : "Reject"}
             </Button>
