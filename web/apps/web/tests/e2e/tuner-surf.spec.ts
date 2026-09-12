@@ -100,7 +100,21 @@ const installFrameClock = async (page: Page) => {
       type: string;
     }> = [];
     Object.defineProperty(window, "__loomarrMediaEvents", { value: mediaEvents, configurable: true });
-    for (const type of ["loadstart", "loadedmetadata", "loadeddata", "canplay", "play", "playing"]) {
+    for (const type of [
+      "abort",
+      "canplay",
+      "emptied",
+      "error",
+      "loadeddata",
+      "loadedmetadata",
+      "loadstart",
+      "pause",
+      "play",
+      "playing",
+      "stalled",
+      "suspend",
+      "waiting",
+    ]) {
       document.addEventListener(
         type,
         (event) => {
@@ -137,7 +151,8 @@ const installFrameClock = async (page: Page) => {
   });
 };
 
-const waitForDecodedFrame = async (page: Page) => {
+const waitForDecodedFrame = async (page: Page, phase: string) => {
+  const started = await page.evaluate(() => performance.now());
   const play = page.getByRole("button", { name: "Play" });
   const decoded = page.waitForFunction(
     () =>
@@ -150,21 +165,32 @@ const waitForDecodedFrame = async (page: Page) => {
   // BEFORE hls.js attaches MediaSource. Clicking in that empty-source window spends the synthetic
   // user gesture on a play() that cannot start, then leaves the real source paused. Race a normal
   // decoded frame against one fallback click made only after the video has an attached source.
-  await page.waitForFunction(() => Boolean(document.querySelector("video")?.currentSrc), undefined, {
-    timeout: 9_000,
-  });
-  // Give permitted autoplay a brief opportunity. If it produced no frame, activate the actual
-  // Play control with keyboard/remote semantics; this avoids spending the gesture before a source
-  // exists and avoids racing the auto-hidden pointer layer.
-  await Promise.race([decoded, page.waitForTimeout(500)]);
-  const frameCount = await page.evaluate(
-    () => (window as Window & { __loomarrDecodedFrames?: number[] }).__loomarrDecodedFrames?.length ?? 0,
-  );
-  if (frameCount === 0 && (await play.count()) > 0) {
-    await play.focus();
-    await page.keyboard.press("Enter");
+  try {
+    await page.waitForFunction(() => Boolean(document.querySelector("video")?.currentSrc), undefined, {
+      timeout: 9_000,
+    });
+    // Give permitted autoplay a brief opportunity. If it produced no frame, activate the actual
+    // Play control with keyboard/remote semantics; this avoids spending the gesture before a source
+    // exists and avoids racing the auto-hidden pointer layer.
+    await Promise.race([decoded, page.waitForTimeout(500)]);
+    const frameCount = await page.evaluate(
+      () => (window as Window & { __loomarrDecodedFrames?: number[] }).__loomarrDecodedFrames?.length ?? 0,
+    );
+    if (frameCount === 0 && (await play.count()) > 0) {
+      await play.focus();
+      await page.keyboard.press("Enter");
+    }
+    await decoded;
+  } catch (error) {
+    const channel = await page
+      .locator("video")
+      .evaluate((element) => element.dataset.playbackChannel ?? "")
+      .catch(() => "");
+    const playback = await playbackSnapshot(page, channel, started).catch((snapshotError: unknown) => ({
+      snapshotError: String(snapshotError),
+    }));
+    throw new Error(`${phase} produced no decoded frame: ${JSON.stringify(playback)}`, { cause: error });
   }
-  await decoded;
 };
 
 const waitForTargetPlaying = async (page: Page, channel: string, since: number) => {
@@ -350,6 +376,7 @@ const playbackSnapshot = async (page: Page, channel: string, since: number) =>
       currentTime: element.currentTime,
       duration: element.duration,
       ended: element.ended,
+      error: element.error ? { code: element.error.code, message: element.error.message } : null,
       events: (
         window as Window & {
           __loomarrMediaEvents?: Array<{
@@ -373,7 +400,9 @@ const playbackSnapshot = async (page: Page, channel: string, since: number) =>
         }
       ).__loomarrDecodedFrames?.filter((frame) => frame.at >= since && frame.channel === channel),
       paused: element.paused,
+      networkState: element.networkState,
       readyState: element.readyState,
+      src: element.currentSrc,
       marks: performance
         .getEntriesByType("mark")
         .filter((entry) => entry.startTime >= since && entry.name.startsWith("loomarr:tune:"))
@@ -410,7 +439,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   // bootstrap out of the surf percentile. The real-runtime gate owns cold boot timing; this gate
   // owns an already-running tuner and never retries a black start.
   await page.goto(`/channels/${channelId(1)}/watch`);
-  await waitForDecodedFrame(page);
+  await waitForDecodedFrame(page, "cold ended-source bootstrap");
   await expect(page.locator("video")).toHaveCount(1);
   await expect.poll(() => page.locator("video").evaluate((element) => element.ended)).toBe(true);
   await waitForAdjacentWarm(page, 1);
@@ -445,7 +474,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   // Start the adjacent run from the middle of the catalog and prove speculative work is prepared-only.
   const probeStart = backend.state.preparedProbes.length;
   await page.goto(`/channels/${channelId(50)}/watch`);
-  await waitForDecodedFrame(page);
+  await waitForDecodedFrame(page, "adjacent-run bootstrap");
   await expect
     .poll(() => backend.state.preparedProbes.slice(probeStart))
     .toEqual(expect.arrayContaining([channelId(49), channelId(51)]));
@@ -470,7 +499,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   // Reset to the middle so the measured adjacent run remains the same 50 → 70 sample.
   const resetWarmCounts = await adjacentWarmCounts(page, 50);
   await page.goto(`/channels/${channelId(50)}/watch`);
-  await waitForDecodedFrame(page);
+  await waitForDecodedFrame(page, "post-held-frame reset");
   // Warm proof uses an absolute timestamp, so this full-document reset cannot make a new mark look
   // older merely because performance.startTime restarted from zero.
   await waitForAdjacentWarm(page, 50, resetWarmCounts);
@@ -637,10 +666,28 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
 
   const finalId = channelId(expected);
   await expect(page).toHaveURL(new RegExp(`/channels/${finalId}/watch$`));
-  await page.waitForFunction(
-    (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
-    burstStart.frames,
-  );
+  try {
+    await page.waitForFunction(
+      (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
+      burstStart.frames,
+      { timeout: 10_000 },
+    );
+  } catch (error) {
+    const playback = await playbackSnapshot(page, finalId, burstStart.started).catch(
+      (snapshotError: unknown) => ({ snapshotError: String(snapshotError) }),
+    );
+    throw new Error(
+      `${finalId} final burst produced no target frame: ${JSON.stringify({
+        playback,
+        activeManifests: backend.state.activeManifests.slice(-8),
+        assetCompletions: backend.state.assetCompletions.slice(-12),
+        assetRequests: backend.state.assetRequests.slice(-12),
+        playURLMints: backend.state.playURLMints.slice(-8),
+        preparedProbes: backend.state.preparedProbes.slice(-8),
+      })}`,
+      { cause: error },
+    );
+  }
   const burst = await page.evaluate((count) => {
     const frames = performance.getEntriesByName(
       "loomarr:tune:request-to-first-frame",
