@@ -277,7 +277,7 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 		actions = []Action{ActionRetry}
 		if failure.Code == FailureNoGroundedTitles {
 			actions = []Action{ActionEdit, ActionRetry}
-		} else if viewer.Admin {
+		} else if viewer.Admin && isAIRecoveryReason(failure.Reason) {
 			actions = []Action{ActionRetry, ActionCheckAI}
 		}
 		return journeyFrom(record, milestone, actions, &failure), nil
@@ -286,6 +286,15 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 	}
 
 	return journeyFrom(record, milestone, actions, nil), nil
+}
+
+func isAIRecoveryReason(reason FailureReason) bool {
+	switch reason {
+	case FailureReasonInvalidToolCalls, FailureReasonProviderTimeout, FailureReasonProviderUnavailable, FailureReasonProviderResponseInvalid:
+		return true
+	default:
+		return false
+	}
 }
 
 // List returns bounded authoritative Journeys newest-first. Member reads are
@@ -346,7 +355,7 @@ func failureDetails(code FailureCode, trace suggest.DecisionTrace) (FailureReaso
 	if suggest.ValidateDecisionTrace(trace) == nil {
 		switch trace.Terminal {
 		case suggest.TerminalRetrievalFailure:
-			return FailureReasonRetrievalUnavailable, RecoveryActionRetryLater, "Loomarr couldn't retrieve the catalog information needed for this request.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+			return FailureReasonRetrievalUnavailable, RecoveryActionRetryLater, "Loomarr couldn't retrieve the catalog information needed for this request.", "If this keeps happening, check the title sources in Connections."
 		case suggest.TerminalReferenceUnreadable:
 			return FailureReasonReferenceUnreadable, RecoveryActionEditReference, "Loomarr couldn't read a reference for this request.", "Check that the reference is a public page that does not require sign-in, or provide a few example titles and try again."
 		case suggest.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty:

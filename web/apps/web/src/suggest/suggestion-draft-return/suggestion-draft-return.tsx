@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { buttonVariants } from "@/components/ui/button";
-import { readSuggestionDraft } from "./suggestion-draft";
+import { readSuggestionDraft } from "../suggestion-draft";
 
 const SuggestionDraftReturn = () => {
   const draft = readSuggestionDraft();

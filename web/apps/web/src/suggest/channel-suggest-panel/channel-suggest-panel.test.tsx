@@ -416,4 +416,25 @@ describe("ChannelSuggestPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: /try again/i }));
     expect(retry).toHaveBeenCalled();
   });
+
+  it("presents a catalog failure once with a direct retry action", async () => {
+    runOverride = failedRun({
+      failure: {
+        code: "generation_failed",
+        message: "Loomarr couldn't retrieve the catalog information needed for this request.",
+        reason: "retrieval_unavailable",
+        recoveryAction: "retry_later",
+        guidance: "If this keeps happening, check the title sources in Connections.",
+      },
+      actions: ["retry"],
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/^Generation failed$/);
+    expect(screen.getByText(/couldn't retrieve the catalog information/i)).toBeInTheDocument();
+    expect(screen.getByText(/check the title sources in Connections/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /check ai settings/i })).not.toBeInTheDocument();
+  });
 });

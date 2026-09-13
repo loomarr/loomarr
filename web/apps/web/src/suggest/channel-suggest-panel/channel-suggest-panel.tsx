@@ -141,7 +141,12 @@ const ChannelSuggestPanel = ({
           independently authorized by that Journey; guidance never grants a capability. */}
       {run.failed && (
         <div className="flex flex-col gap-3">
-          <GenerationProgress phase="failed" round={run.round} elapsedSeconds={elapsed} />
+          <GenerationProgress
+            phase="failed"
+            round={run.round}
+            elapsedSeconds={elapsed}
+            error="Generation failed"
+          />
           <div className="flex flex-col gap-1 text-sm">
             <p className="text-muted-foreground">{run.failure?.message ?? "The run didn't finish."}</p>
             {run.failure?.guidance && <p className="text-muted-foreground">{run.failure.guidance}</p>}
@@ -149,7 +154,7 @@ const ChannelSuggestPanel = ({
           <div>
             {run.actions.includes("retry") && (
               <Button variant="outline" size="sm" onClick={run.retry}>
-                {run.failure?.recoveryAction === "retry_later" ? "Try again later" : "Try again"}
+                Try again
               </Button>
             )}
             {run.actions.includes("edit") && (

@@ -2000,7 +2000,10 @@ unclassified generation failure. Recovery actions name the useful next step: edi
 broaden the request, provide examples, resolve constraints, clarify dates, simplify the request, or
 retry later. These describe recovery; only the Journey's existing server-authorized actions grant
 permission to edit, retry, or inspect AI settings. A member is never instructed to change an
-administrator-only setting as their required recovery step.
+administrator-only setting as their required recovery step. `check_ai` is authorized only for a
+typed AI-stage failure (invalid tool calls, provider timeout/unavailability, or malformed provider
+output); a catalog retrieval failure keeps `retry` without redirecting a healthy provider back to AI
+settings.
 
 The fixed projection keeps malformed final JSON separate from invalid tool arguments: the former
 uses `provider_response_invalid` with `retry_later`; only an explicit invalid-tool terminal uses
@@ -2016,8 +2019,9 @@ The existing `retrieval_failure` terminal covers both reference and catalog oper
 projects as `retrieval_unavailable` with `retry_later`; it does not assert that the reference page
 was unreadable. `reference_unreadable` and `edit_reference` require a distinct typed terminal from
 the reference-read stage. A catalog lookup failure after successful reference retrieval must retain
-the retrieval-unavailable advice. Invalid-tool guidance likewise names the failed AI catalog-search
-stage rather than collapsing to an unexplained retry.
+the retrieval-unavailable advice, which names title-source availability rather than AI setup.
+Invalid-tool guidance likewise names the failed AI catalog-search stage rather than collapsing to an
+unexplained retry.
 
 Only allowlisted typed producer evidence selects a specific reason; it takes precedence over a
 less-specific stable outer code. Unknown evidence uses the bounded generic reason and cannot enter

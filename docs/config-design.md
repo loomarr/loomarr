@@ -208,9 +208,11 @@ The concrete rules are:
   caches are scoped to the normalized URL and invalidated when it changes, so repointing Tunarr
   cannot reuse a transcode id or content index learned from the previous instance. Saving or
   clearing `tmdb.api_key` likewise enables or disables TMDB search, channel icon suggestions, and
-  suggestion grounding on the next operation without a restart. `/v1/search?scope=all`
-  independently considers the complete live media-library connection and TMDB key, so either
-  configured corpus remains useful on its own.
+  suggestion grounding on the next operation without a restart. The Catalog's `all` scope — used
+  by both `/v1/search?scope=all` and the Suggester's grounding tool — independently considers the
+  complete live media-library connection and TMDB key, so either configured corpus remains useful
+  on its own. An unconfigured optional corpus is skipped only for `all`; explicitly selecting that
+  corpus still returns its configuration error.
 - **Intervals re-read per tick:** tickers ask the snapshot each cycle; changing `CHANNEL_RECONCILE_EVERY` takes effect next tick.
 - **Long-lived constructions rebuild on change:** the LLM client subscribes via `Watch(keys...) <-chan Change` and reconstructs. (This is the same seam the §8.1 model-selection hot-swap uses — an atomic-pointer provider that rebuilds on a persisted `llm.*` change.)
 - **`filler.dir` and `filler.watch_dir` are one generation-scoped storage layout.** The clip root is
