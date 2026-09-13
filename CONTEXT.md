@@ -222,14 +222,19 @@ Loomarr-owned non-program content as a whole. It lives in a Tunarr-local media s
 in the operator's Library, so it structurally cannot leak into a programming Lineup (§10).
 _Avoid_: bumpers, interstitials (both are *kinds* of filler, not the category)
 
-**Attention task**:
-One unresolved filler authority ambiguity that requires a person's bounded decision. It names the
-exact subject, question, decisive evidence, and allowed outcomes; routine processing is not a task.
-_Avoid_: review queue item, Incoming item, work item
+**Enrollment authority**:
+The durable record that a person chose a Filler Source or item for household use. It authorizes
+Loomarr to prepare that material as Filler without asking for a second per-Clip approval.
+_Avoid_: source trust, auto-admit, licence grant
+
+**Needs-help task**:
+One exceptional Filler choice whose answer changes durable product state. Routine processing,
+optional enrichment, audit sampling, and machine recovery are not Needs-help tasks.
+_Avoid_: review queue item, Attention task, Incoming item, work item
 
 **Operational hold**:
 A recorded condition that prevents automated filler work from progressing without changing the
-semantic verdict. It is diagnostic state, not an Attention task.
+semantic verdict. It is diagnostic state, not a Needs-help task.
 _Avoid_: review, rejection, failed decision
 
 **Filler role**:
@@ -237,11 +242,20 @@ What kind of non-program item a Clip is, such as commercial, promo, bumper, PSA,
 trailer, or interstitial. A Filler role says nothing about Media quality or Airworthiness.
 _Avoid_: category, approval, suitability
 
+**Placement**:
+Where a Clip may be used in a break: break body, bookend, or not playable. Placement is a scheduling
+fact; it is not a claim about the Clip's exact Filler role.
+_Avoid_: role, category, admission
+
 **Unclassified filler**:
-A held Clip whose exact Filler role has not been established by the authority required for
-admission. `unclassified` is a closed lifecycle state, not a catch-all Filler role, and it can never
-be selected for a Pod or projected into a Schedule.
-_Avoid_: commercial, generic filler, unknown role
+A Clip whose exact Filler role is not known. It may still have an enrollment-grounded Placement;
+`unclassified` never means “commercial” and is not itself a Filler role.
+_Avoid_: commercial, generic filler, held clip
+
+**Ready clip**:
+An enrolled Clip whose required household runtime checks completed and whose playable bytes and
+Placement were committed. Ready is the only state eligible for a Pod.
+_Avoid_: filed, admitted, approved clip
 
 **Media quality**:
 Whether a Clip is technically intact, complete, and presentable enough for its intended playout.

@@ -1112,17 +1112,17 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | GET | `/v1/filler/media/{path...}` | Stream a clip's own bytes for in-app preview (§10 V35). The path is resolved inside `FILLER_DIR` and anything escaping it is refused before the file is opened. Served with `http.ServeContent`, so Range and conditional requests work and a `<video>` element can seek. ⚠ **Deliberately not named `preview`**: "preview" already means a pod listing in two places (build plan §6.2). ⚠ It had two siblings serving a clip's still and hover loop; both were **retired in V52 phase 8** (§22) — artwork is image-service content now, addressed by content hash and served from `/v1/images/{hash}`. This route survives because a clip's own bytes are not an image. |
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
 | GET | `/v1/filler/readiness` | **The Filler Overview's single whole-workspace verdict.** Member-readable filler readiness returns one server-ranked next action plus fetch ceilings, disjoint pipeline ownership counts, channel coverage with usable duration and grounded variety, and bounded recent acquisition runs. The browser renders this decision; it does not reproduce the priority rule or substitute the health of one subsystem. Acquisition runs preserve their source/pull attribution and terminal outcome across restart, while rejected/dismissed audit remains distinct from failures with an explicit retry or restore action. |
-| GET | `/v1/filler/decisions/overview` | Member-readable, server-owned **admission** health: semantic and operational counts plus at most one admission-ranked next action. It is a supporting projection on Filler Overview, not the whole-workspace verdict; clients never derive either health or priority from its detail feeds (§10 V63). |
-| GET | `/v1/filler/attention` | Admin-only bounded page of unresolved Attention tasks. Every row names one closed task kind, one plain question, its required `shadow | applied` application mode, the exact currently allowed actions, and only the decisive reason codes, evidence references, and conflicts (§10 V63). Routine processing and Operational holds are structurally excluded. A shadow row asks for calibration/audit evidence only: answering it never files, removes, schedules, or otherwise changes the clip. |
-| GET | `/v1/filler/decisions/activity` | Member-readable bounded audit of automatic decisions and human actions. Automatic admission, automatic rejection, correction, restore, and reversal remain distinct event kinds (§10 V63). |
+| GET | `/v1/filler/decisions/overview` | Member-readable, server-owned processing health retained during the Incoming projection migration. It reports effective Ready/not-usable outcomes and machine failures; it never counts audit-only classification as work a person owes. |
+| GET | `/v1/filler/attention` | Admin-only bounded page of genuine Needs-help tasks. Every row names one plain question and only actions that immediately change durable product state. Routine processing, optional classification, audit sampling, and Operational holds are structurally excluded. |
+| GET | `/v1/filler/decisions/activity` | Member-readable bounded audit of effective Ready/not-usable outcomes and genuine human actions. Runtime shadow/application-mode vocabulary is retired. |
 | GET | `/v1/filler/decisions/diagnostics` | Admin-only bounded operational holds. Returns one server-authored recovery plan per current hold: an automatic retry and its next-attempt time, a currently allowed manual retry, a precise configuration destination, or inspection of the exact held media. Raw provider responses and private paths stay redacted; operational work never appears in the human review feed (§10 V63). |
 | POST | `/v1/filler/decisions/diagnostics/{id}/actions` | Execute a currently advertised diagnostic recovery action (admin, §10 V63). Initial action `retry` is idempotent by request id, records the authenticated actor, and fails closed when the decision is stale or no longer retryable. |
-| POST | `/v1/filler/attention/{id}/actions` | Act on one current Attention task (admin). The request names one of that task's server-projected allowed actions and records actor, reason, and optional corrected answer as an append-only event; it never rewrites evaluator evidence (§10 V63). Reusing an action id with a different body or acting on a stale task fails closed. |
+| POST | `/v1/filler/attention/{id}/actions` | Act on one current Needs-help task (admin). The request names one server-projected action and must change durable product state atomically; audit-only answers are not a runtime capability. Reusing an action id with a different body or acting on a stale task fails closed. |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
 | PATCH | `/v1/filler/providers/{kind}` | Pause or resume one built-in remote provider (`archive` or `youtube`, admin). The body is `{enabled}`. This changes provider policy only: child source switches, targets, history, and downloaded clips are retained. Provider state and server-owned effective source state are returned by `GET /v1/filler/sources` (§10 V51c). |
 | GET | `/v1/filler/providers/{kind}/suggestions` | Find sources an admin may choose to register, **creating and downloading nothing**. `q` is ordinary text or an exact provider URL/id; `limit` is server-bounded. Archive.org uses its public collection index and YouTube uses bounded listing-only yt-dlp search. Results carry a canonical provider identity, display metadata, and whether that source is already registered; the browser never constructs provider query syntax or canonical ids. A disabled provider rejects this work before an external request (§10 “Finding a source is not adding it”). |
 | POST | `/v1/filler/providers/{kind}/resolve` | Validate one pasted source reference and return its canonical identity plus provider metadata, **creating and downloading nothing**. This is the exact-target sibling of suggestions and shares the same provider adapter. Only a subsequent `POST /v1/filler/sources` is registration authority (§10 “Finding a source is not adding it”). |
-| PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c/V57). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. Source trust cannot grant publication authority: the former `autoAdmit` switch is retired because source provenance is only one input to the certified terminal decision. The PATCH body carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
+| PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c/V57). ⚠ Registration plus enablement creates durable household Enrollment authority for subsequently selected items. Disabling withdraws future scanning, searching, downloading, and enrollment; it never removes or rewrites clips already processed. There is no separate `autoAdmit` switch. The PATCH body carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
 | GET | `/v1/filler/watch` | **The Filler header's live source status (§10 V38c/V55).** Returns `{health, sourcesOn, sourcesReady, sourcesTotal, clips, lastScanAt?, autoFetch?}` — everything the page header renders, computed on the SERVER. `sourcesReady` counts sources that are on and usable for the Installation geography; `sourcesOn` remains separate so the UI can distinguish an enabled source that still needs attention. `autoFetch` names whether fetching is enabled, the current catalog/disk measurements and ceilings, and the ceiling currently stopping it (`catalog` or `disk`); it is current state, not merely the last scheduler result, so a removal or settings change clears the warning immediately. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that source-acquisition judgement.** It must not be presented as the whole Filler workspace verdict; `/v1/filler/readiness` owns that answer. Deriving source health in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
 | GET | `/v1/filler/incoming` | Legacy admin-only ingest-conveyor projection retained while its machine state migrates under Manage → Diagnostics (§10 V35/V63). It is operational truth, not the human Attention interface, and the ordinary Filler UI does not fetch or render it. **Every row list is capped at 100** and carries its full server-counted total (`clipsTotal`, `decisionsTotal`, `reelsTotal`, `rejectedTotal`). Confidence is the real grounding-capped score (§10 V38), never model self-assessment and never an admission threshold. Clients must not infer task kinds or actions from this payload. |
 | GET | `/v1/filler/screening?hash=` | The admin-only, browser-safe four-axis screening projection for one exact filler clip. It returns `not_screened`, `available`, or `unavailable`; an available result contains the immutable subject/aggregate identities, overall outcome, the ordered visual/spoken/written/playback outcomes and safe reason codes, assessment time, and the closed public Airworthiness decision. An unavailable attached reference retains only its safe failure code and content identities. Before publication, the route reopens the clip's current applied sidecar, reproduces its subject and aggregate, and reopens the playable file to match its complete-byte digest, byte count, and sparse catalog identity. A missing, unsafe, or changed playback object can therefore never retain a visible pass. It never returns a path, prompt, transcript, OCR text, restricted phrase, provider response, credential, or raw evidence. Incoming loads this bounded record only when a row is expanded rather than multiplying filesystem reads across the whole conveyor. |
@@ -4335,10 +4335,10 @@ Titles come from TMDB via Seerr/Sonarr/Radarr. Commercials, bumpers, and station
 ### Filler catalog (metadata is what enables matching)
 Each clip carries metadata so the scheduler can place it well, persisted in the store (§5):
 - `kind`: unclassified | commercial | bumper | station_id | psa | trailer | interstitial.
-  `unclassified` is a closed held-work lifecycle state, not a generic filler role: it records that
-  no exact role authority has yet projected one of the concrete kinds. Filename inference may retain
-  an explicit concrete token as diagnostic metadata, but an unknown filename defaults to
-  `unclassified`, never `commercial`.
+  `unclassified` records that no exact role has been established. It is descriptive rather than a
+  lifecycle state: Enrollment may still ground a break-body Placement without relabelling the Clip
+  as a commercial. Filename inference may retain an explicit concrete token as diagnostic metadata,
+  but an unknown filename defaults to `unclassified`, never `commercial`.
 - `era`: decade / year (e.g., 1994)
 - `audience`: kids | family | general | late_night
 - `category`: toys | cereal | cars | tech | fast_food | movie_trailer | …
@@ -4396,9 +4396,10 @@ all fail toward doing less:
 1. **Only registered, ENABLED sources are polled.** The Sources switch already claims Loomarr
    "stops scanning, searching and downloading" from a source that is off; auto-fetch is bound by
    the same switch or that copy becomes false.
-2. **Everything fetched arrives HELD.** Auto-fetch does not bypass the lifecycle — a downloaded
-   clip is still tagged, still scored, and still gated by the confidence cap before it can play.
-   The unattended step is *acquisition*, never *admission*.
+2. **Everything fetched arrives HELD and converges automatically.** Registration or an explicit
+   one-item queue supplies durable household Enrollment authority. A downloaded clip is still
+   probed, conditioned, and checked before it becomes Ready, but missing optional classification
+   does not create a second approval gate.
 3. **A limit that is reached is REPORTED, never silent.** An operator whose catalog stopped
    growing must be able to see which ceiling stopped it. A crawler that quietly does nothing is
    indistinguishable from one that is broken.
@@ -4473,34 +4474,36 @@ rule that quietly stops holding when a second case appears.
 was a claim about the whole subsystem made from one binary's absence; a source that can fetch says
 so, and one that cannot says which tool it wants.
 
-### The clip lifecycle: held, then admitted (V38/V66)
+### The clip lifecycle: held, then Ready (V38/V66; household beta)
 
 Until V38 a clip had no lifecycle. The folder scan catalogued it and the tagger tagged it **in
 place**, which meant everything Loomarr downloaded was playable the moment it landed — tagged or
 not, right or wrong. V38 gives an arriving clip a **state**:
 
-- **held** — in Loomarr's records, **not in the playable catalog**. It is not matched into a pod,
-  not attached to a filler-list, and not counted as coverage. It is waiting for processing and a
-  terminal admission or rejection.
-- **admitted** — the catalog proper. Everything that plays was admitted by the one terminal
-  applied-decision transaction after it reproduced the exact safety, playback and rights proof.
+- **held** — recorded but not playable while required runtime work is incomplete or failed;
+- **Ready** — exact playable bytes, Enrollment authority, and Placement were committed together by
+  the terminal-ready operation. Only Ready clips may enter a Pod;
+- **not usable** — an objective failure, positive non-filler determination, composite container, or
+  removal prevents playback.
 
-An `unclassified` clip is always held. It cannot be matched into a pod, attached to a filler-list,
-projected into a schedule, or accepted as terminal admission output, even if a caller accidentally
-lifts the ordinary held filter. Admission observation, score, auto-file policy, unrelated grounding,
-and source trust can record evidence or route review but cannot change either fact. A future
-final-conditioned-child role authority may project a verified concrete kind while the clip remains
-held; only the terminal admission transaction removes that hold after reproducing every required
-proof. Until the role authority exists, the state remains held and unclassified. Existing admitted
-clips that already carry a concrete kind retain their playback behavior.
+Enrollment authority comes from choosing and enabling a Filler Source, opting a folder or Library
+into Filler, or explicitly queueing one item. It is captured when the Clip enters the conveyor, so a
+later Source disable stops future work without rewriting existing outcomes. The enabled Source is
+the household's approval; the runtime must not ask for a second per-Clip approval merely because an
+optional classifier did not identify an exact role.
 
-⚠ **The V38 compatibility exceptions are retired.** Acquisition intent is not publication
-authority, whether the bytes came from a downloader, a watched folder, or a hand copy. Every new
-non-composite arrival starts held. Migration `00098` also quarantines every existing playable
-non-composite and returns any `filed` pipeline row to `review`; this can deliberately empty an
-upgraded install's filler pool until evidence is certified. Preserving unexplained playback would
-be safer for continuity and worse for the audience. Composite containers retain their separate
-split-repair lifecycle and are never themselves scheduled.
+Role and Placement are separate. Role describes what the Clip is; Placement says where it may run.
+A known commercial, promo, PSA, trailer, or interstitial maps to break body. A bumper or station ID
+maps to bookend. Enrollment grounds break body when the exact role remains unclassified; this does
+not relabel the Clip as a commercial. Composites and positively identified programme excerpts map to
+not playable. An explicit channel kind filter still narrows to known roles; default scheduling may
+use enrollment-grounded break-body Clips.
+
+Every new arrival still starts held. The distinction is that the ordinary pipeline now has an
+executable terminal operation: after required runtime checks it atomically stores Placement, clears
+the hold, settles the conveyor as Ready, and appends the effective activity outcome. Exact retries
+are idempotent and stale clip/pipeline identity rolls the transaction back. Composite containers
+retain their separate split-repair lifecycle and are never themselves scheduled.
 
 ### The quality gate: reject the broken, normalise the quiet (V40)
 
@@ -5089,28 +5092,25 @@ withdrawal, or remediation path. Project-owned corpus acquisition and redistribu
 rights controls because those govern what the Loomarr project itself may copy or distribute.
 
 Screening aggregates, provider-neutral axis records, operation identities, and opaque raw evidence live
-separately in a private content-addressed repository. The immutable screening-release authority is explicitly
-non-authorizing by default, names exactly one canonical profile per axis, and locks the aggregate contract.
-Terminal admission
-must re-read the aggregate, every axis record, its unique settled operation, and every raw-evidence identity;
-verify exact child lineage,
-all three media identities, parent span, outcomes, reasons, and profiles; and require all four passes plus
-explicit production permission. A boolean callback, aggregate-only replay, model self-assertion, pre-split
-screen, or structure certificate cannot release a child. Missing, stale, rejected, held, identity-drifted,
-profile-drifted, or unverifiable evidence keeps it held.
+separately in a private content-addressed repository. They support measured classification and configured
+household protection without becoming a second approval system. A positive objective media failure or a
+configured positive safety finding can make a Clip not usable. An unavailable optional model, incomplete
+certification corpus, missing classification fact, or absent audit evidence cannot block an otherwise valid
+enrolled Clip. Any screening fact used by runtime still binds the exact playable bytes and profile; stale or
+identity-drifted evidence is ignored rather than treated as a pass.
 
-**Replacement contract (maintainer decision, 2026-09-06).** The new filler pipeline replaces the
-previous pipeline entirely. There is no live compatibility fallback for automatic materialization or
-catalog publication. Missing, disabled, malformed, expired, or non-authorizing configuration,
-deployment, certificate, assessment, or evidence leaves material held with an attributable reason.
+**Replacement contract (revised for household beta, 2026-09-13).** The new filler pipeline replaces
+the previous pipeline entirely. There is no live compatibility fallback or dormant publication mode.
+Missing required bytes, failed media checks, or absent Enrollment authority leaves material held with
+an attributable reason; missing optional classifiers, certification, or audit evidence does not.
 A structure-assessment failure, including a source outside the reviewed duration envelope, keeps
 the source and its pending proposal at the split review rung. It must not exhaust ordinary
 non-fatal retries into a terminal filed disposition. Cancellation preserves resumable work and is
 not an assessment result. No such failure may create children or confer publication authority.
-No confidence score, source trust, detector-only proposal, or alternate filing route may substitute
-for the new pipeline's required authority. Human review supplies the particular missing decision
-through its governed review path; it does not waive unrelated structure, screening, rights, or
-terminal-publication requirements. This contract supersedes earlier rollout language in this section.
+No confidence score or detector-only proposal may substitute for the new pipeline's required runtime
+checks. Source selection is not inferred trust: it is the explicit Enrollment authority for private
+household use. A human is asked only for a genuine unresolved product choice. This contract
+supersedes earlier rollout language in this section.
 
 The split stage applies only the complete-plan materialization gate. A proposal without a verified
 complete-timeline decision and matching materialization authority remains reviewable and cannot
@@ -5119,16 +5119,15 @@ for measurement. Its immutable shadow record binds proposal, source, assessment,
 and policy identities plus exact materialize, hold, and discard spans. Recording agreement never
 activates a slice. Failure to persist a required comparison blocks unattended materialization; it
 never selects the comparison result as a fallback. Screening identities do not enter this ledger
-because no child playback derivative exists yet. The separate admission shadow ledger compares
-held-child terminal decisions only after all child evidence exists. Shadow decisions never publish;
-only the new pipeline's verified terminal applied decision can grant broadcast availability.
+because no child playback derivative exists yet. Admission comparisons remain development evidence
+only. Runtime publication belongs exclusively to the terminal-ready transaction.
 
 Structure-validated children reuse the V66 derivative publisher and are prepared as one replacement generation.
 Their playable and evidence derivatives are built from the exact reviewed source intervals, not from an
 older playback rendition. The parent, assessment, observations, and prior complete child generation remain
 intact until every replacement child and durable lineage record validates and the generation switch commits
 atomically. New children remain held through derivative production, the five screens, enrichment, and
-terminal admission; filesystem visibility is not broadcast permission. A crash, partial re-split,
+terminal readiness; filesystem visibility is not broadcast permission. A crash, partial re-split,
 derivative failure, or screening failure cannot replace a complete generation with a partial airable one.
 
 Certification is separate from production assessment. Its rights-cleared corpus is split by source family
@@ -6050,30 +6049,19 @@ confidence threshold, `auto_filed` application state, legacy audit list, and dir
 route are retired rather than maintained as a parallel lifecycle. Historical database columns may
 remain until a future schema rebuild, but no domain or API contract assigns them meaning.
 
-#### Evidence-based admission certification (V61 — supersedes the scalar gate)
+#### Evidence-based classification and terminal readiness (V61; household beta)
 
-V38's grounding cap was a necessary improvement over admitting every scanned file, but it is not a
-certification boundary. A literal token proves only that the token occurred. It does not resolve
-which of two conflicting years describes the recording, prove that uploader text is trustworthy,
-or calibrate a model's `confidence` against observed correctness. Consequently
-The V38 publication switch and threshold are retired. Confidence remains versioned diagnostic
-evidence for classification and split review, but **a scalar score is never publication authority**.
-There is intentionally no compatibility publisher while certified V61 authorities are being
-completed: an installation without terminal release proof accumulates held, reviewable clips rather
-than airing content whose identity, audience suitability, or playback integrity is unknown.
+V38's grounding cap remains useful for descriptive classification, but it is not household-use
+authority. A literal token can support a role, era, or product fact without deciding whether the
+person who selected a Source must approve the same Clip again. Confidence therefore remains
+versioned diagnostic metadata and never controls readiness.
 
-The terminal decision belongs to one Go-owned **filler admission evaluator** after evidence
-extraction and before catalog filing. Extractors return versioned facts and may abstain; they never
-authorize playback. The evaluator returns exactly one semantic verdict:
-
-- `admit` — sufficient policy-eligible evidence exists for this certified content slice;
-- `reject` — measured media or policy evidence proves the input cannot be used as filler; or
-- `review` — a named contradiction or missing fact can be resolved by one answerable human
-  question.
-
-Retries, provider failures, exhausted budgets, and unsupported modalities are operational states,
-not semantic verdicts. They keep the clip held and recoverable. They never guess-admit, become a
-semantic rejection, or create review work a person cannot resolve.
+The production terminal decision belongs to one Go-owned **terminal-ready module** after required
+runtime processing. Its small interface receives the exact Clip, durable Enrollment authority, and
+completed conveyor state. It returns one of three effective outcomes: Ready, not usable, or a real
+Needs-help task whose action changes durable state. Retries, provider failures, exhausted budgets,
+and unavailable optional enrichment are operational states in Diagnostics; they cannot become
+semantic chores by changing labels.
 
 Evidence is claim-specific and carries provenance. Decoder measurements own media usability;
 source-owned dates and recording sidecars outrank a year merely spoken in a clip; readable end
@@ -6096,18 +6084,20 @@ literal presence, grants that source authority.
 
 Content-role and product corroboration also require at least one in-clip signal (transcript, OCR,
 frame, audio, or video). A filename plus an uploader description are two fields controlled by the
-same uploader, not proof that the bytes contain the claimed advert; metadata-only agreement remains
-review evidence and cannot authorize admission.
+same uploader, not proof that the bytes contain the claimed advert; metadata-only agreement may
+support a suggestion but cannot become a high-confidence descriptive classification.
 
-A commercial requires a corroborated product from the closed taxonomy before admission. Brand is
-retained as useful evidence and may expose a conflict, but the advertiser-name field is open text and
-cannot substitute for that closed product gate; two copies of instruction-looking OCR/transcript text
-therefore cannot become a commercial identity merely by agreeing with each other.
+A high-confidence commercial classification requires a corroborated product from the closed
+taxonomy. Brand is retained as useful evidence and may expose a conflict, but the advertiser-name
+field is open text and cannot substitute for that closed product classification; two copies of
+instruction-looking OCR/transcript text therefore cannot become a commercial identity merely by
+agreeing with each other. A Clip may still become Ready with an enrollment-grounded break-body
+Placement while its exact role remains unclassified.
 
-`filleradmission.Evaluator.Evaluate` is deterministic and has no provider, decoder, store, clock, or
-network dependency. It returns a semantic decision only after validating the complete evidence and
-policy versions. Decisions carry a stable sorted set of reason codes, the exact evidence references
-that support them, all material conflicts, at most one answerable review question, and the inference
+`filleradmission.Evaluator.Evaluate` remains deterministic development and certification tooling; it
+has no provider, decoder, store, clock, or network dependency and is not a runtime publication gate.
+Its measurements carry a stable sorted set of reason codes, the exact evidence references that
+support them, all material conflicts, at most one review question, and the inference
 attribution/usage supplied with the evidence. Every semantic inference attribution is referenced by
 at least one fact, and every fact's inference reference must resolve; unrelated or dangling model
 calls cannot be smuggled into a decision's audit. The sole exception is an explicit semantic
@@ -6119,81 +6109,27 @@ verdict. Model confidence is retained for diagnostics but is never read by admis
 Untrusted evidence values are compared only as data; instruction-looking metadata, OCR, or transcript
 text cannot select a reason, change precedence, or authorize a verdict.
 
-The evaluator may record shadow decisions while certification is incomplete, but these records
-grant no catalog effect. The former V38 confidence publisher is removed; incomplete rollout cannot
-reactivate it. New non-composite arrivals remain held until a certified slice and sealed release
-authority are wired and the replacement pipeline validates the required evidence and commits the
-terminal applied admission decision.
+Runtime has one effective path and no `shadow` / `applied` mode. Audit-only human answers and
+certification-only release bindings are not runtime capabilities. The terminal-ready module owns
+the complete transition before any publication write: it validates the exact Clip identity,
+requires durable Enrollment authority, derives Placement without inventing a Role, and checks that
+the required pipeline work completed. One store transaction then records the Ready event, stores
+Placement, clears `clips.held`, and settles the matching conveyor row as Ready. A missing or changed
+Clip, stale pipeline row, absent authority, composite, or objective failure rolls the whole write
+back. Repeating the same completed transition is an idempotent success.
 
-Every durable filler decision carries a closed `ApplicationMode`: exactly `shadow` or `applied`.
-`shadow` records what the evaluator would decide without granting catalog filing authority;
-`applied` means the decision was the filing authority and its corresponding catalog effect committed.
-All current production decision records are explicitly `shadow`; `applied` is reserved and has no
-producer. Omitted or unknown modes fail closed at the domain and store boundary. The forward migration
-marks every pre-existing decision `shadow`, matching the only production writer that could have created
-one, and keeps `shadow` as the database default for omitted raw inserts.
+The storage interface exposes no generic `held=false` writer. Ordinary pipeline and operator code
+may hold or tombstone a Clip, while only the terminal-ready transaction may publish a non-composite.
+Composite containers retain a separate constrained operation and remain excluded from Pods
+independently of their hold. This concentrates atomicity and stale-state handling behind one deep
+module instead of asking each pipeline rung or source adapter to reproduce the rules.
 
-The member-readable activity projection carries that mode as a required closed `applicationMode`
-wire field. An automatic shadow verdict is presented as `Would admit (shadow)` or
-`Would reject (shadow)` with caution styling; only an applied verdict may use the effect labels
-`Admitted automatically` or `Rejected automatically`. A client that receives an omitted or unknown mode
-presents `Decision mode unavailable` with caution styling and never infers an applied effect.
-Operator-action entries in activity describe their recorded event and never infer a catalog effect.
-The unresolved-review projection carries the same required mode. In particular, an `admit` answer
-to a shadow review records the operator's semantic judgment but has no catalog effect; calling it
-“Confirm for library” would falsely turn an audit event into a publication claim. Applied-mode
-operator confirmation remains unavailable until the terminal-admission module can revalidate the
-exact current release evidence and commit the action plus catalog effect as one outcome.
-
-That terminal module has one action interface and owns the complete proof before any publication
-write. For an applied `admit` (including a correction to `admit`) it resolves the decision's exact
-catalog hash to the current playback object, reprojects the attached sidecar, verifies the complete
-playback bytes, reproduces the referenced four-axis aggregate, and replays the configured immutable
-release authority and every private axis record. Only after all of
-those reads pass does one store transaction append the action, change `clips.held`, and settle the
-matching pipeline row to `filed`; a missing clip or pipeline row, stale decision, changed playback,
-held axis or authority drift rolls the whole write back. Applied rejection (or
-a correction to `reject`) atomically appends the action, tombstones and holds the clip, and settles
-the pipeline row as an operator dismissal. Reversal and restore atomically return the clip to held
-review state; abandonment remains an append-only skip with no catalog mutation. The ordinary
-action writer accepts `shadow` rows only, while the publication writer accepts `applied` rows only,
-so bypassing the terminal module cannot accidentally give a shadow judgment a catalog effect.
-Every applied decision therefore carries the exact screening-aggregate and release-authority
-SHA-256 identities that terminal replay must reproduce; shadow rows carry neither. Application mode
-cannot be toggled independently from those bindings in either the domain validator or database.
-
-An exact retry of an already committed action returns its recorded result without another catalog
-effect or fresh release replay. This remains true if the applied executor later becomes unavailable.
-The recorded action must match the decision,
-actor, kind, reason, answer, corrected verdict, and superseded-action identity; a conflicting request
-under the same action id fails closed. Server-assigned retry time does not change request identity.
-This read of an immutable prior result never authorizes a new action: new publishing actions still
-require the complete current proof and transaction checks, and each store writer retains its
-shadow/applied mode guard.
-
-The storage interface enforces the same rule by capability. Ordinary pipeline and operator code may
-hold a clip, tombstone it, or expose a confirmed composite container, but it has no generic
-`held=false` writer for playable content. Only the applied-admission transaction may move a
-non-composite clip from held to playable. The former confidence tagger, score rung, source-trust
-switch, and `/v1/filler/file` route are retired rather than left as dormant alternate publishers.
-Composite containers use a separate store operation constrained by `is_composite=true`; making their
-lineage visible cannot make their media eligible for a pod.
-
-The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
-diagnostic `score` rung. Its first production evidence version records only facts whose provenance the
-current pipeline can prove: successful decoder passage, an explicit content-role token in the
-original filename, and an explicit filename year. It does not translate V38 confidence, persisted
-classifier fields, a source-declared licence URL, or `autoAdmit` into V61 evidence. Consequently an
-ordinary clip initially records only genuine media, identity, or suitability outcomes.
-The rung versions and hashes the complete observation, evaluates it, and persists the immutable V63
-record before `score` may run. If that durable write remains unavailable after bounded retries, the
-pipeline stays parked on `admission`; it never skips the audit or falls through to another publisher.
-
-Every evaluation durably attributes the clip and evidence hashes, extractor/prompt/schema/taxonomy/
-policy versions, requested and resolved model/provider, modality and derivative bounds, returned
-token categories, provider-reported charged cost, the price snapshot used for local estimation,
-latency/retries, reason codes, evidence references, conflicts, and terminal outcome. Aggregate token
-metrics remain useful for operations; the durable row is the audit and cost-accounting truth.
+The ingest ladder performs enrichment and diagnostic scoring before terminal readiness. A skipped
+optional classifier remains a visible stage fact but cannot stop an otherwise valid enrolled Clip.
+Positive measured media failures still reject automatically. Provider-declared licence metadata is
+persisted unchanged and never enters the readiness decision. Development/certification evaluations
+continue to record exact evidence, model/provider attribution, cost, and disagreement for improving
+classification policy; those records grant no runtime action and never appear as Needs-help work.
 
 Certification artifact schema v5 requires the per-inference-step ledger and the corpus-diversity
 identity used by the statistical contract. Earlier schemas are rejected: no completed bakeoff
@@ -8099,34 +8035,26 @@ ceiling, processor boundary, and first recruitment batch before any contact, sig
 download, provider upload, or spend. Changing any of those approved identities invalidates the
 affected schedule rather than being treated as a compatible metadata update.
 
-Rollout is shadow-first on a bounded appliance workload. Deterministic rejection enables before
-certified admission slices; harder slices enable only after shadow evidence. A random sample of
-automatic outcomes and every disagreement between rungs remains auditable. Any model, provider,
-prompt, schema, taxonomy, extractor, or policy change invalidates the affected certification until
-it is replayed.
+Certification rollout is comparison-first on a bounded development workload. These comparisons
+measure classifiers and preserve disagreement evidence; they do not run in the household conveyor
+and cannot create, delay, or reverse a Ready transition. Any model, provider, prompt, schema,
+taxonomy, extractor, or policy change invalidates the affected certification measurement until it
+is replayed.
 
-The human surface follows the same ownership boundary. **Needs attention contains semantic
-exceptions only**, each asking one plain question and showing the decisive evidence/conflict.
-Automatic admits/rejects belong to Activity; queued/running/retry/provider/budget state belongs to
-Diagnostics. Overview answers whether the whole Filler workspace is working from the readiness
-projection and offers its one ranked action only when one exists. The admission overview contributes
-supporting outcome counts but cannot replace or contradict that verdict. The header watch pill reports
-source activity only. Ordinary maintenance never asks a person to interpret confidence thresholds.
+The human surface follows the same ownership boundary. **Needs help contains exceptional choices
+only**, each asking one plain question whose answer changes durable product state and showing the
+decisive evidence or conflict. Ready/not-usable outcomes belong to Activity; queued, running, retry,
+provider, and budget state belongs to Diagnostics. Overview answers whether the whole Filler
+workspace is working from the readiness projection and offers its one ranked action only when one
+exists. The header watch pill reports source activity only. Ordinary maintenance never asks a
+person to interpret confidence thresholds or audit classifier output.
 
-Incoming consumes the bounded review cursor ten rows at a time and renders one focused evidence
-card, with a compact question navigator for the rest of that server page. It never materializes the
-100-row ceiling as 100 simultaneous full cards or reorders questions using browser-owned policy.
-Forward/back page controls preserve the server cursor history; selecting or paging is navigation,
-not a semantic action. Recording filler, not-filler, or a corrected verdict requires successful
-playback of the exact resolved clip in the current browser session. Only `Skip for now` remains
-available without playback, because it records no semantic answer. An unsupported applied-mode row
-therefore exposes no answer path even through rejection or correction.
-
-The rendered review prototype compares evidence-first and proposal-visible ordering. Production
-uses evidence-first: decisive conflicts and reasons appear before any operator action, and Loomarr
-does not invent a proposed answer for an evaluator that explicitly abstained. The proposal-visible
-variant remains a Storybook comparison artifact so future measured human-review trials can revisit
-the choice without quietly changing the ordinary surface.
+Incoming is a calm progress surface for first-time and ordinary use: a compact summary of preparing,
+Ready, not-usable, and genuinely blocked items, followed by the recent items people are most likely
+to inspect. It does not render one review form per Clip. A Needs-help card appears only when the
+server provides a current task and actions; playback is required before a media-content answer, while
+navigation and diagnostics never masquerade as semantic actions. Classification detail and
+certification comparisons are Advanced/development views rather than a household inbox.
 
 #### Certified role routing and evaluation accounting (V62)
 
@@ -8170,60 +8098,44 @@ The deterministic evaluation cache identity includes the clip/evidence, extracto
 concrete model/provider and role/capability policy, taxonomy, admission policy, modality, and bounded
 derivative dimensions. A change to any semantic input cannot reuse an older answer accidentally.
 
-#### Durable admission audit and operator projections (V63)
+#### Durable readiness audit and operator projections (V63; household beta revision)
 
-`fillerdecision` is the single lifecycle owner between the pure V61 evaluator and operator-facing
-reads. It accepts a canonical evaluator result, persists it before it can affect a catalog, and
-returns a durable decision id. A semantic decision and an operational hold use one envelope but
-remain disjoint states; a provider, schema, extraction, or budget failure cannot enter the semantic
-review queue by changing labels in an API handler.
+The terminal-ready module is the single runtime lifecycle owner between conveyor completion and the
+playable catalog. It consumes persisted Clip/pipeline state, commits the effective outcome before it
+can affect scheduling, and appends a durable event. Classification evaluation stays outside this
+authority. A provider, schema, extraction, or budget failure cannot enter Needs help merely by
+changing labels in an API handler.
 
-The original decision row is immutable and stores the clip and evidence identities, complete
-canonical V61 result, policy/schema/taxonomy lineage, creation time, and the inference-evaluation
-references whose exact usage and cost live in V62 accounting. Human resolution, correction,
-explicit review abandonment, restore, and reversal are append-only action rows. They name a closed
-action kind, actor, reason, time, and optional corrected answer, and point to the action they
-supersede when relevant. History
-therefore distinguishes an automatic admission from a reviewed admission, a rejection from an
-operational failure, and a correction from a later reversal without overwriting the evidence that
-caused the original result.
+The effective event is immutable and stores the exact Clip identity, Enrollment reference,
+Placement, pipeline identity, outcome, and creation time. Genuine human state changes remain
+append-only actions. Development classification decisions retain their evidence and cost lineage in
+their own measurement store but are never joined into runtime readiness by inference.
 
-An `abandon` action means **skip for now**, not reject. It is measurable review-friction evidence,
-does not resolve the semantic question, and is excluded when computing the latest state-changing
-action; the same review may therefore be answered later without pretending the operator expressed
-a content preference. The ordinary UI hides an explicitly skipped card only for that page session.
+Skipping a diagnostic or optional detail is navigation, not an action. The server records only an
+answer that changes durable product state; it does not manufacture review-friction events.
 
-The store exposes one conformance contract over SQLite and Postgres. Insertion is idempotent by
-decision id and rejects a different payload under the same id. Decision plus first action is
-transactional where an operation requires both. Reads use bounded keyset pagination with a stable
-`(created_at, id)` order; decision/action time retains nanoseconds so two transitions in one second
-cannot be reordered by random ids. Counts are computed by the same predicates as their rows. Startup
-needs no queue repair because decisions and actions are not leased work. Forward migrations add the
-tables and indexes; applied migrations remain immutable.
+The store exposes one conformance contract over SQLite and Postgres. Ready-event insertion is
+idempotent by event id and rejects a different payload under the same id. Event insertion, Placement,
+hold release, and pipeline settlement are one transaction. Reads use bounded keyset pagination with
+a stable `(created_at, id)` order, and counts are computed by the same predicates as their rows.
+Forward migrations add the tables and indexes; applied migrations remain immutable.
 
-Four projections are owned by `fillerdecision`, not by clients:
+Four runtime projections are server-owned, not client-derived:
 
-- **Overview** reports the latest durable outcome per clip, semantic and operational counts, and at
-  most one admission-ranked next action. It is the admission subsystem's projection and supporting
-  evidence on the Filler Overview page; the broader readiness projection owns that page's single
-  workspace verdict and next action. A later successful decision clears an older operational hold from
-  current health without erasing it from Activity. An
-  operational failure that prevents all progress ranks first, followed by a recoverable hold,
-  semantic review, an empty admitted pool, then no action.
-- **Attention** contains only the latest unresolved `review` decision per clip, projected as one
-  typed Attention task with exactly one non-empty question, decisive reason codes, safe evidence
-  references, conflicts, and the closed set of actions currently allowed for that task kind and
-  application mode. Initial task kinds are `identity_role` and `suitability_exception`;
-  `split_boundary` is reserved for the structure authority rather than
-  inferred from a generic held clip. Queued work, retries, and provider or budget holds are
-  structurally ineligible. The browser neither classifies a task from reason text nor invents an
-  action absent from the response.
-- **Activity** is the bounded audit of automatic decisions and append-only operator actions.
+- **Overview** reports the latest effective outcome per Clip, operational counts, and at most one
+  server-ranked next action. The broader readiness projection owns the page's single workspace
+  verdict. A later Ready event clears an older Operational hold from current health without erasing
+  it from Activity.
+- **Needs help** contains only current exceptional choices with one non-empty question, decisive
+  evidence, and the closed actions currently allowed. Queued work, retries, optional classification,
+  provider/budget holds, and audit sampling are structurally ineligible. The browser never invents
+  task kinds or actions from reason text.
+- **Activity** is the bounded audit of Ready/not-usable events and genuine human actions.
 - **Diagnostics** contains each clip's latest operational hold and one server-authored recovery plan.
   The plan is exactly one of: an automatic retry with its next attempt time, a currently allowed
   manual retry, a precise configuration destination, or inspection of the exact held media. Provider,
   budget, extraction, media-inspection, and policy holds map to those closed modes in
-  `fillerdecision`; the browser neither derives a destination from the hold code nor invents a
+  the server; the browser neither derives a destination from the hold code nor invents a
   command. Provider response text, local paths, raw prompts, and evidence locations are never
   projected.
 
@@ -8236,13 +8148,12 @@ request recognizes already-scheduled machine work and safely completes the audit
 records no success. Until a newer admission result exists, the hold remains visible with its actual
 automatic/manual state; the UI never removes it optimistically.
 
-Overview and Activity follow the existing member-readable filler contract. Attention,
+Overview and Activity follow the existing member-readable filler contract. Needs help,
 Diagnostics, and every action require an admin; member attempts return 403 and create no action.
 The API never returns raw evidence sources or locations, provider response bodies, or secrets. A
-review action requires the current unresolved review and is idempotent under its action id; stale or
-duplicate conflicting actions fail closed. Automatic catalog filing requires the replacement pipeline
-and an explicitly certified slice. Durable shadow records never grant filing authority, and absent
-certification leaves clips held without a compatibility fallback.
+Needs-help action requires the current unresolved task and is idempotent under its action id; stale
+or duplicate conflicting actions fail closed. Automatic publication requires the terminal-ready
+transaction and Enrollment authority. Classification certification never grants or withholds it.
 
 **Loudness normalisation is playback conditioning, not admission.** The transcode rung may build a
 normalised playback derivative when `filler.conditioning.normalize_loudness` is enabled, using the
@@ -8843,7 +8754,7 @@ unconfirmed suggestion.
    ⚠ **This was "not optional, ever" until V43, and the blanket rule was over-applied.** Boundary
    confidence can safely automate the mechanical creation of well-supported child clips while
    uncertain cuts remain for review. That automation does not publish the children: each child
-   still traverses conditioning, classification, four-axis safety/playback screening, and terminal admission.
+   still traverses conditioning, classification, configured safety/playback checks, and terminal readiness.
 
    **`filler-split` is a scheduled job** (on by default). It proposes splits for over-long catalog clips rather than waiting for a click, so proposals are ready when the operator looks instead of costing minutes of waiting once they do.
 
@@ -8857,8 +8768,8 @@ unconfirmed suggestion.
 
    ⚠ **A confirmed segment is not airable.** Confirm writes the rendered child and lineage, then the
    child traverses the complete pipeline while held. Boundary confidence decides whether a cut may
-   be created unattended; it is not evidence that the resulting content is safe, rights-cleared, or
-   eligible for a pod. Only the terminal applied-admission transaction may release it.
+   be created unattended; it is not evidence that the resulting content is technically playable or
+   eligible for a pod. Only the terminal-ready transaction may release it.
 
    ⚠ **The `filler.min_duration` floor is no longer one of those conditions, because it is enforced earlier (V54).** It used to be, and that is the reason auto-split could never fire: a real commercial compilation is *made of* sub-floor material. Measured 2026-08-11 on an 82-segment archive.org reel, **39 segments sat under the 10s floor**, the shortest 3.1s — station IDs and inter-ad bumpers. `AutoConfirmable` returns on the first failing segment, so `RejectTooShort` sank the reel before the grounding checks at the bottom of the loop were ever reached, and the V54 grounder below could not have changed the outcome no matter how well it worked. Those fragments are now dropped at **detection** (step 2 above), where a fragment the scan boundary would refuse anyway costs nothing to discard. `RejectTooShort` stays in the gate as defence-in-depth for hand-edited proposals and for those detected before V54; it is no longer a reason a freshly-detected reel sinks.
 
@@ -9116,13 +9027,13 @@ one enumeration can carry two subjects. That is the argument `reject.go` already
 | Operator action | Route | Pipeline row |
 | --- | --- | --- |
 | Review or correct tags | tag editor | classification changes; remains held |
-| Applied admit/corrected admit/restore | terminal applied-admission action | atomic `review → filed` after exact replay |
+| Required work completes | terminal-ready operation | atomic `running → ready` with Placement |
 | *Don't use it* | `POST /v1/filler/bulk/remove` | `review → dismissed` |
 | Restore | `bulk/remove` with `restore: true` | `dismissed`/`rejected` `→ review` |
 
-⚠ **Positive publication is never a best-effort pair of writes.** The action, clip release, and
-pipeline settlement commit in one transaction or none do. Tag correction remains deliberately
-non-terminal: it improves evidence and may trigger re-screening, but it cannot make media playable.
+⚠ **Positive publication is never a best-effort pair of writes.** The Ready event, Placement, clip
+release, and pipeline settlement commit in one transaction or none do. Tag correction remains
+deliberately non-terminal: it improves descriptive metadata but cannot make media playable.
 
 ⚠ **`dismissed` is off the conveyor AND off the refusals list, and the second is not an
 oversight.** *"Loomarr didn't use N clips"* is the audit of what the appliance decided **without**
@@ -9463,10 +9374,9 @@ next frame; a suppressed re-run looks like the machine has stopped.
 ⚠ **This does not contradict V40's "no badge, no review step", and the boundary is worth stating
 because the next reader will otherwise take V40 as forbidding this section.** V40 refuses files at
 the **scan** boundary, before they are catalogued, where listing every skipped file in an
-operator's media folder would be noise about files Loomarr never took responsibility for. These
-refusals happen **after** cataloguing, to clips Loomarr accepted and then decided against — and
-`filler.reject.unidentified` is ON by default, so a default that can turn down a good clip has to
-show its work.
+operator's media folder would be noise about files Loomarr never took responsibility for. Runtime
+refusals after cataloguing must be objective and remain visible with their measured reason; missing
+descriptive classification is not one of them.
 
 ### A rung may not spend per SEGMENT what the budget allows per CLIP (V51g)
 
@@ -10481,11 +10391,11 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   - **Sources** — registered sources, source-scoped discovery, explicit acquisition planning, and
     current fetch state. This is routine intake work, not an expert panel nested under Manage.
-  - **Incoming** — the evidence desk for genuine authority ambiguity. An exact clip or reel appears
-    once as a typed Attention task when the server says a person must decide something automation is
-    not authorized to infer;
-    routine preparation and recovery may be summarized as context but never form a second actionable
-    queue. Expanding a rendered child loads its exact playable bytes and the server-owned four-axis
+  - **Incoming** — a calm progress and recent-content surface. It summarizes preparation, Ready,
+    not-usable, and genuinely blocked work without turning each Clip into a form. An exact Clip or
+    reel appears as a Needs-help task only when the server says a person must make a durable product
+    choice; routine preparation and recovery may be summarized as context but never form a second
+    actionable queue. Expanding a rendered child loads its exact playable bytes and the server-owned four-axis
     screening projection:
     visual safety, spoken safety, written safety, and playback integrity remain
     independent rows with pass/reject/hold, safe reason codes, assessment time, and evidence
@@ -11205,7 +11115,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `filleradmission` | Pure evidence-to-`admit \| reject \| review` policy, with conflicts and operational holds kept outside semantic verdicts (§10 V61) |
 | `fillerbakeoff` | Bounded label-blind provider execution, reason-gated cascades, and immutable per-call accounting before hermetic scoring (§10 V61) |
 | `fillercorpus` | Source-neutral, non-authorizing certification inventory and rights-yield pilot contracts (§10 V61) |
-| `fillerdecision` | Durable admission lifecycle, append-only actions, and server-owned review/activity/diagnostic projections (§10 V63) |
+| `fillerdecision` | Development classification audit plus the temporary server-owned projection adapter while Incoming migrates to effective Ready/needs-help/diagnostic events (§10 V63) |
 | `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
 | `fillerreview` | Verified identity-blind media packaging for independent semantic label review (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
@@ -11399,7 +11309,6 @@ Notifications → Add provider**.
 | `INGEST_WHISPER_PATH` / `INGEST_WHISPER_MODEL` | vendored paths in the image — the whisper.cpp binary and its model file (§10, §14, V34). Unset/unrunnable ⇒ compilation splitting's transcript-rescue step is unavailable: over-long segments surface to the operator as **unsplittable** in the review UI rather than being guessed at (coarse splitting still works — it needs only ffmpeg). Overridable like the other tool paths |
 | `INGEST_TIMEOUT` | `30m` — per-item wall-clock ceiling so one wedged fetch cannot hold the pipeline forever. Ingest concurrency is pipeline-owned policy. |
 | `FILLER_PIPELINE_MAX_CLIPS` / `FILLER_TRANSCODE_MAX_PER_RUN` / `FILLER_PIPELINE_MAX_WHISPER` / `FILLER_PIPELINE_MAX_VISION` / `FILLER_PIPELINE_MAX_SPLITS` | **`25` / `3` / `10` / `5` / `3`** (§10 V51b). The ingest pipeline's per-run budget. Each bounds ONE PASS, not the catalog, so a backlog drains over cycles — the property the per-job batch constants they replace were chosen to defend, with the numbers carried forward unchanged. ⚠ **Zero means NONE, a distinct state from the default**: it is the only way to say "never do this kind of work on this box", which matters most for the transcode budget — the rung that creates V66's evidence and playback derivatives while retaining the source master. (⚠ `FILLER_SPLIT_EVERY` is retired: splitting is a rung every long recording reaches as it is ingested, so "how often do we go looking" stopped being a question with an answer.) |
-| `FILLER_REJECT_UNIDENTIFIED` | **`true`** (§10 V51b). Set aside a clip when every signal tier ran and grounded nothing — no era, audience, tag, brand, speech or on-screen text. ⚠ **The only reject an operator can switch off**, because "we could not identify it" is not the claim "it is not a commercial", and a wordless station ident is exactly that case. ⚠ It is also why the rejected list is not optional: every refusal carries a stable reason code plus the measured detail and is reversible in one click. The guard that makes the default safe lives in the score rung — a clip is only unidentified if something actually LOOKED, so a clip the tagger never reached falls through to review, never to a reject |
 | `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every remaining segment must reach. Known duplicates and below-`FILLER_MIN_DURATION` fragments are discarded first; they are deterministic non-clips, not review decisions, and the preserved composite is the recovery path. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert. That risk has not changed; the evidence has. The gate remains strict (the remaining reel qualifies as a whole or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. Its confidence threshold governs cut acceptance only and cannot make any child playable. |
 | `FILLER_AUTOSPLIT_MAX_DURATION` | `120s` (§10 V43). The longest a segment may be and still count as advert-shaped. ⚠ Serves TWO jobs and that is why it is one key: it selects which catalog clips the split job even looks at (longer than this ⇒ a compilation worth detecting), and it is the ceiling every segment must clear for auto-confirm. A single number keeps those two answers from disagreeing — a clip the job considers too long to be an advert must not then auto-confirm as one |
 | `FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH` | **empty** (§10 V67). Optional absolute path to the separately reviewed long-reel materialization-authority JSON. Empty, missing, malformed, drifted, or non-authorizing evidence enables no certified slice. The file is loaded at generation start and therefore requires restart after replacement. A valid authority permits independently assessed long-reel proposals to use the certified complete-plan gate. Without matching authority and a verified decision, automatic materialization holds; no compatibility fallback exists. Materialization can create held children but grants no training or broadcast admission. |
