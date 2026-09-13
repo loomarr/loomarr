@@ -504,9 +504,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
           {data.totalClips === 0 ? (
             <>
               <p className="mt-1 font-semibold text-xl">No playable clips yet</p>
-              <p className="mt-1 text-muted-foreground text-sm">
-                Coverage begins after clips are ready.
-              </p>
+              <p className="mt-1 text-muted-foreground text-sm">Coverage begins after clips are ready.</p>
             </>
           ) : (
             <>
