@@ -49,8 +49,6 @@ components:
         minHeight:
           format: int64
           type: integer
-        rights:
-          type: string
         roles:
           items:
             type: string
@@ -67,7 +65,6 @@ components:
           type: string
       required:
         - version
-        - rights
         - count
         - catalogReason
       type: object
@@ -5186,12 +5183,6 @@ components:
           maximum: 4320
           minimum: 0
           type: integer
-        rights:
-          enum:
-            - any
-            - prefer_declared
-            - require_declared
-          type: string
         roles:
           items:
             type: string

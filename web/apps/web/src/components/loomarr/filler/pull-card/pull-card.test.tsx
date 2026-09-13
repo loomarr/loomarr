@@ -13,8 +13,7 @@ const pull = (over: Partial<PullDTO> = {}): PullDTO => ({
   estimateClips: 52,
   candidateCount: 2,
   intent: {
-    version: "filler-acquisition-intent/v1",
-    rights: "prefer_declared",
+    version: "filler-acquisition-intent/v2",
     count: 2,
     catalogReason: "Saturday Mornings falls back to bumpers.",
   },

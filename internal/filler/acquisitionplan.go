@@ -39,12 +39,12 @@ func PlanAcquisition(intent AcquisitionIntent, candidates []AcquisitionCandidate
 	usedYears := map[int]bool{}
 	for len(eligible) > 0 && len(plan.Selected) < intent.Count {
 		sort.SliceStable(eligible, func(a, b int) bool {
-			return candidateBetter(intent, eligible[a].Candidate, eligible[b].Candidate, usedSources, usedYears)
+			return candidateBetter(eligible[a].Candidate, eligible[b].Candidate, usedSources, usedYears)
 		})
 		decision := eligible[0]
 		eligible = eligible[1:]
 		decision.Disposition = CandidateSelected
-		decision.Detail = "selected by deterministic rights, quality, diversity, and identity ranking"
+		decision.Detail = "selected by deterministic quality, diversity, and identity ranking"
 		plan.Selected = append(plan.Selected, decision)
 		usedSources[decision.Candidate.Identity.SourceID] = true
 		if decision.Candidate.ObservedYear > 0 {
@@ -70,7 +70,7 @@ func DefaultAcquisitionIntent(pool PoolReport, geography Geography) AcquisitionI
 	}
 	return AcquisitionIntent{
 		Version: AcquisitionIntentVersion, Geography: geography.Normalize(),
-		Rights: RightsPreferDeclared, Count: 12, CatalogReason: reason,
+		Count: 12, CatalogReason: reason,
 	}
 }
 
@@ -80,9 +80,6 @@ func rejectByIntent(intent AcquisitionIntent, c AcquisitionCandidate) (Candidate
 	}
 	if intent.Geography.Country != "" && !SourceGeographicallyEligible(c.Geography, intent.Geography) {
 		return CandidateGeographyMismatch, "candidate geography does not cover the target"
-	}
-	if intent.Rights == RightsRequireDeclared && strings.TrimSpace(c.License) == "" {
-		return CandidateRightsUnknown, "the provider supplied no rights declaration"
 	}
 	if intent.EraStart > 0 || intent.EraEnd > 0 {
 		if c.ObservedYear == 0 {
@@ -135,14 +132,8 @@ func rejectByIntent(intent AcquisitionIntent, c AcquisitionCandidate) (Candidate
 	return "", ""
 }
 
-func candidateBetter(intent AcquisitionIntent, a, b AcquisitionCandidate, usedSources map[string]bool, usedYears map[int]bool) bool {
+func candidateBetter(a, b AcquisitionCandidate, usedSources map[string]bool, usedYears map[int]bool) bool {
 	var av, bv bool
-	if intent.Rights == RightsPreferDeclared {
-		av, bv = strings.TrimSpace(a.License) != "", strings.TrimSpace(b.License) != ""
-		if av != bv {
-			return av
-		}
-	}
 	if a.Height != b.Height {
 		return a.Height > b.Height
 	}

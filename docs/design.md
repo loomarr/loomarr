@@ -8326,9 +8326,9 @@ bounded pagination. The normalized remote
 identity is `(provider, registered source id, provider item id)`; URLs are payload, not identity.
 Archive and YouTube are peers behind this seam. The planner filters items already catalogued,
 staged, queued by another pending/approved pull, previously declined in the same intent family,
-or repeated within the proposal. It then applies rights,
-geography, duration, era-observation and representation-quality constraints. Missing metadata does
-not imply permission and does not satisfy a hard floor.
+or repeated within the proposal. It then applies geography, duration, era-observation and
+representation-quality constraints. Provider-declared licence metadata remains attached to the
+candidate for provenance but is not a constraint or ranking signal.
 
 Every registered source receives its own durable disposition (`enumerated`, `disabled`,
 `not_fetchable`, `not_allowed`, `geography_mismatch`, `source_limit`, or
@@ -8336,12 +8336,12 @@ Every registered source receives its own durable disposition (`enumerated`, `dis
 to an item. Every considered item likewise receives a stable disposition code and measured observations. Selected rows
 retain their exact item URL; excluded rows retain why they lost (`already_catalogued`,
 `already_queued`, `previously_declined`, `duplicate_remote`, `source_not_allowed`,
-`geography_mismatch`, `rights_unknown`,
+`geography_mismatch`,
 `era_unknown`, `era_mismatch`, `duration_unknown`, `duration_exceeded`, `quality_unknown`,
 `quality_below_floor`, `role_unknown`, `role_mismatch`, `audience_unknown`,
 `audience_mismatch`, `taxonomy_unknown`, `taxonomy_mismatch`, or
-`ranked_below_limit`). Ranking is deterministic: constraint fitness, declared-rights preference,
-representation quality, useful diversity across source/era observations, then normalized remote
+`ranked_below_limit`). Ranking is deterministic: constraint fitness, representation quality,
+useful diversity across source/era observations, then normalized remote
 identity as the final tie-break. The same inputs therefore produce the same proposal and rejected
 explanations.
 

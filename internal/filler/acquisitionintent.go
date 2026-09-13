@@ -11,23 +11,13 @@ import (
 
 // AcquisitionIntentVersion is persisted with every pull so a later ranking change never
 // rewrites what an operator was shown.
-const AcquisitionIntentVersion = "filler-acquisition-intent/v1"
+const AcquisitionIntentVersion = "filler-acquisition-intent/v2"
 
 var (
 	ErrInvalidAcquisitionIntent = errors.New("invalid filler acquisition intent")
 	ErrNoAcquisitionSources     = errors.New("no eligible filler acquisition sources")
 	ErrNoAcquisitionCandidates  = errors.New("no filler acquisition candidates satisfy the intent")
 	ErrProviderPaused           = errors.New("filler provider is paused")
-)
-
-// RightsPreference says how declared remote rights metadata affects acquisition selection.
-// A declaration is still evidence supplied by the source, not a legal conclusion.
-type RightsPreference string
-
-const (
-	RightsAny             RightsPreference = "any"
-	RightsPreferDeclared  RightsPreference = "prefer_declared"
-	RightsRequireDeclared RightsPreference = "require_declared"
 )
 
 // AcquisitionIntent is the closed, inspectable request a deterministic planner satisfies.
@@ -42,7 +32,6 @@ type AcquisitionIntent struct {
 	Geography       Geography        `json:"geography,omitempty"`
 	MaxDurationMS   int              `json:"maxDurationMs,omitempty"`
 	TaxonomyGaps    []string         `json:"taxonomyGaps,omitempty"`
-	Rights          RightsPreference `json:"rights"`
 	SourceAllowlist []string         `json:"sourceAllowlist,omitempty"`
 	MinHeight       int              `json:"minHeight,omitempty"`
 	Count           int              `json:"count"`
@@ -57,9 +46,6 @@ func (i AcquisitionIntent) Normalize() AcquisitionIntent {
 	}
 	if i.Count == 0 {
 		i.Count = 12
-	}
-	if i.Rights == "" {
-		i.Rights = RightsPreferDeclared
 	}
 	i.Geography = i.Geography.Normalize()
 	i.CatalogReason = strings.TrimSpace(i.CatalogReason)
@@ -88,11 +74,6 @@ func (i AcquisitionIntent) Validate() error {
 	}
 	if err := i.Geography.Validate(); err != nil {
 		return fmt.Errorf("acquisition geography: %w", err)
-	}
-	switch i.Rights {
-	case RightsAny, RightsPreferDeclared, RightsRequireDeclared:
-	default:
-		return fmt.Errorf("unknown rights preference %q", i.Rights)
 	}
 	for _, role := range i.Roles {
 		if !validConcreteKind(role) {
@@ -172,7 +153,6 @@ const (
 	CandidateDuplicateRemote    CandidateDisposition = "duplicate_remote"
 	CandidateSourceNotAllowed   CandidateDisposition = "source_not_allowed"
 	CandidateGeographyMismatch  CandidateDisposition = "geography_mismatch"
-	CandidateRightsUnknown      CandidateDisposition = "rights_unknown"
 	CandidateEraUnknown         CandidateDisposition = "era_unknown"
 	CandidateEraMismatch        CandidateDisposition = "era_mismatch"
 	CandidateDurationUnknown    CandidateDisposition = "duration_unknown"

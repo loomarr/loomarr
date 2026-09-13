@@ -2969,7 +2969,7 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	p := filler.Pull{
 		ID: "pull_1", Title: "Top up the 1990s", Reason: "Saturday Mornings falls back to bumpers.",
 		ProposedBy: "admin-1", Status: filler.PullPending, CreatedAt: created,
-		Intent: filler.AcquisitionIntent{Version: filler.AcquisitionIntentVersion, EraStart: 1990, EraEnd: 1999, Count: 2, Rights: filler.RightsPreferDeclared},
+		Intent: filler.AcquisitionIntent{Version: filler.AcquisitionIntentVersion, EraStart: 1990, EraEnd: 1999, Count: 2},
 		Plan: []filler.PullPlanRow{
 			{SourceID: "classic", Provider: "archive", RemoteID: "ad-one", URL: "https://archive.org/details/ad-one", Tag: "1990s", Name: "Classic TV commercials", Why: "Era match", EstimateClips: 1},
 			{SourceID: "psa", Provider: "archive", RemoteID: "psa-one", URL: "https://archive.org/details/psa-one", Tag: "psa", Name: "Public service", Why: "Filler variety", EstimateClips: 1},

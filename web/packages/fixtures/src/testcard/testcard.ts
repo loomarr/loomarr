@@ -298,8 +298,7 @@ const pendingPull: PullDTO = {
   estimateClips: 52,
   candidateCount: 2,
   intent: {
-    version: "filler-acquisition-intent/v1",
-    rights: "prefer_declared",
+    version: "filler-acquisition-intent/v2",
     count: 2,
     catalogReason: "Saturday Mornings falls back to bumpers, because nothing in the catalog matches its era.",
   },
