@@ -501,12 +501,23 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
       <div className="grid gap-3 sm:grid-cols-3">
         <Card className="p-4">
           <p className="text-muted-foreground text-xs uppercase tracking-wide">Library coverage</p>
-          <p className="mt-1 font-semibold text-2xl">
-            {data.taggedClips.toLocaleString()} / {data.totalClips.toLocaleString()}
-          </p>
-          <p className="mt-1 text-muted-foreground text-sm">
-            playable clips have at least one classification signal
-          </p>
+          {data.totalClips === 0 ? (
+            <>
+              <p className="mt-1 font-semibold text-xl">No playable clips yet</p>
+              <p className="mt-1 text-muted-foreground text-sm">
+                Coverage begins after clips pass admission.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 font-semibold text-2xl">
+                {data.taggedClips.toLocaleString()} / {data.totalClips.toLocaleString()}
+              </p>
+              <p className="mt-1 text-muted-foreground text-sm">
+                playable clips have at least one classification signal
+              </p>
+            </>
+          )}
         </Card>
         <Card className="p-4 sm:col-span-2">
           <p className="font-medium">What belongs here</p>
@@ -514,7 +525,9 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             Classification describes what a clip contains. Kind is the closed playout role; format signals are
             optional browsing vocabulary. Era, audience, and grounded brand remain separate facts too.
           </p>
-          {data.unclassifiedClips > 0 ? (
+          {data.totalClips === 0 ? (
+            <p className="mt-2 text-muted-foreground text-sm">Nothing to classify yet.</p>
+          ) : data.unclassifiedClips > 0 ? (
             <Link
               to="/filler/library"
               search={{ unclassified: true }}
@@ -547,37 +560,43 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             These are independent signals. Missing seasonal or audience cues can be perfectly normal.
           </p>
         </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {AXES.map((axis) => {
-            const coverage = data.axisCoverage?.find((item) => item.axis === axis);
-            return (
-              <Card key={axis} className="p-4">
-                <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
-                <p className="mt-1 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
-                <p className="mt-2 text-muted-foreground text-xs">{AXIS_COPY[axis].example}</p>
-                {coverage ? (
-                  <div className="mt-3 border-border border-t pt-3 text-sm">
-                    <p>
-                      <span className="font-medium">{coverage.taggedClips.toLocaleString()}</span> of{" "}
-                      {data.totalClips.toLocaleString()} playable clips
-                    </p>
-                    {coverage.untaggedClips > 0 ? (
-                      <Link
-                        to="/filler/library"
-                        search={{ withoutAxis: axis }}
-                        className="mt-1 inline-flex text-signal text-xs underline-offset-2 hover:underline"
-                      >
-                        Browse {coverage.untaggedClips.toLocaleString()} without this signal
-                      </Link>
-                    ) : (
-                      <p className="mt-1 text-lock text-xs">All playable clips have this signal.</p>
-                    )}
-                  </div>
-                ) : null}
-              </Card>
-            );
-          })}
-        </div>
+        {data.totalClips === 0 ? (
+          <Card className="mt-3 p-4 text-muted-foreground text-sm">
+            Coverage will appear after clips pass admission. The vocabulary below is ready when they do.
+          </Card>
+        ) : (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {AXES.map((axis) => {
+              const coverage = data.axisCoverage?.find((item) => item.axis === axis);
+              return (
+                <Card key={axis} className="p-4">
+                  <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
+                  <p className="mt-1 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
+                  <p className="mt-2 text-muted-foreground text-xs">{AXIS_COPY[axis].example}</p>
+                  {coverage ? (
+                    <div className="mt-3 border-border border-t pt-3 text-sm">
+                      <p>
+                        <span className="font-medium">{coverage.taggedClips.toLocaleString()}</span> of{" "}
+                        {data.totalClips.toLocaleString()} playable clips
+                      </p>
+                      {coverage.untaggedClips > 0 ? (
+                        <Link
+                          to="/filler/library"
+                          search={{ withoutAxis: axis }}
+                          className="mt-1 inline-flex text-signal text-xs underline-offset-2 hover:underline"
+                        >
+                          Browse {coverage.untaggedClips.toLocaleString()} without this signal
+                        </Link>
+                      ) : (
+                        <p className="mt-1 text-lock text-xs">All playable clips have this signal.</p>
+                      )}
+                    </div>
+                  ) : null}
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <details className="rounded-lg border border-border bg-panel">

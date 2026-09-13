@@ -191,6 +191,8 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
     }
 
     await page.goto("/filler");
+    await expect(page.getByText("Add filler to get started")).toBeVisible();
+    await expect(page.getByText("Filler is working on its own")).toHaveCount(0);
     const contextualLink = page.getByRole("link", { name: "uses its own grounded selection" });
     await expect(contextualLink).toBeVisible();
     expect(await contextualLink.evaluate((link) => getComputedStyle(link).textDecorationLine)).toContain(
@@ -204,6 +206,21 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
     expect(blocking, `${viewport.name} axe: ${blocking.map((violation) => violation.id).join(", ")}`).toEqual(
       [],
     );
+
+    await page.goto("/filler/sources");
+    await expect(page.getByRole("heading", { level: 2, name: "Where filler comes from" })).toBeVisible();
+    if (viewport.name === "mobile") {
+      for (const name of [
+        "/data/filler/a-deliberately-long-folder-name",
+        "Archive.org",
+        "Classic television commercials from a deliberately long collection name",
+      ]) {
+        const width = await page
+          .getByText(name, { exact: true })
+          .evaluate((element) => Math.round(element.getBoundingClientRect().width));
+        expect(width, `${name} keeps readable width`).toBeGreaterThan(180);
+      }
+    }
   }
 
   expect(fillerRequests.filter((path) => path === "/v1/filler/attention").length).toBeGreaterThanOrEqual(

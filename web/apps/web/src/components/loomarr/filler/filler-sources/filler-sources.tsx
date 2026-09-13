@@ -114,72 +114,72 @@ const FillerSources = ({
       // is not doing anything", and the border, the greyed switch and the `off` stat all
       // carry that without making the text unreadable. Recording it here because the next
       // person to diff this against the mock will otherwise "fix" it back.
-      className={cn(
-        "flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3",
-        dormant(s) ? "border-border/40" : "border-border",
-      )}
+      className={cn("rounded-lg border px-4 py-3", dormant(s) ? "border-border/40" : "border-border")}
     >
-      {/* ⚠ The switch renders only on a SWITCHABLE row. The media-server library row has
+      <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center">
+        <div className="flex shrink-0 items-center gap-3">
+          {/* ⚠ The switch renders only on a SWITCHABLE row. The media-server library row has
                 nothing running behind it — §10 took the media server out of the filler path —
                 so a toggle there would dim a row and change nothing, and the server refuses it
                 with a 409. A control that cannot work is worse than no control. */}
-      {/* ⚠ The shared `Switch` primitive, not a bare checkbox. This rendered as a 16px
+          {/* ⚠ The shared `Switch` primitive, not a bare checkbox. This rendered as a 16px
                 amber SQUARE where the mock draws a 34×19 green PILL — the control did the right
                 thing and looked like something else entirely. It is a primitive rather than local
                 markup because the same toggle belongs anywhere the app asks "is this on?", and a
                 second hand-rolled copy is how two switches start disagreeing. */}
-      {onToggleEnabled && s.switchable && (
-        <label
-          htmlFor={`source-use-${s.id}`}
-          className="flex shrink-0 items-center gap-2 text-muted-foreground text-xs"
-        >
-          <span>Use</span>
-          <Switch
-            id={`source-use-${s.id}`}
-            checked={s.enabled}
-            disabled={toggling != null}
-            onChange={() => onToggleEnabled(s.id, !s.enabled)}
-            aria-label={`Use ${s.target}`}
-          />
-        </label>
-      )}
-      {/* The mock's kind chip: 78px fixed width, 4px radius, 3/8px padding, 9.5px mono.
+          {onToggleEnabled && s.switchable && (
+            <label
+              htmlFor={`source-use-${s.id}`}
+              className="flex shrink-0 items-center gap-2 text-muted-foreground text-xs"
+            >
+              <span>Use</span>
+              <Switch
+                id={`source-use-${s.id}`}
+                checked={s.enabled}
+                disabled={toggling != null}
+                onChange={() => onToggleEnabled(s.id, !s.enabled)}
+                aria-label={`Use ${s.target}`}
+              />
+            </label>
+          )}
+          {/* The mock's kind chip: 78px fixed width, 4px radius, 3/8px padding, 9.5px mono.
                 ⚠ FIXED width so every row's name starts at the same x — a chip that shrinks to
                 its text makes the column ragged and much harder to scan.
                 ⚠ There is NO per-kind ICON beside it. The mock uses the coloured chip alone, and
                 an icon that repeats what the chip already says is noise in a dense row. */}
-      <span
-        className={cn(
-          "w-19.5 shrink-0 rounded-[4px] px-2 py-0.75 text-center font-mono text-[9.5px]",
-          KINDS[s.kind]?.className ?? "bg-muted text-muted-foreground",
-        )}
-      >
-        {KINDS[s.kind]?.label ?? s.kind.toUpperCase()}
-      </span>
-      {/* Name over description, per the mock: 13.5px medium on 11.5px muted, 2px apart,
+          <span
+            className={cn(
+              "w-19.5 shrink-0 rounded-[4px] px-2 py-0.75 text-center font-mono text-[9.5px]",
+              KINDS[s.kind]?.className ?? "bg-muted text-muted-foreground",
+            )}
+          >
+            {KINDS[s.kind]?.label ?? s.kind.toUpperCase()}
+          </span>
+        </div>
+        {/* Name over description, per the mock: 13.5px medium on 11.5px muted, 2px apart,
                 both single-line and ellipsised.
                 ⚠ The NAME is the human label ("Drop folder"), not the target path — the path
                 belongs in the description line beneath it. An earlier pass rendered the raw
                 `target` in mono here, which made every row read as a filesystem path even when
                 it was a library name or a playlist URL. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-medium text-sm">{s.target}</span>
-          {!s.configured && <Badge variant="caution">not configured</Badge>}
-          {(s.kind === "archive" || s.kind === "youtube") &&
-            (s.country ? (
-              <Badge variant="neutral">
-                {s.market ? `${s.country} · ${s.market}` : `${s.country} · nationwide`}
-              </Badge>
-            ) : (
-              s.configured && <Badge variant="caution">geography needed</Badge>
-            ))}
+        <div className="flex w-full min-w-0 flex-1 flex-col gap-0.5 sm:w-auto">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="min-w-0 basis-full truncate font-medium text-sm sm:basis-auto">{s.target}</span>
+            {!s.configured && <Badge variant="caution">not configured</Badge>}
+            {(s.kind === "archive" || s.kind === "youtube") &&
+              (s.country ? (
+                <Badge variant="neutral">
+                  {s.market ? `${s.country} · ${s.market}` : `${s.country} · nationwide`}
+                </Badge>
+              ) : (
+                s.configured && <Badge variant="caution">geography needed</Badge>
+              ))}
+          </div>
+          <span className="truncate text-muted-foreground text-xs">
+            {dormant(s) ? "Not being scanned. Clips it already found are still in your catalog." : s.detail}
+          </span>
         </div>
-        <span className="truncate text-muted-foreground text-xs">
-          {dormant(s) ? "Not being scanned. Clips it already found are still in your catalog." : s.detail}
-        </span>
-      </div>
-      {/* The mock's `sv.stat` — "6 clips · scanned 2m ago" as ONE line, and just "off" when
+        {/* The mock's `sv.stat` — "6 clips · scanned 2m ago" as ONE line, and just "off" when
                 the source is switched off.
                 ⚠ The count is the honest signal that a source is doing anything: a configured
                 source contributing 0 clips is a real and reportable state, usually an empty folder
@@ -187,71 +187,72 @@ const FillerSources = ({
                 ⚠ The time is omitted rather than rendered as "never" when a source has not been
                 fetched. Most sources are SCANNED, not fetched, so "never fetched" would read as a
                 fault on a folder that is working exactly as intended. */}
-      {/* ⚠ `text-muted-foreground` on BOTH states, not `static-500` when off. The mock
+        {/* ⚠ `text-muted-foreground` on BOTH states, not `static-500` when off. The mock
                 greys the off row's stat to `#5A6170`, which measures 3.14:1 on `#0B0C0E` at
                 12px — an axe `color-contrast` failure at serious impact. The word is already
                 "off"; making it hard to read adds nothing, and the dimmer row border carries
                 the recede. Same trade-off as the row's opacity, recorded there. */}
-      <span className="shrink-0 whitespace-nowrap font-mono text-muted-foreground text-xs">
-        {dormant(s)
-          ? "off"
-          : [
-              `${s.count} ${s.count === 1 ? "clip" : "clips"}`,
-              ...(s.lastFetchedAt ? [`scanned ${formatRelative(s.lastFetchedAt)}`] : []),
-            ].join(" · ")}
-      </span>
-      {/* The mock's licence chip: 10px mono, a 1px tinted border, 4px radius, 2/8px padding.
+        <span className="shrink-0 whitespace-nowrap font-mono text-muted-foreground text-xs">
+          {dormant(s)
+            ? "off"
+            : [
+                `${s.count} ${s.count === 1 ? "clip" : "clips"}`,
+                ...(s.lastFetchedAt ? [`scanned ${formatRelative(s.lastFetchedAt)}`] : []),
+              ].join(" · ")}
+        </span>
+        {/* The mock's licence chip: 10px mono, a 1px tinted border, 4px radius, 2/8px padding.
                 ⚠ Rendered ONLY when the source declared one. Absence means UNKNOWN — about 92% of
                 archive.org items declare nothing — so a chip reading "public domain" by default
                 would be Loomarr asserting a legal fact nobody checked. No chip is the honest
                 rendering of "we don't know".
                 ⚠ Green only for an explicitly public-domain declaration; anything else is neutral,
                 because "community, mixed" and "you supply it" are not permission. */}
-      {s.license && (
-        <span
-          className={cn(
-            "shrink-0 whitespace-nowrap rounded-[4px] border px-2 py-0.5 font-mono text-[10px]",
-            /public domain/i.test(s.license)
-              ? "border-lock/30 text-lock"
-              : "border-border text-muted-foreground",
-          )}
-        >
-          {s.license}
-        </span>
-      )}
-      {/* ⚠ Keyed by ID, not KIND. It used to pass `s.kind`, which was unambiguous only
+        {s.license && (
+          <span
+            className={cn(
+              "shrink-0 whitespace-nowrap rounded-[4px] border px-2 py-0.5 font-mono text-[10px]",
+              /public domain/i.test(s.license)
+                ? "border-lock/30 text-lock"
+                : "border-border text-muted-foreground",
+            )}
+          >
+            {s.license}
+          </span>
+        )}
+        {/* ⚠ Keyed by ID, not KIND. It used to pass `s.kind`, which was unambiguous only
                 while each kind had exactly one row; V38c allows many folders and many libraries,
                 so a kind key would put every folder row into "Fetching…" at once and the operator
                 could not tell which one was actually running. */}
-      {s.fetchable && (
-        <Button
-          variant="ghost"
-          onClick={() => onFetch(s.id)}
-          disabled={fetching != null}
-          aria-label={`Fetch now from ${s.target}`}
-        >
-          {fetching === s.id ? "Fetching…" : "Fetch now"}
-        </Button>
-      )}
+        {s.fetchable && (
+          <Button
+            variant="ghost"
+            onClick={() => onFetch(s.id)}
+            disabled={fetching != null}
+            aria-label={`Fetch now from ${s.target}`}
+          >
+            {fetching === s.id ? "Fetching…" : "Fetch now"}
+          </Button>
+        )}
 
-      {/* ⚠ The NESTED remotes list was here and is gone (V37). Registered collections are
+        {/* ⚠ The NESTED remotes list was here and is gone (V37). Registered collections are
                 peer rows now, so each renders through this same block — which is why a row needs
                 its own fetch time below rather than inheriting a container's.
 
                 The nesting existed for a real reason that OUTLIVED it: the derived rows describe
                 CONFIGURATION, including "you could set this up but have not". The flat list keeps
                 that as `configured` per row, so flattening did not delete the answer. */}
-      {onRemove && s.removable && (
-        <Button
-          variant="ghost"
-          onClick={() => onRemove(s.id)}
-          disabled={removing != null}
-          aria-label={`Remove ${s.target}`}
-          title="Forget this source. Clips it already brought in stay in your catalog."
-        >
-          {removing === s.id ? "Removing…" : "Remove"}
-        </Button>
-      )}
+        {onRemove && s.removable && (
+          <Button
+            variant="ghost"
+            onClick={() => onRemove(s.id)}
+            disabled={removing != null}
+            aria-label={`Remove ${s.target}`}
+            title="Forget this source. Clips it already brought in stay in your catalog."
+          >
+            {removing === s.id ? "Removing…" : "Remove"}
+          </Button>
+        )}
+      </div>
 
       {/* The search expander, when this row has one (V35b). Inside the row, because
                 searching is something you do TO a source. */}
@@ -265,7 +266,7 @@ const FillerSources = ({
         `svcOnLine` right-aligned against them (`align-items:flex-start`, 16px gap). */}
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-sm">Where filler comes from</h3>
+          <h2 className="font-semibold text-sm">Where filler comes from</h2>
           <p className="mt-1 max-w-xl text-muted-foreground text-sm">
             “Use” controls scanning and downloading. It grants no permission to play: arrivals remain in
             Incoming until their safety, rights, playback, and audience evidence passes terminal admission.
@@ -314,7 +315,7 @@ const FillerSources = ({
                 <Disclosure defaultOpen>
                   <div
                     className={cn(
-                      "flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3",
+                      "flex min-w-0 flex-col items-start gap-3 rounded-lg border px-4 py-3 sm:flex-row sm:items-center",
                       dormant(s) ? "border-border/40" : "border-border",
                     )}
                   >
@@ -329,7 +330,7 @@ const FillerSources = ({
                     >
                       SERVICE
                     </span>
-                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <div className="flex w-full min-w-0 flex-1 flex-col gap-0.5 sm:w-auto">
                       <span className="truncate font-medium text-sm">{s.target}</span>
                       <span className="truncate text-muted-foreground text-xs">
                         {/* ⚠ An empty provider is an INVITATION, not a fault (§10 V54 B5). It used
@@ -347,25 +348,30 @@ const FillerSources = ({
                       half-running is exactly what a single boolean cannot say — and why the group
                       carries no switch of its own. `lastFetchedAt` is the server's MAX over the
                       children, so it is the freshest thing under this service, not any one row's. */}
-                    <span className="shrink-0 whitespace-nowrap font-mono text-muted-foreground text-xs">
-                      {children.length === 0
-                        ? "nothing added"
-                        : [
-                            `${on} of ${children.length} on`,
-                            ...(s.lastFetchedAt ? [`scanned ${formatRelative(s.lastFetchedAt)}`] : []),
-                          ].join(" · ")}
-                    </span>
-                    <Disclosure.Trigger
-                      className="ml-auto"
-                      label={`Show the ${children.length === 1 ? "source" : "sources"} under ${s.target}`}
-                    />
+                    <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-start">
+                      <span className="shrink-0 whitespace-nowrap font-mono text-muted-foreground text-xs">
+                        {children.length === 0
+                          ? "nothing added"
+                          : [
+                              `${on} of ${children.length} on`,
+                              ...(s.lastFetchedAt ? [`scanned ${formatRelative(s.lastFetchedAt)}`] : []),
+                            ].join(" · ")}
+                      </span>
+                      <Disclosure.Trigger
+                        className="sm:ml-auto"
+                        label={`Show the ${children.length === 1 ? "source" : "sources"} under ${s.target}`}
+                      />
+                    </div>
                   </div>
                   <Disclosure.Panel>
                     {/* ⚠ A nested `<ul>`, so a screen reader announces "list, 2 items" for what is
                       under this service rather than walking one long list of unrelated peers. The
                       wire array is flat and pre-ordered; the nesting is this component's. */}
                     {children.length > 0 && (
-                      <ul className="mt-2 ml-6 flex flex-col gap-2" aria-label={`Sources under ${s.target}`}>
+                      <ul
+                        className="mt-2 flex flex-col gap-2 sm:ml-6"
+                        aria-label={`Sources under ${s.target}`}
+                      >
                         {children.map((c) => row(c))}
                       </ul>
                     )}

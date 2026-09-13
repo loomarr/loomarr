@@ -5,7 +5,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
-import { FillerOverview } from "./filler-overview";
+import { FillerOverview, readinessAction } from "./filler-overview";
 
 const decision = (over: Partial<FillerDecisionOverviewDTO> = {}): FillerDecisionOverviewDTO => ({
   healthy: true,
@@ -53,11 +53,49 @@ const show = (overview: FillerDecisionOverviewDTO, coverage: FillerReadinessDTO 
 };
 
 describe("FillerOverview", () => {
+  it.each([
+    ["enable_fetch", "Turn on automatic sourcing", "Review automation", "/filler/settings"],
+    ["free_catalog_capacity", "Make room in the filler catalog", "Review limits", "/filler/settings"],
+    ["free_disk_capacity", "Make room for more filler", "Review limits", "/filler/settings"],
+    ["retry_acquisition", "A source pull needs recovery", "Open diagnostics", "/filler/manage"],
+    ["retry_failed_work", "Some filler can be retried", "Open diagnostics", "/filler/manage"],
+    ["review_incoming", "A few clips need your judgment", "Review clips", "/filler/incoming"],
+    ["add_filler", "Add filler to get started", "Open sources", "/filler/sources"],
+    [
+      "improve_channel_coverage",
+      "A channel needs better filler coverage",
+      "Browse library",
+      "/filler/library",
+    ],
+  ] as const)("presents the server-ranked %s action", (nextAction, title, label, to) => {
+    expect(readinessAction(readiness({ ready: false, nextAction, actionCount: 2 }))).toMatchObject({
+      title,
+      label,
+      to,
+    });
+  });
+
+  it("renders no action when the readiness projection ranks none", () => {
+    expect(readinessAction(readiness())).toBeUndefined();
+  });
+
   it("renders the server-owned healthy answer without inventing an action", async () => {
     show(decision());
     expect(await screen.findByText("Filler is working on its own")).toBeInTheDocument();
     expect(screen.getByText("Working automatically")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /diagnostics|review clips/i })).not.toBeInTheDocument();
+  });
+
+  it("uses workspace readiness rather than a healthy admission subset", async () => {
+    show(
+      decision({ healthy: true, nextAction: "none" }),
+      readiness({ ready: false, nextAction: "add_filler" }),
+    );
+
+    expect(await screen.findByText("Add filler to get started")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open sources" })).toHaveAttribute("href", "/filler/sources");
+    expect(screen.queryByText("Filler is working on its own")).not.toBeInTheDocument();
+    expect(screen.queryByText("Working automatically")).not.toBeInTheDocument();
   });
 
   it("renders the server-ranked review action and distinct counts", async () => {
@@ -68,6 +106,7 @@ describe("FillerOverview", () => {
         actionCount: 4,
         counts: { admitted: 18, rejected: 9, reviews: 5, unresolvedReviews: 4, operational: 2, retryable: 1 },
       }),
+      readiness({ ready: false, nextAction: "review_incoming", actionCount: 4 }),
     );
 
     expect(await screen.findByText("A few clips need your judgment")).toBeInTheDocument();
@@ -81,7 +120,10 @@ describe("FillerOverview", () => {
   });
 
   it("routes operational recovery to diagnostics, never the review queue", async () => {
-    show(decision({ healthy: false, nextAction: "retry_processing", actionCount: 2 }));
+    show(
+      decision({ healthy: false, nextAction: "retry_processing", actionCount: 2 }),
+      readiness({ ready: false, nextAction: "retry_failed_work", actionCount: 2 }),
+    );
     expect(await screen.findByText("Some filler can be retried")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open diagnostics" })).toHaveAttribute("href", "/filler/manage");
   });

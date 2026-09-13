@@ -41,11 +41,11 @@ const readiness: FillerReadinessDTO = {
 };
 
 const withOverview =
-  (overview: FillerDecisionOverviewDTO): Decorator =>
+  (overview: FillerDecisionOverviewDTO, workspace: FillerReadinessDTO = readiness): Decorator =>
   (Story) => {
     window.fetch = ((input: RequestInfo | URL) => {
       const url = String(input);
-      const body = url.includes("/decisions/overview") ? overview : readiness;
+      const body = url.includes("/decisions/overview") ? overview : workspace;
       return Promise.resolve(
         new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }),
       );
@@ -78,11 +78,41 @@ export const HealthyZeroWork: Story = {
 
 export const RecoverableFailure: Story = {
   decorators: [
-    withOverview({
-      healthy: false,
-      nextAction: "retry_processing",
-      actionCount: 2,
-      counts: { admitted: 46, rejected: 22, reviews: 1, unresolvedReviews: 0, operational: 2, retryable: 2 },
-    }),
+    withOverview(
+      {
+        healthy: false,
+        nextAction: "retry_processing",
+        actionCount: 2,
+        counts: {
+          admitted: 46,
+          rejected: 22,
+          reviews: 1,
+          unresolvedReviews: 0,
+          operational: 2,
+          retryable: 2,
+        },
+      },
+      { ...readiness, ready: false, nextAction: "retry_failed_work", actionCount: 2 },
+    ),
+  ],
+};
+
+export const EmptyLibrary: Story = {
+  decorators: [
+    withOverview(
+      {
+        healthy: true,
+        nextAction: "none",
+        counts: { admitted: 0, rejected: 0, reviews: 0, unresolvedReviews: 0, operational: 0, retryable: 0 },
+      },
+      {
+        ...readiness,
+        ready: false,
+        nextAction: "add_filler",
+        fetch: { enabled: true, catalogClips: 0 },
+        pipeline: { ...readiness.pipeline, admitted: 0, rejected: 0 },
+        pool: { clips: 0, commercials: 0, eligible: 0, untagged: 0, channels: [] },
+      },
+    ),
   ],
 };

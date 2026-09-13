@@ -369,10 +369,13 @@ test("a fetched arrival becomes playable only after terminal admission completes
   );
 
   await page.goto("/filler");
-  await expect(page.getByText("A few clips need your judgment")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add filler to get started" })).toBeVisible();
   await expect(
-    page.getByText("1 clip could not be classified safely without a person.", { exact: true }),
+    page.getByText("No playable filler is available yet. Add a source or drop in your own clips."),
   ).toBeVisible();
+  const admissionSummary = page.getByRole("region", { name: "Admission summary" });
+  await expect(admissionSummary).toContainText("Needs judgment");
+  await expect(admissionSummary).toContainText("1");
   const fillerNav = page.getByRole("navigation", { name: "Filler sections" });
   await expect(fillerNav.getByRole("link", { name: "Overview" })).toBeVisible();
   await expect(fillerNav.getByRole("link", { name: "Incoming" })).toBeVisible();
