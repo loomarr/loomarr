@@ -62,9 +62,9 @@ func TestShadowObserveBuildsOneStableDurableEvaluation(t *testing.T) {
 		t.Fatalf("record lineage = %+v", first)
 	}
 	if first.Result.Decision == nil || first.Result.Decision.Verdict != filleradmission.VerdictReview {
-		t.Fatalf("result = %+v, want missing-rights review", first.Result)
+		t.Fatalf("result = %+v, want missing-role review", first.Result)
 	}
-	if !reflect.DeepEqual(first.Result.Decision.ReasonCodes, []filleradmission.ReasonCode{filleradmission.ReasonMissingSourceLicense}) {
+	if !reflect.DeepEqual(first.Result.Decision.ReasonCodes, []filleradmission.ReasonCode{filleradmission.ReasonMissingContentRole}) {
 		t.Fatalf("reasons = %v", first.Result.Decision.ReasonCodes)
 	}
 }

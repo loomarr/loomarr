@@ -1,5 +1,5 @@
-import type { FillerSourceSuggestionDTO } from "@loomarr/api";
 import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";

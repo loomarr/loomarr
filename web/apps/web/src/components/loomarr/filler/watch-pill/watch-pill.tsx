@@ -33,7 +33,7 @@ const SR: Record<WatchHealth, string> = {
 const WatchPill = ({ status, health, className }: WatchPillProps) => (
   <div
     className={cn(
-      "flex max-w-full min-w-0 w-full items-center gap-2 whitespace-normal rounded-lg border border-border bg-card px-3 py-2 sm:w-auto sm:whitespace-nowrap",
+      "flex w-full min-w-0 max-w-full items-center gap-2 whitespace-normal rounded-lg border border-border bg-card px-3 py-2 sm:w-auto sm:whitespace-nowrap",
       className,
     )}
   >

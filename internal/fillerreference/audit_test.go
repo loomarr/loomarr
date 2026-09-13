@@ -431,7 +431,6 @@ func fixture() (fillereval.Manifest, map[string]fillerbakeoff.Packet, fillerrefe
 			SchemaVersion: fillerbakeoff.PacketSchemaVersion, CaseID: id, EvidenceVersion: fillerreference.PacketEvidenceVersion, ContentSHA256: hash,
 			Facts: []filleradmission.Evidence{
 				{ID: "media", Claim: filleradmission.ClaimMediaUsability, Value: filleradmission.UsabilityUsable, Kind: filleradmission.KindDecoder, Source: "decoder", Location: fmt.Sprintf("source_duration_ms=%d;segment_start_ms=0;segment_duration_ms=%d;no_video=false;no_audio=false;black_percent=0;silence_percent=0", sourceDuration, segmentDuration)},
-				{ID: "license", Claim: filleradmission.ClaimSourceLicense, Value: filleradmission.EligibilityEligible, Kind: filleradmission.KindSourcePolicy, Source: "rights"},
 			},
 			Signals: []fillerbakeoff.Signal{{ID: "video", Kind: "video", Path: "video.mp4", SHA256: strings.Repeat("f", 64), Bytes: 1, DurationMS: segmentDuration, Width: 1280, Height: 720, ContentTypes: []string{"video/mp4"}}},
 		}

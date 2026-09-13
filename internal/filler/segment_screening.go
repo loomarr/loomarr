@@ -14,15 +14,14 @@ import (
 )
 
 const (
-	SegmentScreeningSchemaVersion   = 4
-	SegmentScreeningContractVersion = "filler-rendered-child-screening-v4"
+	SegmentScreeningSchemaVersion   = 5
+	SegmentScreeningContractVersion = "filler-rendered-child-screening-v5"
 )
 
 var segmentScreeningAxisOrder = []SegmentScreeningAxis{
 	ScreenVisualSafety,
 	ScreenSpokenSafety,
 	ScreenWrittenSafety,
-	ScreenRights,
 	ScreenPlayback,
 }
 
@@ -33,7 +32,7 @@ func validateSegmentScreeningAxis(axis SegmentScreeningAxis) error {
 	return nil
 }
 
-// SegmentScreeningEvidenceRepository stores provider-neutral axis evidence and its five-axis
+// SegmentScreeningEvidenceRepository stores provider-neutral axis evidence and its four-axis
 // aggregate. Concrete evaluators own their private raw-evidence settlement.
 type SegmentScreeningEvidenceRepository interface {
 	PutSegmentScreeningSubject(context.Context, SegmentScreeningSubject) error
@@ -47,7 +46,6 @@ const (
 	ScreenVisualSafety  SegmentScreeningAxis = "visual_safety"
 	ScreenSpokenSafety  SegmentScreeningAxis = "spoken_safety"
 	ScreenWrittenSafety SegmentScreeningAxis = "written_safety"
-	ScreenRights        SegmentScreeningAxis = "rights"
 	ScreenPlayback      SegmentScreeningAxis = "playback_integrity"
 )
 
@@ -69,9 +67,9 @@ type SegmentScreeningResult struct {
 	ReasonCode      string                  `json:"reasonCode"`
 }
 
-// SegmentScreeningEvidence proves the five independent pre-publication screens for one immutable
+// SegmentScreeningEvidence proves the four independent pre-publication screens for one immutable
 // rendered-child subject. No individual pass, aggregate confidence, or absent result can
-// substitute for all five authority-bound outcomes.
+// substitute for all four authority-bound outcomes.
 type SegmentScreeningEvidence struct {
 	SchemaVersion   int                          `json:"schemaVersion"`
 	ContractVersion string                       `json:"contractVersion"`
@@ -114,9 +112,9 @@ func ValidateSegmentScreeningEvidence(evidence SegmentScreeningEvidence) error {
 		fillerairworthiness.ValidateDecision(evidence.Airworthiness) != nil || evidence.Airworthiness.SubjectSHA256 != evidence.SubjectSHA256 {
 		return fmt.Errorf("segment screening identity or interval is invalid")
 	}
-	want := map[SegmentScreeningAxis]struct{}{ScreenVisualSafety: {}, ScreenSpokenSafety: {}, ScreenWrittenSafety: {}, ScreenRights: {}, ScreenPlayback: {}}
+	want := map[SegmentScreeningAxis]struct{}{ScreenVisualSafety: {}, ScreenSpokenSafety: {}, ScreenWrittenSafety: {}, ScreenPlayback: {}}
 	if len(evidence.Results) != len(want) || !slices.IsSortedFunc(evidence.Results, func(a, b SegmentScreeningResult) int { return strings.Compare(string(a.Axis), string(b.Axis)) }) {
-		return fmt.Errorf("segment screening must contain five ordered axis results")
+		return fmt.Errorf("segment screening must contain four ordered axis results")
 	}
 	for _, result := range evidence.Results {
 		if _, ok := want[result.Axis]; !ok || validateSegmentScreeningResult(result) != nil {
@@ -131,7 +129,7 @@ func ValidateSegmentScreeningEvidence(evidence SegmentScreeningEvidence) error {
 }
 
 func validateSegmentScreeningResult(result SegmentScreeningResult) error {
-	if result.Axis != ScreenVisualSafety && result.Axis != ScreenSpokenSafety && result.Axis != ScreenWrittenSafety && result.Axis != ScreenRights && result.Axis != ScreenPlayback {
+	if result.Axis != ScreenVisualSafety && result.Axis != ScreenSpokenSafety && result.Axis != ScreenWrittenSafety && result.Axis != ScreenPlayback {
 		return fmt.Errorf("segment screening axis is invalid")
 	}
 	if result.Outcome != ScreenPass && result.Outcome != ScreenReject && result.Outcome != ScreenHold {

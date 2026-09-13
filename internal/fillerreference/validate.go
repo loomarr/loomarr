@@ -29,10 +29,9 @@ func validatePacketReferenceBinding(item fillereval.Case, packet fillerbakeoff.P
 	}
 	seen := make(map[string]struct{}, len(packet.Facts))
 	for _, fact := range packet.Facts {
-		validDeterministic := fact.Claim == filleradmission.ClaimMediaUsability && fact.Kind == filleradmission.KindDecoder ||
-			fact.Claim == filleradmission.ClaimSourceLicense && fact.Kind == filleradmission.KindSourcePolicy
+		validDeterministic := fact.Claim == filleradmission.ClaimMediaUsability && fact.Kind == filleradmission.KindDecoder
 		if fact.ID == "" || !validDeterministic || fact.EvaluationID != "" {
-			return fmt.Errorf("case %q packet facts may contain only named deterministic decoder and source-policy evidence", item.ID)
+			return fmt.Errorf("case %q packet facts may contain only named deterministic decoder evidence", item.ID)
 		}
 		if _, duplicate := seen[fact.ID]; duplicate {
 			return fmt.Errorf("case %q packet contains duplicate fact id %q", item.ID, fact.ID)

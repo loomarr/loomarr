@@ -16,16 +16,16 @@ type proposeFillerPullInput struct {
 		Title  string `json:"title,omitempty" doc:"Optional operator-supplied summary; Loomarr composes one when omitted"`
 		Reason string `json:"reason,omitempty" doc:"Optional; the gap this pull closes"`
 		Intent struct {
-			Roles           []filler.Kind           `json:"roles,omitempty"`
-			EraStart        int                     `json:"eraStart,omitempty" minimum:"1800" maximum:"2200"`
-			EraEnd          int                     `json:"eraEnd,omitempty" minimum:"1800" maximum:"2200"`
-			Audiences       []filler.Audience       `json:"audiences,omitempty"`
-			Geography       filler.Geography        `json:"geography,omitempty"`
-			MaxDurationMS   int                     `json:"maxDurationMs,omitempty" minimum:"0"`
-			TaxonomyGaps    []string                `json:"taxonomyGaps,omitempty"`
-			SourceAllowlist []string                `json:"sourceAllowlist,omitempty"`
-			MinHeight       int                     `json:"minHeight,omitempty" minimum:"0" maximum:"4320"`
-			Count           int                     `json:"count,omitempty" minimum:"1" maximum:"50"`
+			Roles           []filler.Kind     `json:"roles,omitempty"`
+			EraStart        int               `json:"eraStart,omitempty" minimum:"1800" maximum:"2200"`
+			EraEnd          int               `json:"eraEnd,omitempty" minimum:"1800" maximum:"2200"`
+			Audiences       []filler.Audience `json:"audiences,omitempty"`
+			Geography       filler.Geography  `json:"geography,omitempty"`
+			MaxDurationMS   int               `json:"maxDurationMs,omitempty" minimum:"0"`
+			TaxonomyGaps    []string          `json:"taxonomyGaps,omitempty"`
+			SourceAllowlist []string          `json:"sourceAllowlist,omitempty"`
+			MinHeight       int               `json:"minHeight,omitempty" minimum:"0" maximum:"4320"`
+			Count           int               `json:"count,omitempty" minimum:"1" maximum:"50"`
 		} `json:"intent,omitempty"`
 	}
 }
@@ -45,7 +45,7 @@ func (s *Server) proposeFillerPull(ctx context.Context, in *proposeFillerPullInp
 		Audiences: in.Body.Intent.Audiences, Geography: in.Body.Intent.Geography,
 		MaxDurationMS: in.Body.Intent.MaxDurationMS, TaxonomyGaps: in.Body.Intent.TaxonomyGaps,
 		SourceAllowlist: in.Body.Intent.SourceAllowlist,
-		MinHeight: in.Body.Intent.MinHeight, Count: in.Body.Intent.Count,
+		MinHeight:       in.Body.Intent.MinHeight, Count: in.Body.Intent.Count,
 		CatalogReason: strings.TrimSpace(in.Body.Reason),
 	}
 	if intent.Geography.Normalize().Country == "" {

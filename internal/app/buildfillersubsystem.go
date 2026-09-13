@@ -24,7 +24,6 @@ import (
 type fillerBuild struct {
 	service   api.FillerService
 	decisions *fillerdecision.Service
-	rights    *filler.FillerRightsRegistry
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 }
@@ -47,12 +46,6 @@ func buildFillerSubsystem(
 	var result fillerBuild
 	if st == nil {
 		return result
-	}
-	rightsRegistry, err := filler.NewFillerRightsRegistry(st)
-	if err != nil {
-		log.Error("could not construct filler rights registry", "err", err)
-	} else {
-		result.rights = rightsRegistry
 	}
 	decisionService, err := fillerdecision.New(st)
 	if err != nil {

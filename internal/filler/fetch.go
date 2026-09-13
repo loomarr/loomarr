@@ -324,7 +324,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			candidates = append(candidates, candidate)
 		}
 		selection, serr := PlanAcquisition(AcquisitionIntent{
-			Count: perRun,
+			Count:         perRun,
 			CatalogReason: "Bounded scheduled refresh of a registered source.",
 		}, candidates, inPass)
 		if serr != nil {

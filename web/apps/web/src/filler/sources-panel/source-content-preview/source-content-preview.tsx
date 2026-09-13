@@ -1,4 +1,4 @@
-import type { FillerSourcePreviewItemDTO } from "@loomarr/api";
+import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import { formatClipDuration } from "@loomarr/core/format";
 import { ExternalLink, Loader2, Play } from "lucide-react";
 import { useState } from "react";

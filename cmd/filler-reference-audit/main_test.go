@@ -290,7 +290,6 @@ func writeRunFixture(t *testing.T) runFixture {
 			EvidenceVersion: fillerreference.PacketEvidenceVersion, ContentSHA256: contentSHA,
 			Facts: []filleradmission.Evidence{
 				{ID: "media", Claim: filleradmission.ClaimMediaUsability, Value: filleradmission.UsabilityUsable, Kind: filleradmission.KindDecoder, Source: "decoder", Location: "source_duration_ms=30500;segment_start_ms=0;segment_duration_ms=30000;no_video=false;no_audio=false;black_percent=0;silence_percent=0"},
-				{ID: "license", Claim: filleradmission.ClaimSourceLicense, Value: filleradmission.EligibilityEligible, Kind: filleradmission.KindSourcePolicy, Source: "rights"},
 			},
 			Signals: []fillerbakeoff.Signal{{ID: "video", Kind: "video", DurationMS: 30_000, Width: 1280, Height: 720}},
 		}

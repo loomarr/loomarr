@@ -1,10 +1,8 @@
-import type {
-  FetchFillerSourceOutputBody,
-  FillerSourceDTO,
-  FillerSourcePreviewItemDTO,
-  FillerSourceSuggestionDTO,
-} from "@loomarr/api";
 import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
+import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
+import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
+import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
@@ -44,7 +42,7 @@ const SOURCE_KIND_COPY = {
 } as const;
 
 type QueuedClipJob = { sourceID: string; clipID: string; jobID: string };
-const QUEUED_CLIP_JOBS_KEY = "loomarr:filler-source-item-jobs";
+const QUEUED_CLIP_JOBS_KEY = "loomarr:source-item-jobs";
 
 const readQueuedClipJobs = (): QueuedClipJob[] => {
   try {

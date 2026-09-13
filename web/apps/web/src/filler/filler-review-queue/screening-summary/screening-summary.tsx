@@ -1,13 +1,11 @@
 import type { FillerScreeningDTO } from "@loomarr/api/models/fillerScreeningDTO";
 import { formatRelative } from "@loomarr/core/format";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
-import { RightsReview } from "../rights-review";
 
 const AXIS_LABELS = {
   visual_safety: "Visual safety",
   spoken_safety: "Spoken safety",
   written_safety: "Written safety",
-  rights: "Current-use rights",
   playback_integrity: "Playback integrity",
 } as const;
 
@@ -34,8 +32,8 @@ const ScreeningSummary = ({ summary }: { summary: FillerScreeningDTO }) => {
           </p>
         </div>
         <p className="mt-1 text-muted-foreground text-xs">
-          {humanize(summary.reasonCode ?? "screening evidence unavailable")}. This clip cannot be confirmed
-          for the library until the server can reproduce its evidence and exact playback bytes.
+          {humanize(summary.reasonCode ?? "screening evidence unavailable")}. Loomarr needs to check this
+          exact clip again before it can be added to your library.
         </p>
       </div>
     );
@@ -46,7 +44,7 @@ const ScreeningSummary = ({ summary }: { summary: FillerScreeningDTO }) => {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Badge variant={outcomeVariant(summary.outcome)}>{summary.outcome}</Badge>
-          <span className="font-medium text-sm">Five independent screens</span>
+          <span className="font-medium text-sm">Checks for this clip</span>
         </div>
         {summary.assessedAt ? (
           <span className="text-muted-foreground text-xs">Assessed {formatRelative(summary.assessedAt)}</span>
@@ -65,17 +63,8 @@ const ScreeningSummary = ({ summary }: { summary: FillerScreeningDTO }) => {
           </li>
         ))}
       </ul>
-
-      {summary.rightsReview ? (
-        <RightsReview
-          clipHash={summary.clipHash}
-          review={summary.rightsReview}
-          screeningAssessedAt={summary.assessedAt}
-        />
-      ) : null}
-
       {summary.airworthiness ? (
-        <section aria-label="Audience airworthiness" className="rounded-md border border-border p-3">
+        <section aria-label="Audience suitability" className="rounded-md border border-border p-3">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={outcomeVariant(summary.airworthiness.verdict)}>
               {summary.airworthiness.verdict}
@@ -91,7 +80,9 @@ const ScreeningSummary = ({ summary }: { summary: FillerScreeningDTO }) => {
               ))}
             </ul>
           ) : (
-            <p className="mt-2 text-muted-foreground text-xs">No audience-suitability flags observed.</p>
+            <p className="mt-2 text-muted-foreground text-xs">
+              Nothing found that needs an audience warning.
+            </p>
           )}
           {summary.airworthiness.triggers.length > 0 ? (
             <ul className="mt-3 space-y-1.5" aria-label="Decisive audience triggers">

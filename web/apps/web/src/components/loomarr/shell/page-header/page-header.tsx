@@ -17,7 +17,7 @@ const PageHeader = ({ title, description, actions, className, ...rest }: PageHea
       {description ? <p className="mt-1 max-w-3xl text-muted-foreground text-sm">{description}</p> : null}
     </div>
     {actions ? (
-      <div className="flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>
     ) : null}
   </header>
 );

@@ -42,7 +42,7 @@ type fillerAttentionTaskDTO struct {
 	ID              string                           `json:"id"`
 	ClipHash        string                           `json:"clipHash"`
 	Question        string                           `json:"question"`
-	TaskKind        fillerdecision.AttentionTaskKind `json:"taskKind" enum:"identity_role,rights_provenance,suitability_exception,split_boundary"`
+	TaskKind        fillerdecision.AttentionTaskKind `json:"taskKind" enum:"identity_role,suitability_exception,split_boundary"`
 	ApplicationMode fillerdecision.ApplicationMode   `json:"applicationMode" enum:"shadow,applied"`
 	AllowedActions  []fillerdecision.ActionKind      `json:"allowedActions" enum:"admit,reject,correct,abandon"`
 	ReasonCodes     []filleradmission.ReasonCode     `json:"reasonCodes"`

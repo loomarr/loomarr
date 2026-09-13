@@ -123,12 +123,6 @@ func (e *Evaluator) Evaluate(doc Document) Result {
 			rejectRefs = append(rejectRefs, refs...)
 		}
 	}
-	if _, conflicted := unresolvedClaims[ClaimSourceLicense]; !conflicted {
-		if refs := matchingRefs(facts, ClaimSourceLicense, EligibilityIneligible); len(refs) > 0 {
-			rejectReasons = append(rejectReasons, ReasonSourceIneligible)
-			rejectRefs = append(rejectRefs, refs...)
-		}
-	}
 	prohibited, uncertainProhibited := e.prohibitedRefs(facts)
 	if len(prohibited) > 0 {
 		rejectReasons = append(rejectReasons, ReasonSensitivePolicyProhibited)
@@ -163,12 +157,6 @@ func (e *Evaluator) Evaluate(doc Document) Result {
 		return semantic(VerdictReview, []ReasonCode{ReasonMissingMediaUsability}, nil, conflicts,
 			"Can this file be decoded and played correctly?", attribution)
 	}
-	eligible := matchingFacts(facts, ClaimSourceLicense, EligibilityEligible)
-	if len(eligible) == 0 {
-		return semantic(VerdictReview, []ReasonCode{ReasonMissingSourceLicense}, nil, conflicts,
-			"Is this source and item licensed for use as filler?", attribution)
-	}
-
 	if len(roleFacts) == 0 {
 		return semantic(VerdictReview, []ReasonCode{ReasonMissingContentRole}, nil, conflicts,
 			"What kind of filler is this clip?", attribution)
@@ -177,7 +165,7 @@ func (e *Evaluator) Evaluate(doc Document) Result {
 		return semantic(VerdictReview, []ReasonCode{ReasonInsufficientContentRole}, ids(roleMatches), conflicts,
 			"Is this clip a commercial, bumper, PSA, or station ID?", attribution)
 	}
-	refs := append(ids(usable), ids(eligible)...)
+	refs := ids(usable)
 	refs = append(refs, ids(roleMatches)...)
 	if role == RoleCommercial {
 		productFacts := factsForClaim(facts, ClaimProduct)
@@ -297,10 +285,6 @@ func (e *Evaluator) validateValue(fact Evidence) OperationalCode {
 		if fact.Value != UsabilityUsable && fact.Value != UsabilityUnusable {
 			return HoldEvidenceInvalid
 		}
-	case ClaimSourceLicense:
-		if fact.Value != EligibilityEligible && fact.Value != EligibilityIneligible {
-			return HoldEvidenceInvalid
-		}
 	case ClaimRecordingDate:
 		year, err := strconv.Atoi(fact.Value)
 		if err != nil || year < 1880 || year > 2100 {
@@ -362,10 +346,6 @@ func authority(fact Evidence) int {
 		if fact.Kind == KindDecoder {
 			return 100
 		}
-	case ClaimSourceLicense:
-		if fact.Kind == KindSourcePolicy {
-			return 100
-		}
 	case ClaimRecordingDate:
 		if fact.Kind == KindRecordingSidecar || fact.Kind == KindSourcePolicy {
 			return 100
@@ -389,8 +369,6 @@ func kindCanSupport(claim Claim, kind EvidenceKind) bool {
 	switch claim {
 	case ClaimMediaUsability:
 		return kind == KindDecoder
-	case ClaimSourceLicense:
-		return kind == KindSourcePolicy
 	case ClaimRecordingDate:
 		return kind == KindSourcePolicy || kind == KindRecordingSidecar || kind == KindFilename ||
 			kind == KindUploaderMetadata || kind == KindTranscript || kind == KindOCR || kind == KindFrame || kind == KindAudio || kind == KindVideo
@@ -546,8 +524,6 @@ func conflictReason(claim Claim) ReasonCode {
 		return ReasonConflictProduct
 	case ClaimContentRole:
 		return ReasonConflictContentRole
-	case ClaimSourceLicense:
-		return ReasonConflictSourceLicense
 	default:
 		panic("unreachable admission claim")
 	}
@@ -565,22 +541,20 @@ func reviewQuestion(claim Claim) string {
 		return "Which product is this clip advertising?"
 	case ClaimContentRole:
 		return "Is this clip a commercial, bumper, PSA, station ID, trailer, interstitial, programme excerpt, or compilation?"
-	case ClaimSourceLicense:
-		return "Is this source and item licensed for use as filler?"
 	default:
 		return "What fact is missing or contradictory?"
 	}
 }
 
 func allClaims() []Claim {
-	return []Claim{ClaimMediaUsability, ClaimRecordingDate, ClaimBrand, ClaimProduct, ClaimContentRole, ClaimSourceLicense, ClaimSensitiveFlag}
+	return []Claim{ClaimMediaUsability, ClaimRecordingDate, ClaimBrand, ClaimProduct, ClaimContentRole, ClaimSensitiveFlag}
 }
 
 // Sensitive flags form a set: adult and violence may both be present. They are
 // therefore not competing values of one scalar claim. A future negative
 // assertion needs its own subject/value schema before it can conflict safely.
 func conflictClaims() []Claim {
-	return []Claim{ClaimMediaUsability, ClaimSourceLicense, ClaimContentRole, ClaimProduct, ClaimBrand, ClaimRecordingDate}
+	return []Claim{ClaimMediaUsability, ClaimContentRole, ClaimProduct, ClaimBrand, ClaimRecordingDate}
 }
 
 func validClaim(claim Claim) bool { return slices.Contains(allClaims(), claim) }

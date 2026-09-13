@@ -54,7 +54,7 @@ func TestPrepareFreezesApprovedMediaIntoLabelBlindPackets(t *testing.T) {
 	if draft.Kind != fillereval.CorpusDevelopmentSeed {
 		t.Fatalf("draft kind = %q, want development_seed", draft.Kind)
 	}
-	if draft.Cases[0].EvidenceSHA256 == "" || draft.Cases[0].Provenance.RightsDecision != "approved" || len(packets[0].Facts) != 2 || len(packets[0].Signals) != 8 {
+	if draft.Cases[0].EvidenceSHA256 == "" || draft.Cases[0].Provenance.RightsDecision != "approved" || len(packets[0].Facts) != 1 || len(packets[0].Signals) != 8 {
 		t.Fatalf("case = %+v packet = %+v", draft.Cases[0], packets[0])
 	}
 	raw, err := json.Marshal(draft)

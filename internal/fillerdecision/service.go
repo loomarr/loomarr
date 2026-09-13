@@ -162,12 +162,6 @@ func (s *Service) Attention(ctx context.Context, cursor Cursor, limit int) (Atte
 
 func attentionTaskKind(reasons []filleradmission.ReasonCode) AttentionTaskKind {
 	for _, reason := range reasons {
-		if reason == filleradmission.ReasonMissingSourceLicense ||
-			reason == filleradmission.ReasonConflictSourceLicense {
-			return AttentionRightsProvenance
-		}
-	}
-	for _, reason := range reasons {
 		if reason == filleradmission.ReasonInsufficientSensitiveEvidence {
 			return AttentionSuitabilityException
 		}

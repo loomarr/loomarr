@@ -228,8 +228,8 @@ const IncomingPanel = ({
           )}
           {allDecisions > 0 && (
             <Caption>
-              Classification confidence is diagnostic. Reviewing tags does not make a clip playable; final
-              admission follows the safety and rights checks.
+              Reviewing tags helps Loomarr identify the clip. Safety and playback checks still run
+              automatically before it can play.
             </Caption>
           )}
 

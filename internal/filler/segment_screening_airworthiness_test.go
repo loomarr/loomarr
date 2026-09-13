@@ -62,7 +62,7 @@ func TestSegmentAggregateRequiresAirworthinessPass(t *testing.T) {
 	}
 }
 
-func TestSafetyAxisEvidenceRequiresBoundSuitabilityWhileOtherAxesForbidIt(t *testing.T) {
+func TestSafetyAxisEvidenceRequiresBoundSuitabilityWhilePlaybackForbidsIt(t *testing.T) {
 	t.Parallel()
 	subject := screeningChildSubjectFixture(t)
 	records := passingAxisEvidence(t, subject)
@@ -74,13 +74,13 @@ func TestSafetyAxisEvidenceRequiresBoundSuitabilityWhileOtherAxesForbidIt(t *tes
 		t.Fatal("safety evidence without suitability record validated")
 	}
 
-	rightsIndex := slices.IndexFunc(records, func(record RecordedSegmentScreeningAxisEvidence) bool {
-		return record.Evidence.Profile.Axis == ScreenRights
+	playbackIndex := slices.IndexFunc(records, func(record RecordedSegmentScreeningAxisEvidence) bool {
+		return record.Evidence.Profile.Axis == ScreenPlayback
 	})
-	rights := records[rightsIndex]
-	rights.Evidence.Suitability = cloneSuitabilityAxisEvidence(records[0].Evidence.Suitability)
-	rights.Evidence.SHA256 = SegmentScreeningAxisEvidenceSHA256(rights.Evidence)
-	if ValidateRecordedSegmentScreeningAxisEvidence(rights) == nil {
-		t.Fatal("rights evidence carrying suitability record validated")
+	playback := records[playbackIndex]
+	playback.Evidence.Suitability = cloneSuitabilityAxisEvidence(records[0].Evidence.Suitability)
+	playback.Evidence.SHA256 = SegmentScreeningAxisEvidenceSHA256(playback.Evidence)
+	if ValidateRecordedSegmentScreeningAxisEvidence(playback) == nil {
+		t.Fatal("playback evidence carrying suitability record validated")
 	}
 }

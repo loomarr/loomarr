@@ -192,10 +192,9 @@ func TestAttentionProjectsTaskKindAndOnlyCurrentlyAllowedActions(t *testing.T) {
 	}
 	repo := &attentionRepository{page: DecisionPage{Rows: []Record{
 		review("identity", ApplicationModeShadow, filleradmission.ReasonConflictContentRole),
-		review("rights", ApplicationModeShadow, filleradmission.ReasonMissingSourceLicense),
 		review("suitability", ApplicationModeShadow, filleradmission.ReasonInsufficientSensitiveEvidence),
 		review("applied-unavailable", ApplicationModeApplied, filleradmission.ReasonMissingCommercialIdentity),
-	}, Total: 4}}
+	}, Total: 3}}
 	service, err := New(repo)
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +206,6 @@ func TestAttentionProjectsTaskKindAndOnlyCurrentlyAllowedActions(t *testing.T) {
 	}
 	want := []AttentionTask{
 		{ID: "identity", Kind: AttentionIdentityRole, AllowedActions: []ActionKind{ActionAdmit, ActionReject, ActionCorrect, ActionAbandon}},
-		{ID: "rights", Kind: AttentionRightsProvenance, AllowedActions: []ActionKind{ActionAbandon}},
 		{ID: "suitability", Kind: AttentionSuitabilityException, AllowedActions: []ActionKind{ActionAbandon}},
 		{ID: "applied-unavailable", Kind: AttentionIdentityRole, AllowedActions: []ActionKind{}},
 	}
@@ -242,7 +240,7 @@ func TestServiceRoutesActionsByApplicationMode(t *testing.T) {
 	})
 	t.Run("action absent from attention projection", func(t *testing.T) {
 		record := validRecord()
-		record.Result.Decision.ReasonCodes = []filleradmission.ReasonCode{filleradmission.ReasonMissingSourceLicense}
+		record.Result.Decision.ReasonCodes = []filleradmission.ReasonCode{filleradmission.ReasonInsufficientSensitiveEvidence}
 		repo := &actionRoutingRepository{record: fillerdecisionRecordResult{value: record}}
 		service, err := New(repo)
 		if err != nil {

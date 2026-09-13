@@ -24,18 +24,18 @@ var (
 // Zero values mean the operator did not request that constraint; they never mean that missing
 // candidate metadata satisfies it.
 type AcquisitionIntent struct {
-	Version         string           `json:"version"`
-	Roles           []Kind           `json:"roles,omitempty"`
-	EraStart        int              `json:"eraStart,omitempty"`
-	EraEnd          int              `json:"eraEnd,omitempty"`
-	Audiences       []Audience       `json:"audiences,omitempty"`
-	Geography       Geography        `json:"geography,omitempty"`
-	MaxDurationMS   int              `json:"maxDurationMs,omitempty"`
-	TaxonomyGaps    []string         `json:"taxonomyGaps,omitempty"`
-	SourceAllowlist []string         `json:"sourceAllowlist,omitempty"`
-	MinHeight       int              `json:"minHeight,omitempty"`
-	Count           int              `json:"count"`
-	CatalogReason   string           `json:"catalogReason"`
+	Version         string     `json:"version"`
+	Roles           []Kind     `json:"roles,omitempty"`
+	EraStart        int        `json:"eraStart,omitempty"`
+	EraEnd          int        `json:"eraEnd,omitempty"`
+	Audiences       []Audience `json:"audiences,omitempty"`
+	Geography       Geography  `json:"geography,omitempty"`
+	MaxDurationMS   int        `json:"maxDurationMs,omitempty"`
+	TaxonomyGaps    []string   `json:"taxonomyGaps,omitempty"`
+	SourceAllowlist []string   `json:"sourceAllowlist,omitempty"`
+	MinHeight       int        `json:"minHeight,omitempty"`
+	Count           int        `json:"count"`
+	CatalogReason   string     `json:"catalogReason"`
 }
 
 // Normalize supplies version/defaults and canonicalises set-like fields. It does not relax a

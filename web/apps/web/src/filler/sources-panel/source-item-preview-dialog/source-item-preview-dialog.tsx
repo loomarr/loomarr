@@ -1,4 +1,4 @@
-import type { FillerSourcePreviewItemDTO } from "@loomarr/api";
+import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {

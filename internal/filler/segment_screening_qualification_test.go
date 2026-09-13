@@ -12,13 +12,12 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
-func TestQualificationSegmentScreeningRuntimeRecordsTruthfulFiveAxisEvidence(t *testing.T) {
+func TestQualificationSegmentScreeningRuntimeRecordsTruthfulFourAxisEvidence(t *testing.T) {
 	media := playbackIntegrityMediaFixture(t, validPlaybackIntegrityQuality())
 	evidenceRoot := filepath.Join(t.TempDir(), "segment-screening")
-	repository := &memoryFillerRightsGrantRepository{}
 	at := time.Date(2026, time.September, 15, 3, 0, 0, 0, time.UTC)
 	clockCalls := 0
-	runtime, err := NewQualificationSegmentScreeningRuntime(evidenceRoot, repository, func() time.Time {
+	runtime, err := NewQualificationSegmentScreeningRuntime(evidenceRoot, func() time.Time {
 		clockCalls++
 		return at
 	})
@@ -37,7 +36,6 @@ func TestQualificationSegmentScreeningRuntimeRecordsTruthfulFiveAxisEvidence(t *
 		ScreenVisualSafety:  {ScreenHold, "visual_safety_not_certified"},
 		ScreenSpokenSafety:  {ScreenHold, "spoken_safety_not_certified"},
 		ScreenWrittenSafety: {ScreenHold, "written_safety_not_certified"},
-		ScreenRights:        {ScreenHold, "rights_unknown"},
 		ScreenPlayback:      {ScreenPass, "playback_verified"},
 	}
 	if first.Passes() || len(first.Results) != len(want) || clockCalls != len(want) {
@@ -80,7 +78,7 @@ func TestQualificationSegmentScreeningRuntimeRecordsTruthfulFiveAxisEvidence(t *
 func TestQualificationSafetyHoldBindsExactEvidenceDerivative(t *testing.T) {
 	media := playbackIntegrityMediaFixture(t, validPlaybackIntegrityQuality())
 	evidenceRoot := filepath.Join(t.TempDir(), "segment-screening")
-	runtime, err := NewQualificationSegmentScreeningRuntime(evidenceRoot, &memoryFillerRightsGrantRepository{}, time.Now)
+	runtime, err := NewQualificationSegmentScreeningRuntime(evidenceRoot, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,19 +103,16 @@ func TestQualificationSafetyHoldBindsExactEvidenceDerivative(t *testing.T) {
 }
 
 func TestQualificationSegmentScreeningRuntimeRequiresItsAuthorities(t *testing.T) {
-	repository := &memoryFillerRightsGrantRepository{}
 	for _, test := range []struct {
 		name string
 		root string
-		repo FillerRightsGrantRepository
 		now  func() time.Time
 	}{
-		{name: "relative root", root: "relative", repo: repository, now: time.Now},
-		{name: "missing rights repository", root: t.TempDir(), now: time.Now},
-		{name: "missing clock", root: t.TempDir(), repo: repository},
+		{name: "relative root", root: "relative", now: time.Now},
+		{name: "missing clock", root: t.TempDir()},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := NewQualificationSegmentScreeningRuntime(test.root, test.repo, test.now); err == nil {
+			if _, err := NewQualificationSegmentScreeningRuntime(test.root, test.now); err == nil {
 				t.Fatal("invalid qualification runtime was constructed")
 			}
 		})

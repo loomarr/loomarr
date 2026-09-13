@@ -22,15 +22,11 @@ func (f appliedAdmissionResolverFunc) ResolveAppliedAdmissionMedia(ctx context.C
 
 type appliedAdmissionCommitter struct {
 	actions  recordfixture.Recorder[fillerdecision.Action, struct{}]
-	receipts recordfixture.Recorder[*fillerdecision.AppliedRightsReceipt, struct{}]
 	existing fillerdecision.Action
 	findErr  error
 }
 
-func (c *appliedAdmissionCommitter) CommitAppliedFillerDecisionAction(_ context.Context, action fillerdecision.Action, receipt *fillerdecision.AppliedRightsReceipt) error {
-	if _, err := c.receipts.Call(receipt); err != nil {
-		return err
-	}
+func (c *appliedAdmissionCommitter) CommitAppliedFillerDecisionAction(_ context.Context, action fillerdecision.Action) error {
 	_, err := c.actions.Call(action)
 	return err
 }
@@ -44,21 +40,11 @@ func (c *appliedAdmissionCommitter) FindFillerDecisionAction(_ context.Context, 
 
 func TestAppliedAdmissionReplaysCurrentReleaseBeforePublication(t *testing.T) {
 	module, record, action, committer, _, _ := appliedAdmissionFixture(t)
-	tags := screeningChildTagsFixture(t)
-	wantPolicySHA256 := screeningProfileFixture(ScreenRights, "4").PolicySHA256
 	if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); err != nil {
 		t.Fatal(err)
 	}
 	if actions := committer.actions.Inputs(); len(actions) != 1 || actions[0] != action {
 		t.Fatalf("committed actions = %+v, want the verified admit", actions)
-	}
-	receipts := committer.receipts.Inputs()
-	if len(receipts) != 1 || receipts[0] == nil || receipts[0].DecisionID != record.ID || receipts[0].ClipHash != record.ClipHash ||
-		receipts[0].ScreeningEvidenceSHA256 != record.ScreeningEvidenceSHA256 || receipts[0].ReleaseAuthoritySHA256 != record.ReleaseAuthoritySHA256 ||
-		receipts[0].SourceID != "archive:commercials" || receipts[0].AcquisitionID != "acq-17" ||
-		receipts[0].SourceMasterSHA256 != tags.MediaAssets.SourceMaster.SHA256 || receipts[0].PolicySHA256 != wantPolicySHA256 ||
-		receipts[0].Use != FillerBroadcastUse || receipts[0].GrantSHA256 != screeningDigest("7") {
-		t.Fatalf("committed receipt = %+v, want replayed record and grant identities", receipts)
 	}
 }
 
@@ -85,20 +71,6 @@ func TestAppliedAdmissionFailsClosedBeforeTheCatalogTransaction(t *testing.T) {
 			t.Fatal("playback drift reached the catalog transaction")
 		}
 	})
-	t.Run("current rights withdrawn", func(t *testing.T) {
-		module, record, action, committer, _, certification := appliedAdmissionFixture(t)
-		certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
-			withdrawn := request.RequestedAt.Add(-time.Minute)
-			decision, err := NewFillerRightsUseDecision(request, FillerRightsProhibited, FillerRightsWithdrawalActive, screeningDigest("7"), nil, &withdrawn)
-			return decision, true, err
-		})
-		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
-			t.Fatalf("withdrawn rights = %v, want unavailable", err)
-		}
-		if committer.actions.Calls() != 0 {
-			t.Fatal("withdrawn rights reached the catalog transaction")
-		}
-	})
 }
 
 func TestAppliedAdmissionExactRetrySkipsUnavailableReleaseReplay(t *testing.T) {
@@ -117,12 +89,10 @@ func TestAppliedAdmissionExactRetrySkipsUnavailableReleaseReplay(t *testing.T) {
 
 func TestAppliedAdmissionReleaseReplayFailureRechecksCommittedAction(t *testing.T) {
 	t.Run("same action committed during replay", func(t *testing.T) {
-		module, record, action, committer, _, certification := appliedAdmissionFixture(t)
-		certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
+		module, record, action, committer, _, _ := appliedAdmissionFixture(t)
+		module.resolver = appliedAdmissionResolverFunc(func(context.Context, string) (string, error) {
 			committer.existing = action
-			withdrawn := request.RequestedAt.Add(-time.Minute)
-			decision, err := NewFillerRightsUseDecision(request, FillerRightsProhibited, FillerRightsWithdrawalActive, screeningDigest("7"), nil, &withdrawn)
-			return decision, true, err
+			return "", errors.New("release changed")
 		})
 
 		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); err != nil {
@@ -134,14 +104,12 @@ func TestAppliedAdmissionReleaseReplayFailureRechecksCommittedAction(t *testing.
 	})
 
 	t.Run("conflicting action committed during replay", func(t *testing.T) {
-		module, record, action, committer, _, certification := appliedAdmissionFixture(t)
+		module, record, action, committer, _, _ := appliedAdmissionFixture(t)
 		conflict := action
 		conflict.ActorID = "admin-2"
-		certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
+		module.resolver = appliedAdmissionResolverFunc(func(context.Context, string) (string, error) {
 			committer.existing = conflict
-			withdrawn := request.RequestedAt.Add(-time.Minute)
-			decision, err := NewFillerRightsUseDecision(request, FillerRightsProhibited, FillerRightsWithdrawalActive, screeningDigest("7"), nil, &withdrawn)
-			return decision, true, err
+			return "", errors.New("release changed")
 		})
 
 		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); !errors.Is(err, fillerdecision.ErrConflict) {
@@ -153,11 +121,9 @@ func TestAppliedAdmissionReleaseReplayFailureRechecksCommittedAction(t *testing.
 	})
 
 	t.Run("no action committed during replay", func(t *testing.T) {
-		module, record, action, committer, _, certification := appliedAdmissionFixture(t)
-		certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
-			withdrawn := request.RequestedAt.Add(-time.Minute)
-			decision, err := NewFillerRightsUseDecision(request, FillerRightsProhibited, FillerRightsWithdrawalActive, screeningDigest("7"), nil, &withdrawn)
-			return decision, true, err
+		module, record, action, committer, _, _ := appliedAdmissionFixture(t)
+		module.resolver = appliedAdmissionResolverFunc(func(context.Context, string) (string, error) {
+			return "", errors.New("release changed")
 		})
 
 		if err := module.ActOnAppliedFillerDecision(t.Context(), record, action); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
@@ -199,11 +165,6 @@ func TestAppliedAdmissionHeldActionsDoNotRequirePublicationEvidence(t *testing.T
 	}
 	if actions := committer.actions.Inputs(); len(actions) != 2 || actions[0].Kind != fillerdecision.ActionReject || actions[1].Kind != fillerdecision.ActionRestore {
 		t.Fatalf("committed actions = %+v, want reject and restore", actions)
-	}
-	for _, receipt := range committer.receipts.Inputs() {
-		if receipt != nil {
-			t.Fatalf("held action captured receipt = %+v, want nil", receipt)
-		}
 	}
 }
 

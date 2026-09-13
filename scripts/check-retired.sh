@@ -217,6 +217,19 @@ RETIRED=(
   'FILLER_AUTOFILE_MIN_CONFIDENCE|retired: classification confidence is diagnostic'
   'FILLER_AUTOFILE_NORMALIZE_LOUDNESS|retired: use FILLER_CONDITIONING_NORMALIZE_LOUDNESS'
   'TunePanel|retired: Sources owns acquisition policy; Incoming owns evidence review and terminal decisions'
+  # Private-home filler keeps provider-declared licence text as passive metadata, but it has no
+  # runtime legal authority. Restoring any of these identifiers would recreate the removed fifth
+  # screen, operator gate, current-grant registry, or receipt-bearing publication path.
+  '/v1/filler/rights|retired: licensing is passive source metadata, not a private-home playback gate'
+  'ScreenRights|retired: rendered-child screening has four media-safety and integrity axes'
+  'FillerRightsGrant|retired: there is no current-use rights authority in the home runtime'
+  'AppliedRightsReceipt|retired: terminal publication replays immutable screening without a live rights receipt'
+  'rights_provenance|retired: licensing does not create an Attention task'
+  'source_license|retired: provider licence metadata is not semantic admission evidence'
+  'missing_source_license|retired: missing licence metadata cannot hold private-home playback'
+  'conflict_source_license|retired: licence metadata conflicts are not runtime admission decisions'
+  'source_ineligible|retired: licensing cannot make a private-home source runtime-ineligible'
+  'filler-current-broadcast-rights|retired: there is no current broadcast-rights evaluator in the home runtime'
   # Wave 0 gives human authority work one typed server-owned interface. Restoring either review
   # route recreates the untyped queue whose task kind and actions the browser had to infer.
   '/v1/filler/decisions/reviews|retired: unresolved human work is projected by GET /v1/filler/attention'

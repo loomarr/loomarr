@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
 
-const PacketSchemaVersion = 1
+const PacketSchemaVersion = 2
 
 // Packet is the label-blind, content-addressed input to provider extraction.
 // Media remains external and is referenced only by bounded, hashed derivatives.

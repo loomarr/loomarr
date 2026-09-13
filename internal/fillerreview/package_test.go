@@ -158,7 +158,6 @@ func reviewFixture(t *testing.T) fixturePaths {
 			SchemaVersion: fillerbakeoff.PacketSchemaVersion, CaseID: id, EvidenceVersion: "review-evidence-v1", ContentSHA256: mediaSHA,
 			Facts: []filleradmission.Evidence{
 				{ID: "media-usability", Claim: filleradmission.ClaimMediaUsability, Value: filleradmission.UsabilityUsable, Kind: filleradmission.KindDecoder, Source: "decoder:" + id, Location: "black_percent=0;source_path=secret-source-path;silence_percent=0"},
-				{ID: "source-license", Claim: filleradmission.ClaimSourceLicense, Value: filleradmission.EligibilityEligible, Kind: filleradmission.KindSourcePolicy, Source: "rights:" + id},
 			},
 			Signals: []fillerbakeoff.Signal{
 				{ID: "filename", Kind: string(filleradmission.KindFilename), Text: "secret-title-" + leftPad(i) + ".mp4"},

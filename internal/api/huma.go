@@ -93,7 +93,6 @@ type Server struct {
 	filler          FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	fillerScreening FillerScreeningService
 	fillerDecisions *fillerdecision.Service // durable V63 admission audit and projections
-	fillerRights    FillerRightsService     // append-only current-use filler rights authority
 	pods            PodPreviewer            // /v1/channels/{id}/pods (§12); nil ⇒ 501
 	taxonomy        TaxonomyEditor          // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
@@ -988,7 +987,6 @@ type Options struct {
 	Filler          FillerService           // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	FillerScreening FillerScreeningService  // exact browser-safe rendered-child screening projection
 	FillerDecisions *fillerdecision.Service // /v1/filler/decisions* (§10 V63)
-	FillerRights    FillerRightsService     // /v1/filler/rights* (§10 V67)
 	Pods            PodPreviewer            // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	Taxonomy        TaxonomyEditor          // taxonomy impact + committed channel convergence
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
