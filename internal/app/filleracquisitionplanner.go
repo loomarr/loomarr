@@ -82,8 +82,12 @@ func (a fillerServiceAdapter) PlanAcquisition(ctx context.Context, intent filler
 			SourceID: source.ID, Provider: source.Kind, Label: source.Label, Geography: source.Geography,
 		}
 		switch {
-		case !source.Enabled:
-			decision.Disposition, decision.Detail = filler.AcquisitionSourceDisabled, "registered source is disabled"
+		case !source.EffectiveEnabled():
+			detail := "registered source is disabled"
+			if source.Enabled && !source.ProviderEnabled {
+				detail = "provider is paused"
+			}
+			decision.Disposition, decision.Detail = filler.AcquisitionSourceDisabled, detail
 		case !source.Fetchable():
 			decision.Disposition, decision.Detail = filler.AcquisitionSourceNotFetchable, "registered source cannot be downloaded from"
 		case len(intent.SourceAllowlist) > 0 && !containsSourceID(intent.SourceAllowlist, source.ID):
@@ -117,7 +121,7 @@ func (a fillerServiceAdapter) PlanAcquisition(ctx context.Context, intent filler
 			limit++
 		}
 		items, _, enumerateErr := a.sourceEnum.Enumerate(planningCtx, filler.FetchSource{
-			ID: source.ID, Kind: source.Kind, URI: source.URI, Enabled: source.Enabled,
+			ID: source.ID, Kind: source.Kind, URI: source.URI, Enabled: source.EffectiveEnabled(),
 		}, limit)
 		if enumerateErr != nil {
 			decisions[eligibleSource.decisionIndex].Disposition = filler.AcquisitionSourceEnumerationFailed

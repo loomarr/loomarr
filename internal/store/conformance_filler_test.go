@@ -2803,6 +2803,82 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// testFillerProviderPolicy protects the master-switch contract through the store's public seam on
+// both SQL adapters. A provider pause changes effective acquisition policy without rewriting the
+// operator's child choices, so resuming restores the exact mix that existed before the pause.
+func testFillerProviderPolicy(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+
+	providers, err := s.ListFillerProviders(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !providerEnabled(providers, "archive") || !providerEnabled(providers, "youtube") {
+		t.Fatalf("fresh provider policy = %+v, want archive and youtube enabled", providers)
+	}
+
+	if err := s.UpsertFillerSource(ctx, NewFillerSource("provider-policy-on", "archive", "provider_policy_on", "On", time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+	off := NewFillerSource("provider-policy-off", "archive", "provider_policy_off", "Off", time.Now().UTC().Add(time.Second))
+	if err := s.UpsertFillerSource(ctx, off); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetFillerSourceEnabled(ctx, off.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetFillerProviderEnabled(ctx, "archive", false); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := s.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]FillerSource, len(sources))
+	for _, source := range sources {
+		byID[source.ID] = source
+	}
+	if !byID["provider-policy-on"].Enabled || byID["provider-policy-on"].EffectiveEnabled() {
+		t.Errorf("enabled child while provider paused = %+v, want choice retained but effective state off", byID["provider-policy-on"])
+	}
+	if byID["provider-policy-off"].Enabled || byID["provider-policy-off"].EffectiveEnabled() {
+		t.Errorf("disabled child while provider paused = %+v, want child and effective state off", byID["provider-policy-off"])
+	}
+
+	if err := s.SetFillerProviderEnabled(ctx, "archive", true); err != nil {
+		t.Fatal(err)
+	}
+	sources, err = s.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID = make(map[string]FillerSource, len(sources))
+	for _, source := range sources {
+		byID[source.ID] = source
+	}
+	if !byID["provider-policy-on"].EffectiveEnabled() {
+		t.Error("resuming archive did not restore its previously enabled child")
+	}
+	if byID["provider-policy-off"].EffectiveEnabled() {
+		t.Error("resuming archive enabled a child the operator had left off")
+	}
+	if err := s.SetFillerProviderEnabled(ctx, "not-a-provider", false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("set unknown provider = %v, want ErrNotFound", err)
+	}
+}
+
+func providerEnabled(providers []FillerProvider, kind string) bool {
+	for _, provider := range providers {
+		if provider.Kind == kind {
+			return provider.Enabled
+		}
+	}
+	return false
+}
+
 // testSeededDefaultSources covers what migration 00034 puts in a FRESH store, on BOTH backends
 // (§10 V38c.8).
 //
@@ -3878,6 +3954,7 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	counters, ok := s.(interface {
 		CountIncomingConveyor(context.Context) (int, error)
+		CountIncomingConveyorBySource(context.Context) (map[string]int, error)
 	})
 	if !ok {
 		t.Fatal("store does not expose the Incoming conveyor counter")
@@ -3885,9 +3962,9 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 
 	for _, c := range []Clip{
 		{Clip: filler.Clip{Hash: "draft-reel", Path: "reels/draft.mp4", Name: "Draft reel",
-			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true}},
+			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
 		{Clip: filler.Clip{Hash: "ready-reel", Path: "reels/ready.mp4", Name: "Ready reel",
-			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true}},
+			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
 	} {
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
@@ -3918,6 +3995,13 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got != 1 {
 		t.Errorf("Incoming conveyor count = %d, want 1 draft reel; the ready reel has its own row", got)
+	}
+	bySource, err := counters.CountIncomingConveyorBySource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bySource["archive:test"] != 1 {
+		t.Errorf("Incoming conveyor source count = %d, want the same 1 draft reel", bySource["archive:test"])
 	}
 }
 

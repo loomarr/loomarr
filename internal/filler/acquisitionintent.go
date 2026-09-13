@@ -17,6 +17,7 @@ var (
 	ErrInvalidAcquisitionIntent = errors.New("invalid filler acquisition intent")
 	ErrNoAcquisitionSources     = errors.New("no eligible filler acquisition sources")
 	ErrNoAcquisitionCandidates  = errors.New("no filler acquisition candidates satisfy the intent")
+	ErrProviderPaused           = errors.New("filler provider is paused")
 )
 
 // RightsPreference says how declared remote rights metadata affects acquisition selection.

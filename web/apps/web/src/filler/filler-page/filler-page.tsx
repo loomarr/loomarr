@@ -106,7 +106,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
   const statusLine = watch
     ? [
-        `${watch.sourcesOn} of ${watch.sourcesTotal} sources on`,
+        `${watch.sourcesReady} of ${watch.sourcesTotal} sources ready`,
         pluralize(watch.clips, "clip"),
         ...(watch.held > 0 ? [`${watch.held} waiting`] : []),
         ...(watch.lastScanAt ? [`last scan ${formatRelative(watch.lastScanAt)}`] : []),
@@ -208,11 +208,8 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
 const FillerDescription = () => (
   <>
-    Loomarr continuously sources, prepares, and rotates commercials, bumpers, and station IDs. Each channel{" "}
-    <Link to="/guide" className="text-signal underline underline-offset-2">
-      uses its own grounded selection
-    </Link>{" "}
-    from the shared library.
+    Loomarr finds and prepares commercials, bumpers, and station IDs. Each channel picks what fits from the
+    shared library.
   </>
 );
 

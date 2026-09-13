@@ -594,14 +594,14 @@ func declared() []Setting {
 
 		// --- Filler / commercials (§15, Phase 12; §10 redesign — Tunarr-owned) ---
 		{
-			Key: "filler.home_country", Label: "Home country", EnvVar: "FILLER_HOME_COUNTRY", Group: GroupFiller,
+			Key: "filler.home_country", Label: "Country", EnvVar: "FILLER_HOME_COUNTRY", Group: GroupFiller,
 			Kind: KindString, Default: "", Validate: optionalCountryCode,
-			Doc: "Optional ISO two-letter country that constrains automatic filler use. Unknown and foreign clips remain reviewable but do not air. Leave blank to preserve the legacy unrestricted pool until geography is configured.",
+			Doc: "Where your channels are watched. Loomarr uses this country for channels and filler sources.",
 		},
 		{
-			Key: "filler.home_market", Label: "Home local market", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,
+			Key: "filler.home_market", Label: "Local area", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,
 			Kind: KindString, Default: "",
-			Doc: "Optional local broadcast market inside the home country, such as New York or Seattle. Local clips must match it exactly; Loomarr never infers it from the guide timezone.",
+			Doc: "Optional. Add a city or TV market when you want local filler, such as New York or Seattle.",
 		},
 		{
 			// ⚠ Defaults inside /data, like database.url and backup.dir — the documented

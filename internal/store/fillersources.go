@@ -9,6 +9,12 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 )
 
+// FillerProvider is persisted policy shared by every source of one remote kind.
+type FillerProvider struct {
+	Kind    string
+	Enabled bool
+}
+
 // The persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ **Remote sources only, and that boundary is the design.** V28 made `GET /v1/filler/sources`
@@ -49,6 +55,10 @@ type FillerSource struct {
 	// already brought in are untouched either way — they are real files an operator may have
 	// tagged and pinned.
 	Enabled bool
+	// ProviderEnabled is the provider-level half of effective acquisition policy. It is populated
+	// by ListFillerSources for remote kinds and deliberately does not overwrite Enabled, which is
+	// the operator's remembered choice for this exact target.
+	ProviderEnabled bool
 	// FetchEverySeconds overrides `filler.fetch.every` for THIS source (§10 V38c). A busy archive
 	// collection and a small playlist want different numbers, and one global figure serves
 	// neither well.
@@ -68,6 +78,17 @@ type FillerSource struct {
 	// Geography is asserted source coverage. Country-only sources may feed any market in that
 	// country; a market-scoped source may feed only that market. Empty means unknown.
 	Geography filler.Geography
+}
+
+// EffectiveEnabled is the one source-policy projection acquisition callers use. Local sources
+// have no provider policy; remote sources require both their own and their provider's switches.
+func (f FillerSource) EffectiveEnabled() bool {
+	switch f.Kind {
+	case "archive", "youtube":
+		return f.Enabled && f.ProviderEnabled
+	default:
+		return f.Enabled
+	}
 }
 
 // FetchEvery resolves this source's poll interval against the global default (§10 V38c).
@@ -95,8 +116,15 @@ func (f FillerSource) MaxPerRun(global int) int {
 }
 
 // GeographicallyEligible reports whether this source may contribute to the target installation.
+// An empty source value means "follow this installation", not "ask the operator to repeat the
+// same location on every row". Candidate geography is still checked independently by the pull
+// planner, so this inheritance cannot make missing or conflicting item evidence pass.
 func (f FillerSource) GeographicallyEligible(target filler.Geography) bool {
-	return filler.SourceGeographicallyEligible(f.Geography, target)
+	coverage := f.Geography.Normalize()
+	if coverage.Country == "" {
+		coverage = target.Normalize()
+	}
+	return filler.SourceGeographicallyEligible(coverage, target)
 }
 
 // Fetchable reports whether this source can be DOWNLOADED FROM — i.e. whether it may enter a
@@ -166,9 +194,10 @@ func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSou
 	return FillerSource{ID: id, Kind: kind, URI: uri, Label: label, CreatedAt: createdAt, Enabled: true}
 }
 
-const fillerSourceSelect = `SELECT id, kind, uri, label, license, last_fetched_at, created_at, enabled,
-	fetch_every_seconds, fetch_max_per_run, country, market
-	FROM filler_sources`
+const fillerSourceSelect = `SELECT s.id, s.kind, s.uri, s.label, s.license, s.last_fetched_at, s.created_at, s.enabled,
+	s.fetch_every_seconds, s.fetch_max_per_run, s.country, s.market,
+	CASE WHEN s.kind IN ('archive', 'youtube') THEN COALESCE(p.enabled, FALSE) ELSE TRUE END
+	FROM filler_sources s LEFT JOIN filler_providers p ON p.kind = s.kind`
 
 // ListFillerSources returns every source, OLDEST FIRST. Ordering is explicit rather than
 // left to the engine: an unordered list reshuffles between reads on Postgres, and a Sources
@@ -194,7 +223,7 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 		)
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
 			&fetchedAt, &createdAt, &src.Enabled, &every, &perRun,
-			&src.Geography.Country, &src.Geography.Market); err != nil {
+			&src.Geography.Country, &src.Geography.Market, &src.ProviderEnabled); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
@@ -210,6 +239,41 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 		out = append(out, src)
 	}
 	return out, rows.Err()
+}
+
+// ListFillerProviders returns the two built-in remote providers in a stable UI order.
+func (s *sqlStore) ListFillerProviders(ctx context.Context) ([]FillerProvider, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, enabled FROM filler_providers
+		ORDER BY CASE kind WHEN 'archive' THEN 0 WHEN 'youtube' THEN 1 ELSE 2 END, kind`))
+	if err != nil {
+		return nil, fmt.Errorf("list filler providers: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []FillerProvider
+	for rows.Next() {
+		var provider FillerProvider
+		if err := rows.Scan(&provider.Kind, &provider.Enabled); err != nil {
+			return nil, fmt.Errorf("scan filler provider: %w", err)
+		}
+		out = append(out, provider)
+	}
+	return out, rows.Err()
+}
+
+// SetFillerProviderEnabled is the only provider-policy writer.
+func (s *sqlStore) SetFillerProviderEnabled(ctx context.Context, kind string, enabled bool) error {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_providers SET enabled = ? WHERE kind = ?`), enabled, kind)
+	if err != nil {
+		return fmt.Errorf("set filler provider enabled: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("set filler provider enabled rows: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // UpsertFillerSource adds or updates a source by id.

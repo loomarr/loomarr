@@ -65,7 +65,14 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; total?: number } = {}) => {
 
   server.use(
     getMeMockHandler(me({ name: "Admin" })),
-    getFillerWatchMockHandler({ sourcesOn: 4, sourcesTotal: 5, clips: 200, held: 0, health: "healthy" }),
+    getFillerWatchMockHandler({
+      sourcesOn: 4,
+      sourcesReady: 4,
+      sourcesTotal: 5,
+      clips: 200,
+      held: 0,
+      health: "healthy",
+    }),
     getFillerAttentionMockHandler({ rows: [], total: 0 }),
     getFillerPoolMockHandler({ clips: 200, commercials: 200, eligible: 200, untagged: 0, channels: [] }),
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),

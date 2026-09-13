@@ -179,6 +179,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
+- **`installationlocation`** · 1 importer
+  Owns Loomarr's offline place search and location resolution.
 - **`inventory`** · 3 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`landiscovery`**
@@ -394,7 +396,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 13**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `installationlocation`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 14**
@@ -1098,8 +1100,10 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | POST | `/v1/filler/rewind` | Re-run one clip from a named ingest stage (admin, §10 V55). This is the recovery path after a configuration or provider problem has been fixed: it resets that stage and every dependent stage, durably forces the selected rung past its ordinary applicability shortcut, clears only derived artifacts safe for that rung to replace, and puts the pipeline row back on the conveyor. Rewinding `transcode` is refused unless `force:true`, because it can replace the playable derivative (the V66 source master remains retained); routine UI actions expose only non-destructive rewinds. |
 | POST | `/v1/filler/retry` | Retry one or up to 50 execution failures (admin, §10 V56). The server selects the failed rung from the lifecycle projection, preserves completed upstream work, and reports rows that are no longer retryable without coercing them. For an exhausted probe/transcode failure, restore, hold, and requeue commit atomically; content-decision overrides remain on the separate restore path. |
 | GET | `/v1/filler/discover` | Browse clips the operator could add, **downloading nothing** (admin, §10 V33/V17d). `q` searches archive.org by keyword; `collection` lists one named collection (a URL, a `/details/<id>` path, or a bare identifier); sending both searches **within that collection**, which is what a registered source row promises. The `collection`-only mode is what a **starter pack** is — a curated collection listed for keep/exclude before anything is fetched — so browsing a suggested pack and browsing a search result are one code path, not two. Neither mode requires the ingest tooling: listing is plain `net/http`, so an operator on a degraded install can still see what exists and learn why the fetch is unavailable. Licence availability is stated **once, about the search** — archive.org declares one on ~8% of items, so a per-row chip would imply a check that never happened (build plan §6.3). |
+| POST | `/v1/filler/sources/{id}/items` | Queue one exact item discovered inside a registered remote source (admin). The body carries the provider's stable `remoteId` and canonical item URL; the server derives provider kind and acquisition policy from `{id}` rather than trusting browser-supplied policy. The resulting durable acquisition keeps parent-source and remote-item identity, returns a `jobId`, and **never registers the item as another recurring source**. This is the command behind a registered source's **Queue download** result row; `POST /v1/filler/ingest` remains the separate direct pasted-URL action. |
 | POST | `/v1/filler/sync` | Sync catalog from the Tunarr `local` filler source (§10). |
 | POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` if the vendored ingest tooling isn't runnable — it ships in the single image (§10, §16), so this is a degraded-install signal, not an opt-in gate. |
+| GET | `/v1/filler/acquisitions/{jobId}` | Read one durable filler acquisition run (admin), including queued/running/terminal download state, safe error, artifact publication, and current pipeline outcomes. This is reconnect truth for both direct and registered-source item downloads; `filler_ingest` SSE frames only reduce visible latency. |
 | POST | `/v1/filler/tag` | Start an AI-tagging job over untagged clips (§10). |
 | POST | `/v1/filler/split` | Propose splits for a compilation clip (admin, §10 V34). ⚠ The clip is identified by its content `hash` in the BODY — same wire-identity rule as `PATCH /v1/filler/tags` above. Runs detection — chapters → `blackdetect`/`silencedetect` → transcript rescue for over-long segments — as an **interactive operation** (minutes per file; progress on `/v1/events`), producing a persisted **split proposal**: the cut points, per-segment duration/tags (era suggestions marked unconfirmed when the year is not in the text), and dedup flags (a segment whose dHash matches an existing clip). The returned `jobId` is retained as the wire name for compatibility and identifies the durable operation read below. **Nothing enters the catalog here** — review is not optional, because detection quality is a property of the source (§10). |
 | GET | `/v1/filler/split-operations/{jobId}` | Read one split-detection operation (admin): queued/running/terminal state plus the terminal `proposalId` or safe error. This is the reconnect truth for the identifier returned by `POST /v1/filler/split`; a successful proposal remains a separate resource at `/v1/filler/splits/{proposalId}`. |
@@ -1115,8 +1119,11 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | POST | `/v1/filler/decisions/diagnostics/{id}/actions` | Execute a currently advertised diagnostic recovery action (admin, §10 V63). Initial action `retry` is idempotent by request id, records the authenticated actor, and fails closed when the decision is stale or no longer retryable. |
 | POST | `/v1/filler/attention/{id}/actions` | Act on one current Attention task (admin). The request names one of that task's server-projected allowed actions and records actor, reason, and optional corrected answer as an append-only event; it never rewrites evaluator evidence (§10 V63). Reusing an action id with a different body or acting on a stale task fails closed. |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
+| PATCH | `/v1/filler/providers/{kind}` | Pause or resume one built-in remote provider (`archive` or `youtube`, admin). The body is `{enabled}`. This changes provider policy only: child source switches, targets, history, and downloaded clips are retained. Provider state and server-owned effective source state are returned by `GET /v1/filler/sources` (§10 V51c). |
+| GET | `/v1/filler/providers/{kind}/suggestions` | Find sources an admin may choose to register, **creating and downloading nothing**. `q` is ordinary text or an exact provider URL/id; `limit` is server-bounded. Archive.org uses its public collection index and YouTube uses bounded listing-only yt-dlp search. Results carry a canonical provider identity, display metadata, and whether that source is already registered; the browser never constructs provider query syntax or canonical ids. A disabled provider rejects this work before an external request (§10 “Finding a source is not adding it”). |
+| POST | `/v1/filler/providers/{kind}/resolve` | Validate one pasted source reference and return its canonical identity plus provider metadata, **creating and downloading nothing**. This is the exact-target sibling of suggestions and shares the same provider adapter. Only a subsequent `POST /v1/filler/sources` is registration authority (§10 “Finding a source is not adding it”). |
 | PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c/V57). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. Source trust cannot grant publication authority: the former `autoAdmit` switch is retired because source provenance is only one input to the certified terminal decision. The PATCH body carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
-| GET | `/v1/filler/watch` | **The Filler header's live source status (§10 V38c/V55).** Returns `{health, sourcesOn, sourcesTotal, clips, lastScanAt?, autoFetch?}` — everything the page header renders, computed on the SERVER. `autoFetch` names whether fetching is enabled, the current catalog/disk measurements and ceilings, and the ceiling currently stopping it (`catalog` or `disk`); it is current state, not merely the last scheduler result, so a removal or settings change clears the warning immediately. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that source-acquisition judgement.** It must not be presented as the whole Filler workspace verdict; `/v1/filler/readiness` owns that answer. Deriving source health in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
+| GET | `/v1/filler/watch` | **The Filler header's live source status (§10 V38c/V55).** Returns `{health, sourcesOn, sourcesReady, sourcesTotal, clips, lastScanAt?, autoFetch?}` — everything the page header renders, computed on the SERVER. `sourcesReady` counts sources that are on and usable for the Installation geography; `sourcesOn` remains separate so the UI can distinguish an enabled source that still needs attention. `autoFetch` names whether fetching is enabled, the current catalog/disk measurements and ceilings, and the ceiling currently stopping it (`catalog` or `disk`); it is current state, not merely the last scheduler result, so a removal or settings change clears the warning immediately. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that source-acquisition judgement.** It must not be presented as the whole Filler workspace verdict; `/v1/filler/readiness` owns that answer. Deriving source health in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
 | GET | `/v1/filler/incoming` | Legacy admin-only ingest-conveyor projection retained while its machine state migrates under Manage → Diagnostics (§10 V35/V63). It is operational truth, not the human Attention interface, and the ordinary Filler UI does not fetch or render it. **Every row list is capped at 100** and carries its full server-counted total (`clipsTotal`, `decisionsTotal`, `reelsTotal`, `rejectedTotal`). Confidence is the real grounding-capped score (§10 V38), never model self-assessment and never an admission threshold. Clients must not infer task kinds or actions from this payload. |
 | GET | `/v1/filler/screening?hash=` | The admin-only, browser-safe five-axis screening projection for one exact filler clip. It returns `not_screened`, `available`, or `unavailable`; an available result contains the immutable subject/aggregate identities, overall outcome, the ordered visual/spoken/written/rights/playback outcomes and safe reason codes, assessment time, and the closed public Airworthiness decision. An unavailable attached reference retains only its safe failure code and content identities. Before publication, the route reopens the clip's current applied sidecar, reproduces its subject and aggregate, and reopens the playable file to match its complete-byte digest, byte count, and sparse catalog identity. A missing, unsafe, or changed playback object can therefore never retain a visible pass. It never returns a path, prompt, transcript, OCR text, restricted phrase, provider response, credential, private rights document, or raw evidence. Incoming loads this bounded record only when a row is expanded rather than multiplying filesystem reads across the whole conveyor. |
 | POST | `/v1/filler/bulk/tag` | Retag a selection (admin, §10 V35). Each tag field is **independent** — omitting one leaves it alone, so setting only the audience never blanks an era. Setting an era confirms an outstanding suggestion through the **same** path the single-clip edit uses. A selected clip that no longer exists is counted, not fatal: a selection races a re-scan. |
@@ -1142,6 +1149,9 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | GET | `/v1/system/version` | Version/commit/build time + the readiness `/readyz` reports, plus what the **About** page (§16, V12) shows an operator writing a bug report: **Go runtime + os/arch**, **`startedAt`** (the process start, from which the UI derives uptime), and the **applied schema version** with the backend. The typed, authenticated twin of the ops probes. ⚠ *This used to add that the probes "stay OUTSIDE the versioned API and unauthenticated… putting auth in front of a container health probe would be the wrong trade". The trade was real; the premise no longer is. `RolePublic` makes non-authentication an explicit property of an operation, so `/v1/healthz` and `/v1/readyz` are versioned, typed AND anonymous, with their bare paths kept as permanent aliases. This endpoint still earns its place: it carries the version, build and schema information an operator quotes in a bug report, which a liveness probe has no business returning.* ⚠ **`startedAt`, never a pre-computed uptime**: a duration is stale the moment it is serialized, so the server sends the instant and the client renders the elapsed time it can keep current. |
 | GET | `/v1/system/discovery-quality/export` | Download the admin-only, local discovery-quality JSON export (§17): versioned UTC daily aggregates plus only their referenced evaluation-run snapshots. Raw receipts and idempotency keys are never returned. Reading it sends nothing externally and does not mutate retention state. |
 | POST | `/v1/setup/test` | Run one named check (powers per-block Test buttons; `config-design.md` §8). |
+| GET | `/v1/locations?q=&limit=` | Search the embedded Installation-location index by city or country and return bounded `{id,label,country,market}` suggestions (admin). No coordinates leave Loomarr and no runtime provider is called. |
+| GET | `/v1/locations/suggestion` | Return an approximate country/place suggestion from an allowlisted CDN geography header when `security.trust_proxy=true`, otherwise from the public client IP against Loomarr's embedded country index (admin). Cloudflare, CloudFront, and Vercel headers are recognized directly; any other CDN/proxy can normalize its evidence to `X-Loomarr-Geo-Country` plus optional `X-Loomarr-Geo-City`. Direct connections use the socket peer; forwarded addresses require the existing trust-proxy gate. Invalid/special codes and private/LAN addresses produce no suggestion. The result names its source and attribution and is never persisted automatically. |
+| POST | `/v1/locations/resolve` | Resolve explicitly shared browser coordinates to the nearest embedded place and return `{id,label,country,market}` (admin). Coordinates are request-only, are neither logged nor stored, and an invalid or unsupported point returns a problem response without guessing. |
 | GET | `/v1/settings` | Settings registry with per-key provenance; secret values masked (admin, §15). |
 | PATCH | `/v1/settings` | Update settings; validates and persists immediately, then applies by the key's runtime lifecycle (`config-design.md` §3); env-pinned keys rejected (admin). An empty value clears an optional key — except a secret, which is replace-only (`config-design.md` §9). |
 | DELETE | `/v1/settings/{key}` | Explicitly clear a key's stored override (reverts to env/default); the only way to unset a secret. 204 · 404 unknown · 409 env-pinned (admin, `config-design.md` §8). |
@@ -4396,9 +4406,11 @@ all fail toward doing less:
 **Archive.org and YouTube are peer acquisition partners, not a primary source and a fallback.**
 Every registered remote is enumerated by its explicit `kind`: Archive uses the bounded collection
 API, while YouTube uses yt-dlp's listing-only flat-playlist mode. The fetcher never guesses a
-registered source's provider from a returned URL. The operator adding a YouTube playlist or
-channel is the bounded authorization to enumerate that target; Loomarr does not perform global
-YouTube search, follow recommendations, or crawl beyond it. Enumeration downloads no media and
+registered source's provider from a returned URL. The Sources page may perform a bounded,
+user-initiated YouTube channel search through yt-dlp's listing-only mode so a person need not know
+a channel URL; it does not follow recommendations or crawl beyond the typed query. Selecting a
+suggestion is still not authorization to enumerate that channel on a schedule: only the separate
+registration command grants that authority. Enumeration downloads no media and
 is capped before its per-item URLs enter the ordinary ingest path. Both partners then share the
 same per-source limit, catalog and disk ceilings, acquisition record, held lifecycle, provenance
 sidecar, cleanup pipeline, and admission authority. Missing YouTube licence metadata remains
@@ -4426,6 +4438,12 @@ drop folder cannot unexpectedly start three remote collections. The deliberate a
 run while unattended timing is off, but it retains the source's enabled switch, deduplication and
 disk/catalog/per-source ceilings, so it is not an unbounded bypass. Omitting the source id keeps the
 former all-source endpoint behavior for older clients.
+
+The response preserves the selected source identity and the acquisition result: how many sources
+were polled, how many items were queued or skipped, and which capacity ceiling stopped the pass.
+The browser therefore reports **Checked Classic TV Commercials — 2 clips queued**, not a generic
+success inferred from a refreshed list. Other remote rows retain their own status and never appear
+to have participated in the selected-source command.
 
 ⚠ **Archive.org collections are the case the limits exist for.** A collection is thousands of
 items; `max_per_run` is what stops "add a source" from meaning "download 8,000 files tonight".
@@ -8798,9 +8816,27 @@ were never read. **A summary is not the source**, which is the same lesson the t
 correction records one section up.
 
 Per row: an on/off switch · a **kind badge** (fixed-width, colour-coded) · name + description ·
-a **stat** reading *"6 clips · scanned 2m ago"* · an optional Search expander · an optional
-remove. ⚠ **A disabled row is GREYED** (the mock's `sv.opacity`), not merely badged — the switch's
-effect has to be visible at a glance down a list.
+a lifecycle stat reading *"6 ready · 12 being checked · checked 2m ago"* · an optional Search
+expander · an optional remove. Ready clips and the active Incoming conveyor are separate counts:
+Incoming clips remain unable to play, but they must not disappear from the source that brought them in. A source with zero ready
+clips and a non-empty Incoming queue therefore says *"0 ready · 12 being checked"*, never merely
+*"0 clips"*. Being checked uses the same conveyor definition as the Incoming page: it includes a
+compilation while Loomarr is preparing it, excludes a completed split proposal that has its own reel
+row, and excludes retained terminal compilation containers that will never play. The count links to
+Incoming from the source workspace. ⚠ **A disabled row is
+GREYED** (the mock's `sv.opacity`), not merely badged — the switch's effect has to be visible at a
+glance down a list.
+
+**Source setup inherits the Installation geography (V68).** The ordinary Sources flow never asks
+the operator to repeat their country and market for every row. A source with no explicit coverage
+uses the current Installation geography when Loomarr decides whether it is ready; changing the
+Installation geography therefore updates every inheriting source immediately rather than copying a
+value into each row. A source whose real coverage differs may carry an explicit country and optional
+market through an Advanced disclosure. The read model reports the effective geography, whether it
+is inherited or overridden, and one closed readiness state (`ready`, `off`, `needs_location`,
+`not_configured`, or `out_of_area`); counts and available actions use that server-owned state rather
+than browser inference. Candidate-level geography remains a separate hard acquisition constraint,
+and an inherited source value does not turn missing or conflicting candidate evidence into a match.
 
 **A config disclosure per row** (V38c), on the same shelf as the search and URL expanders the mock
 already draws. It shows the source's target **read-only** and makes its *behaviour* editable —
@@ -9142,12 +9178,13 @@ Three archive.org collections sat as three sibling rows with no indication they 
 and adding YouTube channels would have made it worse. The Sources tab now shows one **Archive.org**
 row and one **YouTube** row, each twirling down to the targets an operator added beneath it.
 
-⚠ **The grouping is DERIVED from `kind` at read time. There is no `parent_id`, no new table, and
-no migration** — and that is a correctness argument, not a shortcut. *The grouping being asked for
-is already a column*: every `archive` row belongs under Archive.org, and there is no representable
-case where it belongs anywhere else. A stored parent would be a second encoding of a fact `kind`
-already carries, and second encodings make illegal states representable
-(`kind='archive', parent_id='provider:youtube'`).
+⚠ **The grouping is DERIVED from `kind` at read time. There is no `parent_id`.** *The grouping
+being asked for is already a column*: every `archive` row belongs under Archive.org, and there is
+no representable case where it belongs anywhere else. A stored parent would be a second encoding
+of a fact `kind` already carries, and second encodings make illegal states representable
+(`kind='archive', parent_id='provider:youtube'`). Provider policy is different: Archive.org and
+YouTube now have persisted master switches in `filler_providers`, keyed by that same closed `kind`
+vocabulary. The table stores policy about a provider, never hierarchy about a source.
 
 Three concrete costs a stored parent would have added, each measured against code that exists:
 
@@ -9162,9 +9199,10 @@ Three concrete costs a stored parent would have added, each measured against cod
 - `filler_pulls.plan_json` stores `SourceID` strings looked up at approve time, so rewriting the
   seeded `youtube` row's id would 409 any pending pull.
 
-⚠ **The escape hatch, recorded so this is not re-litigated:** if a provider ever gains state of its
-own — a YouTube API key, an archive.org rate budget — add a `filler_providers` table keyed on the
-existing `kind` vocabulary. **Not `parent_id`**, because that state is per-provider, not per-node.
+`filler_providers` seeds `archive` and `youtube` enabled on upgrade. Its switch is independent of
+every child switch: pausing Archive.org leaves each collection's `enabled` value untouched, and
+resuming it restores the exact mix the operator chose. Existing clips remain catalogued and
+playable; pause governs future provider work only.
 
 **Wire shape: flat, pre-ordered, `group` + `parentId`.** Not nested — a recursive `children: []`
 generates badly through orval and the frontend has no tree primitive, while a flat pre-order array
@@ -9173,12 +9211,16 @@ additive, so a client that knows neither field renders the flat list it always d
 
 **What does NOT inherit, and why each one is deliberate:**
 
-- ⚠ **`enabled`: no group switch.** Cascade-on-write destroys each child's own choice, which §10
-  forbids in as many words ("Disabling is not deleting… switching it back on restores what was
-  there"). A computed `effective = parent && child` is worse: a fifth thing every call site must
-  remember, whose failure direction is *fetching from a provider the operator switched off*. The
-  group reports `enabled` as ANY-child-on and offers no lever. A master switch, if ever wanted,
-  ships as a **visible bulk write** over the children.
+- **`enabled`: provider policy composes with, and never rewrites, child policy.** The store's source
+  projection owns `effectiveEnabled = provider.enabled && source.enabled`; acquisition callers use
+  that projection rather than re-reading either flag. Provider-off blocks scheduled and manual
+  enumeration/search/fetch, pull proposal, the approval-time recheck, and direct provider-adapter
+  execution. Editing an existing target's local policy remains allowed while paused. Adding a new
+  remote target now repeats exact provider resolution at registration (V67), so it is paused with
+  search and resolution rather than creating an unverified row; resume the provider to add it.
+  The read model exposes both the remembered child choice
+  and effective state so the UI can say “Paused with Archive.org” without pretending the child was
+  switched off.
 - **Fetch overrides: leaf only** — see the three-tier argument above.
 - **`lastFetchedAt`: a read-only `MAX` over children**, computed in the API so no column can
   disagree. Absent when no child has fetched, so the row reads "never" rather than an epoch date.
@@ -9186,6 +9228,99 @@ additive, so a client that knows neither field renders the flat list it always d
 ⚠ **`folder` and `library` do not group.** A twirl-down exists because ONE SERVICE offers many
 targets; two watched folders are unrelated directories with no service in common, so a "Folders"
 container would be a row that dims and changes nothing — the shape §10 forbids.
+
+### Finding a source is not adding it (V67)
+
+Remote setup has three deliberately separate steps: a **source suggestion** is one transient
+provider result, **source resolution** verifies typed input and returns one canonical provider
+target, and **registration** persists that target as a filler source. Suggestion and resolution
+create no database row, download no media, enqueue no work, and grant no background-acquisition
+authority. Only `POST /v1/filler/sources` registers a source. Search responses are short-lived
+cache material, not embedded catalog data, so they do not belong in the database.
+
+One provider-neutral finder owns that contract while provider adapters hide their query syntax,
+canonicalisation, timeouts, result caps, and response parsing. Archive.org uses its public Advanced
+Search endpoint restricted to `mediatype:collection`, then resolves an exact identifier through
+`/metadata/{id}` and refuses anything whose metadata is not a collection. YouTube uses the shipped
+yt-dlp executable in flat, listing-only mode; it needs no Google project or operator credential.
+Both paths are bounded and fail closed before external work when their provider master switch is
+off. The browser sends text and renders server results; it does not reproduce provider rules.
+YouTube video-search hits are collapsed by stable channel identity, and a channel resolves to its
+canonical `/channel/{id}/videos` target rather than the channel root: the root lists channel tabs,
+not the bounded stream of videos the registered-source enumerator needs. A video-only URL is
+rejected here rather than silently turning one video into an unattended recurring source; one-off
+ingest remains a separate deliberate action.
+
+The Sources page renders one calm section for Archive.org and one for YouTube. Each has its master
+switch, a single accessible **search-or-paste** field, a stable keyboard-operable suggestion list,
+and quiet rows for sources already added. Selecting a suggestion first shows the exact target that
+will be added; registration remains an explicit action with duplicate and failure states beside
+that target. Provider/type chips, repeated card borders, and always-visible tuning controls are
+absent: provider headings already supply the context.
+Turning a provider's master switch off disables its child source controls and folds the provider
+body closed, including its add flow and registered rows. It changes no child's saved switch value:
+turning the provider back on unfolds the body with those choices intact. The fold begins with the
+pending off action and reopens if that action fails, rather than leaving apparently usable children
+on screen while the parent change is in flight.
+Provider summaries reserve **needs attention** for an actionable problem; a child the operator
+intentionally switched off remains counted as a saved source but is not labelled a problem.
+
+Exact resolution also returns at most three provider-native example items from that target. The
+selection preview links to the source and names those examples so the operator can understand what
+Loomarr will check before registration. Each example has an explicit **Preview** action that loads
+the provider's own player in the shared dialog only after the operator asks, and asks that player to
+begin immediately because opening the dialog is the playback gesture; **Open original** is always
+available as the fallback. Examples stay text-only until then: no thumbnail wall, eager
+embed, local download, database row, or acquisition authority. An unavailable example preview does
+not make an otherwise valid source unregistrable, and the UI describes examples as a bounded look
+at the source rather than a promise that every shown item will be accepted or played.
+The example section and its heading occupy their final position while those at-most-three items are
+being resolved, with Loomarr's indeterminate loader in place of the rows. The loader is replaced by
+the examples without shifting an otherwise unlabelled loading message into a new section.
+Archive.org examples are selected separately from acquisition order: one bounded Advanced Search
+request restricts the sample to movie items with a video representation Loomarr can consume and
+orders those items by Archive.org download count. This produces recognizable, playable examples
+without claiming that popularity changes what acquisition is allowed to inspect; the returned count
+describes the video items eligible for that preview, not every metadata record attached to the
+collection.
+
+A registered source row is an index entry, not a miniature settings page. It shows the switch,
+name, one truthful status, and one affordance to open the source workspace. That workspace reuses
+the application Sheet: it slides from the right on desktop, fills a narrow screen, traps and
+restores focus, and keeps the Sources list stationary behind it. The selected source's exact check
+outcome, provider link, same three-item source preview used before registration, clip browser,
+location exception, cadence/limits, and removal live together there. Opening a registered remote
+source resolves its saved target directly; the operator never has to search for a source they have
+already added. The primary manual action is labelled **Look for new clips** because it may queue
+downloads; “check” is reserved for status and must not hide that consequence. Repeated prose around
+the three-item sample is removed once the source status already explains review. Archive's optional
+catalog tool is labelled **Find a specific clip** and starts collapsed: it is an intentional escape
+hatch, not a required setup step or a peer of unattended acquisition. Its result rows reuse the same
+provider-native Preview dialog as the three-item sample before offering **Queue download**. Queueing
+an item keeps the registered parent Source and provider item identity; it never turns the item into
+another recurring Source. The row moves through **Queueing…**, **Downloading…**, then the truthful
+terminal **Added — being checked** or **Couldn’t add** state. The browser retains only the small
+item-to-job correlation needed to restore that row after navigation; the acquisition GET is the
+authoritative state after reconnect, while SSE only shortens the delay. An accepted request is never
+rendered as permanently queued after its background job has failed.
+The full visible row for this tool and **Source settings** is the disclosure trigger; a small
+far-edge chevron alone is not an adequate or discoverable hit target.
+Clip search initially reveals eight results and progressively reveals the rest of the bounded 25-result
+page inside the sheet's own scroll area; it never lengthens the Sources page. A local-source sheet
+retains the concrete folder path or library name and latest-check time; a wide workspace that repeats
+only “Ready” and one button does not give the operator enough context to justify opening it. At ten registered
+sources in a provider or local section, the section adds a registered-source filter. Without a
+filter it shows every paused, failed, or attention-needed row first, then five healthy rows, with
+the remaining healthy count behind **Show N more**; **Show fewer** restores that calm view. An
+active filter searches only registered rows, shows every match, and never changes the provider
+catalog finder above it. Local folders and media-server libraries use the same source workspace where their
+capabilities apply. **Your files** is the first source group, ahead of remote providers, and owns its
+compact folder/library add form just as each remote provider owns its catalog finder; that form is
+never detached at the bottom of the page and the group remains visible as an invitation when it has
+no sources yet. It has no remote catalog to search. A location exception reuses the same single searchable location picker as setup and
+Settings; it never exposes separate country and market fields. Automatic detection belongs to the
+installation location. In a source workspace, **Use my location** instead clears the exception and
+returns the source to installation-location inheritance.
 
 ⚠ **An honest gap this exposes rather than creates:** `sync.go` writes `Source = "filler-dir"` for
 every clip the folder scan finds, and the sidecar records only *whether* Loomarr downloaded a clip,
@@ -10481,10 +10616,11 @@ Consequences, embraced:
 On a fresh instance the UI then walks the owner through, in order:
 1. **Bootstrap** — create the owning admin (local username + password, `POST /v1/setup/bootstrap`, §11). Works with zero media-server config; succeeds once (while no admin exists), then this step is done forever. **Once done it renders read-only**, naming the owner: the step cannot run twice, so offering the form again is a dead end an operator can only discover by submitting it.
 2. **Playout** — *"How should Loomarr play your channels?"* Two choices, writing `playout.backend` (§9.1): **Loomarr** (default) or **Tunarr**. See "The playout choice shapes the wizard" below — this answer decides which of the remaining steps exist at all. **Choosing Loomarr reveals the ordinary `server.public_url` field on this same step and the step remains incomplete until a valid address has been persisted.** The copy says this must be an address the media server can reach; inferring it from the browser or request headers would give a containerised media server an often-unreachable host. An environment-pinned `SERVER_PUBLIC_URL` remains locked and satisfies the step when non-empty. ⚠ **Choosing Tunarr reveals Tunarr's own connection form on this same step**, rather than sending the operator to Connections for it: "which one plays my channels" and "where is it" are one decision, and splitting them across two screens made it feel like two. Both forms are ordinary registry-backed settings fields, so they write through the same PATCH path as everything else (config-design §6).
-3. **Connection checklist** — live-tests each dependency and shows pass/fail with a fix hint and a deep link into the relevant docs page: media server reachable + `library.token` valid; filler library found (if configured); Seerr reachable + key valid; LLM reachable + model present **and supports tool-calling** (Ollama: query the model's capabilities — a non-tools model fails grounding silently otherwise); TMDB key valid. **Tunarr is never a block on this step** — it is configured on the Playout step above — but on the Tunarr path its check still **gates** here: being configured elsewhere does not stop it being required (**Tunarr reachable *and* with a media source matching `library.url`**, queryable via Tunarr's API, which verifies §6's "Important" invariant instead of just documenting it).
-4. **Give Tunarr your library** (**Tunarr path only**) — one-click wiring + scan of Tunarr's Emby/Jellyfin source (`POST /v1/setup/tunarr-connect`, §6/§7), so channels get real programs rather than dead air. Internal playout reads the library directly and needs no equivalent, so the step does not exist there.
-5. **Import media-server users** (optional) — the admin picks which Emby/Jellyfin accounts get in (`POST /v1/users/import`, §11); only imported users can sign in. Skippable for a solo install (the bootstrap admin is enough).
-6. **Guided first channel** — offer a template intent (below); since the owner is an admin, they can self-approve and watch the full pipeline run end to end.
+3. **Location** — *"Where are your channels watched?"* writes the Installation geography used across the instance: an ISO country and an optional local market. Setup and Settings share **one place combobox**, labelled **Location**, whose selected value reads like `New York, United States`; country and market are implementation details rather than two ordinary-user fields. Typing searches Loomarr's embedded city, populated-municipality, and country index after a short pause, works by keyboard, keeps the result panel stable while a request is in flight, and always remains available. Region names distinguish otherwise ambiguous results without becoming another setting. **Use my location** follows one bounded resolver pipeline: browser coordinates after explicit permission; supported geography from a configured trusted reverse proxy/CDN (for example Cloudflare, CloudFront, or Vercel); then the request's public client IP against Loomarr's embedded country index. A private/LAN address yields no estimate. These paths propose a place and never save it. Proxy geography is accepted only when `security.trust_proxy=true`; direct connections use their socket peer rather than forwarding headers. IP-derived results are visibly labelled approximate and never invent a city when the evidence supplies only a country. Loomarr never infers this setting from browser locale, timezone, untrusted request headers, or server location, and never calls a runtime third-party geocoder. Denial, timeout, unavailable coordinates, or no supported result leaves manual search usable and does not stage a guess. Selecting a place stages `filler.home_country` and `filler.home_market` as one logical edit; Save reports success only when both results are `saved`, retains either rejected edit, and the wizard advances only after that pair is persisted. Environment-pinned geography remains visible and read-only. A country-only selection is valid because country-wide channels and sources are valid. The same control lives in Settings → General for the life of the install.
+4. **Connection checklist** — live-tests each dependency and shows pass/fail with a fix hint and a deep link into the relevant docs page: media server reachable + `library.token` valid; filler library found (if configured); Seerr reachable + key valid; LLM reachable + model present **and supports tool-calling** (Ollama: query the model's capabilities — a non-tools model fails grounding silently otherwise); TMDB key valid. **Tunarr is never a block on this step** — it is configured on the Playout step above — but on the Tunarr path its check still **gates** here: being configured elsewhere does not stop it being required (**Tunarr reachable *and* with a media source matching `library.url`**, queryable via Tunarr's API, which verifies §6's "Important" invariant instead of just documenting it).
+5. **Give Tunarr your library** (**Tunarr path only**) — one-click wiring + scan of Tunarr's Emby/Jellyfin source (`POST /v1/setup/tunarr-connect`, §6/§7), so channels get real programs rather than dead air. Internal playout reads the library directly and needs no equivalent, so the step does not exist there.
+6. **Import media-server users** (optional) — the admin picks which Emby/Jellyfin accounts get in (`POST /v1/users/import`, §11); only imported users can sign in. Skippable for a solo install (the bootstrap admin is enough).
+7. **Guided first channel** — offer a template intent (below); since the owner is an admin, they can self-approve and watch the full pipeline run end to end.
 
 #### The playout choice shapes the wizard
 
@@ -10616,6 +10752,7 @@ surface without a wire-format migration. The opt-in profiler also exposes Go 1.2
 | Sessions | hand-rolled in the Store (random 256-bit token, **SHA-256-hashed at rest**, HttpOnly cookie) | We need revocation-by-user + dual-backend anyway; `scs`/`gorilla` add a dependency for no gain |
 | Human passwords | `golang.org/x/crypto/argon2` (Argon2id v=19; 64 MiB, 3 passes, 4 lanes; 16-byte salt; 32-byte tag), with `x/crypto/bcrypt` read-only for legacy verification | Local accounts and media-server offline fallback need a memory-hard, non-reversible verifier. One bounded PHC parser owns encoding and rejects unsupported or oversized parameters before allocation. Existing bcrypt rows upgrade to Argon2id immediately after their next successful local login; bcrypt is never written. `x/crypto` is already a direct dependency. Session *tokens* stay SHA-256 (fast, high-entropy); only human passwords use Argon2id. |
 | Unicode phrase matching | `golang.org/x/text` (`cases.Fold` + `unicode/norm`) | Episode intent and thematic evidence must match canonically equivalent non-ASCII words without locale guesses. Version `v0.41.0` was already pinned transitively; this promotes the same module/version to direct ownership, adding no module or runtime service. |
+| Installation location data | **GeoNames `cities15000.zip` + populated ADM3/ADM4 records from `allCountries.zip` + `admin1CodesASCII.txt` + `countryInfo.txt`, and DB-IP Country Lite September 2026, generated into compact embedded indexes** | One friendly Location field needs city, populated-municipality, and country search, coordinate resolution, and a direct-IP fallback without sending an install's position to a geocoder. Region names disambiguate labels but are not stored as a separate setting; unpopulated administrative records and unrelated GeoNames features are discarded by the generator. Both providers are CC BY 4.0. The generator verifies exact source SHA-256 digests, records required attribution, emits deterministic bytes, and is the only way the checked-in indexes change. Runtime lookup is local and bounded and uses only the Go standard library. The UI links DB-IP attribution whenever its estimate is shown; its reduced-accuracy monthly Lite data is suggestion evidence, never silently persisted or an authorization signal. |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
 | Database secret encryption | Go standard-library `crypto/aes`, `crypto/cipher`, `crypto/rand`, and `crypto/sha256` behind Loomarr's secret-protection module | Grafana-style envelope encryption needs authenticated encryption, secure randomness, and a non-secret installation-key fingerprint; the standard library supplies the complete primitive set, so no new cryptography dependency or runtime enters the release. |

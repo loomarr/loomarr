@@ -124,15 +124,20 @@ func buildFillerSubsystem(
 	taggerProvider, tagger := buildTagger(st, set, layout, log, metricRecorder)
 	fetcher := buildFetcher(set, layout, log, st)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder)
+	ytDlpPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
 		start: owner.startInteractiveOperation, operations: st,
 		sources: st, pullPlanning: st, acquisitions: st, readiness: st, now: time.Now,
+		archiveFinder: clipfetch.NewArchiveSourceFinder(),
 		home: func() filler.Geography {
 			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
 		},
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
+	}
+	if ytDlpPath != "" {
+		adapter.youtubeFinder = clipfetch.NewYouTubeSourceFinder(ytDlpPath)
 	}
 
 	pods := buildPodAdapter(st, set, log).WithMetrics(metricRecorder)
@@ -169,7 +174,7 @@ func buildFillerSubsystem(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
 	)))
-	sourceEnumerator := registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp"))}
+	sourceEnumerator := registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(ytDlpPath)}
 	adapter.sourceEnum = sourceEnumerator
 	autoFetch := filler.NewFetcher(
 		fetchStoreAdapter{

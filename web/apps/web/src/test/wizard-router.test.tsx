@@ -64,12 +64,16 @@ const stubWizard = (opts: {
   backend?: "internal" | "tunarr";
   publicUrl?: string;
   publicUrlPinned?: boolean;
+  country?: string;
+  market?: string;
   settingsDelayMs?: number;
   settingsFailures?: number;
 }) => {
   let authed = opts.authed;
   let backend = opts.backend ?? "tunarr";
   let publicUrl = opts.publicUrl ?? "http://loomarr:8080";
+  let country = opts.country ?? "US";
+  let market = opts.market ?? "";
   let settingsFailures = opts.settingsFailures ?? 0;
   const seq: string[] = [];
   const patches: string[] = [];
@@ -93,6 +97,18 @@ const stubWizard = (opts: {
         value: publicUrl,
         provenance: opts.publicUrlPinned ? "env" : "db",
         envVar: "SERVER_PUBLIC_URL",
+      }),
+      setting({
+        key: "filler.home_country",
+        label: "Country",
+        group: "filler",
+        value: country,
+      }),
+      setting({
+        key: "filler.home_market",
+        label: "Local area",
+        group: "filler",
+        value: market,
       }),
       setting({
         key: "setup.completed",
@@ -137,6 +153,18 @@ const stubWizard = (opts: {
       seq.push("test");
       return { ok: true, hint: "Connection OK" };
     }),
+    http.get("*/v1/locations/suggestion", () =>
+      HttpResponse.json({
+        suggestion: {
+          id: "5128581",
+          label: "New York City, United States",
+          country: "US",
+          market: "New York City",
+          source: "proxy",
+          approximate: true,
+        },
+      }),
+    ),
     getSettingsPatchMockHandler(async ({ request }) => {
       seq.push("patch");
       const body = (await request.json()) as { edits?: Record<string, string> };
@@ -163,6 +191,8 @@ const stubWizard = (opts: {
           publicUrl = value.replace(/\/$/, "");
         }
         if (key === "playout.backend" && (value === "internal" || value === "tunarr")) backend = value;
+        if (key === "filler.home_country") country = value;
+        if (key === "filler.home_market") market = value;
         return { key, status: "saved" as const };
       });
       return { results };
@@ -203,6 +233,33 @@ describe("first-run routing", () => {
 });
 
 describe("wizard", () => {
+  it("detects one location, saves country and market, and continues without a manual setup detour", async () => {
+    const { seq, patches } = stubWizard({
+      authed: true,
+      setupCompleted: false,
+      backend: "internal",
+      country: "",
+      checks: [{ name: "media_server", ok: false, hint: "Not connected yet" }],
+    });
+    renderAt("/wizard?step=location");
+
+    expect(
+      await screen.findByRole("heading", { name: /where are your channels watched/i }),
+    ).toBeInTheDocument();
+    const next = screen.getByRole("button", { name: "Continue" });
+    expect(next).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Use my location" }));
+    expect(screen.getByRole("combobox", { name: "Location" })).toHaveValue("New York City, United States");
+    expect(next).toBeEnabled();
+    await userEvent.click(next);
+
+    await vi.waitFor(() => expect(seq).toContain("patch"));
+    expect(patches.join()).toMatch(/filler\.home_country/);
+    expect(patches.join()).toMatch(/filler\.home_market/);
+    expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
+  });
+
   it("waits for the settings registry before deriving the wizard path", async () => {
     stubWizard({
       authed: true,

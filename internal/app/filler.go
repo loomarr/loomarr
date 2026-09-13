@@ -206,7 +206,7 @@ func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]filler.
 	}
 	out := make([]filler.ScanSource, 0, len(srcs))
 	for _, s := range srcs {
-		if s.Enabled && s.Scannable() {
+		if s.EffectiveEnabled() && s.Scannable() {
 			out = append(out, filler.ScanSource{ID: s.ID, Kind: s.Kind, URI: s.URI})
 		}
 	}
@@ -437,7 +437,7 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 		// what the fetcher needs from a per-source interval is only whether it is zero.
 		_, pollable := s.FetchEvery(a.fetchEvery())
 		out = append(out, filler.FetchSource{
-			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.Enabled,
+			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.EffectiveEnabled(),
 			NeverFetch: !pollable,
 			MaxPerRun:  s.MaxPerRun(0),
 		})
@@ -682,9 +682,11 @@ type fillerServiceAdapter struct {
 	sources fillerSourceRegistry
 	// pullPlanning is the read side of candidate-level pull composition. It is separate from
 	// sources because approval history is evidence for "already queued/declined" selection.
-	pullPlanning fillerPullPlanningStore
-	sourceEnum   filler.SourceEnumerator
-	home         func() filler.Geography
+	pullPlanning  fillerPullPlanningStore
+	sourceEnum    filler.SourceEnumerator
+	archiveFinder *clipfetch.ArchiveSourceFinder
+	youtubeFinder *clipfetch.YouTubeSourceFinder
+	home          func() filler.Geography
 	// acquisitions is the reconnect truth for background downloads. nil is allowed only in
 	// narrow tests; production always supplies the store before any job can be accepted.
 	acquisitions fillerAcquisitionWriter
@@ -705,12 +707,49 @@ type fillerServiceAdapter struct {
 	autoFetch *filler.Fetcher
 }
 
+func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
+	switch provider {
+	case "archive":
+		finder := a.archiveFinder
+		if finder == nil {
+			finder = clipfetch.NewArchiveSourceFinder()
+		}
+		return finder.Suggest(ctx, query, limit)
+	case "youtube":
+		if a.youtubeFinder == nil {
+			return nil, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
+		}
+		return a.youtubeFinder.Suggest(ctx, query, limit)
+	default:
+		return nil, fmt.Errorf("source suggestions are not implemented for %s", provider)
+	}
+}
+
+func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input string) (filler.SourceSuggestion, error) {
+	switch provider {
+	case "archive":
+		finder := a.archiveFinder
+		if finder == nil {
+			finder = clipfetch.NewArchiveSourceFinder()
+		}
+		return finder.Resolve(ctx, input)
+	case "youtube":
+		if a.youtubeFinder == nil {
+			return filler.SourceSuggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
+		}
+		return a.youtubeFinder.Resolve(ctx, input)
+	default:
+		return filler.SourceSuggestion{}, fmt.Errorf("source resolution is not implemented for %s", provider)
+	}
+}
+
 var _ api.FillerRewinder = fillerServiceAdapter{}
 var _ fillerdecision.DiagnosticRecoveryExecutor = fillerServiceAdapter{}
 
 // fillerSourceRegistry is the acquisition-side source slice. Admission policy is deliberately
 // absent: this adapter registers and fetches sources but is not allowed to change their trust.
 type fillerSourceRegistry interface {
+	ListFillerProviders(context.Context) ([]store.FillerProvider, error)
 	ListFillerSources(context.Context) ([]store.FillerSource, error)
 	UpsertFillerSource(context.Context, store.FillerSource) error
 }
@@ -905,6 +944,16 @@ func (a fillerServiceAdapter) ingest(
 	if a.start == nil {
 		return "", errors.New("filler acquisition lifecycle is not configured")
 	}
+	providerEnabled := map[string]bool{}
+	if a.sources != nil {
+		providers, err := a.sources.ListFillerProviders(ctx)
+		if err != nil {
+			return "", fmt.Errorf("read filler provider policy: %w", err)
+		}
+		for _, provider := range providers {
+			providerEnabled[provider.Kind] = provider.Enabled
+		}
+	}
 	jobID := a.newID()
 	sources := make([]clipfetch.Source, 0, len(targets))
 	for _, target := range targets {
@@ -914,6 +963,9 @@ func (a fillerServiceAdapter) ingest(
 			kind = clipfetch.KindForURL(target.URL)
 		} else if kind != clipfetch.Archive && kind != clipfetch.YouTube {
 			return "", fmt.Errorf("unsupported registered filler source kind %q", target.Kind)
+		}
+		if enabled, known := providerEnabled[string(kind)]; known && !enabled {
+			return "", fmt.Errorf("%w: %s", filler.ErrProviderPaused, kind)
 		}
 		sources = append(sources, clipfetch.Source{
 			ID: target.SourceID, AcquisitionID: jobID,

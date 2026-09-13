@@ -41,6 +41,7 @@ const wizardSteps = (backend: PlayoutBackend): WizardStep[] => {
   return [
     { id: "bootstrap", title: "Admin" },
     { id: "playout", title: "Playout" },
+    { id: "location", title: "Location" },
     connections,
     // Wiring Tunarr's library exists only where Tunarr plays: internal playout reads the
     // library directly, so there is no equivalent to do.
@@ -87,6 +88,7 @@ interface StepContext {
   // The persisted, registry-normalized machine-client address. Internal playout cannot
   // publish a tuner until the media server has an absolute Loomarr URL to fetch from.
   publicURL?: string;
+  installationCountry?: string;
 }
 
 const backendOf = (ctx: StepContext): PlayoutBackend => ctx.backend ?? PLAYOUT_INTERNAL;
@@ -103,6 +105,7 @@ const isStepDone = (id: string, ctx: StepContext): boolean => {
     if (!ctx.isAuthenticated) return false;
     return backendOf(ctx) === PLAYOUT_TUNARR || (ctx.publicURL?.trim() ?? "") !== "";
   }
+  if (id === "location") return (ctx.installationCountry?.trim() ?? "") !== "";
   if (id === "checklist") return requiredChecks(backendOf(ctx)).every((name) => checkOk(ctx.checks, name));
   const wiring = WIRING_CHECK_BY_STEP[id];
   return wiring ? checkOk(ctx.checks, wiring) : false;

@@ -33,7 +33,7 @@ const SR: Record<WatchHealth, string> = {
 const WatchPill = ({ status, health, className }: WatchPillProps) => (
   <div
     className={cn(
-      "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2",
+      "flex max-w-full min-w-0 w-full items-center gap-2 whitespace-normal rounded-lg border border-border bg-card px-3 py-2 sm:w-auto sm:whitespace-nowrap",
       className,
     )}
   >
@@ -45,7 +45,7 @@ const WatchPill = ({ status, health, className }: WatchPillProps) => (
       )}
       aria-hidden
     />
-    <span className="font-mono text-muted-foreground text-xs">{status}</span>
+    <span className="min-w-0 font-mono text-muted-foreground text-xs">{status}</span>
     {/* ⚠ The dot is `aria-hidden`, so its meaning has to be said in words or it is invisible to a
         screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
         (it sees a decorated span, not a missing sentence). */}

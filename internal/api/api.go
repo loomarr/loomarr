@@ -131,6 +131,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerSystemRestart(humaAPI)
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
+	srv.registerLocations(humaAPI)
 	srv.registerNotificationDestinations(humaAPI)
 	srv.registerHelp(humaAPI)
 	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus

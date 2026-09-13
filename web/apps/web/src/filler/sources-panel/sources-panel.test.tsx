@@ -2,16 +2,22 @@ import type { FillerSourceDTO } from "@loomarr/api";
 import {
   getAddFillerSourceMockHandler,
   getDiscoverFillerMockHandler,
+  getDiscoverFillerStatsMockHandler,
+  getFetchFillerSourceMockHandler,
+  getGetFillerAcquisitionMockHandler,
   getListFillerSourcesMockHandler,
+  getLocationsSearchMockHandler,
   getMeMockHandler,
+  getQueueFillerSourceItemMockHandler,
+  getResolveFillerSourceMockHandler,
+  getSetFillerProviderEnabledMockHandler,
   getSetFillerSourceEnabledMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { SourcesPanel } from "./sources-panel";
@@ -48,8 +54,11 @@ const makeWrapper = () => {
 const stubSources = () => {
   const adds: unknown[] = [];
   const enables: { id: string; body: unknown }[] = [];
+  const providers: { kind: string; body: unknown }[] = [];
   const discoveries: URL[] = [];
   const fetches: URL[] = [];
+  const resolutions: { kind: string; input: string }[] = [];
+  const sourceItems: { sourceId: string; body: unknown }[] = [];
   server.use(
     getMeMockHandler(me({ name: "Admin" })),
     getAddFillerSourceMockHandler(async ({ request }) => {
@@ -61,17 +70,92 @@ const stubSources = () => {
       enables.push({ id: String(params.id), body: await request.json() });
       return { id: String(params.id), enabled: false };
     }),
+    getSetFillerProviderEnabledMockHandler(async ({ request, params }) => {
+      providers.push({ kind: String(params.kind), body: await request.json() });
+      return { kind: String(params.kind), enabled: false };
+    }),
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),
     getDiscoverFillerMockHandler(({ request }) => {
       discoveries.push(new URL(request.url));
       return { items: [], total: 0, licenceNote: "Check licences." };
     }),
-    http.post("*/v1/filler/sources/fetch", ({ request }) => {
+    getDiscoverFillerStatsMockHandler({ stats: {} }),
+    getLocationsSearchMockHandler({
+      locations: [
+        {
+          id: "6167865",
+          label: "Toronto, Canada",
+          country: "CA",
+          market: "Toronto",
+          region: "Ontario",
+        },
+      ],
+    }),
+    getFetchFillerSourceMockHandler(({ request }) => {
       fetches.push(new URL(request.url));
-      return HttpResponse.json({ total: 0, added: 0, updated: 0, pruned: 0 });
+      const sourceId = new URL(request.url).searchParams.get("id") ?? undefined;
+      return {
+        sourceId,
+        sourcesPolled: 1,
+        queued: 2,
+        skipped: 0,
+        total: 0,
+        added: 0,
+        updated: 0,
+        pruned: 0,
+      };
+    }),
+    getQueueFillerSourceItemMockHandler(async ({ request, params }) => {
+      sourceItems.push({ sourceId: String(params.id), body: await request.json() });
+      return { jobId: "acq-found-clip" };
+    }),
+    getGetFillerAcquisitionMockHandler({
+      id: "acq-found-clip",
+      trigger: "source",
+      sourceId: "archive:classic",
+      status: "queued",
+      requested: 1,
+      fetched: 0,
+      skipped: 0,
+      failed: 0,
+      empty: 0,
+      startedAt: "2026-09-13T14:00:00Z",
+      updatedAt: "2026-09-13T14:00:00Z",
+      outcome: { enrolled: 0, preparing: 0, needsDecision: 0, admitted: 0, rejected: 0, dismissed: 0 },
+      artifacts: { staged: 0, published: 0, consumed: 0, repair: 0 },
+    }),
+    getResolveFillerSourceMockHandler(async ({ request, params }) => {
+      const body = (await request.json()) as { input: string };
+      const kind = String(params.kind);
+      resolutions.push({ kind, input: body.input });
+      if (kind === "youtube") {
+        return {
+          provider: "youtube",
+          targetType: "channel",
+          canonicalId: "UC-retro",
+          canonicalUrl: body.input,
+          title: "Retro Ads",
+          alreadyAdded: true,
+          previewItems: [
+            { title: "Local commercial break", url: "https://www.youtube.com/watch?v=video-one" },
+          ],
+        };
+      }
+      return {
+        provider: "archive",
+        targetType: "collection",
+        canonicalId: body.input,
+        canonicalUrl: `https://archive.org/details/${body.input}`,
+        title: "Classic TV",
+        alreadyAdded: true,
+        previewItems: [
+          { title: "First station break", url: "https://archive.org/details/station_break_one" },
+          { title: "Second station break", url: "https://archive.org/details/station_break_two" },
+        ],
+      };
     }),
   );
-  return { adds, enables, discoveries, fetches };
+  return { adds, enables, providers, discoveries, fetches, resolutions, sourceItems };
 };
 
 const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">): FillerSourceDTO => ({
@@ -79,17 +163,40 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
   target: "/data/filler",
   detail: "watched directly",
   count: 0,
+  incoming: 0,
   configured: true,
   fetchable: true,
   enabled: true,
+  effectiveEnabled: over.effectiveEnabled ?? over.enabled !== false,
+  providerEnabled: true,
   switchable: true,
   removable: false,
   searchable: false,
+  readiness:
+    over.readiness ??
+    (over.configured === false ? "not_configured" : over.enabled === false ? "off" : "ready"),
+  ready: over.ready ?? (over.configured !== false && over.enabled !== false),
+  locationSource: "installation",
+  actions:
+    over.actions ??
+    (over.configured === false
+      ? ["configure"]
+      : over.enabled === false
+        ? ["enable"]
+        : [
+            "fetch",
+            "disable",
+            ...(over.removable ? ["remove"] : []),
+            ...(over.searchable ? ["search"] : []),
+            ...(over.kind === "archive" || over.kind === "youtube" ? ["edit_location"] : []),
+          ]),
   ...over,
 });
 
 const renderPanel = (sources: FillerSourceDTO[] = [source({ kind: "folder" })]) =>
   render(<SourcesPanel sources={sources} />, { wrapper: makeWrapper() });
+
+beforeEach(() => sessionStorage.clear());
 
 describe("SourcesPanel", () => {
   it("lists the sources it is given", () => {
@@ -107,22 +214,64 @@ describe("SourcesPanel", () => {
   // YouTube playlist URL are validated by incompatible rules on the server — before the kind was
   // sent, the hardcoded archive validator rejected every playlist URL with a message about
   // archive.org collections.
-  it("sends the chosen kind with the new source", async () => {
+  it("keeps folder and library setup in the local-source form", async () => {
     const { adds } = stubSources();
     renderPanel();
 
     // The add form is admin-only, so it appears only once `/v1/auth/me` has resolved.
-    await screen.findByRole("textbox", { name: "Library name" });
-    await userEvent.click(screen.getByRole("combobox", { name: "Kind of source to add" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Internet Archive" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "Collection or URL" }), "vintage_ads");
-    await userEvent.type(screen.getByRole("textbox", { name: "Source country code" }), "us");
-    await userEvent.type(screen.getByRole("textbox", { name: "Source local market" }), "New York");
-    await userEvent.click(screen.getByRole("button", { name: /add source/i }));
+    const local = await screen.findByRole("region", { name: "Your files" });
+    const library = await within(local).findByRole("textbox", { name: "Library name" });
+    await userEvent.type(library, "Commercials");
+    await userEvent.click(within(local).getByRole("button", { name: /add source/i }));
 
     await waitFor(() => {
-      expect(adds).toEqual([{ kind: "archive", uri: "vintage_ads", country: "US", market: "New York" }]);
+      expect(adds).toEqual([{ kind: "library", uri: "Commercials" }]);
     });
+  });
+
+  it("adds remote targets inside their provider without a kind selector", async () => {
+    const { adds } = stubSources();
+    server.use(
+      getResolveFillerSourceMockHandler({
+        provider: "youtube",
+        targetType: "channel",
+        canonicalId: "UC-retroads",
+        canonicalUrl: "https://www.youtube.com/channel/UC-retroads/videos",
+        title: "Retro Ads",
+        alreadyAdded: false,
+      }),
+    );
+    renderPanel([
+      source({
+        kind: "youtube",
+        id: "provider:youtube",
+        target: "YouTube",
+        group: true,
+        configured: false,
+        fetchable: false,
+        searchable: false,
+      }),
+    ]);
+
+    const input = await screen.findByRole("combobox", { name: "Find a YouTube channel or playlist" });
+    expect(screen.queryByRole("combobox", { name: /kind of source/i })).not.toBeInTheDocument();
+    await userEvent.type(input, "https://www.youtube.com/@retroads/videos");
+    await userEvent.click(await screen.findByRole("button", { name: "Add source" }));
+
+    await waitFor(() => {
+      expect(adds).toContainEqual({
+        kind: "youtube",
+        uri: "https://www.youtube.com/channel/UC-retroads/videos",
+        label: "Retro Ads",
+      });
+    });
+  });
+
+  it("uses the provider command for the provider switch", async () => {
+    const { providers } = stubSources();
+    renderPanel([source({ kind: "archive", id: "provider:archive", target: "Archive.org", group: true })]);
+    await userEvent.click(await screen.findByRole("switch", { name: "Use Archive.org" }));
+    await waitFor(() => expect(providers).toEqual([{ kind: "archive", body: { enabled: false } }]));
   });
 
   // ⚠ THE promise the switch has to keep. Switching a source off withdraws it from future
@@ -141,50 +290,233 @@ describe("SourcesPanel", () => {
     });
   });
 
-  // ⚠ Only `archive` can be searched in place, and the panel reads the server's `searchable`
-  // flag rather than testing the kind itself. A YouTube playlist can only be ENUMERATED by
-  // yt-dlp, so a search box there would return nothing forever.
-  // ⚠ Queried by the SOURCE's name, not the button's visible "Search it" (§10 V54 B6). Several
-  // collections now appear together under one provider, and five buttons all reading "Search it"
-  // are indistinguishable to anyone not looking at the row they sit in — so the accessible name
-  // carries the target, and that is what a test must ask for.
-  it("offers search only on a searchable source", () => {
+  // Search belongs to the selected source workspace. The panel reads the server's `searchable`
+  // flag rather than guessing from the provider kind.
+  it("offers search only in a searchable source's workspace", async () => {
     stubSources();
     const { unmount } = renderPanel([
       source({ kind: "archive", id: "a", target: "classic_tv", searchable: true }),
     ]);
-    expect(screen.getByRole("button", { name: /^search classic_tv$/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Manage classic_tv" }));
+    expect(await screen.findByRole("dialog", { name: "classic_tv" })).toHaveTextContent(
+      "Find a specific clip",
+    );
+    expect(screen.queryByRole("textbox", { name: "Search this source" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    expect(screen.getByRole("textbox", { name: "Search this source" })).toBeInTheDocument();
     unmount();
 
     renderPanel([source({ kind: "youtube", id: "y", target: "vintage_ads", searchable: false })]);
-    expect(screen.queryByRole("button", { name: /^search vintage_ads$/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Manage vintage_ads" }));
+    expect(await screen.findByRole("dialog", { name: "vintage_ads" })).not.toHaveTextContent(
+      "Find a specific clip",
+    );
   });
 
-  it("explains source geography before scheduled acquisition", async () => {
+  it("explains that new sources follow the installation location", async () => {
     stubSources();
     renderPanel();
-    expect(await screen.findByText(/country-only sources are nationwide/i)).toBeInTheDocument();
-    expect(screen.getByText(/unclassified and out-of-market sources are not fetched/i)).toBeInTheDocument();
+    expect(await screen.findByText(/uses your location/i)).toBeInTheDocument();
+    expect(screen.getByText(/every clip is checked before it can play/i)).toBeInTheDocument();
+  });
+
+  it("keeps registered rows compact and opens one coherent source workspace", async () => {
+    stubSources();
+    renderPanel([
+      source({
+        kind: "archive",
+        id: "archive:classic",
+        uri: "classic_tv",
+        target: "Classic TV",
+        searchable: true,
+        removable: true,
+      }),
+    ]);
+
+    expect(screen.queryByRole("button", { name: "Check now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Advanced" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Browse clips" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    const workspace = await screen.findByRole("dialog", { name: "Classic TV" });
+    expect(workspace).toHaveTextContent("Look for new clips");
+    expect(workspace).toHaveTextContent("Find a specific clip");
+    expect(screen.queryByRole("textbox", { name: "Search this source" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    expect(screen.getByRole("textbox", { name: "Search this source" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Location" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
+    expect(screen.getByRole("combobox", { name: "Location" })).toBeInTheDocument();
+  });
+
+  it("links a source's held clips to Incoming instead of reporting an empty source", async () => {
+    stubSources();
+    renderPanel([
+      source({
+        kind: "archive",
+        id: "archive:tv_ads",
+        uri: "tv_ads",
+        target: "TV Ads",
+        count: 0,
+        incoming: 22,
+      }),
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage TV Ads" }));
+    const workspace = await screen.findByRole("dialog", { name: "TV Ads" });
+    expect(workspace).toHaveTextContent("0 ready");
+    expect(within(workspace).getByRole("link", { name: "22 being checked" })).toHaveAttribute(
+      "href",
+      "/filler/incoming",
+    );
+  });
+
+  it("opens secondary tools from the visible section rows, not only their chevrons", async () => {
+    stubSources();
+    renderPanel([
+      source({
+        kind: "archive",
+        id: "archive:classic",
+        uri: "classic_tv",
+        target: "Classic TV",
+        searchable: true,
+        removable: true,
+      }),
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+
+    const findRow = screen.getByText("Find a specific clip");
+    expect(findRow.closest("button")).not.toBeNull();
+    await userEvent.click(findRow);
+    expect(screen.getByRole("textbox", { name: "Search this source" })).toBeInTheDocument();
+
+    const settingsRow = screen.getByText("Source settings");
+    expect(settingsRow.closest("button")).not.toBeNull();
+    await userEvent.click(settingsRow);
+    expect(screen.getByRole("combobox", { name: "Location" })).toBeInTheDocument();
+  });
+
+  it("keeps a local folder’s path and latest check in its workspace", async () => {
+    stubSources();
+    renderPanel([
+      source({
+        kind: "folder",
+        id: "folder",
+        uri: "/data/filler/commercials",
+        target: "/data/filler/commercials",
+        lastFetchedAt: "2026-09-13T12:00:00Z",
+      }),
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Drop folder" }));
+    const workspace = await screen.findByRole("dialog", { name: "Drop folder" });
+    expect(workspace).toHaveTextContent("/data/filler/commercials");
+    expect(workspace).toHaveTextContent(/last checked/i);
+  });
+
+  it("previews an existing remote source from its saved target without searching", async () => {
+    const { resolutions } = stubSources();
+    renderPanel([
+      source({
+        kind: "archive",
+        id: "archive:classic",
+        uri: "classic_tv",
+        target: "Classic TV",
+        searchable: true,
+      }),
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    const workspace = await screen.findByRole("dialog", { name: "Classic TV" });
+    expect(await screen.findByRole("link", { name: "First station break" })).toBeInTheDocument();
+    expect(resolutions).toEqual([{ kind: "archive", input: "classic_tv" }]);
+    expect(workspace).not.toHaveTextContent("Search collections or paste");
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Preview" })[0]!);
+    expect(screen.getByTitle("Preview First station break")).toHaveAttribute(
+      "src",
+      "https://archive.org/embed/station_break_one?autoplay=1",
+    );
+  });
+
+  it("keeps a source-specific location and removal under Source settings", async () => {
+    const { enables } = stubSources();
+    renderPanel([
+      source({
+        kind: "archive",
+        id: "archive:classic",
+        target: "Classic TV",
+        removable: true,
+      }),
+    ]);
+
+    expect(screen.queryByRole("combobox", { name: "Location" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /remove classic tv/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
+    const location = screen.getByRole("combobox", { name: "Location" });
+    await userEvent.clear(location);
+    await userEvent.type(location, "Toronto");
+    await userEvent.click(await screen.findByRole("option", { name: "Toronto, Canada" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save different area" }));
+
+    await waitFor(() => {
+      expect(enables).toEqual([
+        {
+          id: "archive:classic",
+          body: { enabled: true, geography: { country: "CA", market: "Toronto" } },
+        },
+      ]);
+    });
+    expect(screen.getByRole("button", { name: /remove classic tv/i })).toBeInTheDocument();
+  });
+
+  it("uses the installation location again when a source exception is cleared", async () => {
+    const { enables } = stubSources();
+    renderPanel([
+      source({
+        kind: "archive",
+        id: "archive:classic",
+        target: "Classic TV",
+        country: "CA",
+        market: "Toronto",
+        effectiveCountry: "CA",
+        effectiveMarket: "Toronto",
+        locationSource: "source",
+      }),
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
+    expect(screen.getByRole("combobox", { name: "Location" })).toHaveValue("Toronto, Canada");
+    await userEvent.click(screen.getByRole("button", { name: "Use my location" }));
+
+    await waitFor(() => {
+      expect(enables).toEqual([
+        {
+          id: "archive:classic",
+          body: { enabled: true, geography: { country: "", market: "" } },
+        },
+      ]);
+    });
   });
 
   it("fetches only the source row the operator selected", async () => {
     const { fetches } = stubSources();
     renderPanel([source({ kind: "archive", id: "archive:classic", target: "Classic TV" })]);
 
-    await userEvent.click(screen.getByRole("button", { name: /fetch now from classic tv/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: "Look for new clips" }));
 
     await waitFor(() => expect(fetches).toHaveLength(1));
     expect(fetches[0]?.searchParams.get("id")).toBe("archive:classic");
+    expect(await screen.findByRole("status")).toHaveTextContent("2 new clips were queued from Classic TV.");
   });
 });
 
-// The per-source search expander (§10 V54 B6).
-//
-// ⚠ **`searchOpen` was ONE boolean for the whole panel**, and `renderSearch` is called once per
-// source — so pressing "Search it" on one collection expanded the panel on EVERY searchable row,
-// each showing the same query and the same results. It looked correct with a single collection
-// registered, which is every fixture in this file before now. The provider roll-up is exactly what
-// puts several collections on screen at once.
+// The selected source owns the one open workspace and therefore the one search context (§10 V54 B6).
 describe("SourcesPanel per-source search", () => {
   const twoCollections = [
     source({
@@ -207,7 +539,8 @@ describe("SourcesPanel per-source search", () => {
     const { discoveries } = stubSources();
     renderPanel(twoCollections);
 
-    await userEvent.click(screen.getByRole("button", { name: /^search Classic TV Commercials$/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "cereal");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
@@ -216,45 +549,160 @@ describe("SourcesPanel per-source search", () => {
     expect(discoveries[0]?.searchParams.get("collection")).toBe("classic_tv");
   });
 
-  it("opens the search on the row that was clicked, and only that row", async () => {
+  it("queues a found clip under its registered parent and shows the durable download state", async () => {
+    const { sourceItems } = stubSources();
+    server.use(
+      getDiscoverFillerMockHandler({
+        items: [
+          {
+            id: "CampbellsSoupAdvert",
+            title: "Campbell's Soup",
+            url: "https://archive.org/details/CampbellsSoupAdvert",
+          },
+        ],
+        total: 1,
+        licenceNote: "Check licences.",
+      }),
+    );
+    renderPanel(twoCollections);
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
+    await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /queue download: campbell's soup/i }));
+
+    await waitFor(() => {
+      expect(sourceItems).toEqual([
+        {
+          sourceId: "archive:classic",
+          body: {
+            remoteId: "CampbellsSoupAdvert",
+            url: "https://archive.org/details/CampbellsSoupAdvert",
+          },
+        },
+      ]);
+    });
+    expect(await screen.findByText("Downloading…")).toBeInTheDocument();
+    expect(screen.queryByText("queued")).not.toBeInTheDocument();
+  });
+
+  it("replaces an accepted queue state with a recoverable background failure", async () => {
+    stubSources();
+    server.use(
+      getDiscoverFillerMockHandler({
+        items: [
+          {
+            id: "CampbellsSoupAdvert",
+            title: "Campbell's Soup",
+            url: "https://archive.org/details/CampbellsSoupAdvert",
+          },
+        ],
+        total: 1,
+        licenceNote: "Check licences.",
+      }),
+      getGetFillerAcquisitionMockHandler({
+        id: "acq-found-clip",
+        trigger: "source",
+        sourceId: "archive:classic",
+        status: "error",
+        requested: 1,
+        fetched: 0,
+        skipped: 0,
+        failed: 1,
+        empty: 0,
+        error: "Archive.org timed out",
+        startedAt: "2026-09-13T14:00:00Z",
+        completedAt: "2026-09-13T14:01:00Z",
+        updatedAt: "2026-09-13T14:01:00Z",
+        outcome: { enrolled: 0, preparing: 0, needsDecision: 0, admitted: 0, rejected: 0, dismissed: 0 },
+        artifacts: { staged: 0, published: 0, consumed: 0, repair: 0 },
+      }),
+    );
+    renderPanel(twoCollections);
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
+    await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /queue download: campbell's soup/i }));
+
+    expect(await screen.findByText("Couldn’t add")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(screen.queryByText("Downloading…")).not.toBeInTheDocument();
+  });
+
+  it("restores a found clip's durable download state after the Sources panel remounts", async () => {
+    const { sourceItems } = stubSources();
+    server.use(
+      getDiscoverFillerMockHandler({
+        items: [
+          {
+            id: "CampbellsSoupAdvert",
+            title: "Campbell's Soup",
+            url: "https://archive.org/details/CampbellsSoupAdvert",
+          },
+        ],
+        total: 1,
+        licenceNote: "Check licences.",
+      }),
+    );
+    const first = renderPanel(twoCollections);
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
+    await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /queue download: campbell's soup/i }));
+    expect(await screen.findByText("Downloading…")).toBeInTheDocument();
+    first.unmount();
+
+    renderPanel(twoCollections);
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
+    await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
+
+    expect(await screen.findByText("Downloading…")).toBeInTheDocument();
+    expect(sourceItems).toHaveLength(1);
+  });
+
+  it("opens one workspace for the row that was clicked", async () => {
     stubSources();
     renderPanel(twoCollections);
 
-    await userEvent.click(screen.getByRole("button", { name: /^search Classic TV Commercials$/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
 
-    // The clicked row is open…
-    expect(
-      screen.getByRole("button", { name: /close the search of Classic TV Commercials/i }),
-    ).toBeInTheDocument();
-    // …and the other row is still offering to open, rather than already showing this row's panel.
-    expect(screen.getByRole("button", { name: /^search Vintage PSAs$/i })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /close the search of Vintage PSAs/i }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Classic TV Commercials" })).toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
   });
 
   // One panel at a time is what lets the query state stay single — and switching rows must not
   // leave the previous row's answers sitting under this row's name.
-  it("moves the panel when a different source is searched", async () => {
+  it("resets search when a different source is opened", async () => {
     stubSources();
     renderPanel(twoCollections);
 
-    await userEvent.click(screen.getByRole("button", { name: /^search Classic TV Commercials$/i }));
-    await userEvent.click(screen.getByRole("button", { name: /^search Vintage PSAs$/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "cereal");
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Vintage PSAs" }));
 
-    expect(screen.getByRole("button", { name: /close the search of Vintage PSAs/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^search Classic TV Commercials$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Vintage PSAs" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /search this source/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    expect(screen.getByRole("textbox", { name: /search this source/i })).toHaveValue("");
   });
 
-  it("closes the panel when its own button is pressed again", async () => {
+  it("closes the workspace and returns focus to its source row", async () => {
     stubSources();
     renderPanel(twoCollections);
 
-    await userEvent.click(screen.getByRole("button", { name: /^search Classic TV Commercials$/i }));
-    await userEvent.click(
-      screen.getByRole("button", { name: /close the search of Classic TV Commercials/i }),
-    );
+    const trigger = screen.getByRole("button", { name: "Manage Classic TV Commercials" });
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
 
-    expect(screen.getByRole("button", { name: /^search Classic TV Commercials$/i })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 });

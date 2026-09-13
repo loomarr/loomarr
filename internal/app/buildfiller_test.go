@@ -42,7 +42,7 @@ func TestFillerSourceAdapter_HotEnablesTunarrAnnotation(t *testing.T) {
 	}
 }
 
-func TestFetchStoreAdapter_ExcludesUnclassifiedAndOutOfMarketSources(t *testing.T) {
+func TestFetchStoreAdapter_InheritsInstallationLocationAndExcludesOutOfMarketSources(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	for _, tc := range []struct {
 		id, country, market string
@@ -71,8 +71,11 @@ func TestFetchStoreAdapter_ExcludesUnclassifiedAndOutOfMarketSources(t *testing.
 	for _, src := range sources {
 		got[src.ID] = true
 	}
-	if !got["us-wide"] || !got["ny-local"] || len(got) != 2 {
-		t.Fatalf("fetch sources = %v, want only US-wide and New York local", got)
+	// Sources without their own geography—including the built-in starters and the
+	// explicit "unknown" row above—inherit the Installation location. Only an
+	// explicitly conflicting country or local market is excluded.
+	if !got["us-wide"] || !got["ny-local"] || !got["unknown"] || got["california"] || got["canadian"] {
+		t.Fatalf("fetch sources = %v, want matching and inherited sources but no explicit out-of-market sources", got)
 	}
 }
 

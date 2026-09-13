@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -455,6 +456,8 @@ func TestFillerSourceRoutes_RequireAdmin(t *testing.T) {
 
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/filler/sources", `{"uri":"classic"}`},
+		{http.MethodGet, "/v1/filler/providers/archive/suggestions?q=classic", ""},
+		{http.MethodPost, "/v1/filler/providers/archive/resolve", `{"input":"classic"}`},
 		{http.MethodPatch, "/v1/filler/sources/classic", `{"enabled":false}`},
 		{http.MethodDelete, "/v1/filler/sources/classic", ""},
 	} {
@@ -578,5 +581,59 @@ func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
 	}
 	if !byID["youtube:PL1"] {
 		t.Error("a configured playlist cannot be fetched — the guard is too broad")
+	}
+}
+
+func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
+	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
+		return map[string]string{"filler.home_country": "US", "filler.home_market": "New York"}[key]
+	})
+	ctx := context.Background()
+
+	inherited := store.NewFillerSource("archive:inherited", "archive", "inherited", "Inherited", time.Now().UTC())
+	if err := st.UpsertFillerSource(ctx, inherited); err != nil {
+		t.Fatal(err)
+	}
+	overridden := store.NewFillerSource("archive:canada", "archive", "canada", "Canada", time.Now().UTC())
+	overridden.Geography = filler.Geography{Country: "CA"}
+	if err := st.UpsertFillerSource(ctx, overridden); err != nil {
+		t.Fatal(err)
+	}
+
+	res := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/sources", "", adminToken)
+	var body struct {
+		Sources []struct {
+			ID               string   `json:"id"`
+			Readiness        string   `json:"readiness"`
+			Ready            bool     `json:"ready"`
+			LocationSource   string   `json:"locationSource"`
+			EffectiveCountry string   `json:"effectiveCountry"`
+			EffectiveMarket  string   `json:"effectiveMarket"`
+			Actions          []string `json:"actions"`
+		} `json:"sources"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]struct {
+		readiness, source, country, market string
+		ready                              bool
+		actions                            []string
+	}{}
+	for _, row := range body.Sources {
+		byID[row.ID] = struct {
+			readiness, source, country, market string
+			ready                              bool
+			actions                            []string
+		}{row.Readiness, row.LocationSource, row.EffectiveCountry, row.EffectiveMarket, row.Ready, row.Actions}
+	}
+	got := byID["archive:inherited"]
+	if !got.ready || got.readiness != "ready" || got.source != "installation" ||
+		got.country != "US" || got.market != "New York" || !slices.Contains(got.actions, "fetch") {
+		t.Fatalf("inherited source projection = %+v", got)
+	}
+	got = byID["archive:canada"]
+	if got.ready || got.readiness != "out_of_area" || got.source != "source" {
+		t.Fatalf("overridden source projection = %+v", got)
 	}
 }

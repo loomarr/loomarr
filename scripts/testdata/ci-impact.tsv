@@ -25,6 +25,7 @@ shared-client-ui-tv	web/packages/ui-tv/src/watching-navigation/watching-navigati
 shared-client-api	web/packages/api/src/unwrap/unwrap.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 shared-client-core	web/packages/core/src/guide/guide.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 shared-client-fixtures	web/packages/fixtures/src/index.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
+web-testcard-fixtures	web/packages/fixtures/src/testcard/testcard.ts	web,visual,image
 shared-player-browser	web/packages/player/src/browser/browser.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,tuner,image,android
 shared-player-native	web/packages/player/src/native/native.tsx	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,tuner,image,android
 client-tooling	web/turbo.json	clients
@@ -110,6 +111,7 @@ filler-corpus-nasa	internal/fillercorpus/corpus/pilot/nasa.json	contracts,go
 filler-corpus-cdc	internal/fillercorpus/corpus/pilot/cdc.json;internal/fillercorpus/corpus/seeds/cdc.json	contracts,go
 filler-corpus-commons	internal/fillercorpus/corpus/pilot/commons.json	contracts,go
 filler-corpus-locked	internal/fillercorpus/corpus/pilot/locked.json	contracts,go
+installation-location-data	internal/installationlocation/places.tsv.gz;internal/installationlocation/ip-country.csv.gz;internal/installationlocation/location-data.generated.json	contracts,go,image
 filler-pilot-review	internal/fillercorpus/pilotreview.go	contracts,go,postgres,image
 filler-pilot-review-command	cmd/filler-corpus-pilot-rights-review/main.go;cmd/filler-corpus-pilot-rights-lock/main.go	contracts,go,postgres,image
 filler-eval-doc	internal/fillereval/README.md	docs

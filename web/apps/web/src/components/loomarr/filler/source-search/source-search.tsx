@@ -1,8 +1,8 @@
 import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
 import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
-import { Check, Search } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Check, Loader2, Play, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
 import { Input } from "@/components/ui/input";
@@ -21,9 +21,9 @@ import type { SourceSearchProps } from "./source-search.type";
 // licence at all, so a badge would be empty on almost every row — and an absent licence means
 // UNKNOWN, never "public domain", which a chip cannot say.
 
-// A hard cap on what the server will return in one page, mirrored here only to explain the
-// gap between `results.length` and `total`.
-const PAGE_CAP = 25;
+// Keep a long provider result set calm inside the source workspace. The server still owns the
+// bounded 25-result page; this only controls how much of that page is revealed at once.
+const RESULT_STEP = 8;
 
 // Duration for a search row, composed rather than written a fourth time.
 //
@@ -60,16 +60,20 @@ const SourceSearch = ({
   query,
   onQueryChange,
   onSearch,
+  onPreview,
   onQueue,
-  queued,
+  queueStatus,
   queueing,
   searching,
   error,
   className,
 }: SourceSearchProps) => {
-  const queuedSet = new Set(queued ?? []);
   const loadingSet = new Set(loadingStats ?? []);
-  const capped = total != null && total > results.length && results.length >= PAGE_CAP;
+  const resultKey = results.map((result) => result.id).join(",");
+  const [reveal, setReveal] = useState({ key: resultKey, count: RESULT_STEP });
+  const visibleCount = reveal.key === resultKey ? reveal.count : RESULT_STEP;
+  const visibleResults = results.slice(0, visibleCount);
+  const remaining = results.length - visibleResults.length;
 
   // Report which rows are on screen so the caller can fetch their stats.
   //
@@ -86,7 +90,7 @@ const SourceSearch = ({
   // every render, so depending on it re-creates the observer continuously — and listing both
   // (which a first cut did, with a comment claiming otherwise) makes the string pointless,
   // because the array still changes every time. Biome caught the contradiction.
-  const ids = results.map((r) => r.id).join(",");
+  const ids = visibleResults.map((r) => r.id).join(",");
   useEffect(() => {
     const rowIds = ids ? ids.split(",") : [];
     if (!onVisible || rowIds.length === 0) return;
@@ -145,14 +149,14 @@ const SourceSearch = ({
       {results.length > 0 && (
         <>
           <Caption>
-            {capped
-              ? `Showing ${results.length} of ${total} matches`
-              : pluralize(results.length, "match", "matches")}
+            {total != null && total > visibleResults.length
+              ? `Showing ${visibleResults.length} of ${total} matches`
+              : pluralize(visibleResults.length, "match", "matches")}
           </Caption>
 
           <ul ref={listRef} className="flex flex-col gap-2">
-            {results.map((clip) => {
-              const isQueued = queuedSet.has(clip.id);
+            {visibleResults.map((clip) => {
+              const acquisition = queueStatus?.[clip.id];
               const parts = metaParts(clip, stats?.[clip.id]);
               return (
                 <li
@@ -196,35 +200,75 @@ const SourceSearch = ({
                     )}
                   </div>
 
-                  {isQueued ? (
-                    // ⚠ Not a disabled button: the queued state is an OUTCOME, and a greyed
-                    // "Queue download" invites hunting for why it stopped working.
-                    <span className="flex shrink-0 items-center gap-1 text-signal text-sm">
-                      <Check className="size-4" aria-hidden />
-                      queued
-                    </span>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      onClick={() => onQueue(clip)}
-                      disabled={queueing != null}
-                      // The row's own link carries the title, so the button names what it acts on
-                      // or a screen-reader user hears a list of identical "Queue download"s.
-                      aria-label={`Queue download: ${clip.title || clip.id}`}
-                    >
-                      {queueing === clip.id ? "Queueing…" : "Queue download"}
-                    </Button>
-                  )}
+                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {onPreview && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onPreview(clip)}
+                        aria-label={`Preview: ${clip.title || clip.id}`}
+                      >
+                        <Play aria-hidden />
+                        Preview
+                      </Button>
+                    )}
+                    {acquisition === "queued" || acquisition === "running" ? (
+                      <span className="flex shrink-0 items-center gap-1 text-signal text-sm">
+                        <Loader2 className="size-4 animate-spin" aria-hidden />
+                        Downloading…
+                      </span>
+                    ) : acquisition === "success" ? (
+                      <span className="flex shrink-0 items-center gap-1 text-signal text-sm">
+                        <Check className="size-4" aria-hidden />
+                        Added · being checked
+                      </span>
+                    ) : acquisition === "error" ? (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-onair-300 text-sm">Couldn’t add</span>
+                        <Button variant="ghost" onClick={() => onQueue(clip)} disabled={queueing != null}>
+                          {queueing === clip.id ? "Queueing…" : "Try again"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        onClick={() => onQueue(clip)}
+                        disabled={queueing != null}
+                        // The row's own link carries the title, so the button names what it acts on
+                        // or a screen-reader user hears a list of identical "Queue download"s.
+                        aria-label={`Queue download: ${clip.title || clip.id}`}
+                      >
+                        {queueing === clip.id ? "Queueing…" : "Queue download"}
+                      </Button>
+                    )}
+                  </div>
                 </li>
               );
             })}
           </ul>
+
+          {remaining > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setReveal({
+                  key: resultKey,
+                  count: Math.min(visibleResults.length + RESULT_STEP, results.length),
+                })
+              }
+            >
+              {`Show ${Math.min(RESULT_STEP, remaining)} more`}
+            </Button>
+          )}
         </>
       )}
 
-      {/* The footnote the mock carries, and it is a behaviour claim rather than decoration:
-          nothing here has fetched a byte of video. */}
-      <Caption>previews stream from archive.org — nothing downloads until you queue it</Caption>
+      {/* This is prose, not machine metadata, so it must not use the monospace Caption component. */}
+      <p className="text-muted-foreground text-xs">
+        Searching doesn’t download anything. Choose Queue download when you find a clip you want.
+      </p>
     </div>
   );
 };

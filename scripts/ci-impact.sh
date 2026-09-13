@@ -114,6 +114,15 @@ classify() {
       select_gate visual
       select_gate android
       ;;
+    web/packages/fixtures/src/testcard/*)
+      # Test-card filler/guide data is imported only by browser stories and tests. It
+      # is not part of either native app graph, so fixture-only UI work must not spend
+      # Apple or Android runners.
+      known=true
+      select_gate web
+      select_gate visual
+      select_gate image
+      ;;
     web/packages/api/*|web/packages/core/*|web/packages/fixtures/*)
       known=true
       select_gate web
@@ -349,6 +358,14 @@ classify() {
       known=true
       select_gate contracts
       select_gate go
+      ;;
+    internal/installationlocation/*.gz|internal/installationlocation/*.json)
+      # Generated runtime indexes are embedded by data.go. They can change location
+      # behavior and the production image, but they are not inputs to any native client.
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate image
       ;;
     internal/fillereval/*.md)
       known=true

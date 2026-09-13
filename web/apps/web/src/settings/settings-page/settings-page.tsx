@@ -32,7 +32,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
   // switch and took the operator's unsaved edits with it — silently, which is the worst way to
   // lose work. The save unit is still "everything staged", the bar is still one bar; what
   // changed is that the buffer outlives this component.
-  const { edits, setEdit, resetEdits } = useSettingsEdits();
+  const { edits, setEdit, clearEdits } = useSettingsEdits();
   const [testing, setTesting] = useState<string | undefined>();
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; hint?: string }>>({});
   // Which connection blocks are expanded. Seeded once from the checklist (first failure open,
@@ -41,7 +41,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
 
   const patch = settingsApi.useSettingsPatch({
     mutation: {
-      onSuccess: async () => {
+      onSuccess: async (response) => {
         // A saved connection key can flip its check — refresh both, like the wizard.
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
@@ -50,7 +50,13 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
           // picker keeps its pre-save "add a key" snapshot until a full reload.
           queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() }),
         ]);
-        resetEdits(); // saved values are the new baseline
+        if (response.status === 200) {
+          clearEdits(
+            (response.data.results ?? [])
+              .filter((result) => result.status === "saved")
+              .map((result) => result.key),
+          );
+        }
       },
     },
   });
@@ -136,7 +142,15 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
     setTesting(check);
     try {
       if (Object.keys(edits).length > 0) {
-        await patch.mutateAsync({ data: { edits } });
+        const saved = await patch.mutateAsync({ data: { edits } });
+        const results = unwrap(saved, (body) => body.results) ?? [];
+        if (
+          !Object.keys(edits).every((key) =>
+            results.some((result) => result.key === key && result.status === "saved"),
+          )
+        ) {
+          return;
+        }
       }
       const res = await runTest.mutateAsync({ data: { check } });
       if (res.status === 200) {

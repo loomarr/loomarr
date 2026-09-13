@@ -33,6 +33,7 @@ describe("NavTabs", () => {
     render(<NavTabs tabs={tabs} activeId="flight" linkComponent={anchorLink} label="Queue sections" />);
 
     expect(screen.getByRole("navigation", { name: "Queue sections" })).toHaveClass(
+      "shrink-0",
       "flex-wrap",
       "sm:flex-nowrap",
       "sm:overflow-x-auto",

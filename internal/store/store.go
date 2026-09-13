@@ -644,6 +644,11 @@ type FillerRightsStore interface {
 // rows cannot express. These describe the specific archive.org collections an operator added, and
 // they nest under that read-model's `remote` row rather than replacing any of it.
 type FillerSourceStore interface {
+	// ListFillerProviders returns the closed provider policy set in stable order.
+	ListFillerProviders(ctx context.Context) ([]FillerProvider, error)
+	// SetFillerProviderEnabled pauses or resumes future work through one provider without
+	// rewriting any child source choice or removing already downloaded clips.
+	SetFillerProviderEnabled(ctx context.Context, kind string, enabled bool) error
 	// ListFillerSources returns every registered remote source, oldest first, so the UI order
 	// is stable across reloads.
 	ListFillerSources(ctx context.Context) ([]FillerSource, error)

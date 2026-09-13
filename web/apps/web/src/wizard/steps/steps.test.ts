@@ -21,7 +21,7 @@ const green: SetupCheck[] = [
 ];
 // Most of the pre-§9.1 assertions were written when Tunarr was mandatory, so they pass a
 // backend explicitly now. `tunarr` keeps the old shape honest; `internal` is the new default.
-const onTunarr = { isAuthenticated: true, backend: PLAYOUT_TUNARR } as const;
+const onTunarr = { isAuthenticated: true, backend: PLAYOUT_TUNARR, installationCountry: "US" } as const;
 
 describe("wizard step derivation", () => {
   it("treats bootstrap as done once an admin session exists", () => {
@@ -61,10 +61,15 @@ describe("wizard step derivation", () => {
     expect(firstIncompleteStep({ checks: [], isAuthenticated: false })).toBe("bootstrap");
     expect(firstIncompleteStep({ checks: [], isAuthenticated: true })).toBe("playout");
     expect(firstIncompleteStep({ checks: [], isAuthenticated: true, publicURL: "http://loomarr:8080" })).toBe(
-      "checklist",
+      "location",
     );
     expect(
-      firstIncompleteStep({ checks: green, isAuthenticated: true, publicURL: "http://loomarr:8080" }),
+      firstIncompleteStep({
+        checks: green,
+        isAuthenticated: true,
+        publicURL: "http://loomarr:8080",
+        installationCountry: "US",
+      }),
     ).toBe("channel");
   });
 
@@ -146,6 +151,7 @@ describe("the playout choice reshapes the wizard", () => {
       isAuthenticated: true,
       backend: PLAYOUT_INTERNAL,
       publicURL: "http://loomarr:8080",
+      installationCountry: "US",
       currentId: "checklist",
     });
     expect(statuses.library).toBeUndefined();
@@ -159,6 +165,7 @@ describe("the playout choice reshapes the wizard", () => {
       isAuthenticated: true,
       backend: PLAYOUT_INTERNAL,
       publicURL: "http://loomarr:8080",
+      installationCountry: "US",
     };
     expect(firstIncompleteStep(ctx)).toBe("channel");
   });
@@ -175,7 +182,12 @@ describe("the playout choice reshapes the wizard", () => {
   // A link to a step this backend does not have is as unreal as one to a step that never
   // existed, and falls through to the frontier the same way.
   it("does not honour a link to a step the chosen backend removed", () => {
-    const ctx = { checks: green, isAuthenticated: true, backend: PLAYOUT_INTERNAL };
+    const ctx = {
+      checks: green,
+      isAuthenticated: true,
+      backend: PLAYOUT_INTERNAL,
+      installationCountry: "US",
+    };
     expect(resolveStep("library", ctx)).not.toBe("library");
   });
 
@@ -191,7 +203,12 @@ describe("the playout choice reshapes the wizard", () => {
 // `?step=` / `?conn=` deep links (§13). The URL is a REQUEST; server truth still decides.
 describe("wizard deep links", () => {
   const fresh = { checks: [], isAuthenticated: false }; // nothing done — frontier is bootstrap
-  const wired = { checks: green, isAuthenticated: true, publicURL: "http://loomarr:8080" }; // everything done — frontier is channel
+  const wired = {
+    checks: green,
+    isAuthenticated: true,
+    publicURL: "http://loomarr:8080",
+    installationCountry: "US",
+  }; // everything done — frontier is channel
 
   it("falls back to the resume point when no step is requested", () => {
     expect(resolveStep(undefined, fresh)).toBe("bootstrap");
@@ -206,7 +223,12 @@ describe("wizard deep links", () => {
     expect(resolveStep("users", fresh)).toBe("bootstrap");
     expect(resolveStep("channel", fresh)).toBe("bootstrap");
     expect(
-      resolveStep("library", { checks: [], isAuthenticated: true, publicURL: "http://loomarr:8080" }),
+      resolveStep("library", {
+        checks: [],
+        isAuthenticated: true,
+        publicURL: "http://loomarr:8080",
+        installationCountry: "US",
+      }),
     ).toBe("checklist");
   });
 

@@ -53,7 +53,15 @@ test.describe("operator first-run wizard", () => {
     await expect(page.getByRole("textbox", { name: "Tunarr URL" })).toBeVisible();
     await page.getByRole("button", { name: "Continue" }).click();
 
-    // --- step 3: connection checklist -------------------------------------------
+    // --- step 3: installation location ------------------------------------------
+    await expect(page.getByRole("heading", { name: /where are your channels watched/i })).toBeVisible();
+    await page.getByRole("combobox", { name: "Location" }).fill("New York");
+    await page.getByRole("option", { name: "New York City, United States" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    expect(backend.state.edits["filler.home_country"]).toBe("US");
+    expect(backend.state.edits["filler.home_market"]).toBe("New York City");
+
+    // --- step 4: connection checklist -------------------------------------------
     await shot(page, "step-3-checklist", /connect your services/i);
     await page.getByRole("button", { name: "Continue" }).click();
 

@@ -15,7 +15,16 @@ import { WatchPill } from "./watch-pill";
 describe("WatchPill", () => {
   it("renders the status line", () => {
     render(<WatchPill status="4 of 5 sources on · 9 clips" health="healthy" />);
-    expect(screen.getByText("4 of 5 sources on · 9 clips")).toBeInTheDocument();
+    const status = screen.getByText("4 of 5 sources on · 9 clips");
+    expect(status).toHaveClass("min-w-0");
+    expect(status).not.toHaveClass("truncate");
+    expect(status.parentElement).toHaveClass(
+      "max-w-full",
+      "w-full",
+      "whitespace-normal",
+      "sm:w-auto",
+      "sm:whitespace-nowrap",
+    );
   });
 
   // ⚠ The dot is aria-hidden, so its meaning has to reach a screen reader as WORDS. A colour with

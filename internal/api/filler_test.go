@@ -37,6 +37,9 @@ type fakeFiller struct {
 	}
 	retries  []string
 	ingested []string
+	// sourceItems records exact result-row acquisitions. Unlike `asked`, these retain their
+	// registered parent and must never create another source.
+	sourceItems []filler.AcquisitionTarget
 	// asked records only what came through IngestAsked — the operator-initiated path, and the
 	// only one that may register a source. Separate from `ingested` so a test can tell the two
 	// entry points apart; collapsing them is how the real adapter's bug hid.
@@ -60,16 +63,29 @@ type fakeFiller struct {
 	enriched  []string
 	enrichErr error
 	// V34 split knobs.
-	splits           []fakeSplitCall
-	splitUnavailable bool
-	splitNotFound    bool
-	confirmNotFound  bool
-	confirmInvalid   bool
-	fetchStatus      filler.FetchStatus
-	fetchErr         error
-	readiness        filler.Readiness
-	pullID           string
-	pullTargets      []filler.AcquisitionTarget
+	splits                []fakeSplitCall
+	splitUnavailable      bool
+	splitNotFound         bool
+	confirmNotFound       bool
+	confirmInvalid        bool
+	fetchStatus           filler.FetchStatus
+	fetchErr              error
+	readiness             filler.Readiness
+	pullID                string
+	pullTargets           []filler.AcquisitionTarget
+	sourceSuggestions     []filler.SourceSuggestion
+	sourceSuggestionErr   error
+	resolvedSource        filler.SourceSuggestion
+	sourceResolutionErr   error
+	sourceSuggestionCalls []struct {
+		Provider string
+		Query    string
+		Limit    int
+	}
+	sourceResolutionCalls []struct {
+		Provider string
+		Input    string
+	}
 }
 
 func (f *fakeFiller) Readiness(context.Context) (filler.Readiness, error) { return f.readiness, nil }
@@ -85,6 +101,41 @@ func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (filler.FetchResu
 		return filler.FetchResult{}, f.fetchErr
 	}
 	return filler.FetchResult{SourcesPolled: 1, Queued: 2}, nil
+}
+
+func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
+	f.sourceSuggestionCalls = append(f.sourceSuggestionCalls, struct {
+		Provider string
+		Query    string
+		Limit    int
+	}{provider, query, limit})
+	if f.sourceSuggestionErr != nil {
+		return nil, f.sourceSuggestionErr
+	}
+	return f.sourceSuggestions, nil
+}
+
+func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (filler.SourceSuggestion, error) {
+	f.sourceResolutionCalls = append(f.sourceResolutionCalls, struct {
+		Provider string
+		Input    string
+	}{provider, input})
+	if f.sourceResolutionErr != nil {
+		return filler.SourceSuggestion{}, f.sourceResolutionErr
+	}
+	if f.resolvedSource.CanonicalID != "" {
+		return f.resolvedSource, nil
+	}
+	if provider == "youtube" {
+		return filler.SourceSuggestion{
+			Provider: provider, TargetType: "playlist", CanonicalID: input,
+			CanonicalURL: input, Title: input,
+		}, nil
+	}
+	return filler.SourceSuggestion{
+		Provider: provider, TargetType: "collection", CanonicalID: input,
+		CanonicalURL: "https://archive.org/details/" + input, Title: input,
+	}, nil
 }
 
 func (f *fakeFiller) Rewind(_ context.Context, hash string, from filler.StageID, force bool) error {
@@ -166,6 +217,18 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 		return "", api.ErrIngestUnavailable
 	}
 	f.ingested = append(f.ingested, urls...)
+	return "job-1", nil
+}
+
+func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (string, error) {
+	if f.unavailable {
+		return "", api.ErrIngestUnavailable
+	}
+	for _, item := range items {
+		f.sourceItems = append(f.sourceItems, filler.AcquisitionTarget{
+			SourceID: sourceID, RemoteID: item.ID, Kind: sourceKind, URL: item.URL,
+		})
+	}
 	return "job-1", nil
 }
 
@@ -767,6 +830,66 @@ func TestFiller_Ingest(t *testing.T) {
 	}
 }
 
+// A result found inside a registered source is one item acquisition, not a request to register
+// that item's URL as another recurring source. The route derives provider policy from the parent
+// source and preserves the provider's stable item id for deduplication and provenance.
+func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	source := store.NewFillerSource(
+		"archive:classic",
+		"archive",
+		"https://archive.org/details/classic_tv_commercials",
+		"Classic commercials",
+		time.Now().UTC(),
+	)
+	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	if forbidden := do(t, srv, http.MethodPost, "/v1/filler/sources/archive:classic/items", memberToken,
+		`{"remoteId":"CampbellsSoupAdvert","url":"https://archive.org/details/CampbellsSoupAdvert"}`); forbidden.StatusCode != http.StatusForbidden {
+		t.Fatalf("member queue source item → %d, want 403", forbidden.StatusCode)
+	}
+	if len(ff.sourceItems) != 0 {
+		t.Fatalf("member request reached acquisition: %+v", ff.sourceItems)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/archive:classic/items", adminToken,
+		`{"remoteId":"CampbellsSoupAdvert","url":"https://archive.org/details/CampbellsSoupAdvert"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("queue source item → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		JobID string `json:"jobId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.JobID == "" {
+		t.Fatal("queue source item returned no durable acquisition id")
+	}
+	if len(ff.sourceItems) != 1 {
+		t.Fatalf("source item calls = %+v, want one", ff.sourceItems)
+	}
+	want := filler.AcquisitionTarget{
+		SourceID: "archive:classic", RemoteID: "CampbellsSoupAdvert", Kind: "archive",
+		URL: "https://archive.org/details/CampbellsSoupAdvert",
+	}
+	if ff.sourceItems[0] != want {
+		t.Fatalf("source item = %+v, want %+v", ff.sourceItems[0], want)
+	}
+	if len(ff.asked) != 0 {
+		t.Fatalf("registered-source item used direct ingest and would register another source: %v", ff.asked)
+	}
+
+	sources, err := st.ListFillerSources(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 1 || sources[0].ID != source.ID {
+		t.Fatalf("sources after one-item queue = %+v, want only parent %q", sources, source.ID)
+	}
+}
+
 // On loomarr:latest the gate is NOT a configuration problem, and the error must not
 // send the operator to a Settings page that cannot help them.
 func TestFiller_IngestUnavailableOnDefaultImage(t *testing.T) {
@@ -850,6 +973,26 @@ func TestDiscoverFiller_ReturnsCandidatesWithTheSourcesTotal(t *testing.T) {
 	// The query reaches the service rather than being dropped.
 	if len(ff.discovered) != 1 || ff.discovered[0] != "1980s cereal commercial" {
 		t.Errorf("service saw %v, want the typed query", ff.discovered)
+	}
+}
+
+func TestDiscoverFiller_ProviderPauseBlocksSearch(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	if err := st.SetFillerProviderEnabled(t.Context(), "archive", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		"/v1/filler/discover?q=cereal",
+		"/v1/filler/discover/stats?id=one",
+	} {
+		resp := do(t, srv, http.MethodGet, path, adminToken, "")
+		if resp.StatusCode != http.StatusConflict {
+			t.Errorf("GET %s while Archive.org paused → %d, want 409", path, resp.StatusCode)
+		}
+	}
+	if len(ff.discovered) != 0 || len(ff.collections) != 0 || len(ff.enriched) != 0 {
+		t.Errorf("paused provider reached Archive.org: searches=%v collections=%v enriched=%v",
+			ff.discovered, ff.collections, ff.enriched)
 	}
 }
 

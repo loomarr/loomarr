@@ -16,6 +16,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 type SettingsEditsValue = {
   edits: Record<string, string>;
   setEdit: (key: string, value: string) => void;
+  clearEdits: (keys: readonly string[]) => void;
   // Replaces the whole buffer. Used by Discard (clear) and after a successful Save, where the
   // saved values become the new baseline.
   resetEdits: () => void;
@@ -31,8 +32,15 @@ const SettingsEditsProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const resetEdits = useCallback(() => setEdits({}), []);
+  const clearEdits = useCallback((keys: readonly string[]) => {
+    const cleared = new Set(keys);
+    setEdits((previous) => Object.fromEntries(Object.entries(previous).filter(([key]) => !cleared.has(key))));
+  }, []);
 
-  const value = useMemo(() => ({ edits, setEdit, resetEdits }), [edits, setEdit, resetEdits]);
+  const value = useMemo(
+    () => ({ edits, setEdit, clearEdits, resetEdits }),
+    [edits, setEdit, clearEdits, resetEdits],
+  );
   return <SettingsEditsContext.Provider value={value}>{children}</SettingsEditsContext.Provider>;
 };
 

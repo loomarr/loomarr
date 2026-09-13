@@ -60,10 +60,11 @@ describe("SourceSearch", () => {
 
   // ⚠ Searching downloads nothing; queueing is the only path that fetches. The footnote is a
   // behaviour claim, so it is asserted rather than left as decoration.
-  it("says that nothing downloads until you queue it", () => {
+  it("explains when browsing becomes a download", () => {
     render(<SourceSearch {...base} />);
 
-    expect(screen.getByText(/nothing downloads until you queue it/i)).toBeInTheDocument();
+    expect(screen.getByText(/searching doesn’t download anything/i)).toBeInTheDocument();
+    expect(screen.getByText(/choose queue download/i)).toBeInTheDocument();
   });
 
   it("queues the clip that was clicked", async () => {
@@ -74,6 +75,18 @@ describe("SourceSearch", () => {
 
     expect(onQueue).toHaveBeenCalledTimes(1);
     expect(onQueue.mock.calls[0]?.[0].id).toBe("kelloggs-bran-flakes");
+  });
+
+  it("previews the clip that was clicked without queueing it", async () => {
+    const onPreview = vi.fn();
+    const onQueue = vi.fn();
+    render(<SourceSearch {...base} onPreview={onPreview} onQueue={onQueue} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Preview: Kellogg's Bran Flakes/ }));
+
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(onPreview.mock.calls[0]?.[0].id).toBe("kelloggs-bran-flakes");
+    expect(onQueue).not.toHaveBeenCalled();
   });
 
   // ⚠ Every row's button would otherwise be named "Queue download", so a screen-reader user
@@ -87,12 +100,10 @@ describe("SourceSearch", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  // A queued row reports an OUTCOME. A disabled "Queue download" would invite hunting for why
-  // the button stopped working.
-  it("reports a queued row rather than disabling its button", () => {
-    render(<SourceSearch {...base} queued={["kelloggs-bran-flakes"]} />);
+  it("reports the durable post-download handoff instead of a permanent queued label", () => {
+    render(<SourceSearch {...base} queueStatus={{ "kelloggs-bran-flakes": "success" }} />);
 
-    expect(screen.getByText("queued")).toBeInTheDocument();
+    expect(screen.getByText("Added · being checked")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Queue download: Kellogg's Bran Flakes/ }),
     ).not.toBeInTheDocument();
@@ -122,7 +133,26 @@ describe("SourceSearch", () => {
     );
     render(<SourceSearch {...base} results={results} total={3000} />);
 
-    expect(screen.getByText("Showing 25 of 3000 matches")).toBeInTheDocument();
+    expect(screen.getByText("Showing 8 of 3000 matches")).toBeInTheDocument();
+  });
+
+  it("reveals a large result set progressively", async () => {
+    const results = Array.from(
+      { length: 20 },
+      (_, i): DiscoveredClip => ({
+        ...(discoveredClips[0] as DiscoveredClip),
+        id: `clip-${i}`,
+        title: `Clip ${i + 1}`,
+      }),
+    );
+    render(<SourceSearch {...base} results={results} total={20} />);
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(8);
+    await userEvent.click(screen.getByRole("button", { name: "Show 8 more" }));
+    expect(screen.getAllByRole("listitem")).toHaveLength(16);
+    await userEvent.click(screen.getByRole("button", { name: "Show 4 more" }));
+    expect(screen.getAllByRole("listitem")).toHaveLength(20);
+    expect(screen.queryByRole("button", { name: /show .* more/i })).not.toBeInTheDocument();
   });
 
   it("does not search on a query too short to be useful", () => {

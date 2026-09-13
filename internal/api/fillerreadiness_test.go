@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -64,5 +65,37 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 	}
 	if body.Repairs.Count != 2 || body.Repairs.LatestReason != "latest retained repair" {
 		t.Fatalf("repair summary = %+v", body.Repairs)
+	}
+}
+
+func TestFillerAcquisitionReturnsDurableReconnectState(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	now := time.Date(2026, 9, 13, 14, 0, 0, 0, time.UTC)
+	if err := st.UpsertAcquisitionRun(context.Background(), filler.AcquisitionRun{
+		ID: "acq-found-clip", Trigger: filler.AcquisitionSource, SourceID: "archive:classic",
+		Status: filler.AcquisitionError, Requested: 1, Failed: 1, Error: "provider timed out",
+		StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if res := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/acquisitions/acq-found-clip", "", memberToken); res.StatusCode != http.StatusForbidden {
+		_ = res.Body.Close()
+		t.Fatalf("member acquisition read = %d, want 403", res.StatusCode)
+	} else {
+		_ = res.Body.Close()
+	}
+
+	res := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/acquisitions/acq-found-clip", "", adminToken)
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("acquisition read = %d, want 200", res.StatusCode)
+	}
+	var body api.FillerAcquisitionRunDTO
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.ID != "acq-found-clip" || body.SourceID != "archive:classic" || body.Status != "error" || body.Error != "provider timed out" {
+		t.Fatalf("acquisition reconnect state = %+v", body)
 	}
 }

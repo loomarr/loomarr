@@ -388,6 +388,10 @@ type FillerService interface {
 	// operation the scheduled filler-fetch job runs; the Sources page uses it to run that policy
 	// now rather than merely scanning local files and claiming a remote fetch succeeded.
 	Fetch(ctx context.Context, sourceID string) (filler.FetchResult, error)
+	// SuggestSources and ResolveSource are read-only provider discovery. They create no registry
+	// row and grant no acquisition authority; POST /v1/filler/sources remains that boundary.
+	SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error)
+	ResolveSource(ctx context.Context, provider, input string) (filler.SourceSuggestion, error)
 	// Tag runs AI classification over untagged commercials.
 	Tag(ctx context.Context) (considered, tagged, partial, skipped int, err error)
 	// Ingest downloads clips from the given source URLs into the drop-folder, returning
@@ -398,6 +402,10 @@ type FillerService interface {
 	//
 	// ⚠ Downloads and nothing else — it does not register a source.
 	Ingest(ctx context.Context, urls []string) (jobID string, err error)
+	// IngestSourceItems queues exact candidates discovered inside one registered source. The
+	// source identity and provider kind are server-owned policy; RemoteID preserves provider
+	// deduplication and this path never registers an item as another source.
+	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (jobID string, err error)
 	// IngestPull validates readiness, constructs the queued run, and calls commit exactly once
 	// before launching the ordinary downloader. A failed commit must not start any work.
 	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (jobID string, err error)

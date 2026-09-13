@@ -138,7 +138,7 @@ jobs:
           # it is GENERATED and the Go job verifies it (`make dev-docs-verify`). Its inputs —
           # the Makefile and this workflow — already trigger the job, but a hand-edit to the
           # generated file itself would otherwise sail past the only check that reads it.
-          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^observability/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|^observability/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
@@ -170,7 +170,7 @@ jobs:
           # bundle, so changing them must not spend an Android runner.
           # Control-plane classifiers and release admission validators are policy inputs, not
           # bundle inputs. The always-on policy job validates them independently.
-          if echo "$changed" | grep -qE '^store-listing/android-tv/|^web/(apps/tv/|packages/(api|core|design-system|fixtures|ui|ui-tv|player)/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.gitignore$|biome\.json$|tsconfig\.base\.json$)|^scripts/(android-version-code|build-android-beta|check-android-release-env|generate-android-tv-brand|publish-android-beta|test-android-release)\.sh$|^Makefile$|^mk/android\.mk$|^\.github/workflows/ci-android\.yml$'; then
+          if echo "$changed" | grep -qE '^store-listing/android-tv/|^web/(apps/tv/|packages/(api|core|design-system|ui|ui-tv|player)/|packages/fixtures/src/(channel-policy|client-platform|people|rule-vocabulary)/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.gitignore$|biome\.json$|tsconfig\.base\.json$)|^scripts/(android-version-code|build-android-beta|check-android-release-env|generate-android-tv-brand|publish-android-beta|test-android-release)\.sh$|^Makefile$|^mk/android\.mk$|^\.github/workflows/ci-android\.yml$'; then
             echo "android=true" >> "$GITHUB_OUTPUT"
           else
             echo "android=false" >> "$GITHUB_OUTPUT"
@@ -188,11 +188,12 @@ jobs:
           fi
           # The candidate Expo clients and Loomarr-owned universal packages have their own
           # gate. A native-only edit must not wake the legacy SPA, Playwright, tuner, or image
-          # jobs. Both Expo apps use fixtures in their native Storybook graph; fixtures depend on
-          # core, API, and player, so all four packages are real client inputs even before a production
-          # screen imports a particular shared module. Workspace-root dependency and tooling inputs
-          # still gate both families because they can change how either graph resolves or builds.
-          if echo "$changed" | grep -qE '^brand-assets\.lock\.json$|^scripts/(generate-brand-assets|check-brand-assets)\.mjs$|^web/(apps/(mobile|tv)/|packages/(api|core|design-system|fixtures|player|ui)/|turbo\.json$)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^web/scripts/|^Makefile$|^\.github/workflows/ci\.yml$'; then
+          # jobs. Both Expo apps use the named shared fixture families in their native Storybook
+          # graph; browser-only test-card fixtures do not enter either native graph. Core, API,
+          # and player remain real client inputs even before a production screen imports a
+          # particular shared module. Workspace-root dependency and tooling inputs still gate both
+          # families because they can change how either graph resolves or builds.
+          if echo "$changed" | grep -qE '^brand-assets\.lock\.json$|^scripts/(generate-brand-assets|check-brand-assets)\.mjs$|^web/(apps/(mobile|tv)/|packages/(api|core|design-system|player|ui)/|packages/fixtures/src/(channel-policy|client-platform|people|rule-vocabulary)/|turbo\.json$)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^web/scripts/|^Makefile$|^\.github/workflows/ci\.yml$'; then
             echo "clients=true" >> "$GITHUB_OUTPUT"
           else
             echo "clients=false" >> "$GITHUB_OUTPUT"
@@ -213,7 +214,7 @@ jobs:
           # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
           # frontend, or embedded-help change to reach a tag before the production image
           # containing it had ever been built.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"

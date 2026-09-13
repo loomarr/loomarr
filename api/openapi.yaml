@@ -2940,6 +2940,27 @@ components:
         pruned:
           format: int64
           type: integer
+        queued:
+          description: New remote items queued for acquisition
+          format: int64
+          type: integer
+        skipped:
+          description: Remote items already known to the catalog or acquisition history
+          format: int64
+          type: integer
+        sourceId:
+          description: Selected registered source; absent for the legacy all-source pass
+          type: string
+        sourcesPolled:
+          description: Remote sources actually inspected by this pass
+          format: int64
+          type: integer
+        stoppedBy:
+          description: Capacity ceiling that stopped the pass
+          enum:
+            - catalog
+            - disk
+          type: string
         total:
           format: int64
           type: integer
@@ -2947,6 +2968,9 @@ components:
           format: int64
           type: integer
       required:
+        - sourcesPolled
+        - queued
+        - skipped
         - total
         - added
         - updated
@@ -2955,6 +2979,13 @@ components:
     FillerAcquisitionRunDTO:
       additionalProperties: false
       properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerAcquisitionRunDTO.json
+          format: uri
+          readOnly: true
+          type: string
         artifacts:
           $ref: "#/components/schemas/AcquisitionArtifactOutcomeDTO"
         completedAt:
@@ -4056,6 +4087,11 @@ components:
     FillerSourceDTO:
       additionalProperties: false
       properties:
+        actions:
+          description: Closed actions currently valid for this source
+          items:
+            type: string
+          type: array
         configured:
           type: boolean
         count:
@@ -4066,6 +4102,14 @@ components:
           type: string
         detail:
           type: string
+        effectiveCountry:
+          description: Country this source uses after Installation geography inheritance
+          type: string
+        effectiveEnabled:
+          type: boolean
+        effectiveMarket:
+          description: Local market this source uses after Installation geography inheritance
+          type: string
         enabled:
           type: boolean
         fetchable:
@@ -4074,6 +4118,10 @@ components:
           type: boolean
         id:
           type: string
+        incoming:
+          description: Clips from this source still being prepared or awaiting a decision; NOT included in count
+          format: int64
+          type: integer
         kind:
           enum:
             - folder
@@ -4087,11 +4135,32 @@ components:
         license:
           description: Licence the source declared; absent means unknown, NOT public domain
           type: string
+        locationSource:
+          description: Where the effective location came from
+          enum:
+            - installation
+            - source
+            - missing
+          type: string
         market:
           description: Local market asserted for this source; absent means country-wide
           type: string
         parentId:
           type: string
+        providerEnabled:
+          type: boolean
+        readiness:
+          enum:
+            - ready
+            - "off"
+            - provider_off
+            - needs_location
+            - not_configured
+            - out_of_area
+            - unavailable
+          type: string
+        ready:
+          type: boolean
         removable:
           type: boolean
         searchable:
@@ -4105,6 +4174,8 @@ components:
       required:
         - id
         - enabled
+        - effectiveEnabled
+        - providerEnabled
         - switchable
         - removable
         - kind
@@ -4112,8 +4183,91 @@ components:
         - target
         - detail
         - count
+        - incoming
         - configured
         - fetchable
+        - locationSource
+        - readiness
+        - ready
+        - actions
+      type: object
+    FillerSourcePreviewItemDTO:
+      additionalProperties: false
+      properties:
+        durationMs:
+          format: int64
+          type: integer
+        title:
+          type: string
+        url:
+          type: string
+      required:
+        - title
+        - url
+      type: object
+    FillerSourceSuggestionDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerSourceSuggestionDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        alreadyAdded:
+          type: boolean
+        canonicalId:
+          type: string
+        canonicalUrl:
+          type: string
+        description:
+          type: string
+        itemCount:
+          format: int64
+          type: integer
+        previewItems:
+          items:
+            $ref: "#/components/schemas/FillerSourcePreviewItemDTO"
+          maxItems: 3
+          type: array
+        provider:
+          enum:
+            - archive
+            - youtube
+          type: string
+        targetType:
+          enum:
+            - collection
+            - channel
+            - playlist
+          type: string
+        title:
+          type: string
+      required:
+        - provider
+        - targetType
+        - canonicalId
+        - canonicalUrl
+        - title
+        - alreadyAdded
+      type: object
+    FillerSourceSuggestionsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerSourceSuggestionsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        suggestions:
+          items:
+            $ref: "#/components/schemas/FillerSourceSuggestionDTO"
+          type: array
+      required:
+        - suggestions
       type: object
     FillerSourcesOutputBody:
       additionalProperties: false
@@ -4194,12 +4348,16 @@ components:
         sourcesOn:
           format: int64
           type: integer
+        sourcesReady:
+          format: int64
+          type: integer
         sourcesTotal:
           format: int64
           type: integer
       required:
         - health
         - sourcesOn
+        - sourcesReady
         - sourcesTotal
         - clips
         - held
@@ -5804,6 +5962,124 @@ components:
           type: integer
       required:
         - tunersReset
+      type: object
+    LocationDTO:
+      additionalProperties: false
+      properties:
+        approximate:
+          description: True when the result came from IP/CDN evidence rather than selected device coordinates
+          type: boolean
+        attribution:
+          description: Required data-provider attribution URL
+          type: string
+        country:
+          description: ISO 3166-1 alpha-2 setting value
+          examples:
+            - US
+          maxLength: 2
+          minLength: 2
+          type: string
+        id:
+          description: Stable place identifier
+          type: string
+        label:
+          description: Human place label
+          examples:
+            - New York City, United States
+          type: string
+        market:
+          description: Local market setting value; empty for a country-only choice
+          examples:
+            - New York City
+          type: string
+        region:
+          description: Display-only first-level region used to distinguish search results
+          examples:
+            - New York
+          type: string
+        source:
+          description: Evidence used for an automatic suggestion
+          enum:
+            - device
+            - cloudflare
+            - cloudfront
+            - vercel
+            - proxy
+            - ip
+          type: string
+      required:
+        - id
+        - label
+        - country
+      type: object
+    LocationOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LocationOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        location:
+          $ref: "#/components/schemas/LocationDTO"
+      required:
+        - location
+      type: object
+    LocationResolveInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LocationResolveInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        latitude:
+          format: double
+          maximum: 90
+          minimum: -90
+          type: number
+        longitude:
+          format: double
+          maximum: 180
+          minimum: -180
+          type: number
+      required:
+        - latitude
+        - longitude
+      type: object
+    LocationSuggestionOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LocationSuggestionOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        suggestion:
+          $ref: "#/components/schemas/LocationDTO"
+      type: object
+    LocationsSearchOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LocationsSearchOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        locations:
+          items:
+            $ref: "#/components/schemas/LocationDTO"
+          type: array
+      required:
+        - locations
       type: object
     LoginInputBody:
       additionalProperties: false
@@ -7645,6 +7921,47 @@ components:
         - term
         - supportedItems
       type: object
+    QueueFillerSourceItemInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/QueueFillerSourceItemInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        remoteId:
+          description: Provider-stable item identity returned by discovery
+          maxLength: 512
+          minLength: 1
+          type: string
+        url:
+          description: Canonical item URL returned by discovery
+          format: uri
+          maxLength: 2048
+          minLength: 1
+          type: string
+      required:
+        - remoteId
+        - url
+      type: object
+    QueueFillerSourceItemOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/QueueFillerSourceItemOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        jobId:
+          description: Durable acquisition id; read /v1/filler/acquisitions/{jobId}
+          type: string
+      required:
+        - jobId
+      type: object
     Range:
       additionalProperties: false
       properties:
@@ -7864,6 +8181,23 @@ components:
           type: string
       required:
         - next
+      type: object
+    ResolveFillerSourceInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ResolveFillerSourceInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        input:
+          maxLength: 500
+          minLength: 1
+          type: string
+      required:
+        - input
       type: object
     RestartCost:
       additionalProperties: false
@@ -8539,6 +8873,39 @@ components:
         - uptimeMs
         - coldStartMs
         - transcodeCost
+      type: object
+    SetFillerProviderEnabledInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SetFillerProviderEnabledInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
+      required:
+        - enabled
+      type: object
+    SetFillerProviderEnabledOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SetFillerProviderEnabledOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
+        kind:
+          type: string
+      required:
+        - kind
+        - enabled
       type: object
     SetFillerSourceEnabledInputBody:
       additionalProperties: false
@@ -12384,6 +12751,34 @@ paths:
       summary: List filler clips
       tags:
         - filler
+  /v1/filler/acquisitions/{jobId}:
+    get:
+      description: Admin only (§10). Durable reconnect state for one filler acquisition; SSE only reduces visible latency.
+      operationId: get-filler-acquisition
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            maxLength: 256
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerAcquisitionRunDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read one clip download
+      tags:
+        - filler
   /v1/filler/attention:
     get:
       description: Admin-only bounded semantic exceptions. Every task names its server-owned kind and currently allowed actions; machine work and operational holds are structurally excluded (§10 V63).
@@ -12870,6 +13265,122 @@ paths:
       summary: Catalog-wide filler health
       tags:
         - filler
+  /v1/filler/providers/{kind}:
+    patch:
+      description: Admin only (§10 V51c). Changes provider policy without rewriting child source switches or removing clips already in the catalog.
+      operationId: set-filler-provider-enabled
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema:
+            enum:
+              - archive
+              - youtube
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetFillerProviderEnabledInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetFillerProviderEnabledOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Pause or resume a filler provider
+      tags:
+        - filler
+  /v1/filler/providers/{kind}/resolve:
+    post:
+      description: Admin only (§10 V67). Validates one exact provider URL or identifier and returns its canonical target without registering or downloading it.
+      operationId: resolve-filler-source
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema:
+            enum:
+              - archive
+              - youtube
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveFillerSourceInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerSourceSuggestionDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Check a filler source
+      tags:
+        - filler
+  /v1/filler/providers/{kind}/suggestions:
+    get:
+      description: Admin only (§10 V67). Searches one provider for source candidates without registering a source, downloading media, or granting background-work authority.
+      operationId: suggest-filler-sources
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema:
+            enum:
+              - archive
+              - youtube
+            type: string
+        - explode: false
+          in: query
+          name: q
+          required: true
+          schema:
+            maxLength: 120
+            minLength: 2
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 8
+            format: int64
+            maximum: 8
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerSourceSuggestionsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Find a filler source
+      tags:
+        - filler
   /v1/filler/pulls:
     get:
       description: Admin only (§10 V35). `status` filters (pending | approved | dismissed); omit it for all. Decided pulls are KEPT — the queue's History answers what was agreed to and who said so.
@@ -13183,7 +13694,7 @@ paths:
       tags:
         - filler
     post:
-      description: Admin only (§10 V35/V38b). Registers a source for search, pulls, and bounded scheduled acquisition. Registration itself only records the source; enabled remote sources are downloaded on their configured schedule, while composed multi-source pulls retain their approval gate.
+      description: Admin only (§10 V35/V38b/V67). Registers a verified Archive.org collection or YouTube channel/playlist for bounded scheduled acquisition. Registration itself only records the source; enabled remote sources are downloaded on their configured schedule, while composed multi-source pulls retain their approval gate.
       operationId: add-filler-source
       requestBody:
         content:
@@ -13204,7 +13715,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Register a remote collection to pull filler from
+      summary: Add a remote filler source
       tags:
         - filler
   /v1/filler/sources/fetch:
@@ -13254,7 +13765,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Forget a registered remote collection
+      summary: Forget a registered remote source
       tags:
         - filler
     patch:
@@ -13286,6 +13797,40 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Control source acquisition and fetch cadence
+      tags:
+        - filler
+  /v1/filler/sources/{id}/items:
+    post:
+      description: Admin only (§10). Queues one exact discovered item under its registered parent source. The server derives provider policy from the source; this never registers the item as another source.
+      operationId: queue-filler-source-item
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 256
+            minLength: 1
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueueFillerSourceItemInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueFillerSourceItemOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add one clip found inside a source
       tags:
         - filler
   /v1/filler/split:
@@ -13466,7 +14011,7 @@ paths:
         - filler
   /v1/filler/watch:
     get:
-      description: "The Filler page header's live status (§10 V38c): how many sources are on, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
+      description: "The Filler page header's live status (§10 V38c): how many sources are ready, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
       operationId: filler-watch
       responses:
         "200":
@@ -14015,6 +14560,93 @@ paths:
       summary: List media-server collections
       tags:
         - library
+  /v1/locations:
+    get:
+      description: Admin only. Searches Loomarr's embedded city, populated-municipality, and country index; no runtime geocoder is called.
+      operationId: locations-search
+      parameters:
+        - description: City, populated municipality, region, or country name
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: City, populated municipality, region, or country name
+            maxLength: 120
+            minLength: 2
+            type: string
+        - description: Maximum suggestions
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 8
+            description: Maximum suggestions
+            format: int64
+            maximum: 20
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationsSearchOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Search installation locations
+      tags:
+        - settings
+  /v1/locations/resolve:
+    post:
+      description: Admin only. Resolves transient browser coordinates against Loomarr's embedded place index. Coordinates are not stored.
+      operationId: locations-resolve
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocationResolveInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Resolve device coordinates
+      tags:
+        - settings
+  /v1/locations/suggestion:
+    get:
+      description: Admin only. Uses trusted CDN geography or the effective public client IP against Loomarr's embedded index. Never saves the suggestion.
+      operationId: locations-suggestion
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationSuggestionOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Suggest an approximate installation location
+      tags:
+        - settings
   /v1/metrics:
     get:
       description: Public, no credential — a scrape job holds no session. Go runtime collectors plus Loomarr's §17 series. Also served at `/metrics`.

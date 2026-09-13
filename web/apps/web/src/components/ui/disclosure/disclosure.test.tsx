@@ -65,4 +65,22 @@ describe("Disclosure", () => {
 
     expect(screen.getByText("Three collection rows")).toBeVisible();
   });
+
+  it("opens a sparse section from its visible title row", async () => {
+    render(
+      <Disclosure>
+        <Disclosure.SectionTrigger
+          label="Show tools for finding a specific clip"
+          title="Find a specific clip"
+          description="Search this collection by title or keyword."
+        />
+        <Disclosure.Panel>Search tools</Disclosure.Panel>
+      </Disclosure>,
+    );
+
+    const title = screen.getByText("Find a specific clip");
+    expect(title.closest("button")).not.toBeNull();
+    await userEvent.click(title);
+    expect(screen.getByText("Search tools")).toBeVisible();
+  });
 });

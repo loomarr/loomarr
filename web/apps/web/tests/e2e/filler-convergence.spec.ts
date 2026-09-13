@@ -224,6 +224,7 @@ test("a fetched arrival becomes playable only after terminal admission completes
     if (path === "/v1/filler/watch") {
       return reply({
         sourcesOn: 1,
+        sourcesReady: 1,
         sourcesTotal: 1,
         clips: fetched ? 1 : 0,
         held: fetched && !terminalAdmissionApplied ? 1 : 0,

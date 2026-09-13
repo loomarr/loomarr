@@ -289,10 +289,49 @@ publication. It is an implementation detail shipped in the Loomarr container, no
 optional integration.
 _Avoid_: image service (that includes the Go-owned domain), daemon, fallback
 
+### Filler sources and capacity
+
+**Filler Provider**:
+An external system through which Loomarr can discover or acquire filler, such as Archive.org or
+YouTube. A Provider can expose many Sources. Pausing it stops work through every Source beneath it
+without changing which Sources the operator individually enabled.
+_Avoid_: Source, collection, parent Source
+
+**Filler Source**:
+One operator-registered acquisition target, such as an Archive.org collection, YouTube channel or
+playlist, watched folder, or media-server library. Registration records where Loomarr may look; it
+does not establish rights, Airworthiness, or admission for anything found there.
+_Avoid_: Provider, feed, catalog
+
+**Source suggestion**:
+An unselected discovery shortcut for a possible Filler Source. It becomes a Source only when the
+operator adds it, and its presence never grants acquisition rights or admission authority.
+_Avoid_: default Source, enabled Source, approved Source
+
+**Source resolution**:
+Server verification that typed input or a Source suggestion identifies one canonical Provider
+target. Resolution creates no Source and grants no acquisition, rights, or admission authority.
+_Avoid_: registration, search result, approval
+
+**Storage allowance**:
+The most Loomarr-managed filler storage that unattended work may use on a filesystem. Reaching it
+pauses automatic acquisition without deleting retained media.
+_Avoid_: free space, disk capacity, quota (too broad)
+
+**Storage reserve**:
+Filesystem space Loomarr preserves for the host and other workloads. Neither automatic nor manual
+filler acquisition may consume it.
+_Avoid_: Storage allowance, spare space
+
+**Storage reservation**:
+A temporary claim against available bytes made before media work begins. It prevents concurrent
+jobs from each treating the same remaining capacity as theirs to spend.
+_Avoid_: allocation, downloaded size
+
 ### Filler geography
 
 **Installation geography**:
-The optional home country and local market that constrain automated filler use across the instance and supply the default for Channels without their own geography.
+The instance-wide viewer location: a home country and optional local market that constrain automated filler use and supply the default for Channels and Sources without their own geography.
 _Avoid_: guide timezone, locale, server location
 
 **Channel geography**:

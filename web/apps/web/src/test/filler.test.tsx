@@ -168,7 +168,14 @@ const stubFiller = ({
     // the SERVER — counts and health verdict both — rather than deriving them from the sources
     // list, which is admin-only and would leave a member's pill permanently grey.
     getFillerWatchMockHandler(
-      watch ?? { health: "healthy", sourcesOn: 1, sourcesTotal: 2, clips: clips.length, held: 0 },
+      watch ?? {
+        health: "healthy",
+        sourcesOn: 1,
+        sourcesReady: 1,
+        sourcesTotal: 2,
+        clips: clips.length,
+        held: 0,
+      },
     ),
     getBulkRemoveFillerMockHandler(async ({ request }) => {
       bulkRemoves.push(await request.json());
@@ -306,7 +313,7 @@ describe("Filler page", () => {
     renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
-    expect(await screen.findByText(/\d+ of \d+ sources on/i)).toBeInTheDocument();
+    expect(await screen.findByText(/\d+ of \d+ sources ready/i)).toBeInTheDocument();
   });
 
   // ⚠ **A held clip must not read as a missing clip.** Auto-fetch holds everything it downloads
@@ -320,7 +327,7 @@ describe("Filler page", () => {
   it("says how many clips are waiting rather than reporting an empty catalog", async () => {
     stubFiller({
       clips: [],
-      watch: { health: "healthy", sourcesOn: 5, sourcesTotal: 5, clips: 0, held: 12 },
+      watch: { health: "healthy", sourcesOn: 5, sourcesReady: 5, sourcesTotal: 5, clips: 0, held: 12 },
     });
     renderAt("/filler/library");
 
@@ -332,7 +339,7 @@ describe("Filler page", () => {
   // how an operator learns to stop reading it.
   it("omits the waiting clause when nothing is held", async () => {
     stubFiller({
-      watch: { health: "healthy", sourcesOn: 5, sourcesTotal: 5, clips: 9, held: 0 },
+      watch: { health: "healthy", sourcesOn: 5, sourcesReady: 5, sourcesTotal: 5, clips: 9, held: 0 },
     });
     renderAt("/filler/library");
 
@@ -513,6 +520,7 @@ describe("Filler page", () => {
       watch: {
         health: "healthy",
         sourcesOn: 2,
+        sourcesReady: 2,
         sourcesTotal: 2,
         clips: 2000,
         held: 0,

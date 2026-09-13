@@ -2,9 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 type AcquisitionOutcomeDTO struct {
@@ -65,6 +68,25 @@ type FillerReadinessDTO struct {
 
 type fillerReadinessOutput struct {
 	Body FillerReadinessDTO
+}
+
+type getFillerAcquisitionInput struct {
+	JobID string `path:"jobId" minLength:"1" maxLength:"256"`
+}
+
+type getFillerAcquisitionOutput struct {
+	Body FillerAcquisitionRunDTO
+}
+
+func (s *Server) getFillerAcquisition(ctx context.Context, in *getFillerAcquisitionInput) (*getFillerAcquisitionOutput, error) {
+	run, err := s.store.GetAcquisitionRun(ctx, in.JobID, time.Now().UTC())
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, huma.Error404NotFound("Filler acquisition not found")
+	}
+	if err != nil {
+		return nil, huma.Error500InternalServerError("read filler acquisition", err)
+	}
+	return &getFillerAcquisitionOutput{Body: acquisitionRunDTO(run)}, nil
 }
 
 func (s *Server) fillerReadiness(ctx context.Context, _ *struct{}) (*fillerReadinessOutput, error) {

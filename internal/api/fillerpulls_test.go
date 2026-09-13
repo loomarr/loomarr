@@ -83,7 +83,7 @@ func TestProposeFillerPull_UsesOnlyGeographicallyEligibleSources(t *testing.T) {
 		got[row.SourceID] = true
 	}
 	if !got["us-wide"] || !got["ny-local"] || len(got) != 2 {
-		t.Fatalf("planned sources = %v, want only US-wide and New York local", got)
+		t.Fatalf("planned sources = %v, want only candidates with their own matching geography evidence", got)
 	}
 }
 
@@ -336,6 +336,24 @@ func TestApproveFillerPull_RefusesASourceDisabledSinceProposal(t *testing.T) {
 	}
 	if len(ff.ingested) != 0 {
 		t.Errorf("fetched from a switched-off source: %v", ff.ingested)
+	}
+}
+
+func TestApproveFillerPull_RefusesAProviderPausedSinceProposal(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+
+	if err := st.SetFillerProviderEnabled(t.Context(), "archive", false); err != nil {
+		t.Fatal(err)
+	}
+
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve", `{}`, adminToken)
+	if res.StatusCode != http.StatusConflict {
+		t.Errorf("status = %d, want 409", res.StatusCode)
+	}
+	if len(ff.ingested) != 0 {
+		t.Errorf("fetched from a paused provider: %v", ff.ingested)
 	}
 }
 

@@ -160,7 +160,14 @@ const appHandlers = (): RequestHandler[] => [
   getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
   getListDocsMockHandler({ docs: [] }),
   getFillerPoolMockHandler({ channels: [], clips: 0, commercials: 0, eligible: 0, untagged: 0 }),
-  getFillerWatchMockHandler({ clips: 0, health: "healthy", held: 0, sourcesOn: 0, sourcesTotal: 0 }),
+  getFillerWatchMockHandler({
+    clips: 0,
+    health: "healthy",
+    held: 0,
+    sourcesOn: 0,
+    sourcesReady: 0,
+    sourcesTotal: 0,
+  }),
   getFillerReadinessMockHandler({
     ready: true,
     nextAction: "none",

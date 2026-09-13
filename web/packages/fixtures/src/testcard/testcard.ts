@@ -840,8 +840,30 @@ const guideChannels: GuideChannelTimeline[] = [
 // property the old model got for free: `folder`/`library` are still rows even when unconfigured,
 // because "you could set up a drop-folder but have not" is §10's answer to "why is my catalog
 // empty?", and a list of things-that-exist cannot say it.
+const readySource = {
+  readiness: "ready" as const,
+  ready: true,
+  locationSource: "installation" as const,
+  effectiveCountry: "US",
+  actions: ["fetch", "disable"],
+  effectiveEnabled: true,
+  providerEnabled: true,
+  incoming: 0,
+};
+const offSource = {
+  readiness: "off" as const,
+  ready: false,
+  locationSource: "installation" as const,
+  effectiveCountry: "US",
+  actions: ["enable"],
+  effectiveEnabled: false,
+  providerEnabled: true,
+  incoming: 0,
+};
+
 const fillerSources: FillerSourceDTO[] = [
   {
+    ...readySource,
     id: "folder",
     enabled: true,
     switchable: true,
@@ -856,6 +878,7 @@ const fillerSources: FillerSourceDTO[] = [
     searchable: false,
   },
   {
+    ...readySource,
     id: "library",
     enabled: true,
     switchable: false,
@@ -879,6 +902,7 @@ const fillerSources: FillerSourceDTO[] = [
 const fillerSourcesWithRemotes: FillerSourceDTO[] = [
   ...fillerSources,
   {
+    ...readySource,
     id: "archive:classic_tv_commercials",
     enabled: true,
     switchable: true,
@@ -900,6 +924,7 @@ const fillerSourcesWithRemotes: FillerSourceDTO[] = [
   // does not search YouTube, so a search box here would return nothing forever. That is the
   // distinction this fixture exists to keep visible.
   {
+    ...offSource,
     id: "youtube:PLvintage",
     enabled: false,
     switchable: true,
@@ -927,9 +952,8 @@ const fillerSourcesWithRemotes: FillerSourceDTO[] = [
 //   1. **Pre-ordered, flat.** Each group node is immediately followed by its own children. There is
 //      no `children: []` array — a twirl-down renders from exactly this by hiding rows whose parent
 //      is collapsed, and the BE chose flat deliberately (orval handles recursive types badly).
-//   2. **A group is not a control.** `switchable`, `removable`, `fetchable` and `searchable` are
-//      all false: there is no URI to fetch, no registration to forget, and a cascade switch would
-//      destroy each child's own choice. Its `enabled` is a REPORT — true when any child is working.
+//   2. **A group owns provider policy, not child policy.** It is switchable but cannot be removed,
+//      fetched, or searched directly. Pausing it leaves each child's own choice intact.
 //   3. **`configured` means "anything behind it"**, which is how an empty provider is told apart
 //      from a broken one. The YouTube group here has children; `fillerSourcesEmptyProvider` below
 //      is the zero-child case.
@@ -941,10 +965,11 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
   ...fillerSources,
   // ── Archive.org: two collections, one of them switched off ──────────────────────────────────
   {
+    ...readySource,
     id: "provider:archive",
     group: true,
-    enabled: true, // a report: `classic_tv_commercials` is on
-    switchable: false,
+    enabled: true,
+    switchable: true,
     removable: false,
     kind: "archive",
     target: "Archive.org",
@@ -959,6 +984,7 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     lastFetchedAt: "2026-07-30T09:14:00Z",
   },
   {
+    ...readySource,
     id: "archive:classic_tv_commercials",
     parentId: "provider:archive",
     enabled: true,
@@ -973,10 +999,9 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     searchable: true,
     lastFetchedAt: "2026-07-30T09:14:00Z",
   },
-  // ⚠ One child OFF while its group reads on. The group must say "1 of 2 on" rather than
-  // inheriting either child's state — a provider that is half-running is the case a single
-  // boolean cannot express, and the reason the group carries no switch.
+  // One child is off while provider policy remains on. Child readiness reports the mixed state.
   {
+    ...offSource,
     id: "archive:vintage_psas",
     parentId: "provider:archive",
     enabled: false,
@@ -991,15 +1016,13 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     searchable: true,
     lastFetchedAt: "2026-07-28T11:02:00Z",
   },
-  // ── YouTube: a single playlist, switched off, so the whole provider is DORMANT ──────────────
-  // ⚠ This is the case that exposed the off-state bug: every "off" rendering was gated on
-  // `switchable && !enabled`, and a group is `switchable: false`, so a provider whose every child
-  // is off still drew as if it were running.
+  // ── YouTube: provider on, with its single playlist switched off ─────────────────────────────
   {
+    ...readySource,
     id: "provider:youtube",
     group: true,
-    enabled: false,
-    switchable: false,
+    enabled: true,
+    switchable: true,
     removable: false,
     kind: "youtube",
     target: "YouTube",
@@ -1010,6 +1033,7 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     searchable: false,
   },
   {
+    ...offSource,
     id: "youtube:PLvintage",
     parentId: "provider:youtube",
     enabled: false,
@@ -1025,6 +1049,69 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
   },
 ];
 
+// A deliberately crowded provider for the source-index scaling contract. Two attention rows are
+// placed well below the first five in wire order so the story proves the UI promotes them instead
+// of merely benefiting from favorable fixture ordering.
+const manyArchiveSourceNames = [
+  "Classic TV Commercials",
+  "TV Ads",
+  "Commercials From The Vault",
+  "Natural History Favorites",
+  "Vintage PSAs",
+  "Station IDs",
+  "Local Car Dealer Ads",
+  "Saturday Morning Spots",
+  "Retro Food Commercials",
+  "Toy Commercials",
+  "Movie Theater Bumpers",
+  "Public Information Films",
+  "Regional Station Breaks",
+  "Holiday Commercials",
+  "Household Product Ads",
+  "Department Store Commercials",
+  "Classic Radio Spots",
+  "Network Promos",
+  "Drive-In Intermissions",
+  "Educational Shorts",
+];
+
+const fillerSourcesManyGrouped: FillerSourceDTO[] = [
+  ...fillerSources,
+  {
+    ...readySource,
+    id: "provider:archive",
+    group: true,
+    enabled: true,
+    switchable: true,
+    removable: false,
+    kind: "archive",
+    target: "Archive.org",
+    detail: "collections you've added",
+    count: 486,
+    configured: true,
+    fetchable: false,
+    searchable: false,
+  },
+  ...manyArchiveSourceNames.map((target, index): FillerSourceDTO => {
+    const attention = index === 8 || index === 16;
+    return {
+      ...(attention ? offSource : readySource),
+      id: `archive:many-${index + 1}`,
+      parentId: "provider:archive",
+      enabled: !attention,
+      switchable: true,
+      removable: true,
+      kind: "archive",
+      target,
+      detail: "an Archive.org collection",
+      count: attention ? 0 : 18 + index,
+      configured: true,
+      fetchable: true,
+      searchable: true,
+    };
+  }),
+];
+
 // A provider with NO children — the fresh-install state, and an INVITATION rather than a fault.
 //
 // ⚠ `configured: false` on a group means "nothing behind it yet", which §10 and
@@ -1034,10 +1121,11 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
 const fillerSourcesEmptyProvider: FillerSourceDTO[] = [
   ...fillerSources,
   {
+    ...readySource,
     id: "provider:archive",
     group: true,
-    enabled: false,
-    switchable: false,
+    enabled: true,
+    switchable: true,
     removable: false,
     kind: "archive",
     target: "Archive.org",
@@ -1146,6 +1234,7 @@ export {
   fillerSources,
   fillerSourcesEmptyProvider,
   fillerSourcesGrouped,
+  fillerSourcesManyGrouped,
   fillerSourcesWithRemotes,
   guessedEraAsk,
   guideChannels,
