@@ -1,9 +1,10 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
-import { Check } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { HostedModelPickerProps } from "./hosted-model-picker.type";
 
@@ -98,8 +99,8 @@ const ModelRow = ({
 };
 
 // The §8.1 hosted picker leads non-experts through one safe default and two strong
-// alternatives. The provider's complete live catalog remains available as an advanced
-// escape hatch, and an active model is never hidden by the collapsed state.
+// alternatives. A bounded typeahead reaches the provider's complete live catalog without
+// rendering hundreds of choices, and an active model is never hidden by the guided state.
 const HostedModelPicker = ({
   providers,
   activeModel,
@@ -107,7 +108,8 @@ const HostedModelPicker = ({
   busy = false,
   className,
 }: HostedModelPickerProps) => {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [searching, setSearching] = useState<Record<string, boolean>>({});
+  const [queries, setQueries] = useState<Record<string, string>>({});
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
@@ -119,7 +121,18 @@ const HostedModelPicker = ({
         const current = hp.active
           ? models.find((model) => model.id === activeModel && !guidedIDs.has(model.id))
           : undefined;
-        const isExpanded = expanded[hp.key] === true;
+        const isSearching = searching[hp.key] === true;
+        const query = queries[hp.key] ?? "";
+        const normalizedQuery = query.trim().toLowerCase();
+        const matchingModels = normalizedQuery
+          ? models
+              .filter(
+                (model) =>
+                  model.label.toLowerCase().includes(normalizedQuery) ||
+                  model.id.toLowerCase().includes(normalizedQuery),
+              )
+              .slice(0, 20)
+          : [];
 
         return (
           <div key={hp.key} className="flex flex-col gap-2">
@@ -160,22 +173,52 @@ const HostedModelPicker = ({
               <p className="text-muted-foreground text-sm">
                 No models returned. Check the key and base URL above, then Test again.
               </p>
-            ) : models.length > 0 && isExpanded ? (
+            ) : models.length > 0 && isSearching ? (
               <>
-                <p className="font-medium text-muted-foreground text-xs">All models</p>
-                <ul className="flex flex-col gap-2">
-                  {models.map((model) => (
-                    <ModelRow
-                      key={model.id}
-                      model={model}
-                      provider={hp}
-                      activeModel={activeModel}
-                      busy={busy}
-                      primary={model.id === primary?.id}
-                      onSelect={onSelect}
-                    />
-                  ))}
-                </ul>
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <Input
+                    type="search"
+                    aria-label="Search models"
+                    placeholder={`Search ${models.length} models by name or ID`}
+                    className="pl-9"
+                    autoFocus
+                    value={query}
+                    onChange={(event) => {
+                      const nextQuery = event.currentTarget.value;
+                      setQueries((value) => ({ ...value, [hp.key]: nextQuery }));
+                    }}
+                  />
+                </div>
+                {!normalizedQuery ? (
+                  <p className="text-muted-foreground text-sm">Start typing to find a model.</p>
+                ) : matchingModels.length === 0 ? (
+                  <p role="status" className="text-muted-foreground text-sm">
+                    No models match “{query.trim()}”.
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {matchingModels.map((model) => (
+                      <ModelRow
+                        key={model.id}
+                        model={model}
+                        provider={hp}
+                        activeModel={activeModel}
+                        busy={busy}
+                        primary={model.id === primary?.id}
+                        onSelect={onSelect}
+                      />
+                    ))}
+                  </ul>
+                )}
+                {matchingModels.length === 20 && (
+                  <p className="text-muted-foreground text-xs">
+                    Showing the first 20 matches. Keep typing to narrow them.
+                  </p>
+                )}
               </>
             ) : models.length > 0 ? (
               <>
@@ -235,9 +278,9 @@ const HostedModelPicker = ({
                 variant="ghost"
                 size="sm"
                 className="self-start text-muted-foreground text-xs"
-                onClick={() => setExpanded((value) => ({ ...value, [hp.key]: !isExpanded }))}
+                onClick={() => setSearching((value) => ({ ...value, [hp.key]: !isSearching }))}
               >
-                {isExpanded ? "Show guided choices" : `Show all ${models.length} models`}
+                {isSearching ? "Back to recommendations" : "Find another model"}
               </Button>
             )}
           </div>

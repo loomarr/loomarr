@@ -1,6 +1,11 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import type { ReactNode } from "react";
 
+interface SettingsRenderContext {
+  liveValue: (key: string) => string;
+  setEdit: (key: string, value: string) => void;
+}
+
 // A page groups one or more registry groups behind a single save bar (config-design §5).
 interface SettingsBlock {
   // The registry `group` value(s) this block renders.
@@ -17,6 +22,9 @@ interface SettingsBlock {
   // Override the generic action when the check covers broader readiness than connectivity.
   // AI uses this to keep provider authorization distinct from lineup-model readiness.
   checkLabel?: string;
+  // The check reads persisted settings, so a dirty page saves before checking. Name that
+  // side effect explicitly rather than surprising the operator after the click.
+  dirtyCheckLabel?: string;
   // Marks a connection the current install can leave disconnected. The status still reports
   // truthfully; the label explains that a failure need not become work for this operator.
   optional?: boolean;
@@ -29,15 +37,10 @@ interface SettingsBlock {
   // ⚠ Inside the collapsible panel, so it is hidden while the block is collapsed, and connection
   // blocks collapse when their check passes. Maintainer's call: the notice reads as belonging to
   // TMDB, which a page-level footer under four unrelated blocks did not.
-  footer?: ReactNode;
+  footer?: ReactNode | ((ctx: SettingsRenderContext) => ReactNode);
   // A bordered surface for a focused workflow decision. Most settings pages remain flat; pages
   // such as Notifications use cards to separate outcomes rather than presenting one field wall.
   surface?: "plain" | "card";
-}
-
-interface SettingsRenderContext {
-  liveValue: (key: string) => string;
-  setEdit: (key: string, value: string) => void;
 }
 
 interface SettingsPageProps {

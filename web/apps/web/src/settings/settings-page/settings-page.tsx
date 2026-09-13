@@ -101,7 +101,9 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
   // first block so a fully-healthy page still shows one editable connection.
   // Guarded by `openBlocks === undefined` so it runs exactly once — after that the operator
   // owns which blocks are open, and a later refetch never yanks a block shut under them.
-  const checksReady = hasChecks && checks.length > 0;
+  // An empty successful checklist is still a resolved checklist. Treating `[]` as
+  // perpetually loading left every connection panel closed with no initial focus.
+  const checksReady = hasChecks && status.isFetched;
   // biome-ignore lint/correctness/useExhaustiveDependencies: seed exactly once when checks first arrive; blocks/standingFor are read at that moment, never as reactive deps
   useEffect(() => {
     if (!checksReady || openBlocks !== undefined) return;
@@ -168,12 +170,18 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
             const live = testResult[block.check];
             const standing = standingFor(block.check);
             const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
+            const blockFooter =
+              typeof block.footer === "function" ? block.footer({ liveValue, setEdit }) : block.footer;
+            const checkLabel =
+              Object.keys(edits).length > 0
+                ? (block.dirtyCheckLabel ?? "Save & test connection")
+                : (block.checkLabel ?? "Test connection");
             return (
               <div key={block.title} className="flex flex-col gap-3">
                 <ConnectionBlock
                   title={block.title}
                   optional={block.optional}
-                  {...(block.footer ? { footer: block.footer } : {})}
+                  {...(blockFooter ? { footer: blockFooter } : {})}
                   verdict={verdict}
                   docHref={standing?.docHref}
                   open={openBlocks?.[block.group] ?? false}
@@ -184,7 +192,11 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                       onClick={() => test(block.check as string)}
                       disabled={testing !== undefined}
                     >
-                      {testing === block.check ? "Testing…" : (block.checkLabel ?? "Test connection")}
+                      {testing === block.check
+                        ? Object.keys(edits).length > 0
+                          ? "Saving & checking…"
+                          : "Checking…"
+                        : checkLabel}
                     </Button>
                   }
                 >

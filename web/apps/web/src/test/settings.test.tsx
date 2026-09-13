@@ -12,7 +12,7 @@ import {
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
@@ -56,6 +56,8 @@ const SETTINGS = [
     ],
   }),
   setting({ key: "job.workers", group: "advanced", kind: "int", value: "2", provenance: "env" }),
+  setting({ key: "llm.provider", group: "ai", kind: "enum", value: "ollama" }),
+  setting({ key: "llm.url", group: "ai", kind: "url", value: "http://localhost:11434" }),
   setting({
     key: "access.public_url",
     label: "Recipient-facing Loomarr address",
@@ -520,6 +522,7 @@ describe("Settings honesty", () => {
           }),
           setting({ key: "llm.model", label: "Hosted lineup model", group: "ai", value: "" }),
           setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: false }),
+          setting({ key: "suggest.max_acquisitions", group: "ai", kind: "int", value: "5" }),
           setting({ key: "filler.vision.provider", group: "filler", value: "inherit" }),
           setting({ key: "filler.vision.model", group: "filler", value: "" }),
           setting({ key: "filler.transcribe.provider", group: "filler", value: "whisper" }),
@@ -567,14 +570,21 @@ describe("Settings honesty", () => {
 
     renderAt("/settings/ai");
 
-    expect(await screen.findByLabelText("AI service address")).toHaveValue("https://openrouter.ai/api/v1");
-    await userEvent.click(screen.getByRole("button", { name: /lineup model/i }));
-    expect(screen.getByRole("button", { name: "Check AI readiness" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByLabelText("AI service address")).toHaveValue("https://openrouter.ai/api/v1"),
+    );
+    expect(screen.getByRole("button", { name: "Save & check AI setup" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Hosted lineup model")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
     expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Automatic model policy" })).toBeInTheDocument();
-    expect(screen.getByText(/do not need to maintain a model matrix/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Automatic model policy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Filler analysis models" })).not.toBeInTheDocument();
+    const modelHeading = screen.getByRole("heading", { name: "Choose a lineup model" });
+    const behaviorHeading = screen.getByRole("heading", { name: "AI behavior" });
+    expect(
+      modelHeading.compareDocumentPosition(behaviorHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Vision" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Gemini Vision/i })).not.toBeInTheDocument();
   });
@@ -622,8 +632,8 @@ describe("Settings honesty", () => {
     );
 
     renderAt("/settings/ai");
-    expect(await screen.findByRole("heading", { name: "Automatic model policy" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Advanced model overrides/i }));
+    expect(await screen.findByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Advanced model roles/i }));
     const vision = await screen.findByRole("region", { name: "Vision" });
     expect(within(vision).queryByRole("button", { name: /Text only/i })).not.toBeInTheDocument();
     await userEvent.click(within(vision).getByRole("button", { name: /Gemini Vision/i }));
