@@ -3488,13 +3488,7 @@ components:
         id:
           type: string
         recovery:
-          enum:
-            - configure_provider
-            - adjust_budget
-            - retry_extraction
-            - inspect_media
-            - update_policy
-          type: string
+          $ref: "#/components/schemas/FillerDecisionRecoveryDTO"
         retryable:
           type: boolean
       required:
@@ -3554,6 +3548,71 @@ components:
         - healthy
         - nextAction
         - counts
+      type: object
+    FillerDecisionRecoveryDTO:
+      additionalProperties: false
+      properties:
+        action:
+          enum:
+            - configure_provider
+            - adjust_budget
+            - retry_extraction
+            - inspect_media
+            - update_policy
+          type: string
+        destination:
+          description: Exact application or media destination for configuration and inspection recovery
+          type: string
+        mode:
+          enum:
+            - automatic_retry
+            - manual_retry
+            - configuration
+            - inspection
+          type: string
+        retryAt:
+          description: Exact next-attempt time for automatic recovery
+          format: date-time
+          type: string
+      required:
+        - action
+        - mode
+      type: object
+    FillerDiagnosticRecoveryInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDiagnosticRecoveryInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        action:
+          enum:
+            - retry
+          type: string
+        actionId:
+          maxLength: 128
+          type: string
+      required:
+        - actionId
+        - action
+      type: object
+    FillerDiagnosticRecoveryOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDiagnosticRecoveryOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          type: string
+      required:
+        - id
       type: object
     FillerFetchStatusDTO:
       additionalProperties: false
@@ -12546,6 +12605,39 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Filler admission processing diagnostics
+      tags:
+        - filler
+  /v1/filler/decisions/diagnostics/{id}/actions:
+    post:
+      description: Admin-only idempotent action selected from the current diagnostic recovery plan. The server records the authenticated actor and rejects stale or no-longer-retryable holds (§10 V63).
+      operationId: act-on-filler-diagnostic
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FillerDiagnosticRecoveryInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerDiagnosticRecoveryOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Recover a filler processing hold
       tags:
         - filler
   /v1/filler/decisions/overview:

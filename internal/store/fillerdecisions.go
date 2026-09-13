@@ -351,6 +351,89 @@ func (s *sqlStore) FindFillerDecisionAction(ctx context.Context, id string) (fil
 	return getFillerDecisionAction(ctx, s.db, s.ph, id)
 }
 
+const fillerDiagnosticRecoverySelect = `SELECT id, decision_id, action, actor_id, created_at
+	FROM filler_diagnostic_recovery_actions`
+
+// FindFillerDiagnosticRecovery is the durable idempotency lookup for an operational retry.
+func (s *sqlStore) FindFillerDiagnosticRecovery(ctx context.Context, id string) (fillerdecision.DiagnosticRecoveryRequest, bool, error) {
+	return getFillerDiagnosticRecovery(ctx, s.db, s.ph, id)
+}
+
+// CommitFillerDiagnosticRecovery records only a retry of the latest retryable extraction hold.
+// The pipeline mutation happens through fillerdecision's executor first; this transaction owns the
+// final stale/current and immutable-request checks.
+func (s *sqlStore) CommitFillerDiagnosticRecovery(ctx context.Context, request fillerdecision.DiagnosticRecoveryRequest) error {
+	if err := fillerdecision.ValidateDiagnosticRecovery(request); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin filler diagnostic recovery: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	existing, found, err := getFillerDiagnosticRecovery(ctx, tx, s.ph, request.ID)
+	if err != nil {
+		return err
+	}
+	if found {
+		if fillerdecision.SameDiagnosticRecovery(existing, request) {
+			return nil
+		}
+		return fillerdecision.ErrConflict
+	}
+
+	current := `SELECT d.outcome_kind, d.hold_code, d.retryable FROM filler_admission_decisions d
+		WHERE d.id = ? AND NOT EXISTS (SELECT 1 FROM filler_admission_decisions newer
+			WHERE newer.clip_hash = d.clip_hash AND (newer.created_at > d.created_at
+			OR (newer.created_at = d.created_at AND newer.id > d.id)))`
+	if s.dialect == DialectPostgres {
+		current += ` FOR UPDATE`
+	}
+	var outcome, holdCode string
+	var retryable int
+	if err := tx.QueryRowContext(ctx, s.ph(current), request.DecisionID).Scan(&outcome, &holdCode, &retryable); errors.Is(err, sql.ErrNoRows) {
+		var exists int
+		if countErr := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM filler_admission_decisions WHERE id = ?`), request.DecisionID).Scan(&exists); countErr != nil {
+			return fmt.Errorf("check stale filler diagnostic: %w", countErr)
+		}
+		if exists > 0 {
+			return fillerdecision.ErrActionStale
+		}
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("lock filler diagnostic: %w", err)
+	}
+	if outcome != string(fillerdecision.OutcomeOperational) ||
+		holdCode != string(filleradmission.HoldExtractionFailed) || retryable != 1 {
+		return fillerdecision.ErrActionNotAllowed
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_diagnostic_recovery_actions
+		(id, decision_id, action, actor_id, created_at) VALUES (?, ?, ?, ?, ?)`),
+		request.ID, request.DecisionID, request.Action, request.ActorID, fillerDecisionEpoch(request.CreatedAt)); err != nil {
+		return fmt.Errorf("insert filler diagnostic recovery: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit filler diagnostic recovery: %w", err)
+	}
+	return nil
+}
+
+func getFillerDiagnosticRecovery(ctx context.Context, q actionRowQueryer, ph placeholder, id string) (fillerdecision.DiagnosticRecoveryRequest, bool, error) {
+	var request fillerdecision.DiagnosticRecoveryRequest
+	var createdAt int64
+	err := q.QueryRowContext(ctx, ph(fillerDiagnosticRecoverySelect+` WHERE id = ?`), id).
+		Scan(&request.ID, &request.DecisionID, &request.Action, &request.ActorID, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fillerdecision.DiagnosticRecoveryRequest{}, false, nil
+	}
+	if err != nil {
+		return fillerdecision.DiagnosticRecoveryRequest{}, false, fmt.Errorf("get filler diagnostic recovery: %w", err)
+	}
+	request.CreatedAt = fromFillerDecisionEpoch(createdAt)
+	return request, true, nil
+}
+
 func appliedActionPublishes(action fillerdecision.Action) bool {
 	return action.Kind == fillerdecision.ActionAdmit ||
 		action.Kind == fillerdecision.ActionCorrect && action.CorrectedVerdict == filleradmission.VerdictAdmit

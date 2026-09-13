@@ -1111,7 +1111,8 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | GET | `/v1/filler/decisions/overview` | Member-readable, server-owned **admission** health: semantic and operational counts plus at most one admission-ranked next action. It is a supporting projection on Filler Overview, not the whole-workspace verdict; clients never derive either health or priority from its detail feeds (§10 V63). |
 | GET | `/v1/filler/attention` | Admin-only bounded page of unresolved Attention tasks. Every row names one closed task kind, one plain question, its required `shadow | applied` application mode, the exact currently allowed actions, and only the decisive reason codes, evidence references, and conflicts (§10 V63). Routine processing and Operational holds are structurally excluded. A shadow row asks for calibration/audit evidence only: answering it never files, removes, schedules, or otherwise changes the clip. |
 | GET | `/v1/filler/decisions/activity` | Member-readable bounded audit of automatic decisions and human actions. Automatic admission, automatic rejection, correction, restore, and reversal remain distinct event kinds (§10 V63). |
-| GET | `/v1/filler/decisions/diagnostics` | Admin-only bounded operational holds. Returns stable recovery codes and redacted details; queued/running/retry/provider/budget state never appears in the human review feed (§10 V63). |
+| GET | `/v1/filler/decisions/diagnostics` | Admin-only bounded operational holds. Returns one server-authored recovery plan per current hold: an automatic retry and its next-attempt time, a currently allowed manual retry, a precise configuration destination, or inspection of the exact held media. Raw provider responses and private paths stay redacted; operational work never appears in the human review feed (§10 V63). |
+| POST | `/v1/filler/decisions/diagnostics/{id}/actions` | Execute a currently advertised diagnostic recovery action (admin, §10 V63). Initial action `retry` is idempotent by request id, records the authenticated actor, and fails closed when the decision is stale or no longer retryable. |
 | POST | `/v1/filler/attention/{id}/actions` | Act on one current Attention task (admin). The request names one of that task's server-projected allowed actions and records actor, reason, and optional corrected answer as an append-only event; it never rewrites evaluator evidence (§10 V63). Reusing an action id with a different body or acting on a stale task fails closed. |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
 | PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c/V57). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. Source trust cannot grant publication authority: the former `autoAdmit` switch is retired because source provenance is only one input to the certified terminal decision. The PATCH body carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
@@ -8240,8 +8241,22 @@ Four projections are owned by `fillerdecision`, not by clients:
   structurally ineligible. The browser neither classifies a task from reason text nor invents an
   action absent from the response.
 - **Activity** is the bounded audit of automatic decisions and append-only operator actions.
-- **Diagnostics** contains each clip's latest operational hold with stable recovery codes and retryability. Provider
-  response text, local paths, raw prompts, and evidence locations are never projected.
+- **Diagnostics** contains each clip's latest operational hold and one server-authored recovery plan.
+  The plan is exactly one of: an automatic retry with its next attempt time, a currently allowed
+  manual retry, a precise configuration destination, or inspection of the exact held media. Provider,
+  budget, extraction, media-inspection, and policy holds map to those closed modes in
+  `fillerdecision`; the browser neither derives a destination from the hold code nor invents a
+  command. Provider response text, local paths, raw prompts, and evidence locations are never
+  projected.
+
+Manual diagnostic retries use a separate append-only recovery-action ledger rather than semantic
+review actions. The request carries a caller id, the authenticated actor is recorded by the server,
+and the store rechecks that the named decision is still the latest retryable operational hold before
+committing it. Repeating the same request id is a no-op; reusing it for another decision conflicts.
+The executor may move first and the ledger second: if a process stops between them, retrying the same
+request recognizes already-scheduled machine work and safely completes the audit. A failed executor
+records no success. Until a newer admission result exists, the hold remains visible with its actual
+automatic/manual state; the UI never removes it optimistically.
 
 Overview and Activity follow the existing member-readable filler contract. Attention,
 Diagnostics, and every action require an admin; member attempts return 403 and create no action.

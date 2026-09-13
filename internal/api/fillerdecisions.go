@@ -63,8 +63,15 @@ type fillerDecisionDiagnosticDTO struct {
 	ClipHash  string                          `json:"clipHash"`
 	Code      filleradmission.OperationalCode `json:"code"`
 	Retryable bool                            `json:"retryable"`
-	Recovery  fillerdecision.RecoveryAction   `json:"recovery" enum:"configure_provider,adjust_budget,retry_extraction,inspect_media,update_policy"`
+	Recovery  fillerDecisionRecoveryDTO       `json:"recovery"`
 	CreatedAt time.Time                       `json:"createdAt"`
+}
+
+type fillerDecisionRecoveryDTO struct {
+	Action      fillerdecision.RecoveryAction `json:"action" enum:"configure_provider,adjust_budget,retry_extraction,inspect_media,update_policy"`
+	Mode        fillerdecision.RecoveryMode   `json:"mode" enum:"automatic_retry,manual_retry,configuration,inspection"`
+	Destination string                        `json:"destination,omitempty" doc:"Exact application or media destination for configuration and inspection recovery"`
+	RetryAt     *time.Time                    `json:"retryAt,omitempty" doc:"Exact next-attempt time for automatic recovery"`
 }
 
 type fillerDecisionDiagnosticsOutput struct {
@@ -111,6 +118,20 @@ type fillerDecisionActionOutput struct {
 	}
 }
 
+type fillerDiagnosticRecoveryInput struct {
+	ID   string `path:"id" maxLength:"128"`
+	Body struct {
+		ActionID string                                  `json:"actionId" maxLength:"128"`
+		Action   fillerdecision.DiagnosticRecoveryAction `json:"action" enum:"retry"`
+	}
+}
+
+type fillerDiagnosticRecoveryOutput struct {
+	Body struct {
+		ID string `json:"id"`
+	}
+}
+
 func (s *Server) registerFillerDecisions(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-decision-overview", Method: http.MethodGet, Path: "/v1/filler/decisions/overview",
@@ -132,6 +153,10 @@ func (s *Server) registerFillerDecisions(api huma.API) {
 		OperationID: "act-on-filler-attention", Method: http.MethodPost, Path: "/v1/filler/attention/{id}/actions",
 		Summary: "Act on a Filler Attention task", Description: "Admin-only append-only action from the task's allowed action set. The server records the authenticated actor and rejects stale or invalid state transitions. Shadow actions are audit-only; an applied action can change the catalog only after terminal release replay and commits that effect atomically (§10 V63).", Tags: []string{"filler"},
 	}, RoleAdmin), s.actOnFillerAttention)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "act-on-filler-diagnostic", Method: http.MethodPost, Path: "/v1/filler/decisions/diagnostics/{id}/actions",
+		Summary: "Recover a filler processing hold", Description: "Admin-only idempotent action selected from the current diagnostic recovery plan. The server records the authenticated actor and rejects stale or no-longer-retryable holds (§10 V63).", Tags: []string{"filler"},
+	}, RoleAdmin), s.actOnFillerDiagnostic)
 }
 
 func (s *Server) fillerDecisionOverview(ctx context.Context, _ *struct{}) (*fillerDecisionOverviewOutput, error) {
@@ -188,11 +213,41 @@ func (s *Server) fillerDecisionDiagnostics(ctx context.Context, in *fillerDecisi
 	out.Body.Total = page.Total
 	out.Body.Rows = make([]fillerDecisionDiagnosticDTO, 0, len(page.Rows))
 	for _, item := range page.Rows {
+		var retryAt *time.Time
+		if !item.Recovery.RetryAt.IsZero() {
+			value := item.Recovery.RetryAt
+			retryAt = &value
+		}
 		out.Body.Rows = append(out.Body.Rows, fillerDecisionDiagnosticDTO{
 			ID: item.ID, ClipHash: item.ClipHash, Code: item.Code,
-			Retryable: item.Retryable, Recovery: item.Recovery, CreatedAt: item.CreatedAt,
+			Retryable: item.Retryable,
+			Recovery: fillerDecisionRecoveryDTO{
+				Action: item.Recovery.Action, Mode: item.Recovery.Mode,
+				Destination: item.Recovery.Destination, RetryAt: retryAt,
+			},
+			CreatedAt: item.CreatedAt,
 		})
 	}
+	return out, nil
+}
+
+func (s *Server) actOnFillerDiagnostic(ctx context.Context, in *fillerDiagnosticRecoveryInput) (*fillerDiagnosticRecoveryOutput, error) {
+	if s.fillerDecisions == nil {
+		return nil, errFeatureNotConfigured("Filler decision audit unavailable", "The durable filler decision service is not configured.")
+	}
+	actor := userIDFromHuma(ctx)
+	if actor == "" {
+		actor = "api-token"
+	}
+	request := fillerdecision.DiagnosticRecoveryRequest{
+		ID: strings.TrimSpace(in.Body.ActionID), DecisionID: in.ID, ActorID: actor,
+		Action: in.Body.Action, CreatedAt: time.Now().UTC(),
+	}
+	if err := s.fillerDecisions.RetryDiagnostic(ctx, request); err != nil {
+		return nil, fillerDecisionError(err)
+	}
+	out := &fillerDiagnosticRecoveryOutput{}
+	out.Body.ID = request.ID
 	return out, nil
 }
 
@@ -253,6 +308,8 @@ func fillerDecisionError(err error) error {
 		return huma.Error409Conflict("That action cannot use this decision's shadow or applied writer.")
 	case errors.Is(err, fillerdecision.ErrAppliedUnavailable):
 		return huma.Error409Conflict("Applied terminal admission is not available for this decision.")
+	case errors.Is(err, fillerdecision.ErrRecoveryUnavailable):
+		return huma.Error409Conflict("Filler processing recovery is not available on this install.")
 	case errors.Is(err, fillerdecision.ErrActionNotAllowed):
 		return huma.Error409Conflict("That action is not valid for the decision's current state.")
 	default:

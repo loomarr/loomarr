@@ -153,6 +153,9 @@ func buildFillerSubsystem(
 		processDiagnostics, admissionObserver, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
 	adapter.pipeline = pipeline
+	if decisionService != nil {
+		decisionService.WithDiagnosticRecovery(adapter)
+	}
 	adapter.afterIngest = func(ctx context.Context) error {
 		if _, err := syncer.Sync(ctx); err != nil {
 			return err
