@@ -175,6 +175,34 @@ func TestSubmit_UnconfiguredAIFailsBeforeCreatingJob(t *testing.T) {
 	}
 }
 
+func TestSubmit_ConfiguredAIWithMissingTMDBNamesGroundingBlocker(t *testing.T) {
+	srv, _, fs := newSuggestServerWithSettingsAndDecisionQuality(
+		t,
+		&fakeSettings{missing: map[string][]string{"suggestions": {"tmdb.api_key"}}},
+		nil,
+	)
+	resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, `{"description":"Saturday cartoons"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("submit → %d, want 409 feature-not-configured", resp.StatusCode)
+	}
+	if fs.submits != 0 {
+		t.Fatalf("unconfigured submission created %d jobs, want none", fs.submits)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var problem struct {
+		Type   string `json:"type"`
+		Title  string `json:"title"`
+		Detail string `json:"detail"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Type != "grounding_not_configured" || !strings.Contains(problem.Title, "TMDB") ||
+		!strings.Contains(problem.Detail, "Connections") {
+		t.Errorf("problem = %+v, want an actionable TMDB grounding diagnosis", problem)
+	}
+}
+
 func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	intent := `{"description":"Classic Simpson Episodes"}`

@@ -48,6 +48,9 @@ interface SettingsPageProps {
   description?: string;
   blocks: SettingsBlock[];
   entries: SettingEntry[];
+  // A deep link from a blocked workflow opens the exact connection it can fix,
+  // even when another failing connection would otherwise win first-failure triage.
+  initialOpenGroup?: string;
   // Rendered above the blocks — Connections puts the re-runnable checklist here (§5).
   children?: ReactNode | ((ctx: SettingsRenderContext) => ReactNode);
   // Rendered below the blocks, for things that read as a consequence of the settings

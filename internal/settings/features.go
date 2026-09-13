@@ -86,6 +86,30 @@ func (s *Service) Features() FeatureSet {
 	}
 }
 
+// MissingRequired returns the empty registry keys that keep a simple RequiredFor
+// feature unavailable. Suggestions use product order: finish the AI choice first,
+// then connect the grounding source. Consumers use these keys to explain the same
+// verdict Features reports instead of independently guessing why it is false.
+func (s *Service) MissingRequired(feature Feature) []string {
+	if feature == FeatureSuggestions {
+		missing := make([]string, 0, 3)
+		for _, key := range []string{"llm.provider", "llm.model", "tmdb.api_key"} {
+			if s.isEmpty(key) {
+				missing = append(missing, key)
+			}
+		}
+		return missing
+	}
+
+	missing := make([]string, 0)
+	for _, set := range s.reg.All() {
+		if set.Required == feature && s.isEmpty(set.Key) {
+			missing = append(missing, set.Key)
+		}
+	}
+	return missing
+}
+
 func (s *Service) libraryConfigured() bool {
 	_, err := s.LibraryConnection().Validate()
 	return err == nil
@@ -94,12 +118,7 @@ func (s *Service) libraryConfigured() bool {
 // allRequiredSet reports whether every registry key with RequiredFor == feature
 // resolves to a non-empty value. A feature with no required keys is trivially on.
 func (s *Service) allRequiredSet(feature Feature) bool {
-	for _, set := range s.reg.All() {
-		if set.Required == feature && s.isEmpty(set.Key) {
-			return false
-		}
-	}
-	return true
+	return len(s.MissingRequired(feature)) == 0
 }
 
 // requesterConfigured is the acquisition gate (config-design §7), now provider-aware.

@@ -21,6 +21,8 @@ import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 
+afterEach(() => window.sessionStorage.clear());
+
 // ⚠ Was a local `entry()` helper duplicating what `setting()` now carries — and the local one
 // was the reason four required SettingEntry fields could go missing elsewhere in the suite
 // without anything noticing they were required at all.
@@ -215,6 +217,32 @@ describe("Settings", () => {
     // No standalone "connection checklist" duplicating the block statuses — the wiring
     // actions self-report on their own blocks, quiet once set up (§5, §13).
     expect(screen.queryByRole("heading", { name: /connection checklist/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the TMDB block when a channel-suggestion recovery link targets it", async () => {
+    const tmdb = setting({
+      key: "tmdb.api_key",
+      label: "TMDB API key",
+      group: "connections.tmdb",
+      kind: "secret",
+      secret: true,
+      set: false,
+    });
+    stubSettings([...SETTINGS, tmdb]);
+    server.use(
+      getSetupStatusMockHandler({
+        checks: [
+          { name: "media_server", ok: false, hint: "Emby refused the token." },
+          { name: "tmdb", ok: false, hint: "Add a TMDB API key." },
+        ],
+      }),
+    );
+
+    renderAt("/settings/connections?focus=tmdb");
+
+    expect(await screen.findByRole("button", { name: /^TMDB/i })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /media server/i })).toHaveAttribute("aria-expanded", "false");
+    expect(await screen.findByLabelText("TMDB API key")).toBeInTheDocument();
   });
 
   it("saves the whole page from one bar, sending only what changed", async () => {
@@ -578,6 +606,11 @@ describe("Settings honesty", () => {
     expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
     expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
+    expect(screen.getByText("TMDB grounding is still needed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Connect TMDB" })).toHaveAttribute(
+      "href",
+      "/settings/connections?focus=tmdb",
+    );
     expect(screen.queryByRole("heading", { name: "Automatic model policy" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Filler analysis models" })).not.toBeInTheDocument();
     const modelHeading = screen.getByRole("heading", { name: "Choose a lineup model" });
@@ -587,6 +620,19 @@ describe("Settings honesty", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Vision" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Gemini Vision/i })).not.toBeInTheDocument();
+  });
+
+  it("offers a return to the saved channel draft from AI settings", async () => {
+    window.sessionStorage.setItem(
+      "loomarr.pendingProposalIntent",
+      JSON.stringify({ description: "Saturday morning cartoons" }),
+    );
+    stubSettings();
+
+    renderAt("/settings/ai");
+
+    expect(await screen.findByText("Your channel draft is saved")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Return to channel" })).toHaveAttribute("href", "/guide");
   });
 
   it("stages capability-filtered vision and transcription roles from a configured hosted provider", async () => {

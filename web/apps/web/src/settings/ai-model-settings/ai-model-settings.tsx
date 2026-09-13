@@ -2,13 +2,14 @@ import * as setupApi from "@loomarr/api/endpoints/setup";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";
 import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
 import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { useLoomarrEventListener } from "@/events/events-provider";
 
 type RoleOption = {
@@ -113,6 +114,7 @@ const AiModelSettings = ({
   transcriptionProvider = "whisper",
   transcriptionModel = "openai/whisper-large-v3",
   onRoleSettingChange,
+  tmdbConfigured,
 }: {
   provider?: string;
   baseUrl?: string;
@@ -123,6 +125,7 @@ const AiModelSettings = ({
   transcriptionProvider?: string;
   transcriptionModel?: string;
   onRoleSettingChange?: (key: string, value: string) => void;
+  tmdbConfigured?: boolean;
 }) => {
   const queryClient = useQueryClient();
   const [pulling, setPulling] = useState<{ tag: string; percent?: number }>();
@@ -275,7 +278,7 @@ const AiModelSettings = ({
               <p role="status" className="text-lock text-sm">
                 {activeProvider.label} credentials authorized.{" "}
                 {modelReady
-                  ? `${status.model} is ready for lineup suggestions.`
+                  ? `${status.model} is selected as the lineup model.`
                   : "Choose a tool-capable lineup model to finish AI setup."}
               </p>
             )}
@@ -399,6 +402,29 @@ const AiModelSettings = ({
         </div>
         {lineup}
       </section>
+      {tmdbConfigured !== undefined && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 p-3">
+          <div>
+            <p className="font-medium text-sm">
+              {tmdbConfigured ? "TMDB key configured" : "TMDB grounding is still needed"}
+            </p>
+            <p className="text-muted-foreground text-sm">
+              {tmdbConfigured
+                ? "Loomarr can use TMDB to ground channel suggestions in real titles."
+                : "Your AI connection is separate. Connect TMDB before building a channel from a description."}
+            </p>
+          </div>
+          {!tmdbConfigured && (
+            <Link
+              to="/settings/connections"
+              search={{ focus: "tmdb" }}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Connect TMDB
+            </Link>
+          )}
+        </section>
+      )}
       <CollapsibleSection
         title="Advanced model roles"
         description="Optionally choose separate models for filler vision and transcription."

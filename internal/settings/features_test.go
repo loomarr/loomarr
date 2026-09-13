@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"os/exec"
+	"slices"
 	"testing"
 )
 
@@ -48,6 +49,27 @@ func TestFeatures_SuggestionsNeedModelAndTMDB(t *testing.T) {
 	}
 	if !featureService(t, map[string]string{"llm.model": "qwen3:8b", "tmdb.api_key": "tmdbkey"}).Features().Suggestions {
 		t.Error("suggestions should be on with a selected model and TMDB")
+	}
+}
+
+func TestMissingRequired_SuggestionsExplainsTheFeatureVerdictInRecoveryOrder(t *testing.T) {
+	cases := []struct {
+		name string
+		db   map[string]string
+		want []string
+	}{
+		{name: "nothing", want: []string{"llm.model", "tmdb.api_key"}},
+		{name: "AI ready", db: map[string]string{"llm.model": "qwen3:8b"}, want: []string{"tmdb.api_key"}},
+		{name: "grounding ready", db: map[string]string{"tmdb.api_key": "tmdbkey"}, want: []string{"llm.model"}},
+		{name: "ready", db: map[string]string{"llm.model": "qwen3:8b", "tmdb.api_key": "tmdbkey"}, want: []string{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := featureService(t, tc.db).MissingRequired(FeatureSuggestions)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("missing = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

@@ -1,6 +1,54 @@
 import { expect, test } from "@playwright/test";
 import { installMockBackend } from "./mock-backend";
 
+test("missing TMDB keeps connected AI truthful and preserves the channel draft through settings", async ({
+  page,
+}) => {
+  await installMockBackend(page, { authed: true, role: "admin", checks: { tmdb: false } });
+  await page.route("**/v1/proposals", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    return route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        type: "grounding_not_configured",
+        title: "TMDB is needed for channel suggestions",
+        detail:
+          "Connect TMDB in Settings → Connections so Loomarr can match this channel description to real titles.",
+      }),
+    });
+  });
+
+  await page.goto("/guide");
+  await page.getByRole("button", { name: "Add a channel" }).click();
+  await page.getByRole("textbox", { name: "Channel intent" }).fill("Saturday morning cartoons");
+  await page.getByRole("button", { name: "Add constraints" }).click();
+  await page.getByLabel("Era").fill("1990s");
+  await page.getByRole("button", { name: "Suggest a lineup" }).click();
+
+  await expect(page.getByText("Connect TMDB to build this channel")).toBeVisible();
+  await expect(page.getByText(/AI is connected/)).toBeVisible();
+  await expect(page.getByText(/AI isn't set up|Connect AI/)).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Connect TMDB" }).click();
+  await expect(page).toHaveURL(/\/settings\/connections\?focus=tmdb$/);
+  await expect(page.getByRole("button", { name: /^TMDB/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("Your channel draft is saved")).toBeVisible();
+
+  await page.getByRole("link", { name: "Return to channel" }).click();
+  await expect(page).toHaveURL(/\/guide$/);
+  await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue(
+    "Saturday morning cartoons",
+  );
+  await page.getByRole("button", { name: "Add constraints" }).click();
+  await expect(page.getByLabel("Era")).toHaveValue("1990s");
+
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Add a channel" }).click();
+  await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
+});
+
 test("a failed builder journey preserves the complete intent through authorized recovery", async ({
   page,
 }) => {

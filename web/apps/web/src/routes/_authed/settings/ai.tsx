@@ -2,9 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AiModelSettings } from "@/settings/ai-model-settings";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
+import { SuggestionDraftReturn } from "@/suggest/suggestion-draft-return";
 
 const AiSettings = () => {
   const entries = useSettingsEntries();
+  const tmdbConfigured = entries.find((entry) => entry.key === "tmdb.api_key")?.set ?? false;
 
   return (
     <SettingsPage
@@ -32,6 +34,7 @@ const AiSettings = () => {
               transcriptionProvider={liveValue("filler.transcribe.provider")}
               transcriptionModel={liveValue("filler.transcribe.model")}
               onRoleSettingChange={setEdit}
+              tmdbConfigured={tmdbConfigured}
             />
           ),
         },
@@ -42,7 +45,9 @@ const AiSettings = () => {
           keys: ["suggest.max_acquisitions", "recurate.min_score_pct", "recurate.max_titles"],
         },
       ]}
-    />
+    >
+      <SuggestionDraftReturn />
+    </SettingsPage>
   );
 };
 
