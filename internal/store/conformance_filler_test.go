@@ -4383,6 +4383,71 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testFillerDiagnosticRecoveryActions(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 12, 16, 0, 0, 0, time.UTC)
+	record := fillerdecision.Record{
+		ID: "diagnostic-retry", ClipHash: "clip-diagnostic", EvidenceHash: "evidence-diagnostic",
+		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
+		PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
+		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
+		Result: filleradmission.Result{Hold: &filleradmission.Hold{
+			Code: filleradmission.HoldExtractionFailed, Retryable: true,
+		}},
+	}
+	if err := s.PutFillerDecision(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	request := fillerdecision.DiagnosticRecoveryRequest{
+		ID: "diagnostic-action-1", DecisionID: record.ID, ActorID: "admin-1",
+		Action: fillerdecision.DiagnosticRecoveryRetry, CreatedAt: at.Add(time.Second),
+	}
+	if err := s.CommitFillerDiagnosticRecovery(ctx, request); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CommitFillerDiagnosticRecovery(ctx, request); err != nil {
+		t.Fatalf("idempotent diagnostic recovery = %v", err)
+	}
+	got, found, err := s.FindFillerDiagnosticRecovery(ctx, request.ID)
+	if err != nil || !found || !fillerdecision.SameDiagnosticRecovery(got, request) || got.CreatedAt != request.CreatedAt {
+		t.Fatalf("diagnostic recovery round trip = %+v, %v, %v", got, found, err)
+	}
+	changed := request
+	changed.DecisionID = "other-decision"
+	if err := s.CommitFillerDiagnosticRecovery(ctx, changed); !errors.Is(err, fillerdecision.ErrConflict) {
+		t.Fatalf("conflicting diagnostic action = %v", err)
+	}
+
+	nonRetryable := record
+	nonRetryable.ID, nonRetryable.ClipHash = "diagnostic-inspect", "clip-inspect"
+	nonRetryable.Result.Hold = &filleradmission.Hold{Code: filleradmission.HoldExtractionFailed, Retryable: false}
+	if err := s.PutFillerDecision(ctx, nonRetryable); err != nil {
+		t.Fatal(err)
+	}
+	denied := request
+	denied.ID, denied.DecisionID = "diagnostic-action-denied", nonRetryable.ID
+	if err := s.CommitFillerDiagnosticRecovery(ctx, denied); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
+		t.Fatalf("non-retryable diagnostic action = %v", err)
+	}
+
+	recovered := record
+	recovered.ID = "diagnostic-recovered"
+	recovered.Result = filleradmission.Result{Decision: &filleradmission.Decision{
+		Verdict: filleradmission.VerdictAdmit, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
+	}}
+	recovered.CreatedAt = at.Add(2 * time.Second)
+	if err := s.PutFillerDecision(ctx, recovered); err != nil {
+		t.Fatal(err)
+	}
+	stale := request
+	stale.ID = "diagnostic-action-stale"
+	if err := s.CommitFillerDiagnosticRecovery(ctx, stale); !errors.Is(err, fillerdecision.ErrActionStale) {
+		t.Fatalf("stale diagnostic action = %v", err)
+	}
+}
+
 func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	t.Run("negative rights cases", func(t *testing.T) { testFillerAppliedAdmissionNegativeCases(t, newStore) })

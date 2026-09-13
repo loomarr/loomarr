@@ -435,7 +435,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V63's durable audit half. A shadow admission decision is normal work, so it belongs in Manage
     // activity rather than in the exception queue. Keeping this route-level assertion prevents
     // unattended decisions from becoming invisible when the old Incoming surface is retired.
-    ["/filler/manage", /would admit \(shadow\)/i, "the shadow decision activity"],
+    ["/filler/manage", /would add \(preview\)/i, "the preview decision activity"],
     // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
     // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
     ["/filler", /^incoming/i, "the incoming workbench's own entry point"],

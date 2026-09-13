@@ -459,6 +459,30 @@ func TestPipeline_RetryFailureRefusesContentDecision(t *testing.T) {
 	}
 }
 
+func TestPipeline_DiagnosticRetryStatusDistinguishesAutomaticFromManualRecovery(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "scheduled")
+	now := time.Unix(1_800_000_000, 0).UTC()
+	row := st.rows["scheduled"]
+	row.Stage, row.Status = filler.StageVision, filler.StatusFailed
+	row.NextRun = now.Add(30 * time.Minute)
+	st.rows[row.ClipHash] = row
+	p := newPipe(st, nil, filler.DefaultBudget())
+
+	status, err := p.DiagnosticRetryStatus(context.Background(), row.ClipHash)
+	if err != nil || !status.Automatic || !status.RetryAt.Equal(row.NextRun) {
+		t.Fatalf("scheduled diagnostic retry = %+v, %v", status, err)
+	}
+
+	row.Disposition, row.Stage = filler.DispositionRejected, filler.StageTranscode
+	row.RejectReason = filler.ReasonUnplayable
+	st.rows[row.ClipHash] = row
+	status, err = p.DiagnosticRetryStatus(context.Background(), row.ClipHash)
+	if err != nil || status.Automatic || !status.RetryAt.IsZero() {
+		t.Fatalf("manual diagnostic retry = %+v, %v", status, err)
+	}
+}
+
 func TestPipeline_RequeuesFiledLegacyMezzanineForQualityWithoutSpendingPastBudget(t *testing.T) {
 	dir := t.TempDir()
 	st := newPipeMemStore()

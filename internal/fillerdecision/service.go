@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -12,8 +13,9 @@ import (
 )
 
 type Service struct {
-	repo    Repository
-	applied AppliedActionExecutor
+	repo       Repository
+	applied    AppliedActionExecutor
+	diagnostic DiagnosticRecoveryExecutor
 }
 
 func New(repo Repository) (*Service, error) {
@@ -28,6 +30,15 @@ func New(repo Repository) (*Service, error) {
 func (s *Service) WithAppliedActions(executor AppliedActionExecutor) *Service {
 	if s != nil {
 		s.applied = executor
+	}
+	return s
+}
+
+// WithDiagnosticRecovery attaches the pipeline-owned status and retry seam. Configuration and
+// inspection destinations remain available without it; executable retries fail closed.
+func (s *Service) WithDiagnosticRecovery(executor DiagnosticRecoveryExecutor) *Service {
+	if s != nil {
+		s.diagnostic = executor
 	}
 	return s
 }
@@ -202,12 +213,91 @@ func (s *Service) Diagnostics(ctx context.Context, cursor Cursor, limit int) (Di
 	out := DiagnosticPage{Rows: make([]DiagnosticItem, 0, len(page.Rows)), Total: page.Total}
 	for _, record := range page.Rows {
 		hold := record.Result.Hold
+		recovery, err := s.diagnosticRecovery(ctx, record)
+		if err != nil {
+			return DiagnosticPage{}, err
+		}
 		out.Rows = append(out.Rows, DiagnosticItem{
 			ID: record.ID, ClipHash: record.ClipHash, Code: hold.Code,
-			Retryable: hold.Retryable, Recovery: recoveryFor(hold.Code, hold.Retryable), CreatedAt: record.CreatedAt,
+			Retryable: hold.Retryable, Recovery: recovery, CreatedAt: record.CreatedAt,
 		})
 	}
 	return out, nil
+}
+
+func (s *Service) diagnosticRecovery(ctx context.Context, record Record) (RecoveryPlan, error) {
+	hold := record.Result.Hold
+	if hold == nil || record.Result.Decision != nil {
+		return RecoveryPlan{}, ErrActionNotAllowed
+	}
+	action := recoveryFor(hold.Code, hold.Retryable)
+	plan := RecoveryPlan{Action: action}
+	switch action {
+	case RecoveryConfigureProvider:
+		plan.Mode, plan.Destination = RecoveryModeConfiguration, "/settings/ai"
+	case RecoveryAdjustBudget:
+		plan.Mode, plan.Destination = RecoveryModeConfiguration, "/filler/settings"
+	case RecoveryUpdatePolicy:
+		plan.Mode, plan.Destination = RecoveryModeConfiguration, "/filler/settings"
+	case RecoveryInspectMedia:
+		plan.Mode, plan.Destination = RecoveryModeInspection, "/v1/filler/media/"+url.PathEscape(record.ClipHash)
+	case RecoveryRetryExtraction:
+		plan.Mode = RecoveryModeManualRetry
+		if s.diagnostic == nil {
+			return plan, nil
+		}
+		status, err := s.diagnostic.DiagnosticRetryStatus(ctx, record.ClipHash)
+		if err != nil {
+			return RecoveryPlan{}, err
+		}
+		if status.Automatic {
+			if status.RetryAt.IsZero() {
+				return RecoveryPlan{}, fmt.Errorf("%w: automatic diagnostic retry has no schedule", ErrInvalid)
+			}
+			plan.Mode, plan.RetryAt = RecoveryModeAutomaticRetry, status.RetryAt.UTC()
+		}
+	}
+	return plan, nil
+}
+
+// RetryDiagnostic accepts only the retry command projected for the latest retryable extraction
+// hold. An already automatic retry needs no second pipeline mutation, but still completes the
+// caller's durable idempotency record after a process interruption.
+func (s *Service) RetryDiagnostic(ctx context.Context, request DiagnosticRecoveryRequest) error {
+	if err := ValidateDiagnosticRecovery(request); err != nil {
+		return err
+	}
+	existing, found, err := s.repo.FindFillerDiagnosticRecovery(ctx, request.ID)
+	if err != nil {
+		return err
+	}
+	if found {
+		if SameDiagnosticRecovery(existing, request) {
+			return nil
+		}
+		return ErrConflict
+	}
+	record, err := s.repo.GetFillerDecision(ctx, request.DecisionID)
+	if err != nil {
+		return err
+	}
+	plan, err := s.diagnosticRecovery(ctx, record)
+	if err != nil {
+		return err
+	}
+	if request.Action != DiagnosticRecoveryRetry || plan.Action != RecoveryRetryExtraction ||
+		(plan.Mode != RecoveryModeManualRetry && plan.Mode != RecoveryModeAutomaticRetry) {
+		return ErrActionNotAllowed
+	}
+	if s.diagnostic == nil {
+		return ErrRecoveryUnavailable
+	}
+	if plan.Mode == RecoveryModeManualRetry {
+		if err := s.diagnostic.RetryDiagnostic(ctx, record.ClipHash); err != nil {
+			return err
+		}
+	}
+	return s.repo.CommitFillerDiagnosticRecovery(ctx, request)
 }
 
 func (s *Service) Activity(ctx context.Context, cursor Cursor, limit int) (ActivityPage, error) {
@@ -298,6 +388,14 @@ func recoveryFor(code filleradmission.OperationalCode, retryable bool) RecoveryA
 	default:
 		return RecoveryUpdatePolicy
 	}
+}
+
+func ValidateDiagnosticRecovery(request DiagnosticRecoveryRequest) error {
+	if !boundedRequired(request.ID, MaxIDBytes) || !boundedRequired(request.DecisionID, MaxIDBytes) ||
+		!boundedRequired(request.ActorID, MaxIDBytes) || request.Action != DiagnosticRecoveryRetry || request.CreatedAt.IsZero() {
+		return fmt.Errorf("%w: diagnostic recovery request is incomplete", ErrInvalid)
+	}
+	return nil
 }
 
 func ValidateAction(action Action) error {

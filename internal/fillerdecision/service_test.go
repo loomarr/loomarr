@@ -138,6 +138,46 @@ func (r *attentionRepository) ListFillerDecisions(context.Context, DecisionFilte
 	return r.page, nil
 }
 
+type diagnosticRepository struct {
+	Repository
+	page     DecisionPage
+	record   Record
+	existing DiagnosticRecoveryRequest
+	commits  recordfixture.Recorder[DiagnosticRecoveryRequest, struct{}]
+}
+
+func (r *diagnosticRepository) ListFillerDecisions(context.Context, DecisionFilter) (DecisionPage, error) {
+	return r.page, nil
+}
+
+func (r *diagnosticRepository) GetFillerDecision(context.Context, string) (Record, error) {
+	return r.record, nil
+}
+
+func (r *diagnosticRepository) FindFillerDiagnosticRecovery(_ context.Context, id string) (DiagnosticRecoveryRequest, bool, error) {
+	return r.existing, r.existing.ID == id, nil
+}
+
+func (r *diagnosticRepository) CommitFillerDiagnosticRecovery(_ context.Context, request DiagnosticRecoveryRequest) error {
+	_, err := r.commits.Call(request)
+	return err
+}
+
+type diagnosticExecutor struct {
+	status    DiagnosticRetryStatus
+	statusErr error
+	retries   recordfixture.Recorder[string, struct{}]
+}
+
+func (e *diagnosticExecutor) DiagnosticRetryStatus(context.Context, string) (DiagnosticRetryStatus, error) {
+	return e.status, e.statusErr
+}
+
+func (e *diagnosticExecutor) RetryDiagnostic(_ context.Context, hash string) error {
+	_, err := e.retries.Call(hash)
+	return err
+}
+
 func TestAttentionProjectsTaskKindAndOnlyCurrentlyAllowedActions(t *testing.T) {
 	at := time.Date(2026, 9, 12, 13, 0, 0, 0, time.UTC)
 	review := func(id string, mode ApplicationMode, reasons ...filleradmission.ReasonCode) Record {
@@ -361,6 +401,138 @@ func TestRecoveryActionsAreServerOwned(t *testing.T) {
 	if got := recoveryFor(filleradmission.HoldExtractionFailed, false); got != RecoveryInspectMedia {
 		t.Errorf("terminal extraction recovery = %q", got)
 	}
+}
+
+func TestDiagnosticsProjectCompletableServerOwnedRecoveryPlans(t *testing.T) {
+	at := time.Date(2026, 9, 12, 15, 0, 0, 0, time.UTC)
+	records := []Record{
+		operationalRecord("provider", "provider-clip", filleradmission.HoldProviderUnavailable, true),
+		operationalRecord("budget", "budget-clip", filleradmission.HoldBudgetExhausted, false),
+		operationalRecord("retry", "retry-clip", filleradmission.HoldExtractionFailed, true),
+		operationalRecord("inspect", "inspect-clip", filleradmission.HoldExtractionFailed, false),
+		operationalRecord("policy", "policy-clip", filleradmission.HoldSchemaInvalid, false),
+	}
+	for index := range records {
+		records[index].CreatedAt = at.Add(time.Duration(index) * time.Second)
+	}
+	repo := &diagnosticRepository{page: DecisionPage{Rows: records, Total: len(records)}}
+	service, err := New(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := service.Diagnostics(t.Context(), Cursor{}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RecoveryPlan{
+		{Action: RecoveryConfigureProvider, Mode: RecoveryModeConfiguration, Destination: "/settings/ai"},
+		{Action: RecoveryAdjustBudget, Mode: RecoveryModeConfiguration, Destination: "/filler/settings"},
+		{Action: RecoveryRetryExtraction, Mode: RecoveryModeManualRetry},
+		{Action: RecoveryInspectMedia, Mode: RecoveryModeInspection, Destination: "/v1/filler/media/inspect-clip"},
+		{Action: RecoveryUpdatePolicy, Mode: RecoveryModeConfiguration, Destination: "/filler/settings"},
+	}
+	if len(page.Rows) != len(want) {
+		t.Fatalf("Diagnostics rows = %d, want %d", len(page.Rows), len(want))
+	}
+	for index := range want {
+		if page.Rows[index].Recovery != want[index] {
+			t.Errorf("recovery %d = %+v, want %+v", index, page.Rows[index].Recovery, want[index])
+		}
+	}
+}
+
+func TestDiagnosticsProjectAutomaticRetryWithExactSchedule(t *testing.T) {
+	retryAt := time.Date(2026, 9, 12, 15, 30, 0, 0, time.UTC)
+	record := operationalRecord("retry", "retry-clip", filleradmission.HoldExtractionFailed, true)
+	repo := &diagnosticRepository{page: DecisionPage{Rows: []Record{record}, Total: 1}}
+	executor := &diagnosticExecutor{status: DiagnosticRetryStatus{Automatic: true, RetryAt: retryAt}}
+	service, err := New(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.WithDiagnosticRecovery(executor)
+	page, err := service.Diagnostics(t.Context(), Cursor{}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := RecoveryPlan{Action: RecoveryRetryExtraction, Mode: RecoveryModeAutomaticRetry, RetryAt: retryAt}
+	if len(page.Rows) != 1 || page.Rows[0].Recovery != want {
+		t.Fatalf("automatic recovery = %+v, want %+v", page.Rows, want)
+	}
+}
+
+func TestRetryDiagnosticExecutesAndRecordsOneIdempotentRequest(t *testing.T) {
+	record := operationalRecord("retry", "retry-clip", filleradmission.HoldExtractionFailed, true)
+	repo := &diagnosticRepository{record: record, page: DecisionPage{Rows: []Record{record}, Total: 1}}
+	executor := &diagnosticExecutor{}
+	retryAt := time.Date(2026, 9, 12, 15, 30, 0, 0, time.UTC)
+	executor.retries.Respond = func(string) (struct{}, error) {
+		executor.status = DiagnosticRetryStatus{Automatic: true, RetryAt: retryAt}
+		return struct{}{}, nil
+	}
+	service, err := New(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.WithDiagnosticRecovery(executor)
+	request := DiagnosticRecoveryRequest{
+		ID: "recovery-1", DecisionID: record.ID, ActorID: "admin-1", Action: DiagnosticRecoveryRetry,
+		CreatedAt: time.Date(2026, 9, 12, 15, 0, 0, 0, time.UTC),
+	}
+	if err := service.RetryDiagnostic(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	if executor.retries.Calls() != 1 || repo.commits.Calls() != 1 {
+		t.Fatalf("retry calls = %d, commits = %d", executor.retries.Calls(), repo.commits.Calls())
+	}
+	page, err := service.Diagnostics(t.Context(), Cursor{}, 10)
+	if err != nil || len(page.Rows) != 1 || page.Rows[0].Recovery.Mode != RecoveryModeAutomaticRetry ||
+		!page.Rows[0].Recovery.RetryAt.Equal(retryAt) {
+		t.Fatalf("recovery after retry = %+v, %v", page, err)
+	}
+	repo.existing = request
+	if err := service.RetryDiagnostic(t.Context(), request); err != nil {
+		t.Fatalf("idempotent retry = %v", err)
+	}
+	if executor.retries.Calls() != 1 || repo.commits.Calls() != 1 {
+		t.Fatal("idempotent request executed or committed twice")
+	}
+}
+
+func TestRetryDiagnosticLeavesFailedAndDisallowedHoldsUntouched(t *testing.T) {
+	record := operationalRecord("retry", "retry-clip", filleradmission.HoldExtractionFailed, true)
+	repo := &diagnosticRepository{record: record}
+	executor := &diagnosticExecutor{}
+	executor.retries.Respond = func(string) (struct{}, error) { return struct{}{}, errors.New("rewind failed") }
+	service, err := New(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.WithDiagnosticRecovery(executor)
+	request := DiagnosticRecoveryRequest{
+		ID: "recovery-1", DecisionID: record.ID, ActorID: "admin-1", Action: DiagnosticRecoveryRetry,
+		CreatedAt: time.Date(2026, 9, 12, 15, 0, 0, 0, time.UTC),
+	}
+	if err := service.RetryDiagnostic(t.Context(), request); err == nil {
+		t.Fatal("failed retry returned success")
+	}
+	if repo.commits.Calls() != 0 {
+		t.Fatal("failed executor recorded a recovery action")
+	}
+
+	repo.record = operationalRecord("provider", "provider-clip", filleradmission.HoldProviderUnavailable, true)
+	executor.retries.Respond = nil
+	request.DecisionID = repo.record.ID
+	if err := service.RetryDiagnostic(t.Context(), request); !errors.Is(err, ErrActionNotAllowed) {
+		t.Fatalf("provider retry = %v, want ErrActionNotAllowed", err)
+	}
+}
+
+func operationalRecord(id, hash string, code filleradmission.OperationalCode, retryable bool) Record {
+	record := validRecord()
+	record.ID, record.ClipHash = id, hash
+	record.Result = filleradmission.Result{Hold: &filleradmission.Hold{Code: code, Retryable: retryable}}
+	return record
 }
 
 func validRecord() Record {
