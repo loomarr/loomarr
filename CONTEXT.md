@@ -300,18 +300,25 @@ _Avoid_: Source, collection, parent Source
 **Filler Source**:
 One operator-registered acquisition target, such as an Archive.org collection, YouTube channel or
 playlist, watched folder, or media-server library. Registration records where Loomarr may look; it
-does not establish rights, Airworthiness, or admission for anything found there.
+does not establish Airworthiness or admission for anything found there. Any Provider-declared
+licence is passive provenance metadata, not a runtime decision or gate.
 _Avoid_: Provider, feed, catalog
 
 **Source suggestion**:
 An unselected discovery shortcut for a possible Filler Source. It becomes a Source only when the
-operator adds it, and its presence never grants acquisition rights or admission authority.
+operator adds it, and its presence never grants acquisition or admission authority.
 _Avoid_: default Source, enabled Source, approved Source
 
 **Source resolution**:
 Server verification that typed input or a Source suggestion identifies one canonical Provider
-target. Resolution creates no Source and grants no acquisition, rights, or admission authority.
+target. Resolution creates no Source and grants no acquisition or admission authority.
 _Avoid_: registration, search result, approval
+
+**Provider-declared licence metadata**:
+The exact licence value or URL a Provider reports for a Source or item. Loomarr preserves it for
+optional provenance details; presence, absence, or content never changes acquisition, screening,
+admission, readiness, or playback.
+_Avoid_: rights authority, approval, eligibility, permission
 
 **Storage allowance**:
 The most Loomarr-managed filler storage that unattended work may use on a filesystem. Reaching it

@@ -1125,7 +1125,7 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c/V57). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. Source trust cannot grant publication authority: the former `autoAdmit` switch is retired because source provenance is only one input to the certified terminal decision. The PATCH body carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
 | GET | `/v1/filler/watch` | **The Filler header's live source status (§10 V38c/V55).** Returns `{health, sourcesOn, sourcesReady, sourcesTotal, clips, lastScanAt?, autoFetch?}` — everything the page header renders, computed on the SERVER. `sourcesReady` counts sources that are on and usable for the Installation geography; `sourcesOn` remains separate so the UI can distinguish an enabled source that still needs attention. `autoFetch` names whether fetching is enabled, the current catalog/disk measurements and ceilings, and the ceiling currently stopping it (`catalog` or `disk`); it is current state, not merely the last scheduler result, so a removal or settings change clears the warning immediately. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that source-acquisition judgement.** It must not be presented as the whole Filler workspace verdict; `/v1/filler/readiness` owns that answer. Deriving source health in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
 | GET | `/v1/filler/incoming` | Legacy admin-only ingest-conveyor projection retained while its machine state migrates under Manage → Diagnostics (§10 V35/V63). It is operational truth, not the human Attention interface, and the ordinary Filler UI does not fetch or render it. **Every row list is capped at 100** and carries its full server-counted total (`clipsTotal`, `decisionsTotal`, `reelsTotal`, `rejectedTotal`). Confidence is the real grounding-capped score (§10 V38), never model self-assessment and never an admission threshold. Clients must not infer task kinds or actions from this payload. |
-| GET | `/v1/filler/screening?hash=` | The admin-only, browser-safe five-axis screening projection for one exact filler clip. It returns `not_screened`, `available`, or `unavailable`; an available result contains the immutable subject/aggregate identities, overall outcome, the ordered visual/spoken/written/rights/playback outcomes and safe reason codes, assessment time, and the closed public Airworthiness decision. An unavailable attached reference retains only its safe failure code and content identities. Before publication, the route reopens the clip's current applied sidecar, reproduces its subject and aggregate, and reopens the playable file to match its complete-byte digest, byte count, and sparse catalog identity. A missing, unsafe, or changed playback object can therefore never retain a visible pass. It never returns a path, prompt, transcript, OCR text, restricted phrase, provider response, credential, private rights document, or raw evidence. Incoming loads this bounded record only when a row is expanded rather than multiplying filesystem reads across the whole conveyor. |
+| GET | `/v1/filler/screening?hash=` | The admin-only, browser-safe four-axis screening projection for one exact filler clip. It returns `not_screened`, `available`, or `unavailable`; an available result contains the immutable subject/aggregate identities, overall outcome, the ordered visual/spoken/written/playback outcomes and safe reason codes, assessment time, and the closed public Airworthiness decision. An unavailable attached reference retains only its safe failure code and content identities. Before publication, the route reopens the clip's current applied sidecar, reproduces its subject and aggregate, and reopens the playable file to match its complete-byte digest, byte count, and sparse catalog identity. A missing, unsafe, or changed playback object can therefore never retain a visible pass. It never returns a path, prompt, transcript, OCR text, restricted phrase, provider response, credential, or raw evidence. Incoming loads this bounded record only when a row is expanded rather than multiplying filesystem reads across the whole conveyor. |
 | POST | `/v1/filler/bulk/tag` | Retag a selection (admin, §10 V35). Each tag field is **independent** — omitting one leaves it alone, so setting only the audience never blanks an era. Setting an era confirms an outstanding suggestion through the **same** path the single-clip edit uses. A selected clip that no longer exists is counted, not fatal: a selection races a re-scan. |
 | POST | `/v1/filler/bulk/remove` | Remove a selection from the catalog (admin, §10 V35). ⚠ **A tombstone.** The clip leaves the catalog and stops being used in breaks; **the file is untouched**, and the mark survives a re-scan (which a row delete could not). `restore:true` undoes it. |
 | POST | `/v1/filler/pulls` | Propose a **pull** — a plan across sources (admin, §10 V35). **Downloads nothing**: it writes a proposal for the approval queue. Refused when every source the plan needs is disabled, with the switch to flip named. |
@@ -1700,7 +1700,7 @@ Loomarr's model work has three product pillars with separate authority and relea
 2. **Channel curation** turns a chosen Intent into a grounded Proposal and ChannelPolicy, then supports
    Refine and re-curation. This is the planner-model contract certified below.
 3. **Filler curation** classifies, summarizes, tags, and ranks clips and pod candidates from bounded
-   transcript, OCR, filename, frame, audio, or video evidence. Rights, admission, confidence, review,
+   transcript, OCR, filename, frame, audio, or video evidence. Admission, confidence, review,
    deletion, and scheduling authority remain with deterministic filler policy and the existing gates.
 
 Recommendation and channel curation may share a text/tool-calling base or adapter. Filler may instead
@@ -4413,9 +4413,10 @@ suggestion is still not authorization to enumerate that channel on a schedule: o
 registration command grants that authority. Enumeration downloads no media and
 is capped before its per-item URLs enter the ordinary ingest path. Both partners then share the
 same per-source limit, catalog and disk ceilings, acquisition record, held lifecycle, provenance
-sidecar, cleanup pipeline, and admission authority. Missing YouTube licence metadata remains
-unknown rather than becoming either permission or a rejection; the source URL, uploader metadata,
-acquisition id, sidecar, and content hash remain the evidence trail.
+sidecar, cleanup pipeline, and admission authority. Provider-declared licence metadata is passive
+provenance: Loomarr records it when supplied and treats absence as “not provided,” but it never
+ranks, filters, holds, rejects, or admits an item. The source URL, uploader metadata, acquisition id,
+sidecar, and content hash remain the evidence trail.
 
 ⚠ **The explicit kind is load-bearing at both boundaries.** A registered YouTube source once
 passed through the Archive collection enumerator because the fetcher accepted only one untyped
@@ -4939,7 +4940,7 @@ multiple match ids may share one supplied interval. Apple source-level positives
 whole-source interval because that producer supplies no timestamps.
 
 The rendered-child spoken and visual adapters own the complete bridge from those producer reports into the
-five-axis screening operation. Before replay or inference, an adapter reopens the evidence derivative and
+four-axis screening operation. Before replay or inference, an adapter reopens the evidence derivative and
 reproduces the child's full byte digest, byte count, and sparse catalog identity; missing, unsafe, or drifted
 bytes produce no semantic axis authority and therefore remain an operational hold. Once the current bytes are
 proved, the adapter replays an already settled subject/profile operation before invoking its producer, so a
@@ -4955,7 +4956,7 @@ mean the observed content is appropriate for every audience. Complete positive e
 axis `pass` while its closed observations drive the audience-specific Airworthiness `reject` or `hold`.
 Incomplete or unprojectable coverage is an axis `hold`. This separation is load-bearing: mapping every positive
 fact to an axis `reject` would bypass the audience policy and incorrectly prohibit facts that one profile may
-allow or review. The final aggregate still requires all five axis operations to complete and Airworthiness to
+allow or review. The final aggregate still requires all four axis operations to complete and Airworthiness to
 pass before a child can advance.
 
 Each axis record binds the complete child subject described above, its outcome, and the evaluator's policy,
@@ -4963,7 +4964,7 @@ certification, implementation, and evidence-contract profile, plus the SHA-256 o
 ledger or measurement bytes. The axis record publishes only after those raw bytes are durable. A child
 screening coordinator requires exactly one named evaluator for each axis, makes the path-free subject durable
 before the first call, calls them serially without showing one evaluator another's answer, rejects subject or
-profile drift, and persists each axis before moving to the next and the validated five-axis aggregate before
+profile drift, and persists each axis before moving to the next and the validated four-axis aggregate before
 returning it. Each evaluator owns repeat-safe settlement of its exact operation;
 a retry after a later persistence failure replays the same closed authority-bound result instead of repeating
 a possibly billed call. The aggregate's `assessedAt` is the latest of those five immutable axis assessment
@@ -4989,16 +4990,16 @@ and advanced. A review-shaped screening result is recorded as done at its curren
 be filed, because a person's generic catalog action is not a substitute for the release authority.
 
 Production starts this rung with a **qualification runtime**, rather than leaving the whole coordinator
-absent until every independent safety lane is certified. The runtime uses the production rights registry and
-deterministic playback verifier immediately, and installs one explicit non-authorizing evaluator for each
+absent until every independent safety lane is certified. The runtime uses the deterministic playback verifier
+immediately and installs one explicit non-authorizing evaluator for each
 of visual, spoken, and written safety. Each non-authorizing evaluator reopens the exact evidence derivative,
 records its measured artifact identity, and returns a durable `hold` naming the missing axis certification;
 it never emits `pass` or `reject` and performs no inference or provider call. Its profile hashes identify
 the built-in qualification policy, unavailable-certification marker, and implementation—not a safety
-certificate. Consequently the five-axis aggregate and per-axis evidence are exercised on real children,
-rights prohibitions and objective playback failures retain their closed outcomes, and no child can reach
-enrichment or release while one of the three safety authorities is absent. An unavailable evidence root,
-rights repository, or runtime constructor leaves the existing missing-coordinator hold in place. The private
+certificate. Consequently the four-axis aggregate and per-axis evidence are exercised on real children,
+objective playback failures retain their closed outcomes, and no child can reach enrichment or release while
+one of the three safety authorities is absent. An unavailable evidence root or runtime constructor leaves the
+existing missing-coordinator hold in place. The private
 content-addressed repository lives under the filler root's excluded `.loomarr/segment-screening` tree.
 
 #### Complete-source visual-sensitive-content authority (V68)
@@ -5080,42 +5081,12 @@ complete decode, seek, keyframe, A/V, loudness, and fast-start evidence; the con
 rejects objective dead air and holds long black, silent, or frozen spans. A sparse-hash match alone never
 passes because middle-of-file changes must be caught by the full digest.
 
-The rights evaluator has one deliberately narrow dependency: a current-use authority queried for the exact
-child subject, source, acquisition, source-master bytes, production policy, `filler_broadcast` use, and UTC
-decision instant. A provider-declared licence string, source `autoAdmit`, acquisition preference, old corpus
-rights worksheet, or matching document digest is not that authority. Missing source/acquisition identity or
-an absent/unknown current decision produces a rights hold; an exact current prohibition or withdrawal
-rejects; only an exact, unexpired, withdrawal-clear authorization passes. Malformed, stale, differently bound,
-or self-inconsistent authority is an operational failure rather than a guessed semantic answer. The private
-raw axis evidence retains the path-free request and content-addressed decision. The settled screening result
-is immutable historical evidence; terminal release must query the same current-use boundary again so a later
-expiry or withdrawal cannot be hidden by replaying an earlier pass. The production registry below satisfies
-this port; without a matching current grant, the rights axis remains held.
-
-The production rights registry is append-only and operator-reviewed. One content-addressed grant binds the
-source, acquisition, source-master bytes, policy, and use above to a closed authorization, prohibition, or
-unknown decision; it also binds the private review-evidence digest, recording actor, effective instant,
-optional expiry or withdrawal, and the exact prior grant it supersedes. A separate current-head row exists
-only to provide an atomic compare-and-swap over that immutable history: two reviewers cannot silently fork
-or overwrite the same scope. The current-use module opens the exact head, validates its complete content
-identity, applies its effective/expiry/withdrawal state at the requested instant, and derives the
-subject-specific decision consumed by both screening and terminal release. A future or expired grant yields
-an attributable unknown decision, never authorization. Recording a grant alone does not make a child
-airable; every other certified screening axis and the terminal admission decision still apply.
-Administrators record and inspect this history through an admin-only append endpoint and exact-scope current
-read. The server supplies the authenticated actor and recording instant; the request supplies the immutable
-scope, closed decision, private evidence digest, effective/expiry/withdrawal times, and expected current
-grant digest. There is no update or delete endpoint.
-
-Incoming presents that write only in the exact rendered-child screening context. The authenticated summary
-projects the path-free source, acquisition, source-master, policy, and use scope reproduced from the current
-subject and rights-axis record, plus the current immutable grant when one exists; the operator never copies
-those identifiers into a generic form. The review basis is a local file chosen in the browser: the client
-computes its SHA-256 and sends only that digest, while the private file remains with the operator. A new
-authorization, prohibition, unknown decision, or withdrawal appends through the same compare-and-swap head;
-it cannot edit history. Saving rights does not mutate the already-settled screening result. Incoming explains
-that the clip remains held and offers a separate explicit screen-stage rewind so any provider work, cost, and
-new immutable evidence are visible rather than silently triggered by the rights write.
+Provider-declared licence values remain exact provenance metadata on Sources, candidates, sidecars, and clips.
+They are not an inference input, acquisition preference, screening axis, admission claim, publication receipt,
+or user decision. Missing metadata means only that the Provider supplied none. Private household playback does
+not ask an operator to adjudicate copyright, and the runtime contains no current-use rights authority, grant,
+withdrawal, or remediation path. Project-owned corpus acquisition and redistribution retain their separate
+rights controls because those govern what the Loomarr project itself may copy or distribute.
 
 Screening aggregates, provider-neutral axis records, operation identities, and opaque raw evidence live
 separately in a private content-addressed repository. The immutable screening-release authority is explicitly
@@ -5123,7 +5094,7 @@ non-authorizing by default, names exactly one canonical profile per axis, and lo
 Terminal admission
 must re-read the aggregate, every axis record, its unique settled operation, and every raw-evidence identity;
 verify exact child lineage,
-all three media identities, parent span, outcomes, reasons, and profiles; and require all five passes plus
+all three media identities, parent span, outcomes, reasons, and profiles; and require all four passes plus
 explicit production permission. A boolean callback, aggregate-only replay, model self-assertion, pre-split
 screen, or structure certificate cannot release a child. Missing, stale, rejected, held, identity-drifted,
 profile-drifted, or unverifiable evidence keeps it held.
@@ -6049,10 +6020,10 @@ different questions and share no publication control. There are no `filler.embed
 
 The tagger records a **confidence score** (0–100) alongside the tags. It is diagnostic evidence for
 classification review and prioritisation. It never decides whether a clip is playable: terminal
-admission replays exact five-axis safety, playback, Airworthiness, and current-use rights evidence.
+admission replays exact four-axis safety, playback, and Airworthiness evidence.
 
 ⚠ **V38 originally used this score as an auto-file threshold; that publication use is retired.**
-A grounded taxonomy result is not a safety verdict, a rights grant, or proof of complete playback.
+A grounded taxonomy result is not a safety verdict or proof of complete playback.
 Keeping the score is useful; keeping a shortcut from score to airability would recreate a second,
 weaker admission authority.
 
@@ -6089,7 +6060,7 @@ The V38 publication switch and threshold are retired. Confidence remains version
 evidence for classification and split review, but **a scalar score is never publication authority**.
 There is intentionally no compatibility publisher while certified V61 authorities are being
 completed: an installation without terminal release proof accumulates held, reviewable clips rather
-than airing content whose identity, rights, audience suitability, or playback integrity is unknown.
+than airing content whose identity, audience suitability, or playback integrity is unknown.
 
 The terminal decision belongs to one Go-owned **filler admission evaluator** after evidence
 extraction and before catalog filing. Extractors return versioned facts and may abstain; they never
@@ -6106,19 +6077,18 @@ semantic rejection, or create review work a person cannot resolve.
 
 Evidence is claim-specific and carries provenance. Decoder measurements own media usability;
 source-owned dates and recording sidecars outrank a year merely spoken in a clip; readable end
-cards, packaging, and spoken advertiser claims support brand/product; source and item policy own
-licence eligibility. Filename, uploader metadata, transcript, OCR, frames, audio, and video are all
+cards, packaging, and spoken advertiser claims support brand/product. Provider-declared licence data
+remains passive provenance outside the evaluator. Filename, uploader metadata, transcript, OCR, frames, audio, and video are all
 untrusted data with no instruction authority. **Contradiction is a first-class evidence result**:
 the evaluator either invokes one bounded additional rung or abstains with a specific question. More
 conflicting tokens never increase confidence.
 
 The evaluator accepts one closed, versioned evidence document rather than a prompt-shaped bag of
 strings. Its claim roles are exactly media usability, recording date/era, brand, product, content
-role, source/licence, and sensitive-policy flags. Each fact names its extractor kind, source
+role, and sensitive-policy flags. Each fact names its extractor kind, source
 identity, bounded location, and inference evaluation when one produced it. Authority is assigned by
 the Go policy from the claim and provenance kind; evidence cannot declare its own rank. Decoder
-measurements alone can prove unusable media, and source policy alone can prove source/licence
-eligibility. For conflict-prone semantic claims, independent corroboration means distinct extractor
+measurements alone can prove unusable media. For conflict-prone semantic claims, independent corroboration means distinct extractor
 kinds over distinct derivatives or source records — repeated tokens from one transcript, OCR frame,
 or model generation still count once. A filename year and a different spoken historical year are a
 conflict, not two votes; a source-owned recording date may resolve them because the policy, not
@@ -6178,11 +6148,11 @@ exact current release evidence and commit the action plus catalog effect as one 
 That terminal module has one action interface and owns the complete proof before any publication
 write. For an applied `admit` (including a correction to `admit`) it resolves the decision's exact
 catalog hash to the current playback object, reprojects the attached sidecar, verifies the complete
-playback bytes, reproduces the referenced five-axis aggregate, replays the configured immutable
-release authority and every private axis record, and rechecks current rights. Only after all of
+playback bytes, reproduces the referenced four-axis aggregate, and replays the configured immutable
+release authority and every private axis record. Only after all of
 those reads pass does one store transaction append the action, change `clips.held`, and settle the
 matching pipeline row to `filed`; a missing clip or pipeline row, stale decision, changed playback,
-held axis, authority drift, or rights withdrawal rolls the whole write back. Applied rejection (or
+held axis or authority drift rolls the whole write back. Applied rejection (or
 a correction to `reject`) atomically appends the action, tombstones and holds the clip, and settles
 the pipeline row as an operator dismissal. Reversal and restore atomically return the clip to held
 review state; abandonment remains an append-only skip with no catalog mutation. The ordinary
@@ -6192,19 +6162,9 @@ Every applied decision therefore carries the exact screening-aggregate and relea
 SHA-256 identities that terminal replay must reproduce; shadow rows carry neither. Application mode
 cannot be toggled independently from those bindings in either the domain validator or database.
 
-For a publishing action, terminal replay also carries the exact current rights-grant identity and
-source/acquisition/master/policy/use scope into the publication transaction, bound to the replayed
-decision, clip, screening aggregate, and release authority. The transaction checks that the grant is
-still the current head, authorized, effective, unexpired, and withdrawal-clear at the current
-transaction-time check. It serializes that check with rights-head changes through the catalog commit;
-a withdrawal or superseding grant committed before that check prevents publication and leaves the
-action, catalog, and pipeline unchanged. An old action timestamp cannot substitute for current time.
-This is an internal replay result, not an operator-supplied permission or a replacement for complete
-release verification. Non-publishing actions do not require a grant to return material to held state.
-
 An exact retry of an already committed action returns its recorded result without another catalog
-effect or fresh release replay. This remains true after the grant expires, is withdrawn, or is
-superseded, or the applied executor becomes unavailable. The recorded action must match the decision,
+effect or fresh release replay. This remains true if the applied executor later becomes unavailable.
+The recorded action must match the decision,
 actor, kind, reason, answer, corrected verdict, and superseded-action identity; a conflicting request
 under the same action id fails closed. Server-assigned retry time does not change request identity.
 This read of an immutable prior result never authorizes a new action: new publishing actions still
@@ -6224,7 +6184,7 @@ diagnostic `score` rung. Its first production evidence version records only fact
 current pipeline can prove: successful decoder passage, an explicit content-role token in the
 original filename, and an explicit filename year. It does not translate V38 confidence, persisted
 classifier fields, a source-declared licence URL, or `autoAdmit` into V61 evidence. Consequently an
-ordinary clip initially records an honest missing-rights or missing-corroboration review outcome.
+ordinary clip initially records only genuine media, identity, or suitability outcomes.
 The rung versions and hashes the complete observation, evaluates it, and persists the immutable V63
 record before `score` may run. If that durable write remains unavailable after bounded retries, the
 pipeline stays parked on `admission`; it never skips the audit or falls through to another publisher.
@@ -8253,8 +8213,8 @@ Four projections are owned by `fillerdecision`, not by clients:
 - **Attention** contains only the latest unresolved `review` decision per clip, projected as one
   typed Attention task with exactly one non-empty question, decisive reason codes, safe evidence
   references, conflicts, and the closed set of actions currently allowed for that task kind and
-  application mode. Initial task kinds are `identity_role`, `rights_provenance`, and
-  `suitability_exception`; `split_boundary` is reserved for the structure authority rather than
+  application mode. Initial task kinds are `identity_role` and `suitability_exception`;
+  `split_boundary` is reserved for the structure authority rather than
   inferred from a generic held clip. Queued work, retries, and provider or budget holds are
   structurally ineligible. The browser neither classifies a task from reason text nor invents an
   action absent from the response.
@@ -8883,7 +8843,7 @@ unconfirmed suggestion.
    ⚠ **This was "not optional, ever" until V43, and the blanket rule was over-applied.** Boundary
    confidence can safely automate the mechanical creation of well-supported child clips while
    uncertain cuts remain for review. That automation does not publish the children: each child
-   still traverses conditioning, classification, five-axis screening, rights, and terminal admission.
+   still traverses conditioning, classification, four-axis safety/playback screening, and terminal admission.
 
    **`filler-split` is a scheduled job** (on by default). It proposes splits for over-long catalog clips rather than waiting for a click, so proposals are ready when the operator looks instead of costing minutes of waiting once they do.
 
@@ -10525,17 +10485,13 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
     once as a typed Attention task when the server says a person must decide something automation is
     not authorized to infer;
     routine preparation and recovery may be summarized as context but never form a second actionable
-    queue. Expanding a rendered child loads its exact playable bytes and the server-owned five-axis
+    queue. Expanding a rendered child loads its exact playable bytes and the server-owned four-axis
     screening projection:
-    visual safety, spoken safety, written safety, current-use rights, and playback integrity remain
+    visual safety, spoken safety, written safety, and playback integrity remain
     independent rows with pass/reject/hold, safe reason codes, assessment time, and evidence
     identities. Closed Airworthiness flags and bounded trigger intervals may be shown; raw provider
-    output, OCR/transcript text, restricted phrases, private paths, and private rights evidence may
-    not. A rights hold exposes contextual review beside that exact child: the source/acquisition/master/
-    policy scope is server-owned, the browser hashes a locally selected review file without uploading it,
-    and an append or supersession uses the exact current grant digest. Recording the grant leaves the old
-    screen immutable and requires an explicit screen-stage rerun. Provider failures, budget ceilings,
-    missing evidence, and stale authorities are operational recovery states in Manage → Diagnostics,
+    output, OCR/transcript text, restricted phrases, and private paths may not. Provider failures,
+    budget ceilings, missing evidence, and stale authorities are operational recovery states in Manage → Diagnostics,
     never questions asking a person to guess whether the content is safe. Overview may rank one of
     those states as the next action, but its link opens the owning diagnostic detail rather than
     manufacturing an Incoming decision. The
