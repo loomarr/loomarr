@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import type { ClipPipelineProps } from "./clip-pipeline.type";
 
-// ClipPipeline — where one clip is in the ten-rung ingest pipeline (§10 V51b/V51e/V61).
+// ClipPipeline — where one clip is in the nine-rung ingest pipeline (§10 V51b/V51e/V68).
 //
 // ⚠ **The copy lives on the frontend, keyed by stage id; the SEQUENCE lives on the server.** The
 // backend sends stable ids (`probe`, `transcode`, …) — the §11 refusal-code precedent — and this
@@ -19,7 +19,6 @@ const COPY: Record<string, { active: string; label: string }> = {
   transcribe: { label: "Listen", active: "Listening" },
   tag: { label: "Work out what it is", active: "Working out what it is" },
   vision: { label: "Look at the picture", active: "Looking at the picture" },
-  admission: { label: "Record the admission check", active: "Recording the admission check" },
   score: { label: "Score it", active: "Scoring it" },
 };
 

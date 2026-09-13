@@ -13,7 +13,6 @@ const LADDER = [
   "transcribe",
   "tag",
   "vision",
-  "admission",
   "score",
 ];
 

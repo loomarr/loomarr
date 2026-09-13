@@ -473,7 +473,7 @@ func TestSync_ReScanDoesNotReHoldAFiledClip(t *testing.T) {
 	}
 }
 
-func TestSync_UnknownNamePreservesAnAdmittedConcreteKindButClosesHeldLegacyDefault(t *testing.T) {
+func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
 	source := &fakeSource{clips: []filler.RawClip{raw("clip", "Mystery", filler.Unclassified, 31_000, 0)}}
 	for _, tc := range []struct {
 		name     string
@@ -482,9 +482,9 @@ func TestSync_UnknownNamePreservesAnAdmittedConcreteKindButClosesHeldLegacyDefau
 		wantKind filler.Kind
 		wantHeld bool
 	}{
-		{name: "admitted authority survives rescan", kind: filler.Commercial, wantKind: filler.Commercial},
+		{name: "ready role survives rescan", kind: filler.Commercial, wantKind: filler.Commercial},
 		{name: "held legacy default is retired", kind: filler.Commercial, held: true, wantKind: filler.Unclassified, wantHeld: true},
-		{name: "legacy empty role is re-held", wantKind: filler.Unclassified, wantHeld: true},
+		{name: "unknown role does not invent a hold", wantKind: filler.Unclassified, wantHeld: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newMemStore()

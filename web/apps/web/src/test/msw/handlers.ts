@@ -159,7 +159,7 @@ const appHandlers = (): RequestHandler[] => [
   }),
   getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
   getListDocsMockHandler({ docs: [] }),
-  getFillerPoolMockHandler({ channels: [], clips: 0, commercials: 0, eligible: 0, untagged: 0 }),
+  getFillerPoolMockHandler({ channels: [], clips: 0, breakBody: 0, eligible: 0, untagged: 0 }),
   getFillerWatchMockHandler({
     clips: 0,
     health: "healthy",
@@ -183,7 +183,7 @@ const appHandlers = (): RequestHandler[] => [
       rejected: 0,
       dismissed: 0,
     },
-    pool: { channels: [], clips: 0, commercials: 0, eligible: 0, untagged: 0 },
+    pool: { channels: [], clips: 0, breakBody: 0, eligible: 0, untagged: 0 },
     acquisitions: [],
   }),
   getFillerDecisionOverviewMockHandler({

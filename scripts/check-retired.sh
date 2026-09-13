@@ -55,6 +55,11 @@ RETIRED=(
   'RebuildRollups|V55: rollup rebuilding is private to ApplyTaxonomyEdit'
   'ListClipHashesLeaves|V55: the scheduled taxonomy repair work list was retired with its job'
   'UpdateClipTags|V55: taxonomy writes and scalar classification updates now have separate owners'
+  'filler.reject.unidentified|#1249: missing optional classification is descriptive and never rejects household filler'
+  'FILLER_REJECT_UNIDENTIFIED|#1249: there is no operator switch for a retired classification gate'
+  'StageAdmission|#1249: household readiness follows score directly; do not restore the dormant admission rung'
+  'NewAdmissionStage|#1249: no runtime classifier may sit between an enrolled clip and readiness'
+  'AdmissionObserver|#1249: classification observations are not release authority'
   # ⚠ Not a rename: "how often do we go LOOKING for compilations" stopped being a question with
   # an answer, because every long recording reaches the split rung as it is ingested. An operator
   # told to raise this to split more often would be tuning nothing; the real bound is

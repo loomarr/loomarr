@@ -87,7 +87,6 @@ const body = (clips: IncomingClipDTO[]): FillerIncomingOutputBody => ({
     "transcribe",
     "tag",
     "vision",
-    "admission",
     "score",
   ],
   total: 0,

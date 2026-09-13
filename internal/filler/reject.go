@@ -69,14 +69,8 @@ const (
 	ReasonScreening RejectReason = "screening"
 	// ReasonSliver — a sub-floor split fragment with no speech (§10 V45): dropped, not reviewed.
 	ReasonSliver RejectReason = "sliver"
-	// ReasonUnidentified — every signal tier ran and grounded NOTHING: no era, audience, tag,
-	// brand, transcript or on-screen text.
-	//
-	// ⚠ This is the only reason whose verdict is CONFIGURABLE (`filler.reject.unidentified`),
-	// because "we could not identify it" is not the same claim as "it is not a commercial" — and a
-	// wordless station ident is exactly that case, while §10 calls a silent advert some of the
-	// best filler there is. It is also why the rejected list is not optional: an operator has to be
-	// able to see what this caught and put it back.
+	// ReasonUnidentified is retained for historical refusal rows. Runtime classification no longer
+	// produces it: "we could not identify it" is not an objective reason to reject enrolled filler.
 	ReasonUnidentified RejectReason = "unidentified"
 )
 

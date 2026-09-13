@@ -9,11 +9,11 @@ import (
 )
 
 type poolBody struct {
-	Clips       int `json:"clips"`
-	Commercials int `json:"commercials"`
-	Eligible    int `json:"eligible"`
-	Untagged    int `json:"untagged"`
-	Channels    []struct {
+	Clips     int `json:"clips"`
+	BreakBody int `json:"breakBody"`
+	Eligible  int `json:"eligible"`
+	Untagged  int `json:"untagged"`
+	Channels  []struct {
 		ChannelID string `json:"channelId"`
 		Name      string `json:"name"`
 		Number    int    `json:"number"`
@@ -49,7 +49,7 @@ func getPool(t *testing.T, url, token string) (*http.Response, poolBody) {
 func TestFillerPool_RendersCountsAndChannelsInOrder(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
 	fp.pool = filler.PoolReport{
-		Clips: 120, Commercials: 90, Eligible: 61, Untagged: 14,
+		Clips: 120, BreakBody: 90, Eligible: 61, Untagged: 14,
 		Channels: []filler.ChannelCoverage{
 			{ChannelID: "ch-3", Name: "Newsreel", Number: 3,
 				Report: filler.CoverageReport{Level: filler.MatchBumperCard, Total: 0}},
@@ -63,7 +63,7 @@ func TestFillerPool_RendersCountsAndChannelsInOrder(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
-	if body.Clips != 120 || body.Commercials != 90 || body.Eligible != 61 || body.Untagged != 14 {
+	if body.Clips != 120 || body.BreakBody != 90 || body.Eligible != 61 || body.Untagged != 14 {
 		t.Errorf("counts = %+v, want clips 120 / commercials 90 / eligible 61 / untagged 14", body)
 	}
 	if len(body.Channels) != 2 {

@@ -18,20 +18,19 @@ type ScoreClipStore interface {
 	SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error
 }
 
-// ScoreStage persists classification evidence and routes a held clip to review or rejection.
+// ScoreStage persists descriptive classification evidence. Missing classification is not a
+// household approval task and therefore never changes the runtime disposition.
 type ScoreStage struct {
 	store ScoreClipStore
-	// rejectUnidentified promotes "nothing grounded anywhere" from review to a hard reject.
-	rejectUnidentified func() bool
-	now                func() time.Time
+	now   func() time.Time
 }
 
 // NewScoreStage builds the stage.
-func NewScoreStage(store ScoreClipStore, rejectUnidentified func() bool, now func() time.Time) *ScoreStage {
+func NewScoreStage(store ScoreClipStore, _ func() bool, now func() time.Time) *ScoreStage {
 	if now == nil {
 		now = time.Now
 	}
-	return &ScoreStage{store: store, rejectUnidentified: rejectUnidentified, now: now}
+	return &ScoreStage{store: store, now: now}
 }
 
 func (s *ScoreStage) ID() StageID     { return StageScore }
@@ -51,46 +50,7 @@ func (s *ScoreStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	}
 	reportProgress(ctx, StageScore, 100)
 
-	if s.unidentified(c) {
-		if s.rejectUnidentified != nil && s.rejectUnidentified() {
-			return StageResult{
-				Verdict: VerdictReject, Reason: ReasonUnidentified,
-				Detail: "every signal was read and none of them said what this is",
-			}, nil
-		}
-		return StageResult{Verdict: VerdictReview, Note: "nothing could be grounded — this needs a person"}, nil
-	}
-
-	if c.Held {
-		return StageResult{Verdict: VerdictReview, Note: "classification scored; certified terminal admission is still required"}, nil
-	}
 	return StageResult{Verdict: VerdictContinue}, nil
-}
-
-// unidentified reports that every tier ran and NOTHING was grounded.
-//
-// ⚠ **The `AITagged` guard is the load-bearing half, and leaving it out would be the worst bug in
-// this phase.** `filler.reject.unidentified` defaults ON, so without it a clip the tagger has
-// simply never reached — an install with no LLM, a catalog imported before tagging existed, the
-// very first pipeline pass — would be tombstoned for "we could not identify it" when nothing ever
-// tried. **You cannot conclude that a signal is absent from a tier that never ran.**
-//
-// So the reject needs BOTH: no grounding of any kind, AND evidence that something looked. Anything
-// else falls through to review, which is the direction that costs an operator a decision rather
-// than a clip.
-func (s *ScoreStage) unidentified(c StoreClip) bool {
-	if !c.AITagged {
-		return false // nothing looked, so nothing can be concluded
-	}
-	return !hasAnyGrounding(c)
-}
-
-// hasAnyGrounding reports whether ANY tier found something — tags, era, audience, an advertiser,
-// speech, or on-screen text.
-func hasAnyGrounding(c StoreClip) bool {
-	return c.Era > 0 || c.Audience != "" || c.Category != "" || len(c.Tags) > 0 ||
-		c.Brand != "" || c.VisibleText != "" ||
-		(c.Transcript != "" && c.Transcript != TranscriptNone)
 }
 
 // ScoreClip computes a clip's grounding-capped confidence from what is on its row.

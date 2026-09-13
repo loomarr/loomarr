@@ -15,7 +15,7 @@ import (
 // state moves under Manage → Diagnostics. The ordinary Incoming experience consumes the typed
 // Attention projection and never presents this mixed feed as human work.
 //
-// What has been downloaded but is not yet terminally admitted:
+// What has been downloaded but is not yet ready:
 //
 //   - **clips**: the conveyor (§10 V51e) — one row per clip, whether the machine is still
 //     preparing it or has finished and handed it over. `needsDecision` says which end it is at.
@@ -30,8 +30,8 @@ import (
 // recorded nothing, and rendering a number nothing measured would have been the same failure as a
 // fabricated pull estimate. V38 built the thing the rule was waiting for — a **grounding-capped**
 // score (`filler.TagSuggestion.Score`), where the model may only lower a ceiling set by what
-// could actually be verified in the clip's own text. Confidence is diagnostic only; certified
-// terminal admission never consumes it.
+// could actually be verified in the clip's own text. Confidence is diagnostic only; terminal
+// readiness never consumes it.
 //
 // ⚠ The bar the rule set still applies to everything else here: `reason` stays derived from real
 // state and is never generated prose.
@@ -153,11 +153,8 @@ type IncomingStageDTO struct {
 
 // IncomingRejectDTO is one clip ingest refused, and why (§10 V51b).
 //
-// ⚠ **Not optional, and not telemetry.** `filler.reject.unidentified` is ON by default, so clips
-// begin leaving the catalog unattended — including wordless station idents, which §10 calls some
-// of the best filler there is. The same rule the legacy-publication audit list follows applies with
-// more force here: an unattended decision that cannot be found is not one an appliance gets to
-// make. This list is how an operator finds it and puts it back.
+// Not optional and not telemetry: objective runtime refusals remain inspectable and recoverable
+// where their reason permits. Missing descriptive classification never creates one.
 type IncomingRejectDTO struct {
 	Hash string `json:"hash"`
 	Name string `json:"name,omitempty"`
@@ -591,7 +588,7 @@ func incomingDTO(c store.Clip, reason string, img func(string) *ImageDTO) Incomi
 //
 // ⚠ The cases stay distinct rather than collapsing into "needs tags". An ungrounded era has a
 // proposed answer to review; an untagged commercial has nothing to confirm; a fully tagged clip
-// still awaits terminal safety and rights admission.
+// still awaits the remaining automated preparation steps.
 func askReasonFor(c store.Clip) string {
 	if c.SuggestedEra > 0 {
 		// V34's grounding rule, in the operator's terms rather than the validator's.
@@ -604,7 +601,7 @@ func askReasonFor(c store.Clip) string {
 		return "Loomarr couldn't work out what this is, so it will only match broadly."
 	}
 	if c.Confidence > 0 {
-		return "Classification is ready; safety, rights, and playback admission is still required."
+		return "Loomarr has identified this clip and is finishing its checks."
 	}
 	// Held, tagged, unscored — the tagger has not reached it yet. Honest about the wait rather
 	// than inventing a fault: nothing is wrong with this clip, it is simply in the queue.

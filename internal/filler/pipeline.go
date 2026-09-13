@@ -203,6 +203,7 @@ type Notifier func(p ClipPipeline, c StoreClip)
 type Pipeline struct {
 	store PipelineStore
 	clips ClipStore
+	ready *TerminalReady
 	// rewind + clipDir back `Rewind` (pipelinerewind.go). Optional: an install that never re-runs
 	// a stage does not need them, and `Rewind` refuses rather than half-working without them.
 	rewind  RewindStore
@@ -240,7 +241,18 @@ func NewPipeline(store PipelineStore, clips ClipStore, stages []Stage, budget Bu
 	for _, s := range stages {
 		byID[s.ID()] = s
 	}
-	return &Pipeline{store: store, clips: clips, stages: byID, budget: budget, notify: notify, now: now, log: log}
+	p := &Pipeline{store: store, clips: clips, stages: byID, budget: budget, notify: notify, now: now, log: log}
+	if repository, ok := store.(ReadyRepository); ok {
+		p.ready = NewTerminalReady(repository, now)
+	}
+	return p
+}
+
+// WithTerminalReady supplies the publication boundary when the pipeline state store and Ready
+// repository are separate adapters. NewPipeline discovers a combined production store itself.
+func (p *Pipeline) WithTerminalReady(repository ReadyRepository) *Pipeline {
+	p.ready = NewTerminalReady(repository, p.now)
+	return p
 }
 
 // EnrolMissing puts newly catalogued clips onto the durable conveyor without running a stage.
@@ -861,13 +873,25 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		}
 	}
 
-	if row.Disposition == DispositionRunning {
-		row.Disposition = DispositionFiled
+	if row.Disposition != DispositionRunning {
+		return row.Disposition, p.persist(ctx, row, clip)
 	}
-	// ⚠ The terminal write — `filed`, or the last rung done. Detached like the rest: a clip that
-	// finished its whole ladder inside a pass that then expired would otherwise be re-run from
-	// wherever it was last durably recorded, spending the expensive rungs again.
-	return row.Disposition, p.persist(ctx, row, clip)
+	if clip.IsComposite {
+		// A completed container leaves the conveyor but never becomes Ready or playable.
+		row.Disposition = DispositionFiled
+		return row.Disposition, p.persist(ctx, row, clip)
+	}
+	// The terminal write is detached like ordinary persistence: finishing the ladder before the
+	// pass context expires must not re-spend the expensive rungs. The repository transaction owns
+	// the Ready event, Placement, hold release, and pipeline settlement together.
+	readyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	settled, err := p.ready.Commit(readyCtx, clip, row)
+	if err != nil {
+		return DispositionRunning, err
+	}
+	p.publish(settled, clip)
+	return settled.Disposition, nil
 }
 
 // runStage contains a broken rung to one clip. The scheduler also recovers panics, but that
@@ -928,10 +952,8 @@ func (p *Pipeline) persist(ctx context.Context, row ClipPipeline, clip StoreClip
 // the stage has RESOLVED (exhausted its retries and been skipped) so the caller advances.
 func (p *Pipeline) onFailure(row *ClipPipeline, err error) bool {
 	now := p.now().UTC()
-	// Admission persistence is the fail-closed seam before V38 may file a clip. Exhausting ordinary
-	// retries cannot skip it: that would turn a store outage into publication authority. Keep the
-	// clip parked on this rung and retry at the bounded terminal backoff until the audit is durable.
-	if (row.Stage == StageScreen || row.Stage == StageAdmission) && row.Attempts >= MaxAttempts {
+	// Screening persistence is fail-closed when it produces a configured effective result.
+	if row.Stage == StageScreen && row.Attempts >= MaxAttempts {
 		row.Attempts = MaxAttempts
 		row.NextRun = now.Add(backoff(MaxAttempts))
 		row.Record(row.Stage, StatusFailed, err.Error(), row.Attempts, now)

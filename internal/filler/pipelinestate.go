@@ -25,7 +25,6 @@ const (
 	StageTranscribe StageID = "transcribe"
 	StageTag        StageID = "tag"
 	StageVision     StageID = "vision"
-	StageAdmission  StageID = "admission"
 	StageScore      StageID = "score"
 )
 
@@ -38,11 +37,11 @@ const (
 // `screen` evaluates only those children after their final transcode and before enrichment;
 // `transcribe` must precede `tag` because the transcript is one of the text signals `tag` grounds
 // against (running them the other way round is what the cron schedule did, and why a clip could
-// be scored low against a transcript that arrived ten minutes later); `admission` durably records
-// the V61 shadow before `score`, and `score` remains last while it owns V38 compatibility filing.
+// be scored low against a transcript that arrived ten minutes later); `score` remains the final
+// descriptive rung, after which terminal readiness owns the effective publication transition.
 var StageOrder = []StageID{
 	StageProbe, StageTranscode, StageSplit, StageScreen, StageLanguage,
-	StageTranscribe, StageTag, StageVision, StageAdmission, StageScore,
+	StageTranscribe, StageTag, StageVision, StageScore,
 }
 
 // StageIndex returns a stage's position in StageOrder, or -1 when it is not a stage.

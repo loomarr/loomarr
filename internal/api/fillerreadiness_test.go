@@ -20,7 +20,7 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 			Runnable: 2, NeedsDecision: 3, Admitted: 9, Rejected: 4, Recoverable: 1,
 		},
 		Pool: filler.PoolReport{
-			Clips: 12, Commercials: 10, Eligible: 8,
+			Clips: 12, BreakBody: 10, Eligible: 8,
 			Channels: []filler.ChannelCoverage{{
 				ChannelID: "ch-7", Name: "Saturday Morning", Number: 7,
 				Report: filler.CoverageReport{

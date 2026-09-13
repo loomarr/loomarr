@@ -26,7 +26,7 @@ const sampleIntent = "90s action movies, high energy, keep it PG-13";
 // A catalog in good shape: everything tagged, every channel matching its own era exactly.
 const healthyPool: PoolDTO = {
   clips: 412,
-  commercials: 380,
+  breakBody: 380,
   eligible: 374,
   untagged: 0,
   channels: [
@@ -57,7 +57,7 @@ const healthyPool: PoolDTO = {
 // sorts worst-first, so that channel leads — the strip reads `channels[0]` positionally.
 const thinPool: PoolDTO = {
   clips: 120,
-  commercials: 90,
+  breakBody: 90,
   eligible: 61,
   untagged: 14,
   channels: [
@@ -88,7 +88,7 @@ const thinPool: PoolDTO = {
 // short enough for a break. The case the "fits a break" stat exists to make visible.
 const unplaceablePool: PoolDTO = {
   clips: 500,
-  commercials: 500,
+  breakBody: 500,
   eligible: 0,
   untagged: 500,
   channels: [
@@ -105,7 +105,7 @@ const unplaceablePool: PoolDTO = {
   ],
 };
 
-const emptyPool: PoolDTO = { clips: 0, commercials: 0, eligible: 0, untagged: 0, channels: [] };
+const emptyPool: PoolDTO = { clips: 0, breakBody: 0, eligible: 0, untagged: 0, channels: [] };
 
 // An era the tagger proposed but could NOT ground in the clip's text — a decision with a
 // proposed answer the operator confirms or rejects.
@@ -147,7 +147,6 @@ const stageLadder = [
   "transcribe",
   "tag",
   "vision",
-  "admission",
   "score",
 ];
 
@@ -239,9 +238,8 @@ const needsDecisionClip: IncomingClipDTO = {
   },
 };
 
-// A soft refusal: nothing in the clip said what it was. ⚠ `restorable` because
-// `filler.reject.unidentified` is a judgement call an operator can settle — a wordless station
-// ident lands here, and §10 calls a silent advert some of the best filler there is.
+// A retained historical soft refusal. Runtime no longer rejects a clip merely because optional
+// classification could not identify it.
 const unidentifiedReject: IncomingRejectDTO = {
   hash: "e9b3000000000000000000000000000000000000000000000000000000000001",
   name: "clip_0042.mp4",

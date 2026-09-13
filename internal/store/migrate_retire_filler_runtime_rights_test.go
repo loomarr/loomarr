@@ -33,14 +33,16 @@ func testRetireFillerRuntimeRightsMigration(t *testing.T, s *sqlStore, migration
 
 	at := time.Date(2026, time.September, 13, 12, 0, 0, 0, time.UTC)
 	hash := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
-		Hash: hash, Path: "aa/legacy.mp4", Name: "Legacy admission", Kind: filler.Commercial,
-		DurationMs: 30_000, Held: false,
-	}, UpdatedAt: at}); err != nil {
+	// Seed through the schema as it existed before 00106/00107. Current UpsertClip intentionally
+	// speaks the current placement column and must not pretend it can write an older schema.
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO clips
+		(hash, path, name, kind, duration_ms, held, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, hash, "aa/legacy.mp4", "Legacy admission",
+		string(filler.Commercial), 30_000, false, at.Unix()); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageAdmission, Status: filler.StatusDone, Progress: 100,
+		ClipHash: hash, Stage: filler.StageID("admission"), Status: filler.StatusDone, Progress: 100,
 		Disposition: filler.DispositionFiled, EnrolledAt: at, UpdatedAt: at,
 	}); err != nil {
 		t.Fatal(err)

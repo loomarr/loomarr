@@ -883,24 +883,6 @@ func declared() []Setting {
 			Kind: KindInt, Default: 3, Advanced: true,
 			Doc: "How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes.",
 		},
-		{
-			// ⚠ **ON by default, and it is the only reject an operator can turn off** — because
-			// "we could not identify it" is not the same claim as "it is not a commercial". A
-			// wordless station ident is exactly that case, and §10 calls a silent advert some of
-			// the best filler there is.
-			//
-			// ⚠ It is also why the rejected list is NOT optional: an operator has to be able to
-			// see what this caught and put it back. The reject is recorded with its reason and is
-			// reversible in one click; a silent tombstone would not be acceptable at this default.
-			//
-			// The guard that makes it safe lives in the score rung: a clip is only "unidentified"
-			// if something actually LOOKED and found nothing. A clip the tagger never reached —
-			// an install with no LLM, a catalog imported before tagging existed — falls through
-			// to review, never to a reject.
-			Key: "filler.reject.unidentified", Label: "Set unidentified clips aside", EnvVar: "FILLER_REJECT_UNIDENTIFIED", Group: GroupFiller,
-			Kind: KindBool, Default: true,
-			Doc: "Set aside clips that nothing could identify — no era, brand, speech or on-screen text. They're listed under Filler → Incoming with a reason, and you can put any of them back.",
-		},
 		// Auto-fetch and its limits (§10 V38b). A registered source is polled on a schedule, which
 		// supersedes §15's "there is no unattended crawler" — the superseded rule's concern
 		// survives as these bounds rather than as a prohibition.

@@ -190,6 +190,18 @@ func (m *pipeMemStore) RetryClipPipeline(ctx context.Context, _ filler.ClipPipel
 	return nil
 }
 
+func (m *pipeMemStore) CommitFillerReady(_ context.Context, commit filler.ReadyCommit) error {
+	c, ok := m.clips[commit.Event.ClipHash]
+	if !ok || !c.Held || c.IsComposite {
+		return filler.ErrReadyStale
+	}
+	c.Held = false
+	c.Placement = commit.Event.Placement
+	m.clips[c.Hash] = c
+	m.rows[c.Hash] = commit.Pipeline
+	return nil
+}
+
 // fakeStage is a scriptable rung.
 type fakeStage struct {
 	id      filler.StageID
@@ -249,8 +261,8 @@ func TestPipeline_StagePanicBecomesARecoverableClipFailure(t *testing.T) {
 	}
 }
 
-func TestPipeline_AuthorityFailureNeverFallsThroughToLegacyFiling(t *testing.T) {
-	for _, blockedStage := range []filler.StageID{filler.StageScreen, filler.StageAdmission} {
+func TestPipeline_ScreeningPersistenceFailureNeverFallsThroughToReadiness(t *testing.T) {
+	for _, blockedStage := range []filler.StageID{filler.StageScreen} {
 		t.Run(string(blockedStage), func(t *testing.T) {
 			st := newPipeMemStore()
 			seedEnrolled(st, "c1")
@@ -271,7 +283,7 @@ func TestPipeline_AuthorityFailureNeverFallsThroughToLegacyFiling(t *testing.T) 
 					row.Stage, row.Status, row.Disposition, row.Attempts)
 			}
 			if stages[filler.StageScore].runs != 0 {
-				t.Fatalf("legacy score ran %d times without stage %q authority", stages[filler.StageScore].runs, blockedStage)
+				t.Fatalf("score ran %d times without stage %q persistence", stages[filler.StageScore].runs, blockedStage)
 			}
 		})
 	}
@@ -300,7 +312,10 @@ func asSlice(m map[filler.StageID]*fakeStage) []filler.Stage {
 }
 
 func seedEnrolled(st *pipeMemStore, hash string) {
-	st.put(filler.StoreClip{Clip: filler.Clip{Hash: hash, Path: "a/b/" + hash + ".mp4", Name: hash}})
+	st.put(filler.StoreClip{Clip: filler.Clip{
+		Hash: hash, Path: "a/b/" + hash + ".mp4", Name: hash,
+		Kind: filler.Unclassified, Source: "test-source", Held: true,
+	}})
 	st.rows[hash] = filler.ClipPipeline{
 		ClipHash: hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
 		Disposition: filler.DispositionRunning,
@@ -990,6 +1005,7 @@ func TestPipeline_FollowsAStageIdentityReplacement(t *testing.T) {
 	replacement := st.clips["old-hash"]
 	replacement.Hash = "new-hash"
 	replacement.Path = "aa/bb/new-hash.mp4"
+	st.clips[replacement.Hash] = replacement
 	stages[filler.StageTranscode].result = filler.StageResult{
 		Clip: replacement, Verdict: filler.VerdictContinue,
 	}

@@ -12,7 +12,6 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
@@ -52,21 +51,6 @@ func buildFillerSubsystem(
 		log.Error("could not construct filler decision service", "err", err)
 	} else {
 		result.decisions = decisionService
-	}
-	var admissionObserver filler.AdmissionObserver
-	if decisionService != nil {
-		admissionObserver, err = fillerdecision.NewShadow(decisionService, filleradmission.Policy{
-			Version:         "production-shadow-v1",
-			TaxonomyVersion: "production-shadow-no-product-taxonomy-v1",
-			AllowedContentRoles: []string{
-				filleradmission.RoleCommercial, filleradmission.RoleBumper,
-				filleradmission.RolePSA, filleradmission.RoleStationID,
-				filleradmission.RoleTrailer, filleradmission.RoleInterstitial,
-			},
-		}, "production-pipeline-evidence-v1")
-		if err != nil {
-			log.Error("could not construct filler admission shadow", "err", err)
-		}
 	}
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
@@ -148,7 +132,7 @@ func buildFillerSubsystem(
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake,
-		processDiagnostics, admissionObserver, metricRecorder)
+		processDiagnostics, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
 	adapter.pipeline = pipeline
 	if decisionService != nil {

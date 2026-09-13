@@ -32,12 +32,12 @@ type PoolChannelDTO struct {
 
 // PoolDTO is catalog-wide filler health (§10 V35).
 type PoolDTO struct {
-	Clips       int `json:"clips" doc:"Every clip in the catalog, of every kind"`
-	Commercials int `json:"commercials" doc:"Clips that can fill a break BODY. Bumpers and station IDs bookend a pod; they cannot make one."`
+	Clips     int `json:"clips" doc:"Every clip in the catalog, of every kind"`
+	BreakBody int `json:"breakBody" doc:"Clips that can fill a break body. Bookend clips cannot make one."`
 	// Eligible is the headline that surprises people, so it is a field rather than something
 	// a client derives: a catalog of 500 fifteen-minute compilations reads as healthy by
 	// `clips` and can fill nothing.
-	Eligible int `json:"eligible" doc:"Commercials that are ALSO duration-eligible under the active policy — the ones that can actually go in a break. Same gate pod assembly applies."`
+	Eligible int `json:"eligible" doc:"Break-body clips that are also duration-eligible under the active policy. The same gate is used by pod assembly."`
 	Untagged int `json:"untagged" doc:"Commercials missing a match tag. They still play, but only match broadly, so a themed channel falls back to bumpers."`
 	// Channels is worst-first so a client can name "the channel to fix" without sorting, and
 	// non-nil when empty so nothing has to guard before iterating.
@@ -81,10 +81,10 @@ func poolDTO(report filler.PoolReport) PoolDTO {
 		})
 	}
 	return PoolDTO{
-		Clips:       report.Clips,
-		Commercials: report.Commercials,
-		Eligible:    report.Eligible,
-		Untagged:    report.Untagged,
-		Channels:    chans,
+		Clips:     report.Clips,
+		BreakBody: report.BreakBody,
+		Eligible:  report.Eligible,
+		Untagged:  report.Untagged,
+		Channels:  chans,
 	}
 }

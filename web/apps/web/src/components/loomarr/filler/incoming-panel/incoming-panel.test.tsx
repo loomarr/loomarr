@@ -173,7 +173,6 @@ describe("IncomingPanel — being prepared", () => {
     "transcribe",
     "tag",
     "vision",
-    "admission",
     "score",
   ];
 

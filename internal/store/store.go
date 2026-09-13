@@ -331,6 +331,10 @@ type UserStore interface {
 // ClipStore is the filler clip catalog (§10).
 type ClipStore interface {
 	UpsertClip(ctx context.Context, c Clip) error
+	// CommitFillerReady atomically stores Placement, releases the held clip, settles its conveyor
+	// row, and appends the effective Ready event. It is the only non-composite publication path.
+	CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error
+	GetFillerReadyEvent(ctx context.Context, clipHash string) (filler.ReadyEvent, bool, error)
 	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
 	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
 	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error

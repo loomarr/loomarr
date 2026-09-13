@@ -6,11 +6,8 @@ import { Caption } from "@/components/ui/caption";
 
 // The audit half of refusal (§10 V51b/V51e), beside legacy publication history.
 //
-// ⚠ **Not optional, and `filler.reject.unidentified` is why.** That setting is ON by default and
-// tombstones a clip nothing could identify — but "we could not identify it" is a different claim
-// from "it is not a commercial", and a wordless station ident is exactly the case where they come
-// apart while §10 calls a silent advert some of the best filler there is. A default that can
-// refuse good clips has to show its work.
+// Objective automatic refusals must show their measured reason. Missing optional classification
+// is no longer a refusal and therefore never appears here.
 //
 // ⚠ **Reconcile with V40, which says scan-time rejects get "no badge, no review step".** That
 // still holds and is a different boundary: V40 refuses files at the SCAN edge, before they are

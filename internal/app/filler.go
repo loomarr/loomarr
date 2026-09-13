@@ -859,7 +859,7 @@ func (a fillerServiceAdapter) RetryDiagnostic(ctx context.Context, hash string) 
 	} else if !errors.Is(err, filler.ErrPipelineNotRetryable) {
 		return err
 	}
-	return a.pipeline.Rewind(ctx, hash, filler.StageAdmission, false)
+	return a.pipeline.Rewind(ctx, hash, filler.StageScore, false)
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {

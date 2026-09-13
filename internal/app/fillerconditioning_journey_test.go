@@ -238,6 +238,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	}
 	if err := st.UpsertClip(ctx, store.Clip{Clip: filler.Clip{
 		Hash: compHash, Path: compPath, Name: "Compilation", Kind: filler.Commercial,
+		Source: "test-folder",
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
@@ -350,8 +351,10 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatalf("conditioned child = %+v", child)
 	}
 	row, found, err := st.GetClipPipeline(ctx, child.Hash)
-	if err != nil || !found || row.Disposition != filler.DispositionReview || !child.Held {
-		t.Fatalf("child readiness = row:%+v found:%v held:%v err:%v, want held review", row, found, child.Held, err)
+	if err != nil || !found || row.Disposition != filler.DispositionFiled || child.Held ||
+		child.Placement != filler.PlacementBreakBody {
+		t.Fatalf("child readiness = row:%+v found:%v held:%v placement:%q err:%v, want Ready break body",
+			row, found, child.Held, child.Placement, err)
 	}
 	if len(measured) != 2 || !measuredParentBound || len(measured[0].IntendedCuts) != 1 ||
 		measured[0].IntendedCuts[0] != (mediatools.Interval{StartMs: 10_000, EndMs: 40_000}) {

@@ -78,7 +78,6 @@ const FillerOperations = () => {
             "filler.autosplit.enabled",
             "filler.autosplit.min_confidence",
             "filler.autosplit.max_duration",
-            "filler.reject.unidentified",
           ],
         },
         {

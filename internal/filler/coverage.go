@@ -112,10 +112,9 @@ type ChannelCoverage struct {
 type PoolReport struct {
 	// Clips is every row in the catalog, of every kind.
 	Clips int
-	// Commercials is the subset that fills a break BODY. Bumpers and station IDs bookend a
-	// pod; a catalog of nothing but bumpers cannot make one.
-	Commercials int
-	// Eligible is the commercials that are also DURATION-eligible under the active policy.
+	// BreakBody is the subset that fills a break body. Bookend clips cannot make a pod alone.
+	BreakBody int
+	// Eligible is the break-body material that is also DURATION-eligible under the active policy.
 	//
 	// ⚠ This is the number that surprises operators, which is why it is a headline rather than
 	// a footnote: a catalog of 500 fifteen-minute compilations reads as healthy by `Clips` and
@@ -179,10 +178,10 @@ func levelRank(l MatchLevel) int {
 func PoolCounts(catalog []Clip, policy Policy) PoolReport {
 	report := PoolReport{Clips: len(catalog)}
 	for _, c := range catalog {
-		if c.Kind != Commercial {
+		if c.EffectivePlacement() != PlacementBreakBody {
 			continue
 		}
-		report.Commercials++
+		report.BreakBody++
 		if durationEligible(c, policy) {
 			report.Eligible++
 		}
@@ -198,12 +197,12 @@ func PoolCounts(catalog []Clip, policy Policy) PoolReport {
 // per-criterion breakdown that disagrees with what airs is a more specific version of exactly that
 // confident wrong answer — it names a setting to change.
 //
-// The base is break-BODY material: commercials only, after excluded ids are gone. Bumpers bookend
+// The base is break-BODY material, after excluded ids are gone. Bumpers bookend
 // a pod and are not what an operator means by "my clips".
 func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCoverage {
 	var body []Clip
 	for _, c := range catalog {
-		if c.Kind == Commercial {
+		if c.EffectivePlacement() == PlacementBreakBody {
 			body = append(body, c)
 		}
 	}

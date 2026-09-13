@@ -25,8 +25,8 @@ func TestPoolCounts_EligibleExcludesClipsTooLongForABreak(t *testing.T) {
 	if got.Clips != 3 {
 		t.Errorf("Clips = %d, want 3", got.Clips)
 	}
-	if got.Commercials != 3 {
-		t.Errorf("Commercials = %d, want 3", got.Commercials)
+	if got.BreakBody != 3 {
+		t.Errorf("BreakBody = %d, want 3", got.BreakBody)
 	}
 	if got.Eligible != 2 {
 		t.Errorf("Eligible = %d, want 2 — the 15-minute compilation cannot go in a break, "+
@@ -48,8 +48,8 @@ func TestPoolCounts_OnlyCommercialsFillABreakBody(t *testing.T) {
 	if got.Clips != 3 {
 		t.Errorf("Clips = %d, want 3", got.Clips)
 	}
-	if got.Commercials != 1 {
-		t.Errorf("Commercials = %d, want 1 — bumpers and station IDs are not break bodies", got.Commercials)
+	if got.BreakBody != 1 {
+		t.Errorf("BreakBody = %d, want 1 — bumpers and station IDs are not break bodies", got.BreakBody)
 	}
 	if got.Eligible != 1 {
 		t.Errorf("Eligible = %d, want 1", got.Eligible)

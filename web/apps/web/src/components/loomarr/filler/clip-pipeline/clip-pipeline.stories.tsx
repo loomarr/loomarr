@@ -2,7 +2,7 @@ import type { IncomingPipelineDTO } from "@loomarr/api";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ClipPipeline } from "./clip-pipeline";
 
-// ClipPipeline — where one clip is in the ten-rung ingest pipeline (§10 V51b/V51e). The strip
+// ClipPipeline — where one clip is in the nine-rung ingest pipeline (§10 V51b/V51e/V68). The strip
 // is the stage-by-stage watch for forty rows at once; the list is what expanding one gives you.
 const LADDER = [
   "probe",
@@ -13,7 +13,6 @@ const LADDER = [
   "transcribe",
   "tag",
   "vision",
-  "admission",
   "score",
 ];
 

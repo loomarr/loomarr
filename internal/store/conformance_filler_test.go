@@ -4563,7 +4563,7 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		}
 		if withPipeline {
 			if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-				ClipHash: hash, Stage: filler.StageAdmission, Status: filler.StatusDone,
+				ClipHash: hash, Stage: filler.StageID("admission"), Status: filler.StatusDone,
 				Disposition: filler.DispositionReview, UpdatedAt: at,
 			}); err != nil {
 				t.Fatal(err)
@@ -4730,9 +4730,8 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		t.Fatalf("rolled-back action persisted = %+v, err = %v", actions, err)
 	}
 
-	// A terminal decision cannot publish bytes whose exact filler role remains unclassified.
-	// The catalog predicate and transaction rollback keep clip, pipeline, and action history closed
-	// even when every otherwise-required applied admission authority is supplied.
+	// The ordinary scan upsert cannot release a hold, even when its caller supplies held=false. An
+	// unknown role is no longer rejected at this boundary; terminal readiness owns its Placement.
 	unclassifiedHash := strings.Repeat("8", 64)
 	seedKind(unclassifiedHash, "88/88/"+unclassifiedHash+".mp4", filler.Unclassified, true)
 	unclassifiedClip, err := s.GetClip(ctx, unclassifiedHash)
@@ -4741,14 +4740,25 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 	}
 	unheld := unclassifiedClip
 	unheld.Held = false
-	if err := s.UpsertClip(ctx, unheld); err == nil {
-		t.Fatal("application boundary accepted an unheld unclassified clip")
+	if err := s.UpsertClip(ctx, unheld); err != nil {
+		t.Fatalf("ordinary upsert rejected descriptive unclassified state: %v", err)
+	}
+	unclassifiedClip, err = s.GetClip(ctx, unclassifiedHash)
+	if err != nil || !unclassifiedClip.Held {
+		t.Fatalf("ordinary upsert released hold = %+v, err = %v", unclassifiedClip, err)
 	}
 	if err := s.SetClipComposite(ctx, unclassifiedHash, true, at.Add(6*time.Minute+time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ReleaseCompositeHolds(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err == nil {
-		t.Fatal("database boundary released an unclassified clip through the composite exception")
+	if _, err := s.ReleaseCompositeHolds(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	playableUnknown, err := s.ListClips(ctx, ClipFilter{Hashes: []string{unclassifiedHash}, IncludeComposites: true})
+	if err != nil || len(playableUnknown) != 0 {
+		t.Fatalf("released composite became playable despite not_playable placement: %+v, err=%v", playableUnknown, err)
+	}
+	if _, err := s.HoldClips(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err != nil {
+		t.Fatal(err)
 	}
 	unclassifiedDecision := newDecision("applied-unclassified", unclassifiedHash)
 	if err := s.PutFillerDecision(ctx, unclassifiedDecision); err != nil {
@@ -4782,6 +4792,88 @@ func decisionPageContains(page fillerdecision.DecisionPage, id string) bool {
 		}
 	}
 	return false
+}
+
+func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, time.September, 13, 18, 0, 0, 0, time.UTC)
+	hash := strings.Repeat("7", 64)
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Hash: hash, Path: "77/77/" + hash + ".mp4", Name: "Unknown enrolled clip",
+		Kind: filler.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
+		DurationMs: 30_000,
+	}, UpdatedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	current := filler.ClipPipeline{
+		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: filler.StageScore,
+		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
+		EnrolledAt: at, UpdatedAt: at,
+	}
+	if err := s.UpsertClipPipeline(ctx, current); err != nil {
+		t.Fatal(err)
+	}
+	settled := current
+	settled.Status = filler.StatusDone
+	settled.Disposition = filler.DispositionFiled
+	settled.NextRun = time.Time{}
+	settled.Stages = []filler.StageRecord{{Stage: filler.StageScore, Status: filler.StatusDone, At: at}}
+	event := filler.ReadyEvent{
+		ID: "ready:" + hash, ClipHash: hash, AcquisitionID: current.AcquisitionID,
+		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: current.AcquisitionID},
+		Placement:  filler.PlacementBreakBody, CreatedAt: at,
+	}
+	commit := filler.ReadyCommit{Event: event, Pipeline: settled}
+	if err := s.CommitFillerReady(ctx, commit); err != nil {
+		t.Fatal(err)
+	}
+	clip, err := s.GetClip(ctx, hash)
+	if err != nil || clip.Held || clip.Placement != filler.PlacementBreakBody || clip.Kind != filler.Unclassified {
+		t.Fatalf("ready clip = %+v, err = %v", clip, err)
+	}
+	row, found, err := s.GetClipPipeline(ctx, hash)
+	if err != nil || !found || row.Disposition != filler.DispositionFiled || row.Status != filler.StatusDone {
+		t.Fatalf("ready pipeline = %+v, found=%t err=%v", row, found, err)
+	}
+	gotEvent, found, err := s.GetFillerReadyEvent(ctx, hash)
+	if err != nil || !found || gotEvent.ID != event.ID || gotEvent.Placement != filler.PlacementBreakBody ||
+		gotEvent.Enrollment != event.Enrollment {
+		t.Fatalf("ready event = %+v, found=%t err=%v", gotEvent, found, err)
+	}
+	playable, err := s.ListClips(ctx, ClipFilter{Hashes: []string{hash}})
+	if err != nil || len(playable) != 1 {
+		t.Fatalf("ready unknown-role clip is not playable: %+v, err=%v", playable, err)
+	}
+	if err := s.CommitFillerReady(ctx, commit); err != nil {
+		t.Fatalf("exact ready retry was not idempotent: %v", err)
+	}
+
+	staleHash := strings.Repeat("6", 64)
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Hash: staleHash, Path: "66/66/" + staleHash + ".mp4", Name: "No pipeline",
+		Kind: filler.Unclassified, Source: "test-folder", Held: true, DurationMs: 30_000,
+	}, UpdatedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	stale := commit
+	stale.Event.ID = "ready:" + staleHash
+	stale.Event.ClipHash = staleHash
+	stale.Event.AcquisitionID = ""
+	stale.Event.Enrollment = filler.Enrollment{Kind: filler.EnrollmentSource, Reference: "test-folder"}
+	stale.Pipeline.ClipHash = staleHash
+	stale.Pipeline.AcquisitionID = ""
+	if err := s.CommitFillerReady(ctx, stale); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing conveyor error = %v, want not found", err)
+	}
+	staleClip, err := s.GetClip(ctx, staleHash)
+	if err != nil || !staleClip.Held || staleClip.Placement != filler.PlacementNotPlayable {
+		t.Fatalf("failed ready transaction changed clip = %+v, err=%v", staleClip, err)
+	}
+	if _, found, err := s.GetFillerReadyEvent(ctx, staleHash); err != nil || found {
+		t.Fatalf("failed ready transaction recorded event, found=%t err=%v", found, err)
+	}
 }
 
 func testFillerSplitShadowDecisions(t *testing.T, newStore NewStoreFunc) {

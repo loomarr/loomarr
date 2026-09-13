@@ -159,7 +159,7 @@ const stubFiller = ({
     }),
     getFillerPoolMockHandler({
       clips: clips.length,
-      commercials: clips.length,
+      breakBody: clips.length,
       eligible: clips.length,
       untagged: 0,
       channels: [],

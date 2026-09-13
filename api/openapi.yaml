@@ -3340,7 +3340,6 @@ components:
             - transcribe
             - tag
             - vision
-            - admission
             - score
           type: string
         status:
@@ -6787,6 +6786,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        breakBody:
+          description: Clips that can fill a break body. Bookend clips cannot make one.
+          format: int64
+          type: integer
         channels:
           description: Live channels, WORST COVERAGE FIRST. Paused and detached channels are excluded — their breaks are not airing, so counting them as uncovered would report a problem the operator created deliberately.
           items:
@@ -6796,12 +6799,8 @@ components:
           description: Every clip in the catalog, of every kind
           format: int64
           type: integer
-        commercials:
-          description: Clips that can fill a break BODY. Bumpers and station IDs bookend a pod; they cannot make one.
-          format: int64
-          type: integer
         eligible:
-          description: Commercials that are ALSO duration-eligible under the active policy — the ones that can actually go in a break. Same gate pod assembly applies.
+          description: Break-body clips that are also duration-eligible under the active policy. The same gate is used by pod assembly.
           format: int64
           type: integer
         untagged:
@@ -6810,7 +6809,7 @@ components:
           type: integer
       required:
         - clips
-        - commercials
+        - breakBody
         - eligible
         - untagged
         - channels
@@ -8124,7 +8123,6 @@ components:
             - transcribe
             - tag
             - vision
-            - admission
             - score
           type: string
         hash:

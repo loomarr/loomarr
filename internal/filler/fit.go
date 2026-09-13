@@ -102,7 +102,7 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 		fit.Reason = FitKind
 		return fit
 	}
-	if c.Kind == Commercial && !durationEligible(c, policy) {
+	if c.EffectivePlacement() == PlacementBreakBody && !durationEligible(c, policy) {
 		fit.Reason = FitDuration
 		return fit
 	}
@@ -121,9 +121,9 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 		return fit
 	}
 
-	// Only commercials run the ladder. A bumper that passed the kind filter is eligible as a
+	// Only break-body clips run the ladder. A bookend that passed the kind filter is eligible as a
 	// bookend and has no rung — see the doc comment.
-	if c.Kind != Commercial {
+	if c.EffectivePlacement() != PlacementBreakBody {
 		return fit
 	}
 

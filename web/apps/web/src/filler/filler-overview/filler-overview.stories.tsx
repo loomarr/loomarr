@@ -21,7 +21,7 @@ const readiness: FillerReadinessDTO = {
   },
   pool: {
     clips: 48,
-    commercials: 38,
+    breakBody: 38,
     eligible: 42,
     untagged: 0,
     channels: [
@@ -111,7 +111,7 @@ export const EmptyLibrary: Story = {
         nextAction: "add_filler",
         fetch: { enabled: true, catalogClips: 0 },
         pipeline: { ...readiness.pipeline, admitted: 0, rejected: 0 },
-        pool: { clips: 0, commercials: 0, eligible: 0, untagged: 0, channels: [] },
+        pool: { clips: 0, breakBody: 0, eligible: 0, untagged: 0, channels: [] },
       },
     ),
   ],
