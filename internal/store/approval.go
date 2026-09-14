@@ -138,6 +138,17 @@ func (s *sqlStore) commitProposalApproval(
 	if err := proposalDecisionResult(ctx, tx, s.ph(`SELECT status FROM proposals WHERE id = ?`), p.ID, result); err != nil {
 		return 0, err
 	}
+	if jobStatus == "failed" {
+		// The operator chose the preserved fallback after its replacement failed.
+		// Resolve the stable Journey in the same transaction as approval while
+		// retaining the failed Attempt as honest execution history.
+		if _, err := tx.ExecContext(ctx, s.ph(
+			`UPDATE jobs
+			    SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
+			  WHERE id=? AND status='failed'`), epoch(p.UpdatedAt), p.JobID); err != nil {
+			return 0, fmt.Errorf("approve proposal %s: resolve failed revision: %w", p.ID, err)
+		}
+	}
 
 	// The supersession guard must share the approval transaction. A check in the
 	// coordinator alone has a gap: a newer proposal can commit after that check but
