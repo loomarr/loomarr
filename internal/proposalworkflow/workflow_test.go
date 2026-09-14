@@ -242,8 +242,8 @@ func TestWorkflowInspectAwaitingApprovalDerivesRoleSafeActions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Inspect as admin: %v", err)
 	}
-	if len(admin.Actions) != 1 || admin.Actions[0] != ActionReview {
-		t.Fatalf("admin actions = %v, want [%s]", admin.Actions, ActionReview)
+	if len(admin.Actions) != 2 || admin.Actions[0] != ActionReview || admin.Actions[1] != ActionEdit {
+		t.Fatalf("admin actions = %v, want [%s %s]", admin.Actions, ActionReview, ActionEdit)
 	}
 }
 

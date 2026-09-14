@@ -256,7 +256,7 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 		case ProposalSubmitted:
 			milestone = MilestoneAwaitingApproval
 			if viewer.Admin {
-				actions = []Action{ActionReview}
+				actions = []Action{ActionReview, ActionEdit}
 			}
 		case ProposalDenied:
 			milestone = MilestoneDenied
