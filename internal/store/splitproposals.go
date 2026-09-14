@@ -532,6 +532,28 @@ func (s *sqlStore) ListReadySplitProposals(ctx context.Context, limit int) ([]fi
 	return collectReadyOrAllSplitProposals(rows, limit, true)
 }
 
+// ListReadySplitProposalsAfter serves the genuine Needs-help group. Unlike the legacy oldest-first
+// reel list, this is a stable newest-first page and a detection checkpoint cannot consume a row.
+func (s *sqlStore) ListReadySplitProposalsAfter(ctx context.Context, cursor filler.SplitProposalCursor, limit int) ([]filler.SplitProposal, error) {
+	q := splitProposalSelect
+	args := make([]any, 0, 3)
+	if !cursor.BeforeCreatedAt.IsZero() || cursor.BeforeID != "" {
+		if cursor.BeforeCreatedAt.IsZero() || cursor.BeforeID == "" {
+			return nil, fmt.Errorf("split proposal cursor requires created time and id")
+		}
+		at := epoch(cursor.BeforeCreatedAt)
+		q += ` WHERE (created_at < ? OR (created_at = ? AND id < ?))`
+		args = append(args, at, at, cursor.BeforeID)
+	}
+	q += ` ORDER BY created_at DESC, id DESC`
+	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	if err != nil {
+		return nil, fmt.Errorf("list ready split proposals after cursor: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return collectReadyOrAllSplitProposals(rows, limit, true)
+}
+
 // CountReadySplitProposals counts reviewable reels without retaining their JSON documents.
 func (s *sqlStore) CountReadySplitProposals(ctx context.Context) (int, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(splitProposalSelect+` ORDER BY created_at, id`))

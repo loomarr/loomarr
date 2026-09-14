@@ -212,6 +212,14 @@ type PipelineFilter struct {
 	ConveyorOnly bool
 	// RejectedOnly returns the audit half: what was refused, and why.
 	RejectedOnly bool
+	// Dispositions is the exact clip-level outcome set. It is the preferred read-model filter;
+	// the two booleans above remain only until the legacy Incoming projection is deleted.
+	Dispositions []Disposition
+	// UpdatedAtOrAfter bounds recent lifecycle reads. BeforeUpdatedAt + BeforeClipHash continue
+	// the stable newest-first order; both cursor fields must be supplied together.
+	UpdatedAtOrAfter time.Time
+	BeforeUpdatedAt  time.Time
+	BeforeClipHash   string
 	// Limit caps the rows returned; 0 means unbounded.
 	Limit int
 }

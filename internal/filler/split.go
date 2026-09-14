@@ -361,6 +361,13 @@ type SplitProposal struct {
 	Detection *SplitDetectionProgress `json:"-"`
 }
 
+// SplitProposalCursor continues the stable newest-first Needs-help projection. Both fields are
+// required together; the API keeps their encoding opaque to clients.
+type SplitProposalCursor struct {
+	BeforeCreatedAt time.Time
+	BeforeID        string
+}
+
 // Ready reports whether detection has produced an operator-reviewable cut list.
 func (p SplitProposal) Ready() bool { return p.Detection == nil }
 

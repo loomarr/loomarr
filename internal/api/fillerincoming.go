@@ -2,7 +2,10 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
+	"net/url"
 	"sort"
 	"time"
 
@@ -177,7 +180,10 @@ type IncomingRejectDTO struct {
 
 type fillerIncomingOutput struct {
 	Body struct {
-		Overview PipelineOverviewDTO `json:"overview" doc:"Bounded lifecycle counts across the durable filler pipeline"`
+		Preparing     IncomingClipGroupDTO `json:"preparing"`
+		NeedsHelp     IncomingHelpGroupDTO `json:"needsHelp"`
+		RecentlyReady IncomingClipGroupDTO `json:"recentlyReady"`
+		Overview      PipelineOverviewDTO  `json:"overview" doc:"Bounded lifecycle counts across the durable filler pipeline"`
 		// Clips is the whole conveyor, in one list: what is being prepared and what is waiting on
 		// a person, ordered decisions-first.
 		//
@@ -212,6 +218,48 @@ type fillerIncomingOutput struct {
 	}
 }
 
+// IncomingClipGroupDTO is one bounded page and its server-counted total. The row and total
+// predicates are deliberately owned together; clients do not reconstruct group membership from
+// stage ids or lifecycle vocabulary.
+type IncomingClipGroupDTO struct {
+	Rows       []IncomingStatusDTO `json:"rows"`
+	Total      int                 `json:"total"`
+	NextCursor string              `json:"nextCursor,omitempty" doc:"Opaque cursor for the next newest-first page"`
+}
+
+// IncomingHelpGroupDTO is the same bounded contract for exceptional durable choices.
+type IncomingHelpGroupDTO struct {
+	Rows       []IncomingHelpDTO `json:"rows"`
+	Total      int               `json:"total"`
+	NextCursor string            `json:"nextCursor,omitempty" doc:"Opaque cursor for the next newest-first page"`
+}
+
+// IncomingStatusDTO is the calm, recognizable row shared by Preparing and Recently ready.
+// Internal pipeline enums and filesystem paths stay behind Technical details.
+type IncomingStatusDTO struct {
+	ClipHash    string    `json:"clipHash"`
+	Name        string    `json:"name"`
+	From        string    `json:"from,omitempty"`
+	DurationMs  int64     `json:"durationMs"`
+	ThumbImage  *ImageDTO `json:"thumbImage,omitempty"`
+	StatusLabel string    `json:"statusLabel"`
+	Progress    int       `json:"progress,omitempty" minimum:"-1" maximum:"100"`
+	UpdatedAt   string    `json:"updatedAt" doc:"RFC3339"`
+}
+
+// IncomingHelpDTO names a real task and the existing destination where its durable mutation is
+// completed. It is intentionally not populated from historical classification decisions.
+type IncomingHelpDTO struct {
+	ID          string `json:"id"`
+	Kind        string `json:"kind" enum:"split_boundary"`
+	ClipHash    string `json:"clipHash"`
+	Name        string `json:"name"`
+	Question    string `json:"question"`
+	ActionLabel string `json:"actionLabel"`
+	ActionHref  string `json:"actionHref"`
+	CreatedAt   string `json:"createdAt" doc:"RFC3339"`
+}
+
 type PipelineOverviewDTO struct {
 	Runnable      int `json:"runnable"`
 	InProgress    int `json:"inProgress"`
@@ -224,18 +272,22 @@ type PipelineOverviewDTO struct {
 	Recoverable   int `json:"recoverable" doc:"Terminal failures with an explicit retry or restore action"`
 }
 
+type fillerIncomingInput struct {
+	PreparingCursor string `query:"preparingCursor" maxLength:"512" doc:"Opaque preparing cursor from the previous page"`
+	NeedsHelpCursor string `query:"needsHelpCursor" maxLength:"512" doc:"Opaque Needs-help cursor from the previous page"`
+	ReadyCursor     string `query:"readyCursor" maxLength:"512" doc:"Opaque recently-Ready cursor from the previous page"`
+}
+
 func (s *Server) registerFillerIncoming(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-incoming", Method: http.MethodGet, Path: "/v1/filler/incoming",
-		Summary: "What has been downloaded but isn't terminally ready",
-		Description: "Admin only (§10 V35) — legacy operational projection, not the Attention task interface. One bounded read for the clip conveyor, " +
-			"reviewable reels, and rejected clips. Each list carries its full total so a " +
-			"large import cannot make the response unbounded or make the badge report only the first page.",
-		Tags: []string{"filler"},
+		Summary:     "Filler clips being prepared, needing help, or recently ready",
+		Description: "Admin-only hands-off Incoming projection (§10). Each disjoint group is bounded, newest first, and carries its full server-counted total plus an opaque next-page cursor. Needs help contains only a current durable choice; operational and audit history are excluded.",
+		Tags:        []string{"filler"},
 	}, RoleAdmin), s.fillerIncoming)
 }
 
-func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomingOutput, error) {
+func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*fillerIncomingOutput, error) {
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
@@ -465,7 +517,207 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 			s.log.Warn("count incoming decisions", "err", cerr)
 		}
 	}
+	if err := s.projectCalmIncoming(ctx, out, lifecycleAt, in); err != nil {
+		if err == errInvalidIncomingCursor {
+			return nil, huma.Error422UnprocessableEntity("Invalid Incoming cursor")
+		}
+		return nil, huma.Error500InternalServerError("project incoming", err)
+	}
 	return out, nil
+}
+
+const recentlyReadyWindow = 7 * 24 * time.Hour
+const incomingPageLimit = 20
+
+var errInvalidIncomingCursor = &incomingCursorError{}
+
+type incomingCursorError struct{}
+
+func (*incomingCursorError) Error() string { return "invalid incoming cursor" }
+
+type incomingCursor struct {
+	UpdatedAt int64  `json:"updatedAt"`
+	ID        string `json:"id"`
+}
+
+func encodeIncomingCursor(at time.Time, id string) string {
+	raw, _ := json.Marshal(incomingCursor{UpdatedAt: at.Unix(), ID: id})
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeIncomingCursor(value string) (time.Time, string, error) {
+	if value == "" {
+		return time.Time{}, "", nil
+	}
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(value)
+	if err != nil {
+		return time.Time{}, "", errInvalidIncomingCursor
+	}
+	var cursor incomingCursor
+	if err := json.Unmarshal(raw, &cursor); err != nil || cursor.UpdatedAt <= 0 || cursor.ID == "" {
+		return time.Time{}, "", errInvalidIncomingCursor
+	}
+	return time.Unix(cursor.UpdatedAt, 0).UTC(), cursor.ID, nil
+}
+
+// projectCalmIncoming is the vertical migration seam for the ordinary Incoming experience. The
+// legacy fields remain in this private branch only until their frontend consumer is replaced;
+// this projection does not consult them or the historical decision audit.
+func (s *Server) projectCalmIncoming(ctx context.Context, out *fillerIncomingOutput, at time.Time, in *fillerIncomingInput) error {
+	out.Body.Preparing.Rows = make([]IncomingStatusDTO, 0)
+	out.Body.NeedsHelp.Rows = make([]IncomingHelpDTO, 0)
+	out.Body.RecentlyReady.Rows = make([]IncomingStatusDTO, 0)
+
+	preparingAt, preparingID, err := decodeIncomingCursor(in.PreparingCursor)
+	if err != nil {
+		return err
+	}
+	readyAt, readyID, err := decodeIncomingCursor(in.ReadyCursor)
+	if err != nil {
+		return err
+	}
+	helpAt, helpID, err := decodeIncomingCursor(in.NeedsHelpCursor)
+	if err != nil {
+		return err
+	}
+	preparingFilter := filler.PipelineFilter{
+		Dispositions:    []filler.Disposition{filler.DispositionRunning},
+		BeforeUpdatedAt: preparingAt, BeforeClipHash: preparingID, Limit: incomingPageLimit + 1,
+	}
+	rows, err := s.store.ListClipPipelines(ctx, preparingFilter)
+	if err != nil {
+		return err
+	}
+	type statusEntry struct {
+		clip store.Clip
+		row  filler.ClipPipeline
+	}
+	preparing := make([]statusEntry, 0)
+	for _, row := range rows {
+		clip, clipErr := s.store.GetClip(ctx, row.ClipHash)
+		if clipErr != nil {
+			continue
+		}
+		entry := statusEntry{clip: clip, row: row}
+		preparing = append(preparing, entry)
+	}
+	readyFilter := filler.PipelineFilter{
+		Dispositions: []filler.Disposition{filler.DispositionReady}, UpdatedAtOrAfter: at.Add(-recentlyReadyWindow),
+		BeforeUpdatedAt: readyAt, BeforeClipHash: readyID, Limit: incomingPageLimit + 1,
+	}
+	readyRows, err := s.store.ListClipPipelines(ctx, readyFilter)
+	if err != nil {
+		return err
+	}
+	ready := make([]statusEntry, 0, len(readyRows))
+	for _, row := range readyRows {
+		clip, clipErr := s.store.GetClip(ctx, row.ClipHash)
+		if clipErr == nil {
+			ready = append(ready, statusEntry{clip: clip, row: row})
+		}
+	}
+
+	toDTO := func(entry statusEntry, label string, img func(string) *ImageDTO) IncomingStatusDTO {
+		var thumb *ImageDTO
+		if img != nil {
+			thumb = img(entry.clip.Hash)
+		}
+		return IncomingStatusDTO{
+			ClipHash: entry.clip.Hash, Name: entry.clip.Name, From: entry.clip.Source,
+			DurationMs: entry.clip.DurationMs, ThumbImage: thumb,
+			StatusLabel: label, Progress: entry.row.Progress,
+			UpdatedAt: entry.row.UpdatedAt.UTC().Format(time.RFC3339),
+		}
+	}
+	preparingClips := make([]store.Clip, 0, len(preparing))
+	for _, entry := range preparing {
+		preparingClips = append(preparingClips, entry.clip)
+	}
+	preparingImages := s.clipArtworkResolver(ctx, preparingClips)
+	countFilter := preparingFilter
+	countFilter.BeforeUpdatedAt, countFilter.BeforeClipHash, countFilter.Limit = time.Time{}, "", 0
+	out.Body.Preparing.Total, err = s.store.CountClipPipelines(ctx, countFilter)
+	if err != nil {
+		return err
+	}
+	if len(preparing) > incomingPageLimit {
+		last := preparing[incomingPageLimit-1].row
+		out.Body.Preparing.NextCursor = encodeIncomingCursor(last.UpdatedAt, last.ClipHash)
+		preparing = preparing[:incomingPageLimit]
+	}
+	for _, entry := range preparing {
+		out.Body.Preparing.Rows = append(out.Body.Preparing.Rows,
+			toDTO(entry, friendlyIncomingStage(entry.row.Stage), preparingImages))
+	}
+	readyClips := make([]store.Clip, 0, len(ready))
+	for _, entry := range ready {
+		readyClips = append(readyClips, entry.clip)
+	}
+	readyImages := s.clipArtworkResolver(ctx, readyClips)
+	readyCountFilter := readyFilter
+	readyCountFilter.BeforeUpdatedAt, readyCountFilter.BeforeClipHash, readyCountFilter.Limit = time.Time{}, "", 0
+	out.Body.RecentlyReady.Total, err = s.store.CountClipPipelines(ctx, readyCountFilter)
+	if err != nil {
+		return err
+	}
+	if len(ready) > incomingPageLimit {
+		last := ready[incomingPageLimit-1].row
+		out.Body.RecentlyReady.NextCursor = encodeIncomingCursor(last.UpdatedAt, last.ClipHash)
+		ready = ready[:incomingPageLimit]
+	}
+	for _, entry := range ready {
+		if len(out.Body.RecentlyReady.Rows) == incomingListLimit {
+			break
+		}
+		out.Body.RecentlyReady.Rows = append(out.Body.RecentlyReady.Rows, toDTO(entry, "Ready", readyImages))
+	}
+
+	proposals, err := s.store.ListReadySplitProposalsAfter(ctx, filler.SplitProposalCursor{
+		BeforeCreatedAt: helpAt, BeforeID: helpID,
+	}, incomingPageLimit+1)
+	if err != nil {
+		return err
+	}
+	if len(proposals) > incomingPageLimit {
+		last := proposals[incomingPageLimit-1]
+		out.Body.NeedsHelp.NextCursor = encodeIncomingCursor(last.CreatedAt, last.ID)
+		proposals = proposals[:incomingPageLimit]
+	}
+	for _, proposal := range proposals {
+		if !proposal.Ready() {
+			continue
+		}
+		name := proposal.ClipHash
+		if clip, clipErr := s.store.GetClip(ctx, proposal.ClipHash); clipErr == nil && clip.Name != "" {
+			name = clip.Name
+		}
+		out.Body.NeedsHelp.Rows = append(out.Body.NeedsHelp.Rows, IncomingHelpDTO{
+			ID: proposal.ID, Kind: "split_boundary", ClipHash: proposal.ClipHash, Name: name,
+			Question: "Where should this compilation be split?", ActionLabel: "Review clips",
+			ActionHref: "/filler/splits/" + url.PathEscape(proposal.ID),
+			CreatedAt:  proposal.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	out.Body.NeedsHelp.Total, err = s.store.CountReadySplitProposals(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func friendlyIncomingStage(stage filler.StageID) string {
+	switch stage {
+	case filler.StageProbe, filler.StageTranscode, filler.StageScreen:
+		return "Checking video"
+	case filler.StageSplit:
+		return "Checking for separate clips"
+	case filler.StageLanguage, filler.StageTranscribe, filler.StageTag, filler.StageVision:
+		return "Adding details"
+	case filler.StageScore:
+		return "Finishing"
+	default:
+		return "Getting ready"
+	}
 }
 
 // The two lists are BOUNDED, and each bound is a different judgement.
