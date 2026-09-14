@@ -1,4 +1,6 @@
+import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import { unwrap } from "@loomarr/api/unwrap";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
@@ -37,6 +39,20 @@ const languageUnavailableReason = (entries: SettingEntry[]): string | undefined 
 const FillerOperations = () => {
   const entries = useSettingsEntries();
   const languageReason = languageUnavailableReason(entries);
+  const sourcesQuery = fillerApi.useListFillerSources();
+  const sources = unwrap(sourcesQuery.data, (body) => body.sources) ?? [];
+  const enabledRemoteSources = sources.filter(
+    (source) =>
+      !source.group &&
+      source.configured &&
+      source.effectiveEnabled &&
+      (source.kind === "archive" || source.kind === "youtube"),
+  ).length;
+  const perSource = Number(settingValue(entries, "filler.fetch.max_per_run")) || 10;
+  const downloadSummary =
+    enabledRemoteSources === 0
+      ? "Choose when enabled sources look for clips and how many each one may add."
+      : `${enabledRemoteSources} enabled ${enabledRemoteSources === 1 ? "source" : "sources"} can add up to ${enabledRemoteSources * perSource} clips each time Loomarr checks.`;
   return (
     <SettingsPage
       title="Filler settings"
@@ -52,7 +68,7 @@ const FillerOperations = () => {
         {
           group: "filler",
           title: "Automatic downloads",
-          description: "How often enabled sources are checked. Safety limits stay available under Advanced.",
+          description: `${downloadSummary} Storage protection stays under Advanced.`,
           keys: [
             "filler.fetch.every",
             "filler.fetch.max_per_run",

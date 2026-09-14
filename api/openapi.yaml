@@ -2950,7 +2950,7 @@ components:
           format: int64
           type: integer
         sourceId:
-          description: Selected registered source; absent for the legacy all-source pass
+          description: Selected registered source
           type: string
         sourcesPolled:
           description: Remote sources actually inspected by this pass
@@ -2969,6 +2969,7 @@ components:
           format: int64
           type: integer
       required:
+        - sourceId
         - sourcesPolled
         - queued
         - skipped
@@ -3935,6 +3936,8 @@ components:
           items:
             type: string
           type: array
+        automaticDownloads:
+          $ref: "#/components/schemas/SourceAutomaticDownloadsDTO"
         configured:
           type: boolean
         count:
@@ -3972,8 +3975,8 @@ components:
             - archive
             - youtube
           type: string
-        lastFetchedAt:
-          description: RFC3339; absent if never fetched
+        lastCheckedAt:
+          description: RFC3339; absent if never checked
           type: string
         license:
           description: Licence the source declared; absent means unknown, NOT public domain
@@ -8757,20 +8760,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        automaticDownloads:
+          $ref: "#/components/schemas/SourceAutomaticDownloadsInput"
         enabled:
           type: boolean
-        fetchEverySeconds:
-          description: Seconds between automatic fetches of this source. 0 means never; omit or null to inherit the global setting.
-          format: int64
-          maximum: 604800
-          minimum: 0
-          type: integer
-        fetchMaxPerRun:
-          description: Most clips to take from this source in one run. Omit or null to inherit the global setting.
-          format: int64
-          maximum: 1000
-          minimum: 1
-          type: integer
         geography:
           $ref: "#/components/schemas/SourceGeographyDTO"
           description: Complete source coverage replacement; country-only means country-wide
@@ -8787,14 +8780,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        automaticDownloads:
+          $ref: "#/components/schemas/SourceAutomaticDownloadsDTO"
         enabled:
           type: boolean
-        fetchEverySeconds:
-          format: int64
-          type: integer
-        fetchMaxPerRun:
-          format: int64
-          type: integer
         geography:
           $ref: "#/components/schemas/SourceGeographyDTO"
         id:
@@ -9093,6 +9082,52 @@ components:
           type: array
       required:
         - checks
+      type: object
+    SourceAutomaticDownloadsDTO:
+      additionalProperties: false
+      properties:
+        everySeconds:
+          format: int64
+          maximum: 604800
+          minimum: 0
+          type: integer
+        maxPerCheck:
+          format: int64
+          maximum: 1000
+          minimum: 1
+          type: integer
+        mode:
+          enum:
+            - defaults
+            - custom
+            - never
+          type: string
+      required:
+        - mode
+        - everySeconds
+        - maxPerCheck
+      type: object
+    SourceAutomaticDownloadsInput:
+      additionalProperties: false
+      properties:
+        everySeconds:
+          format: int64
+          maximum: 604800
+          minimum: 60
+          type: integer
+        maxPerCheck:
+          format: int64
+          maximum: 1000
+          minimum: 1
+          type: integer
+        mode:
+          enum:
+            - defaults
+            - custom
+            - never
+          type: string
+      required:
+        - mode
       type: object
     SourceGeographyDTO:
       additionalProperties: false
@@ -13483,15 +13518,16 @@ paths:
         - filler
   /v1/filler/sources/fetch:
     post:
-      description: Admin only (§10 V56). Runs one ordinary bounded acquisition pass for the selected source, then scans configured local sources. Omit id for the backward-compatible all-source pass. It retains enable checks, deduplication and safety limits; this is not an unbounded bypass.
+      description: Admin only (§10 V56). Runs one ordinary bounded acquisition pass for the selected source, then scans configured local sources. It retains provider/source enablement, geography, deduplication and safety limits; only timing is bypassed.
       operationId: fetch-filler-source
       parameters:
-        - description: Registered source id to refresh; omit to run all enabled sources
+        - description: Registered source id to check
           explode: false
           in: query
           name: id
           schema:
-            description: Registered source id to refresh; omit to run all enabled sources
+            description: Registered source id to check
+            minLength: 1
             type: string
       responses:
         "200":
@@ -13506,7 +13542,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Fetch and scan filler now
+      summary: Look for new clips in one source
       tags:
         - filler
   /v1/filler/sources/{id}:
@@ -13532,7 +13568,7 @@ paths:
       tags:
         - filler
     patch:
-      description: "Admin only (§10 V35, extended V38c/V57). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. Source configuration grants no catalog-admission authority. `folder` writes the drop-folder setting; any other id writes that source's own row. ⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never auto-fetch this source, or a positive number of seconds. Library sources became switchable in V38c, when §10 restored them to being scanned."
+      description: "Admin only (§10 V35, extended V38c/V57). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. Source configuration grants no catalog-admission authority. `folder` writes the drop-folder setting; any other id writes that source's own row. `automaticDownloads` is optional and uses an explicit defaults, custom, or never mode, so changing the switch or area cannot accidentally reset the policy. Library sources became switchable in V38c, when §10 restored them to being scanned."
       operationId: set-filler-source-enabled
       parameters:
         - in: path

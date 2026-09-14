@@ -169,7 +169,8 @@ func buildHTTP(deps httpBuild) http.Handler {
 				PublishedInternal: snapshot.PublishedInternal,
 			}, err
 		},
-		LiveConfigInt: set.intv,
+		LiveConfigInt:      set.intv,
+		LiveConfigDuration: set.dur,
 		// boolOn (not boolv): the API reads bool keys that are ON by default, where an
 		// unanswerable read must fail open — see Options.LiveConfigBoolOn.
 		LiveConfigBoolOn: set.boolOn,

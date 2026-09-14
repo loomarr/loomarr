@@ -39,6 +39,9 @@ const (
 	PresentationPath     Presentation = "path"
 	PresentationLanguage Presentation = "language"
 	PresentationSwitch   Presentation = "switch"
+	// PresentationFillerDownloadSchedule keeps the stored value a duration while offering the
+	// common household choices first and revealing the numeric duration only for Custom.
+	PresentationFillerDownloadSchedule Presentation = "filler_download_schedule"
 )
 
 // ApplyTiming says when a persisted setting becomes the running value. The zero

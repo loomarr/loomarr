@@ -55,6 +55,33 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenLastCalledWith("1209600s");
   });
 
+  it("offers common automatic-download schedules before revealing a custom duration", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({
+          key: "filler.fetch.every",
+          kind: "duration",
+          label: "Look for new clips",
+          presentation: "filler_download_schedule",
+        })}
+        value="6h"
+        onChange={onChange}
+      />,
+    );
+
+    const schedule = screen.getByLabelText("Look for new clips");
+    expect(schedule).toHaveTextContent("Every 6 hours");
+    expect(screen.queryByLabelText("Custom check interval")).not.toBeInTheDocument();
+
+    await userEvent.click(schedule);
+    expect(screen.getByRole("option", { name: "Never" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "Custom" }));
+    expect(screen.getByLabelText("Custom check interval")).toHaveValue(6);
+    fireEvent.change(screen.getByLabelText("Custom check interval"), { target: { value: "8" } });
+    expect(onChange).toHaveBeenLastCalledWith("28800s");
+  });
+
   it("shows byte limits as MiB and emits bytes", async () => {
     const onChange = vi.fn();
     render(

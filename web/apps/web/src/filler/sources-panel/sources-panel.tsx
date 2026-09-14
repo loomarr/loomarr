@@ -42,6 +42,8 @@ const SOURCE_KIND_COPY = {
 } as const;
 
 type QueuedClipJob = { sourceID: string; clipID: string; jobID: string };
+type AutomaticDownloadMode = "defaults" | "custom" | "never";
+type DownloadIntervalUnit = "hours" | "days";
 const QUEUED_CLIP_JOBS_KEY = "loomarr:source-item-jobs";
 
 const readQueuedClipJobs = (): QueuedClipJob[] => {
@@ -125,6 +127,28 @@ const registeredSourceURL = (source: FillerSourceDTO) => {
   return `https://archive.org/details/${encodeURIComponent(uri)}`;
 };
 
+const downloadIntervalParts = (seconds: number): { amount: number; unit: DownloadIntervalUnit } => {
+  if (seconds > 0 && seconds % 86400 === 0) return { amount: seconds / 86400, unit: "days" };
+  return { amount: Math.max(seconds / 3600, 1), unit: "hours" };
+};
+
+const downloadIntervalSeconds = (amount: number, unit: DownloadIntervalUnit): number =>
+  Math.round(Math.max(amount, 1) * (unit === "days" ? 86400 : 3600));
+
+const automaticDownloadSummary = (
+  mode: AutomaticDownloadMode,
+  everySeconds: number,
+  maxPerCheck: number,
+): string => {
+  if (everySeconds === 0) return "Doesn’t download automatically. You can still look for clips yourself.";
+  const { amount, unit } = downloadIntervalParts(everySeconds);
+  const interval = `${amount} ${amount === 1 ? unit.slice(0, -1) : unit}`;
+  const policy = `every ${interval}, up to ${maxPerCheck} ${maxPerCheck === 1 ? "clip" : "clips"} each check`;
+  return mode === "defaults"
+    ? `Uses your defaults: ${policy}.`
+    : `${policy.charAt(0).toUpperCase()}${policy.slice(1)}.`;
+};
+
 // SourcesPanel — the Sources tab of the filler page (§10 V35/V37/V38c): registered sources
 // (folders, libraries, archive.org, YouTube), each switchable, fetchable and (if `removable`)
 // forgettable, plus per-source search for archive.org and the "Add a source" form.
@@ -140,6 +164,9 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const [checkResult, setCheckResult] = useState<FetchFillerSourceOutputBody>();
   const [browseOpen, setBrowseOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [downloadMode, setDownloadMode] = useState<AutomaticDownloadMode>("defaults");
+  const [downloadEverySeconds, setDownloadEverySeconds] = useState(6 * 3600);
+  const [downloadMaxPerCheck, setDownloadMaxPerCheck] = useState(10);
   const [searchPreview, setSearchPreview] = useState<FillerSourcePreviewItemDTO>();
   const sourceTrigger = useRef<HTMLElement>(null);
   const selectedSource = sources.find((source) => source.id === selectedSourceID);
@@ -222,6 +249,9 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
     setSearchPreview(undefined);
     setBrowseOpen(false);
     setSettingsOpen(false);
+    setDownloadMode(source.automaticDownloads?.mode ?? "defaults");
+    setDownloadEverySeconds(source.automaticDownloads?.everySeconds || 6 * 3600);
+    setDownloadMaxPerCheck(source.automaticDownloads?.maxPerCheck ?? 10);
     const uri = source.uri?.trim();
     if ((source.kind === "archive" || source.kind === "youtube") && source.providerEnabled && uri) {
       resolveSourcePreview.mutate(
@@ -453,8 +483,8 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                         {`${selectedSource.incoming} being checked`}
                       </a>
                     )}
-                    {selectedSource.lastFetchedAt
-                      ? ` · last checked ${formatRelative(selectedSource.lastFetchedAt)}`
+                    {selectedSource.lastCheckedAt
+                      ? ` · last checked ${formatRelative(selectedSource.lastCheckedAt)}`
                       : " · not checked yet"}
                   </p>
                   {selectedSource.kind === "folder" && (
@@ -575,7 +605,8 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                 </Disclosure>
               )}
 
-              {(selectedSource.actions.includes("edit_location") ||
+              {(selectedSource.automaticDownloads ||
+                selectedSource.actions.includes("edit_location") ||
                 selectedSource.actions.includes("remove")) && (
                 <Disclosure
                   open={settingsOpen}
@@ -585,12 +616,130 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                   <Disclosure.SectionTrigger
                     label={`${settingsOpen ? "Hide" : "Show"} source settings`}
                     title="Source settings"
-                    description="Location exceptions and removal"
+                    description="Automatic downloads, location, and removal"
                   />
                   <Disclosure.Panel className="pt-4">
                     <div className="flex flex-col gap-3">
+                      {selectedSource.automaticDownloads && (
+                        <div className="flex flex-col gap-3">
+                          <div>
+                            <p className="font-medium text-sm">Automatic downloads</p>
+                            <p className="mt-1 text-muted-foreground text-sm">
+                              {automaticDownloadSummary(
+                                selectedSource.automaticDownloads.mode as AutomaticDownloadMode,
+                                selectedSource.automaticDownloads.everySeconds,
+                                selectedSource.automaticDownloads.maxPerCheck,
+                              )}
+                            </p>
+                          </div>
+                          <Select
+                            value={downloadMode}
+                            onValueChange={(value) => setDownloadMode(value as AutomaticDownloadMode)}
+                          >
+                            <SelectTrigger aria-label="Automatic downloads for this source">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="defaults">Use automatic-download defaults</SelectItem>
+                              <SelectItem value="custom">Use a different schedule</SelectItem>
+                              <SelectItem value="never">Never download automatically</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {downloadMode === "custom" && (
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-sm">Check every</span>
+                                <div className="flex gap-2">
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    step="any"
+                                    aria-label="Source check interval"
+                                    value={downloadIntervalParts(downloadEverySeconds).amount}
+                                    onChange={(event) => {
+                                      const current = downloadIntervalParts(downloadEverySeconds);
+                                      setDownloadEverySeconds(
+                                        downloadIntervalSeconds(Number(event.target.value), current.unit),
+                                      );
+                                    }}
+                                  />
+                                  <Select
+                                    value={downloadIntervalParts(downloadEverySeconds).unit}
+                                    onValueChange={(value) => {
+                                      const current = downloadIntervalParts(downloadEverySeconds);
+                                      setDownloadEverySeconds(
+                                        downloadIntervalSeconds(
+                                          current.amount,
+                                          value as DownloadIntervalUnit,
+                                        ),
+                                      );
+                                    }}
+                                  >
+                                    <SelectTrigger
+                                      aria-label="Source check interval unit"
+                                      className="w-28 shrink-0"
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="hours">hours</SelectItem>
+                                      <SelectItem value="days">days</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-sm">Add up to</span>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={1000}
+                                  aria-label="Clips per source check"
+                                  value={downloadMaxPerCheck}
+                                  onChange={(event) =>
+                                    setDownloadMaxPerCheck(Math.max(Number(event.target.value), 1))
+                                  }
+                                />
+                              </div>
+                            </div>
+                          )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="self-start"
+                            disabled={toggleSource.isPending}
+                            onClick={() => {
+                              setTogglingSource(selectedSource.id);
+                              toggleSource.mutate(
+                                {
+                                  id: selectedSource.id,
+                                  data: {
+                                    enabled: selectedSource.enabled,
+                                    automaticDownloads:
+                                      downloadMode === "custom"
+                                        ? {
+                                            mode: "custom",
+                                            everySeconds: downloadEverySeconds,
+                                            maxPerCheck: downloadMaxPerCheck,
+                                          }
+                                        : { mode: downloadMode },
+                                  },
+                                },
+                                {
+                                  onSuccess: () => toast.success("Automatic downloads updated"),
+                                },
+                              );
+                            }}
+                          >
+                            {toggleSource.isPending && togglingSource === selectedSource.id
+                              ? "Saving…"
+                              : "Save automatic downloads"}
+                          </Button>
+                        </div>
+                      )}
+
                       {selectedSource.actions.includes("edit_location") && (
-                        <>
+                        <div className="flex flex-col gap-3 border-border border-t pt-3">
                           <p className="text-muted-foreground text-sm">
                             Change this only when the source covers a different area from your location.
                           </p>
@@ -662,7 +811,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                               </Button>
                             )}
                           </div>
-                        </>
+                        </div>
                       )}
 
                       {selectedSource.actions.includes("remove") && (

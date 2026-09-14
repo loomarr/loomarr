@@ -2716,6 +2716,16 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if !src1(t, s).LastFetchedAt.Equal(fetched) {
 		t.Errorf("LastFetchedAt = %v, want %v", src1(t, s).LastFetchedAt, fetched)
 	}
+	checked := fetched.Add(30 * time.Minute)
+	if err := s.MarkFillerSourceChecked(ctx, "src-1", checked); err != nil {
+		t.Fatal(err)
+	}
+	if !src1(t, s).LastCheckedAt.Equal(checked) {
+		t.Errorf("LastCheckedAt = %v, want %v", src1(t, s).LastCheckedAt, checked)
+	}
+	if !src1(t, s).LastFetchedAt.Equal(fetched) {
+		t.Errorf("marking a check changed LastFetchedAt to %v, want %v", src1(t, s).LastFetchedAt, fetched)
+	}
 
 	// ⚠ THE assertion this table's ON CONFLICT clause exists for. Re-registering a source
 	// (an operator fixing its label) knows nothing about fetches; if last_fetched_at joined
@@ -2730,6 +2740,9 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !src1(t, s).LastFetchedAt.Equal(fetched) {
 		t.Errorf("re-registering reset LastFetchedAt to %v — it must survive an upsert", src1(t, s).LastFetchedAt)
+	}
+	if !src1(t, s).LastCheckedAt.Equal(checked) {
+		t.Errorf("re-registering reset LastCheckedAt to %v — it must survive an upsert", src1(t, s).LastCheckedAt)
 	}
 
 	// The Sources tab's on/off switch (V35). Two properties, each a claim the switch's own

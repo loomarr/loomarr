@@ -38,7 +38,11 @@ RETIRED=(
   'JOB_FILLER_LANGUAGE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
   'JOB_FILLER_SPLIT_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
   'JOB_FILLER_TRANSCRIBE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
-  'JOB_FILLER_VISION_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+	'JOB_FILLER_VISION_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+	# #1254: the user-facing automatic-download policy is the only cadence authority. The
+	# scheduler's minute wake is fixed code and only asks the due-source planner for work.
+	'job.filler_fetch.schedule|#1254: use filler.fetch.every and per-source automatic-download policy'
+	'JOB_FILLER_FETCH_SCHEDULE|#1254: use FILLER_FETCH_EVERY; the due-source wake is not configurable'
   # V55 made graph mutation one atomic store operation: the node, closure, rollups, and category
   # shadow commit together. A disabled repair job left correctness behind an operator toggle and
   # exposed two public half-operations that callers could run in separate transactions.

@@ -506,6 +506,14 @@ func TestFillerSources_FetchWithoutAServiceIs501(t *testing.T) {
 	}
 }
 
+func TestFillerSources_FetchRequiresOneSelectedSource(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch", adminToken, "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("fetch without a source → %d, want 422", resp.StatusCode)
+	}
+}
+
 // The beta's per-source "Fetch now" only ran the local catalog scan. For remote Archive/YouTube
 // rows that meant a successful 200 with no download ever queued — exactly the reported symptom.
 func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {

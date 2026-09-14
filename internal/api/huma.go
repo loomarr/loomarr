@@ -183,7 +183,8 @@ type Server struct {
 	startupReports StartupReportService
 	healthRefresh  HealthRefreshService
 
-	liveConfigInt func(key string) int
+	liveConfigInt      func(key string) int
+	liveConfigDuration func(key string) time.Duration
 	// liveConfigBoolOn reads a BOOL setting whose safe answer is true (resolved.boolOn).
 	//
 	// ⚠ Bool keys must never go through liveConfig: settings.String PANICS on a non-string
@@ -1098,6 +1099,9 @@ type Options struct {
 	// against a real settings service surfaced it (unit tests leave the seam nil, so the
 	// typed accessor was never reached).
 	LiveConfigInt func(key string) int
+	// LiveConfigDuration reads hot-applied duration settings without routing them through the
+	// string accessor, which deliberately panics on a kind mismatch.
+	LiveConfigDuration func(key string) time.Duration
 	// LiveConfigBoolOn is the BOOL-typed twin, and it exists for the same reason
 	// LiveConfigInt does — the third occurrence of that one bug, so the seam is now typed
 	// for every Kind a route reads rather than only the two that have already broken.

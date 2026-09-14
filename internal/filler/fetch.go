@@ -52,12 +52,16 @@ type FetchSource struct {
 	Kind    string // "archive" | "youtube"
 	URI     string
 	Enabled bool
-	// NeverFetch is this source's own opt-out (§10 V38c) — `fetch_every_seconds = 0`.
-	//
-	// ⚠ Resolved by the STORE (`FillerSource.FetchEvery`), not re-derived here. The three states
-	// are nil/0/N and the collapse of the first two is the hazard the nullable column exists to
-	// prevent; a second implementation of that logic is how the two start disagreeing.
+	// NeverFetch is the resolved automatic-download opt-out. It stays separate from Every so
+	// zero-value test and embedding sources remain immediately due without confusing that with
+	// the store's explicit `fetch_every_seconds = 0` state.
 	NeverFetch bool
+	// Every is the resolved automatic-download interval. The store owns the
+	// nil/0/N resolution so the planner cannot confuse inheritance with opting out. A zero value
+	// here means no due delay; NeverFetch is the explicit off fact.
+	Every time.Duration
+	// LastCheckedAt is the last successful bounded check, whether or not it found a new item.
+	LastCheckedAt time.Time
 	// MaxPerRun is this source's resolved per-run cap — its override, or the global default.
 	// Zero means "use the global", which the caller has already applied.
 	MaxPerRun int
@@ -75,7 +79,10 @@ type FetchStore interface {
 	// review queue: a held clip is not in the catalog by the ListClips default, but it is very
 	// much already on disk. That is the bug this comment exists to prevent.
 	CatalogPaths(ctx context.Context) ([]string, error)
-	// MarkFetched stamps a source that was successfully polled.
+	// MarkChecked stamps a completed listing, including one that found nothing new. It is the
+	// due-planner fact and must not be collapsed into LastFetchedAt.
+	MarkChecked(ctx context.Context, id string, at time.Time) error
+	// MarkFetched stamps a source that successfully queued at least one item.
 	//
 	// ⚠ Without this the Sources tab reads "never fetched" forever while auto-fetch runs behind
 	// it — the row would describe a source nobody had touched, on an install downloading from it
@@ -122,19 +129,19 @@ type IdentifiedFetchIngestor interface {
 
 // Fetcher polls registered sources.
 type Fetcher struct {
-	store   FetchStore
-	enum    SourceEnumerator
-	ingest  FetchIngestor
-	dir     string
-	limits  FetchLimits
-	log     *slog.Logger
-	statFS  func(dir string) (int64, error)
-	enabled func() bool
-	now     func() time.Time
+	store  FetchStore
+	enum   SourceEnumerator
+	ingest FetchIngestor
+	dir    string
+	limits FetchLimits
+	log    *slog.Logger
+	statFS func(dir string) (int64, error)
+	now    func() time.Time
 }
 
-// NewFetcher builds the auto-fetch job. `enabled` reports whether auto-fetch is on at all
-// (`filler.fetch.every` > 0); nil means always on.
+// NewFetcher builds the automatic-download worker. Source policy, including whether any source
+// should run at all, arrives through ListFetchSources on every pass so global and per-source edits
+// hot-apply through one authority.
 func NewFetcher(store FetchStore, enumerator SourceEnumerator, ingest FetchIngestor, dir string, limits FetchLimits, log *slog.Logger) *Fetcher {
 	return &Fetcher{
 		store: store, enum: enumerator, ingest: ingest, dir: dir, limits: limits, log: log,
@@ -146,12 +153,6 @@ func NewFetcher(store FetchStore, enumerator SourceEnumerator, ingest FetchInges
 // something was.
 func (f *Fetcher) WithClock(now func() time.Time) *Fetcher {
 	f.now = now
-	return f
-}
-
-// WithEnabled gates the whole job on `filler.fetch.every` being non-zero.
-func (f *Fetcher) WithEnabled(enabled func() bool) *Fetcher {
-	f.enabled = enabled
 	return f
 }
 
@@ -180,7 +181,17 @@ type FetchStatus struct {
 }
 
 func (f *Fetcher) Status(ctx context.Context) (FetchStatus, error) {
-	status := FetchStatus{Enabled: f.enabled == nil || f.enabled()}
+	status := FetchStatus{}
+	sources, err := f.store.ListFetchSources(ctx)
+	if err != nil {
+		return status, fmt.Errorf("list sources: %w", err)
+	}
+	for _, source := range sources {
+		if source.Enabled && !source.NeverFetch && source.URI != "" && source.Kind != "folder" && source.Kind != "library" {
+			status.Enabled = true
+			break
+		}
+	}
 	paths, err := f.store.CatalogPaths(ctx)
 	if err != nil {
 		return status, fmt.Errorf("read catalog: %w", err)
@@ -208,7 +219,7 @@ func (f *Fetcher) Status(ctx context.Context) (FetchStatus, error) {
 	return status, nil
 }
 
-// Run polls every enabled source once.
+// Run polls only enabled sources whose effective interval has elapsed.
 func (f *Fetcher) Run(ctx context.Context) (FetchResult, error) {
 	return f.run(ctx, "", true)
 }
@@ -222,9 +233,6 @@ func (f *Fetcher) RunSource(ctx context.Context, sourceID string) (FetchResult, 
 
 func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (FetchResult, error) {
 	var res FetchResult
-	if scheduled && f.enabled != nil && !f.enabled() {
-		return res, nil
-	}
 
 	have, err := f.store.CatalogPaths(ctx)
 	if err != nil {
@@ -278,14 +286,17 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		// Property 1: only enabled sources, and only ones with somewhere to fetch FROM. The
 		// config-backed folder/library rows have no URI and are scanned, not fetched.
 		//
-		// ⚠ `NeverFetch` is the source's OWN opt-out (§10 V38c), distinct from `Enabled`. A
+		// NeverFetch is the source's effective automatic opt-out, distinct from Enabled. A
 		// source can be on — searched, its clips counted, its switch showing "on" — while opting
 		// out of UNATTENDED fetching. Collapsing the two would make "stop auto-downloading from
 		// this one" require switching it off entirely, which also stops search.
 		if sourceID != "" && src.ID != sourceID {
 			continue
 		}
-		if !src.Enabled || (scheduled && src.NeverFetch) || src.URI == "" || src.Kind == "folder" || src.Kind == "library" {
+		if !src.Enabled || src.URI == "" || src.Kind == "folder" || src.Kind == "library" {
+			continue
+		}
+		if scheduled && (src.NeverFetch || (src.Every > 0 && !src.LastCheckedAt.IsZero() && f.now().Before(src.LastCheckedAt.Add(src.Every)))) {
 			continue
 		}
 		res.SourcesPolled++
@@ -307,6 +318,12 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			}
 			f.log.Warn("filler auto-fetch: source could not be listed", "source", src.ID, "err", derr)
 			continue
+		}
+		// A successful listing is a completed check even when every result is already present.
+		// Stamp before selection so the minute-level planner cannot hammer an empty source. A
+		// listing failure above remains unstamped and is eligible for a prompt retry.
+		if merr := f.store.MarkChecked(ctx, src.ID, f.now()); merr != nil {
+			f.log.Warn("filler auto-fetch: could not stamp the source check", "source", src.ID, "err", merr)
 		}
 
 		// The scheduled path uses the same deterministic selector as explicit pulls. There are no

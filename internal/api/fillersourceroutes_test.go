@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -339,9 +340,9 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 		return store.FillerSource{}
 	}
 
-	// 1. A positive interval — poll this source on its own schedule.
+	// 1. A custom policy — poll this source on its own schedule.
 	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic",
-		`{"enabled":true,"fetchEverySeconds":900,"fetchMaxPerRun":5}`, adminToken)
+		`{"enabled":true,"automaticDownloads":{"mode":"custom","everySeconds":900,"maxPerCheck":5}}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -356,11 +357,30 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	if every, ok := got.FetchEvery(time.Hour); !ok || every != 15*time.Minute {
 		t.Errorf("FetchEvery = %v/%v, want 15m and pollable", every, ok)
 	}
+	var projected api.FillerSourceDTO
+	for _, row := range sourcesFrom(t, srv) {
+		if row.ID == "classic" {
+			projected = row
+		}
+	}
+	if projected.AutomaticDownloads == nil || projected.AutomaticDownloads.Mode != "custom" ||
+		projected.AutomaticDownloads.EverySeconds != 900 || projected.AutomaticDownloads.MaxPerCheck != 5 {
+		t.Fatalf("projected automatic downloads = %+v, want custom 900s/5", projected.AutomaticDownloads)
+	}
 
-	// 2. ZERO — never auto-fetch this source. ⚠ Distinct from "unset": a plain int could not
-	// tell these apart, and conflating them would read every untouched source as switched off.
+	// A source switch changes only enabled. It must not silently clear timing hidden in the sheet.
+	res = sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic", `{"enabled":false}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("switch-only status = %d, want 200", res.StatusCode)
+	}
+	got = sourceByID("classic")
+	if got.FetchEverySeconds == nil || *got.FetchEverySeconds != 900 || got.FetchMaxPerRun == nil || *got.FetchMaxPerRun != 5 {
+		t.Fatalf("switch-only PATCH changed policy to %v/%v", got.FetchEverySeconds, got.FetchMaxPerRun)
+	}
+
+	// 2. Never — explicit and distinct from inheriting defaults.
 	res = sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic",
-		`{"enabled":true,"fetchEverySeconds":0}`, adminToken)
+		`{"enabled":true,"automaticDownloads":{"mode":"never"}}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -371,9 +391,8 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	if _, ok := got.FetchEvery(time.Hour); ok {
 		t.Error("a source set to never-fetch is still pollable — 0 was read as 'inherit'")
 	}
-	// ⚠ maxPerRun was OMITTED on that request, which means "inherit" — it must have been cleared
-	// rather than left at 5. A partial write that keeps stale values is how an operator ends up
-	// with tuning they cannot see and did not ask for.
+	// Never clears the custom cap; it is irrelevant while automatic downloads are off and defaults
+	// should be restored if the operator later switches back to them.
 	if got.FetchMaxPerRun != nil {
 		t.Errorf("FetchMaxPerRun = %v, want nil — an omitted field means inherit", *got.FetchMaxPerRun)
 	}
@@ -381,7 +400,7 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	// 3. Cleared back to inheriting the global. This is a real action an operator takes, so it
 	// must be expressible — an override that can be set but never removed is a one-way door.
 	res = sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic",
-		`{"enabled":true}`, adminToken)
+		`{"enabled":true,"automaticDownloads":{"mode":"defaults"}}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -395,8 +414,8 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	}
 }
 
-// ⚠ `fetchMaxPerRun: 0` is REFUSED, not stored. "Fetch nothing per run" is what
-// fetchEverySeconds=0 already says, and letting it be said twice invites the two to disagree —
+// ⚠ `maxPerCheck: 0` is REFUSED, not stored. "Fetch nothing per check" is what never already
+// says, and letting it be said twice invites the two to disagree —
 // a source scheduled to poll but capped at nothing looks enabled and does nothing.
 func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
@@ -407,7 +426,7 @@ func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 	}
 
 	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic",
-		`{"enabled":true,"fetchMaxPerRun":0}`, adminToken)
+		`{"enabled":true,"automaticDownloads":{"mode":"custom","everySeconds":900,"maxPerCheck":0}}`, adminToken)
 	if res.StatusCode != http.StatusUnprocessableEntity && res.StatusCode != http.StatusBadRequest {
 		t.Errorf("status = %d, want a validation refusal", res.StatusCode)
 	}

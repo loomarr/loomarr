@@ -14,7 +14,7 @@ import {
   getSetFillerSourceEnabledMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -93,7 +93,7 @@ const stubSources = () => {
     }),
     getFetchFillerSourceMockHandler(({ request }) => {
       fetches.push(new URL(request.url));
-      const sourceId = new URL(request.url).searchParams.get("id") ?? undefined;
+      const sourceId = new URL(request.url).searchParams.get("id") ?? "";
       return {
         sourceId,
         sourcesPolled: 1,
@@ -185,6 +185,11 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
     (over.configured === false ? "not_configured" : over.enabled === false ? "off" : "ready"),
   ready: over.ready ?? (over.configured !== false && over.enabled !== false),
   locationSource: "installation",
+  automaticDownloads:
+    over.automaticDownloads ??
+    ((over.kind === "archive" || over.kind === "youtube") && !over.group
+      ? { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 }
+      : undefined),
   actions:
     over.actions ??
     (over.configured === false
@@ -296,6 +301,21 @@ describe("SourcesPanel", () => {
       // the old version asserted `patch?.url` contained a string the test had also written.
       expect(enables).toEqual([{ id: "folder", body: { enabled: false } }]);
     });
+  });
+
+  it("switching a remote source off leaves its automatic-download policy unchanged", async () => {
+    const { enables } = stubSources();
+    renderPanel([
+      source({
+        kind: "archive",
+        id: "archive:classic",
+        target: "Classic TV",
+        automaticDownloads: { mode: "custom", everySeconds: 43200, maxPerCheck: 4 },
+      }),
+    ]);
+
+    await userEvent.click(screen.getByRole("switch", { name: "Use Classic TV" }));
+    await waitFor(() => expect(enables).toEqual([{ id: "archive:classic", body: { enabled: false } }]));
   });
 
   // Search belongs to the selected source workspace. The panel reads the server's `searchable`
@@ -413,7 +433,7 @@ describe("SourcesPanel", () => {
         id: "folder",
         uri: "/data/filler/commercials",
         target: "/data/filler/commercials",
-        lastFetchedAt: "2026-09-13T12:00:00Z",
+        lastCheckedAt: "2026-09-13T12:00:00Z",
       }),
     ]);
 
@@ -479,6 +499,41 @@ describe("SourcesPanel", () => {
       ]);
     });
     expect(screen.getByRole("button", { name: /remove classic tv/i })).toBeInTheDocument();
+  });
+
+  it("keeps automatic downloads simple until a source chooses a different schedule", async () => {
+    const { enables } = stubSources();
+    renderPanel([
+      source({
+        kind: "archive",
+        id: "archive:classic",
+        target: "Classic TV",
+        automaticDownloads: { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 },
+      }),
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
+    expect(
+      screen.getByText("Uses your defaults: every 6 hours, up to 10 clips each check."),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Source check interval")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
+    await userEvent.click(screen.getByRole("option", { name: "Use a different schedule" }));
+    fireEvent.change(screen.getByLabelText("Source check interval"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Clips per source check"), { target: { value: "3" } });
+    await userEvent.click(screen.getByRole("button", { name: "Save automatic downloads" }));
+
+    await waitFor(() => {
+      expect(enables).toContainEqual({
+        id: "archive:classic",
+        body: {
+          enabled: true,
+          automaticDownloads: { mode: "custom", everySeconds: 43200, maxPerCheck: 3 },
+        },
+      });
+    });
   });
 
   it("uses the installation location again when a source exception is cleared", async () => {

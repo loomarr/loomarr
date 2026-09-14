@@ -124,9 +124,12 @@ type FillerSourceDTO struct {
 	Configured bool `json:"configured"`
 	// Fetchable marks a source that `POST /v1/filler/sources/fetch` can refresh on demand.
 	Fetchable bool `json:"fetchable"`
-	// LastFetchedAt is absent when never fetched — rendered as "never" rather than as an epoch
-	// date nobody meant. Empty on the config-backed rows, which are scanned rather than fetched.
-	LastFetchedAt string `json:"lastFetchedAt,omitempty" doc:"RFC3339; absent if never fetched"`
+	// LastCheckedAt is absent when never checked. A successful empty check still advances it;
+	// bringing in an item is a separate provenance fact that does not drive scheduling.
+	LastCheckedAt string `json:"lastCheckedAt,omitempty" doc:"RFC3339; absent if never checked"`
+	// AutomaticDownloads is the server-resolved source policy. Omitted on derived/provider rows
+	// that cannot automatically download media themselves.
+	AutomaticDownloads *SourceAutomaticDownloadsDTO `json:"automaticDownloads,omitempty"`
 	// License is what the source DECLARED about its material — the mock's per-row licence chip.
 	//
 	// ⚠ **Absent means UNKNOWN, never "public domain".** ~92% of archive.org items declare no
@@ -182,6 +185,44 @@ const providerIDPrefix = "provider:"
 // isProviderID reports whether an id addresses a derived group node rather than a real source.
 func isProviderID(id string) bool { return strings.HasPrefix(id, providerIDPrefix) }
 
+func (s *Server) fillerFetchEvery() time.Duration {
+	const fallback = 6 * time.Hour
+	if s.liveConfigDuration == nil {
+		return fallback
+	}
+	every := s.liveConfigDuration("filler.fetch.every")
+	if every < 0 {
+		return fallback
+	}
+	return every
+}
+
+func (s *Server) fillerFetchMaxPerCheck() int {
+	if s.liveConfigInt == nil {
+		return 10
+	}
+	if value := s.liveConfigInt("filler.fetch.max_per_run"); value > 0 {
+		return value
+	}
+	return 10
+}
+
+func (s *Server) sourceAutomaticDownloads(src store.FillerSource) *SourceAutomaticDownloadsDTO {
+	if src.Kind != "archive" && src.Kind != "youtube" {
+		return nil
+	}
+	every, pollable := src.FetchEvery(s.fillerFetchEvery())
+	mode := "defaults"
+	if !pollable && src.FetchEverySeconds != nil {
+		mode = "never"
+	} else if src.FetchEverySeconds != nil || src.FetchMaxPerRun != nil {
+		mode = "custom"
+	}
+	return &SourceAutomaticDownloadsDTO{
+		Mode: mode, EverySeconds: int(every.Seconds()), MaxPerCheck: src.MaxPerRun(s.fillerFetchMaxPerCheck()),
+	}
+}
+
 // providerGroups are the kinds that roll up, in the order their groups appear.
 //
 // ⚠ **`folder` and `library` deliberately do NOT group.** A twirl-down exists because ONE SERVICE
@@ -197,7 +238,7 @@ var providerGroups = []struct {
 
 // ⚠ `Remotes` is GONE from this DTO (V37). It carried the archive collections nested under the
 // `remote` container row, and the flat list has no container — each collection is now a peer row
-// with its own `kind`, `enabled` and `lastFetchedAt`.
+// with its own `kind`, `enabled` and `lastCheckedAt`.
 //
 // The nesting existed for a real reason, recorded here because the reason OUTLIVED the shape:
 // the derived rows described CONFIGURATION, including "you could set up a library but have not",
@@ -301,10 +342,10 @@ func (s *Server) registerFillerSources(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "fetch-filler-source", Method: http.MethodPost, Path: "/v1/filler/sources/fetch",
-		Summary: "Fetch and scan filler now",
+		Summary: "Look for new clips in one source",
 		Description: "Admin only (§10 V56). Runs one ordinary bounded acquisition pass for the selected " +
-			"source, then scans configured local sources. Omit id for the backward-compatible all-source pass. " +
-			"It retains enable checks, deduplication and safety limits; this is not an unbounded bypass.",
+			"source, then scans configured local sources. It retains provider/source enablement, geography, " +
+			"deduplication and safety limits; only timing is bypassed.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.fetchFillerSource)
 
@@ -356,9 +397,9 @@ func (s *Server) registerFillerSources(api huma.API) {
 			"downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not " +
 			"a delete: the source keeps its licence and fetch history, so switching it back on resumes rather " +
 			"than restarts. Source configuration grants no catalog-admission authority. `folder` writes the " +
-			"drop-folder setting; any other id writes that source's own row. " +
-			"⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never " +
-			"auto-fetch this source, or a positive number of seconds. Library sources became switchable in " +
+			"drop-folder setting; any other id writes that source's own row. `automaticDownloads` is optional " +
+			"and uses an explicit defaults, custom, or never mode, so changing the switch or area cannot " +
+			"accidentally reset the policy. Library sources became switchable in " +
 			"V38c, when §10 restored them to being scanned.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.setFillerSourceEnabled)
@@ -728,25 +769,23 @@ type setFillerSourceEnabledInput struct {
 	ID   string `path:"id"`
 	Body struct {
 		Enabled bool `json:"enabled"`
-		// FetchEverySeconds overrides `filler.fetch.every` for THIS source (§10 V38c).
-		//
-		// ⚠ **A POINTER, and the three states are all distinct and all reachable:**
-		//   - omitted / `null` ⇒ clear the override, inherit the global
-		//   - `0`              ⇒ NEVER auto-fetch this source
-		//   - `n > 0`          ⇒ poll every n seconds
-		//
-		// A plain int could not express this: `0` is already meaningful ("never"), so "unset"
-		// would have to share an encoding with it and every source would read as switched off.
-		// This mirrors the store column, which is nullable for exactly the same reason.
-		FetchEverySeconds *int `json:"fetchEverySeconds,omitempty" minimum:"0" maximum:"604800" doc:"Seconds between automatic fetches of this source. 0 means never; omit or null to inherit the global setting."`
-		// FetchMaxPerRun overrides `filler.fetch.max_per_run` for this source. Omit/null inherits.
-		//
-		// ⚠ Minimum 1, NOT 0. "Fetch nothing per run" is what FetchEverySeconds=0 already says,
-		// and letting it be said twice invites the two to disagree — a source that is scheduled
-		// to poll but capped at nothing looks enabled and does nothing.
-		FetchMaxPerRun *int                `json:"fetchMaxPerRun,omitempty" minimum:"1" maximum:"1000" doc:"Most clips to take from this source in one run. Omit or null to inherit the global setting."`
-		Geography      *SourceGeographyDTO `json:"geography,omitempty" doc:"Complete source coverage replacement; country-only means country-wide"`
+		// AutomaticDownloads is omitted when this PATCH changes only the source switch or area.
+		// The explicit mode avoids overloading JSON null with both "leave unchanged" and "reset".
+		AutomaticDownloads *SourceAutomaticDownloadsInput `json:"automaticDownloads,omitempty"`
+		Geography          *SourceGeographyDTO            `json:"geography,omitempty" doc:"Complete source coverage replacement; country-only means country-wide"`
 	}
+}
+
+type SourceAutomaticDownloadsInput struct {
+	Mode         string `json:"mode" enum:"defaults,custom,never"`
+	EverySeconds int    `json:"everySeconds,omitempty" minimum:"60" maximum:"604800"`
+	MaxPerCheck  int    `json:"maxPerCheck,omitempty" minimum:"1" maximum:"1000"`
+}
+
+type SourceAutomaticDownloadsDTO struct {
+	Mode         string `json:"mode" enum:"defaults,custom,never"`
+	EverySeconds int    `json:"everySeconds" minimum:"0" maximum:"604800"`
+	MaxPerCheck  int    `json:"maxPerCheck" minimum:"1" maximum:"1000"`
 }
 
 type SourceGeographyDTO struct {
@@ -756,14 +795,10 @@ type SourceGeographyDTO struct {
 
 type setFillerSourceEnabledOutput struct {
 	Body struct {
-		ID      string `json:"id"`
-		Enabled bool   `json:"enabled"`
-		// Echoed back so the UI renders what was STORED rather than what it hoped it sent — the
-		// difference matters here because null and 0 mean different things and a client that
-		// muddles them would show "never fetch" as "inherit".
-		FetchEverySeconds *int                `json:"fetchEverySeconds,omitempty"`
-		FetchMaxPerRun    *int                `json:"fetchMaxPerRun,omitempty"`
-		Geography         *SourceGeographyDTO `json:"geography,omitempty"`
+		ID                 string                       `json:"id"`
+		Enabled            bool                         `json:"enabled"`
+		AutomaticDownloads *SourceAutomaticDownloadsDTO `json:"automaticDownloads,omitempty"`
+		Geography          *SourceGeographyDTO          `json:"geography,omitempty"`
 	}
 }
 
@@ -810,10 +845,29 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		return nil, errConflict("That source has no switch",
 			"This row groups the sources you've added — switch them off individually.")
 	}
+	var every, maxPerRun *int
+	if policy := in.Body.AutomaticDownloads; policy != nil {
+		switch policy.Mode {
+		case "defaults":
+			// nil/nil clears both durable overrides.
+		case "never":
+			never := 0
+			every = &never
+		case "custom":
+			if policy.EverySeconds < 60 || policy.MaxPerCheck < 1 {
+				return nil, errUnprocessable("Invalid automatic download policy",
+					"Choose an interval of at least one minute and at least one clip per check.")
+			}
+			everyValue, maxValue := policy.EverySeconds, policy.MaxPerCheck
+			every, maxPerRun = &everyValue, &maxValue
+		default:
+			return nil, errUnprocessable("Invalid automatic download policy",
+				"Choose defaults, custom, or never.")
+		}
+	}
 
 	out := &setFillerSourceEnabledOutput{}
 	out.Body.ID, out.Body.Enabled = in.ID, in.Body.Enabled
-	out.Body.FetchEverySeconds, out.Body.FetchMaxPerRun = in.Body.FetchEverySeconds, in.Body.FetchMaxPerRun
 	out.Body.Geography = in.Body.Geography
 	if in.Body.Geography != nil {
 		if s.store == nil {
@@ -872,20 +926,26 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 			}
 			return nil, huma.Error500InternalServerError("set filler source enabled", err)
 		}
-		// A geography-only PATCH must not reset fetch tuning.
-		if in.Body.Geography != nil && in.Body.FetchEverySeconds == nil && in.Body.FetchMaxPerRun == nil {
+		// A switch- or geography-only PATCH must not reset automatic-download tuning.
+		if in.Body.AutomaticDownloads == nil {
 			return out, nil
 		}
-		// ⚠ The overrides are written UNCONDITIONALLY, including when both are nil — because nil
-		// means "clear this back to inheriting the global", which is a real action an operator
-		// takes and must be expressible. Writing only when non-nil would make the override a
-		// one-way door: settable, never removable.
-		if err := s.store.SetFillerSourceFetchPolicy(ctx, in.ID,
-			in.Body.FetchEverySeconds, in.Body.FetchMaxPerRun); err != nil {
+		if err := s.store.SetFillerSourceFetchPolicy(ctx, in.ID, every, maxPerRun); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
 			}
 			return nil, huma.Error500InternalServerError("set filler source fetch policy", err)
+		}
+		effectiveEvery := s.fillerFetchEvery()
+		effectiveMax := s.fillerFetchMaxPerCheck()
+		if every != nil {
+			effectiveEvery = time.Duration(*every) * time.Second
+		}
+		if maxPerRun != nil {
+			effectiveMax = *maxPerRun
+		}
+		out.Body.AutomaticDownloads = &SourceAutomaticDownloadsDTO{
+			Mode: in.Body.AutomaticDownloads.Mode, EverySeconds: int(effectiveEvery.Seconds()), MaxPerCheck: effectiveMax,
 		}
 		return out, nil
 	}
@@ -1055,13 +1115,14 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				// would have nothing to query: yt-dlp enumerates a playlist, it does not search
 				// YouTube, and offering the box would be a control that returns nothing forever.
 				// A folder or library is not searchable for the same reason.
-				Searchable: src.Kind == "archive" && s.filler != nil,
+				Searchable:         src.Kind == "archive" && s.filler != nil,
+				AutomaticDownloads: s.sourceAutomaticDownloads(src),
 			}
 			// Exact source attribution (§10 V57), for downloaded and scanned sources alike. Older
 			// kind-only provenance remains in the folder/legacy aggregate rather than being guessed
 			// onto one of several registered rows.
-			if !src.LastFetchedAt.IsZero() {
-				row.LastFetchedAt = src.LastFetchedAt.UTC().Format(time.RFC3339)
+			if !src.LastCheckedAt.IsZero() {
+				row.LastCheckedAt = src.LastCheckedAt.UTC().Format(time.RFC3339)
 			}
 			// ⚠ Sent through UNCHANGED, including empty. Empty means UNKNOWN and the client
 			// renders nothing — never a reassuring default. Substituting "public domain" here
@@ -1277,16 +1338,16 @@ func providerNode(id, kind, label, detail string, enabled bool, children []Fille
 	for _, c := range children {
 		node.Count += c.Count
 		node.Incoming += c.Incoming
-		// LastFetchedAt is a read-only MAX over the children, computed HERE so no column can
-		// disagree with it. Absent when no child has ever fetched, so the row renders "never"
+		// LastCheckedAt is a read-only MAX over the children, computed HERE so no column can
+		// disagree with it. Absent when no child has ever been checked, so the row renders "never"
 		// rather than an epoch date nobody meant.
 		//
 		// ⚠ Compared as STRINGS, which is correct only because every one of them was formatted
 		// by the same `.UTC().Format(time.RFC3339)` two hundred lines up: fixed width, fixed
 		// offset, so lexical order is chronological order. A local-time or variable-offset
 		// timestamp would break that silently, which is why the formatting has one home.
-		if c.LastFetchedAt > node.LastFetchedAt {
-			node.LastFetchedAt = c.LastFetchedAt
+		if c.LastCheckedAt > node.LastCheckedAt {
+			node.LastCheckedAt = c.LastCheckedAt
 		}
 	}
 	return node
@@ -1297,12 +1358,12 @@ func providerNode(id, kind, label, detail string, enabled bool, children []Fille
 func sourceDetail(kind, uri string) string {
 	switch kind {
 	case "archive":
-		return "Checked automatically. New clips are reviewed before they can play."
+		return "Loomarr looks here automatically and checks new clips before they can play."
 	case "youtube":
 		// ⚠ Names the operator's own act. §10 records that Loomarr never recommends YouTube
 		// content itself; the playlist is one the operator supplied, and the copy should not
 		// imply Loomarr chose it.
-		return "Checked automatically. New clips are reviewed before they can play."
+		return "Loomarr looks here automatically and checks new clips before they can play."
 	default:
 		return uri
 	}
@@ -1310,7 +1371,7 @@ func sourceDetail(kind, uri string) string {
 
 type fetchFillerSourceOutput struct {
 	Body struct {
-		SourceID      string `json:"sourceId,omitempty" doc:"Selected registered source; absent for the legacy all-source pass"`
+		SourceID      string `json:"sourceId" doc:"Selected registered source"`
 		SourcesPolled int    `json:"sourcesPolled" doc:"Remote sources actually inspected by this pass"`
 		Queued        int    `json:"queued" doc:"New remote items queued for acquisition"`
 		Skipped       int    `json:"skipped" doc:"Remote items already known to the catalog or acquisition history"`
@@ -1323,14 +1384,15 @@ type fetchFillerSourceOutput struct {
 }
 
 type fetchFillerSourceInput struct {
-	// Optional for compatibility with the former global action. The Sources UI always sends the
-	// leaf row it is acting on, so one button cannot start unrelated remote collections.
-	ID string `query:"id" doc:"Registered source id to refresh; omit to run all enabled sources"`
+	ID string `query:"id" minLength:"1" doc:"Registered source id to check"`
 }
 
 func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInput) (*fetchFillerSourceOutput, error) {
 	if s.filler == nil {
 		return nil, huma.Error501NotImplemented("filler sync is not available on this instance")
+	}
+	if strings.TrimSpace(in.ID) == "" {
+		return nil, errUnprocessable("Choose a source", "Look for new clips from one source at a time.")
 	}
 	fetchResult, err := s.filler.Fetch(ctx, in.ID)
 	if err != nil {

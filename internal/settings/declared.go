@@ -891,14 +891,14 @@ func declared() []Setting {
 		// a trickle they can live with; the failure mode being designed against is "add a source,
 		// wake up to 8,000 files".
 		{
-			Key: "filler.fetch.every", Label: "Check sources every", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
-			Kind: KindDuration, Default: "6h",
-			Doc: "How often Loomarr checks your sources for new clips. Set to 0 to stop fetching automatically — you can still queue clips yourself.",
+			Key: "filler.fetch.every", Label: "Look for new clips", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
+			Kind: KindDuration, Presentation: PresentationFillerDownloadSchedule, Default: "6h",
+			Doc: "How often Loomarr checks enabled sources for new clips. Never stops sources that use this default; you can still check one yourself.",
 		},
 		{
-			Key: "filler.fetch.max_per_run", Label: "Downloads per source check", EnvVar: "FILLER_FETCH_MAX_PER_RUN", Group: GroupFiller,
-			Kind: KindInt, Default: 10, Advanced: true, Validate: positiveLimit,
-			Doc: "How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once.",
+			Key: "filler.fetch.max_per_run", Label: "Add up to", EnvVar: "FILLER_FETCH_MAX_PER_RUN", Group: GroupFiller,
+			Kind: KindInt, Default: 10, Validate: positiveLimit,
+			Doc: "The most clips each enabled source may add in one automatic check.",
 		},
 		{
 			// ⚠ Bounds the UNATTENDED path only. An admin queueing a clip or approving a pull is
@@ -1192,19 +1192,6 @@ func declared() []Setting {
 			Key: "job.filler_split_sweep.schedule", EnvVar: "JOB_FILLER_SPLIT_SWEEP_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 45 4 * * *",
 			Doc: "How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`.",
-		},
-		{
-			// ⚠ A scheduler Job's `ScheduleKey` MUST be declared here — `Resolve` panics on an
-			// undeclared key, so a job registered without its row takes the whole app down at
-			// boot. Caught by comprehensive verification, which is the right place, but the coupling is easy
-			// to miss when adding a job.
-			//
-			// Distinct from `filler.fetch.every`, which is the operator-facing "how often" in the
-			// Filler group; this is the cron the scheduler actually runs on, in Advanced beside
-			// its siblings. The two agree by default (6h).
-			Key: "job.filler_fetch.schedule", EnvVar: "JOB_FILLER_FETCH_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 */6 * * *",
-			Doc: "How often Loomarr checks your filler sources for new clips (cron).",
 		},
 		{
 			// ⚠ **Every scheduled job needs its ScheduleKey declared here** — `Resolve` PANICS on

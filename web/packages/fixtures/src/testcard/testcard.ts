@@ -912,7 +912,8 @@ const fillerSourcesWithRemotes: FillerSourceDTO[] = [
     fetchable: true,
     // Only archive can be searched in place — the per-row search expander's condition.
     searchable: true,
-    lastFetchedAt: "2026-07-30T09:14:00Z",
+    lastCheckedAt: "2026-07-30T09:14:00Z",
+    automaticDownloads: { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 },
   },
   // ⚠ Switched off AND never fetched: the row must read as "stopped fetching", not "gone", and
   // render "never" rather than an epoch date nobody meant.
@@ -933,6 +934,7 @@ const fillerSourcesWithRemotes: FillerSourceDTO[] = [
     configured: true,
     fetchable: true,
     searchable: false,
+    automaticDownloads: { mode: "never", everySeconds: 0, maxPerCheck: 10 },
   },
 ];
 
@@ -972,13 +974,13 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     target: "Archive.org",
     detail: "collections you've added — searchable here, downloaded when you queue or approve",
     // ⚠ The group's own count and time are ROLL-UPS the server computes: the count sums its
-    // children and `lastFetchedAt` is the MAX over them, which is why it equals the newer of the
+    // children and `lastCheckedAt` is the MAX over them, which is why it equals the newer of the
     // two below rather than either one in particular.
     count: 137 + 42,
     configured: true,
     fetchable: false,
     searchable: false,
-    lastFetchedAt: "2026-07-30T09:14:00Z",
+    lastCheckedAt: "2026-07-30T09:14:00Z",
   },
   {
     ...readySource,
@@ -994,7 +996,8 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     configured: true,
     fetchable: true,
     searchable: true,
-    lastFetchedAt: "2026-07-30T09:14:00Z",
+    lastCheckedAt: "2026-07-30T09:14:00Z",
+    automaticDownloads: { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 },
   },
   // One child is off while provider policy remains on. Child readiness reports the mixed state.
   {
@@ -1011,7 +1014,8 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     configured: true,
     fetchable: true,
     searchable: true,
-    lastFetchedAt: "2026-07-28T11:02:00Z",
+    lastCheckedAt: "2026-07-28T11:02:00Z",
+    automaticDownloads: { mode: "custom", everySeconds: 86400, maxPerCheck: 4 },
   },
   // ── YouTube: provider on, with its single playlist switched off ─────────────────────────────
   {
@@ -1043,6 +1047,7 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     configured: true,
     fetchable: true,
     searchable: false,
+    automaticDownloads: { mode: "never", everySeconds: 0, maxPerCheck: 10 },
   },
 ];
 

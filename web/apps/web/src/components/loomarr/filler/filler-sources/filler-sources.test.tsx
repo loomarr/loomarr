@@ -167,7 +167,7 @@ describe("FillerSources registered peers", () => {
       detail: "an archive.org collection",
       removable: true,
       searchable: true,
-      lastFetchedAt: "2026-07-30T12:00:00Z",
+      lastCheckedAt: "2026-07-30T12:00:00Z",
     }),
     source({
       kind: "youtube",
@@ -297,7 +297,7 @@ describe("FillerSources provider roll-up", () => {
       fetchable: false,
       searchable: false,
       count: 179,
-      lastFetchedAt: "2026-07-30T09:14:00Z",
+      lastCheckedAt: "2026-07-30T09:14:00Z",
       ...over,
     },
     source({

@@ -657,6 +657,9 @@ type FillerSourceStore interface {
 	DeleteFillerSource(ctx context.Context, id string) error
 	// MarkFillerSourceFetched stamps a successful fetch, for the Sources tab's "last fetched".
 	MarkFillerSourceFetched(ctx context.Context, id string, at time.Time) error
+	// MarkFillerSourceChecked stamps a successful listing, including one that found nothing new.
+	// It is the durable due-planner fact and does not imply that anything was downloaded.
+	MarkFillerSourceChecked(ctx context.Context, id string, at time.Time) error
 	// SetFillerSourceFetchPolicy writes one source's per-source fetch overrides (§10 V38c).
 	//
 	// ⚠ The ONLY writer of those columns, like SetFillerSourceEnabled owns `enabled` — the upsert

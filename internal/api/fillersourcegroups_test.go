@@ -39,7 +39,7 @@ func sourcesFrom(t *testing.T, srv *httptest.Server) []api.FillerSourceDTO {
 func addArchive(t *testing.T, st store.Store, id, label string, fetched time.Time) {
 	t.Helper()
 	src := store.NewFillerSource(id, "archive", id, label, time.Unix(1_700_000_000, 0).UTC())
-	src.LastFetchedAt = fetched
+	src.LastCheckedAt = fetched
 	if err := st.UpsertFillerSource(context.Background(), src); err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestSourceGroups_ProviderSwitchIsAdminOnly(t *testing.T) {
 	}
 }
 
-// The rollups: count SUMS and lastFetchedAt is the MAX. Enabled is provider policy, not a child
+// The rollups: count SUMS and lastCheckedAt is the MAX. Enabled is provider policy, not a child
 // aggregate; turning every child off must not make the master switch lie about its own state.
 //
 // ⚠ The count is honest arithmetic over what the children claim and never invents attribution.
@@ -199,8 +199,8 @@ func TestSourceGroups_RollsUpCountLastFetchedAndEnabled(t *testing.T) {
 	if !g.Enabled {
 		t.Error("provider policy changed when only a child was switched off")
 	}
-	if g.LastFetchedAt != newer.Format(time.RFC3339) {
-		t.Errorf("lastFetchedAt = %q, want the MAX over children (%q)", g.LastFetchedAt, newer.Format(time.RFC3339))
+	if g.LastCheckedAt != newer.Format(time.RFC3339) {
+		t.Errorf("lastCheckedAt = %q, want the MAX over children (%q)", g.LastCheckedAt, newer.Format(time.RFC3339))
 	}
 
 	// And with every child off, provider policy still reads as on.

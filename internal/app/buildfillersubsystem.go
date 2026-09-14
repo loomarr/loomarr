@@ -167,7 +167,7 @@ func buildFillerSubsystem(
 			MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
 			MaxDiskGB:       func() int { return set.intv("filler.fetch.max_disk_gb") },
 		}, log,
-	).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
+	)
 	adapter.autoFetch = autoFetch
 	result.service = adapter
 	jobs.Add(fillerFetchJob(autoFetch))

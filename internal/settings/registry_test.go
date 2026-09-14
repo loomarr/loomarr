@@ -203,6 +203,21 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 		}
 	}
 
+	schedule, ok := r.Get("filler.fetch.every")
+	if !ok {
+		t.Fatal("filler.fetch.every not declared")
+	}
+	if schedule.Presentation != PresentationFillerDownloadSchedule {
+		t.Errorf("filler.fetch.every presentation = %q, want household schedule presets", schedule.Presentation)
+	}
+	perCheck, ok := r.Get("filler.fetch.max_per_run")
+	if !ok {
+		t.Fatal("filler.fetch.max_per_run not declared")
+	}
+	if perCheck.Advanced {
+		t.Error("per-source download count is hidden under Advanced")
+	}
+
 	for _, key := range []string{"filler.dir", "filler.watch_dir", "ingest.ytdlp_path", "ingest.ffmpeg_path", "ingest.whisper_path", "ingest.whisper_model", "filler.language_model"} {
 		s, ok := r.Get(key)
 		if !ok {

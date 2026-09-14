@@ -433,13 +433,16 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 		// they would drift is toward treating "never" as "inherit" — i.e. fetching from a source
 		// the operator opted out of.
 		//
-		// The interval itself is not passed on: the JOB's cron decides when a pass happens, so
-		// what the fetcher needs from a per-source interval is only whether it is zero.
-		_, pollable := s.FetchEvery(a.fetchEvery())
+		every, pollable := s.FetchEvery(a.fetchEvery())
+		if !pollable {
+			every = 0
+		}
 		out = append(out, filler.FetchSource{
 			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.EffectiveEnabled(),
-			NeverFetch: !pollable,
-			MaxPerRun:  s.MaxPerRun(0),
+			NeverFetch:    !pollable,
+			Every:         every,
+			LastCheckedAt: s.LastCheckedAt,
+			MaxPerRun:     s.MaxPerRun(0),
 		})
 	}
 	return out, nil
@@ -468,6 +471,10 @@ func (a fetchStoreAdapter) ListAcquisitionRemoteStates(ctx context.Context) (map
 
 func (a fetchStoreAdapter) MarkFetched(ctx context.Context, id string, at time.Time) error {
 	return a.st.MarkFillerSourceFetched(ctx, id, at)
+}
+
+func (a fetchStoreAdapter) MarkChecked(ctx context.Context, id string, at time.Time) error {
+	return a.st.MarkFillerSourceChecked(ctx, id, at)
 }
 
 // registeredSourceEnumerator dispatches only by the registered row's explicit provider kind.

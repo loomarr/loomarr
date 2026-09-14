@@ -26,6 +26,7 @@ type fetchStub struct {
 	ingestErr   error
 	// stamped records which sources were marked fetched, and when.
 	stamped map[string]time.Time
+	checked map[string]time.Time
 }
 
 func (f *fetchStub) ListFetchSources(context.Context) ([]filler.FetchSource, error) {
@@ -60,6 +61,14 @@ func (f *fetchStub) MarkFetched(_ context.Context, id string, at time.Time) erro
 		f.stamped = map[string]time.Time{}
 	}
 	f.stamped[id] = at
+	return nil
+}
+
+func (f *fetchStub) MarkChecked(_ context.Context, id string, at time.Time) error {
+	if f.checked == nil {
+		f.checked = map[string]time.Time{}
+	}
+	f.checked[id] = at
 	return nil
 }
 
@@ -367,7 +376,10 @@ func TestFetch_StopsAndReportsAtTheCatalogCeiling(t *testing.T) {
 }
 
 func TestFetchStatus_ReportsTheLiveLimitWithoutRunningAFetch(t *testing.T) {
-	stub := &fetchStub{paths: []string{"x.mp4", "y.mp4", "z.mp4"}}
+	stub := &fetchStub{
+		paths:   []string{"x.mp4", "y.mp4", "z.mp4"},
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+	}
 	f := newFetcher(t, stub, limits(10, 3, 0))
 	status, err := f.Status(context.Background())
 	if err != nil {
@@ -380,7 +392,8 @@ func TestFetchStatus_ReportsTheLiveLimitWithoutRunningAFetch(t *testing.T) {
 		t.Error("status check performed fetch work")
 	}
 
-	status, err = f.WithEnabled(func() bool { return false }).Status(context.Background())
+	stub.sources[0].NeverFetch = true
+	status, err = f.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +403,10 @@ func TestFetchStatus_ReportsTheLiveLimitWithoutRunningAFetch(t *testing.T) {
 }
 
 func TestFetchStatus_UsesTheSameLimitPriorityAsRun(t *testing.T) {
-	stub := &fetchStub{paths: []string{"x.mp4"}}
+	stub := &fetchStub{
+		paths:   []string{"x.mp4"},
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+	}
 	dir := t.TempDir()
 	large := filepath.Join(dir, "large.mp4")
 	if err := os.WriteFile(large, nil, 0o600); err != nil {
@@ -401,7 +417,6 @@ func TestFetchStatus_UsesTheSameLimitPriorityAsRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, stub, stub, dir, limits(10, 1, 1), discardLog())
-	f.WithEnabled(func() bool { return true })
 
 	status, err := f.Status(context.Background())
 	if err != nil {
@@ -526,14 +541,14 @@ func TestFetch_FallsBackToTheGlobalCapWhenUnset(t *testing.T) {
 	}
 }
 
-// ⚠ `filler.fetch.every = 0` disables the whole job — the escape hatch for an operator who wants
-// acquisition to stay manual. Nothing is polled and nothing is queued.
+// A globally inherited `filler.fetch.every = 0` resolves each inheriting source to NeverFetch.
+// Nothing is polled and nothing is queued, while a source with an explicit interval may still run.
 func TestFetch_DisabledDoesNothing(t *testing.T) {
 	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true, NeverFetch: true}},
 		offers:  refs("a", "b"),
 	}
-	f := newFetcher(t, stub, limits(10, 2000, 20)).WithEnabled(func() bool { return false })
+	f := newFetcher(t, stub, limits(10, 2000, 20))
 	res, err := f.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -554,7 +569,7 @@ func TestFetch_RunSourceFetchesOnlyTheSelectedSource(t *testing.T) {
 		},
 		offers: refs("a", "b", "c"),
 	}
-	f := newFetcher(t, stub, limits(2, 2000, 20)).WithEnabled(func() bool { return false })
+	f := newFetcher(t, stub, limits(2, 2000, 20))
 	res, err := f.RunSource(context.Background(), "selected")
 	if err != nil {
 		t.Fatal(err)
@@ -567,6 +582,43 @@ func TestFetch_RunSourceFetchesOnlyTheSelectedSource(t *testing.T) {
 	}
 	if _, ok := stub.stamped["first"]; ok {
 		t.Fatal("the unselected source was stamped as fetched")
+	}
+}
+
+func TestFetch_ScheduledRunChecksOnlySourcesWhoseEffectiveIntervalIsDue(t *testing.T) {
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "due", Kind: "archive", URI: "due", Enabled: true, Every: 6 * time.Hour, LastCheckedAt: now.Add(-6 * time.Hour)},
+			{ID: "not-due", Kind: "archive", URI: "not-due", Enabled: true, Every: 12 * time.Hour, LastCheckedAt: now.Add(-6 * time.Hour)},
+			{ID: "custom-while-global-off", Kind: "archive", URI: "custom", Enabled: true, Every: time.Hour, LastCheckedAt: now.Add(-2 * time.Hour)},
+		},
+		offers: refs("a"),
+	}
+	f := newFetcher(t, stub, limits(1, 2000, 20)).WithClock(func() time.Time { return now })
+	res, err := f.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SourcesPolled != 2 || !reflect.DeepEqual(stub.listed, []string{"due", "custom"}) {
+		t.Fatalf("result/listed = %+v / %v, want only the two due sources", res, stub.listed)
+	}
+}
+
+func TestFetch_SuccessfulEmptyCheckAdvancesDueTimeWithoutClaimingAFetch(t *testing.T) {
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "empty", Kind: "archive", URI: "empty", Enabled: true, Every: 6 * time.Hour}},
+	}
+	f := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return now })
+	if _, err := f.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := stub.checked["empty"]; !got.Equal(now) {
+		t.Fatalf("last check = %v, want %v", got, now)
+	}
+	if _, ok := stub.stamped["empty"]; ok {
+		t.Fatal("an empty check claimed that it fetched an item")
 	}
 }
 

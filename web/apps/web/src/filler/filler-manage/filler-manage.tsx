@@ -200,13 +200,13 @@ const FillerManage = () => {
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <Card className="p-4">
-            <h3 className="font-medium">Processing</h3>
+            <h3 className="font-medium">Automatic downloads</h3>
             <p className="mt-1 text-muted-foreground text-sm">
-              Change how often Loomarr looks for clips and how much work it does at once.
+              Choose how often Loomarr looks for new clips and how many each source may add.
             </p>
             {isAdmin ? (
               <Button className="mt-4" size="sm" variant="outline" render={<Link to="/filler/settings" />}>
-                Processing settings
+                Automatic download settings
               </Button>
             ) : null}
           </Card>

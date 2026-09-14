@@ -329,7 +329,7 @@ func TestFillerWatch_LongSilenceAsksForAttention(t *testing.T) {
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.MarkFillerSourceFetched(ctx, "classic", time.Now().UTC().Add(-5*24*time.Hour)); err != nil {
+	if err := st.MarkFillerSourceChecked(ctx, "classic", time.Now().UTC().Add(-5*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -354,10 +354,10 @@ func TestFillerWatch_OneCurrentSourceKeepsItHealthy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := st.MarkFillerSourceFetched(ctx, "stale", time.Now().UTC().Add(-30*24*time.Hour)); err != nil {
+	if err := st.MarkFillerSourceChecked(ctx, "stale", time.Now().UTC().Add(-30*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.MarkFillerSourceFetched(ctx, "fresh", time.Now().UTC().Add(-time.Minute)); err != nil {
+	if err := st.MarkFillerSourceChecked(ctx, "fresh", time.Now().UTC().Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 

@@ -62,6 +62,7 @@ interface MockBackend {
     channelCreationRequests: Record<string, unknown>[];
     approvalRequests: string[];
     fillerFetches: string[];
+    fillerSourcePatches: Array<{ id: string; body: Record<string, unknown> }>;
     fillerSourceItems: Array<{ sourceId: string; remoteId: string; url: string }>;
     fillerAcquisitionStatus: "queued" | "running" | "success" | "error";
   };
@@ -82,6 +83,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     channelCreationRequests: [] as Record<string, unknown>[],
     approvalRequests: [] as string[],
     fillerFetches: [] as string[],
+    fillerSourcePatches: [] as Array<{ id: string; body: Record<string, unknown> }>,
     fillerSourceItems: [] as Array<{ sourceId: string; remoteId: string; url: string }>,
     fillerAcquisitionStatus: "queued" as "queued" | "running" | "success" | "error",
     proposals: (opts.pendingProposal ? [{ id: "prop-1", status: "submitted" }] : []) as Array<{
@@ -560,6 +562,14 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           enabled: true,
         });
       }
+      const sourcePatchMatch = path.match(/^\/v1\/filler\/sources\/(.+)$/);
+      if (sourcePatchMatch && method === "PATCH") {
+        state.fillerSourcePatches.push({
+          id: decodeURIComponent(sourcePatchMatch[1] ?? ""),
+          body: body(),
+        });
+        return json(route, {});
+      }
       if (path === "/v1/filler/sources") {
         return json(route, {
           sources: [
@@ -622,6 +632,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               readiness: "ready",
               ready: true,
               locationSource: "installation",
+              automaticDownloads: { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 },
               actions: ["fetch", "search", "disable", "remove", "edit_location"],
             },
           ],
@@ -825,6 +836,55 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   set: true,
                   provenance: "db" as const,
                   value: "/data/filler",
+                },
+                {
+                  key: "filler.fetch.every",
+                  label: "Look for new clips",
+                  group: "filler",
+                  kind: "duration",
+                  presentation: "filler_download_schedule",
+                  doc: "How often Loomarr checks enabled sources for new clips.",
+                  advanced: false,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: state.edits["filler.fetch.every"] ?? "6h",
+                },
+                {
+                  key: "filler.fetch.max_per_run",
+                  label: "Add up to",
+                  group: "filler",
+                  kind: "int",
+                  doc: "The most clips each enabled source may add in one automatic check.",
+                  advanced: false,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: state.edits["filler.fetch.max_per_run"] ?? "10",
+                },
+                {
+                  key: "filler.fetch.max_catalog_clips",
+                  label: "Automatic-download catalog limit",
+                  group: "filler",
+                  kind: "int",
+                  doc: "Stop downloading automatically once the catalog reaches this size.",
+                  advanced: true,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: "2000",
+                },
+                {
+                  key: "filler.fetch.max_disk_gb",
+                  label: "Automatic-download storage limit (GB)",
+                  group: "filler",
+                  kind: "int",
+                  doc: "Stop downloading automatically once filler storage reaches this size.",
+                  advanced: true,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: "20",
                 },
               ]
             : []),

@@ -46,6 +46,10 @@ type FillerSource struct {
 	// LastFetchedAt is zero when never fetched, which renders as "never" rather than as an
 	// epoch date nobody meant.
 	LastFetchedAt time.Time
+	// LastCheckedAt records a successful bounded source check even when nothing new was found.
+	// Automatic-download due planning uses this fact; LastFetchedAt remains the narrower
+	// provenance fact that at least one item was actually queued.
+	LastCheckedAt time.Time
 	CreatedAt     time.Time
 	// Enabled is the Sources tab's on/off switch (V35). A disabled source is not scanned, not
 	// searched and not downloaded from.
@@ -194,7 +198,7 @@ func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSou
 	return FillerSource{ID: id, Kind: kind, URI: uri, Label: label, CreatedAt: createdAt, Enabled: true}
 }
 
-const fillerSourceSelect = `SELECT s.id, s.kind, s.uri, s.label, s.license, s.last_fetched_at, s.created_at, s.enabled,
+const fillerSourceSelect = `SELECT s.id, s.kind, s.uri, s.label, s.license, s.last_fetched_at, s.last_checked_at, s.created_at, s.enabled,
 	s.fetch_every_seconds, s.fetch_max_per_run, s.country, s.market,
 	CASE WHEN s.kind IN ('archive', 'youtube') THEN COALESCE(p.enabled, FALSE) ELSE TRUE END
 	FROM filler_sources s LEFT JOIN filler_providers p ON p.kind = s.kind`
@@ -214,6 +218,7 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 		var (
 			src       FillerSource
 			fetchedAt int64
+			checkedAt int64
 			createdAt int64
 			// ⚠ sql.NullInt64, because NULL is MEANINGFUL here: it is "inherit the global",
 			// distinct from 0 = "never fetch this source" (§10 V38c). Scanning into a plain int
@@ -222,11 +227,12 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 			perRun sql.NullInt64
 		)
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
-			&fetchedAt, &createdAt, &src.Enabled, &every, &perRun,
+			&fetchedAt, &checkedAt, &createdAt, &src.Enabled, &every, &perRun,
 			&src.Geography.Country, &src.Geography.Market, &src.ProviderEnabled); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
+		src.LastCheckedAt = fromEpoch(checkedAt)
 		src.CreatedAt = fromEpoch(createdAt)
 		if every.Valid {
 			v := int(every.Int64)
@@ -299,13 +305,13 @@ func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) err
 		// them in the update list would silently reset every operator's per-source tuning on the
 		// next re-register. Same failure V35 nearly shipped with `enabled`, one column over.
 		// SetFillerSourceFetchPolicy is their only writer.
-		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, created_at, enabled,
+		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, last_checked_at, created_at, enabled,
 		   fetch_every_seconds, fetch_max_per_run, country, market)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   kind=excluded.kind, uri=excluded.uri, label=excluded.label, license=excluded.license`),
 		src.ID, src.Kind, src.URI, src.Label, src.License,
-		epoch(src.LastFetchedAt), epoch(src.CreatedAt), src.Enabled,
+		epoch(src.LastFetchedAt), epoch(src.LastCheckedAt), epoch(src.CreatedAt), src.Enabled,
 		nullableInt(src.FetchEverySeconds), nullableInt(src.FetchMaxPerRun),
 		src.Geography.Normalize().Country, src.Geography.Normalize().Market)
 	if err != nil {
@@ -400,6 +406,25 @@ func (s *sqlStore) MarkFillerSourceFetched(ctx context.Context, id string, at ti
 	n, err := res.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("mark filler source fetched %s: %w", id, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// MarkFillerSourceChecked stamps a successful automatic or deliberate source check. It is
+// intentionally separate from LastFetchedAt: finding no new items is still a completed check and
+// must advance the source's due time without pretending anything was downloaded.
+func (s *sqlStore) MarkFillerSourceChecked(ctx context.Context, id string, at time.Time) error {
+	res, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE filler_sources SET last_checked_at = ? WHERE id = ?`), epoch(at), id)
+	if err != nil {
+		return fmt.Errorf("mark filler source checked %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("mark filler source checked rows %s: %w", id, err)
 	}
 	if n == 0 {
 		return ErrNotFound
