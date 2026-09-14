@@ -127,6 +127,27 @@ func TestAdoptJob_RecordsAPartialAdoption(t *testing.T) {
 	}
 }
 
+// A batch where every ingest fails must fail the scheduled job. Reporting `ok` here leaves the
+// catalog blank while Tasks insists adoption is healthy, which removes the only operator-visible
+// signal that the image directory or worker is broken.
+func TestAdoptJob_ReportsIngestFailuresToTheScheduler(t *testing.T) {
+	svc, st := newAdoptFixture(t)
+	dir := t.TempDir()
+	broken := filepath.Join(dir, "not-an-image.webp")
+	if err := os.WriteFile(broken, []byte("not an image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st.pending = []PendingArtwork{{OwnerID: "clip-1", AnimPath: broken}}
+
+	res, err := NewAdoptJob(svc, st, nil, nil).Run(t.Context())
+	if err == nil {
+		t.Fatal("adoption returned nil error after an ingest failure; Tasks would report a false success")
+	}
+	if res.Failed != 1 || res.Adopted != 0 {
+		t.Fatalf("result = %+v, want one failed and nothing adopted", res)
+	}
+}
+
 // Adoption must be IDEMPOTENT on content: the same bytes adopt to the same hash, so a re-run after
 // a crash mid-batch cannot produce a second copy of the same image.
 func TestAdoptJob_SameBytesAdoptToTheSameHash(t *testing.T) {

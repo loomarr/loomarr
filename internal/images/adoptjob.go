@@ -115,6 +115,9 @@ func (j *AdoptJob) Run(ctx context.Context) (AdoptResult, error) {
 		}
 		res.Adopted++
 	}
+	if res.Failed > 0 {
+		return res, fmt.Errorf("adopt artwork: %d failures across %d owners", res.Failed, res.Owners)
+	}
 	return res, nil
 }
 

@@ -5,9 +5,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // Clip artwork (V28 still + V39 animation), rendered by ONE ffmpeg pass.
@@ -26,6 +28,59 @@ func writeAt(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A stock FFmpeg build may omit libwebp even though it can still decode the clip and encode GIF.
+// The missing optional encoder must cost neither the still nor the hover animation: the private
+// render cache can hold GIF bytes at the historical preview path, and image adoption identifies
+// those bytes before publishing a browser-facing animated WebP rendition.
+func TestFFmpegArtwork_FallsBackWhenLibwebpIsUnavailable(t *testing.T) {
+	ffmpeg := testkit.Executable(t, "ffmpeg", `#!/bin/sh
+set -eu
+calls="$(dirname "$0")/calls"
+printf '%s\n' "$*" >> "$calls"
+still=''
+anim=''
+for arg in "$@"; do
+  case "$arg" in
+    *.jpg) still="$arg" ;;
+    *.webp) anim="$arg" ;;
+  esac
+done
+case " $* " in
+  *' -c:v libwebp '*)
+    printf '%s\n' "Unknown encoder 'libwebp'" >&2
+    exit 8
+    ;;
+  *' -f gif '*)
+    printf '\377\330\377 jpeg' > "$still"
+    printf 'GIF89a animated' > "$anim"
+    ;;
+  *)
+    exit 9
+    ;;
+esac
+`)
+	dir := t.TempDir()
+	still := filepath.Join(dir, "clip.jpg")
+	anim := filepath.Join(dir, "clip.webp")
+
+	err := filler.FFmpegArtwork(ffmpeg)(t.Context(), filepath.Join(dir, "clip.mp4"), still, anim, 3)
+	if err != nil {
+		t.Fatalf("render with no libwebp: %v", err)
+	}
+	for _, path := range []string{still, anim} {
+		if info, statErr := os.Stat(path); statErr != nil || info.Size() == 0 {
+			t.Fatalf("fallback did not write %s: info=%v err=%v", path, info, statErr)
+		}
+	}
+	calls, err := os.ReadFile(filepath.Join(filepath.Dir(ffmpeg), "calls"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(strings.Split(strings.TrimSpace(string(calls)), "\n")); got != 2 {
+		t.Fatalf("ffmpeg calls = %d, want WebP attempt plus GIF fallback", got)
 	}
 }
 
