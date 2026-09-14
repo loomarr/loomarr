@@ -5105,7 +5105,7 @@ Missing required bytes, failed media checks, or absent Enrollment authority leav
 an attributable reason; missing optional classifiers, certification, or audit evidence does not.
 A structure-assessment failure, including a source outside the reviewed duration envelope, keeps
 the source and its pending proposal at the split review rung. It must not exhaust ordinary
-non-fatal retries into a terminal filed disposition. Cancellation preserves resumable work and is
+non-fatal retries into a terminal Complete disposition. Cancellation preserves resumable work and is
 not an assessment result. No such failure may create children or confer publication authority.
 No confidence score or detector-only proposal may substitute for the new pipeline's required runtime
 checks. Source selection is not inferred trust: it is the explicit Enrollment authority for private
@@ -8875,10 +8875,12 @@ Two consequences, and the second is the one an operator feels:
 
 V51b replaces the seven sweeps with **one ordered per-clip pipeline** and one driver job.
 
-**The stages, in order:** `probe → transcode → split → language → transcribe → tag → vision →
-score`. Each stage answers two questions separately — *does this stage apply to this clip, in this
-install?* (no exec, re-evaluated every pass) and *do the work* — so switching `filler.vision.enabled`
-on picks up clips that already passed that rung, without a migration or a re-sweep.
+**The stages, in order:** `probe → transcode → split → screen → language → transcribe → tag →
+vision → score`. Each stage answers two questions separately — *does this stage apply to this Clip,
+in this install?* (no exec, re-evaluated while the Clip is on the conveyor) and *do the work*.
+Missing optional capability records a skipped rung and does not block Ready. A later capability
+change enriches already-Ready Clips through the separate progressive-enrichment path; it never
+rewinds readiness or holds playable media (#1251).
 
 **The pipeline is sequential and budget-bounded, and that is not a limitation.** Whisper is ~341s
 per clip under QEMU and ffmpeg competes with playout for the GPU, so one clip at a time is what
@@ -8906,8 +8908,9 @@ delete-and-rescan workaround: recovery must preserve identity, provenance, and o
 
 **Lifecycle and recovery are domain answers, not UI guesses (V56).** The persisted row remains the
 fact record, but `filler.Pipeline` projects it into one bounded lifecycle vocabulary shared by the
-runner, Incoming, and telemetry: `runnable`, `in_progress`, `scheduled`, `needs_decision`,
-`admitted`, `rejected`, or `dismissed`. A failed rung additionally carries a stable failure code,
+runner, Incoming, and telemetry: `runnable`, `in_progress`, `scheduled`, `needs_decision`, `ready`,
+`complete`, `rejected`, or `dismissed`. `ready` is playable; `complete` is reserved for a processed
+Composite container that is structurally not playable. A failed rung additionally carries a stable failure code,
 the exact rung that can be retried, and one sanctioned recovery action. This prevents three callers
 from independently interpreting combinations of disposition, status, backoff, and reject reason;
 the store aggregates facts, while the filler domain owns their meaning.
@@ -9733,7 +9736,7 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   approved pull attribution, requested/downloaded/skipped/failed/empty counts, and queued/running/
   terminal state. Its id travels beside the downloaded bytes in the Loomarr sidecar, through
   compilation splitting, and into each resulting pipeline row. Reconnecting clients therefore read
-  the current run and its preparing/needs-decision/admitted/rejected/dismissed outcomes from the
+  the current run and its preparing/needs-decision/ready/complete/rejected/dismissed outcomes from the
   store; SSE remains a latency hint and is never the only history. A job whose initial run record
   cannot be persisted does not start. On single-replica startup, queued/running rows left by the
   previous process become terminal interrupted errors rather than appearing active forever.
@@ -9762,9 +9765,9 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   behavior the ordinary path. Per-clip overrides stay collapsed under explicit `Prefer on this
   channel` and `Exclude from this channel` language; they are never presented as required setup.
 
-  Acquisition is not admission. These records and summaries do not weaken registered-source
-  enablement, disk/catalog limits, approval, grounding, or the held-to-filed gate. Machine work,
-  operator decisions, terminal audit outcomes, and admitted catalog content remain distinct even
+  Acquisition is not readiness. These records and summaries do not weaken registered-source
+  enablement, disk/catalog limits, grounding, required checks, or the held-to-Ready transition.
+  Machine work, genuine operator decisions, completed Composite containers, and Ready catalog content remain distinct even
   when the simple overview brings them onto one page.
 - **Fallback ladder:** exact-era match → widen era (a decade either side of the range) → any appropriate-audience clip → **clips whose audience could not be grounded** → channel bumper card (Tunarr's flex fallback). Never dead air.
 
@@ -10374,8 +10377,8 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   and explains the current source → prepare/split/screen/review → library → channel journey plus the
   single highest-priority next action from the server-owned projection. The client renders that
   answer; it never recreates health, severity, or priority from detail feeds. Coverage and variety
-  remain separate server-owned context because a healthy admission system may still need more
-  playable clips. Automatic outcomes, human exceptions, operational failures, and admitted clips
+  remain separate server-owned context because a healthy readiness system may still need more
+  playable Clips. Automatic outcomes, human exceptions, operational failures, and Ready Clips
   stay visibly distinct.
 
   **Wave 0 shell contract.** Backend-owned lifecycle complexity must present one simple, hands-off

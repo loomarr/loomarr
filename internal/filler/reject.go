@@ -4,7 +4,7 @@ package filler
 //
 // ⚠ **The three-way is the whole point.** Before this, rejection was binary (`removed_at`) and
 // holding was binary (`held`), decided in different files by different jobs with no shared
-// language: `LanguageJob` tombstoned, `Tagger` filed, `ScanDir` silently skipped. Adding a
+// language: `LanguageJob` tombstoned, `Tagger` published, `ScanDir` silently skipped. Adding a
 // criterion meant editing three jobs and hoping they agreed. One enumeration every rule answers
 // makes a new criterion a new rule, and makes "what happened to my clip?" answerable in one place.
 //

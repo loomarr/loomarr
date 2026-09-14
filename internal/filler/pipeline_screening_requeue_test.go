@@ -14,7 +14,7 @@ func TestPipeline_BackfillsLegacyChildrenThroughFailClosedScreening(t *testing.T
 	}})
 	st.rows["child"] = filler.ClipPipeline{
 		ClipHash: "child", Stage: filler.StageScore, Status: filler.StatusDone,
-		Disposition: filler.DispositionFiled,
+		Disposition: filler.DispositionReady,
 		Stages: []filler.StageRecord{
 			{Stage: filler.StageProbe, Status: filler.StatusDone},
 			{Stage: filler.StageLanguage, Status: filler.StatusDone},
@@ -45,12 +45,12 @@ func TestPipeline_ScreeningBackfillLeavesAlreadyCompletedOrNonAirableRowsAlone(t
 	}{
 		{
 			name: "completed child", clip: filler.Clip{Hash: "child", Path: "child.mp4", ParentHash: "parent"},
-			row: filler.ClipPipeline{ClipHash: "child", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionFiled,
+			row: filler.ClipPipeline{ClipHash: "child", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady,
 				Stages: []filler.StageRecord{{Stage: filler.StageScreen, Status: filler.StatusDone}}},
 		},
 		{
 			name: "top level", clip: filler.Clip{Hash: "child", Path: "child.mp4"},
-			row: filler.ClipPipeline{ClipHash: "child", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionFiled},
+			row: filler.ClipPipeline{ClipHash: "child", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady},
 		},
 		{
 			name: "hard rejected child", clip: filler.Clip{Hash: "child", Path: "child.mp4", ParentHash: "parent", Held: true},

@@ -329,8 +329,8 @@ func newPipe(st *pipeMemStore, stages []filler.Stage, b filler.Budget) *filler.P
 
 // --- tests -------------------------------------------------------------------
 
-// A clip that clears every rung ends FILED, having visited each stage exactly once.
-func TestPipeline_WalksEveryStageAndFiles(t *testing.T) {
+// A clip that clears every rung ends Ready, having visited each stage exactly once.
+func TestPipeline_WalksEveryStageAndBecomesReady(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "c1")
 	stages := allStages()
@@ -340,8 +340,8 @@ func TestPipeline_WalksEveryStageAndFiles(t *testing.T) {
 	}
 
 	row := st.rows["c1"]
-	if row.Disposition != filler.DispositionFiled {
-		t.Fatalf("disposition = %q, want filed", row.Disposition)
+	if row.Disposition != filler.DispositionReady {
+		t.Fatalf("disposition = %q, want ready", row.Disposition)
 	}
 	if len(row.Stages) != len(filler.StageOrder) {
 		t.Errorf("ladder has %d rungs, want %d — every stage must be recorded, including the boring ones",
@@ -390,12 +390,15 @@ func TestPipeline_RewindRunsAStageThatWouldNormallySkip(t *testing.T) {
 	row.Stage = filler.StageScore
 	row.Status = filler.StatusDone
 	row.Disposition = filler.DispositionReview
+	for _, id := range filler.StageOrder {
+		row.Stages = append(row.Stages, filler.StageRecord{Stage: id, Status: filler.StatusDone})
+	}
 	st.rows["already-tagged"] = row
 
 	tag := stage(filler.StageTag)
 	tag.applies = false
 	tag.note = "already fully tagged"
-	p := newPipe(st, []filler.Stage{tag}, filler.DefaultBudget()).WithRewind(st, "")
+	p := newPipe(st, []filler.Stage{tag, stage(filler.StageScore)}, filler.DefaultBudget()).WithRewind(st, "")
 	if err := p.Rewind(context.Background(), "already-tagged", filler.StageTag, false); err != nil {
 		t.Fatal(err)
 	}
@@ -518,7 +521,7 @@ func TestPipeline_RequeuesFiledLegacyMezzanineForQualityWithoutSpendingPastBudge
 	st.put(filler.StoreClip{Clip: filler.Clip{Hash: hash, Path: path, Name: "Legacy advert"}})
 	st.rows[hash] = filler.ClipPipeline{
 		ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusDone,
-		Disposition: filler.DispositionFiled,
+		Disposition: filler.DispositionReady,
 		Stages:      []filler.StageRecord{{Stage: filler.StageProbe, Status: filler.StatusDone}},
 	}
 	transcode := stage(filler.StageTranscode)
@@ -540,7 +543,7 @@ func TestPipeline_RequeuesFiledLegacyMezzanineForQualityWithoutSpendingPastBudge
 	}
 }
 
-func TestPipeline_RepairsFiledCompositeHeldByOlderConfirm(t *testing.T) {
+func TestPipeline_RepairsCompletedCompositeHeldByOlderConfirm(t *testing.T) {
 	st := newPipeMemStore()
 	const hash = "legacy-confirmed-reel"
 	st.put(filler.StoreClip{Clip: filler.Clip{
@@ -549,7 +552,7 @@ func TestPipeline_RepairsFiledCompositeHeldByOlderConfirm(t *testing.T) {
 	}})
 	st.rows[hash] = filler.ClipPipeline{
 		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
-		Disposition: filler.DispositionFiled,
+		Disposition: filler.DispositionComplete,
 	}
 
 	res, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background())
@@ -560,11 +563,11 @@ func TestPipeline_RepairsFiledCompositeHeldByOlderConfirm(t *testing.T) {
 		t.Fatalf("pipeline reported %d repaired composites, want 1", res.Repaired)
 	}
 	if got := st.clips[hash]; got.Held {
-		t.Fatalf("filed composite remains held after compatibility pass: %+v", got)
+		t.Fatalf("completed composite remains held after compatibility pass: %+v", got)
 	}
 }
 
-func TestPipeline_DoesNotFileCompositeWithSplitProposalStillWaiting(t *testing.T) {
+func TestPipeline_DoesNotReleaseCompositeWithSplitProposalStillWaiting(t *testing.T) {
 	st := newPipeMemStore()
 	const hash = "partly-confirmed-reel"
 	st.put(filler.StoreClip{Clip: filler.Clip{
@@ -573,7 +576,7 @@ func TestPipeline_DoesNotFileCompositeWithSplitProposalStillWaiting(t *testing.T
 	}})
 	st.rows[hash] = filler.ClipPipeline{
 		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
-		Disposition: filler.DispositionFiled,
+		Disposition: filler.DispositionComplete,
 	}
 	st.proposals = []filler.SplitProposal{{
 		ID: "proposal-with-leftovers", ClipHash: hash,
@@ -681,7 +684,7 @@ func TestPipeline_SkipRecordsWhyAndAdvances(t *testing.T) {
 		t.Error("a stage that does not apply was executed anyway")
 	}
 	row := st.rows["c1"]
-	if row.Disposition != filler.DispositionFiled {
+	if row.Disposition != filler.DispositionReady {
 		t.Errorf("a skipped stage stranded the clip: %q", row.Disposition)
 	}
 	var found bool
@@ -799,7 +802,7 @@ func TestPipeline_NonFatalFailureSkipsRatherThanStranding(t *testing.T) {
 	if row.Disposition == filler.DispositionRejected {
 		t.Fatal("a missing backend REJECTED the clip — that is a fact about the machine, not the file")
 	}
-	if row.Disposition != filler.DispositionFiled {
+	if row.Disposition != filler.DispositionReady {
 		t.Errorf("disposition = %q, want the clip to have carried on", row.Disposition)
 	}
 }
@@ -1017,7 +1020,7 @@ func TestPipeline_FollowsAStageIdentityReplacement(t *testing.T) {
 	if !ok {
 		t.Fatal("pipeline persisted the transformed clip under its old content identity")
 	}
-	if row.ClipHash != "new-hash" || row.Disposition != filler.DispositionFiled {
+	if row.ClipHash != "new-hash" || row.Disposition != filler.DispositionReady {
 		t.Errorf("replacement pipeline row = %+v", row)
 	}
 }

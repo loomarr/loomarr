@@ -187,8 +187,8 @@ func (a fillerSweepStoreAdapter) DeleteSplitProposal(ctx context.Context, id str
 func (a fillerSweepStoreAdapter) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
 	return a.st.MarkClipReaped(ctx, hash, at)
 }
-func (a fillerSweepStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
-	return a.st.MarkPipelineFiled(ctx, hash, at)
+func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkPipelineComplete(ctx, hash, at)
 }
 
 // fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
@@ -253,7 +253,7 @@ func (a fillerLibraryAdapter) ListLibraryClips(ctx context.Context, name string)
 	return out, nil
 }
 
-// fillerChannelWake is the shared post-commit latency path for every non-HTTP filing operation.
+// fillerChannelWake is the shared post-commit latency path for every non-HTTP eligibility change.
 // It deliberately depends on only Reconcile: pipeline code does not need the API's wider channel
 // management surface merely to announce that pod eligibility changed.
 type fillerChannelWake struct {
@@ -629,8 +629,8 @@ func (a fillerSplitStoreAdapter) ReleaseSplitProposalClaim(ctx context.Context, 
 func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
 	return a.st.DeleteSplitProposal(ctx, id)
 }
-func (a fillerSplitStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
-	return a.st.MarkPipelineFiled(ctx, hash, at)
+func (a fillerSplitStoreAdapter) MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkPipelineComplete(ctx, hash, at)
 }
 func (a fillerSplitStoreAdapter) CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error) {
 	return a.st.CompleteSplitConfirmation(ctx, completion)
@@ -746,8 +746,8 @@ func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input
 var _ api.FillerRewinder = fillerServiceAdapter{}
 var _ fillerdecision.DiagnosticRecoveryExecutor = fillerServiceAdapter{}
 
-// fillerSourceRegistry is the acquisition-side source slice. Admission policy is deliberately
-// absent: this adapter registers and fetches sources but is not allowed to change their trust.
+// fillerSourceRegistry is the acquisition-side source slice. Readiness is deliberately absent:
+// this adapter registers and fetches sources but cannot publish a Clip by itself.
 type fillerSourceRegistry interface {
 	ListFillerProviders(context.Context) ([]store.FillerProvider, error)
 	ListFillerSources(context.Context) ([]store.FillerSource, error)
@@ -885,7 +885,7 @@ func (a fillerServiceAdapter) Ingest(ctx context.Context, urls []string) (string
 }
 
 // IngestSource is the unattended registered-source path. It preserves source attribution through
-// the downloader sidecar so the catalog can apply and audit the correct admission policy.
+// the downloader sidecar while durable acquisition state carries the Enrollment authority.
 func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID, sourceKind string, urls []string) (string, error) {
 	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, sourceKind, urls), nil)
 }
@@ -1181,7 +1181,7 @@ func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID strin
 		return api.ErrSplitUnavailable
 	}
 	// Confirm owns the complete parent/child durable batch, including terminal parent pipeline
-	// filing. The adapter must not add a fallible write after the generation commits: reporting an
+	// completion. The adapter must not add a fallible write after the generation commits: reporting an
 	// error then would invite an operator retry of an operation that already succeeded.
 	_, err := a.splitter.Confirm(ctx, proposalID, segments)
 	return err
@@ -1316,7 +1316,7 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	// ⚠ **The predicate is shared; the SCOPE is not.** `ListUntaggedCommercials` sets
 	// `IncludeHeld: true` on purpose, because held clips are exactly what the tagger must tag.
 	// Reusing it here inherited that as a silent side effect, and every OTHER number in this
-	// report counts the catalog alone — so an install with 1 filed clip and 12 held ones rendered
+	// report counts the catalog alone — so an install with 1 Ready clip and 12 held ones rendered
 	// "CLIPS 1 / 12 clips still need tagging", a headline its own subtext contradicts.
 	//
 	// Counting held clips here is not merely inconsistent, it is unactionable: the strip's advice

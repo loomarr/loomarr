@@ -21,7 +21,7 @@ import (
 // proposal alone does not finish the job: the composite is still `is_composite` and still on the
 // belt, so the split rung re-detects it on the next pass — propose → partly confirm → leftovers →
 // sweep → re-propose, burning a boundary scan every cycle, forever. The reel must also be taken
-// OFF the belt, which is what `MarkPipelineFiled` does here.
+// OFF the belt, which is what `MarkPipelineComplete` does here.
 //
 // ⚠ **This is the first thing in Loomarr that deletes an operator's media**, and that is a
 // deliberate reversal of the rule `fillerbulk.go` states ("nothing in Loomarr deletes an operator's
@@ -35,7 +35,7 @@ type SweepStore interface {
 	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)
 	DeleteSplitProposal(ctx context.Context, id string) error
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
-	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
+	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
 }
 
 // SweepableProposal mirrors the store's row — a reel the sweep may retire.
@@ -112,10 +112,10 @@ func (sw *SplitSweeper) Run(ctx context.Context) (SweepResult, error) {
 
 // retire is the ORDER-SENSITIVE part, and the order is the whole correctness story.
 func (sw *SplitSweeper) retire(ctx context.Context, p SweepableProposal) error {
-	// 1. Off the belt FIRST. If anything below fails, a reel that is merely filed is a recoverable
+	// 1. Off the belt FIRST. If anything below fails, a reel that is merely complete is a recoverable
 	//    state; a reel whose file is gone while it is still claimable is not — the rung would pick
 	//    it up and fail on a missing file every pass.
-	if err := sw.store.MarkPipelineFiled(ctx, p.ClipHash, sw.now().UTC()); err != nil {
+	if err := sw.store.MarkPipelineComplete(ctx, p.ClipHash, sw.now().UTC()); err != nil {
 		return fmt.Errorf("take off the belt: %w", err)
 	}
 	// 2. The tombstone, BEFORE the unlink. `DeleteClipsNotIn` keys on this, so a sync landing

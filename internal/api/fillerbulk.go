@@ -208,10 +208,10 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 		// the queue. Settling the row is what actually takes it off the belt: `dismissed` is not in
 		// `ConveyorOnly`'s `running|review` set, so the row is never fetched to be re-resolved.
 		//
-		// From `review` OR `filed`: this route also serves the Catalog tab's bulk bar, where the
-		// clip being removed was filed long ago.
+		// From `review` OR `ready`: this route also serves the Catalog tab's bulk bar, where the
+		// clip being removed became Ready long ago.
 		s.settlePipeline(ctx, in.Body.Hashes, filler.DispositionDismissed,
-			filler.DispositionReview, filler.DispositionFiled)
+			filler.DispositionReview, filler.DispositionReady)
 	}
 	out := &bulkResultOutput{}
 	out.Body.Updated = n
@@ -266,16 +266,16 @@ func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
 }
 
 // settlePipeline moves each clip's pipeline row to the terminal disposition the OPERATOR chose
-// (§10 V54) — the writer `review → filed | dismissed` never had.
+// (§10 V54) — the writer `review → ready | dismissed` never had.
 //
-// ⚠ **The whole class of defect this fixes:** `filed` and `rejected` were only ever written by
+// ⚠ **The whole class of defect this fixes:** `ready` and `rejected` were only ever written by
 // `filler.Pipeline` itself, so every operator path moved `clips` and left the pipeline row alone.
 // The row kept saying `review`, so the clip kept saying it needed a decision. Three of the four
 // decision buttons therefore did not stick.
 //
 // ⚠ **Guarded on the row's CURRENT disposition, with the allowed origins passed explicitly.** A
 // clip the pipeline is still working (`running`) is not settled by an operator verb: it finishes
-// its ladder and settles itself, which is what keeps "the operator filed it early" from abandoning
+// its ladder and settles itself, which is what keeps an early operator action from abandoning
 // the transcribe and tag rungs. An unlisted origin is skipped, never coerced.
 //
 // Best-effort, matching `clearPipelineRejects`: the catalog half has already landed by the time

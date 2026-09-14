@@ -43,7 +43,7 @@ func testRetireFillerRuntimeRightsMigration(t *testing.T, s *sqlStore, migration
 	}
 	if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
 		ClipHash: hash, Stage: filler.StageID("admission"), Status: filler.StatusDone, Progress: 100,
-		Disposition: filler.DispositionFiled, EnrolledAt: at, UpdatedAt: at,
+		Disposition: filler.Disposition("filed"), EnrolledAt: at, UpdatedAt: at,
 	}); err != nil {
 		t.Fatal(err)
 	}

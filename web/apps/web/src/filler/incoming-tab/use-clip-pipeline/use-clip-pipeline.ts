@@ -22,7 +22,7 @@ import { useLoomarrEventListener } from "@/events/events-provider";
 //      would be missing `stages`, `attempts` and `updatedAt`: every field the expanded view
 //      renders. A half-row that looks like a row is worse than a row that arrives 200ms late.
 //   3. **Terminal frames do not land here at all.** `events.ts` invalidates the whole `/v1/filler`
-//      prefix the moment a clip stops running, because a filed clip changes the catalog too —
+//      prefix the moment a clip stops running, because a Ready clip changes the catalog too —
 //      and the operator watching the catalog has no pipeline listener mounted.
 const useClipPipeline = (): void => {
   const queryClient = useQueryClient();

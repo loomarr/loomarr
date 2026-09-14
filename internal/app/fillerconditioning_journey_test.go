@@ -351,7 +351,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatalf("conditioned child = %+v", child)
 	}
 	row, found, err := st.GetClipPipeline(ctx, child.Hash)
-	if err != nil || !found || row.Disposition != filler.DispositionFiled || child.Held ||
+	if err != nil || !found || row.Disposition != filler.DispositionReady || child.Held ||
 		child.Placement != filler.PlacementBreakBody {
 		t.Fatalf("child readiness = row:%+v found:%v held:%v placement:%q err:%v, want Ready break body",
 			row, found, child.Held, child.Placement, err)

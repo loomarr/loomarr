@@ -60,6 +60,8 @@ RETIRED=(
   'StageAdmission|#1249: household readiness follows score directly; do not restore the dormant admission rung'
   'NewAdmissionStage|#1249: no runtime classifier may sit between an enrolled clip and readiness'
   'AdmissionObserver|#1249: classification observations are not release authority'
+  'DispositionFiled|#1249: use Ready for playable clips and Complete for processed composites'
+  'MarkPipelineFiled|#1249: completed composites have a distinct non-playable terminal operation'
   # ⚠ Not a rename: "how often do we go LOOKING for compilations" stopped being a question with
   # an answer, because every long recording reaches the split rung as it is ingested. An operator
   # told to raise this to split more often would be tuning nothing; the real bound is
@@ -197,17 +199,17 @@ RETIRED=(
   'INGEST_MAX_CONCURRENT|V55: ingest concurrency is pipeline-owned implementation policy'
   'filler.starter_collection|V55: starter media is not an operator setting'
   'FILLER_STARTER_COLLECTION|V55: starter media is not an operator setting'
-  # Filler has one publication authority: the certified applied-admission transaction. These
+  # Filler has one publication authority: the household terminal-ready transaction. These
   # identifiers exposed weaker alternate publishers through scalar confidence, source trust, or
   # an operator shortcut. Internal holding remains a one-way safety capability; legacy public
   # lifecycle controls disappear with the quarantined state they existed to repair.
-  'SetClipsHeld|filler publication is not a boolean setter; use HoldClips or the terminal applied-admission transaction'
+  'SetClipsHeld|filler publication is not a boolean setter; use HoldClips or the terminal-ready transaction'
   'AutoFilePolicy|classification confidence is diagnostic and cannot publish filler'
-  'WithAutoFile|the tagger enriches metadata; terminal applied admission owns publication'
-  '/v1/filler/file|retired: positive filler publication is the certified applied-admission action'
+  'WithAutoFile|the tagger enriches metadata; terminal readiness owns publication'
+  '/v1/filler/file|retired: positive filler publication is the terminal-ready transaction'
   'file-filler-clips|retired with /v1/filler/file'
   'useFileFillerClips|retired with /v1/filler/file'
-  '/v1/filler/hold|retired: legacy playable rows are quarantined by migration; applied actions own later transitions'
+  '/v1/filler/hold|retired: legacy playable rows are quarantined by migration; terminal readiness owns later publication'
   'hold-filler-clips|retired with /v1/filler/hold'
   'useHoldFillerClips|retired with /v1/filler/hold'
   'recentlyFiled|retired: legacy publications are quarantined, not exposed as a second UI lifecycle'

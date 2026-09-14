@@ -61,7 +61,7 @@ func StageIndex(id StageID) int {
 // SegmentScreeningCompleted reports that a child advanced beyond the screening rung through its
 // ordinary success path. A StatusDone record alone is insufficient because review verdicts also
 // close their current rung before waiting on a person; requiring the row to be later in the ladder
-// prevents a manual filing action from turning an unresolved screen into release authority.
+// prevents an unrelated lifecycle write from turning an unresolved screen into release authority.
 func SegmentScreeningCompleted(row ClipPipeline) bool {
 	if StageIndex(row.Stage) <= StageIndex(StageScreen) {
 		return false
@@ -82,13 +82,11 @@ const (
 	StatusRunning StageStatus = "running"
 	StatusDone    StageStatus = "done"
 	StatusFailed  StageStatus = "failed"
-	// StatusSkipped means the stage does not APPLY to this clip in this install — vision with
+	// StatusSkipped means the stage did not APPLY during this readiness run — vision with
 	// `filler.vision.enabled` off, transcription for a clip whose description already says enough.
-	//
-	// ⚠ Distinct from `done`, and the difference is re-evaluation: a skipped stage is asked again
-	// on every pass, so turning a setting on picks up clips that already went past it. A `done`
-	// stage is never revisited. Collapsing the two would mean an operator enabling vision sees it
-	// apply only to clips that arrive afterwards.
+	// It remains distinct from `done` so the ladder truthfully records what actually ran. Once a
+	// Clip is Ready, later capability changes use progressive enrichment rather than reopening the
+	// readiness conveyor (#1251).
 	StatusSkipped StageStatus = "skipped"
 )
 
@@ -96,9 +94,12 @@ const (
 type Disposition string
 
 const (
-	DispositionRunning  Disposition = "running"
-	DispositionReview   Disposition = "review"
-	DispositionFiled    Disposition = "filed"
+	DispositionRunning Disposition = "running"
+	DispositionReview  Disposition = "review"
+	DispositionReady   Disposition = "ready"
+	// DispositionComplete is terminal processing for a non-playable container. It is deliberately
+	// distinct from Ready: a Composite can leave the conveyor without ever entering a Pod.
+	DispositionComplete Disposition = "complete"
 	DispositionRejected Disposition = "rejected"
 	// DispositionDismissed — the OPERATOR said no (§10 V54). Distinct from `rejected`, which is
 	// the quality gate refusing.
@@ -124,7 +125,7 @@ const (
 // would mean re-running the whole ladder against a clip whose only missing input is a human
 // decision.
 func (d Disposition) Terminal() bool {
-	return d == DispositionFiled || d == DispositionRejected || d == DispositionReview ||
+	return d == DispositionReady || d == DispositionComplete || d == DispositionRejected || d == DispositionReview ||
 		d == DispositionDismissed
 }
 

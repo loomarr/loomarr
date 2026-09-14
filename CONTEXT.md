@@ -257,6 +257,11 @@ An enrolled Clip whose required household runtime checks completed and whose pla
 Placement were committed. Ready is the only state eligible for a Pod.
 _Avoid_: filed, admitted, approved clip
 
+**Completed composite**:
+A Composite whose conveyor work finished without making the container playable. Its confirmed
+Segments continue independently toward Ready; the container itself never enters a Pod.
+_Avoid_: Ready clip, filed reel, playable source
+
 **Media quality**:
 Whether a Clip is technically intact, complete, and presentable enough for its intended playout.
 Media quality says nothing about the Clip's Filler role or Airworthiness.

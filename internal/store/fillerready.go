@@ -37,9 +37,8 @@ func (s *sqlStore) GetFillerReadyEvent(ctx context.Context, clipHash string) (fi
 func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error {
 	e := commit.Event
 	p := commit.Pipeline
-	if e.ID == "" || e.ClipHash == "" || e.ClipHash != p.ClipHash || e.Enrollment.Reference == "" ||
-		e.Placement == filler.PlacementNotPlayable || p.Disposition != filler.DispositionFiled {
-		return fmt.Errorf("%w: incomplete ready commit", filler.ErrReadyStale)
+	if err := commit.Validate(); err != nil {
+		return err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -83,20 +82,18 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		return fmt.Errorf("%w: source enrollment changed", filler.ErrReadyStale)
 	}
 
-	pipelineQuery := `SELECT acquisition_id, stage, status, disposition FROM filler_clip_pipeline WHERE clip_hash = ?`
+	pipelineQuery := clipPipelineSelect + ` WHERE clip_hash = ?`
 	if s.dialect == DialectPostgres {
 		pipelineQuery += ` FOR UPDATE`
 	}
-	var acquisitionID, stage, status, disposition string
-	if err := tx.QueryRowContext(ctx, s.ph(pipelineQuery), e.ClipHash).
-		Scan(&acquisitionID, &stage, &status, &disposition); errors.Is(err, sql.ErrNoRows) {
+	current, err := scanClipPipeline(tx.QueryRowContext(ctx, s.ph(pipelineQuery), e.ClipHash))
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("lock ready pipeline %s: %w", e.ClipHash, err)
 	}
-	if acquisitionID != e.AcquisitionID || stage != string(p.Stage) || status != string(filler.StatusRunning) ||
-		disposition != string(filler.DispositionRunning) {
-		return fmt.Errorf("%w: conveyor row is no longer completing", filler.ErrReadyStale)
+	if err := commit.ValidateAgainst(current); err != nil {
+		return err
 	}
 
 	raw, err := json.Marshal(p.Stages)
@@ -126,7 +123,7 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		WHERE clip_hash = ? AND acquisition_id = ? AND stage = ? AND status = ? AND disposition = ?`),
 		string(p.Stage), string(p.Status), p.Progress, string(p.Disposition), string(p.RejectReason),
 		p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), string(raw), epoch(p.UpdatedAt),
-		p.ClipHash, acquisitionID, stage, string(filler.StatusRunning), string(filler.DispositionRunning))
+		p.ClipHash, current.AcquisitionID, string(current.Stage), string(current.Status), string(current.Disposition))
 	if err != nil {
 		return fmt.Errorf("settle ready pipeline %s: %w", e.ClipHash, err)
 	}

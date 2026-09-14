@@ -67,7 +67,8 @@ const body = (clips: IncomingClipDTO[]): FillerIncomingOutputBody => ({
     scheduled: 0,
     needsDecision: 0,
     recoverable: 0,
-    admitted: 0,
+    ready: 0,
+    complete: 0,
     rejected: 0,
     dismissed: 0,
   },
@@ -132,7 +133,7 @@ describe("useClipPipeline", () => {
   it("ignores a terminal frame, which the invalidation path owns", () => {
     const { rows, send } = setup([row()]);
 
-    send(frame({ disposition: "filed", stage: "score", status: "done", progress: 100 }));
+    send(frame({ disposition: "ready", stage: "score", status: "done", progress: 100 }));
 
     expect(rows()[0]?.pipeline).toMatchObject({ stage: "transcode", progress: 80 });
   });

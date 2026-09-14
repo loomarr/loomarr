@@ -9,7 +9,7 @@ import (
 )
 
 // CompleteSplitConfirmation is V65's single durable commit. Reversible media publication happens
-// before this call; proposal consumption, parent filing, child activation, and generation selection
+// before this call; proposal consumption, parent completion, child activation, and generation selection
 // either all commit or all remain at their pre-confirm values.
 func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error) {
 	if completion.ProposalID == "" || completion.ClaimToken == "" || completion.ParentHash == "" || len(completion.ChildHashes) == 0 {
@@ -59,7 +59,7 @@ func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion fil
 		`UPDATE clips SET is_composite = ?, held = ?, auto_filed = ?, updated_at = ? WHERE hash = ? AND held = ?`),
 		true, false, false, epoch(completion.At), completion.ParentHash, true)
 	if err != nil {
-		return 0, fmt.Errorf("complete split confirmation %s file parent: %w", completion.ProposalID, err)
+		return 0, fmt.Errorf("complete split confirmation %s release parent: %w", completion.ProposalID, err)
 	}
 	if n, countErr := res.RowsAffected(); countErr != nil || n != 1 {
 		if countErr != nil {
@@ -70,9 +70,9 @@ func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion fil
 
 	res, err = tx.ExecContext(ctx, s.ph(
 		`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ? WHERE clip_hash = ? AND disposition = ?`),
-		string(filler.DispositionFiled), epoch(completion.At), completion.ParentHash, string(filler.DispositionReview))
+		string(filler.DispositionComplete), epoch(completion.At), completion.ParentHash, string(filler.DispositionReview))
 	if err != nil {
-		return 0, fmt.Errorf("complete split confirmation %s file parent pipeline: %w", completion.ProposalID, err)
+		return 0, fmt.Errorf("complete split confirmation %s settle parent pipeline: %w", completion.ProposalID, err)
 	}
 	if n, countErr := res.RowsAffected(); countErr != nil || n != 1 {
 		if countErr != nil {

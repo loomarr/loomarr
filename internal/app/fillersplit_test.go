@@ -211,7 +211,7 @@ type markPipelineFiledFailureStore struct {
 	calls int
 }
 
-func (s *markPipelineFiledFailureStore) MarkPipelineFiled(context.Context, string, time.Time) error {
+func (s *markPipelineFiledFailureStore) MarkPipelineComplete(context.Context, string, time.Time) error {
 	s.calls++
 	return errors.New("injected parent pipeline filing failure")
 }
@@ -247,8 +247,8 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("parent pipeline = (_, %v, %v), want row", found, err)
 	}
-	if parent.Disposition != filler.DispositionFiled {
-		t.Fatalf("parent disposition = %q, want filed after the proposal was confirmed", parent.Disposition)
+	if parent.Disposition != filler.DispositionComplete {
+		t.Fatalf("parent disposition = %q, want complete after the proposal was confirmed", parent.Disposition)
 	}
 	parentClip, err := st.GetClip(ctx, compHash)
 	if err != nil {
@@ -302,8 +302,8 @@ func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) 
 		t.Fatalf("outer post-commit parent filing calls = %d, want zero", failing.calls)
 	}
 	parent, found, err := st.GetClipPipeline(ctx, compHash)
-	if err != nil || !found || parent.Disposition != filler.DispositionFiled {
-		t.Fatalf("parent pipeline = %+v, found=%v, err=%v; want filed by the inner commit", parent, found, err)
+	if err != nil || !found || parent.Disposition != filler.DispositionComplete {
+		t.Fatalf("parent pipeline = %+v, found=%v, err=%v; want complete by the inner commit", parent, found, err)
 	}
 }
 

@@ -71,7 +71,7 @@ components:
     AcquisitionOutcomeDTO:
       additionalProperties: false
       properties:
-        admitted:
+        complete:
           format: int64
           type: integer
         dismissed:
@@ -86,6 +86,9 @@ components:
         preparing:
           format: int64
           type: integer
+        ready:
+          format: int64
+          type: integer
         rejected:
           format: int64
           type: integer
@@ -93,7 +96,8 @@ components:
         - enrolled
         - preparing
         - needsDecision
-        - admitted
+        - ready
+        - complete
         - rejected
         - dismissed
       type: object
@@ -3317,7 +3321,8 @@ components:
           enum:
             - running
             - review
-            - filed
+            - ready
+            - complete
             - rejected
             - dismissed
           type: string
@@ -6457,7 +6462,7 @@ components:
     PipelineOverviewDTO:
       additionalProperties: false
       properties:
-        admitted:
+        complete:
           format: int64
           type: integer
         dismissed:
@@ -6467,6 +6472,9 @@ components:
           format: int64
           type: integer
         needsDecision:
+          format: int64
+          type: integer
+        ready:
           format: int64
           type: integer
         recoverable:
@@ -6487,7 +6495,8 @@ components:
         - inProgress
         - scheduled
         - needsDecision
-        - admitted
+        - ready
+        - complete
         - rejected
         - dismissed
         - recoverable
@@ -13011,7 +13020,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: What has been downloaded but isn't terminally admitted
+      summary: What has been downloaded but isn't terminally ready
       tags:
         - filler
   /v1/filler/ingest:

@@ -70,7 +70,7 @@ func ScoreClip(c StoreClip) int {
 	// LOWERING half of `Score`.** The model's own self-report exists only inside the tag rung, which
 	// writes the layered result to the row; by the time this runs, that number is all that is left
 	// of it. Passing 0 here instead would let a clip the model was unsure about — but whose tags all
-	// happen to verify — score the full grounded 100 and be filed unattended, silently undoing the
+	// happen to verify — score the full grounded 100 and become Ready unattended, silently undoing the
 	// asymmetry `Score` documents.
 	//
 	// Raising is still impossible: `Score` only ever takes the model layer when it is BELOW the

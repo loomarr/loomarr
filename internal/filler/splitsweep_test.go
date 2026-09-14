@@ -14,11 +14,11 @@ import (
 // the cases where it must keep its hands off.
 
 type sweepMemStore struct {
-	due      []SweepableProposal
-	deleted  []string
-	reaped   []string
-	filed    []string
-	failMark bool
+	due       []SweepableProposal
+	deleted   []string
+	reaped    []string
+	completed []string
+	failMark  bool
 }
 
 func (m *sweepMemStore) ListSweepableSplitProposals(context.Context, time.Time) ([]SweepableProposal, error) {
@@ -35,8 +35,8 @@ func (m *sweepMemStore) MarkClipReaped(_ context.Context, hash string, _ time.Ti
 	m.reaped = append(m.reaped, hash)
 	return nil
 }
-func (m *sweepMemStore) MarkPipelineFiled(_ context.Context, hash string, _ time.Time) error {
-	m.filed = append(m.filed, hash)
+func (m *sweepMemStore) MarkPipelineComplete(_ context.Context, hash string, _ time.Time) error {
+	m.completed = append(m.completed, hash)
 	return nil
 }
 
@@ -99,8 +99,8 @@ func TestSweep_TakesTheReelOffTheBeltSoItIsNotReproposed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(st.filed) != 1 || st.filed[0] != "h1" {
-		t.Fatalf("filed = %v — a swept reel left claimable is re-proposed every pass, forever", st.filed)
+	if len(st.completed) != 1 || st.completed[0] != "h1" {
+		t.Fatalf("completed = %v — a swept reel left claimable is re-proposed every pass, forever", st.completed)
 	}
 }
 

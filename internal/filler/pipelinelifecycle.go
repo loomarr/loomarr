@@ -12,7 +12,8 @@ const (
 	LifecycleInProgress    LifecycleState = "in_progress"
 	LifecycleScheduled     LifecycleState = "scheduled"
 	LifecycleNeedsDecision LifecycleState = "needs_decision"
-	LifecycleAdmitted      LifecycleState = "admitted"
+	LifecycleReady         LifecycleState = "ready"
+	LifecycleComplete      LifecycleState = "complete"
 	LifecycleRejected      LifecycleState = "rejected"
 	LifecycleDismissed     LifecycleState = "dismissed"
 )
@@ -55,7 +56,8 @@ type PipelineOverview struct {
 	InProgress    int
 	Scheduled     int
 	NeedsDecision int
-	Admitted      int
+	Ready         int
+	Complete      int
 	Rejected      int
 	Dismissed     int
 	// Recoverable is the subset with an explicit retry or restore action. Rejected remains the
@@ -98,8 +100,10 @@ func (o *PipelineOverview) Add(state LifecycleState, count int) {
 		o.Scheduled += count
 	case LifecycleNeedsDecision:
 		o.NeedsDecision += count
-	case LifecycleAdmitted:
-		o.Admitted += count
+	case LifecycleReady:
+		o.Ready += count
+	case LifecycleComplete:
+		o.Complete += count
 	case LifecycleRejected:
 		o.Rejected += count
 	case LifecycleDismissed:
@@ -135,8 +139,10 @@ func (p ClipPipeline) Lifecycle(at time.Time) PipelineLifecycle {
 	switch p.Disposition {
 	case DispositionReview:
 		out.State = LifecycleNeedsDecision
-	case DispositionFiled:
-		out.State = LifecycleAdmitted
+	case DispositionReady:
+		out.State = LifecycleReady
+	case DispositionComplete:
+		out.State = LifecycleComplete
 	case DispositionRejected:
 		out.State = LifecycleRejected
 	case DispositionDismissed:

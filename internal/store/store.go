@@ -438,7 +438,7 @@ type ClipStore interface {
 	// direct and descendant counts for every taxon. It is computed over the whole catalog, never a UI page.
 	TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error)
 	// HoldClips can only remove content from rotation. Releasing playable content belongs to the
-	// applied-admission transaction; confirmed non-airable parents use ReleaseCompositeHolds.
+	// terminal-ready transaction; confirmed non-airable parents use ReleaseCompositeHolds.
 	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
 	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// UpdateClipClassification edits the non-taxonomy classifier facts (+ ai flag) — the tag
@@ -496,8 +496,8 @@ type SplitProposalStore interface {
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
-	// MarkPipelineFiled takes a clip off the belt, so a swept reel is not re-proposed forever.
-	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
+	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
+	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
 	// CompleteSplitConfirmation atomically transitions a fully reviewed split proposal, retained
 	// parent, replacement pipelines, and selected child generation (§10 V65).
 	CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error)

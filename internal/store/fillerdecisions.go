@@ -440,7 +440,7 @@ func (s *sqlStore) applyFillerDecisionCatalogEffect(ctx context.Context, tx *sql
 		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ?
 			WHERE hash = ? AND held = ? AND removed_at = 0 AND kind <> ?`
 		clipArgs = []any{false, false, timestamp, clipHash, true, string(filler.Unclassified)}
-		pipelineFrom, pipelineTo = []filler.Disposition{filler.DispositionReview}, filler.DispositionFiled
+		pipelineFrom, pipelineTo = []filler.Disposition{filler.DispositionReview}, filler.DispositionReady
 	case action.Kind == fillerdecision.ActionRestore:
 		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, removed_at = 0, updated_at = ?
 			WHERE hash = ? AND (held = ? OR removed_at <> 0)`
@@ -456,7 +456,7 @@ func (s *sqlStore) applyFillerDecisionCatalogEffect(ctx context.Context, tx *sql
 	case action.Kind == fillerdecision.ActionReverse:
 		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ? WHERE hash = ? AND held = ?`
 		clipArgs = []any{true, false, timestamp, clipHash, false}
-		pipelineFrom, pipelineTo = []filler.Disposition{filler.DispositionFiled}, filler.DispositionReview
+		pipelineFrom, pipelineTo = []filler.Disposition{filler.DispositionReady}, filler.DispositionReview
 	case action.Kind == fillerdecision.ActionAbandon:
 		return nil
 	default:

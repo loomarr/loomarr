@@ -217,7 +217,8 @@ type PipelineOverviewDTO struct {
 	InProgress    int `json:"inProgress"`
 	Scheduled     int `json:"scheduled"`
 	NeedsDecision int `json:"needsDecision"`
-	Admitted      int `json:"admitted"`
+	Ready         int `json:"ready"`
+	Complete      int `json:"complete"`
 	Rejected      int `json:"rejected"`
 	Dismissed     int `json:"dismissed"`
 	Recoverable   int `json:"recoverable" doc:"Terminal failures with an explicit retry or restore action"`
@@ -226,7 +227,7 @@ type PipelineOverviewDTO struct {
 func (s *Server) registerFillerIncoming(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-incoming", Method: http.MethodGet, Path: "/v1/filler/incoming",
-		Summary: "What has been downloaded but isn't terminally admitted",
+		Summary: "What has been downloaded but isn't terminally ready",
 		Description: "Admin only (§10 V35) — legacy operational projection, not the Attention task interface. One bounded read for the clip conveyor, " +
 			"reviewable reels, and rejected clips. Each list carries its full total so a " +
 			"large import cannot make the response unbounded or make the badge report only the first page.",
@@ -553,7 +554,7 @@ func rejectDTO(ctx context.Context, s *Server, r filler.ClipPipeline, at time.Ti
 func pipelineOverviewDTO(o filler.PipelineOverview) PipelineOverviewDTO {
 	return PipelineOverviewDTO{
 		Runnable: o.Runnable, InProgress: o.InProgress, Scheduled: o.Scheduled,
-		NeedsDecision: o.NeedsDecision, Admitted: o.Admitted,
+		NeedsDecision: o.NeedsDecision, Ready: o.Ready, Complete: o.Complete,
 		Rejected: o.Rejected, Dismissed: o.Dismissed, Recoverable: o.Recoverable,
 	}
 }

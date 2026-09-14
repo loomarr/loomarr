@@ -183,11 +183,11 @@ var fatalStages = map[StageID]RejectReason{
 // ClipStore is the slice of the store the pipeline needs beyond PipelineStore.
 type ClipStore interface {
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
-	// HoldClips keeps every review verdict out of rotation, including a previously-filed clip that
+	// HoldClips keeps every review verdict out of rotation, including a previously-Ready clip that
 	// was not already held when a later quality check asked for help.
 	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
 	// ReleaseCompositeHolds exposes confirmed lineage containers. Its store predicate excludes
-	// playable rows; non-composite publication belongs only to applied admission.
+	// playable rows; non-composite publication belongs only to terminal readiness.
 	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// SetClipsRemoved tombstones a refused clip. ⚠ A TOMBSTONE, not a delete: `clips` is a synced
 	// cache, so a hard delete would be undone by the next scan finding the file still on disk and
@@ -222,7 +222,7 @@ type Pipeline struct {
 	// across restarts; this bool merely avoids re-reading a settled queue every pass.
 	legacySplitReviewsChecked bool
 	// legacyCompositeHoldsChecked gates the compatibility pass for composites fully confirmed
-	// before Confirm began filing their parent row. The pipeline disposition and absence of a
+	// before Confirm began completing their parent row. The pipeline disposition and absence of a
 	// proposal make the old state recognizable without a schema version or a new migration.
 	legacyCompositeHoldsChecked bool
 	// legacySegmentScreeningChecked gates the one-time rewind of children created before the
@@ -401,7 +401,7 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		switch outcome {
 		case DispositionRejected:
 			res.Rejected++
-		case DispositionFiled, DispositionReview:
+		case DispositionReady, DispositionComplete, DispositionReview:
 			res.Completed++
 		}
 	}
@@ -426,8 +426,9 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 			"completed", res.Completed, "rejected", res.Rejected, "failed", res.Failed,
 			"deferred", res.Deferred, "runnable", res.Overview.Runnable,
 			"in_progress", res.Overview.InProgress, "scheduled", res.Overview.Scheduled,
-			"needs_decision", res.Overview.NeedsDecision, "terminal", res.Overview.Rejected,
-			"admitted", res.Overview.Admitted, "dismissed", res.Overview.Dismissed,
+			"needs_decision", res.Overview.NeedsDecision, "rejected", res.Overview.Rejected,
+			"ready", res.Overview.Ready, "complete", res.Overview.Complete,
+			"dismissed", res.Overview.Dismissed,
 			"no_advance_reason", res.NoAdvanceReason)
 	}
 	return res, nil
@@ -451,7 +452,7 @@ func (p *Pipeline) requeueLegacySegmentScreening(ctx context.Context) (int, erro
 			continue
 		}
 		switch row.Disposition {
-		case DispositionRunning, DispositionReview, DispositionFiled:
+		case DispositionRunning, DispositionReview, DispositionReady:
 		case DispositionRejected:
 			if !row.RejectReason.Soft() {
 				continue
@@ -491,7 +492,7 @@ func (p *Pipeline) requeueLegacySegmentScreening(ctx context.Context) (int, erro
 }
 
 // repairLegacyCompositeHolds releases parent rows confirmed before full confirmation started doing
-// that itself. A filed pipeline row says the reel is terminal; no surviving proposal says there
+// that itself. A complete pipeline row says the reel is terminal; no surviving proposal says there
 // are no leftover cuts awaiting a person. Both facts are required. The parent remains non-airable
 // because IsComposite is an independent catalog-selection gate.
 func (p *Pipeline) repairLegacyCompositeHolds(ctx context.Context) (int, error) {
@@ -512,7 +513,7 @@ func (p *Pipeline) repairLegacyCompositeHolds(ctx context.Context) (int, error) 
 	}
 	n := 0
 	for _, row := range rows {
-		if row.Disposition != DispositionFiled {
+		if row.Disposition != DispositionComplete {
 			continue
 		}
 		if _, ok := pending[row.ClipHash]; ok {
@@ -576,7 +577,7 @@ func (p *Pipeline) requeueResumableSplitReviews(ctx context.Context) (int, error
 	return n, nil
 }
 
-// requeueLegacyQuality finds only the recognisable pre-quality state: a FILED pipeline row whose
+// requeueLegacyQuality finds only the recognisable pre-quality state: a Ready pipeline row whose
 // media sidecar proves the mezzanine encode completed but has no quality report. It resets the row
 // to transcode without clearing the marker or any clip metadata; TranscodeStage therefore performs
 // a detector-only decode. Review/rejected/operator-dismissed rows are decisions and are untouched.
@@ -590,7 +591,7 @@ func (p *Pipeline) requeueLegacyQuality(ctx context.Context) (int, error) {
 	}
 	n := 0
 	for _, row := range rows {
-		if row.Disposition != DispositionFiled {
+		if row.Disposition != DispositionReady {
 			continue
 		}
 		clip, found, err := p.clips.GetClip(ctx, row.ClipHash)
@@ -744,7 +745,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		// Six copies of that check is six chances for a new rung to forget it, and forgetting it
 		// is silent. One rule, stated once, and a new rung inherits it by existing.
 		if clip.IsComposite && row.Stage != StageProbe && row.Stage != StageSplit {
-			row.Record(row.Stage, StatusSkipped, "a compilation is cut up rather than filed", row.Attempts, p.now().UTC())
+			row.Record(row.Stage, StatusSkipped, "a compilation is completed after its segments are prepared", row.Attempts, p.now().UTC())
 			if done := p.step(&row); done {
 				break
 			}
@@ -878,7 +879,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 	}
 	if clip.IsComposite {
 		// A completed container leaves the conveyor but never becomes Ready or playable.
-		row.Disposition = DispositionFiled
+		row.Disposition = DispositionComplete
 		return row.Disposition, p.persist(ctx, row, clip)
 	}
 	// The terminal write is detached like ordinary persistence: finishing the ladder before the

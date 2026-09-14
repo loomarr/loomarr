@@ -14,7 +14,8 @@ type AcquisitionOutcomeDTO struct {
 	Enrolled      int `json:"enrolled"`
 	Preparing     int `json:"preparing"`
 	NeedsDecision int `json:"needsDecision"`
-	Admitted      int `json:"admitted"`
+	Ready         int `json:"ready"`
+	Complete      int `json:"complete"`
 	Rejected      int `json:"rejected"`
 	Dismissed     int `json:"dismissed"`
 }
@@ -128,7 +129,8 @@ func acquisitionRunDTO(run filler.AcquisitionRun) FillerAcquisitionRunDTO {
 		UpdatedAt: formatAcquisitionTime(run.UpdatedAt),
 		Outcome: AcquisitionOutcomeDTO{
 			Enrolled: run.Outcome.Enrolled, Preparing: run.Outcome.Preparing,
-			NeedsDecision: run.Outcome.NeedsDecision, Admitted: run.Outcome.Admitted,
+			NeedsDecision: run.Outcome.NeedsDecision, Ready: run.Outcome.Ready,
+			Complete: run.Outcome.Complete,
 			Rejected: run.Outcome.Rejected, Dismissed: run.Outcome.Dismissed,
 		},
 		Artifacts: AcquisitionArtifactOutcomeDTO{
