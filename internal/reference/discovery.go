@@ -93,7 +93,7 @@ func (w *Web) Discover(ctx context.Context, label string) (Evidence, error) {
 		if member.PageID <= 0 {
 			return Evidence{}, errors.New("reference: invalid category member identity")
 		}
-		title := displayMemberTitle(member.Title)
+		title := member.Title
 		if title != "" && len(title) <= 120 {
 			titles = append(titles, positionedAnchor{position: i, value: title})
 		}
@@ -104,17 +104,6 @@ func (w *Web) Discover(ctx context.Context, label string) (Evidence, error) {
 	}
 	source := &url.URL{Scheme: "https", Host: "en.wikipedia.org", Path: "/wiki/" + strings.ReplaceAll(categoryTitle, " ", "_")}
 	return Evidence{URL: source.String(), Title: pageTitle, Excerpt: "Source category members observed for this request: " + strings.Join(anchors, "; "), TitleAnchors: anchors}, nil
-}
-
-// Wikipedia's parenthetical media disambiguators are not display-title words.
-// Removing one cannot choose a Catalog year or identity; that ambiguity remains
-// the caller's existing unfiltered exact-title check.
-func displayMemberTitle(title string) string {
-	name, suffix, found := strings.Cut(title, " (")
-	if found && strings.HasSuffix(suffix, ")") && (strings.Contains(suffix, "TV series") || strings.Contains(suffix, "television series")) {
-		return name
-	}
-	return title
 }
 
 func (w *Web) discoveryJSON(ctx context.Context, query url.Values, out any) error {

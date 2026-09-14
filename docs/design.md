@@ -1399,16 +1399,22 @@ not establish constituent membership. Retrieve its exact named category through 
 routing, redirect, timeout and response-size bounds. The category must include the discovered
 subject itself; only its direct article members become title anchors. Historical schedule tables,
 search snippets and unrelated links are not rosters. Category membership is observed for this
-request, not claimed as an immutable historical roster. Parenthetical TV-series disambiguators may
-be removed from display names. When an exact source title maps to multiple canonical Catalog
-identities, a single exact identity already present in the connected Library is the actionable
+request, not claimed as an immutable historical roster. Parenthetical TV-series disambiguators are
+removed from Catalog query and display names but retained as a series identity constraint. When an exact
+source title maps to multiple canonical Catalog identities, a single exact identity already present in
+the connected Library is the actionable
 identity for that request; unavailable namesakes cannot make an owned title ambiguous. No match or
 multiple owned exact identities still fails closed, and model-provided media/year filters cannot
 choose between them.
 No brand roster, model-authored URL, arbitrary crawler, or new runtime dependency is added.
 The discovery operation has one shared 10-second budget and at most two bounded GET operations
 (search and category members); its result is reused within that Suggest invocation. Keep up to 128
-source anchors as membership evidence, but at most eight source-prefetch Catalog lookups. Existing
+source anchors as membership evidence. Source prefetch may inspect at most 48 of those anchors so an
+alphabetical run of unavailable or ambiguous names cannot consume the usable-candidate allowance;
+the final prompt still receives at most 24 grounded candidates. That pool prioritizes resolved
+Library members before filling its remaining capacity with external candidates ordered by their
+available Catalog audience signal. This is a presentation priority inside already-proven
+membership, not evidence that popularity or Library presence establishes membership. Existing
 model-tool and membership-resolution operation budgets remain separate and unchanged. Evaluation attributes acknowledged model-tool operations to actual provider responses.
 Synthesized reference transcript entries do not become model operations; their real Catalog work
 remains in the independent Catalog operation ledger. Unexecuted final output is not a dispatched
@@ -1822,7 +1828,8 @@ no-grounded-title outcome, adds no selection or approval authority, and changes 
 `planner-release-gate-v10` retains the exact supplementary release cases, fixtures and gates while
 binding the same prompt. `planner-release-gate-v11` keeps those inputs and thresholds unchanged and
 binds `reference-source-v2`. `planner-release-gate-v12` keeps those inputs and thresholds unchanged
-and binds `reference-source-v3`; prior manifests remain immutable.
+and binds `reference-source-v3`. `planner-release-gate-v13` again preserves them while binding
+`reference-source-v4`; prior manifests remain immutable.
 
 The supplementary `planner-release-gate-v4` release replay retains v1's 18 synthetic cases,
 fixture bytes, acceptable members, hard negatives and thresholds, and binds them explicitly to the
@@ -1834,6 +1841,9 @@ successful Proposals from prior source behavior cannot be reused.
 `reference-source-v3` adds the date-omission guard at both producer boundaries. It likewise
 invalidates successful cached Proposals that could have accepted `kind: none` for an explicit date
 request.
+`reference-source-v4` broadens bounded source-roster inspection and preserves TV-series
+disambiguators as media-type evidence. It invalidates cached named-set Proposals built from a thin
+alphabetical prefix or an owned namesake of the wrong media type.
 Only the configured model is live in this replay; actual source discovery needs separate diagnostic
 and installed-journey evidence. This
 release holdout complements the full active certification corpus; its one-trial canary and

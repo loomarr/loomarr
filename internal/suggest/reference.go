@@ -20,6 +20,7 @@ import (
 
 const (
 	maxReferenceTitleQueries   = 8
+	maxReferenceRosterQueries  = 48
 	maxMembershipSourceQueries = 8
 	maxFinalSelectionPicks     = 8
 )
@@ -183,7 +184,8 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent, meaning
 }
 
 func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning, evidence reference.Evidence, hints []string) (referenceGrounding, bool, error) {
-	titles := boundedTitles(evidence.TitleAnchors, reference.MaxTitleAnchors)
+	rawTitles := boundedTitles(evidence.TitleAnchors, reference.MaxTitleAnchors)
+	titles, mediaTypes := referenceCatalogTitles(rawTitles)
 	if len(titles) == 0 {
 		return referenceGrounding{}, true, errors.New("reference contains no title anchors")
 	}
@@ -204,8 +206,10 @@ func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent,
 			return referenceGrounding{}, true, fmt.Errorf("search reference title %q: %w", title, searchErr)
 		}
 		exact := make([]catalog.Candidate, 0, len(candidates))
+		expectedMediaType := mediaTypes[strings.ToLower(title)]
 		for _, candidate := range candidates {
-			if sameExactTitle(candidate.Name, title) {
+			if sameExactTitle(candidate.Name, title) &&
+				(!expectedMediaType.Valid() || candidate.MediaType == expectedMediaType) {
 				exact = append(exact, candidate)
 			}
 		}
@@ -233,6 +237,7 @@ func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent,
 		candidates = append(candidates, candidate)
 	}
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(*intent), candidates, nil)
+	ranked.Candidates = prioritizeReferenceCandidatePool(ranked.Candidates)
 	if len(ranked.Candidates) > catalogSearchLimit {
 		ranked.Candidates = ranked.Candidates[:catalogSearchLimit]
 	}
@@ -685,6 +690,40 @@ func boundedReferenceTitles(values []string) []string {
 	return boundedTitles(values, maxReferenceTitleQueries)
 }
 
+// referenceCatalogTitles keeps a source article's TV-series disambiguator as
+// identity evidence while removing it from the Catalog query and display name.
+// Without the type constraint, an owned namesake movie can incorrectly win the
+// unambiguous-membership shortcut for a source member such as "Clueless (TV series)".
+func referenceCatalogTitles(values []string) ([]string, map[string]provision.MediaType) {
+	titles := make([]string, 0, len(values))
+	mediaTypes := make(map[string]provision.MediaType)
+	for _, value := range values {
+		name := value
+		mediaType := provision.MediaType("")
+		if base, suffix, found := strings.Cut(value, " ("); found && strings.HasSuffix(suffix, ")") {
+			disambiguator := strings.ToLower(strings.TrimSuffix(suffix, ")"))
+			if disambiguator == "tv series" || disambiguator == "television series" {
+				name = base
+				mediaType = provision.Series
+			}
+		}
+		name = strings.Join(strings.Fields(name), " ")
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if _, found := mediaTypes[key]; !found {
+			titles = append(titles, name)
+		}
+		if mediaType.Valid() {
+			mediaTypes[key] = mediaType
+		} else if _, found := mediaTypes[key]; !found {
+			mediaTypes[key] = ""
+		}
+	}
+	return titles, mediaTypes
+}
+
 func boundedTitles(values []string, limit int) []string {
 	seen := make(map[string]bool)
 	result := make([]string, 0, min(len(values), limit))
@@ -783,5 +822,25 @@ func prioritizedReferenceTitles(intent Intent, titles, hints []string) []string 
 			}
 		}
 	}
-	return boundedReferenceTitles(append(ordered, titles...))
+	return boundedTitles(append(ordered, titles...), maxReferenceRosterQueries)
+}
+
+// prioritizeReferenceCandidatePool keeps the household's already-owned members
+// visible in the bounded finalization context. Popularity orders only otherwise
+// equivalent, independently proven external members; it never proves membership.
+func prioritizeReferenceCandidatePool(candidates []catalog.Candidate) []catalog.Candidate {
+	ordered := append([]catalog.Candidate(nil), candidates...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].InLibrary != ordered[j].InLibrary {
+			return ordered[i].InLibrary
+		}
+		if ordered[i].VoteCount != ordered[j].VoteCount {
+			return ordered[i].VoteCount > ordered[j].VoteCount
+		}
+		if ordered[i].VoteAverage != ordered[j].VoteAverage {
+			return ordered[i].VoteAverage > ordered[j].VoteAverage
+		}
+		return false
+	})
+	return ordered
 }
