@@ -1,4 +1,6 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
+import type { Intent } from "@loomarr/api/models/intent";
 import { toProblem } from "@loomarr/api/mutator";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -38,6 +40,7 @@ const ChannelSuggestPanel = ({
   const { isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
   const [startedFresh, setStartedFresh] = useState(false);
+  const [edit, setEdit] = useState<ApprovalEditDTO | undefined>();
   const run = useSuggestionRun(initialJobId);
   const elapsed = useElapsed(run.isRunning);
   const runProblem = run.error == null ? undefined : toProblem(run.error);
@@ -51,6 +54,7 @@ const ChannelSuggestPanel = ({
         // Approval atomically created (or patched) the local channel and returned its required
         // id — navigate there so the operator lands on the channel it just committed.
         if (res.status === 200) {
+          setEdit(undefined);
           run.reset();
           onCreated(res.data.channelId);
         }
@@ -68,21 +72,37 @@ const ChannelSuggestPanel = ({
 
   const proposal = run.proposal;
   const startFresh = () => {
+    setEdit(undefined);
     run.reset();
     setStartedFresh(true);
     onStartFresh?.();
   };
+  const start = (intent: Intent) => {
+    setEdit(undefined);
+    run.start(intent);
+  };
+  const editDescription = () => {
+    setEdit(undefined);
+    run.reset(true);
+  };
+  const retry = () => {
+    setEdit(undefined);
+    run.retry();
+  };
+  const failureNeedsEdit = run.failure?.recoveryAction !== "retry_later";
+  const failureTitle =
+    run.failure?.recoveryAction === "simplify_request"
+      ? "Try a more specific description"
+      : failureNeedsEdit
+        ? "Adjust your description"
+        : "We couldn't finish this channel";
+  const failureMessage =
+    run.failure?.reason === "discovery_budget_exhausted"
+      ? "Loomarr found too many possible directions. Add a decade, genre, network, or a few example titles."
+      : (run.failure?.message ?? "Something interrupted this channel. Your description is still here.");
 
   return (
-    <section className={cn("flex flex-col gap-4 rounded-lg border border-border p-4", className)}>
-      <div>
-        <h2 className="font-semibold text-lg">Add a channel</h2>
-        <p className="text-muted-foreground text-sm">
-          Describe the channel you want. Loomarr grounds every pick against your library and TMDB, then you
-          review and approve before anything is built.
-        </p>
-      </div>
-
+    <section className={cn("flex flex-col gap-4", className)}>
       {/* Idle — the describe form (with optional constraints). Suppressed while a run is in
           flight OR has failed: a failed run shows the failure below with its own way back,
           so falling through to a blank form here would swallow the error the user needs. */}
@@ -90,7 +110,7 @@ const ChannelSuggestPanel = ({
         <IntentForm
           initialDescription={startedFresh ? undefined : initialIntent}
           initialIntent={run.intent}
-          onSubmit={run.start}
+          onSubmit={start}
           submitting={run.isRunning}
         />
       )}
@@ -133,33 +153,28 @@ const ChannelSuggestPanel = ({
       {/* Before the first frame lands the model is already loading and thinking, so
           "reasoning" is the honest default. It used to fall back to "searching", which
           announced a library search that had not started and could not be the slow part. */}
-      {run.isRunning && (
-        <GenerationProgress phase={run.phase ?? "reasoning"} round={run.round} elapsedSeconds={elapsed} />
-      )}
+      {run.isRunning && <GenerationProgress phase={run.phase ?? "reasoning"} elapsedSeconds={elapsed} />}
 
       {/* Failed — recovery copy is fixed by the authoritative Journey. Actions remain
           independently authorized by that Journey; guidance never grants a capability. */}
       {run.failed && (
-        <div className="flex flex-col gap-3">
-          <GenerationProgress
-            phase="failed"
-            round={run.round}
-            elapsedSeconds={elapsed}
-            error="Generation failed"
-          />
-          <div className="flex flex-col gap-1 text-sm">
-            <p className="text-muted-foreground">{run.failure?.message ?? "The run didn't finish."}</p>
-            {run.failure?.guidance && <p className="text-muted-foreground">{run.failure.guidance}</p>}
-          </div>
+        <div
+          role="alert"
+          className="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-lg border border-border bg-muted/35 p-4"
+        >
           <div>
-            {run.actions.includes("retry") && (
-              <Button variant="outline" size="sm" onClick={run.retry}>
-                Try again
+            <h3 className="font-medium">{failureTitle}</h3>
+            <p className="mt-1 text-muted-foreground text-sm">{failureMessage}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {run.actions.includes("edit") && (
+              <Button variant={failureNeedsEdit ? "default" : "outline"} size="sm" onClick={editDescription}>
+                {run.failure?.recoveryAction === "edit_reference" ? "Change reference" : "Edit description"}
               </Button>
             )}
-            {run.actions.includes("edit") && (
-              <Button variant="ghost" size="sm" onClick={() => run.reset(true)}>
-                {run.failure?.recoveryAction === "edit_reference" ? "Edit reference" : "Edit request"}
+            {run.actions.includes("retry") && (
+              <Button variant="outline" size="sm" onClick={retry}>
+                Try again
               </Button>
             )}
             {run.actions.includes("check_ai") && (
@@ -176,19 +191,23 @@ const ChannelSuggestPanel = ({
         <div className="flex flex-col gap-4">
           <ProposalReview
             proposal={proposal.proposal}
+            edit={edit}
             outlook={
               proposal.status === "submitted" ? (
                 <LiveProposalOutlook
                   id={proposal.id}
                   proposal={proposal.proposal}
-                  onAddVariety={approve.isPending || deny.isPending ? undefined : () => run.reset(true)}
+                  edit={edit}
+                  onAddVariety={approve.isPending || deny.isPending ? undefined : editDescription}
                 />
               ) : undefined
             }
-            status={proposal.status}
+            status={edit && proposal.status === "submitted" ? "partially-edited" : proposal.status}
+            selfService={isAdmin}
             busy={approve.isPending || deny.isPending}
-            onEditRequest={() => run.reset(true)}
-            onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: {} }) : undefined}
+            onEdit={isAdmin ? setEdit : undefined}
+            onEditRequest={editDescription}
+            onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: edit ?? {} }) : undefined}
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
           {(approve.error ?? deny.error) != null && (

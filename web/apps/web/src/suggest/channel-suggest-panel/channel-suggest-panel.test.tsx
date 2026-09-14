@@ -107,14 +107,14 @@ const PROPOSAL: ProposalDTO = {
 const stubSuggest = (
   opts: { proposals?: ProposalDTO[]; me?: MeBody; approveBody?: ApproveOutputBody } = {},
 ) => {
-  const approvals: string[] = [];
+  const approvals: { id: string; edit: unknown }[] = [];
   const submissions: unknown[] = [];
 
   server.use(
     getMeMockHandler(opts.me ?? ADMIN),
     // Approve — returns the created channel's id (what the panel navigates to).
-    getApproveProposalMockHandler(({ params }) => {
-      approvals.push(String(params.id));
+    getApproveProposalMockHandler(async ({ params, request }) => {
+      approvals.push({ id: String(params.id), edit: await request.json() });
       return opts.approveBody ?? { channelId: "ch_new123", enqueued: 0, status: "approved" };
     }),
     getSubmitProposalMockHandler(async ({ request }) => {
@@ -320,7 +320,7 @@ describe("ChannelSuggestPanel", () => {
     renderPanel(() => {});
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: "Edit request" }));
+    await user.click(await screen.findByRole("button", { name: "Change description" }));
     expect(await screen.findByLabelText("Channel intent")).toHaveValue("80s teen comedies");
     expect(approvals).toEqual([]);
     expect(submissions).toHaveLength(1);
@@ -371,9 +371,29 @@ describe("ChannelSuggestPanel", () => {
 
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: /approve/i }));
+    await user.click(await screen.findByRole("button", { name: /create channel/i }));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("ch_new123"));
+  });
+
+  it("creates the channel with the reviewer's exact title choices", async () => {
+    const user = userEvent.setup();
+    const editable: ProposalDTO = {
+      ...PROPOSAL,
+      proposal: {
+        ...PROPOSAL.proposal,
+        acquisitions: [{ mediaType: "movie", tmdbId: 1701, name: "Con Air", year: 1997, inLibrary: false }],
+      },
+    };
+    const { approvals } = stubSuggest({ proposals: [editable] });
+    renderPanel(() => {});
+
+    await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+    await user.click(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" }));
+    await user.click(screen.getByRole("button", { name: "Create channel" }));
+
+    await waitFor(() => expect(approvals).toEqual([{ id: "p-1", edit: { drop: ["movie:tmdb:9377"] } }]));
   });
 
   it("a member's approve is inert — no approve call fires (approval is admin-only, §7)", async () => {
@@ -387,9 +407,10 @@ describe("ChannelSuggestPanel", () => {
 
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: /approve/i }));
+    expect(await screen.findByText("Sent for approval")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /create channel/i })).not.toBeInTheDocument();
 
-    // No approve POST, no navigation — the control is wired to nothing for a member.
+    // No approve POST, no navigation — a member receives a read-only review.
     // ⚠ `approvals` is fed only by `POST /v1/proposals/:id/approve` — the per-proposal route the
     // panel would call. The old `includes("/approve")` would also have matched the BULK route.
     expect(approvals).toEqual([]);
@@ -404,10 +425,9 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     renderPanel(() => {});
 
-    // The failure is shown (GenerationProgress' failed step is an alert), with guidance…
+    // The failure replaces progress with one recovery surface.
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByText(/couldn't generate this channel/i)).toBeInTheDocument();
-    expect(screen.getByText(/if this continues, ask an administrator/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /check ai settings/i })).toHaveAttribute("href", "/settings/ai");
     // …and the describe form is NOT rendered underneath it (the silent-drop bug).
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
@@ -431,10 +451,33 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     renderPanel(() => {});
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/^Generation failed$/);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/We couldn't finish this channel/);
     expect(screen.getByText(/couldn't retrieve the catalog information/i)).toBeInTheDocument();
-    expect(screen.getByText(/check the title sources in Connections/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /check ai settings/i })).not.toBeInTheDocument();
+  });
+
+  it("turns a bounded-discovery failure into a useful edit-first recovery", async () => {
+    const reset = vi.fn();
+    runOverride = failedRun({
+      reset,
+      failure: {
+        code: "budget_exhausted",
+        message: "This request exceeded the bounded discovery budget.",
+        reason: "discovery_budget_exhausted",
+        recoveryAction: "simplify_request",
+        guidance: "Simplify the request and try again.",
+      },
+      actions: ["edit", "retry"],
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Try a more specific description");
+    expect(alert).toHaveTextContent(/Add a decade, genre, network, or a few example titles/);
+    expect(alert).not.toHaveTextContent(/bounded discovery budget/i);
+    await userEvent.click(screen.getByRole("button", { name: "Edit description" }));
+    expect(reset).toHaveBeenCalledWith(true);
   });
 });

@@ -61,6 +61,7 @@ interface MockBackend {
     // failed Journey did not try a forbidden channel write before rendering its recovery.
     channelCreationRequests: Record<string, unknown>[];
     approvalRequests: string[];
+    approvalEdits: Record<string, unknown>[];
   };
 }
 
@@ -78,6 +79,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     proposalJobRequests: [] as Record<string, unknown>[],
     channelCreationRequests: [] as Record<string, unknown>[],
     approvalRequests: [] as string[],
+    approvalEdits: [] as Record<string, unknown>[],
     proposals: (opts.pendingProposal ? [{ id: "prop-1", status: "submitted" }] : []) as Array<{
       id: string;
       status: string;
@@ -254,10 +256,18 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             status: "submitted",
             proposal: {
               intent: submission,
-              rationale: "Grounded against your library.",
-              lineup: [{ name: "Heat", year: 1995, mediaType: "movie", inLibrary: true }],
-              acquisitions: [],
-              alternates: [],
+              channelName: "Friday Night Action",
+              rationale: "A focused night of high-energy 90s action movies.",
+              lineup: [
+                { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true },
+                { name: "Point Break", year: 1991, mediaType: "movie", tmdbId: 1089, inLibrary: true },
+              ],
+              acquisitions: [
+                { name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false },
+              ],
+              alternates: [
+                { name: "Face/Off", year: 1997, mediaType: "movie", tmdbId: 754, inLibrary: false },
+              ],
               scores: {
                 version: 1,
                 themeFit: 1,
@@ -298,6 +308,11 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           mix: { core: 0, adjacent: 0, discovery: 0, unknown: 1 },
         }),
       );
+    }
+    if (path === "/v1/search" && method === "GET") {
+      return json(route, {
+        candidates: [{ name: "The Matrix", year: 1999, mediaType: "movie", tmdbId: 603, inLibrary: false }],
+      });
     }
     if (path === "/v1/proposals" && method === "GET") {
       // Shaped as the real ProposalDTO (`proposal.intent.description`, `.rationale`,
@@ -349,6 +364,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     if (path.endsWith("/approve") && method === "POST") {
       const id = path.split("/").at(-2) ?? "";
       state.approvalRequests.push(id);
+      state.approvalEdits.push(body());
       if (state.role !== "admin") {
         return json(route, { title: "Forbidden", detail: "Approving is an admin action." }, 403);
       }
