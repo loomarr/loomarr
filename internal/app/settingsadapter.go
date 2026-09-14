@@ -192,6 +192,10 @@ func (a settingsAdapter) Features(ctx context.Context) map[string]bool {
 	}
 }
 
+func (a settingsAdapter) MissingRequirements(_ context.Context, feature string) []string {
+	return a.svc.MissingRequired(settings.Feature(feature))
+}
+
 func (a settingsAdapter) RegenerateSecret(ctx context.Context, name string) (string, error) {
 	g := settings.GeneratedSecret(name)
 	value, err := a.secrets.Regenerate(ctx, g)

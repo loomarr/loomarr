@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { roundOf } from "../round";
+import { clearSuggestionDraft, readSuggestionDraft, writeSuggestionDraft } from "../suggestion-draft";
 import type { SuggestionRun } from "./use-suggestion-run.type";
 
 const ACTIVE_JOB_KEY = "loomarr.activeProposalJob";
@@ -28,7 +29,9 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
   );
   // Keep the complete intent after an authorized edit clears the finished job. The form must
   // retain constraints; its description alone is not an honest retry of the request.
-  const [intent, setIntent] = useState<Intent | undefined>();
+  const [intent, setIntent] = useState<Intent | undefined>(() =>
+    initialJobId === undefined ? readSuggestionDraft() : undefined,
+  );
   const [phase, setPhase] = useState<SuggestionPhase | undefined>();
   const [round, setRound] = useState<number | undefined>();
 
@@ -61,9 +64,22 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
   };
   const start = (intent: Intent) => {
     setIntent(intent);
+    // The POST can reject before it creates a durable Proposal Job (for example when
+    // TMDB grounding is missing). Keep the complete validated Intent across the setup
+    // round trip until a Job exists to own it.
+    writeSuggestionDraft(intent);
     setPhase(undefined);
     setRound(undefined);
-    submit.mutate({ data: intent }, { onSuccess: (res) => res.status === 200 && setJobId(res.data.jobId) });
+    submit.mutate(
+      { data: intent },
+      {
+        onSuccess: (res) => {
+          if (res.status !== 200) return;
+          clearSuggestionDraft();
+          setJobId(res.data.jobId);
+        },
+      },
+    );
   };
 
   return {
@@ -83,7 +99,10 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
       setJobId(undefined);
       setPhase(undefined);
       setRound(undefined);
-      if (!preserveIntent) setIntent(undefined);
+      if (!preserveIntent) {
+        setIntent(undefined);
+        clearSuggestionDraft();
+      }
     },
   };
 };

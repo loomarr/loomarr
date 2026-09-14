@@ -1,13 +1,15 @@
+import * as setupApi from "@loomarr/api/endpoints/setup";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";
 import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
 import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { useLoomarrEventListener } from "@/events/events-provider";
 
 type RoleOption = {
@@ -112,6 +114,7 @@ const AiModelSettings = ({
   transcriptionProvider = "whisper",
   transcriptionModel = "openai/whisper-large-v3",
   onRoleSettingChange,
+  tmdbConfigured,
 }: {
   provider?: string;
   baseUrl?: string;
@@ -122,6 +125,7 @@ const AiModelSettings = ({
   transcriptionProvider?: string;
   transcriptionModel?: string;
   onRoleSettingChange?: (key: string, value: string) => void;
+  tmdbConfigured?: boolean;
 }) => {
   const queryClient = useQueryClient();
   const [pulling, setPulling] = useState<{ tag: string; percent?: number }>();
@@ -150,6 +154,7 @@ const AiModelSettings = ({
   // A model became active: refresh our own status AND notify the host (setup-status, etc.).
   const modelChanged = () => {
     invalidate();
+    void queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() });
     onModelChange?.();
   };
 
@@ -242,10 +247,14 @@ const AiModelSettings = ({
     const modelReady = Boolean(
       status.model && activeProvider?.models?.some((model) => model.id === status.model && model.tools),
     );
-    const lineupProviders = hosted.map((candidate) => ({
-      ...candidate,
-      models: candidate.models?.filter((model) => model.tools),
-    }));
+    const lineupProviders = activeProvider
+      ? [
+          {
+            ...activeProvider,
+            models: activeProvider.models?.filter((model) => model.tools),
+          },
+        ]
+      : [];
     lineup = (
       <div className="flex flex-col gap-3">
         {select.error != null && <ErrorState error={select.error} />}
@@ -269,7 +278,7 @@ const AiModelSettings = ({
               <p role="status" className="text-lock text-sm">
                 {activeProvider.label} credentials authorized.{" "}
                 {modelReady
-                  ? `${status.model} is ready for lineup suggestions.`
+                  ? `${status.model} is selected as the lineup model.`
                   : "Choose a tool-capable lineup model to finish AI setup."}
               </p>
             )}
@@ -382,41 +391,43 @@ const AiModelSettings = ({
 
   return (
     <div className="flex flex-col gap-4">
-      <section
-        aria-labelledby="automatic-model-policy"
-        className="rounded-lg border border-border bg-static-900 p-5"
-      >
-        <h2 id="automatic-model-policy" className="font-display font-semibold text-xl">
-          Automatic model policy
-        </h2>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Loomarr routes lineup planning, filler text, frames, video, and transcription independently using
-          the last certified compatibility and quality policy. You do not need to maintain a model matrix.
-        </p>
-        <p className="mt-3 text-sm">
-          {status.model
-            ? `Current lineup route: ${status.model}. Existing manual choices remain unverified overrides until a certified policy replaces them.`
-            : "No lineup route is active yet. Connect an AI provider; Loomarr will keep filler work held until a compatible route is available."}
-        </p>
-      </section>
-      <section
-        aria-labelledby="role-lineup"
-        className="flex flex-col gap-3 rounded-md border border-border p-3"
-      >
+      <section aria-labelledby="role-lineup" className="flex flex-col gap-3 border-border border-t pt-4">
         <div>
-          <h3 id="role-lineup" className="font-medium text-sm">
-            Provider and current model
+          <h3 id="role-lineup" className="font-semibold text-base">
+            Choose a lineup model
           </h3>
           <p className="text-muted-foreground text-sm">
-            Connect the AI service Loomarr can use now. Certified automatic routes will replace this
-            unverified choice when available.
+            Loomarr uses this model to plan channel suggestions. It must support tool calling.
           </p>
         </div>
         {lineup}
       </section>
+      {tmdbConfigured !== undefined && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 p-3">
+          <div>
+            <p className="font-medium text-sm">
+              {tmdbConfigured ? "TMDB key configured" : "TMDB grounding is still needed"}
+            </p>
+            <p className="text-muted-foreground text-sm">
+              {tmdbConfigured
+                ? "Loomarr can use TMDB to ground channel suggestions in real titles."
+                : "Your AI connection is separate. Connect TMDB before building a channel from a description."}
+            </p>
+          </div>
+          {!tmdbConfigured && (
+            <Link
+              to="/settings/connections"
+              search={{ focus: "tmdb" }}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Connect TMDB
+            </Link>
+          )}
+        </section>
+      )}
       <CollapsibleSection
-        title="Advanced model overrides"
-        description="Replace individual filler routes. Overrides are recorded as unverified and never inherit certification."
+        title="Advanced model roles"
+        description="Optionally choose separate models for filler vision and transcription."
       >
         <div className="flex flex-col gap-4">
           <RolePicker

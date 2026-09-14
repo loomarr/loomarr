@@ -42,6 +42,7 @@ const ChannelSuggestPanel = ({
   const elapsed = useElapsed(run.isRunning);
   const runProblem = run.error == null ? undefined : toProblem(run.error);
   const aiUnconfigured = runProblem?.type === "feature_not_configured";
+  const groundingUnconfigured = runProblem?.type === "grounding_not_configured";
 
   const approve = proposalsApi.useApproveProposal({
     mutation: {
@@ -95,16 +96,34 @@ const ChannelSuggestPanel = ({
       )}
 
       {run.error != null &&
-        (aiUnconfigured ? (
+        (aiUnconfigured || groundingUnconfigured ? (
           <div role="alert" className="rounded-lg border border-border bg-muted/40 p-4">
-            <p className="font-medium">Connect AI to describe a channel</p>
-            <p className="mt-1 text-muted-foreground text-sm">
-              This needs a configured AI provider and a selected tool-capable lineup model. Your description
-              is still here, so you can return and submit it after setup.
+            <p className="font-medium">
+              {groundingUnconfigured ? "Connect TMDB to build this channel" : "Finish AI setup"}
             </p>
-            <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
-              Open AI settings
-            </Link>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {groundingUnconfigured
+                ? isAdmin
+                  ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
+                  : "AI is connected, but an administrator needs to connect TMDB before Loomarr can match your description to real titles. Your draft is saved."
+                : isAdmin
+                  ? "Connect a provider and choose a lineup model. Your draft is saved."
+                  : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
+            </p>
+            {isAdmin &&
+              (groundingUnconfigured ? (
+                <Link
+                  to="/settings/connections"
+                  search={{ focus: "tmdb" }}
+                  className={buttonVariants({ variant: "link", size: "sm" })}
+                >
+                  Connect TMDB
+                </Link>
+              ) : (
+                <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
+                  Set up AI
+                </Link>
+              ))}
           </div>
         ) : (
           <ErrorState error={run.error} />
@@ -122,7 +141,12 @@ const ChannelSuggestPanel = ({
           independently authorized by that Journey; guidance never grants a capability. */}
       {run.failed && (
         <div className="flex flex-col gap-3">
-          <GenerationProgress phase="failed" round={run.round} elapsedSeconds={elapsed} />
+          <GenerationProgress
+            phase="failed"
+            round={run.round}
+            elapsedSeconds={elapsed}
+            error="Generation failed"
+          />
           <div className="flex flex-col gap-1 text-sm">
             <p className="text-muted-foreground">{run.failure?.message ?? "The run didn't finish."}</p>
             {run.failure?.guidance && <p className="text-muted-foreground">{run.failure.guidance}</p>}
@@ -130,7 +154,7 @@ const ChannelSuggestPanel = ({
           <div>
             {run.actions.includes("retry") && (
               <Button variant="outline" size="sm" onClick={run.retry}>
-                {run.failure?.recoveryAction === "retry_later" ? "Try again later" : "Try again"}
+                Try again
               </Button>
             )}
             {run.actions.includes("edit") && (

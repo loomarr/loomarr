@@ -155,10 +155,51 @@ func TestWorkflowInspectFailedMapsAllowlistedTerminals(t *testing.T) {
 	}
 }
 
+func TestWorkflowInspectCatalogFailureDoesNotSendAdminToAISettings(t *testing.T) {
+	t.Parallel()
+
+	trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: suggest.TerminalRetrievalFailure}
+	workflow := newWorkflow(&recordingRepository{record: Record{
+		Version: WorkflowVersion1, JobID: "job-catalog-failed", OwnerID: "admin-1", Status: JobFailed,
+		FailureCode: FailureGenerationFailed, FailureTrace: trace,
+		Attempts: []Attempt{{Version: WorkflowVersion1, Number: 1, Status: AttemptFailed, Failure: &Failure{Code: FailureGenerationFailed, Trace: trace}}},
+	}})
+
+	journey, err := workflow.Inspect(context.Background(), Viewer{UserID: "admin-1", Admin: true}, "job-catalog-failed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range journey.Actions {
+		if action == ActionCheckAI {
+			t.Fatalf("catalog failure actions = %v, must not send the operator to AI settings", journey.Actions)
+		}
+	}
+}
+
+func TestWorkflowInspectProviderFailureOffersAdminAISettings(t *testing.T) {
+	t.Parallel()
+
+	trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: suggest.TerminalProviderFailure}
+	workflow := newWorkflow(&recordingRepository{record: Record{
+		Version: WorkflowVersion1, JobID: "job-provider-failed", OwnerID: "admin-1", Status: JobFailed,
+		FailureCode: FailureGenerationFailed, FailureTrace: trace,
+		Attempts: []Attempt{{Version: WorkflowVersion1, Number: 1, Status: AttemptFailed, Failure: &Failure{Code: FailureGenerationFailed, Trace: trace}}},
+	}})
+
+	journey, err := workflow.Inspect(context.Background(), Viewer{UserID: "admin-1", Admin: true}, "job-provider-failed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Action{ActionRetry, ActionCheckAI}
+	if len(journey.Actions) != len(want) || journey.Actions[0] != want[0] || journey.Actions[1] != want[1] {
+		t.Fatalf("provider failure actions = %v, want %v", journey.Actions, want)
+	}
+}
+
 func assertFailureCopy(t *testing.T, terminal string, failure *Failure) {
 	t.Helper()
 	want := map[string][2]string{
-		suggest.TerminalRetrievalFailure:    {"Loomarr couldn't retrieve the catalog information needed for this request.", "Try again later; ask an administrator to check AI settings if this keeps happening."},
+		suggest.TerminalRetrievalFailure:    {"Loomarr couldn't retrieve the catalog information needed for this request.", "If this keeps happening, check the title sources in Connections."},
 		suggest.TerminalReferenceUnreadable: {"Loomarr couldn't read a reference for this request.", "Check that the reference is a public page that does not require sign-in, or provide a few example titles and try again."},
 		suggest.TerminalInvalidToolCalls:    {"The AI provider did not produce a usable catalog-search instruction.", "Try again later; ask an administrator to check AI settings if this keeps happening."},
 	}[terminal]
@@ -420,10 +461,10 @@ func TestWorkflowInspectFailureReturnsSafeGuidanceAndRoleActions(t *testing.T) {
 			wantActions: []Action{ActionRetry},
 		},
 		{
-			name: "admin may inspect AI configuration", code: FailureGenerationFailed,
+			name: "unclassified admin failure does not invent AI blame", code: FailureGenerationFailed,
 			viewer: Viewer{Admin: true}, wantCode: FailureGenerationFailed,
 			wantMessage: "Loomarr couldn't generate this channel. Try again later.",
-			wantActions: []Action{ActionRetry, ActionCheckAI},
+			wantActions: []Action{ActionRetry},
 		},
 		{
 			name: "unknown persisted code fails safe", code: "future_provider_detail",

@@ -52,7 +52,7 @@ const RequestWithoutProposal = ({ journey }: { journey: ProposalJourneyDTO }) =>
           search={{ job: journey.jobId }}
           className={buttonVariants({ variant: "link", size: "sm", className: "w-fit px-0" })}
         >
-          {journey.failure?.recoveryAction === "retry_later" ? "Try again later" : "Try again"}
+          Try again
         </Link>
       )}
     </Card>

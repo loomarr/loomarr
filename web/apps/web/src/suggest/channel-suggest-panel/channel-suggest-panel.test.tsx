@@ -206,7 +206,7 @@ describe("ChannelSuggestPanel", () => {
             title: "AI isn't set up",
             detail: "Connect an AI provider in Settings → AI to build channels from a sentence.",
           },
-          { status: 501 },
+          { status: 409 },
         ),
       ),
     );
@@ -216,11 +216,67 @@ describe("ChannelSuggestPanel", () => {
     await user.type(intent, "Saturday morning cartoons");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      /configured AI provider.*tool-capable lineup model/i,
-    );
-    expect(screen.getByRole("link", { name: /open ai settings/i })).toHaveAttribute("href", "/settings/ai");
+    expect(await screen.findByRole("alert")).toHaveTextContent(/connect a provider.*choose a lineup model/i);
+    expect(screen.getByRole("link", { name: /set up ai/i })).toHaveAttribute("href", "/settings/ai");
     expect(intent).toHaveValue("Saturday morning cartoons");
+  });
+
+  it("keeps configured AI truthful and routes a missing grounding key to TMDB", async () => {
+    const user = userEvent.setup();
+    stubSuggest();
+    server.use(
+      http.post("*/v1/proposals", () =>
+        HttpResponse.json(
+          {
+            type: "grounding_not_configured",
+            title: "TMDB is needed for channel suggestions",
+            detail:
+              "Connect TMDB in Settings → Connections so Loomarr can match this channel description to real titles.",
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const first = renderPanel(() => {});
+
+    await user.type(await screen.findByLabelText("Channel intent"), "Saturday morning cartoons");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/AI is connected.*TMDB/i);
+    expect(alert).not.toHaveTextContent(/AI isn't set up|Connect AI/i);
+    expect(screen.getByRole("link", { name: /connect TMDB/i })).toHaveAttribute(
+      "href",
+      "/settings/connections?focus=tmdb",
+    );
+
+    first.unmount();
+    renderPanel(() => {});
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue("Saturday morning cartoons");
+  });
+
+  it("gives members administrator guidance instead of an unusable settings link", async () => {
+    const user = userEvent.setup();
+    stubSuggest({ me: MEMBER });
+    server.use(
+      http.post("*/v1/proposals", () =>
+        HttpResponse.json(
+          {
+            type: "grounding_not_configured",
+            title: "TMDB is needed for channel suggestions",
+            detail: "Connect TMDB in Settings → Connections.",
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    renderPanel(() => {});
+
+    await user.type(await screen.findByLabelText("Channel intent"), "Saturday morning cartoons");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/administrator needs to connect TMDB/i);
+    expect(screen.queryByRole("link", { name: /connect TMDB/i })).not.toBeInTheDocument();
   });
 
   // Moved here when `/suggest` folded into the Guide header (§12) and its route-level suite
@@ -359,5 +415,26 @@ describe("ChannelSuggestPanel", () => {
     // Try again re-submits the preserved Intent through a fresh caller-owned Job.
     await userEvent.click(screen.getByRole("button", { name: /try again/i }));
     expect(retry).toHaveBeenCalled();
+  });
+
+  it("presents a catalog failure once with a direct retry action", async () => {
+    runOverride = failedRun({
+      failure: {
+        code: "generation_failed",
+        message: "Loomarr couldn't retrieve the catalog information needed for this request.",
+        reason: "retrieval_unavailable",
+        recoveryAction: "retry_later",
+        guidance: "If this keeps happening, check the title sources in Connections.",
+      },
+      actions: ["retry"],
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/^Generation failed$/);
+    expect(screen.getByText(/couldn't retrieve the catalog information/i)).toBeInTheDocument();
+    expect(screen.getByText(/check the title sources in Connections/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /check ai settings/i })).not.toBeInTheDocument();
   });
 });

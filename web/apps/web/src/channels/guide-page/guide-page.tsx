@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { cn } from "@/lib/utils";
 import { ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
+import { clearSuggestionDraft, readSuggestionDraft } from "@/suggest/suggestion-draft";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
 import type { GuidePageProps } from "./guide-page.type";
@@ -123,7 +124,7 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   // Opens on arrival when the wizard handed off a template (§13), so the operator lands on a
   // filled form rather than a bare grid wondering where their pick went. Lazy initializer:
   // read once at mount, so closing it stays closed.
-  const [adding, setAdding] = useState(() => Boolean(initialIntent || initialJobId));
+  const [adding, setAdding] = useState(() => Boolean(initialIntent || initialJobId || readSuggestionDraft()));
 
   // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
   // panel with a template the operator already dismissed — and right after the wizard, on a
@@ -131,6 +132,7 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   // dismissal out of history: closing a panel is not a place you navigate back to.
   const closePanel = () => {
     setAdding(false);
+    clearSuggestionDraft();
     if (initialIntent || initialJobId) void navigate({ to: "/guide", search: {}, replace: true });
   };
 
