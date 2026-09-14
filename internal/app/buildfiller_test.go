@@ -108,6 +108,110 @@ func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t 
 	t.Fatalf("source %q disappeared instead of remaining visible as disabled", src.ID)
 }
 
+type fetchIngestorFunc func(context.Context, string, string, []string) (string, error)
+
+func (f fetchIngestorFunc) IngestSource(
+	ctx context.Context, sourceID, sourceKind string, urls []string,
+) (string, error) {
+	return f(ctx, sourceID, sourceKind, urls)
+}
+
+func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplicationAdapter(t *testing.T) {
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	st := testkit.MigratedSQLiteStore(t)
+
+	// Keep the production starter rows out of this exact due-set assertion. The application
+	// adapter still reads the real registry, policy columns, geography, and check-state columns.
+	seeded, err := st.ListFillerSources(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range seeded {
+		if err := st.SetFillerSourceEnabled(t.Context(), source.ID, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	addSource := func(id string, every *int, lastChecked time.Time) {
+		t.Helper()
+		source := store.NewFillerSource(id, "archive", id, id, now.Add(-24*time.Hour))
+		if err := st.UpsertFillerSource(t.Context(), source); err != nil {
+			t.Fatal(err)
+		}
+		if every != nil {
+			if err := st.SetFillerSourceFetchPolicy(t.Context(), id, every, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		leaseUntil := lastChecked.Add(-time.Minute)
+		claimed, err := st.ClaimFillerSourceCheck(
+			t.Context(), id, time.Time{}, lastChecked.Add(-2*time.Minute), leaseUntil,
+		)
+		if err != nil || !claimed {
+			t.Fatalf("seed check claim for %s = %v, %v", id, claimed, err)
+		}
+		if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, lastChecked); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	everyHour, everyTwelveHours := 3600, 12*3600
+	addSource("due-default", nil, now.Add(-6*time.Hour))
+	addSource("not-due-custom", &everyTwelveHours, now.Add(-6*time.Hour))
+	addSource("due-custom", &everyHour, now.Add(-2*time.Hour))
+
+	var enumerated []string
+	fetcher := filler.NewFetcher(
+		fetchStoreAdapter{
+			st:         st,
+			fetchEvery: func() time.Duration { return 6 * time.Hour },
+			home:       func() filler.Geography { return filler.Geography{Country: "US"} },
+		},
+		enumeratorFunc(func(_ context.Context, source filler.FetchSource, _ int) ([]filler.DiscoveredRef, int, error) {
+			enumerated = append(enumerated, source.ID)
+			return nil, 0, nil
+		}),
+		fetchIngestorFunc(func(context.Context, string, string, []string) (string, error) {
+			t.Fatal("an empty provider listing must not enqueue an ingest")
+			return "", nil
+		}),
+		"",
+		filler.FetchLimits{
+			MaxPerRun:       func() int { return 10 },
+			MaxCatalogClips: func() int { return 2000 },
+			MaxDiskGB:       func() int { return 0 },
+		},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	).WithClock(func() time.Time { return now })
+
+	result, err := fetcher.Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, id := range enumerated {
+		got[id] = true
+	}
+	if result.SourcesPolled != 2 || !got["due-default"] || !got["due-custom"] || got["not-due-custom"] {
+		t.Fatalf("scheduled pass = %+v, enumerated %v; want due global/default and due custom only", result, enumerated)
+	}
+
+	byID := map[string]store.FillerSource{}
+	sources, err := st.ListFillerSources(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range sources {
+		byID[source.ID] = source
+	}
+	if !byID["due-default"].LastCheckedAt.Equal(now) || !byID["due-custom"].LastCheckedAt.Equal(now) {
+		t.Fatalf("due check state was not committed at the controlled clock: %+v", byID)
+	}
+	if !byID["not-due-custom"].LastCheckedAt.Equal(now.Add(-6 * time.Hour)) {
+		t.Fatalf("not-due source was advanced: %+v", byID["not-due-custom"])
+	}
+}
+
 func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 	argsFile := filepath.Join(t.TempDir(), "args")
 	t.Setenv("LOOMARR_YTDLP_ARGS", argsFile)

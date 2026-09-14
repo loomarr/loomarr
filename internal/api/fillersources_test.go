@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -262,6 +263,9 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 	}
 	if projected.AutomaticDownloads == nil || projected.AutomaticDownloads.NextCheckAt != "" {
 		t.Fatalf("automatic downloads = %+v, want policy summary without a promised check", projected.AutomaticDownloads)
+	}
+	if strings.Contains(strings.ToLower(projected.Detail), "automatically") {
+		t.Fatalf("detail = %q, must not promise automatic work while the source needs a location", projected.Detail)
 	}
 }
 

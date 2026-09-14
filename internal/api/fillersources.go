@@ -1405,17 +1405,15 @@ func providerNode(id, kind, label, detail string, enabled bool, children []Fille
 	return node
 }
 
-// sourceDetail is the operator-facing sentence under a registered source's name. Per KIND rather
-// than per row: it explains how that sort of source BEHAVES, which is a property of the kind.
+// sourceDetail is the operator-facing sentence under a registered source's name. Keep it true
+// across every readiness and policy state; the projected status and source workspace own whether
+// automatic downloads can currently run.
 func sourceDetail(kind, uri string) string {
 	switch kind {
 	case "archive":
-		return "Loomarr looks here automatically and checks new clips before they can play."
+		return "New clips are checked before they can play."
 	case "youtube":
-		// ⚠ Names the operator's own act. §10 records that Loomarr never recommends YouTube
-		// content itself; the playlist is one the operator supplied, and the copy should not
-		// imply Loomarr chose it.
-		return "Loomarr looks here automatically and checks new clips before they can play."
+		return "New clips are checked before they can play."
 	default:
 		return uri
 	}

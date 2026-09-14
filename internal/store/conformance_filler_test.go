@@ -2860,6 +2860,54 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if err := s.SetFillerSourceEnabled(ctx, "nope", false); !errors.Is(err, ErrNotFound) {
 		t.Errorf("set enabled on unknown = %v, want ErrNotFound", err)
 	}
+
+	// Restart durability is part of the scheduler contract, not merely a same-process read.
+	// Persist all three timing facts plus a source override, close the production store, reopen
+	// the same database, and prove the next process sees the exact state on both SQL backends.
+	restartSource := NewFillerSource("restart-policy", "archive", "restart_policy", "Restart policy", created)
+	if err := s.UpsertFillerSource(ctx, restartSource); err != nil {
+		t.Fatal(err)
+	}
+	restartEvery, restartMax := 12*60*60, 7
+	if err := s.SetFillerSourceFetchPolicy(ctx, restartSource.ID, &restartEvery, &restartMax); err != nil {
+		t.Fatal(err)
+	}
+	restartChecked := created.Add(12 * time.Hour)
+	restartLease := restartChecked.Add(-time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, restartSource.ID, time.Time{}, restartChecked.Add(-2*time.Minute), restartLease)
+	if err != nil || !claimed {
+		t.Fatalf("restart source success claim = %v, %v", claimed, err)
+	}
+	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, restartChecked); err != nil {
+		t.Fatal(err)
+	}
+	failureAt := restartChecked.Add(time.Hour)
+	failureLease := failureAt.Add(30 * time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, restartSource.ID, restartChecked, failureAt, failureLease)
+	if err != nil || !claimed {
+		t.Fatalf("restart source failure claim = %v, %v", claimed, err)
+	}
+	restartRetry := failureAt.Add(5 * time.Minute)
+	if err := s.FailFillerSourceCheck(ctx, restartSource.ID, failureLease, restartRetry); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := restartConformanceStore(t, s)
+	restarted, ok := findSource(t, reopened, restartSource.ID)
+	if !ok {
+		_ = reopened.Close()
+		t.Fatal("source check state disappeared across store restart")
+	}
+	if restarted.FetchEverySeconds == nil || *restarted.FetchEverySeconds != restartEvery ||
+		restarted.FetchMaxPerRun == nil || *restarted.FetchMaxPerRun != restartMax ||
+		!restarted.LastCheckedAt.Equal(restartChecked) || restarted.CheckFailureCount != 1 ||
+		!restarted.CheckRetryAt.Equal(restartRetry) || !restarted.CheckLeaseUntil.IsZero() {
+		_ = reopened.Close()
+		t.Fatalf("source policy/check state after restart = %+v", restarted)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // testFillerProviderPolicy protects the master-switch contract through the store's public seam on
@@ -5392,4 +5440,25 @@ func openSecondConformanceStore(t *testing.T, s Store) Store {
 		t.Fatalf("open second conformance store: %v", err)
 	}
 	return second
+}
+
+func restartConformanceStore(t *testing.T, s Store) Store {
+	t.Helper()
+	impl := s.(*sqlStore)
+	dialect, path, dsn := impl.dialect, impl.path, impl.dsn
+	if err := s.Close(); err != nil {
+		t.Fatalf("close conformance store for restart: %v", err)
+	}
+	if dialect == DialectPostgres {
+		reopened, err := openPostgres(t.Context(), dsn)
+		if err != nil {
+			t.Fatalf("reopen Postgres conformance store: %v", err)
+		}
+		return reopened
+	}
+	reopened, err := Open(t.Context(), "sqlite://"+path, true)
+	if err != nil {
+		t.Fatalf("reopen SQLite conformance store: %v", err)
+	}
+	return reopened
 }
