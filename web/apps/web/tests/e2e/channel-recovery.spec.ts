@@ -64,15 +64,15 @@ test("a failed builder journey preserves the complete intent through authorized 
   await page.getByLabel("Must exclude").fill("clowns");
 
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
+  await expect(page.getByText("Adjust your description")).toBeVisible();
   await expect(page.getByText("No grounded titles matched this request.")).toBeVisible();
-  await expect(page.getByText("Broaden the request or add examples from your library.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit request" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit description" })).toBeVisible();
   await expect.poll(() => mock.state.proposalJobRequests).toHaveLength(1);
 
   // The Journey, rather than a client guess, granted this action. Editing must restore every
   // persisted constraint before the operator sends the next request.
-  await page.getByRole("button", { name: "Edit request" }).click();
+  await page.getByRole("button", { name: "Edit description" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("90s action movies");
   await page.getByRole("button", { name: "Add constraints" }).click();
   await expect(page.getByLabel("Era")).toHaveValue("1990s");
@@ -106,7 +106,48 @@ test("a failed builder journey preserves the complete intent through authorized 
   expect(mock.state.enqueued).toEqual([]);
 });
 
-test("starting over clears a deep-linked Journey so a reload is genuinely fresh", async ({ page }) => {
+test("a bounded-discovery failure offers a useful edit instead of an internal budget error", async ({
+  page,
+}) => {
+  await installMockBackend(page, { authed: true, role: "admin", failedProposalJourney: true });
+  await page.route("**/v1/proposal-jobs/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        version: 1,
+        jobId: "failed-job-1",
+        milestone: "failed",
+        intent: { description: "Create a TGIF channel" },
+        attempts: [],
+        failure: {
+          code: "budget_exhausted",
+          reason: "discovery_budget_exhausted",
+          recoveryAction: "simplify_request",
+          message: "This request exceeded the bounded discovery budget.",
+          guidance: "Simplify the request and try again.",
+        },
+        actions: ["edit", "retry"],
+        createdAt: "2026-09-07T12:00:00Z",
+        updatedAt: "2026-09-07T12:00:01Z",
+      }),
+    }),
+  );
+
+  await page.goto("/guide");
+  await page.getByRole("button", { name: "Add a channel" }).click();
+  await page.getByRole("textbox", { name: "Channel intent" }).fill("Create a TGIF channel");
+  await page.getByRole("button", { name: "Suggest a lineup" }).click();
+
+  const recovery = page.getByRole("alert");
+  await expect(recovery).toContainText("Try a more specific description");
+  await expect(recovery).toContainText("Add a decade, genre, network, or a few example titles");
+  await expect(recovery).not.toContainText("bounded discovery budget");
+  await page.getByRole("button", { name: "Edit description" }).click();
+  await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("Create a TGIF channel");
+});
+
+test("discarding clears a deep-linked Journey so a reload is genuinely fresh", async ({ page }) => {
   const mock = await installMockBackend(page, { authed: true, role: "admin", proposalJourney: true });
 
   // Seed a real persisted Journey, then enter through the same opaque `?job=` link used by
@@ -119,7 +160,7 @@ test("starting over clears a deep-linked Journey so a reload is genuinely fresh"
 
   await page.goto("/guide?job=proposal-job-1&intent=stale%20template");
   await expect(page.getByText("Heat")).toBeVisible();
-  await page.getByRole("button", { name: "Start over" }).click();
+  await page.getByRole("button", { name: "Discard" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
   await expect(page).toHaveURL(/\/guide$/);
 

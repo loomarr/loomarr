@@ -57,12 +57,32 @@ func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 
 	refined := intent
 	refined.RefineText = "more action"
-	if err := workflow.Requeue(ctx, second.JobID, refined, jobKindSuggest); err != nil {
+	if err := workflow.Revise(ctx, Viewer{UserID: "alice"}, second.JobID, refined); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("cross-owner revision = %v, want ErrForbidden", err)
+	}
+	if err := workflow.Revise(ctx, Viewer{UserID: "bob"}, second.JobID, refined); err != nil {
 		t.Fatal(err)
 	}
 	requeued, err := workflow.Inspect(ctx, Viewer{UserID: "bob"}, second.JobID)
-	if err != nil || requeued.Milestone != MilestoneGenerating || requeued.Intent.RefineText != "more action" || requeued.Proposal != nil {
+	if err != nil || requeued.Milestone != MilestoneGenerating || requeued.Intent.RefineText != "more action" ||
+		requeued.Proposal == nil || requeued.Proposal.ID != second.CachedProposal.ID {
 		t.Fatalf("requeued Journey = %+v, %v", requeued, err)
+	}
+	if err := workflow.Revise(ctx, Viewer{UserID: "bob"}, second.JobID, refined); !errors.Is(err, ErrNotRevisable) {
+		t.Fatalf("concurrent revision = %v, want ErrNotRevisable", err)
+	}
+	revision, err := workflow.Claim(ctx, now, time.Minute, 1)
+	if err != nil || len(revision) != 1 || revision[0].JobID != second.JobID {
+		t.Fatalf("claim revision = %+v, %v", revision, err)
+	}
+	if err := workflow.Fail(ctx, revision[0], string(FailureGenerationFailed), "provider unavailable"); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := workflow.Inspect(ctx, Viewer{UserID: "bob", Admin: true}, second.JobID)
+	if err != nil || restored.Milestone != MilestoneAwaitingApproval || restored.Proposal == nil ||
+		restored.Proposal.ID != second.CachedProposal.ID || restored.Failure == nil ||
+		len(restored.Actions) != 3 || restored.Actions[0] != ActionReview {
+		t.Fatalf("failed revision Journey = %+v, %v", restored, err)
 	}
 }
 

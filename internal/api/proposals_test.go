@@ -1179,7 +1179,7 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	seedProposal(t, st, "p-stored")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-stored/approve", adminToken,
-		`{"drop":["movie:tmdb:100"]}`)
+		`{"drop":["movie:tmdb:100"],"add":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
 	}
@@ -1197,6 +1197,25 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 				t.Errorf("the approved proposal still contains the dropped title: %+v", approved)
 			}
 		}
+	}
+}
+
+func TestApprove_RejectsAnEditThatRemovesEveryTitle(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p-empty-edit")
+
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-empty-edit/approve", adminToken,
+		`{"drop":["movie:tmdb:100"]}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("approve empty edit -> %d, want 422: %s", resp.StatusCode, b)
+	}
+	p, err := st.GetProposal(context.Background(), "p-empty-edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Status != "submitted" {
+		t.Fatalf("proposal status = %q, want submitted after rejected edit", p.Status)
 	}
 }
 

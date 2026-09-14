@@ -54,7 +54,7 @@ const acquisitions: ProposalItem[] = [
 const meta = {
   title: "AI/ProposalEdit",
   component: ProposalEdit,
-  args: { onChange: noop, lineup, acquisitions },
+  args: { onChange: noop, lineup, acquisitions, showNote: true },
   decorators: [withStubbedSearch(), widthFrame(560)],
 } satisfies Meta<typeof ProposalEdit>;
 

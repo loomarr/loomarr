@@ -19,7 +19,7 @@ import { Caption } from "@/components/ui/caption";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { cn } from "@/lib/utils";
-import { ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
+import { type ChannelSuggestionStage, ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
 import { clearSuggestionDraft, readSuggestionDraft } from "@/suggest/suggestion-draft";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
@@ -125,6 +125,7 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   // filled form rather than a bare grid wondering where their pick went. Lazy initializer:
   // read once at mount, so closing it stays closed.
   const [adding, setAdding] = useState(() => Boolean(initialIntent || initialJobId || readSuggestionDraft()));
+  const [suggestionStage, setSuggestionStage] = useState<ChannelSuggestionStage>("describe");
 
   // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
   // panel with a template the operator already dismissed — and right after the wizard, on a
@@ -224,8 +225,34 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
-        title="Channels"
-        description="Every channel Loomarr manages, and what's on right now."
+        title={
+          !adding
+            ? "Channels"
+            : suggestionStage === "review"
+              ? "Review your channel"
+              : suggestionStage === "updating"
+                ? "Updating suggestions"
+                : suggestionStage === "generating"
+                  ? "Finding titles"
+                  : suggestionStage === "failed"
+                    ? "Channel suggestion"
+                    : isAdmin
+                      ? "Add a channel"
+                      : "Request a channel"
+        }
+        description={
+          adding
+            ? suggestionStage === "review"
+              ? "Choose what belongs. Nothing is created until you continue."
+              : suggestionStage === "updating"
+                ? "Your current lineup stays in place while Loomarr refreshes its suggestions."
+                : suggestionStage === "generating"
+                  ? "Loomarr is matching your brief to titles from your library and catalog."
+                  : suggestionStage === "failed"
+                    ? "Your brief is saved. Choose a recovery option below."
+                    : "Describe what you want to watch. You'll choose the final titles before anything is created."
+            : "Every channel Loomarr manages, and what's on right now."
+        }
         actions={
           /* THE origination door (§12) — for both roles, since `/suggest` folded in here and
             this is now the only one in the app. Toggles the ChannelSuggestPanel open below:
@@ -265,13 +292,14 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
             initialJobId={initialJobId}
             onCreated={onCreated}
             onStartFresh={startFresh}
+            onStageChange={setSuggestionStage}
           />
         </div>
       )}
 
       {/* Row 2 — the everyday guide questions stay visible: which day, where now is, and how
           much time is on screen. Precise planning controls live in the secondary View row. */}
-      {channels.length > 0 && (
+      {!adding && channels.length > 0 && (
         <>
           <div className="flex flex-wrap items-center gap-3.5 border-border/60 border-b px-7 py-2.5">
             <div className="flex items-center gap-1.75">
@@ -462,113 +490,114 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
         </>
       )}
 
-      {isEmpty ? (
-        // No channels yet is a real, expected state on a fresh install — not an error. The
-        // one next action (§6) opens the same inline panel the header toggles, worded for
-        // who is asking.
-        //
-        // ⚠ The LABEL matches the header's exactly. It used to read "Describe your first
-        // channel" while the header said "Add a channel" and the panel that opened was
-        // titled "Add a channel" — three names for one handler. One action, one name.
-        // ⚠ The MOTION lives here, behind everything, not on the test card itself.
-        //
-        // A scanline sweeping over the bars was tried first and removed: to register on a
-        // small element it had to be scaled up and brightened, at which point it dominated a
-        // surface whose whole job is to stay calm and point at one button. Tuning it was the
-        // wrong move; the premise was. A sweep is an attention-grabber, and "Dead air" is a
-        // RESTING state.
-        //
-        // Ambient snow is the honest read: a real test card is not still because nothing is
-        // happening, it is standing by. TvStatic is the design's own idle-surface layer (§1,
-        // and its doc names empty states specifically), it is `motion-safe:` gated, and the
-        // visual suite pins `reducedMotion: reduce` so it never rasterizes into a baseline.
-        // The bars stay crisp and STILL on top, so the anchor never moves.
-        <div className="relative flex flex-1 items-center justify-center overflow-hidden p-10">
-          {/* ⚠ NO extra dimming. TvStatic is ALREADY faint by construction — its snow layer
+      {!adding &&
+        (isEmpty ? (
+          // No channels yet is a real, expected state on a fresh install — not an error. The
+          // one next action (§6) opens the same inline panel the header toggles, worded for
+          // who is asking.
+          //
+          // ⚠ The LABEL matches the header's exactly. It used to read "Describe your first
+          // channel" while the header said "Add a channel" and the panel that opened was
+          // titled "Add a channel" — three names for one handler. One action, one name.
+          // ⚠ The MOTION lives here, behind everything, not on the test card itself.
+          //
+          // A scanline sweeping over the bars was tried first and removed: to register on a
+          // small element it had to be scaled up and brightened, at which point it dominated a
+          // surface whose whole job is to stay calm and point at one button. Tuning it was the
+          // wrong move; the premise was. A sweep is an attention-grabber, and "Dead air" is a
+          // RESTING state.
+          //
+          // Ambient snow is the honest read: a real test card is not still because nothing is
+          // happening, it is standing by. TvStatic is the design's own idle-surface layer (§1,
+          // and its doc names empty states specifically), it is `motion-safe:` gated, and the
+          // visual suite pins `reducedMotion: reduce` so it never rasterizes into a baseline.
+          // The bars stay crisp and STILL on top, so the anchor never moves.
+          <div className="relative flex flex-1 items-center justify-center overflow-hidden p-10">
+            {/* ⚠ NO extra dimming. TvStatic is ALREADY faint by construction — its snow layer
               carries `opacity-[0.11]` internally — so an `opacity-60` wrapper (which this had)
               multiplied out to roughly 6.6% over a near-black background, i.e. nothing you
               could see. The login and wizard shells both use it plain, and this matches them. */}
-          <TvStatic className="z-0" />
-          <EmptyState
-            className="relative z-10"
-            // SMPTE bars over "Dead air": a test card is literally what a set showed when
-            // nothing was broadcasting, so the motif IS the state rather than decoration
-            // applied to it. Reuses the shell's ColorBars (aria-hidden, purely decorative)
-            // rather than a new asset — it is the design's namesake strip, in the same
-            // tokens the rest of the UI uses for state.
-            //
-            // The scanline drifts down it on a slow loop: a sign of life on the one screen
-            // whose message is that nothing is on. `overflow-hidden` clips the sweep to the
-            // strip, and `motion-safe:` means a reduced-motion visitor simply gets the bars.
-            // The whole thing is aria-hidden, so none of it reaches assistive tech.
-            // ⚠ STILL, deliberately — the motion is the ambient layer behind this, never the
-            // card. A test card that jitters reads as a fault; one that holds while snow
-            // drifts behind it reads as standing by, which is what "Dead air" means.
-            //
-            // A test-card BLOCK rather than the sidebar's thin 200×14 strip: presence comes
-            // from size here, not movement. `h-16` on the wrapper with the bars told to fill
-            // it — ColorBars fixes its own height, and `cn` puts className last so the
-            // override wins.
-            icon={
-              <div className="h-16 w-50 overflow-hidden rounded-sm" aria-hidden>
-                <ColorBars size="lg" breathe className="h-full w-full" />
-              </div>
-            }
-            title="Dead air"
-            description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
-            action={{
-              label: isAdmin ? "Add a channel" : "Request a channel",
-              onClick: () => setAdding(true),
-            }}
-          />
-        </div>
-      ) : (
-        // The detail card floats over the grid rather than displacing it: inspecting a block
-        // must not reflow the schedule under the pointer.
-        <div className="relative flex min-h-0 flex-1">
-          <GuideGrid
-            channels={channels}
-            fromMs={body?.fromMs ?? from}
-            toMs={body?.toMs ?? to}
-            timezone={body?.timezone}
-            zoom={ZOOM_STOPS[zoomIndex]}
-            // The now-line belongs to TODAY. Drawing it on another day would mark an instant
-            // that is not in the window being shown.
-            nowMs={dayOffset === 0 ? nowMs : undefined}
-            onInspect={(a, _channelId, at) => {
-              setInspected(a);
-              if (a && at) setAnchor(at);
-            }}
-            onSelectChannel={(id) => navigate({ to: "/channels/$id", params: { id } })}
-            renderRowMenu={(ch) => (
-              <ChannelRowMenu channel={{ id: ch.channelId, name: ch.name, status: ch.status }} />
-            )}
-          />
-          {/* A portal keeps the readout clear of the Guide's overflow container. The actual
+            <TvStatic className="z-0" />
+            <EmptyState
+              className="relative z-10"
+              // SMPTE bars over "Dead air": a test card is literally what a set showed when
+              // nothing was broadcasting, so the motif IS the state rather than decoration
+              // applied to it. Reuses the shell's ColorBars (aria-hidden, purely decorative)
+              // rather than a new asset — it is the design's namesake strip, in the same
+              // tokens the rest of the UI uses for state.
+              //
+              // The scanline drifts down it on a slow loop: a sign of life on the one screen
+              // whose message is that nothing is on. `overflow-hidden` clips the sweep to the
+              // strip, and `motion-safe:` means a reduced-motion visitor simply gets the bars.
+              // The whole thing is aria-hidden, so none of it reaches assistive tech.
+              // ⚠ STILL, deliberately — the motion is the ambient layer behind this, never the
+              // card. A test card that jitters reads as a fault; one that holds while snow
+              // drifts behind it reads as standing by, which is what "Dead air" means.
+              //
+              // A test-card BLOCK rather than the sidebar's thin 200×14 strip: presence comes
+              // from size here, not movement. `h-16` on the wrapper with the bars told to fill
+              // it — ColorBars fixes its own height, and `cn` puts className last so the
+              // override wins.
+              icon={
+                <div className="h-16 w-50 overflow-hidden rounded-sm" aria-hidden>
+                  <ColorBars size="lg" breathe className="h-full w-full" />
+                </div>
+              }
+              title="Dead air"
+              description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
+              action={{
+                label: isAdmin ? "Add a channel" : "Request a channel",
+                onClick: () => setAdding(true),
+              }}
+            />
+          </div>
+        ) : (
+          // The detail card floats over the grid rather than displacing it: inspecting a block
+          // must not reflow the schedule under the pointer.
+          <div className="relative flex min-h-0 flex-1">
+            <GuideGrid
+              channels={channels}
+              fromMs={body?.fromMs ?? from}
+              toMs={body?.toMs ?? to}
+              timezone={body?.timezone}
+              zoom={ZOOM_STOPS[zoomIndex]}
+              // The now-line belongs to TODAY. Drawing it on another day would mark an instant
+              // that is not in the window being shown.
+              nowMs={dayOffset === 0 ? nowMs : undefined}
+              onInspect={(a, _channelId, at) => {
+                setInspected(a);
+                if (a && at) setAnchor(at);
+              }}
+              onSelectChannel={(id) => navigate({ to: "/channels/$id", params: { id } })}
+              renderRowMenu={(ch) => (
+                <ChannelRowMenu channel={{ id: ch.channelId, name: ch.name, status: ch.status }} />
+              )}
+            />
+            {/* A portal keeps the readout clear of the Guide's overflow container. The actual
               block is its anchor, and Base UI flips then shifts the card against the browser
               viewport — no row-number threshold can account for virtualization, browser
               height, or the different heights of programme and filler cards. */}
-          <TooltipPrimitive.Root open={inspected !== null && anchor !== null}>
-            <TooltipPrimitive.Portal>
-              <TooltipPrimitive.Positioner
-                anchor={anchor}
-                side="bottom"
-                align="start"
-                sideOffset={4}
-                positionMethod="fixed"
-                collisionBoundary={document.documentElement}
-                collisionPadding={8}
-                data-testid="guide-detail-positioner"
-                className="pointer-events-none z-40"
-              >
-                <TooltipPrimitive.Popup className="pointer-events-none">
-                  <GuideDetailCard airing={inspected} timezone={body?.timezone} />
-                </TooltipPrimitive.Popup>
-              </TooltipPrimitive.Positioner>
-            </TooltipPrimitive.Portal>
-          </TooltipPrimitive.Root>
-        </div>
-      )}
+            <TooltipPrimitive.Root open={inspected !== null && anchor !== null}>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Positioner
+                  anchor={anchor}
+                  side="bottom"
+                  align="start"
+                  sideOffset={4}
+                  positionMethod="fixed"
+                  collisionBoundary={document.documentElement}
+                  collisionPadding={8}
+                  data-testid="guide-detail-positioner"
+                  className="pointer-events-none z-40"
+                >
+                  <TooltipPrimitive.Popup className="pointer-events-none">
+                    <GuideDetailCard airing={inspected} timezone={body?.timezone} />
+                  </TooltipPrimitive.Popup>
+                </TooltipPrimitive.Positioner>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
+          </div>
+        ))}
     </div>
   );
 };

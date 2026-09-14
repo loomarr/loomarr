@@ -430,6 +430,189 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testProposalRevisionLifecycle(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	job := sampleJob("job-revision", "hash-original", now, now)
+	if err := s.CreateJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim original job = %+v, %v", claimed, err)
+	}
+	first := Proposal{
+		ID: "proposal-original", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
+		ProposalJSON: `{"lineup":[{"name":"First"}]}`, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.CommitSuggestionSuccess(ctx, job.ID, 1, first, now); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 1,
+		`{"description":"more variety"}`, "hash-revision-one", now, now); err != nil {
+		t.Fatal(err)
+	}
+	queued, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil || queued.Job.Status != "queued" || queued.Proposal == nil || queued.Proposal.ID != first.ID {
+		t.Fatalf("queued revision did not retain current proposal = (%+v, %v)", queued, err)
+	}
+
+	approval := first
+	approval.Status = "approved"
+	approval.ApprovedBy = "admin"
+	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
+		Proposal: approval, Channel: approvalChannel("ch-revision-active", job.ID, 151),
+	}); !errors.Is(err, ErrProposalRevisionActive) {
+		t.Fatalf("approval during revision = %v, want ErrProposalRevisionActive", err)
+	}
+	denial := first
+	denial.Status = "denied"
+	denial.ApprovedBy = "admin"
+	if err := s.CommitProposalDenial(ctx, denial); !errors.Is(err, ErrProposalRevisionActive) {
+		t.Fatalf("denial during revision = %v, want ErrProposalRevisionActive", err)
+	}
+
+	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 || claimed[0].Attempts != 2 {
+		t.Fatalf("claim first revision = %+v, %v", claimed, err)
+	}
+	if err := s.CommitSuggestionFailure(ctx, job.ID, 2, "provider timeout", "generation_failed", "", now); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil || failed.Job.Status != "failed" || failed.Proposal == nil || failed.Proposal.ID != first.ID || failed.Proposal.Status != "submitted" {
+		t.Fatalf("failed revision did not restore current proposal = (%+v, %v)", failed, err)
+	}
+
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 2,
+		`{"description":"more comedies"}`, "hash-revision-two", now, now); err != nil {
+		t.Fatalf("revise after failed replacement: %v", err)
+	}
+	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 || claimed[0].Attempts != 3 {
+		t.Fatalf("claim replacement revision = %+v, %v", claimed, err)
+	}
+	second := Proposal{
+		ID: "proposal-replacement", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
+		ProposalJSON: `{"lineup":[{"name":"Second"}]}`, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.CommitSuggestionSuccess(ctx, job.ID, 3, second, now); err != nil {
+		t.Fatal(err)
+	}
+
+	original, err := s.GetProposal(ctx, first.ID)
+	if err != nil || original.Status != "superseded" {
+		t.Fatalf("original proposal after replacement = (%+v, %v), want superseded", original, err)
+	}
+	current, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil || current.Proposal == nil || current.Proposal.ID != second.ID || current.Proposal.Status != "submitted" {
+		t.Fatalf("replacement proposal = (%+v, %v)", current, err)
+	}
+	queue, err := s.ListProposalsByStatus(ctx, "submitted")
+	if err != nil || len(queue) != 1 || queue[0].ID != second.ID {
+		t.Fatalf("approval queue after replacement = (%+v, %v)", queue, err)
+	}
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 3, `{}`, "stale", now, now); !errors.Is(err, ErrProposalNotRevisable) {
+		t.Fatalf("stale proposal revision = %v, want ErrProposalNotRevisable", err)
+	}
+}
+
+func testProposalRevisionFallbackApproval(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	job := sampleJob("job-revision-fallback", "hash-original", now, now)
+	if err := s.CreateJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim original job = %+v, %v", claimed, err)
+	}
+	proposal := Proposal{
+		ID: "proposal-fallback", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
+		ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.CommitSuggestionSuccess(ctx, job.ID, 1, proposal, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, proposal.ID, 1,
+		`{"description":"more variety"}`, "hash-revision", now, now); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim revision = %+v, %v", claimed, err)
+	}
+	if err := s.CommitSuggestionFailure(ctx, job.ID, 2, "provider timeout", "generation_failed", "", now); err != nil {
+		t.Fatal(err)
+	}
+
+	proposal.Status = "approved"
+	proposal.ApprovedBy = "admin"
+	proposal.UpdatedAt = now.Add(time.Second)
+	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
+		Proposal: proposal, Channel: approvalChannel("ch-revision-fallback", job.ID, 152),
+	}); err != nil {
+		t.Fatalf("approve preserved fallback: %v", err)
+	}
+	snapshot, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil || snapshot.Job.Status != "done" || snapshot.Proposal == nil ||
+		snapshot.Proposal.Status != "approved" || snapshot.Channel == nil ||
+		snapshot.Channel.ID != "ch-revision-fallback" || len(snapshot.Attempts) != 2 ||
+		snapshot.Attempts[1].Status != "failed" {
+		t.Fatalf("resolved fallback Journey snapshot = (%+v, %v)", snapshot, err)
+	}
+}
+
+func testProposalRevisionFallbackDenial(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	job := sampleJob("job-revision-discard", "hash-original", now, now)
+	if err := s.CreateJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim original job = %+v, %v", claimed, err)
+	}
+	proposal := Proposal{
+		ID: "proposal-discard", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
+		ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.CommitSuggestionSuccess(ctx, job.ID, 1, proposal, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, proposal.ID, 1,
+		`{"description":"more variety"}`, "hash-revision", now, now); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim revision = %+v, %v", claimed, err)
+	}
+	if err := s.CommitSuggestionFailure(ctx, job.ID, 2, "provider timeout", "generation_failed", "", now); err != nil {
+		t.Fatal(err)
+	}
+
+	proposal.Status = "denied"
+	proposal.ApprovedBy = "admin"
+	proposal.DenyReason = "No longer wanted"
+	proposal.UpdatedAt = now.Add(time.Second)
+	if err := s.CommitProposalDenial(ctx, proposal); err != nil {
+		t.Fatalf("deny preserved fallback: %v", err)
+	}
+	snapshot, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil || snapshot.Job.Status != "done" || snapshot.Proposal == nil ||
+		snapshot.Proposal.Status != "denied" || snapshot.Proposal.DenyReason != "No longer wanted" ||
+		len(snapshot.Attempts) != 2 || snapshot.Attempts[1].Status != "failed" {
+		t.Fatalf("discarded fallback Journey snapshot = (%+v, %v)", snapshot, err)
+	}
+}
+
 func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

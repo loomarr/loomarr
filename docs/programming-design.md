@@ -288,6 +288,11 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
   all three collections, so an alternate promoted later cannot silently default to a complete deck.
   Missing or client-injected modes therefore cannot cross the approval boundary; movies remain
   selector-free because episode selection does not apply to them.
+  A dropped provisioning key is filtered from lineup, acquisitions, and alternates before this
+  stamping step, so a title explicitly excluded during review cannot return as a backup. The same
+  gate rejects a human edit that leaves neither a lineup nor an acquisition title; a client-side
+  selected count is guidance, not the authority protecting against an empty edited Channel. An
+  automatic re-curation may approve a nil incoming delta because the existing Channel remains intact.
   Before approval, the proposal API exposes one read-only selection preview derived server-side
   from the same trusted Intent. Search-added series rows render that preview even when the proposal
   originally contained only movies. The client does not parse cues or submit the projection;

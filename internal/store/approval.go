@@ -109,6 +109,22 @@ func (s *sqlStore) commitProposalApproval(
 		}
 	}
 
+	// Proposal revision and approval serialize on the stable Job row. Generating
+	// a replacement temporarily closes the approval gate; a failed replacement
+	// leaves the old submitted proposal intact and terminal, so it can be approved.
+	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
+	if s.dialect == DialectPostgres {
+		jobStatusQuery += ` FOR UPDATE`
+	}
+	var jobStatus string
+	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), commit.Proposal.JobID).Scan(&jobStatus)
+	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
+		return 0, fmt.Errorf("%w: proposal %s", ErrProposalRevisionActive, commit.Proposal.ID)
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("approve proposal %s: read job status: %w", commit.Proposal.ID, err)
+	}
+
 	p := commit.Proposal
 	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE proposals SET job_id=?, status=?, created_by=?, approved_by=?, deny_reason=?,
@@ -121,6 +137,17 @@ func (s *sqlStore) commitProposalApproval(
 	}
 	if err := proposalDecisionResult(ctx, tx, s.ph(`SELECT status FROM proposals WHERE id = ?`), p.ID, result); err != nil {
 		return 0, err
+	}
+	if jobStatus == "failed" {
+		// The operator chose the preserved fallback after its replacement failed.
+		// Resolve the stable Journey in the same transaction as approval while
+		// retaining the failed Attempt as honest execution history.
+		if _, err := tx.ExecContext(ctx, s.ph(
+			`UPDATE jobs
+			    SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
+			  WHERE id=? AND status='failed'`), epoch(p.UpdatedAt), p.JobID); err != nil {
+			return 0, fmt.Errorf("approve proposal %s: resolve failed revision: %w", p.ID, err)
+		}
 	}
 
 	// The supersession guard must share the approval transaction. A check in the
@@ -327,14 +354,47 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 	if p.Status != "denied" {
 		return fmt.Errorf("deny proposal %s: terminal status is %q", p.ID, p.Status)
 	}
-	result, err := s.db.ExecContext(ctx, s.ph(
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("deny proposal %s: begin: %w", p.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
+	if s.dialect == DialectPostgres {
+		jobStatusQuery += ` FOR UPDATE`
+	}
+	var jobStatus string
+	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), p.JobID).Scan(&jobStatus)
+	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
+		return fmt.Errorf("%w: proposal %s", ErrProposalRevisionActive, p.ID)
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("deny proposal %s: read job status: %w", p.ID, err)
+	}
+	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE proposals SET status='denied', approved_by=?, deny_reason=?, updated_at=?
 		 WHERE id=? AND status='submitted'`),
 		p.ApprovedBy, p.DenyReason, epoch(p.UpdatedAt), p.ID)
 	if err != nil {
 		return fmt.Errorf("deny proposal %s: %w", p.ID, err)
 	}
-	return proposalDecisionResult(ctx, s.db, s.ph(`SELECT status FROM proposals WHERE id = ?`), p.ID, result)
+	if err := proposalDecisionResult(ctx, tx, s.ph(`SELECT status FROM proposals WHERE id = ?`), p.ID, result); err != nil {
+		return err
+	}
+	if jobStatus == "failed" {
+		// Dismissing the preserved fallback resolves the failed revision Journey
+		// just as approving it does, while the failed Attempt remains in history.
+		if _, err := tx.ExecContext(ctx, s.ph(
+			`UPDATE jobs
+			    SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
+			  WHERE id=? AND status='failed'`), epoch(p.UpdatedAt), p.JobID); err != nil {
+			return fmt.Errorf("deny proposal %s: resolve failed revision: %w", p.ID, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("deny proposal %s: commit: %w", p.ID, err)
+	}
+	return nil
 }
 
 type proposalStatusReader interface {

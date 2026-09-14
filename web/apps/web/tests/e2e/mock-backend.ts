@@ -57,10 +57,14 @@ interface MockBackend {
     // Exact bodies sent to the real proposal-submission endpoint. Recovery specs use this
     // as their outcome proof: an edit/retry must submit every intent constraint again.
     proposalJobRequests: Record<string, unknown>[];
+    // Same-Job revisions remain distinct from fresh submissions so a browser test
+    // can prove that editing a landed brief did not restart the journey.
+    proposalRevisionRequests: Array<{ jobId: string; intent: Record<string, unknown> }>;
     // Mutation telemetry is deliberately request-level: no UI assertion can prove that a
     // failed Journey did not try a forbidden channel write before rendering its recovery.
     channelCreationRequests: Record<string, unknown>[];
     approvalRequests: string[];
+    approvalEdits: Record<string, unknown>[];
   };
 }
 
@@ -76,8 +80,11 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     edits: {} as Record<string, string>,
     enqueued: [] as string[],
     proposalJobRequests: [] as Record<string, unknown>[],
+    proposalRevisionRequests: [] as Array<{ jobId: string; intent: Record<string, unknown> }>,
+    proposalRevisions: {} as Record<string, { intent: Record<string, unknown>; pendingJourneyReads: number }>,
     channelCreationRequests: [] as Record<string, unknown>[],
     approvalRequests: [] as string[],
+    approvalEdits: [] as Record<string, unknown>[],
     proposals: (opts.pendingProposal ? [{ id: "prop-1", status: "submitted" }] : []) as Array<{
       id: string;
       status: string;
@@ -204,6 +211,16 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       state.proposals.push({ id, status: "submitted" });
       return json(route, { jobId: `job-${id}` });
     }
+    if (path.startsWith("/v1/proposal-jobs/") && path.endsWith("/revise") && method === "POST") {
+      const jobId = path.split("/").at(-2) ?? "";
+      const intent = body();
+      state.proposalRevisionRequests.push({ jobId, intent });
+      // The first authoritative read after the accepted mutation is still
+      // generating and retains the submitted fallback. A later poll swaps in
+      // the replacement, just as the durable Job does in production.
+      state.proposalRevisions[jobId] = { intent, pendingJourneyReads: 1 };
+      return json(route, { jobId });
+    }
     if (path.startsWith("/v1/proposal-jobs/") && method === "GET") {
       const jobId = path.split("/").at(-1) ?? "";
       const submission = state.proposalJobRequests[Number(jobId.split("-").at(-1)) - 1];
@@ -235,11 +252,16 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         });
       }
       if (opts.proposalJourney && submission) {
+        const revisionState = state.proposalRevisions[jobId];
+        const revisionRunning = (revisionState?.pendingJourneyReads ?? 0) > 0;
+        if (revisionRunning && revisionState) revisionState.pendingJourneyReads -= 1;
+        const replacementReady = revisionState !== undefined && !revisionRunning;
+        const currentIntent = revisionState?.intent ?? submission;
         return json(route, {
           version: 1,
           jobId,
-          milestone: "awaiting_approval",
-          intent: submission,
+          milestone: revisionRunning ? "generating" : "awaiting_approval",
+          intent: currentIntent,
           attempts: [
             {
               version: 1,
@@ -248,16 +270,46 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               startedAt: "2026-09-07T12:00:00Z",
               completedAt: "2026-09-07T12:00:01Z",
             },
+            ...(revisionState
+              ? [
+                  {
+                    version: 1,
+                    number: 2,
+                    status: revisionRunning ? "running" : "succeeded",
+                    startedAt: "2026-09-07T12:01:00Z",
+                    ...(!revisionRunning ? { completedAt: "2026-09-07T12:01:01Z" } : {}),
+                  },
+                ]
+              : []),
           ],
           proposal: {
-            id: `proposal-${jobId}`,
+            id: replacementReady ? `proposal-${jobId}-revision` : `proposal-${jobId}`,
             status: "submitted",
             proposal: {
-              intent: submission,
-              rationale: "Grounded against your library.",
-              lineup: [{ name: "Heat", year: 1995, mediaType: "movie", inLibrary: true }],
-              acquisitions: [],
-              alternates: [],
+              intent: replacementReady ? currentIntent : submission,
+              channelName: replacementReady ? "Sci-Fi Action Mix" : "Friday Night Action",
+              rationale: "A focused night of high-energy 90s action movies.",
+              lineup: [
+                { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true },
+                { name: "Point Break", year: 1991, mediaType: "movie", tmdbId: 1089, inLibrary: true },
+              ],
+              acquisitions: [
+                ...(replacementReady
+                  ? [
+                      {
+                        name: "The Matrix",
+                        year: 1999,
+                        mediaType: "movie",
+                        tmdbId: 603,
+                        inLibrary: false,
+                      },
+                    ]
+                  : []),
+                { name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false },
+              ],
+              alternates: [
+                { name: "Face/Off", year: 1997, mediaType: "movie", tmdbId: 754, inLibrary: false },
+              ],
               scores: {
                 version: 1,
                 themeFit: 1,
@@ -275,9 +327,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               trace: { version: 1, surfacedTotal: 1, recordedTotal: 1, truncated: false, candidates: [] },
             },
           },
-          actions: ["review"],
+          actions: revisionRunning ? ["wait"] : ["review", "edit"],
           createdAt: "2026-09-07T12:00:00Z",
-          updatedAt: "2026-09-07T12:00:01Z",
+          updatedAt: replacementReady ? "2026-09-07T12:01:01Z" : "2026-09-07T12:00:01Z",
         });
       }
     }
@@ -298,6 +350,11 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           mix: { core: 0, adjacent: 0, discovery: 0, unknown: 1 },
         }),
       );
+    }
+    if (path === "/v1/search" && method === "GET") {
+      return json(route, {
+        candidates: [{ name: "The Matrix", year: 1999, mediaType: "movie", tmdbId: 603, inLibrary: false }],
+      });
     }
     if (path === "/v1/proposals" && method === "GET") {
       // Shaped as the real ProposalDTO (`proposal.intent.description`, `.rationale`,
@@ -349,6 +406,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     if (path.endsWith("/approve") && method === "POST") {
       const id = path.split("/").at(-2) ?? "";
       state.approvalRequests.push(id);
+      state.approvalEdits.push(body());
       if (state.role !== "admin") {
         return json(route, { title: "Forbidden", detail: "Approving is an admin action." }, 403);
       }

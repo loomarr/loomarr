@@ -242,8 +242,8 @@ func TestWorkflowInspectAwaitingApprovalDerivesRoleSafeActions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Inspect as admin: %v", err)
 	}
-	if len(admin.Actions) != 1 || admin.Actions[0] != ActionReview {
-		t.Fatalf("admin actions = %v, want [%s]", admin.Actions, ActionReview)
+	if len(admin.Actions) != 2 || admin.Actions[0] != ActionReview || admin.Actions[1] != ActionEdit {
+		t.Fatalf("admin actions = %v, want [%s %s]", admin.Actions, ActionReview, ActionEdit)
 	}
 }
 
@@ -452,6 +452,12 @@ func TestWorkflowInspectFailureReturnsSafeGuidanceAndRoleActions(t *testing.T) {
 			name: "grounding miss can be edited or retried", code: FailureNoGroundedTitles,
 			viewer: Viewer{UserID: "member-1"}, wantCode: FailureNoGroundedTitles,
 			wantMessage: "No grounded titles matched this request. Try again, or edit its description and constraints.",
+			wantActions: []Action{ActionEdit, ActionRetry},
+		},
+		{
+			name: "discovery budget asks for a useful edit before retrying", code: FailureBudgetExhausted,
+			viewer: Viewer{UserID: "member-1"}, wantCode: FailureBudgetExhausted,
+			wantMessage: "This request exceeded the bounded discovery budget. Try again with narrower constraints.",
 			wantActions: []Action{ActionEdit, ActionRetry},
 		},
 		{

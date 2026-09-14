@@ -1,1 +1,1 @@
-export { LiveProposalOutlook } from "./live-proposal-outlook";
+export { LiveProposalOutlook, useProposalOutlook } from "./live-proposal-outlook";

@@ -2,11 +2,10 @@ import type { SuggestionPhase } from "@loomarr/core/events";
 
 interface GenerationProgressProps {
   phase: SuggestionPhase;
-  // The tool-loop round the phase belongs to (1-based). Shown next to the active step
-  // so a run that legitimately loops several times reads as progressing, not stuck.
+  // Retained at the shared boundary for event compatibility; the calm progress surface
+  // deliberately does not expose model loop rounds to the user.
   round?: number;
-  // Whole seconds the run has been going. Shown once it passes a threshold, so a fast
-  // run stays quiet and a slow one explains itself.
+  // Whole seconds the run has been going. Used only to add patient long-wait copy.
   elapsedSeconds?: number;
   error?: string;
   className?: string;

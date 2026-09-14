@@ -4,6 +4,9 @@ import type { ProposalJourneyProposalDTO } from "@loomarr/api/models/proposalJou
 import type { SuggestionPhase } from "@loomarr/core/events";
 
 interface SuggestionRun {
+  // Stable durable identity shared by generation, revision, reload recovery and
+  // the pending local review delta.
+  jobId?: string;
   // The live phase from the SSE stream, or undefined before anything is running.
   phase?: SuggestionPhase;
   // The tool-loop round the phase belongs to (1-based; undefined outside the loop).
@@ -30,6 +33,9 @@ interface SuggestionRun {
   failed: boolean;
   error?: unknown;
   start: (intent: Intent) => void;
+  // Refresh the current review without changing its durable Job identity. The
+  // submitted Proposal remains available until the replacement succeeds.
+  revise: (intent: Intent) => void;
   retry: () => void;
   // Authorized recovery retains the server-owned intent; a fresh start discards it.
   reset: (preserveIntent?: boolean) => void;

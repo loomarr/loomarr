@@ -151,7 +151,7 @@ func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOu
 type ProposalDTO struct {
 	ID         string `json:"id"`
 	JobID      string `json:"jobId"`
-	Status     string `json:"status" enum:"submitted,approved,denied"`
+	Status     string `json:"status" enum:"submitted,approved,denied,superseded"`
 	CreatedBy  string `json:"createdBy,omitempty"`
 	ApprovedBy string `json:"approvedBy,omitempty"`
 	DenyReason string `json:"denyReason,omitempty"`
@@ -373,6 +373,12 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	if errors.Is(err, suggest.ErrSuperseded) {
 		return nil, errConflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
 	}
+	if errors.Is(err, suggest.ErrRevisionActive) {
+		return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before creating this channel.")
+	}
+	if errors.Is(err, suggest.ErrEmptyApproval) {
+		return nil, errUnprocessable("Choose at least one title", "A channel needs at least one included title before it can be created.")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -495,10 +501,15 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 	p.ApprovedBy = userIDFromHuma(ctx)
 	p.DenyReason = in.Body.Reason
 	p.UpdatedAt = time.Now()
-	if err := s.store.CommitProposalDenial(ctx, p); errors.Is(err, store.ErrProposalNotSubmitted) {
-		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
-	} else if err != nil {
-		return nil, err
+	if err := s.store.CommitProposalDenial(ctx, p); err != nil {
+		switch {
+		case errors.Is(err, store.ErrProposalNotSubmitted):
+			return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
+		case errors.Is(err, store.ErrProposalRevisionActive):
+			return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before dismissing this channel.")
+		default:
+			return nil, err
+		}
 	}
 	if s.decisionQuality != nil {
 		s.decisionQuality.ProposalDeclined(ctx, p.ID, p.UpdatedAt)

@@ -61,8 +61,10 @@ const ApprovalQueueItem = ({
   denyReason,
   lineup,
   acquisitionItems,
+  alternates,
   episodeSelectionPreview,
   refused,
+  edit,
   onEdit,
   renderFeedback,
   onApprove,
@@ -205,9 +207,12 @@ const ApprovalQueueItem = ({
                 className="mt-2"
                 lineup={lineup ?? []}
                 acquisitions={acquisitionItems ?? []}
+                alternates={alternates ?? []}
                 episodeSelectionPreview={episodeSelectionPreview}
+                value={edit}
                 disabled={status === "approving"}
                 onChange={onEdit}
+                showNote
                 renderFeedback={renderFeedback}
               />
             ) : (

@@ -7085,6 +7085,7 @@ components:
             - submitted
             - approved
             - denied
+            - superseded
           type: string
       required:
         - id
@@ -7376,6 +7377,7 @@ components:
             - submitted
             - approved
             - denied
+            - superseded
           type: string
       required:
         - id
@@ -7875,6 +7877,21 @@ components:
       required:
         - retried
         - notRetryable
+      type: object
+    ReviseProposalJourneyOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ReviseProposalJourneyOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        jobId:
+          type: string
+      required:
+        - jobId
       type: object
     RewindFillerClipInputBody:
       additionalProperties: false
@@ -14415,6 +14432,38 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Get the authoritative First-channel Journey
+      tags:
+        - proposal-jobs
+  /v1/proposal-jobs/{jobId}/revise:
+    post:
+      description: Admin only. Keeps the current submitted proposal visible while its replacement runs; success supersedes it atomically and failure leaves it approvable.
+      operationId: revise-proposal-job
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Intent"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviseProposalJourneyOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revise the pending proposal for a First-channel Journey
       tags:
         - proposal-jobs
   /v1/proposals:

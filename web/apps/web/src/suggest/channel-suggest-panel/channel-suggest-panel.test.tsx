@@ -4,6 +4,7 @@ import {
   getGetProposalJobMockHandler,
   getGetProposalOutlookMockHandler,
   getMeMockHandler,
+  getReviseProposalJobMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -47,6 +48,7 @@ const failedRun = (over: Partial<SuggestionRun> = {}): SuggestionRun => ({
   failed: true,
   error: undefined,
   start: vi.fn(),
+  revise: vi.fn(),
   retry: vi.fn(),
   reset: vi.fn(),
   ...over,
@@ -107,19 +109,24 @@ const PROPOSAL: ProposalDTO = {
 const stubSuggest = (
   opts: { proposals?: ProposalDTO[]; me?: MeBody; approveBody?: ApproveOutputBody } = {},
 ) => {
-  const approvals: string[] = [];
+  const approvals: { id: string; edit: unknown }[] = [];
   const submissions: unknown[] = [];
+  const revisions: unknown[] = [];
 
   server.use(
     getMeMockHandler(opts.me ?? ADMIN),
     // Approve — returns the created channel's id (what the panel navigates to).
-    getApproveProposalMockHandler(({ params }) => {
-      approvals.push(String(params.id));
+    getApproveProposalMockHandler(async ({ params, request }) => {
+      approvals.push({ id: String(params.id), edit: await request.json() });
       return opts.approveBody ?? { channelId: "ch_new123", enqueued: 0, status: "approved" };
     }),
     getSubmitProposalMockHandler(async ({ request }) => {
       submissions.push(await request.json());
       return { jobId: "job-1" };
+    }),
+    getReviseProposalJobMockHandler(async ({ params, request }) => {
+      revisions.push(await request.json());
+      return { jobId: String(params.jobId) };
     }),
     getGetProposalJobMockHandler(() => {
       const proposal = opts.proposals?.[0];
@@ -139,14 +146,14 @@ const stubSuggest = (
         proposal: proposal
           ? { id: proposal.id, status: proposal.status, proposal: proposal.proposal }
           : undefined,
-        actions: proposal ? ["review"] : ["wait"],
+        actions: proposal ? ["review", "edit"] : ["wait"],
         createdAt: "2026-08-22T12:00:00Z",
         updatedAt: "2026-08-22T12:00:00Z",
       };
     }),
   );
 
-  return { approvals, submissions };
+  return { approvals, submissions, revisions };
 };
 
 const renderPanel = (onCreated: (id: string) => void) => {
@@ -314,27 +321,42 @@ describe("ChannelSuggestPanel", () => {
     expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
   });
 
-  it("editing a landed request preserves its intent and performs no approval", async () => {
+  it("revises a landed brief on the same Job without leaving the current review", async () => {
     const user = userEvent.setup();
-    const { approvals, submissions } = stubSuggest({ proposals: [PROPOSAL] });
+    const { approvals, submissions, revisions } = stubSuggest({ proposals: [PROPOSAL] });
     renderPanel(() => {});
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: "Edit request" }));
-    expect(await screen.findByLabelText("Channel intent")).toHaveValue("80s teen comedies");
+    await user.click(await screen.findByRole("button", { name: "Edit brief" }));
+    expect(screen.getByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Your new channel" })).toBeVisible();
+    expect(screen.getByLabelText("Channel brief")).toHaveValue("80s teen comedies");
+    expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
     expect(approvals).toEqual([]);
     expect(submissions).toHaveLength(1);
+
+    await user.clear(screen.getByLabelText("Channel brief"));
+    await user.type(screen.getByLabelText("Channel brief"), "80s teen comedies with more variety");
+    await user.click(screen.getByRole("button", { name: "Update suggestions" }));
+
+    await waitFor(() => expect(revisions).toEqual([{ description: "80s teen comedies with more variety" }]));
+    expect(submissions).toHaveLength(1);
+    expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
+    expect(screen.getByText("Ferris Bueller's Day Off")).toBeVisible();
   });
 
-  it("thin outlook opens the preserved request without approving", async () => {
+  it("keeps the one add-title action inside the current review", async () => {
     const user = userEvent.setup();
     const { approvals } = stubSuggest({ proposals: [PROPOSAL] });
     server.use(getGetProposalOutlookMockHandler(outlook({ thin: true })));
     renderPanel(() => {});
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: "Add more variety" }));
-    expect(await screen.findByLabelText("Channel intent")).toHaveValue("80s teen comedies");
+    expect(await screen.findByText(/Short lineup:/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Add more variety" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add title" }));
+    expect(screen.getByPlaceholderText("Search for a movie or show…")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Your new channel" })).toBeVisible();
     expect(approvals).toEqual([]);
   });
 
@@ -371,9 +393,106 @@ describe("ChannelSuggestPanel", () => {
 
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: /approve/i }));
+    await user.click(await screen.findByRole("button", { name: /create channel/i }));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("ch_new123"));
+  });
+
+  it("creates the channel with the reviewer's exact title choices", async () => {
+    const user = userEvent.setup();
+    const editable: ProposalDTO = {
+      ...PROPOSAL,
+      proposal: {
+        ...PROPOSAL.proposal,
+        acquisitions: [{ mediaType: "movie", tmdbId: 1701, name: "Con Air", year: 1997, inLibrary: false }],
+      },
+    };
+    const { approvals } = stubSuggest({ proposals: [editable] });
+    renderPanel(() => {});
+
+    await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+    await user.click(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" }));
+    await user.click(screen.getByRole("button", { name: "Create channel" }));
+
+    await waitFor(() => expect(approvals).toEqual([{ id: "p-1", edit: { drop: ["movie:tmdb:9377"] } }]));
+  });
+
+  it("normalizes Job-scoped title choices when a replacement landed while the review was closed", async () => {
+    const replacement: ProposalDTO = {
+      ...PROPOSAL,
+      id: "p-2",
+      proposal: {
+        ...PROPOSAL.proposal,
+        acquisitions: [{ mediaType: "movie", tmdbId: 603, name: "The Matrix", year: 1999, inLibrary: false }],
+        alternates: [{ mediaType: "movie", tmdbId: 754, name: "Face/Off", year: 1997, inLibrary: false }],
+      },
+    };
+    window.sessionStorage.setItem(
+      "loomarr.proposalReviewEdit.job-1",
+      JSON.stringify({
+        drop: ["movie:tmdb:754"],
+        add: [{ mediaType: "movie", tmdbId: 603, name: "The Matrix", year: 1999, inLibrary: false }],
+      }),
+    );
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: { id: replacement.id, status: replacement.status, proposal: replacement.proposal },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    stubSuggest();
+    const view = renderPanel(() => {});
+
+    expect(await screen.findByText("The Matrix")).toBeVisible();
+    expect(screen.queryByText("Added by you")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(JSON.parse(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1") ?? "null")).toEqual(
+        {
+          drop: ["movie:tmdb:754"],
+        },
+      ),
+    );
+    view.unmount();
+  });
+
+  it("keeps a user-added title selected when the replacement returns it only as an alternate", async () => {
+    const matrix = {
+      mediaType: "movie",
+      tmdbId: 603,
+      name: "The Matrix",
+      year: 1999,
+      inLibrary: false,
+    };
+    window.sessionStorage.setItem("loomarr.proposalReviewEdit.job-1", JSON.stringify({ add: [matrix] }));
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: "p-2",
+        status: "submitted",
+        proposal: { ...PROPOSAL.proposal, alternates: [matrix] },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    stubSuggest();
+    const view = renderPanel(() => {});
+
+    await waitFor(() =>
+      expect(JSON.parse(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1") ?? "null")).toEqual(
+        {
+          drop: ["movie:tmdb:603"],
+          add: [matrix],
+        },
+      ),
+    );
+    expect(screen.getAllByText("The Matrix")).toHaveLength(1);
+    expect(screen.getByText("Will be added")).toBeVisible();
+    view.unmount();
   });
 
   it("a member's approve is inert — no approve call fires (approval is admin-only, §7)", async () => {
@@ -387,13 +506,50 @@ describe("ChannelSuggestPanel", () => {
 
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: /approve/i }));
+    expect(await screen.findByText("Sent for approval")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /create channel/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit brief" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add title" })).not.toBeInTheDocument();
 
-    // No approve POST, no navigation — the control is wired to nothing for a member.
+    // No approve POST, no navigation — a member receives a read-only review.
     // ⚠ `approvals` is fed only by `POST /v1/proposals/:id/approve` — the per-proposal route the
     // panel would call. The old `includes("/approve")` would also have matched the BULK route.
     expect(approvals).toEqual([]);
     expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("keeps the current review visible and read-only while its revision runs", async () => {
+    runOverride = failedRun({
+      phase: "reasoning",
+      proposal: { id: PROPOSAL.id, status: PROPOSAL.status, proposal: PROPOSAL.proposal },
+      failure: undefined,
+      actions: ["wait"],
+      isRunning: true,
+      failed: false,
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    expect(await screen.findByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(screen.getByText(/Updating suggestions/)).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Create channel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit brief" })).toBeDisabled();
+  });
+
+  it("restores the approvable review with local guidance when a revision fails", async () => {
+    runOverride = failedRun({
+      proposal: { id: PROPOSAL.id, status: PROPOSAL.status, proposal: PROPOSAL.proposal },
+      actions: ["review", "edit", "retry"],
+      failed: false,
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    expect(await screen.findByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(/current lineup is unchanged/i);
+    expect(screen.queryByText(/We couldn't finish this channel/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Create channel" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Edit brief" })).toBeEnabled();
   });
 
   // The reported bug: describe a channel, the job fails (e.g. no AI provider), and the panel
@@ -404,10 +560,9 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     renderPanel(() => {});
 
-    // The failure is shown (GenerationProgress' failed step is an alert), with guidance…
+    // The failure replaces progress with one recovery surface.
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByText(/couldn't generate this channel/i)).toBeInTheDocument();
-    expect(screen.getByText(/if this continues, ask an administrator/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /check ai settings/i })).toHaveAttribute("href", "/settings/ai");
     // …and the describe form is NOT rendered underneath it (the silent-drop bug).
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
@@ -431,10 +586,33 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     renderPanel(() => {});
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/^Generation failed$/);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/We couldn't finish this channel/);
     expect(screen.getByText(/couldn't retrieve the catalog information/i)).toBeInTheDocument();
-    expect(screen.getByText(/check the title sources in Connections/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /check ai settings/i })).not.toBeInTheDocument();
+  });
+
+  it("turns a bounded-discovery failure into a useful edit-first recovery", async () => {
+    const reset = vi.fn();
+    runOverride = failedRun({
+      reset,
+      failure: {
+        code: "budget_exhausted",
+        message: "This request exceeded the bounded discovery budget.",
+        reason: "discovery_budget_exhausted",
+        recoveryAction: "simplify_request",
+        guidance: "Simplify the request and try again.",
+      },
+      actions: ["edit", "retry"],
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Try a more specific description");
+    expect(alert).toHaveTextContent(/Add a decade, genre, network, or a few example titles/);
+    expect(alert).not.toHaveTextContent(/bounded discovery budget/i);
+    await userEvent.click(screen.getByRole("button", { name: "Edit description" }));
+    expect(reset).toHaveBeenCalledWith(true);
   });
 });

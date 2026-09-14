@@ -192,22 +192,17 @@ const ApprovalQueue = () => {
               title={p.proposal.intent?.description ?? "Suggested lineup"}
               requestedBy={p.createdBy}
               summary={p.proposal.rationale}
-              outlook={(openEditor) => (
-                <LiveProposalOutlook
-                  id={p.id}
-                  proposal={p.proposal}
-                  edit={edits[p.id]}
-                  onAddVariety={busy ? undefined : openEditor}
-                />
-              )}
+              outlook={() => <LiveProposalOutlook id={p.id} proposal={p.proposal} edit={edits[p.id]} />}
               acquisitions={p.proposal.acquisitions?.length ?? 0}
               lineup={p.proposal.lineup ?? []}
               acquisitionItems={p.proposal.acquisitions ?? []}
+              alternates={p.proposal.alternates ?? []}
               episodeSelectionPreview={p.episodeSelectionPreview}
               // What the proposal's own audience ceiling refused (§4, #259) — shown on the card
               // itself, because it changes what approving this row gets you.
               refused={p.proposal.refused ?? []}
               status={busy ? "approving" : "pending"}
+              edit={edits[p.id]}
               onEdit={(edit) => setEdit(p.id, edit)}
               renderFeedback={(item) => {
                 const targetKey = provisionKey(item);
@@ -230,7 +225,18 @@ const ApprovalQueue = () => {
               // the handler maps a body with no drops, adds or note to a nil edit, so approving
               // untouched carries no human modification; the server may still canonicalise a
               // missing/crafted series selector from the proposal's original Intent.
-              onApprove={() => approve.mutate({ id: p.id, data: edits[p.id] ?? {} })}
+              onApprove={() => {
+                const pending = edits[p.id];
+                const note = pending?.note?.trim();
+                const data = pending
+                  ? {
+                      ...(pending.drop?.length ? { drop: pending.drop } : {}),
+                      ...(pending.add?.length ? { add: pending.add } : {}),
+                      ...(note ? { note } : {}),
+                    }
+                  : {};
+                approve.mutate({ id: p.id, data });
+              }}
               onDeny={(reason) => deny.mutate({ id: p.id, data: { reason } })}
             />
           </li>
