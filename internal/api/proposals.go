@@ -501,10 +501,15 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 	p.ApprovedBy = userIDFromHuma(ctx)
 	p.DenyReason = in.Body.Reason
 	p.UpdatedAt = time.Now()
-	if err := s.store.CommitProposalDenial(ctx, p); errors.Is(err, store.ErrProposalNotSubmitted) {
-		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
-	} else if err != nil {
-		return nil, err
+	if err := s.store.CommitProposalDenial(ctx, p); err != nil {
+		switch {
+		case errors.Is(err, store.ErrProposalNotSubmitted):
+			return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
+		case errors.Is(err, store.ErrProposalRevisionActive):
+			return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before dismissing this channel.")
+		default:
+			return nil, err
+		}
 	}
 	if s.decisionQuality != nil {
 		s.decisionQuality.ProposalDeclined(ctx, p.ID, p.UpdatedAt)

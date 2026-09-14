@@ -354,14 +354,37 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 	if p.Status != "denied" {
 		return fmt.Errorf("deny proposal %s: terminal status is %q", p.ID, p.Status)
 	}
-	result, err := s.db.ExecContext(ctx, s.ph(
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("deny proposal %s: begin: %w", p.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
+	if s.dialect == DialectPostgres {
+		jobStatusQuery += ` FOR UPDATE`
+	}
+	var jobStatus string
+	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), p.JobID).Scan(&jobStatus)
+	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
+		return fmt.Errorf("%w: proposal %s", ErrProposalRevisionActive, p.ID)
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("deny proposal %s: read job status: %w", p.ID, err)
+	}
+	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE proposals SET status='denied', approved_by=?, deny_reason=?, updated_at=?
 		 WHERE id=? AND status='submitted'`),
 		p.ApprovedBy, p.DenyReason, epoch(p.UpdatedAt), p.ID)
 	if err != nil {
 		return fmt.Errorf("deny proposal %s: %w", p.ID, err)
 	}
-	return proposalDecisionResult(ctx, s.db, s.ph(`SELECT status FROM proposals WHERE id = ?`), p.ID, result)
+	if err := proposalDecisionResult(ctx, tx, s.ph(`SELECT status FROM proposals WHERE id = ?`), p.ID, result); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("deny proposal %s: commit: %w", p.ID, err)
+	}
+	return nil
 }
 
 type proposalStatusReader interface {

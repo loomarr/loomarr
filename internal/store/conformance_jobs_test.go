@@ -467,6 +467,12 @@ func testProposalRevisionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	}); !errors.Is(err, ErrProposalRevisionActive) {
 		t.Fatalf("approval during revision = %v, want ErrProposalRevisionActive", err)
 	}
+	denial := first
+	denial.Status = "denied"
+	denial.ApprovedBy = "admin"
+	if err := s.CommitProposalDenial(ctx, denial); !errors.Is(err, ErrProposalRevisionActive) {
+		t.Fatalf("denial during revision = %v, want ErrProposalRevisionActive", err)
+	}
 
 	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
 	if err != nil || len(claimed) != 1 || claimed[0].Attempts != 2 {
