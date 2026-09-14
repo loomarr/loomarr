@@ -1,6 +1,7 @@
 import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
+import type { Assessment } from "@loomarr/api/models/assessment";
+import type { Intent } from "@loomarr/api/models/intent";
 import type { Proposal } from "@loomarr/api/models/proposal";
-import type { ReactNode } from "react";
 
 // The proposal shape is the orval-generated `Proposal` (from the BE's typed
 // suggest.Proposal — 1:1, §12). Only the review UI's own status and prop interface
@@ -9,7 +10,8 @@ type ProposalStatus = "draft" | "submitted" | "approved" | "denied" | "partially
 
 interface ProposalReviewProps {
   proposal: Proposal;
-  outlook?: ReactNode;
+  assessment?: Assessment;
+  assessmentPending?: boolean;
   edit?: ApprovalEditDTO;
   status?: ProposalStatus;
   selfService?: boolean;
@@ -22,7 +24,10 @@ interface ProposalReviewProps {
   // fifty times over, but offering one costs a click.
   onDeny?: (reason?: string) => void;
   onEdit?: (edit: ApprovalEditDTO | undefined) => void;
-  onEditRequest?: () => void;
+  onRevise?: (intent: Intent) => void;
+  revising?: boolean;
+  revisionError?: string;
+  showWorkflowHeading?: boolean;
   className?: string;
 }
 

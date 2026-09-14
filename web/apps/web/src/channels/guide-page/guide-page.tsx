@@ -19,7 +19,7 @@ import { Caption } from "@/components/ui/caption";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { cn } from "@/lib/utils";
-import { ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
+import { type ChannelSuggestionStage, ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
 import { clearSuggestionDraft, readSuggestionDraft } from "@/suggest/suggestion-draft";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
@@ -125,6 +125,7 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   // filled form rather than a bare grid wondering where their pick went. Lazy initializer:
   // read once at mount, so closing it stays closed.
   const [adding, setAdding] = useState(() => Boolean(initialIntent || initialJobId || readSuggestionDraft()));
+  const [suggestionStage, setSuggestionStage] = useState<ChannelSuggestionStage>("describe");
 
   // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
   // panel with a template the operator already dismissed — and right after the wizard, on a
@@ -224,10 +225,32 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
-        title={adding ? (isAdmin ? "Add a channel" : "Request a channel") : "Channels"}
+        title={
+          !adding
+            ? "Channels"
+            : suggestionStage === "review"
+              ? "Review your channel"
+              : suggestionStage === "updating"
+                ? "Updating suggestions"
+                : suggestionStage === "generating"
+                  ? "Finding titles"
+                  : suggestionStage === "failed"
+                    ? "Channel suggestion"
+                    : isAdmin
+                      ? "Add a channel"
+                      : "Request a channel"
+        }
         description={
           adding
-            ? "Describe what you want to watch. You'll choose the final titles before anything is created."
+            ? suggestionStage === "review"
+              ? "Choose what belongs. Nothing is created until you continue."
+              : suggestionStage === "updating"
+                ? "Your current lineup stays in place while Loomarr refreshes its suggestions."
+                : suggestionStage === "generating"
+                  ? "Loomarr is matching your brief to titles from your library and catalog."
+                  : suggestionStage === "failed"
+                    ? "Your brief is saved. Choose a recovery option below."
+                    : "Describe what you want to watch. You'll choose the final titles before anything is created."
             : "Every channel Loomarr manages, and what's on right now."
         }
         actions={
@@ -269,6 +292,7 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
             initialJobId={initialJobId}
             onCreated={onCreated}
             onStartFresh={startFresh}
+            onStageChange={setSuggestionStage}
           />
         </div>
       )}

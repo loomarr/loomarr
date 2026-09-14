@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { fn } from "storybook/test";
 import { outlook } from "@/test/fixtures/outlook";
 import { ProposalOutlook } from "./proposal-outlook";
 
@@ -13,7 +12,7 @@ const meta = {
       </div>
     ),
   ],
-  args: { assessment: outlook(), onAddVariety: fn() },
+  args: { assessment: outlook() },
 } satisfies Meta<typeof ProposalOutlook>;
 
 type Story = StoryObj<typeof meta>;

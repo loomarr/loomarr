@@ -147,7 +147,7 @@ test("a bounded-discovery failure offers a useful edit instead of an internal bu
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("Create a TGIF channel");
 });
 
-test("starting over clears a deep-linked Journey so a reload is genuinely fresh", async ({ page }) => {
+test("discarding clears a deep-linked Journey so a reload is genuinely fresh", async ({ page }) => {
   const mock = await installMockBackend(page, { authed: true, role: "admin", proposalJourney: true });
 
   // Seed a real persisted Journey, then enter through the same opaque `?job=` link used by
@@ -160,7 +160,7 @@ test("starting over clears a deep-linked Journey so a reload is genuinely fresh"
 
   await page.goto("/guide?job=proposal-job-1&intent=stale%20template");
   await expect(page.getByText("Heat")).toBeVisible();
-  await page.getByRole("button", { name: "Start over" }).click();
+  await page.getByRole("button", { name: "Discard" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
   await expect(page).toHaveURL(/\/guide$/);
 

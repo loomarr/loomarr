@@ -2,9 +2,10 @@ import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { Intent } from "@loomarr/api/models/intent";
 import { toProblem } from "@loomarr/api/mutator";
+import { provisionKey } from "@loomarr/core/provision";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -12,7 +13,7 @@ import { GenerationProgress } from "@/components/loomarr/feedback/generation-pro
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
-import { LiveProposalOutlook } from "../live-proposal-outlook";
+import { useProposalOutlook } from "../live-proposal-outlook";
 import { useElapsed } from "../use-elapsed";
 import { useSuggestionRun } from "../use-suggestion-run";
 import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
@@ -35,6 +36,7 @@ const ChannelSuggestPanel = ({
   initialIntent,
   initialJobId,
   onStartFresh,
+  onStageChange,
   className,
 }: ChannelSuggestPanelProps) => {
   const { isAdmin, user } = useAuth();
@@ -66,11 +68,49 @@ const ChannelSuggestPanel = ({
       onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
         run.reset();
+        onStartFresh?.();
       },
     },
   });
 
   const proposal = run.proposal;
+  const previousProposalId = useRef(proposal?.id);
+  const stage = proposal
+    ? run.isRunning
+      ? "updating"
+      : "review"
+    : run.isRunning
+      ? "generating"
+      : run.failed
+        ? "failed"
+        : "describe";
+  useEffect(() => onStageChange?.(stage), [onStageChange, stage]);
+  const outlook = useProposalOutlook({
+    id: proposal?.id,
+    proposal: proposal?.proposal,
+    edit,
+  });
+  useEffect(() => {
+    const previous = previousProposalId.current;
+    previousProposalId.current = proposal?.id;
+    if (!previous || !proposal || previous === proposal.id || !edit) return;
+
+    const proposalKeys = new Set(
+      [...(proposal.proposal.lineup ?? []), ...(proposal.proposal.acquisitions ?? [])].map(provisionKey),
+    );
+    const drop = edit.drop?.filter((key) => proposalKeys.has(key));
+    const add = edit.add?.filter((item) => !proposalKeys.has(provisionKey(item)));
+    const note = edit.note?.trim();
+    const normalized =
+      (drop?.length ?? 0) + (add?.length ?? 0) > 0 || note
+        ? {
+            ...(drop?.length ? { drop } : {}),
+            ...(add?.length ? { add } : {}),
+            ...(note ? { note } : {}),
+          }
+        : undefined;
+    setEdit(normalized);
+  }, [edit, proposal]);
   const startFresh = () => {
     setEdit(undefined);
     run.reset();
@@ -81,7 +121,7 @@ const ChannelSuggestPanel = ({
     setEdit(undefined);
     run.start(intent);
   };
-  const editDescription = () => {
+  const editFailedDescription = () => {
     setEdit(undefined);
     run.reset(true);
   };
@@ -116,6 +156,7 @@ const ChannelSuggestPanel = ({
       )}
 
       {run.error != null &&
+        !proposal &&
         (aiUnconfigured || groundingUnconfigured ? (
           <div role="alert" className="rounded-lg border border-border bg-muted/40 p-4">
             <p className="font-medium">
@@ -153,11 +194,13 @@ const ChannelSuggestPanel = ({
       {/* Before the first frame lands the model is already loading and thinking, so
           "reasoning" is the honest default. It used to fall back to "searching", which
           announced a library search that had not started and could not be the slow part. */}
-      {run.isRunning && <GenerationProgress phase={run.phase ?? "reasoning"} elapsedSeconds={elapsed} />}
+      {run.isRunning && !proposal && (
+        <GenerationProgress phase={run.phase ?? "reasoning"} elapsedSeconds={elapsed} />
+      )}
 
       {/* Failed — recovery copy is fixed by the authoritative Journey. Actions remain
           independently authorized by that Journey; guidance never grants a capability. */}
-      {run.failed && (
+      {run.failed && !proposal && (
         <div
           role="alert"
           className="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-lg border border-border bg-muted/35 p-4"
@@ -168,7 +211,11 @@ const ChannelSuggestPanel = ({
           </div>
           <div className="flex flex-wrap gap-2">
             {run.actions.includes("edit") && (
-              <Button variant={failureNeedsEdit ? "default" : "outline"} size="sm" onClick={editDescription}>
+              <Button
+                variant={failureNeedsEdit ? "default" : "outline"}
+                size="sm"
+                onClick={editFailedDescription}
+              >
                 {run.failure?.recoveryAction === "edit_reference" ? "Change reference" : "Edit description"}
               </Button>
             )}
@@ -191,22 +238,27 @@ const ChannelSuggestPanel = ({
         <div className="flex flex-col gap-4">
           <ProposalReview
             proposal={proposal.proposal}
+            showWorkflowHeading={false}
             edit={edit}
-            outlook={
-              proposal.status === "submitted" ? (
-                <LiveProposalOutlook
-                  id={proposal.id}
-                  proposal={proposal.proposal}
-                  edit={edit}
-                  onAddVariety={approve.isPending || deny.isPending ? undefined : editDescription}
-                />
-              ) : undefined
+            assessment={
+              proposal.status === "submitted" && !outlook.isFetching && !outlook.isError
+                ? outlook.data
+                : undefined
             }
+            assessmentPending={proposal.status === "submitted" && outlook.isFetching}
             status={edit && proposal.status === "submitted" ? "partially-edited" : proposal.status}
             selfService={isAdmin}
             busy={approve.isPending || deny.isPending}
+            revising={run.isRunning}
+            revisionError={
+              run.error != null
+                ? toProblem(run.error).title
+                : run.failure != null
+                  ? run.failure.message
+                  : undefined
+            }
             onEdit={isAdmin ? setEdit : undefined}
-            onEditRequest={editDescription}
+            onRevise={isAdmin ? run.start : undefined}
             onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: edit ?? {} }) : undefined}
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
@@ -215,7 +267,7 @@ const ChannelSuggestPanel = ({
               {toProblem(approve.error ?? deny.error).title ?? "That didn't go through. Try again."}
             </p>
           )}
-          {proposal.status === "approved" ? (
+          {proposal.status === "approved" && (
             <div className="flex flex-col items-start gap-2">
               <p role="status" className="text-lock text-sm">
                 {user?.autoApprove
@@ -226,10 +278,6 @@ const ChannelSuggestPanel = ({
                 Create another
               </Button>
             </div>
-          ) : (
-            <Button variant="outline" size="sm" className="w-fit" onClick={startFresh}>
-              Start over
-            </Button>
           )}
         </div>
       )}

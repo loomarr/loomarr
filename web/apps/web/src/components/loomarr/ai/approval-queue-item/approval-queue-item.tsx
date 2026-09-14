@@ -64,6 +64,7 @@ const ApprovalQueueItem = ({
   alternates,
   episodeSelectionPreview,
   refused,
+  edit,
   onEdit,
   renderFeedback,
   onApprove,
@@ -208,6 +209,7 @@ const ApprovalQueueItem = ({
                 acquisitions={acquisitionItems ?? []}
                 alternates={alternates ?? []}
                 episodeSelectionPreview={episodeSelectionPreview}
+                value={edit}
                 disabled={status === "approving"}
                 onChange={onEdit}
                 showNote

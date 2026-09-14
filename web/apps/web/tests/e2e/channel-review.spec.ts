@@ -12,14 +12,14 @@ test("a first-time admin can shape the suggested channel before creating it", as
   await expect(page.getByRole("heading", { name: "Review your channel" })).toBeVisible();
   await expect(page.getByText("Friday Night Action", { exact: true })).toBeVisible();
   await expect(page.getByText("Dead air")).toHaveCount(0);
-  await expect(page.getByText("Ready now").first()).toBeVisible();
-  await expect(page.getByText("Needs adding")).toBeVisible();
+  await expect(page.getByText("In your library").first()).toBeVisible();
+  await expect(page.getByText("Will be added")).toBeVisible();
   await expect(page.getByRole("button", { name: "Create channel" })).toBeVisible();
 
   await page.getByRole("checkbox", { name: "Include Heat" }).click();
   await expect(page.getByText("Not included")).toBeVisible();
 
-  await page.getByRole("button", { name: "Add another title" }).click();
+  await page.getByRole("button", { name: "Add title" }).click();
   await page.getByRole("combobox").fill("matrix");
   await page.getByText("The Matrix").click();
   await expect(page.getByText("Added by you")).toBeVisible();

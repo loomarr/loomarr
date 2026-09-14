@@ -142,11 +142,12 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
   // The reachability assertion the phase gate asks for: the edit panel must actually MOUNT from
   // the queue. `ProposalReview.onEditItem` shipped with no production caller and the button
   // therefore never rendered — the recurring defect this repo's reachability tests exist for.
-  it("thin outlook opens the actual pick editor without approving", async () => {
+  it("keeps one explicit path from a thin outlook into the pick editor", async () => {
     const approvals = stubApi(outlook({ thin: true }));
     render(<ApprovalQueue />);
-    await userEvent.click(await screen.findByRole("button", { name: "Add more variety" }));
-    expect(screen.getByText("Included titles")).toBeVisible();
+    expect(await screen.findByText(/Short lineup:/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: /Review & edit picks/ }));
+    expect(screen.getByText("Titles")).toBeVisible();
     expect(screen.getByRole("checkbox", { name: "Include Heat" })).toBeVisible();
     expect(approvals).toEqual([]);
   });
@@ -158,7 +159,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     const toggle = await screen.findByRole("button", { name: /Review & edit picks/ });
     await userEvent.click(toggle);
 
-    expect(screen.getByText("Included titles")).toBeInTheDocument();
+    expect(screen.getByText("Titles")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Include Heat" })).toBeInTheDocument();
     expect(screen.getByLabelText("Note to the requester")).toBeInTheDocument();
   });
@@ -214,7 +215,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     render(<ApprovalQueue />);
 
     await userEvent.click(await screen.findByRole("button", { name: /Review & edit picks/ }));
-    await userEvent.click(screen.getByRole("button", { name: /Add another title/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Add title" }));
     await userEvent.type(screen.getByRole("combobox"), "added series");
     await userEvent.click(await screen.findByText("Added Series"));
 

@@ -1,1 +1,1 @@
-export { ProposalOutlook } from "./proposal-outlook";
+export { ProposalOutlook, ProposalOutlookDetails } from "./proposal-outlook";

@@ -1,4 +1,5 @@
 import * as searchApi from "@loomarr/api/endpoints/search";
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -21,18 +22,18 @@ type Keyed = { item: ProposalItem; key: string; kind: PickKind };
 const mediaLabel = (item: ProposalItem) => (item.mediaType === "series" ? "Series" : "Movie");
 
 const itemDetails = (item: ProposalItem) =>
-  [mediaLabel(item), ...(item.genres ?? []).slice(0, 2), item.officialRating].filter(Boolean).join(" · ");
+  [mediaLabel(item), item.officialRating].filter(Boolean).join(" · ");
 
 const stateLabel = (kind: PickKind) => {
   switch (kind) {
     case "ready":
-      return { text: "Ready now", variant: "lock" as const };
+      return { text: "In your library", variant: "lock" as const };
     case "backup":
-      return { text: "Backup", variant: "neutral" as const };
+      return { text: "Alternate", variant: "neutral" as const };
     case "added":
       return { text: "Added by you", variant: "suggest" as const };
     default:
-      return { text: "Needs adding", variant: "tune" as const };
+      return { text: "Will be added", variant: "tune" as const };
   }
 };
 
@@ -110,23 +111,28 @@ const PickRow = ({
 
 // The one pre-approval title composer used by both the first-channel review and Queue. Its
 // state is only an ApprovalEdit delta; nothing persists until the existing approval gate runs.
-const ProposalEdit = ({
-  lineup,
-  acquisitions,
-  alternates = [],
-  episodeSelectionPreview,
-  onChange,
-  renderFeedback,
-  showNote = false,
-  disabled,
-  className,
-}: ProposalEditProps) => {
-  const [dropped, setDropped] = useState<string[]>([]);
-  const [added, setAdded] = useState<ProposalItem[]>([]);
-  const [note, setNote] = useState("");
+const ProposalEdit = (props: ProposalEditProps) => {
+  const {
+    lineup,
+    acquisitions,
+    alternates = [],
+    episodeSelectionPreview,
+    value,
+    onChange,
+    renderFeedback,
+    showNote = false,
+    disabled,
+    className,
+  } = props;
+  const controlled = Object.hasOwn(props, "value");
+  const [localEdit, setLocalEdit] = useState<ApprovalEditDTO | undefined>(value);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const editable = onChange !== undefined;
+  const currentEdit = controlled ? value : localEdit;
+  const dropped = currentEdit?.drop ?? [];
+  const added = currentEdit?.add ?? [];
+  const note = currentEdit?.note ?? "";
 
   const picks: Keyed[] = [
     ...lineup.map((item) => ({
@@ -146,21 +152,22 @@ const ProposalEdit = ({
 
   const emit = (nextDropped: string[], nextAdded: ProposalItem[], nextNote: string) => {
     if (!onChange) return;
-    const trimmed = nextNote.trim();
-    if (nextDropped.length === 0 && nextAdded.length === 0 && trimmed === "") {
+    if (nextDropped.length === 0 && nextAdded.length === 0 && nextNote === "") {
+      if (!controlled) setLocalEdit(undefined);
       onChange(undefined);
       return;
     }
-    onChange({
+    const next = {
       ...(nextDropped.length > 0 ? { drop: nextDropped } : {}),
       ...(nextAdded.length > 0 ? { add: nextAdded } : {}),
-      ...(trimmed !== "" ? { note: trimmed } : {}),
-    });
+      ...(nextNote !== "" ? { note: nextNote } : {}),
+    };
+    if (!controlled) setLocalEdit(next);
+    onChange(next);
   };
 
   const toggleDrop = (key: string) => {
     const next = dropped.includes(key) ? dropped.filter((value) => value !== key) : [...dropped, key];
-    setDropped(next);
     emit(next, added, note);
   };
 
@@ -178,7 +185,6 @@ const ProposalEdit = ({
       ...(candidate.runtimeMinutes ? { runtimeMinutes: candidate.runtimeMinutes } : {}),
     };
     const next = [...added, item];
-    setAdded(next);
     emit(dropped, next, note);
     setQuery("");
     setAdding(false);
@@ -186,7 +192,6 @@ const ProposalEdit = ({
 
   const removeAdded = (key: string) => {
     const next = added.filter((item) => provisionKey(item) !== key);
-    setAdded(next);
     emit(dropped, next, note);
   };
 
@@ -195,17 +200,13 @@ const ProposalEdit = ({
     ...backups.map((pick) => pick.key),
     ...added.map(provisionKey),
   ]);
-  const selectedCount = picks.filter((pick) => !dropped.includes(pick.key)).length + added.length;
   const edited = dropped.length > 0 || added.length > 0 || note.trim() !== "";
 
   return (
     <div className={cn("flex min-w-0 flex-col gap-3", className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="font-medium">Included titles</h3>
-          <p className="text-muted-foreground text-sm">
-            {selectedCount} {selectedCount === 1 ? "title" : "titles"} selected
-          </p>
+          <h3 className="font-medium">Titles</h3>
         </div>
         {edited && editable && (
           <Button
@@ -213,9 +214,7 @@ const ProposalEdit = ({
             size="sm"
             disabled={disabled}
             onClick={() => {
-              setDropped([]);
-              setAdded([]);
-              setNote("");
+              if (!controlled) setLocalEdit(undefined);
               onChange(undefined);
             }}
           >
@@ -225,10 +224,7 @@ const ProposalEdit = ({
         )}
       </div>
 
-      <ul
-        aria-label="Included titles"
-        className="scroll-thin max-h-112 overflow-y-auto rounded-md border border-border px-3"
-      >
+      <ul aria-label="Titles" className="rounded-md border border-border px-3">
         {picks.map((pick) => (
           <PickRow
             key={pick.key || `unkeyed-${pick.item.name}`}
@@ -308,20 +304,20 @@ const ProposalEdit = ({
             onClick={() => setAdding(true)}
           >
             <Plus aria-hidden />
-            Add another title
+            Add title
           </Button>
         ))}
 
       {backups.length > 0 && (
         <details className="rounded-md border border-border px-3 py-2.5">
           <summary className="cursor-pointer text-sm">
-            <span className="font-medium">Backups</span>
+            <span className="font-medium">Alternates</span>
             <span className="ml-2 text-muted-foreground">
               {backups.filter((pick) => !dropped.includes(pick.key)).length} available
             </span>
           </summary>
           <p className="mt-2 text-muted-foreground text-sm">
-            Used only when an included title cannot become available.
+            Used only when a selected title cannot be added.
           </p>
           <ul className="mt-2 border-border border-t">
             {backups.map((pick) => (
@@ -349,7 +345,6 @@ const ProposalEdit = ({
             disabled={disabled}
             placeholder={edited ? "Explain what you changed" : "Optional"}
             onChange={(event) => {
-              setNote(event.target.value);
               emit(dropped, added, event.target.value);
             }}
           />

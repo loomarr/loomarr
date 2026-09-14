@@ -13,8 +13,12 @@ interface ProposalEditProps {
   // Read-only server projection from the trusted Proposal Intent. Used only to
   // explain series added in this local edit; it is never copied into the edit DTO.
   episodeSelectionPreview?: EpisodeSelection;
-  // Called on every change with the edit as the API wants it — or `undefined` when nothing has
-  // been modified. Undefined is not the same as an empty edit (see the component): the caller
+  // Pass this prop (including explicit undefined) to control the pending delta from the
+  // workspace. Omit it only for a self-contained/uncontrolled editor.
+  value?: ApprovalEditDTO;
+  // Called on every change with the pending edit — or `undefined` when nothing has been modified.
+  // The note intentionally remains untrimmed while the user types; the approval boundary owns
+  // normalization. Undefined is not the same as an empty edit (see the component): the caller
   // must send NO body in that case, so an unmodified approval stays byte-identical to what it
   // was before edit-before-approve existed.
   onChange?: (edit: ApprovalEditDTO | undefined) => void;

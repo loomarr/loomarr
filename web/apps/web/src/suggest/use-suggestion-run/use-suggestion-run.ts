@@ -89,7 +89,7 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
     failure: journey?.failure,
     intent: journey?.intent ?? intent,
     actions: journey?.actions ?? [],
-    isRunning: jobId !== undefined && (!journey || journey.milestone === "generating"),
+    isRunning: submit.isPending || (jobId !== undefined && (!journey || journey.milestone === "generating")),
     failed: journey?.milestone === "failed",
     error: submit.error ?? journeyQuery.error,
     start,

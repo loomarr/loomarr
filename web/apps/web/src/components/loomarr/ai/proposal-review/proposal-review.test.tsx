@@ -1,6 +1,6 @@
 import type { Proposal } from "@loomarr/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -60,15 +60,24 @@ const proposal: Proposal = {
 };
 
 describe("ProposalReview", () => {
-  it("leads with a calm channel summary and plain availability", () => {
-    renderReview(<ProposalReview proposal={proposal} selfService />);
+  it("leads with the brief, one availability sentence and no dashboard tiles", () => {
+    renderReview(<ProposalReview proposal={proposal} selfService onRevise={vi.fn()} />);
     expect(screen.getByRole("heading", { name: "Review your channel" })).toBeInTheDocument();
     expect(screen.getByText("Friday Night Action")).toBeInTheDocument();
-    expect(screen.getByText("2", { selector: "span" })).toBeInTheDocument();
-    expect(screen.getByText("Ready now")).toBeInTheDocument();
-    expect(screen.getByText("Needs adding")).toBeInTheDocument();
-    expect(screen.getByText("Backups")).toBeInTheDocument();
+    expect(screen.getByText("“90s action movies”")).toBeInTheDocument();
+    expect(screen.getByText("2 titles · 1 in your library · 1 will be added")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit brief" })).toBeInTheDocument();
+    expect(screen.queryByText("selected")).not.toBeInTheDocument();
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+  });
+
+  it("opens a compact brief editor without hiding the lineup", async () => {
+    const onRevise = vi.fn();
+    renderReview(<ProposalReview proposal={proposal} selfService onRevise={onRevise} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit brief" }));
+    expect(screen.getByLabelText("Channel brief")).toHaveValue("90s action movies");
+    expect(within(screen.getByRole("list", { name: "Titles" })).getByText("Heat")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Update suggestions" })).toBeVisible();
   });
 
   it("lets an admin choose titles and creates with the exact edited count", async () => {
@@ -98,7 +107,7 @@ describe("ProposalReview", () => {
         />
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/with 1 title/)).toBeInTheDocument();
+    expect(screen.getByText("1 title · 1 will be added")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Create channel" }));
     expect(onApprove).toHaveBeenCalledOnce();
   });
@@ -127,16 +136,15 @@ describe("ProposalReview", () => {
 
   it("puts deterministic evidence behind progressive disclosure", async () => {
     renderReview(<ProposalReview proposal={proposal} />);
-    const evidence = screen.getByText("How Loomarr chose these titles").closest("details");
+    const evidence = screen.getByText("Suggestion details").closest("details");
     expect(evidence).not.toHaveAttribute("open");
-    await userEvent.click(screen.getByText("How Loomarr chose these titles"));
+    await userEvent.click(screen.getByText("Suggestion details"));
     expect(evidence).toHaveAttribute("open");
     await userEvent.click(screen.getByText("See the catalog decisions"));
     expect(screen.getByText(/included · matched request, era/)).toBeInTheDocument();
   });
 
   it("calls out a partial interpretation in plain language", () => {
-    const onEditRequest = vi.fn();
     renderReview(
       <ProposalReview
         proposal={{
@@ -152,12 +160,11 @@ describe("ProposalReview", () => {
             },
           },
         }}
-        onEditRequest={onEditRequest}
       />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("Double-check the fit");
-    expect(screen.getByRole("status")).toHaveTextContent("Review the titles below");
-    expect(screen.getByRole("status")).not.toHaveTextContent("xqz");
+    const warning = screen.getByText(/Some titles may be a loose match/).closest("p");
+    expect(warning).toHaveTextContent("Remove anything that does not fit");
+    expect(warning).not.toHaveTextContent("xqz");
   });
 
   it("uses discard language for an admin reviewing their own draft", async () => {

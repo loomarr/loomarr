@@ -1,11 +1,9 @@
 import type { Assessment } from "@loomarr/api/models/assessment";
 
-import { Button } from "@/components/ui/button";
-
 interface ProposalOutlookProps {
-  onAddVariety?: () => void;
   assessment?: Assessment;
   pending?: boolean;
+  showDetails?: boolean;
 }
 
 const duration = (milliseconds: number, lowerBound = false) => {
@@ -37,7 +35,70 @@ const mixCopy = (mix: Assessment["mix"]) => {
   return `A mix of ${roles.join(" and ")} picks.`;
 };
 
-const ProposalOutlook = ({ assessment: value, pending = false, onAddVariety }: ProposalOutlookProps) => {
+const describedDuration = (milliseconds: number, lowerBound = false) =>
+  lowerBound ? `at least ${duration(milliseconds, true)}` : duration(milliseconds);
+
+const sentenceCase = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+
+const ProposalOutlookDetails = ({ assessment: value }: { assessment: Assessment }) => (
+  <div className="flex flex-col gap-2 text-muted-foreground">
+    <p>
+      {value.scheduledTitles} of {value.titles} titles currently produce {value.programs}{" "}
+      {value.programs === 1 ? "unique program" : "unique programs"} across {value.seasons}{" "}
+      {value.seasons === 1 ? "numbered season" : "numbered seasons"}.
+    </p>
+    {mixCopy(value.mix) && (
+      <p>
+        {mixCopy(value.mix)}
+        {value.mix.unknown > 0 && value.mix.core + value.mix.adjacent + value.mix.discovery > 0
+          ? " Some picks have no recorded role."
+          : ""}
+      </p>
+    )}
+    <p>
+      Core {value.mix.core} · Adjacent {value.mix.adjacent} · Discovery {value.mix.discovery} · Unclassified{" "}
+      {value.mix.unknown}.
+    </p>
+    <p>
+      Core means requested or retained. Adjacent choices come from recorded recommendations, and discovery
+      choices are other grounded matches.
+    </p>
+    <p>
+      The estimate uses this exact lineup, {value.ordering || "inherited"} ordering, separation, and active
+      scheduling rules. Unavailable media and breaks add no programming time.
+    </p>
+    {value.missingAcquisitions + value.missingLibrary + value.unknownTitles > 0 && (
+      <p>
+        {value.missingAcquisitions} acquisitions, {value.missingLibrary} other library titles, and{" "}
+        {value.unknownTitles} incomplete observations are excluded from the current estimate.
+      </p>
+    )}
+    {value.windowLimited && (
+      <p>The scheduling window is limited, so additional library programs may extend this estimate.</p>
+    )}
+    {value.relaxations.length > 0 && (
+      <p>
+        The scheduler used {value.relaxations.length} recorded policy{" "}
+        {value.relaxations.length === 1 ? "relaxation" : "relaxations"}. Audience and scope filters remain
+        enforced.
+      </p>
+    )}
+    <p>
+      Observed{" "}
+      {new Date(value.observedAt).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}
+      . Library and policy changes can alter the result.
+    </p>
+  </div>
+);
+
+const ProposalOutlook = ({
+  assessment: value,
+  pending = false,
+  showDetails = true,
+}: ProposalOutlookProps) => {
   if (pending)
     return (
       <p role="status" className="text-muted-foreground text-sm">
@@ -50,111 +111,35 @@ const ProposalOutlook = ({ assessment: value, pending = false, onAddVariety }: P
         A schedule preview isn't available yet. You can still review the titles.
       </p>
     );
-  const launch =
-    value.state === "ready"
-      ? value.missingAcquisitions + value.missingLibrary + value.unknownTitles > 0
-        ? "Starts with the titles already in your library"
-        : "Ready to start"
-      : value.state === "waiting"
-        ? "Starts as titles are added"
-        : value.state === "uncertain"
-          ? "Some availability is still being checked"
-          : "No eligible programming can start yet";
+  const lowerBound = value.windowLimited || value.unknownTitles > 0;
+  const repeatDuration =
+    value.firstRepeatMs === null ? null : describedDuration(value.firstRepeatMs, lowerBound);
+  const programmingDuration = describedDuration(value.uniqueRuntimeMs, lowerBound);
+  const summary =
+    value.programs === 0
+      ? value.state === "uncertain"
+        ? "A schedule estimate will appear when availability has been checked."
+        : "A schedule estimate will appear as the selected titles are added."
+      : repeatDuration !== null
+        ? value.thin
+          ? `Short lineup: ${repeatDuration} before repeats.`
+          : `${sentenceCase(repeatDuration)} before this lineup repeats.`
+        : value.thin
+          ? `Short lineup: ${programmingDuration} of programming.`
+          : `${sentenceCase(programmingDuration)} of programming.`;
   return (
-    <section aria-label="Channel outlook" className="flex flex-col gap-2 text-sm">
-      <p className="font-medium">{launch}</p>
-      {value.state === "ready" && value.missingAcquisitions > 0 && (
-        <p>
-          {value.missingAcquisitions}{" "}
-          {value.missingAcquisitions === 1
-            ? "selected title is not in your library yet"
-            : "selected titles are not in your library yet"}
-          .
-        </p>
+    <section aria-label="Channel outlook" className="text-sm">
+      <p className={value.thin ? "text-caution" : "text-muted-foreground"}>{summary}</p>
+      {showDetails && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-muted-foreground">Schedule details</summary>
+          <div className="mt-2">
+            <ProposalOutlookDetails assessment={value} />
+          </div>
+        </details>
       )}
-      {value.state === "ready" && value.missingLibrary + value.unknownTitles > 0 && (
-        <p>Some titles still need available media or complete library observations.</p>
-      )}
-      {value.programs > 0 ? (
-        <p>
-          {value.windowLimited || value.unknownTitles > 0 ? "At least " : "This cycle has "}
-          {duration(value.uniqueRuntimeMs, value.windowLimited || value.unknownTitles > 0)} of fresh
-          programming.
-          {value.firstRepeatMs !== null &&
-            ` Its first repeat comes after ${duration(value.firstRepeatMs)} of program time.`}
-        </p>
-      ) : (
-        <p>Programming will appear as selected titles become available.</p>
-      )}
-      {mixCopy(value.mix) && (
-        <p>
-          {mixCopy(value.mix)}
-          {value.mix.unknown > 0 && value.mix.core + value.mix.adjacent + value.mix.discovery > 0
-            ? " Some picks have no recorded role."
-            : ""}
-        </p>
-      )}
-      {value.thin && (
-        <div className="flex flex-col gap-2">
-          <p role="status" className="text-caution">
-            May feel repetitive. Add more variety to extend the fresh programming.
-          </p>
-          {onAddVariety && (
-            <Button variant="outline" size="sm" className="w-fit" onClick={onAddVariety}>
-              Add more variety
-            </Button>
-          )}
-        </div>
-      )}
-      <details>
-        <summary className="cursor-pointer text-muted-foreground">How we estimated this</summary>
-        <div className="mt-2 flex flex-col gap-1 text-muted-foreground">
-          <p>
-            {value.scheduledTitles} of {value.titles} titles appear as eligible programming: {value.programs}{" "}
-            unique programs across {value.seasons} numbered seasons.
-          </p>
-          <p>
-            {value.missingAcquisitions} acquisitions are missing; {value.missingLibrary} other titles are
-            missing; {value.unknownTitles} titles have incomplete library observations.
-          </p>
-          <p>
-            Core {value.mix.core} · Adjacent {value.mix.adjacent} · Discovery {value.mix.discovery} ·
-            Unclassified {value.mix.unknown}.
-          </p>
-          <p>
-            Core means requested or retained, not inferred favorites. Adjacent requires recorded
-            recommendations. Discovery means other grounded choices. Review additions and older missing
-            evidence stay unclassified.
-          </p>
-          <p>
-            Uses this exact lineup, {value.ordering || "inherited"} ordering, separation and active scheduling
-            rules. Breaks and unavailable media add no fresh-programming time.
-          </p>
-          {value.windowLimited && (
-            <p>
-              The scheduling window is limited; additional library programs may extend the runway beyond this
-              estimate.
-            </p>
-          )}
-          {value.relaxations.length > 0 && (
-            <p>
-              The scheduler needed {value.relaxations.length} recorded policy relaxations to place this
-              lineup. Audience and scope filters remain enforced.
-            </p>
-          )}
-          <p>
-            Observed{" "}
-            {new Date(value.observedAt).toLocaleString(undefined, {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })}
-            . Library and policy changes can alter the result. Starts now describes schedulable media after
-            approval; playback preparation is separate.
-          </p>
-        </div>
-      </details>
     </section>
   );
 };
 
-export { ProposalOutlook };
+export { ProposalOutlook, ProposalOutlookDetails };

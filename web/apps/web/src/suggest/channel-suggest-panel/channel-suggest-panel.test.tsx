@@ -314,27 +314,33 @@ describe("ChannelSuggestPanel", () => {
     expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
   });
 
-  it("editing a landed request preserves its intent and performs no approval", async () => {
+  it("edits a landed brief in place without leaving the current review", async () => {
     const user = userEvent.setup();
     const { approvals, submissions } = stubSuggest({ proposals: [PROPOSAL] });
     renderPanel(() => {});
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: "Change description" }));
-    expect(await screen.findByLabelText("Channel intent")).toHaveValue("80s teen comedies");
+    await user.click(await screen.findByRole("button", { name: "Edit brief" }));
+    expect(screen.getByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Your new channel" })).toBeVisible();
+    expect(screen.getByLabelText("Channel brief")).toHaveValue("80s teen comedies");
+    expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
     expect(approvals).toEqual([]);
     expect(submissions).toHaveLength(1);
   });
 
-  it("thin outlook opens the preserved request without approving", async () => {
+  it("keeps the one add-title action inside the current review", async () => {
     const user = userEvent.setup();
     const { approvals } = stubSuggest({ proposals: [PROPOSAL] });
     server.use(getGetProposalOutlookMockHandler(outlook({ thin: true })));
     renderPanel(() => {});
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("button", { name: "Add more variety" }));
-    expect(await screen.findByLabelText("Channel intent")).toHaveValue("80s teen comedies");
+    expect(await screen.findByText(/Short lineup:/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Add more variety" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add title" }));
+    expect(screen.getByPlaceholderText("Search for a movie or show…")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Your new channel" })).toBeVisible();
     expect(approvals).toEqual([]);
   });
 
@@ -409,12 +415,47 @@ describe("ChannelSuggestPanel", () => {
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
     expect(await screen.findByText("Sent for approval")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /create channel/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit brief" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add title" })).not.toBeInTheDocument();
 
     // No approve POST, no navigation — a member receives a read-only review.
     // ⚠ `approvals` is fed only by `POST /v1/proposals/:id/approve` — the per-proposal route the
     // panel would call. The old `includes("/approve")` would also have matched the BULK route.
     expect(approvals).toEqual([]);
     expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("keeps the current review visible and read-only while its revision runs", async () => {
+    runOverride = failedRun({
+      phase: "reasoning",
+      proposal: { id: PROPOSAL.id, status: PROPOSAL.status, proposal: PROPOSAL.proposal },
+      failure: undefined,
+      actions: ["wait"],
+      isRunning: true,
+      failed: false,
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    expect(await screen.findByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(screen.getByText(/Updating suggestions/)).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Create channel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit brief" })).toBeDisabled();
+  });
+
+  it("restores the approvable review with local guidance when a revision fails", async () => {
+    runOverride = failedRun({
+      proposal: { id: PROPOSAL.id, status: PROPOSAL.status, proposal: PROPOSAL.proposal },
+      actions: ["review", "edit", "retry"],
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    expect(await screen.findByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(/current lineup is unchanged/i);
+    expect(screen.queryByText(/We couldn't finish this channel/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Create channel" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Edit brief" })).toBeEnabled();
   });
 
   // The reported bug: describe a channel, the job fails (e.g. no AI provider), and the panel

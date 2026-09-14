@@ -13,7 +13,12 @@ type ChannelSuggestPanelProps = {
   // The Guide owns URL handoff state. A fresh start must clear it as well as this panel's
   // session state, otherwise a reload resumes the Journey the operator discarded.
   onStartFresh?: () => void;
+  // Lets the Guide's one PageHeader name the current task instead of nesting another
+  // workflow heading inside the panel.
+  onStageChange?: (stage: ChannelSuggestionStage) => void;
   className?: string;
 };
 
-export type { ChannelSuggestPanelProps };
+type ChannelSuggestionStage = "describe" | "generating" | "review" | "updating" | "failed";
+
+export type { ChannelSuggestionStage, ChannelSuggestPanelProps };
