@@ -4,6 +4,7 @@ import {
   getGetProposalJobMockHandler,
   getGetProposalOutlookMockHandler,
   getMeMockHandler,
+  getReviseProposalJobMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -47,6 +48,7 @@ const failedRun = (over: Partial<SuggestionRun> = {}): SuggestionRun => ({
   failed: true,
   error: undefined,
   start: vi.fn(),
+  revise: vi.fn(),
   retry: vi.fn(),
   reset: vi.fn(),
   ...over,
@@ -109,6 +111,7 @@ const stubSuggest = (
 ) => {
   const approvals: { id: string; edit: unknown }[] = [];
   const submissions: unknown[] = [];
+  const revisions: unknown[] = [];
 
   server.use(
     getMeMockHandler(opts.me ?? ADMIN),
@@ -120,6 +123,10 @@ const stubSuggest = (
     getSubmitProposalMockHandler(async ({ request }) => {
       submissions.push(await request.json());
       return { jobId: "job-1" };
+    }),
+    getReviseProposalJobMockHandler(async ({ params, request }) => {
+      revisions.push(await request.json());
+      return { jobId: String(params.jobId) };
     }),
     getGetProposalJobMockHandler(() => {
       const proposal = opts.proposals?.[0];
@@ -139,14 +146,14 @@ const stubSuggest = (
         proposal: proposal
           ? { id: proposal.id, status: proposal.status, proposal: proposal.proposal }
           : undefined,
-        actions: proposal ? ["review"] : ["wait"],
+        actions: proposal ? ["review", "edit"] : ["wait"],
         createdAt: "2026-08-22T12:00:00Z",
         updatedAt: "2026-08-22T12:00:00Z",
       };
     }),
   );
 
-  return { approvals, submissions };
+  return { approvals, submissions, revisions };
 };
 
 const renderPanel = (onCreated: (id: string) => void) => {
@@ -314,9 +321,9 @@ describe("ChannelSuggestPanel", () => {
     expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
   });
 
-  it("edits a landed brief in place without leaving the current review", async () => {
+  it("revises a landed brief on the same Job without leaving the current review", async () => {
     const user = userEvent.setup();
-    const { approvals, submissions } = stubSuggest({ proposals: [PROPOSAL] });
+    const { approvals, submissions, revisions } = stubSuggest({ proposals: [PROPOSAL] });
     renderPanel(() => {});
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
@@ -327,6 +334,15 @@ describe("ChannelSuggestPanel", () => {
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
     expect(approvals).toEqual([]);
     expect(submissions).toHaveLength(1);
+
+    await user.clear(screen.getByLabelText("Channel brief"));
+    await user.type(screen.getByLabelText("Channel brief"), "80s teen comedies with more variety");
+    await user.click(screen.getByRole("button", { name: "Update suggestions" }));
+
+    await waitFor(() => expect(revisions).toEqual([{ description: "80s teen comedies with more variety" }]));
+    expect(submissions).toHaveLength(1);
+    expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
+    expect(screen.getByText("Ferris Bueller's Day Off")).toBeVisible();
   });
 
   it("keeps the one add-title action inside the current review", async () => {
@@ -402,6 +418,83 @@ describe("ChannelSuggestPanel", () => {
     await waitFor(() => expect(approvals).toEqual([{ id: "p-1", edit: { drop: ["movie:tmdb:9377"] } }]));
   });
 
+  it("normalizes Job-scoped title choices when a replacement landed while the review was closed", async () => {
+    const replacement: ProposalDTO = {
+      ...PROPOSAL,
+      id: "p-2",
+      proposal: {
+        ...PROPOSAL.proposal,
+        acquisitions: [{ mediaType: "movie", tmdbId: 603, name: "The Matrix", year: 1999, inLibrary: false }],
+        alternates: [{ mediaType: "movie", tmdbId: 754, name: "Face/Off", year: 1997, inLibrary: false }],
+      },
+    };
+    window.sessionStorage.setItem(
+      "loomarr.proposalReviewEdit.job-1",
+      JSON.stringify({
+        drop: ["movie:tmdb:754"],
+        add: [{ mediaType: "movie", tmdbId: 603, name: "The Matrix", year: 1999, inLibrary: false }],
+      }),
+    );
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: { id: replacement.id, status: replacement.status, proposal: replacement.proposal },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    stubSuggest();
+    const view = renderPanel(() => {});
+
+    expect(await screen.findByText("The Matrix")).toBeVisible();
+    expect(screen.queryByText("Added by you")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(JSON.parse(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1") ?? "null")).toEqual(
+        {
+          drop: ["movie:tmdb:754"],
+        },
+      ),
+    );
+    view.unmount();
+  });
+
+  it("keeps a user-added title selected when the replacement returns it only as an alternate", async () => {
+    const matrix = {
+      mediaType: "movie",
+      tmdbId: 603,
+      name: "The Matrix",
+      year: 1999,
+      inLibrary: false,
+    };
+    window.sessionStorage.setItem("loomarr.proposalReviewEdit.job-1", JSON.stringify({ add: [matrix] }));
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: "p-2",
+        status: "submitted",
+        proposal: { ...PROPOSAL.proposal, alternates: [matrix] },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    stubSuggest();
+    const view = renderPanel(() => {});
+
+    await waitFor(() =>
+      expect(JSON.parse(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1") ?? "null")).toEqual(
+        {
+          drop: ["movie:tmdb:603"],
+          add: [matrix],
+        },
+      ),
+    );
+    expect(screen.getAllByText("The Matrix")).toHaveLength(1);
+    expect(screen.getByText("Will be added")).toBeVisible();
+    view.unmount();
+  });
+
   it("a member's approve is inert — no approve call fires (approval is admin-only, §7)", async () => {
     const user = userEvent.setup();
     // ProposalReview renders the Approve button off the proposal STATUS (same as /suggest);
@@ -447,6 +540,7 @@ describe("ChannelSuggestPanel", () => {
     runOverride = failedRun({
       proposal: { id: PROPOSAL.id, status: PROPOSAL.status, proposal: PROPOSAL.proposal },
       actions: ["review", "edit", "retry"],
+      failed: false,
     });
     stubSuggest();
     renderPanel(() => {});

@@ -6,7 +6,7 @@ import type { Proposal } from "@loomarr/api/models/proposal";
 // The proposal shape is the orval-generated `Proposal` (from the BE's typed
 // suggest.Proposal — 1:1, §12). Only the review UI's own status and prop interface
 // live here.
-type ProposalStatus = "draft" | "submitted" | "approved" | "denied" | "partially-edited";
+type ProposalStatus = "draft" | "submitted" | "approved" | "denied" | "superseded" | "partially-edited";
 
 interface ProposalReviewProps {
   proposal: Proposal;

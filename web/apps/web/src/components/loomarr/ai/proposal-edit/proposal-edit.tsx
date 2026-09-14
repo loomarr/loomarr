@@ -140,7 +140,10 @@ const ProposalEdit = (props: ProposalEditProps) => {
     })),
     ...acquisitions.map((item) => ({ item, key: provisionKey(item), kind: "missing" as const })),
   ];
-  const backups: Keyed[] = alternates.map((item) => ({ item, key: provisionKey(item), kind: "backup" }));
+  const addedKeys = new Set(added.map(provisionKey));
+  const backups: Keyed[] = alternates
+    .map((item) => ({ item, key: provisionKey(item), kind: "backup" as const }))
+    .filter((pick) => !addedKeys.has(pick.key));
   const includedBackups = backups.filter((pick) => !dropped.includes(pick.key)).length;
 
   const search = searchApi.useSearch(

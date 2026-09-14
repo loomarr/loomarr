@@ -16,6 +16,7 @@ const STATUS: Partial<
   submitted: { label: "Sent for approval", variant: "suggest" },
   approved: { label: "Created", variant: "lock" },
   denied: { label: "Not approved", variant: "onair" },
+  superseded: { label: "Replaced", variant: "neutral" },
 };
 
 const constraintSummary = (matches?: ConstraintMatches): string => {

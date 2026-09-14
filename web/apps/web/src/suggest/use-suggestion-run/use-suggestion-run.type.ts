@@ -33,6 +33,9 @@ interface SuggestionRun {
   failed: boolean;
   error?: unknown;
   start: (intent: Intent) => void;
+  // Refresh the current review without changing its durable Job identity. The
+  // submitted Proposal remains available until the replacement succeeds.
+  revise: (intent: Intent) => void;
   retry: () => void;
   // Authorized recovery retains the server-owned intent; a fresh start discards it.
   reset: (preserveIntent?: boolean) => void;

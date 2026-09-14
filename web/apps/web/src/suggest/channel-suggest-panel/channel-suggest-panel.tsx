@@ -1,10 +1,12 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { Intent } from "@loomarr/api/models/intent";
+import type { Proposal } from "@loomarr/api/models/proposal";
 import { toProblem } from "@loomarr/api/mutator";
 import { provisionKey } from "@loomarr/core/provision";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -29,8 +31,34 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // cross-user approval queue had already moved into `/queue`'s tabs (V27).
 //
 // One expanding surface over useSuggestionRun's three states: idle → describe form; running →
-// live phases; a landed proposal → review with Approve/Deny. A successful approve or "Start
-// another" resets back to the form.
+// live phases; a landed proposal → review with Approve/Deny. A successful approve or
+// "Create another" resets back to the form.
+const normalizeReviewEdit = (edit: ApprovalEditDTO, proposal: Proposal): ApprovalEditDTO | undefined => {
+  const selectedKeys = new Set([...proposal.lineup, ...proposal.acquisitions].map(provisionKey));
+  const alternateKeys = new Set(proposal.alternates.map(provisionKey));
+  const proposalKeys = new Set([...selectedKeys, ...alternateKeys]);
+  const originallyAddedKeys = new Set((edit.add ?? []).map(provisionKey));
+  const add = edit.add?.filter((item) => !selectedKeys.has(provisionKey(item)));
+  const drop = (edit.drop ?? []).filter(
+    (key) => proposalKeys.has(key) && !(selectedKeys.has(key) && originallyAddedKeys.has(key)),
+  );
+
+  // If the model demotes a user-added title to an alternate, the explicit add
+  // still wins: keep it selected and remove the duplicate backup at approval.
+  for (const item of add ?? []) {
+    const key = provisionKey(item);
+    if (alternateKeys.has(key) && !drop.includes(key)) drop.push(key);
+  }
+
+  const note = edit.note?.trim();
+  if (drop.length === 0 && (add?.length ?? 0) === 0 && !note) return undefined;
+  return {
+    ...(drop.length ? { drop } : {}),
+    ...(add?.length ? { add } : {}),
+    ...(note ? { note } : {}),
+  };
+};
+
 const ChannelSuggestPanel = ({
   onCreated,
   initialIntent,
@@ -69,13 +97,17 @@ const ChannelSuggestPanel = ({
         void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
         setEdit(undefined);
         run.reset();
+        // Discard is an explicit fresh start. A route-provided template remains
+        // in this mounted component until navigation settles, so suppress it
+        // locally as well as clearing the URL handoff.
+        setStartedFresh(true);
         onStartFresh?.();
       },
     },
   });
 
   const proposal = run.proposal;
-  const previousProposalId = useRef(proposal?.id);
+  const canRevise = isAdmin && (run.actions.includes("edit") || run.isRunning);
   const stage = proposal
     ? run.isRunning
       ? "updating"
@@ -92,25 +124,13 @@ const ChannelSuggestPanel = ({
     edit,
   });
   useEffect(() => {
-    const previous = previousProposalId.current;
-    previousProposalId.current = proposal?.id;
-    if (!previous || !proposal || previous === proposal.id || !edit) return;
-
-    const proposalKeys = new Set(
-      [...(proposal.proposal.lineup ?? []), ...(proposal.proposal.acquisitions ?? [])].map(provisionKey),
-    );
-    const drop = edit.drop?.filter((key) => proposalKeys.has(key));
-    const add = edit.add?.filter((item) => !proposalKeys.has(provisionKey(item)));
-    const note = edit.note?.trim();
-    const normalized =
-      (drop?.length ?? 0) + (add?.length ?? 0) > 0 || note
-        ? {
-            ...(drop?.length ? { drop } : {}),
-            ...(add?.length ? { add } : {}),
-            ...(note ? { note } : {}),
-          }
-        : undefined;
-    setEdit(normalized);
+    if (!proposal || !edit) return;
+    const normalized = normalizeReviewEdit(edit, proposal.proposal);
+    // Normalize on every restored review, not only while this component happens
+    // to observe the Proposal id change. A revision may finish while the panel is
+    // closed or the page is reloading; the stable Job-scoped edit still must not
+    // duplicate a user-added title the replacement now suggests itself.
+    if (JSON.stringify(normalized) !== JSON.stringify(edit)) setEdit(normalized);
   }, [edit, proposal, setEdit]);
   const startFresh = () => {
     setEdit(undefined);
@@ -259,7 +279,7 @@ const ChannelSuggestPanel = ({
                   : undefined
             }
             onEdit={isAdmin ? setEdit : undefined}
-            onRevise={isAdmin ? run.start : undefined}
+            onRevise={canRevise ? run.revise : undefined}
             onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: edit ?? {} }) : undefined}
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
