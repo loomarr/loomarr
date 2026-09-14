@@ -66,9 +66,12 @@ const ProposalReview = ({
   const acquisitions = proposal.acquisitions ?? [];
   const alternates = proposal.alternates ?? [];
   const dropped = new Set(edit?.drop ?? []);
-  const selectedReady = lineup.filter((item) => !dropped.has(provisionKey(item))).length;
+  const selectedReady =
+    lineup.filter((item) => !dropped.has(provisionKey(item))).length +
+    (edit?.add?.filter((item) => item.inLibrary).length ?? 0);
   const selectedMissing =
-    acquisitions.filter((item) => !dropped.has(provisionKey(item))).length + (edit?.add?.length ?? 0);
+    acquisitions.filter((item) => !dropped.has(provisionKey(item))).length +
+    (edit?.add?.filter((item) => !item.inLibrary).length ?? 0);
   const selectedCount = selectedReady + selectedMissing;
   const statusDisplay = selfService ? (status === "approved" ? STATUS.approved : undefined) : STATUS[status];
   const scoresCurrent = status !== "partially-edited" && proposal.scores?.version === 1;

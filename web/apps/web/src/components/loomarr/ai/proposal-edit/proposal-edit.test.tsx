@@ -109,10 +109,17 @@ describe("ProposalEdit", () => {
     });
   });
 
-  // An added title is never "in library" from here: it goes through the same idempotent enqueue
-  // as anything the model proposed, and the provisioner decides what is already present.
-  it("marks an added title as not-in-library even when the search says otherwise", async () => {
-    stubSearch([{ name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: true }]);
+  it("keeps authoritative library availability on a searched title", async () => {
+    stubSearch([
+      {
+        name: "Con Air",
+        year: 1997,
+        mediaType: "movie",
+        tmdbId: 1701,
+        inLibrary: true,
+        libraryItemId: "library-con-air",
+      },
+    ]);
     const onChange = vi.fn();
     render(<ProposalEdit lineup={[]} acquisitions={[]} onChange={onChange} />);
 
@@ -120,7 +127,11 @@ describe("ProposalEdit", () => {
     await userEvent.type(screen.getByRole("combobox"), "con air");
     await userEvent.click(await screen.findByText("Con Air"));
 
-    expect(onChange.mock.lastCall?.[0].add[0].inLibrary).toBe(false);
+    expect(onChange.mock.lastCall?.[0].add[0]).toMatchObject({
+      inLibrary: true,
+      libraryItemId: "library-con-air",
+    });
+    expect(screen.getByText("In your library")).toBeVisible();
   });
 
   it("does not offer a title already on the proposal", async () => {

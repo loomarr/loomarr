@@ -149,6 +149,32 @@ describe("ProposalReview", () => {
     expect(onApprove).toHaveBeenCalledOnce();
   });
 
+  it("counts a searched library title as ready instead of another acquisition", () => {
+    renderReview(
+      <ProposalReview
+        proposal={proposal}
+        status="partially-edited"
+        selfService
+        edit={{
+          add: [
+            {
+              name: "Point Break",
+              mediaType: "movie",
+              tmdbId: 1089,
+              inLibrary: true,
+              libraryItemId: "library-point-break",
+            },
+          ],
+        }}
+        onEdit={vi.fn()}
+        onApprove={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("3 titles · 2 in your library · 1 will be added")).toBeVisible();
+    expect(screen.getByText("Loomarr will add 1 missing title.")).toBeVisible();
+  });
+
   it("prevents creating an empty channel", () => {
     renderReview(
       <ProposalReview

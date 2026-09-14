@@ -16,7 +16,7 @@ import { SearchCommand } from "../../shell";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import type { ProposalEditProps } from "./proposal-edit.type";
 
-type PickKind = "ready" | "missing" | "backup" | "added";
+type PickKind = "ready" | "missing" | "backup";
 type Keyed = { item: ProposalItem; key: string; kind: PickKind };
 
 const mediaLabel = (item: ProposalItem) => (item.mediaType === "series" ? "Series" : "Movie");
@@ -30,8 +30,6 @@ const stateLabel = (kind: PickKind) => {
       return { text: "In your library", variant: "lock" as const };
     case "backup":
       return { text: "Alternate", variant: "neutral" as const };
-    case "added":
-      return { text: "Added by you", variant: "suggest" as const };
     default:
       return { text: "Will be added", variant: "tune" as const };
   }
@@ -143,6 +141,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
     ...acquisitions.map((item) => ({ item, key: provisionKey(item), kind: "missing" as const })),
   ];
   const backups: Keyed[] = alternates.map((item) => ({ item, key: provisionKey(item), kind: "backup" }));
+  const includedBackups = backups.filter((pick) => !dropped.includes(pick.key)).length;
 
   const search = searchApi.useSearch(
     { q: query, scope: "all", limit: 8 },
@@ -175,7 +174,8 @@ const ProposalEdit = (props: ProposalEditProps) => {
     const item: ProposalItem = {
       name: candidate.name,
       mediaType: candidate.mediaType,
-      inLibrary: false,
+      inLibrary: candidate.inLibrary,
+      ...(candidate.libraryItemId ? { libraryItemId: candidate.libraryItemId } : {}),
       ...(candidate.year ? { year: candidate.year } : {}),
       ...(candidate.tmdbId ? { tmdbId: candidate.tmdbId } : {}),
       ...(candidate.tvdbId ? { tvdbId: candidate.tvdbId } : {}),
@@ -242,7 +242,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
           return (
             <PickRow
               key={key}
-              pick={{ item, key, kind: "added" }}
+              pick={{ item, key, kind: item.inLibrary ? "ready" : "missing" }}
               included
               editable={editable}
               disabled={disabled}
@@ -313,7 +313,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
           <summary className="cursor-pointer text-sm">
             <span className="font-medium">Alternates</span>
             <span className="ml-2 text-muted-foreground">
-              {backups.filter((pick) => !dropped.includes(pick.key)).length} available
+              {includedBackups} {includedBackups === 1 ? "option" : "options"}
             </span>
           </summary>
           <p className="mt-2 text-muted-foreground text-sm">
