@@ -547,7 +547,11 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				// Qwen, and gpt-oss to repeat the same useful search until the hard tool
 				// boundary. Empty/error results retain the tool so the model can try the
 				// alternate discovery mode. The state survives JSON repairs above.
-				if len(cands) > 0 {
+				// Automatic named-set grounding is stronger evidence than the model's
+				// collection hypothesis. Once it yields usable constituents, retrieval
+				// is complete even when the model guessed a different roster.
+				referenceGrounded := sources.hasReference && len(sources.result.reference.candidates) > 0
+				if len(cands) > 0 || referenceGrounded {
 					*finalizationOnly = true
 					tools = nil
 				} else if rankedTrace.Terminal == ReasonRetrievalEmpty {

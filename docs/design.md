@@ -1417,6 +1417,11 @@ from older transcript-only counts. Exact source anchors that the operator direct
 bounded prefetch slots first. Validated model title hypotheses may then prioritize remaining anchors
 for lookup only when the source independently contains that name; reordering cannot add a member,
 choose an ambiguous identity, or change source authority.
+Once automatic source grounding yields at least one usable constituent, retrieval is complete for
+that invocation: the planner retires the catalog tool and asks the provider to finalize from the
+source-grounded candidates. A model-authored collection hypothesis that misses those constituents
+cannot keep discovery open or spend the remaining tool rounds after the stronger source evidence is
+already available.
 Absent or ambiguous sources preserve named-set uncertainty; transport failures remain retrieval
 failures. Existing operator-supplied pages keep their site-neutral lookup behavior.
 
@@ -2019,13 +2024,15 @@ settings.
 
 The fixed projection keeps malformed final JSON separate from invalid tool arguments: the former
 uses `provider_response_invalid` with `retry_later`; only an explicit invalid-tool terminal uses
-`invalid_tool_calls` with `retry_later`. Ordinary exhausted discovery without that terminal uses
-`discovery_budget_exhausted` with `simplify_request`. Provider timeout and provider unavailability
-remain distinct reasons with `retry_later`. Retry guidance explains the failed provider stage and,
-if it repeats, points to the existing authorized AI-check action or asking an administrator; it does
-not assert that the user's request caused a provider protocol error. New producer-specific reasons
-remain unavailable until their allowlisted typed evidence exists; generic outer codes do not invent
-that evidence.
+`invalid_tool_calls` with `retry_later`. An exhausted run that already surfaced grounded candidates
+also uses `provider_response_invalid`: retrieval succeeded, but the provider did not finish the
+lineup. Exhaustion without grounded candidates retains `discovery_budget_exhausted`, but uses neutral
+`retry_later` guidance; a raw budget fact does not prove that the request was broad, vague, or had too
+many directions. Provider timeout and provider unavailability remain distinct reasons with
+`retry_later`. Retry guidance explains the failed stage and, if it repeats, points to the existing
+authorized AI-check action or asking an administrator; it does not assert that the user's request
+caused a provider protocol error. New producer-specific reasons remain unavailable until their
+allowlisted typed evidence exists; generic outer codes do not invent that evidence.
 
 The existing `retrieval_failure` terminal covers both reference and catalog operations. It therefore
 projects as `retrieval_unavailable` with `retry_later`; it does not assert that the reference page
@@ -2303,9 +2310,8 @@ latency defect, never a correctness defect.
 The builder presents an in-flight Journey as one calm current-status message; it does not expose
 tool-loop rounds, a ticking timer, a percentage, or a checklist for a process that may revisit phases.
 A terminal failure replaces progress completely with one plain-language explanation and the useful
-server-authorized recovery action. In particular, `simplify_request` authorizes `edit`, restores the
-complete saved Intent, and makes editing the primary recovery; blindly retrying the unchanged request
-is not presented as the solution to a discovery-budget failure.
+server-authorized recovery action. The copy states what Loomarr could not finish and preserves the
+saved Intent; it does not infer a defect in the user's description from an internal work limit.
 
 **Workflow versus activities.** Ordering, transitions, attempt tokens, approval, grounding gates, and
 retry classification are deterministic workflow logic. Model turns, catalog reads, and external

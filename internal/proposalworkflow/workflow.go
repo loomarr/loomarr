@@ -396,10 +396,15 @@ func failureDetails(code FailureCode, trace suggest.DecisionTrace) (FailureReaso
 			return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "The AI provider returned an invalid response.", "Try again later; ask an administrator to check AI settings if this keeps happening."
 		case suggest.TerminalGenerationFailure:
 			return FailureReasonGenerationFailed, RecoveryActionRetryLater, "Loomarr couldn't generate this channel.", "Try again later."
+		case suggest.FailureBudgetExhausted:
+			if trace.SurfacedTotal > 0 {
+				return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "Loomarr found titles but couldn't finish the lineup.", "Try again. Your description is still here."
+			}
+			return FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater, "Loomarr couldn't finish searching for titles.", "Try again. Your description is still here."
 		}
 	}
 	if code == FailureBudgetExhausted {
-		return FailureReasonDiscoveryBudgetExhausted, RecoveryActionSimplifyRequest, "This request exceeded the bounded discovery budget. Try again with narrower constraints.", "Simplify the request and try again."
+		return FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater, "Loomarr couldn't finish searching for titles.", "Try again. Your description is still here."
 	}
 	if code == FailureNoGroundedTitles || code == FailureSelectionEmpty {
 		return FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest, "No grounded titles matched this request. Try again, or edit its description and constraints.", "Broaden the request or add a few examples."
