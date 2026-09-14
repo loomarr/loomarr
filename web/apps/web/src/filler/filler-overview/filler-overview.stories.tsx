@@ -85,8 +85,7 @@ export const RecoverableFailure: Story = {
         nextAction: "retry_processing",
         actionCount: 2,
         counts: {
-          ready: 46,
-          complete: 0,
+          admitted: 46,
           rejected: 22,
           reviews: 1,
           unresolvedReviews: 0,
