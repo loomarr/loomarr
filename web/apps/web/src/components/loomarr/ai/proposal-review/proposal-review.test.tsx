@@ -80,6 +80,43 @@ describe("ProposalReview", () => {
     expect(screen.getByRole("button", { name: "Update suggestions" })).toBeVisible();
   });
 
+  it("revises the description without dropping the request's existing constraints", async () => {
+    const user = userEvent.setup();
+    const onRevise = vi.fn();
+    renderReview(
+      <ProposalReview
+        proposal={{
+          ...proposal,
+          intent: {
+            ...proposal.intent,
+            era: "1990s",
+            runtimeTargetMin: 180,
+            mustInclude: ["Heat"],
+          },
+        }}
+        selfService
+        onRevise={onRevise}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Edit brief" }));
+    const details = screen.getByText("Other request details (3)").closest("details");
+    expect(details).not.toHaveAttribute("open");
+    await user.click(screen.getByText("Other request details (3)"));
+    expect(details).toHaveTextContent("Era1990s");
+    expect(details).toHaveTextContent("Target length180 minutes");
+    expect(details).toHaveTextContent("Must includeHeat");
+
+    await user.clear(screen.getByLabelText("Channel brief"));
+    await user.type(screen.getByLabelText("Channel brief"), "90s action with more comedy");
+    await user.click(screen.getByRole("button", { name: "Update suggestions" }));
+    expect(onRevise).toHaveBeenCalledWith({
+      description: "90s action with more comedy",
+      era: "1990s",
+      runtimeTargetMin: 180,
+      mustInclude: ["Heat"],
+    });
+  });
+
   it("lets an admin choose titles and creates with the exact edited count", async () => {
     const onEdit = vi.fn();
     const onApprove = vi.fn();

@@ -74,6 +74,24 @@ const ProposalReview = ({
   const scoresCurrent = status !== "partially-edited" && proposal.scores?.version === 1;
   const partialTheme = scoresCurrent && proposal.scores?.theme.status !== "supported";
   const controlsDisabled = busy || revising;
+  const requestDetails = (
+    [
+      proposal.intent.era ? (["Era", proposal.intent.era] as const) : null,
+      proposal.intent.tone ? (["Tone", proposal.intent.tone] as const) : null,
+      proposal.intent.runtimeTargetMin
+        ? (["Target length", `${proposal.intent.runtimeTargetMin} minutes`] as const)
+        : null,
+      proposal.intent.maxAcquisitions
+        ? (["New title limit", String(proposal.intent.maxAcquisitions)] as const)
+        : null,
+      proposal.intent.mustInclude?.length
+        ? (["Must include", proposal.intent.mustInclude.join(", ")] as const)
+        : null,
+      proposal.intent.mustExclude?.length
+        ? (["Must exclude", proposal.intent.mustExclude.join(", ")] as const)
+        : null,
+    ] as Array<readonly [string, string] | null>
+  ).filter((detail): detail is readonly [string, string] => detail !== null);
 
   return (
     <section className={cn("mx-auto flex w-full max-w-3xl flex-col gap-5 py-2", className)}>
@@ -119,6 +137,21 @@ const ProposalReview = ({
             onChange={(event) => setBrief(event.target.value)}
             className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed shadow-sm focus-visible:border-suggest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-suggest"
           />
+          {requestDetails.length > 0 && (
+            <details className="text-sm">
+              <summary className="w-fit cursor-pointer text-muted-foreground">
+                Other request details ({requestDetails.length})
+              </summary>
+              <dl className="mt-2 grid gap-x-4 gap-y-1.5 rounded-md bg-background/60 p-3 sm:grid-cols-[auto_1fr]">
+                {requestDetails.map(([label, value]) => (
+                  <div key={label} className="contents">
+                    <dt className="font-medium text-muted-foreground">{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          )}
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setEditingBrief(false)}>
               Cancel

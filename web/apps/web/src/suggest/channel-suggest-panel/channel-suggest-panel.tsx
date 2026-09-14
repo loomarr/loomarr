@@ -1,5 +1,4 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
-import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { Intent } from "@loomarr/api/models/intent";
 import { toProblem } from "@loomarr/api/mutator";
 import { provisionKey } from "@loomarr/core/provision";
@@ -15,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useProposalOutlook } from "../live-proposal-outlook";
 import { useElapsed } from "../use-elapsed";
+import { useProposalReviewEdit } from "../use-proposal-review-edit";
 import { useSuggestionRun } from "../use-suggestion-run";
 import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 
@@ -42,8 +42,8 @@ const ChannelSuggestPanel = ({
   const { isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
   const [startedFresh, setStartedFresh] = useState(false);
-  const [edit, setEdit] = useState<ApprovalEditDTO | undefined>();
   const run = useSuggestionRun(initialJobId);
+  const [edit, setEdit] = useProposalReviewEdit(run.jobId);
   const elapsed = useElapsed(run.isRunning);
   const runProblem = run.error == null ? undefined : toProblem(run.error);
   const aiUnconfigured = runProblem?.type === "feature_not_configured";
@@ -67,6 +67,7 @@ const ChannelSuggestPanel = ({
     mutation: {
       onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
+        setEdit(undefined);
         run.reset();
         onStartFresh?.();
       },
@@ -110,7 +111,7 @@ const ChannelSuggestPanel = ({
           }
         : undefined;
     setEdit(normalized);
-  }, [edit, proposal]);
+  }, [edit, proposal, setEdit]);
   const startFresh = () => {
     setEdit(undefined);
     run.reset();
