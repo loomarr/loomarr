@@ -69,13 +69,16 @@ printf '%s\n' "$primary" | grep -q 'grafana.*http://localhost:3000'
 
 secondary="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$secondary" | grep -q 'database override.*\.agent-data/loomarr.db'
+printf '%s\n' "$secondary" | grep -q 'images override.*\.agent-data/images'
 printf '%s\n' "$secondary" | grep -q 'prepared override.*\.agent-data/prepared'
 printf '%s\n' "$secondary" | grep -q 'public URL override.*http://localhost:'
 secondary_exports="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" export)"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PREPARED_DIR=.*\.agent-data/prepared"
+printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_IMAGES_DIR=.*\.agent-data/images"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_DIAGNOSTICS_DIR=.*\.agent-data/diagnostics"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PUBLIC_URL=.*http://localhost:"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_DEV_LOGIN='1'"
+printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_ENCRYPTION_KEY_FILE=.*\.agent-data/encryption.key"
 printf '%s\n' "$secondary_exports" | grep -q "OBSERVABILITY_COMPOSE_PROJECT_NAME='loomarr-.*-observability'"
 secondary_backend_port="$(printf '%s\n' "$secondary_exports" | sed -n "s/export LOOMARR_DEV_PORT='\([0-9][0-9]*\)'/\1/p")"
 secondary_prometheus_port="$(printf '%s\n' "$secondary_exports" | sed -n "s/export PROMETHEUS_DEV_PORT='\([0-9][0-9]*\)'/\1/p")"
@@ -88,9 +91,11 @@ if printf '%s\n' "$(LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/dev-env.sh" export)" |
 	exit 1
 fi
 grep -q 'PLAYOUT_PREPARED_DIR=.*LOOMARR_AGENT_PREPARED_DIR' "$SCRIPT_DIR/../.air.toml"
+grep -q 'IMAGES_DIR=.*LOOMARR_AGENT_IMAGES_DIR' "$SCRIPT_DIR/../.air.toml"
 grep -q 'DIAGNOSTICS_DIR=.*LOOMARR_AGENT_DIAGNOSTICS_DIR' "$SCRIPT_DIR/../.air.toml"
 grep -q 'SERVER_PUBLIC_URL=.*LOOMARR_AGENT_PUBLIC_URL' "$SCRIPT_DIR/../.air.toml"
 grep -q 'LOOMARR_DEV_LOGIN=.*LOOMARR_AGENT_DEV_LOGIN' "$SCRIPT_DIR/../.air.toml"
+grep -q 'LOOMARR_ENCRYPTION_KEY_FILE=.*LOOMARR_AGENT_ENCRYPTION_KEY_FILE' "$SCRIPT_DIR/../.air.toml"
 if printf '%s\n' "$secondary" | grep -q 'http://localhost:8080'; then
 	echo 'agent-harness-test: secondary worktree reused the primary backend port' >&2
 	exit 1
