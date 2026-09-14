@@ -81,10 +81,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     enqueued: [] as string[],
     proposalJobRequests: [] as Record<string, unknown>[],
     proposalRevisionRequests: [] as Array<{ jobId: string; intent: Record<string, unknown> }>,
-    proposalRevisions: {} as Record<
-      string,
-      { intent: Record<string, unknown>; pendingJourneyReads: number }
-    >,
+    proposalRevisions: {} as Record<string, { intent: Record<string, unknown>; pendingJourneyReads: number }>,
     channelCreationRequests: [] as Record<string, unknown>[],
     approvalRequests: [] as string[],
     approvalEdits: [] as Record<string, unknown>[],
