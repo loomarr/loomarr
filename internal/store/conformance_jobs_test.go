@@ -567,6 +567,52 @@ func testProposalRevisionFallbackApproval(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testProposalRevisionFallbackDenial(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	job := sampleJob("job-revision-discard", "hash-original", now, now)
+	if err := s.CreateJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim original job = %+v, %v", claimed, err)
+	}
+	proposal := Proposal{
+		ID: "proposal-discard", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
+		ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.CommitSuggestionSuccess(ctx, job.ID, 1, proposal, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, proposal.ID, 1,
+		`{"description":"more variety"}`, "hash-revision", now, now); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim revision = %+v, %v", claimed, err)
+	}
+	if err := s.CommitSuggestionFailure(ctx, job.ID, 2, "provider timeout", "generation_failed", "", now); err != nil {
+		t.Fatal(err)
+	}
+
+	proposal.Status = "denied"
+	proposal.ApprovedBy = "admin"
+	proposal.DenyReason = "No longer wanted"
+	proposal.UpdatedAt = now.Add(time.Second)
+	if err := s.CommitProposalDenial(ctx, proposal); err != nil {
+		t.Fatalf("deny preserved fallback: %v", err)
+	}
+	snapshot, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil || snapshot.Job.Status != "done" || snapshot.Proposal == nil ||
+		snapshot.Proposal.Status != "denied" || snapshot.Proposal.DenyReason != "No longer wanted" ||
+		len(snapshot.Attempts) != 2 || snapshot.Attempts[1].Status != "failed" {
+		t.Fatalf("discarded fallback Journey snapshot = (%+v, %v)", snapshot, err)
+	}
+}
+
 func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

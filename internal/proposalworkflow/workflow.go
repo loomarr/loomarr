@@ -462,8 +462,9 @@ func validateAttempts(record Record) error {
 		want = AttemptRunning
 	case JobDone:
 		if latest.Status == AttemptFailed && record.Proposal != nil &&
-			record.Proposal.Status == ProposalApproved && record.Channel != nil {
-			// Approval of the preserved fallback resolves a failed revision without
+			((record.Proposal.Status == ProposalApproved && record.Channel != nil) ||
+				record.Proposal.Status == ProposalDenied) {
+			// Deciding the preserved fallback resolves a failed revision without
 			// rewriting its failed Attempt into a fictional generation success.
 			return nil
 		}

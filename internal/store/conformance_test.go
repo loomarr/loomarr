@@ -78,6 +78,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("SuggestionRequeueCAS", func(t *testing.T) { testSuggestionRequeueCAS(t, newStore) })
 		t.Run("ProposalRevisionLifecycle", func(t *testing.T) { testProposalRevisionLifecycle(t, newStore) })
 		t.Run("ProposalRevisionFallbackApproval", func(t *testing.T) { testProposalRevisionFallbackApproval(t, newStore) })
+		t.Run("ProposalRevisionFallbackDenial", func(t *testing.T) { testProposalRevisionFallbackDenial(t, newStore) })
 		t.Run("CloneSuggestionSuccess", func(t *testing.T) { testCloneSuggestionSuccess(t, newStore) })
 		t.Run("ProposalJobSnapshot", func(t *testing.T) { testProposalJobSnapshot(t, newStore) })
 		t.Run("ProposalJobFirstLiveMonotonic", func(t *testing.T) { testProposalJobFirstLiveMonotonic(t, newStore) })

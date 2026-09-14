@@ -381,6 +381,16 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 	if err := proposalDecisionResult(ctx, tx, s.ph(`SELECT status FROM proposals WHERE id = ?`), p.ID, result); err != nil {
 		return err
 	}
+	if jobStatus == "failed" {
+		// Dismissing the preserved fallback resolves the failed revision Journey
+		// just as approving it does, while the failed Attempt remains in history.
+		if _, err := tx.ExecContext(ctx, s.ph(
+			`UPDATE jobs
+			    SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
+			  WHERE id=? AND status='failed'`), epoch(p.UpdatedAt), p.JobID); err != nil {
+			return fmt.Errorf("deny proposal %s: resolve failed revision: %w", p.ID, err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("deny proposal %s: commit: %w", p.ID, err)
 	}
