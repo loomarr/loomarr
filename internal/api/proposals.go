@@ -91,9 +91,43 @@ type submitOutput struct {
 	}
 }
 
+// suggestionConfigurationError maps the settings-owned readiness explanation to
+// one user-facing recovery contract. Proposal creation and channel refinement share
+// it so a missing grounding source cannot be called an AI failure on one surface and
+// something else on another.
+func (s *Server) suggestionConfigurationError(ctx context.Context) error {
+	if !s.featureOff(ctx, "suggestions") {
+		return nil
+	}
+	missing := s.settings.MissingRequirements(ctx, "suggestions")
+	aiMissing := false
+	tmdbMissing := false
+	for _, key := range missing {
+		switch key {
+		case "llm.provider", "llm.model":
+			aiMissing = true
+		case "tmdb.api_key":
+			tmdbMissing = true
+		}
+	}
+	if tmdbMissing && !aiMissing {
+		return errGroundingNotConfigured(
+			"TMDB is needed for channel suggestions",
+			"Connect TMDB in Settings → Connections so Loomarr can match channel descriptions to real titles.",
+		)
+	}
+	return errFeatureNotConfigured(
+		"AI isn't set up",
+		"Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.",
+	)
+}
+
 func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOutput, error) {
-	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
+	if s.suggest == nil {
 		return nil, errFeatureNotConfigured("AI isn't set up", "Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.")
+	}
+	if err := s.suggestionConfigurationError(ctx); err != nil {
+		return nil, err
 	}
 	if in.Body.Description == "" {
 		return nil, errBadRequest("Description required", "Describe the channel you want in a sentence.")
@@ -117,7 +151,7 @@ func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOu
 type ProposalDTO struct {
 	ID         string `json:"id"`
 	JobID      string `json:"jobId"`
-	Status     string `json:"status" enum:"submitted,approved,denied"`
+	Status     string `json:"status" enum:"submitted,approved,denied,superseded"`
 	CreatedBy  string `json:"createdBy,omitempty"`
 	ApprovedBy string `json:"approvedBy,omitempty"`
 	DenyReason string `json:"denyReason,omitempty"`
@@ -339,6 +373,12 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	if errors.Is(err, suggest.ErrSuperseded) {
 		return nil, errConflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
 	}
+	if errors.Is(err, suggest.ErrRevisionActive) {
+		return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before creating this channel.")
+	}
+	if errors.Is(err, suggest.ErrEmptyApproval) {
+		return nil, errUnprocessable("Choose at least one title", "A channel needs at least one included title before it can be created.")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -461,10 +501,15 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 	p.ApprovedBy = userIDFromHuma(ctx)
 	p.DenyReason = in.Body.Reason
 	p.UpdatedAt = time.Now()
-	if err := s.store.CommitProposalDenial(ctx, p); errors.Is(err, store.ErrProposalNotSubmitted) {
-		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
-	} else if err != nil {
-		return nil, err
+	if err := s.store.CommitProposalDenial(ctx, p); err != nil {
+		switch {
+		case errors.Is(err, store.ErrProposalNotSubmitted):
+			return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
+		case errors.Is(err, store.ErrProposalRevisionActive):
+			return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before dismissing this channel.")
+		default:
+			return nil, err
+		}
 	}
 	if s.decisionQuality != nil {
 		s.decisionQuality.ProposalDeclined(ctx, p.ID, p.UpdatedAt)

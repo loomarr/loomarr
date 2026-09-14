@@ -13,6 +13,8 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
+const validApprovalProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed"}]}`
+
 func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 	for _, conflict := range []error{store.ErrChannelConflict, store.ErrChannelStale} {
 		t.Run(conflict.Error(), func(t *testing.T) {
@@ -23,7 +25,7 @@ func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 				return ch
 			}}
 			approver := suggest.NewApprover(st, channels, time.Now)
-			p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: `{}`}
+			p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: validApprovalProposalJSON}
 
 			result, err := approver.Approve(context.Background(), p, nil, "admin")
 			if err != nil {
@@ -44,7 +46,7 @@ func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 
 func TestApproverRechecksSupersessionAfterStaleChannelRetry(t *testing.T) {
 	p := store.Proposal{
-		ID: "older", JobID: "job1", Status: "submitted", ProposalJSON: `{}`,
+		ID: "older", JobID: "job1", Status: "submitted", ProposalJSON: validApprovalProposalJSON,
 		CreatedAt: time.Unix(100, 0),
 	}
 	newer := store.Proposal{ID: "newer", JobID: p.JobID, Status: "approved", CreatedAt: time.Unix(200, 0)}
@@ -119,7 +121,7 @@ func TestApproverPlanFailureDoesNotReachStore(t *testing.T) {
 	st := &testkit.ApprovalStore{}
 	channels := &testkit.ApprovalChannels{PlanError: errors.New("cannot plan")}
 	approver := suggest.NewApprover(st, channels, time.Now)
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: `{}`}
+	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: validApprovalProposalJSON}
 
 	if _, err := approver.Approve(context.Background(), p, nil, "admin"); err == nil {
 		t.Fatal("approval succeeded despite channel-plan failure")
@@ -135,7 +137,7 @@ func TestApproverStoreFailureDoesNotRunPostCommit(t *testing.T) {
 	qualitySink := &testkit.QualityRecorder{}
 	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
 	approver := suggest.NewApprover(st, channels, time.Now).WithDecisionQuality(decisionQuality)
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: `{}`}
+	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: validApprovalProposalJSON}
 
 	if _, err := approver.Approve(context.Background(), p, nil, "admin"); err == nil {
 		t.Fatal("approval succeeded despite local transaction failure")

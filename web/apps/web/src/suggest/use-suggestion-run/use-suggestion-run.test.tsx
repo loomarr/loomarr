@@ -1,5 +1,9 @@
-import type { ProposalJourneyDTO } from "@loomarr/api";
-import { getGetProposalJobMockHandler, getSubmitProposalMockHandler } from "@loomarr/api/msw";
+import type { Intent, ProposalJourneyDTO } from "@loomarr/api";
+import {
+  getGetProposalJobMockHandler,
+  getReviseProposalJobMockHandler,
+  getSubmitProposalMockHandler,
+} from "@loomarr/api/msw";
 import type { EventHandlers, SuggestionPhase } from "@loomarr/core/events";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -109,6 +113,14 @@ describe("useSuggestionRun", () => {
     expect(result.current.actions).toEqual(["edit", "retry"]);
   });
 
+  it("keeps a deep-linked Job resumable after its URL handoff is removed", async () => {
+    stub();
+
+    renderHook(() => useSuggestionRun("job-1"), { wrapper: makeWrapper() });
+
+    await waitFor(() => expect(window.sessionStorage.getItem("loomarr.activeProposalJob")).toBe("job-1"));
+  });
+
   it("retains the complete authorized intent when editing a failed request", async () => {
     const journey = stub();
     journey.intent = {
@@ -134,5 +146,115 @@ describe("useSuggestionRun", () => {
     act(() => result.current.reset(true));
     expect(result.current.intent).toEqual(journey.intent);
     expect(result.current.failed).toBe(false);
+  });
+
+  it("revises the current Job while preserving its review through a failed replacement", async () => {
+    const revisions: unknown[] = [];
+    const journey: ProposalJourneyDTO = {
+      version: 1,
+      jobId: "job-1",
+      milestone: "awaiting_approval",
+      intent: {
+        description: "90s action movies",
+        era: "1990s",
+        mustInclude: ["Heat"],
+        runtimeTargetMin: 180,
+      },
+      attempts: [
+        {
+          version: 1,
+          number: 1,
+          status: "succeeded",
+          startedAt: "2026-08-22T12:00:00Z",
+          completedAt: "2026-08-22T12:00:01Z",
+        },
+      ],
+      proposal: {
+        id: "proposal-1",
+        status: "submitted",
+        proposal: {
+          intent: { description: "90s action movies" },
+          channelName: "Friday Night Action",
+          lineup: [{ name: "Heat", mediaType: "movie", tmdbId: 949, year: 1995, inLibrary: true }],
+          acquisitions: [],
+          alternates: [],
+          scores: {
+            version: 1,
+            themeFit: 1,
+            availabilityRatio: 1,
+            eraBalance: 1,
+            theme: {
+              status: "supported",
+              basis: "qualifiers",
+              assessedItems: 1,
+              unknownItems: 0,
+              qualifiers: [{ term: "action", supportedItems: 1 }],
+            },
+            era: { status: "supported", assessedItems: 1, matchingItems: 1, unknownItems: 0 },
+          },
+          trace: { version: 1, surfacedTotal: 1, recordedTotal: 1, truncated: false, candidates: [] },
+        },
+      },
+      actions: ["review", "edit"],
+      createdAt: "2026-08-22T12:00:00Z",
+      updatedAt: "2026-08-22T12:00:01Z",
+    };
+    server.use(
+      getGetProposalJobMockHandler(() => journey),
+      getReviseProposalJobMockHandler(async ({ request }) => {
+        const revised = (await request.json()) as Intent;
+        revisions.push(revised);
+        journey.intent = revised;
+        journey.milestone = "generating";
+        journey.attempts.push({
+          version: 1,
+          number: 2,
+          status: "running",
+          startedAt: "2026-08-22T12:01:00Z",
+        });
+        journey.actions = ["wait"];
+        return { jobId: "job-1" };
+      }),
+    );
+    const { result } = renderHook(() => useSuggestionRun("job-1"), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.proposal?.id).toBe("proposal-1"));
+
+    const revisedIntent = {
+      ...journey.intent,
+      description: "90s action movies with more sci-fi variety",
+    };
+    act(() => result.current.revise(revisedIntent));
+
+    await waitFor(() => expect(revisions).toEqual([revisedIntent]));
+    expect(result.current.jobId).toBe("job-1");
+    expect(result.current.proposal?.id).toBe("proposal-1");
+    expect(result.current.isRunning).toBe(true);
+
+    // A failed replacement is not a failed Journey while the previous
+    // submitted Proposal remains available. The server projects the fallback
+    // as awaiting approval and carries the failed Attempt as local guidance.
+    journey.milestone = "awaiting_approval";
+    journey.failure = {
+      code: "generation_failed",
+      message: "Loomarr couldn't update these suggestions.",
+      reason: "provider_unavailable",
+      recoveryAction: "retry_later",
+      guidance: "Try again later.",
+    };
+    journey.attempts[1] = {
+      version: 1,
+      number: 2,
+      status: "failed",
+      startedAt: "2026-08-22T12:01:00Z",
+      completedAt: "2026-08-22T12:01:01Z",
+    };
+    journey.actions = ["review", "edit", "retry"];
+    await emit("job-1", "failed");
+
+    await waitFor(() => expect(result.current.failure?.reason).toBe("provider_unavailable"));
+    expect(result.current.failed).toBe(false);
+    expect(result.current.proposal?.id).toBe("proposal-1");
+    expect(result.current.isRunning).toBe(false);
+    expect(result.current.error).toBeFalsy();
   });
 });

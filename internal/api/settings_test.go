@@ -29,6 +29,7 @@ type fakeSettings struct {
 	afterPatch       func(map[string]string)
 	afterClear       func(string)
 	afterEnvOverride func(string, bool)
+	missing          map[string][]string
 }
 
 func TestSettings_UsesDurableBackendTransitionAfterEffectiveWrites(t *testing.T) {
@@ -249,6 +250,10 @@ func (f *fakeSettings) Patch(_ context.Context, edits map[string]string, by stri
 
 func (f *fakeSettings) Features(context.Context) map[string]bool {
 	return map[string]bool{"suggestions": false, "acquisition": true, "filler": false}
+}
+
+func (f *fakeSettings) MissingRequirements(_ context.Context, feature string) []string {
+	return f.missing[feature]
 }
 
 func (f *fakeSettings) RegenerateSecret(_ context.Context, name string) (string, error) {

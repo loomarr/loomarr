@@ -18,6 +18,7 @@ import (
 type ProposalWorkflow interface {
 	Inspect(context.Context, proposalworkflow.Viewer, string) (proposalworkflow.Journey, error)
 	List(context.Context, proposalworkflow.Viewer, proposalworkflow.ListOptions) ([]proposalworkflow.Journey, error)
+	Revise(context.Context, proposalworkflow.Viewer, string, suggest.Intent) error
 }
 
 type ProposalJourneyDTO struct {
@@ -54,7 +55,7 @@ type ProposalJourneyFailureDTO struct {
 
 type ProposalJourneyProposalDTO struct {
 	ID         string           `json:"id"`
-	Status     string           `json:"status" enum:"submitted,approved,denied"`
+	Status     string           `json:"status" enum:"submitted,approved,denied,superseded"`
 	ApprovedBy string           `json:"approvedBy,omitempty"`
 	DenyReason string           `json:"denyReason,omitempty"`
 	ModSummary string           `json:"modSummary,omitempty"`
@@ -80,6 +81,12 @@ func (s *Server) registerProposalJourneys(api huma.API) {
 		Description: "Restores one versioned Proposal Job, bounded Attempt history, safe failure, Proposal, intent-bound Channel, milestone, and server-authorized actions. Members may read only their own Job; admins may read any.",
 		Tags:        []string{"proposal-jobs"},
 	}, RoleMember), s.getProposalJourney)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "revise-proposal-job", Method: http.MethodPost, Path: "/v1/proposal-jobs/{jobId}/revise",
+		Summary:     "Revise the pending proposal for a First-channel Journey",
+		Description: "Admin only. Keeps the current submitted proposal visible while its replacement runs; success supersedes it atomically and failure leaves it approvable.",
+		Tags:        []string{"proposal-jobs"},
+	}, RoleAdmin), s.reviseProposalJourney)
 }
 
 type proposalJourneyListInput struct {
@@ -126,6 +133,55 @@ type proposalJourneyInput struct {
 
 type proposalJourneyOutput struct {
 	Body ProposalJourneyDTO
+}
+
+type reviseProposalJourneyInput struct {
+	JobID string `path:"jobId"`
+	Body  suggest.Intent
+}
+
+type reviseProposalJourneyOutput struct {
+	Body struct {
+		JobID string `json:"jobId"`
+	}
+}
+
+func (s *Server) reviseProposalJourney(
+	ctx context.Context,
+	in *reviseProposalJourneyInput,
+) (*reviseProposalJourneyOutput, error) {
+	if s.proposalWorkflow == nil {
+		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
+	}
+	if err := s.suggestionConfigurationError(ctx); err != nil {
+		return nil, err
+	}
+	if in.Body.Description == "" {
+		return nil, errBadRequest("Description required", "Describe the channel you want in a sentence.")
+	}
+	viewer := proposalworkflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
+	if user, ok := userFrom(ctx); ok {
+		viewer.UserID = user.ID
+	}
+	err := s.proposalWorkflow.Revise(ctx, viewer, in.JobID, in.Body)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil, errNotFound("Channel request not found", "That channel request doesn't exist or has expired.")
+	case errors.Is(err, proposalworkflow.ErrForbidden):
+		return nil, apiErr(http.StatusForbidden, "Channel request unavailable",
+			"You can only revise channel requests submitted by your account.")
+	case errors.Is(err, proposalworkflow.ErrNotRevisable):
+		return nil, errConflict("Suggestions changed", "Reload the channel request before editing it again.")
+	case errors.Is(err, proposalworkflow.ErrInvalidState):
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't revise the channel request",
+			"Loomarr found inconsistent saved workflow state and stopped rather than guessing. Check the server logs.", err)
+	case err != nil:
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't revise the channel request",
+			"Your current suggestions are unchanged. Try again in a moment.", err)
+	}
+	out := &reviseProposalJourneyOutput{}
+	out.Body.JobID = in.JobID
+	return out, nil
 }
 
 func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInput) (*proposalJourneyOutput, error) {

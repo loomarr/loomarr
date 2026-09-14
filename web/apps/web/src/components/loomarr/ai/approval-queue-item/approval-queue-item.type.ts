@@ -20,6 +20,7 @@ interface ApprovalQueueItemProps {
   // the queue stays scannable; omit to keep the compact row.
   lineup?: ProposalItem[];
   acquisitionItems?: ProposalItem[];
+  alternates?: ProposalItem[];
   episodeSelectionPreview?: EpisodeSelection;
   // Picks the model grounded that this proposal's OWN audience ceiling cannot air (§4, #259).
   //
@@ -35,6 +36,7 @@ interface ApprovalQueueItemProps {
   // `undefined` is load-bearing, not laziness: the caller sends no human edit in that case.
   // The server may still ground a missing/crafted series selector from the original Intent.
   onEdit?: (edit: ApprovalEditDTO | undefined) => void;
+  edit?: ApprovalEditDTO;
   // The queue only chooses where feedback belongs in a pick row. The feature module owns
   // effective state, scope explanation, replacement, and Undo so those semantics are shared
   // with Channel programming rather than reimplemented here.

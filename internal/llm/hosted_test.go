@@ -40,7 +40,7 @@ func TestHostedCatalog_OpenRouterAndCustomOnly(t *testing.T) {
 	}
 }
 
-func TestHostedCatalog_OpenRouterFallbackIsNotAnUncertifiedRecommendation(t *testing.T) {
+func TestHostedCatalog_OpenRouterFallbackIsAnExplainedSafeDefault(t *testing.T) {
 	hp, ok := HostedProviderByKey("openrouter")
 	if !ok {
 		t.Fatal("openrouter should be in the curated catalog")
@@ -49,14 +49,14 @@ func TestHostedCatalog_OpenRouterFallbackIsNotAnUncertifiedRecommendation(t *tes
 		t.Fatalf("openrouter fallback = %+v, want one deliberate safe default", hp.Fallback)
 	}
 	model := hp.Fallback[0]
-	if model.Recommended || !model.Tools || model.Why != "" {
-		t.Errorf("fallback = %+v, want a capable placeholder without a quality claim", model)
+	if !model.Recommended || !model.Tools || !strings.HasPrefix(model.Why, "Best balance") {
+		t.Errorf("fallback = %+v, want an explained tool-capable default", model)
 	}
 }
 
-// RICH provider (OpenRouter-shape): LiveModels projects capabilities and preserves
-// provider order. Quality recommendations belong only to a certified role policy.
-func TestLiveModels_PreservesProviderOrderWithoutQualityClaims(t *testing.T) {
+// RICH provider (OpenRouter-shape): LiveModels projects capabilities, promotes a
+// known useful family, and keeps all remaining models in provider order.
+func TestLiveModels_PromotesGuidedFamilyAndPreservesTheRemainingProviderOrder(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/models" {
 			w.WriteHeader(404)
@@ -65,8 +65,8 @@ func TestLiveModels_PreservesProviderOrderWithoutQualityClaims(t *testing.T) {
 		if r.URL.Query().Get("output_modalities") != "all" {
 			t.Errorf("output_modalities = %q, want all so every role is discoverable", r.URL.Query().Get("output_modalities"))
 		}
-		// The provider order is deliberate. Loomarr may filter incompatible entries,
-		// but must not reshuffle these into a stale family hierarchy.
+		// The provider order is deliberate. Loomarr may put its small guided set first,
+		// but must not invent an order for everything else.
 		_, _ = w.Write([]byte(`{"data":[
 			{"id":"openai/gpt-4.1-nano:batch","name":"GPT-4.1 nano Batch","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000001","completion":"0.0000004"}},
 			{"id":"someorg/free-coder","name":"FreeCoder","context_length":1000000,"supported_parameters":["tools"],"pricing":{"prompt":"0","completion":"0"}},
@@ -88,15 +88,18 @@ func TestLiveModels_PreservesProviderOrderWithoutQualityClaims(t *testing.T) {
 	if len(models) != 5 {
 		t.Fatalf("got %d role-capable models, want 5", len(models))
 	}
-	if models[0].ID != "someorg/free-coder" || models[1].ID != "openai/gpt-4o" || models[2].ID != "anthropic/claude-haiku-4.5" {
-		t.Errorf("provider order changed: %+v", models)
+	if models[0].ID != "anthropic/claude-haiku-4.5" || models[1].ID != "someorg/free-coder" || models[2].ID != "openai/gpt-4o" {
+		t.Errorf("guided choice or remaining provider order is wrong: %+v", models)
 	}
-	for _, model := range models {
+	if !models[0].Recommended || !strings.HasPrefix(models[0].Why, "Best value") {
+		t.Errorf("guided model = %+v, want explained recommendation", models[0])
+	}
+	for _, model := range models[1:] {
 		if strings.HasSuffix(model.ID, ":batch") {
 			t.Errorf("batch-only model remained selectable: %+v", model)
 		}
 		if model.Recommended || model.Why != "" {
-			t.Errorf("generic catalog made an uncertified quality claim: %+v", model)
+			t.Errorf("unguided catalog model gained a recommendation: %+v", model)
 		}
 	}
 	if !models[3].Vision || models[3].Tools {
@@ -107,7 +110,7 @@ func TestLiveModels_PreservesProviderOrderWithoutQualityClaims(t *testing.T) {
 	}
 }
 
-func TestLiveModels_DoesNotDemoteGPT5OrGemini3BehindLegacyFamilies(t *testing.T) {
+func TestLiveModels_PrefersKnownCurrentFamiliesWithoutPromotingUnknownVersions(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[
 			{"id":"openai/gpt-5-mini","supported_parameters":["tools"]},
@@ -123,12 +126,48 @@ func TestLiveModels_DoesNotDemoteGPT5OrGemini3BehindLegacyFamilies(t *testing.T)
 	if !live || len(models) != 4 {
 		t.Fatalf("models = %+v, live=%v; want four live candidates", models, live)
 	}
-	if models[0].ID != "openai/gpt-5-mini" || models[1].ID != "google/gemini-3.7-flash" {
-		t.Errorf("new families were demoted behind legacy tiers: %+v", models)
+	if models[0].ID != "openai/gpt-5-mini" || models[1].ID != "google/gemini-2.5-pro" || models[2].ID != "google/gemini-3.7-flash" {
+		t.Errorf("known current guidance or remaining provider order is wrong: %+v", models)
 	}
-	for _, model := range models {
+	if !models[0].Recommended || models[1].Recommended || models[2].Recommended {
+		t.Errorf("want exactly one recommendation, got %+v", models)
+	}
+	if models[2].Why != "" {
+		t.Errorf("unknown future family must remain searchable without a quality claim: %+v", models[2])
+	}
+}
+
+func TestLiveModels_RecommendsBalancedCurrentFamiliesInsteadOfProviderFirst(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"openai/gpt-5.6-luna","name":"GPT-5.6 Luna","context_length":1050000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000002","completion":"0.0000012"}},
+			{"id":"tencent/hy4-preview","name":"Hy4 preview","supported_parameters":["tools"],"pricing":{"prompt":"0","completion":"0"}},
+			{"id":"openai/gpt-5.6-sol","name":"GPT-5.6 Sol","context_length":1050000,"supported_parameters":["tools"],"pricing":{"prompt":"0.000002","completion":"0.00001"}},
+			{"id":"google/gemini-3-flash-preview","name":"Gemini 3 Flash","context_length":1048576,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000005","completion":"0.000003"}},
+			{"id":"openai/gpt-5.4-mini","name":"GPT-5.4 Mini","context_length":400000,"supported_parameters":["tools"],"pricing":{"prompt":"0.00000075","completion":"0.0000045"}}
+		]}`))
+	}))
+	defer srv.Close()
+
+	models, live := (HostedProvider{Key: "openrouter", BaseURL: srv.URL}).LiveModels(context.Background(), "key")
+	if !live || len(models) != 5 {
+		t.Fatalf("models = %+v, live=%v; want five live candidates", models, live)
+	}
+	want := []string{"openai/gpt-5.4-mini", "google/gemini-3-flash-preview", "openai/gpt-5.6-sol"}
+	for i, id := range want {
+		if models[i].ID != id {
+			t.Fatalf("guided model %d = %q, want %q; all=%+v", i, models[i].ID, id, models)
+		}
+	}
+	if !models[0].Recommended || !strings.HasPrefix(models[0].Why, "Best balance") {
+		t.Fatalf("primary = %+v, want one explained balanced recommendation", models[0])
+	}
+	if !strings.HasPrefix(models[1].Why, "Best value") || !strings.HasPrefix(models[2].Why, "Highest quality") {
+		t.Fatalf("alternatives = %+v, want differentiated value and quality choices", models[:3])
+	}
+	for _, model := range models[1:] {
 		if model.Recommended {
-			t.Errorf("live capability metadata cannot certify %q", model.ID)
+			t.Fatalf("more than one model recommended: %+v", models)
 		}
 	}
 }

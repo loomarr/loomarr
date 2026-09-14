@@ -99,7 +99,7 @@ describe("HostedModelPicker", () => {
     expect(screen.getByRole("button", { name: /can't use/i })).toBeDisabled();
   });
 
-  it("leads with one default, limits alternatives, and progressively discloses the catalog", async () => {
+  it("leads with one default and searches the complete catalog without rendering a firehose", async () => {
     const models = [
       {
         id: "primary",
@@ -128,10 +128,14 @@ describe("HostedModelPicker", () => {
     expect(screen.queryByText("Same family variant")).not.toBeInTheDocument();
     expect(screen.queryByText("Advanced")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /show all 5 models/i }));
-    expect(screen.getByText("Same family variant")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /find another model/i }));
+    const search = screen.getByRole("searchbox", { name: /search models/i });
+    expect(search).toBeInTheDocument();
+    expect(screen.queryByText("Same family variant")).not.toBeInTheDocument();
+    await userEvent.type(search, "advanced");
     expect(screen.getByText("Advanced")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /show guided choices/i })).toBeInTheDocument();
+    expect(screen.queryByText("Same family variant")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /back to recommendations/i })).toBeInTheDocument();
   });
 
   it("keeps an active model outside the guided shortlist visible", () => {
@@ -155,5 +159,20 @@ describe("HostedModelPicker", () => {
 
     expect(screen.getByText("Current model")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /in use/i })).toBeDisabled();
+  });
+
+  it("caps broad search results so the catalog never becomes a rendered firehose", async () => {
+    const models = Array.from({ length: 25 }, (_, index) => ({
+      id: `vendor/model-${index}`,
+      label: `Model ${index}`,
+      tools: true,
+    }));
+    render(<HostedModelPicker providers={[provider({ models })]} onSelect={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /find another model/i }));
+    await userEvent.type(screen.getByRole("searchbox", { name: /search models/i }), "model");
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(20);
+    expect(screen.getByText(/showing the first 20 matches/i)).toBeInTheDocument();
   });
 });

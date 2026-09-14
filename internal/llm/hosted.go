@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/httpx"
@@ -24,7 +26,8 @@ import (
 
 // HostedModel is one model offered by a hosted provider (§8.1). For a live model
 // most fields are derived from the provider's /models metadata. Recommended + Why
-// are reserved for an exact certified role policy.
+// are setup guidance derived from a small family preference table plus live price
+// and capability metadata. They are not certification or execution authority.
 type HostedModel struct {
 	ID            string `json:"id"`                      // exact model id for the API (LLM_MODEL)
 	Label         string `json:"label"`                   // human name (provider-supplied or the id)
@@ -73,10 +76,10 @@ var hostedCatalog = []HostedProvider{
 		KeysURL: "https://openrouter.ai/keys",
 		Note:    "One key → every frontier family (OpenAI, Anthropic, Gemini, Llama, Qwen). The blessed hosted path.",
 		// Fallback: shown only before a key is set or live metadata is unavailable.
-		// It is deliberately not marked as recommended.
 		Fallback: []HostedModel{{
-			ID: "openai/gpt-4.1-mini", Label: "GPT-4.1 mini",
-			Tools: true, Vision: true,
+			ID: "openai/gpt-5.4-mini", Label: "GPT-5.4 Mini",
+			Recommended: true, Tools: true, Vision: true,
+			Why: "Best balance — strong reasoning without flagship pricing.",
 		}},
 	},
 	{
@@ -141,14 +144,80 @@ func (m modelMeta) supportsTools() bool {
 	return slices.Contains(m.SupportedP, "tools") || slices.Contains(m.SupportedP, "tool_choice")
 }
 
+// blendedCostPerMTok is a deliberately simple comparison aid for models in the
+// same preference tier. A lineup request uses both input and output tokens, so
+// showing either price alone would make the cheaper half look like the whole bill.
+func (m modelMeta) blendedCostPerMTok() float64 {
+	prompt, promptOK := parseHostedPrice(m.Pricing.Prompt)
+	completion, completionOK := parseHostedPrice(m.Pricing.Completion)
+	if !promptOK && !completionOK {
+		return math.Inf(1)
+	}
+	if !promptOK {
+		prompt = 0
+	}
+	if !completionOK {
+		completion = 0
+	}
+	return (prompt + completion) * 1_000_000
+}
+
+func parseHostedPrice(raw string) (float64, bool) {
+	if raw == "" {
+		return 0, false
+	}
+	price, err := strconv.ParseFloat(raw, 64)
+	return price, err == nil && price >= 0
+}
+
+// hostedPreference is the small, durable judgment layer that live provider
+// metadata cannot supply: which current families make useful lineup-planning
+// choices. Availability, tool capability, price, and context remain live.
+//
+// The top three intentionally answer different questions: a balanced default, a
+// value option, and a highest-quality option. Lightweight Luna/Nano families and
+// arbitrary preview models remain searchable, but upstream order alone never
+// promotes them as Loomarr guidance.
+type hostedPreference struct {
+	fragment string
+	priority int
+	role     string
+	label    string
+}
+
+var hostedPreferences = []hostedPreference{
+	{fragment: "gpt-5.4-mini", priority: 900, role: "Best balance", label: "GPT-5.4 Mini"},
+	{fragment: "gemini-3-flash", priority: 800, role: "Best value", label: "Gemini 3 Flash"},
+	{fragment: "gpt-5.6-sol", priority: 700, role: "Highest quality", label: "GPT-5.6 Sol"},
+	{fragment: "claude-sonnet-4.6", priority: 690, role: "Highest quality", label: "Claude Sonnet 4.6"},
+	{fragment: "gpt-5-mini", priority: 650, role: "Best value", label: "GPT-5 Mini"},
+	{fragment: "gemini-2.5-flash", priority: 640, role: "Best value", label: "Gemini 2.5 Flash"},
+	{fragment: "gpt-4.1-mini", priority: 600, role: "Best balance", label: "GPT-4.1 Mini"},
+	{fragment: "claude-haiku-4.5", priority: 590, role: "Best value", label: "Claude Haiku 4.5"},
+	{fragment: "gpt-4o-mini", priority: 580, role: "Best value", label: "GPT-4o Mini"},
+	{fragment: "claude-sonnet", priority: 500, role: "Highest quality", label: "Claude Sonnet"},
+	{fragment: "gemini-2.5-pro", priority: 490, role: "Highest quality", label: "Gemini 2.5 Pro"},
+	{fragment: "gpt-4.1", priority: 480, role: "Highest quality", label: "GPT-4.1"},
+}
+
+func preferenceFor(id string) (hostedPreference, bool) {
+	lower := strings.ToLower(id)
+	for _, preference := range hostedPreferences {
+		if strings.Contains(lower, preference.fragment) {
+			return preference, true
+		}
+	}
+	return hostedPreference{}, false
+}
+
 // LiveModels fetches the provider's CURRENT models from {baseURL}/models and
 // projects advertised capabilities without inferring semantic quality:
 //
 //  1. HARD FILTER: exclude batch-only variants because Loomarr uses synchronous chat
 //     completions. When metadata is rich, also keep only models the provider says
 //     support tool-calling — grounding is impossible without it.
-//  2. PRESERVE provider order and capabilities. Only an exact model selected by a
-//     certified RolePolicySnapshot may acquire Recommended/Why elsewhere.
+//  2. GUIDE setup with three differentiated, family-based choices. The table is
+//     judgment only; availability, price, context, and capabilities stay live.
 //
 // When the provider returns THIN metadata (just ids — OpenAI/Groq/Gemini's /models),
 // Loomarr degrades gracefully to the live id list without capability claims. On any
@@ -189,19 +258,67 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 		return models, live
 	}
 
-	// Rich provider: retain every model usable by at least one Loomarr role in the
-	// order the provider returned. OpenRouter is already queried in its live
-	// popularity order; Loomarr must not overwrite it with stale family lore.
+	// Rich provider: retain every model usable by at least one Loomarr role. Preferred
+	// lineup families lead; everything else keeps provider order behind search.
+	var usable []modelMeta
 	for _, m := range metas {
 		if !m.supportsTools() && !m.supportsVision() && !m.supportsVideo() && !m.supportsTranscription() {
 			continue
 		}
-		models = append(models, HostedModel{
+		usable = append(usable, m)
+	}
+	slices.SortStableFunc(usable, func(a, b modelMeta) int {
+		pa, aPreferred := preferenceFor(a.ID)
+		pb, bPreferred := preferenceFor(b.ID)
+		if aPreferred != bPreferred {
+			if aPreferred {
+				return -1
+			}
+			return 1
+		}
+		if !aPreferred {
+			return 0
+		}
+		if pa.priority != pb.priority {
+			return pb.priority - pa.priority
+		}
+		if aCost, bCost := a.blendedCostPerMTok(), b.blendedCostPerMTok(); aCost != bCost {
+			if aCost < bCost {
+				return -1
+			}
+			return 1
+		}
+		return b.Context - a.Context
+	})
+
+	recommended := false
+	for _, m := range usable {
+		preference, preferred := preferenceFor(m.ID)
+		model := HostedModel{
 			ID: m.ID, Label: labelOf(m), Tools: m.supportsTools(),
 			Vision: m.supportsVision(), Video: m.supportsVideo(), Transcription: m.supportsTranscription(),
-		})
+		}
+		if preferred && m.supportsTools() {
+			model.Why = hostedWhy(m, preference)
+			if !recommended {
+				model.Recommended = true
+				recommended = true
+			}
+		}
+		models = append(models, model)
 	}
 	return models, live
+}
+
+func hostedWhy(model modelMeta, preference hostedPreference) string {
+	detail := preference.label + ", tool-capable"
+	if cost := model.blendedCostPerMTok(); !math.IsInf(cost, 1) {
+		detail += fmt.Sprintf(", ~$%.2f/1M input + output tokens", cost)
+	}
+	if model.Context >= 100_000 {
+		detail += fmt.Sprintf(", %dk context", model.Context/1000)
+	}
+	return preference.role + " — " + detail
 }
 
 func labelOf(m modelMeta) string {

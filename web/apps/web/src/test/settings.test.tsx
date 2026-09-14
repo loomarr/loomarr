@@ -12,7 +12,7 @@ import {
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
@@ -20,6 +20,8 @@ import { setting } from "@/test/fixtures/settings";
 import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
+
+afterEach(() => window.sessionStorage.clear());
 
 // ⚠ Was a local `entry()` helper duplicating what `setting()` now carries — and the local one
 // was the reason four required SettingEntry fields could go missing elsewhere in the suite
@@ -56,6 +58,8 @@ const SETTINGS = [
     ],
   }),
   setting({ key: "job.workers", group: "advanced", kind: "int", value: "2", provenance: "env" }),
+  setting({ key: "llm.provider", group: "ai", kind: "enum", value: "ollama" }),
+  setting({ key: "llm.url", group: "ai", kind: "url", value: "http://localhost:11434" }),
   setting({
     key: "access.public_url",
     label: "Recipient-facing Loomarr address",
@@ -215,6 +219,32 @@ describe("Settings", () => {
     // No standalone "connection checklist" duplicating the block statuses — the wiring
     // actions self-report on their own blocks, quiet once set up (§5, §13).
     expect(screen.queryByRole("heading", { name: /connection checklist/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the TMDB block when a channel-suggestion recovery link targets it", async () => {
+    const tmdb = setting({
+      key: "tmdb.api_key",
+      label: "TMDB API key",
+      group: "connections.tmdb",
+      kind: "secret",
+      secret: true,
+      set: false,
+    });
+    stubSettings([...SETTINGS, tmdb]);
+    server.use(
+      getSetupStatusMockHandler({
+        checks: [
+          { name: "media_server", ok: false, hint: "Emby refused the token." },
+          { name: "tmdb", ok: false, hint: "Add a TMDB API key." },
+        ],
+      }),
+    );
+
+    renderAt("/settings/connections?focus=tmdb");
+
+    expect(await screen.findByRole("button", { name: /^TMDB/i })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /media server/i })).toHaveAttribute("aria-expanded", "false");
+    expect(await screen.findByLabelText("TMDB API key")).toBeInTheDocument();
   });
 
   it("saves the whole page from one bar, sending only what changed", async () => {
@@ -522,6 +552,7 @@ describe("Settings honesty", () => {
           }),
           setting({ key: "llm.model", label: "Hosted lineup model", group: "ai", value: "" }),
           setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: false }),
+          setting({ key: "suggest.max_acquisitions", group: "ai", kind: "int", value: "5" }),
           setting({ key: "filler.vision.provider", group: "filler", value: "inherit" }),
           setting({ key: "filler.vision.model", group: "filler", value: "" }),
           setting({ key: "filler.transcribe.provider", group: "filler", value: "whisper" }),
@@ -569,16 +600,41 @@ describe("Settings honesty", () => {
 
     renderAt("/settings/ai");
 
-    expect(await screen.findByLabelText("AI service address")).toHaveValue("https://openrouter.ai/api/v1");
-    await userEvent.click(screen.getByRole("button", { name: /lineup model/i }));
-    expect(screen.getByRole("button", { name: "Check AI readiness" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByLabelText("AI service address")).toHaveValue("https://openrouter.ai/api/v1"),
+    );
+    expect(screen.getByRole("button", { name: "Save & check AI setup" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Hosted lineup model")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
     expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Automatic model policy" })).toBeInTheDocument();
-    expect(screen.getByText(/do not need to maintain a model matrix/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
+    expect(screen.getByText("TMDB grounding is still needed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Connect TMDB" })).toHaveAttribute(
+      "href",
+      "/settings/connections?focus=tmdb",
+    );
+    expect(screen.queryByRole("heading", { name: "Automatic model policy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Filler analysis models" })).not.toBeInTheDocument();
+    const modelHeading = screen.getByRole("heading", { name: "Choose a lineup model" });
+    const behaviorHeading = screen.getByRole("heading", { name: "AI behavior" });
+    expect(
+      modelHeading.compareDocumentPosition(behaviorHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Vision" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Gemini Vision/i })).not.toBeInTheDocument();
+  });
+
+  it("offers a return to the saved channel draft from AI settings", async () => {
+    window.sessionStorage.setItem(
+      "loomarr.pendingProposalIntent",
+      JSON.stringify({ description: "Saturday morning cartoons" }),
+    );
+    stubSettings();
+
+    renderAt("/settings/ai");
+
+    expect(await screen.findByText("Your channel draft is saved")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Return to channel" })).toHaveAttribute("href", "/guide");
   });
 
   it("stages capability-filtered vision and transcription roles from a configured hosted provider", async () => {
@@ -624,8 +680,8 @@ describe("Settings honesty", () => {
     );
 
     renderAt("/settings/ai");
-    expect(await screen.findByRole("heading", { name: "Automatic model policy" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Advanced model overrides/i }));
+    expect(await screen.findByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Advanced model roles/i }));
     const vision = await screen.findByRole("region", { name: "Vision" });
     expect(within(vision).queryByRole("button", { name: /Text only/i })).not.toBeInTheDocument();
     await userEvent.click(within(vision).getByRole("button", { name: /Gemini Vision/i }));

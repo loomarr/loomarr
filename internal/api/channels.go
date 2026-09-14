@@ -573,8 +573,11 @@ type refineChannelOutput struct {
 // Grounding is unchanged: the current lineup is context; every pick is still catalog-tool
 // grounded.
 func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*refineChannelOutput, error) {
-	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
+	if s.suggest == nil {
 		return nil, errNotImplemented("AI isn't set up", "Connect an AI provider in Settings → AI to refine channels.")
+	}
+	if err := s.suggestionConfigurationError(ctx); err != nil {
+		return nil, err
 	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {

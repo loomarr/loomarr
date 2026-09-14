@@ -57,6 +57,16 @@ var ErrProposalNotSubmitted = errors.New("store: proposal is not submitted")
 // roll a channel back to content the operator reviewed earlier.
 var ErrProposalSuperseded = errors.New("store: proposal was superseded by a newer approval")
 
+// ErrProposalNotRevisable reports a request to revise anything except the newest
+// submitted proposal on a terminal suggestion job. A revision is a compare-and-swap
+// over the review the operator actually saw; stale, decided, and active copies fail.
+var ErrProposalNotRevisable = errors.New("store: proposal is not revisable")
+
+// ErrProposalRevisionActive keeps the approval gate closed while a replacement is
+// generating. A failed replacement returns the job to a terminal state and the
+// prior submitted proposal becomes approvable again.
+var ErrProposalRevisionActive = errors.New("store: proposal revision is active")
+
 // ErrJobNotRunning reports a generation completion that lost the running -> done
 // compare-and-swap. The proposal insert shares that transaction, so this error
 // guarantees that no orphan proposal was persisted.
@@ -178,9 +188,10 @@ type JobStore interface {
 	// Re-curation jobs are operator maintenance and never appear in My requests.
 	ListProposalJobIDs(ctx context.Context, limit int) ([]string, error)
 	ListProposalJobIDsByCreator(ctx context.Context, createdBy string, limit int) ([]string, error)
-	// GetProposalJob returns one consistent execution snapshot. An older
-	// proposal is hidden while a reused refine job is queued/running/failed;
-	// only a done job exposes its newest proposal in any decision state.
+	// GetProposalJob returns one consistent execution snapshot. An older decided
+	// proposal is hidden while a reused channel-refine job is queued/running/failed.
+	// A submitted proposal remains visible during its own revision so failure can
+	// return to the same review instead of erasing the operator's usable draft.
 	GetProposalJob(ctx context.Context, id string) (ProposalJob, error)
 	UpdateJob(ctx context.Context, j Job) error
 	// ClaimDueJobs atomically claims up to limit queued jobs whose deadline is
@@ -207,6 +218,10 @@ type JobStore interface {
 	// terminal execution is still current. Attempts are preserved; the next claim
 	// increments them to create a new execution token.
 	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
+	// ReviseSubmittedProposal atomically requeues the exact newest submitted
+	// proposal the operator reviewed. Unlike a channel refine, it may not target a
+	// decided proposal; unlike a fresh submit, it preserves one durable Journey.
+	ReviseSubmittedProposal(ctx context.Context, jobID, proposalID string, expectedAttempt int, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	// CloneSuggestionSuccess materializes cached proposal CONTENT into a fresh,
 	// caller-owned done job and submitted proposal. It never reuses the source
 	// request's identity, requester, or decision state.

@@ -26,7 +26,15 @@ import type { SettingsPageProps } from "./settings-page.type";
 // Only CHANGED keys are sent, for the same reason the wizard does it: a stored secret
 // reads back empty (§4) and an empty-string PATCH would clear it (§9). Here that matters
 // even more, since a page carries many keys the operator never touched.
-const SettingsPage = ({ title, description, blocks, entries, children, footer }: SettingsPageProps) => {
+const SettingsPage = ({
+  title,
+  description,
+  blocks,
+  entries,
+  initialOpenGroup,
+  children,
+  footer,
+}: SettingsPageProps) => {
   const queryClient = useQueryClient();
   // ⚠ The edit buffer lives in the LAYOUT, not here (V9). Held locally, it died on every tab
   // switch and took the operator's unsaved edits with it — silently, which is the worst way to
@@ -107,7 +115,9 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
   // first block so a fully-healthy page still shows one editable connection.
   // Guarded by `openBlocks === undefined` so it runs exactly once — after that the operator
   // owns which blocks are open, and a later refetch never yanks a block shut under them.
-  const checksReady = hasChecks && checks.length > 0;
+  // An empty successful checklist is still a resolved checklist. Treating `[]` as
+  // perpetually loading left every connection panel closed with no initial focus.
+  const checksReady = hasChecks && status.isFetched;
   // biome-ignore lint/correctness/useExhaustiveDependencies: seed exactly once when checks first arrive; blocks/standingFor are read at that moment, never as reactive deps
   useEffect(() => {
     if (!checksReady || openBlocks !== undefined) return;
@@ -115,10 +125,12 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
     const broken = connectionBlocks.filter((b) => !standingFor(b.check)?.ok);
     const initial: Record<string, boolean> = {};
     for (const b of connectionBlocks) initial[b.group] = false;
-    if (broken[0]) initial[broken[0].group] = true;
+    const focused = connectionBlocks.find((block) => block.group === initialOpenGroup);
+    if (focused) initial[focused.group] = true;
+    else if (broken[0]) initial[broken[0].group] = true;
     else if (connectionBlocks[0]) initial[connectionBlocks[0].group] = true;
     setOpenBlocks(initial);
-  }, [checksReady]);
+  }, [checksReady, initialOpenGroup]);
 
   // Connection forms are an accordion: moving to another service closes the previous one. This
   // keeps the page focused even after the initial triage seed instead of letting the wall of fields
@@ -182,19 +194,18 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
             const live = testResult[block.check];
             const standing = standingFor(block.check);
             const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
+            const blockFooter =
+              typeof block.footer === "function" ? block.footer({ liveValue, setEdit }) : block.footer;
+            const checkLabel =
+              Object.keys(edits).length > 0
+                ? (block.dirtyCheckLabel ?? "Save & test connection")
+                : (block.checkLabel ?? "Test connection");
             return (
               <div key={block.title} className="flex flex-col gap-3">
                 <ConnectionBlock
                   title={block.title}
                   optional={block.optional}
-                  {...(block.footer
-                    ? {
-                        footer:
-                          typeof block.footer === "function"
-                            ? block.footer({ liveValue, setEdit })
-                            : block.footer,
-                      }
-                    : {})}
+                  {...(blockFooter ? { footer: blockFooter } : {})}
                   verdict={verdict}
                   docHref={standing?.docHref}
                   open={openBlocks?.[block.group] ?? false}
@@ -205,7 +216,11 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                       onClick={() => test(block.check as string)}
                       disabled={testing !== undefined}
                     >
-                      {testing === block.check ? "Testing…" : (block.checkLabel ?? "Test connection")}
+                      {testing === block.check
+                        ? Object.keys(edits).length > 0
+                          ? "Saving & checking…"
+                          : "Checking…"
+                        : checkLabel}
                     </Button>
                   }
                 >

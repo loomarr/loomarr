@@ -1,6 +1,11 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import type { ReactNode } from "react";
 
+interface SettingsRenderContext {
+  liveValue: (key: string) => string;
+  setEdit: (key: string, value: string) => void;
+}
+
 // A page groups one or more registry groups behind a single save bar (config-design §5).
 interface SettingsBlock {
   // The registry `group` value(s) this block renders.
@@ -17,6 +22,9 @@ interface SettingsBlock {
   // Override the generic action when the check covers broader readiness than connectivity.
   // AI uses this to keep provider authorization distinct from lineup-model readiness.
   checkLabel?: string;
+  // The check reads persisted settings, so a dirty page saves before checking. Name that
+  // side effect explicitly rather than surprising the operator after the click.
+  dirtyCheckLabel?: string;
   // Marks a connection the current install can leave disconnected. The status still reports
   // truthfully; the label explains that a failure need not become work for this operator.
   optional?: boolean;
@@ -36,16 +44,14 @@ interface SettingsBlock {
   surface?: "plain" | "card";
 }
 
-interface SettingsRenderContext {
-  liveValue: (key: string) => string;
-  setEdit: (key: string, value: string) => void;
-}
-
 interface SettingsPageProps {
   title: string;
   description?: string;
   blocks: SettingsBlock[];
   entries: SettingEntry[];
+  // A deep link from a blocked workflow opens the exact connection it can fix,
+  // even when another failing connection would otherwise win first-failure triage.
+  initialOpenGroup?: string;
   // Rendered above the blocks — Connections puts the re-runnable checklist here (§5).
   children?: ReactNode | ((ctx: SettingsRenderContext) => ReactNode);
   // Rendered below the blocks, for things that read as a consequence of the settings

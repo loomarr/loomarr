@@ -51,8 +51,8 @@ describe("ProposalEdit", () => {
 
     expect(screen.getByText("Heat")).toBeInTheDocument();
     expect(screen.getByText("The Simpsons")).toBeInTheDocument();
-    expect(screen.getByText("In library")).toBeInTheDocument();
-    expect(screen.getByText("Will acquire")).toBeInTheDocument();
+    expect(screen.getByText("In your library")).toBeInTheDocument();
+    expect(screen.getByText("Will be added")).toBeInTheDocument();
   });
 
   // ⚠ THE load-bearing case. An unmodified approval must be indistinguishable from the
@@ -65,10 +65,10 @@ describe("ProposalEdit", () => {
     const onChange = vi.fn();
     render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Remove Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
     expect(onChange).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:949"] });
 
-    await userEvent.click(screen.getByRole("button", { name: "Keep Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });
 
@@ -81,7 +81,7 @@ describe("ProposalEdit", () => {
     const onChange = vi.fn();
     render(<ProposalEdit lineup={[]} acquisitions={[simpsons]} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Remove The Simpsons" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Simpsons" }));
     expect(onChange).toHaveBeenLastCalledWith({ drop: ["series:tvdb:71663"] });
   });
 
@@ -89,10 +89,10 @@ describe("ProposalEdit", () => {
     stubSearch([]);
     render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Remove Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
     // Still rendered — struck through, with the control now offering to put it back.
     expect(screen.getByText(/Heat/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Keep Heat" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Include Heat" })).not.toBeChecked();
   });
 
   it("adds a searched title as an acquisition", async () => {
@@ -100,7 +100,7 @@ describe("ProposalEdit", () => {
     const onChange = vi.fn();
     render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /Add a title/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Add title" }));
     await userEvent.type(screen.getByRole("combobox"), "con air");
     await userEvent.click(await screen.findByText("Con Air"));
 
@@ -109,25 +109,36 @@ describe("ProposalEdit", () => {
     });
   });
 
-  // An added title is never "in library" from here: it goes through the same idempotent enqueue
-  // as anything the model proposed, and the provisioner decides what is already present.
-  it("marks an added title as not-in-library even when the search says otherwise", async () => {
-    stubSearch([{ name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: true }]);
+  it("keeps authoritative library availability on a searched title", async () => {
+    stubSearch([
+      {
+        name: "Con Air",
+        year: 1997,
+        mediaType: "movie",
+        tmdbId: 1701,
+        inLibrary: true,
+        libraryItemId: "library-con-air",
+      },
+    ]);
     const onChange = vi.fn();
     render(<ProposalEdit lineup={[]} acquisitions={[]} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /Add a title/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Add title" }));
     await userEvent.type(screen.getByRole("combobox"), "con air");
     await userEvent.click(await screen.findByText("Con Air"));
 
-    expect(onChange.mock.lastCall?.[0].add[0].inLibrary).toBe(false);
+    expect(onChange.mock.lastCall?.[0].add[0]).toMatchObject({
+      inLibrary: true,
+      libraryItemId: "library-con-air",
+    });
+    expect(screen.getByText("In your library")).toBeVisible();
   });
 
   it("does not offer a title already on the proposal", async () => {
     stubSearch([{ name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true }]);
     render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /Add a title/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Add title" }));
     await userEvent.type(screen.getByRole("combobox"), "heat");
 
     // "Heat" still appears as the existing pick, but not as a search result to add again.
@@ -137,11 +148,11 @@ describe("ProposalEdit", () => {
   it("carries the note, trimmed, and drops it when cleared", async () => {
     stubSearch([]);
     const onChange = vi.fn();
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} />);
+    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} showNote />);
 
     const note = screen.getByLabelText("Note to the requester");
     await userEvent.type(note, "  too violent for this channel  ");
-    expect(onChange).toHaveBeenLastCalledWith({ note: "too violent for this channel" });
+    expect(onChange).toHaveBeenLastCalledWith({ note: "  too violent for this channel  " });
 
     await userEvent.clear(note);
     // Whitespace-only is not a note, so clearing returns to "unmodified".
@@ -151,10 +162,10 @@ describe("ProposalEdit", () => {
   it("combines drops, adds and a note into one edit", async () => {
     stubSearch([{ name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false }]);
     const onChange = vi.fn();
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} />);
+    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} showNote />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Remove Heat" }));
-    await userEvent.click(screen.getByRole("button", { name: /Add a title/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add title" }));
     await userEvent.type(screen.getByRole("combobox"), "con air");
     await userEvent.click(await screen.findByText("Con Air"));
     await userEvent.type(screen.getByLabelText("Note to the requester"), "swapped");
@@ -169,14 +180,14 @@ describe("ProposalEdit", () => {
   it("resets every change back to unmodified", async () => {
     stubSearch([]);
     const onChange = vi.fn();
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} />);
+    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} showNote />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Remove Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
     await userEvent.type(screen.getByLabelText("Note to the requester"), "nope");
     await userEvent.click(screen.getByRole("button", { name: /Reset/ }));
 
     expect(onChange).toHaveBeenLastCalledWith(undefined);
-    expect(screen.getByRole("button", { name: "Remove Heat" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Include Heat" })).toBeChecked();
   });
 
   // A pick with no tmdbId/tvdbId has no usable key, so it could never have been enqueued and
@@ -187,6 +198,25 @@ describe("ProposalEdit", () => {
     render(<ProposalEdit lineup={[unkeyed]} acquisitions={[]} onChange={vi.fn()} />);
 
     expect(screen.getByText("Mystery Film")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Remove Mystery Film/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Include Mystery Film/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps backups optional and lets the reviewer remove one", async () => {
+    stubSearch([]);
+    const onChange = vi.fn();
+    const backup = { ...heat, name: "Face/Off", tmdbId: 754 };
+    render(<ProposalEdit lineup={[heat]} acquisitions={[]} alternates={[backup]} onChange={onChange} />);
+
+    await userEvent.click(screen.getByText("Alternates"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include Face/Off" }));
+    expect(onChange).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:754"] });
+  });
+
+  it("renders a read-only title summary when no edit handler is provided", () => {
+    stubSearch([]);
+    render(<ProposalEdit lineup={[heat]} acquisitions={[simpsons]} />);
+
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add title" })).not.toBeInTheDocument();
   });
 });

@@ -3,6 +3,11 @@ import { TmdbAttribution } from "@/components/loomarr/settings/tmdb-attribution"
 import { blockTitle } from "@/settings/provider-title";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
+import { SuggestionDraftReturn } from "@/suggest/suggestion-draft-return";
+
+interface ConnectionsSearch {
+  focus?: "tmdb";
+}
 
 // Connections is just the four connection blocks — each self-reporting (status dot + inline
 // Test + Fix), with the first failure open for focused triage. There is no wiring section or checklist:
@@ -10,6 +15,7 @@ import { useSettingsEntries } from "@/settings/use-settings-entries";
 // of saving the connection, so the server does them automatically on save (config-design §5).
 // If auto-wiring fails, it surfaces on the relevant connection's own status — where the fix is.
 const ConnectionsSettings = () => {
+  const { focus } = Route.useSearch();
   const entries = useSettingsEntries();
   const usesTunarrByDefault = entries.find((entry) => entry.key === "playout.backend")?.value === "tunarr";
   return (
@@ -17,6 +23,7 @@ const ConnectionsSettings = () => {
       title="Connections"
       description="Connect only the services you use. Saving a valid connection completes supported setup automatically."
       entries={entries}
+      initialOpenGroup={focus === "tmdb" ? "connections.tmdb" : undefined}
       blocks={[
         {
           group: "connections.media_server",
@@ -50,7 +57,7 @@ const ConnectionsSettings = () => {
           check: "tmdb",
           optional: true,
           description:
-            "Optional. Add a TMDB key for grounded suggestions and remote artwork; channels still play without it.",
+            "Required for AI channel suggestions; otherwise optional. Add a TMDB key for grounded title matching and remote artwork.",
           // TMDB's licence requires this notice (§22, V52 phase 7). It sits INSIDE the TMDB block,
           // below the API key and the Test row, rather than at the foot of the page — so it reads
           // as belonging to the connection it is about instead of as a page-level colophon under
@@ -72,12 +79,17 @@ const ConnectionsSettings = () => {
           footer: <TmdbAttribution logo={<img src="/tmdb.svg" alt="TMDB" />} />,
         },
       ]}
-    />
+    >
+      <SuggestionDraftReturn />
+    </SettingsPage>
   );
 };
 
 const Route = createFileRoute("/_authed/settings/connections")({
   component: ConnectionsSettings,
+  validateSearch: (search: Record<string, unknown>): ConnectionsSearch => ({
+    focus: search.focus === "tmdb" ? "tmdb" : undefined,
+  }),
 });
 
 export { Route };

@@ -45,11 +45,13 @@ it("an older response cannot replace the estimate for newer approval edits", asy
       <LiveProposalOutlook id="p1" proposal={proposal} edit={{ drop: ["movie:tmdb:949"] }} />
     </QueryClientProvider>,
   );
-  await screen.findByText("Waiting on 1 acquisition");
+  await screen.findByText("A schedule estimate will appear as the selected titles are added.");
   releaseOld();
   await waitFor(() => expect(oldReturned).toBe(true));
   await waitFor(() => expect(requests).toEqual([{}, { drop: ["movie:tmdb:949"] }]));
-  expect(screen.queryByText("Starts now after approval")).not.toBeInTheDocument();
-  expect(screen.getByText("Waiting on 1 acquisition")).toBeInTheDocument();
+  expect(screen.queryByText("About 4 hours before this lineup repeats.")).not.toBeInTheDocument();
+  expect(
+    screen.getByText("A schedule estimate will appear as the selected titles are added."),
+  ).toBeInTheDocument();
   client.clear();
 });

@@ -19,6 +19,7 @@ const (
 type submissionRepository interface {
 	SubmitIntent(context.Context, suggest.Intent, string, time.Time) (suggest.WorkflowSubmission, error)
 	RequeueIntent(context.Context, string, suggest.Intent, string) error
+	ReviseIntent(context.Context, string, string, int, suggest.Intent) error
 }
 
 // Submit creates a fresh caller-owned lifecycle. cacheSince only saves the
@@ -47,6 +48,27 @@ func (w *Workflow) Requeue(ctx context.Context, jobID string, intent suggest.Int
 		return fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
 	}
 	return repository.RequeueIntent(ctx, jobID, intent, kind)
+}
+
+// Revise replaces the Intent behind the exact submitted Proposal an authorized
+// operator is reviewing. The repository performs the proposal/job transition as
+// one compare-and-swap; the prior Proposal stays visible until a replacement wins.
+func (w *Workflow) Revise(ctx context.Context, viewer Viewer, jobID string, intent suggest.Intent) error {
+	journey, err := w.Inspect(ctx, viewer, jobID)
+	if err != nil {
+		return err
+	}
+	if journey.Proposal == nil || journey.Proposal.Status != ProposalSubmitted {
+		return ErrNotRevisable
+	}
+	repository, ok := w.repository.(submissionRepository)
+	if !ok {
+		return fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
+	}
+	if err := repository.ReviseIntent(ctx, jobID, journey.Proposal.ID, len(journey.Attempts), intent); err != nil {
+		return fmt.Errorf("revise Proposal Job %q: %w", jobID, err)
+	}
+	return nil
 }
 
 func (r *storeRepository) SubmitIntent(
@@ -102,6 +124,25 @@ func (r *storeRepository) RequeueIntent(ctx context.Context, jobID string, inten
 		ctx, job.ID, job.Attempts, kind, string(blob), suggest.IntentHash(intent), now, now,
 	); err != nil {
 		return fmt.Errorf("requeue Proposal Job %q: %w", jobID, err)
+	}
+	return nil
+}
+
+func (r *storeRepository) ReviseIntent(
+	ctx context.Context,
+	jobID, proposalID string,
+	expectedAttempt int,
+	intent suggest.Intent,
+) error {
+	blob, err := json.Marshal(intent)
+	if err != nil {
+		return fmt.Errorf("marshal Intent: %w", err)
+	}
+	now := r.now()
+	if err := r.store.ReviseSubmittedProposal(
+		ctx, jobID, proposalID, expectedAttempt, string(blob), suggest.IntentHash(intent), now, now,
+	); err != nil {
+		return err
 	}
 	return nil
 }

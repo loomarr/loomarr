@@ -1,8 +1,12 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
+import type { Intent } from "@loomarr/api/models/intent";
+import type { Proposal } from "@loomarr/api/models/proposal";
 import { toProblem } from "@loomarr/api/mutator";
+import { provisionKey } from "@loomarr/core/provision";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -10,8 +14,9 @@ import { GenerationProgress } from "@/components/loomarr/feedback/generation-pro
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
-import { LiveProposalOutlook } from "../live-proposal-outlook";
+import { useProposalOutlook } from "../live-proposal-outlook";
 import { useElapsed } from "../use-elapsed";
+import { useProposalReviewEdit } from "../use-proposal-review-edit";
 import { useSuggestionRun } from "../use-suggestion-run";
 import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 
@@ -26,22 +31,51 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // cross-user approval queue had already moved into `/queue`'s tabs (V27).
 //
 // One expanding surface over useSuggestionRun's three states: idle → describe form; running →
-// live phases; a landed proposal → review with Approve/Deny. A successful approve or "Start
-// another" resets back to the form.
+// live phases; a landed proposal → review with Approve/Deny. A successful approve or
+// "Create another" resets back to the form.
+const normalizeReviewEdit = (edit: ApprovalEditDTO, proposal: Proposal): ApprovalEditDTO | undefined => {
+  const selectedKeys = new Set([...proposal.lineup, ...proposal.acquisitions].map(provisionKey));
+  const alternateKeys = new Set(proposal.alternates.map(provisionKey));
+  const proposalKeys = new Set([...selectedKeys, ...alternateKeys]);
+  const originallyAddedKeys = new Set((edit.add ?? []).map(provisionKey));
+  const add = edit.add?.filter((item) => !selectedKeys.has(provisionKey(item)));
+  const drop = (edit.drop ?? []).filter(
+    (key) => proposalKeys.has(key) && !(selectedKeys.has(key) && originallyAddedKeys.has(key)),
+  );
+
+  // If the model demotes a user-added title to an alternate, the explicit add
+  // still wins: keep it selected and remove the duplicate backup at approval.
+  for (const item of add ?? []) {
+    const key = provisionKey(item);
+    if (alternateKeys.has(key) && !drop.includes(key)) drop.push(key);
+  }
+
+  const note = edit.note?.trim();
+  if (drop.length === 0 && (add?.length ?? 0) === 0 && !note) return undefined;
+  return {
+    ...(drop.length ? { drop } : {}),
+    ...(add?.length ? { add } : {}),
+    ...(note ? { note } : {}),
+  };
+};
+
 const ChannelSuggestPanel = ({
   onCreated,
   initialIntent,
   initialJobId,
   onStartFresh,
+  onStageChange,
   className,
 }: ChannelSuggestPanelProps) => {
   const { isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
   const [startedFresh, setStartedFresh] = useState(false);
   const run = useSuggestionRun(initialJobId);
+  const [edit, setEdit] = useProposalReviewEdit(run.jobId);
   const elapsed = useElapsed(run.isRunning);
   const runProblem = run.error == null ? undefined : toProblem(run.error);
   const aiUnconfigured = runProblem?.type === "feature_not_configured";
+  const groundingUnconfigured = runProblem?.type === "grounding_not_configured";
 
   const approve = proposalsApi.useApproveProposal({
     mutation: {
@@ -50,6 +84,7 @@ const ChannelSuggestPanel = ({
         // Approval atomically created (or patched) the local channel and returned its required
         // id — navigate there so the operator lands on the channel it just committed.
         if (res.status === 200) {
+          setEdit(undefined);
           run.reset();
           onCreated(res.data.channelId);
         }
@@ -60,28 +95,75 @@ const ChannelSuggestPanel = ({
     mutation: {
       onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
+        setEdit(undefined);
         run.reset();
+        // Discard is an explicit fresh start. A route-provided template remains
+        // in this mounted component until navigation settles, so suppress it
+        // locally as well as clearing the URL handoff.
+        setStartedFresh(true);
+        onStartFresh?.();
       },
     },
   });
 
   const proposal = run.proposal;
+  const canRevise = isAdmin && (run.actions.includes("edit") || run.isRunning);
+  const stage = proposal
+    ? run.isRunning
+      ? "updating"
+      : "review"
+    : run.isRunning
+      ? "generating"
+      : run.failed
+        ? "failed"
+        : "describe";
+  useEffect(() => onStageChange?.(stage), [onStageChange, stage]);
+  const outlook = useProposalOutlook({
+    id: proposal?.id,
+    proposal: proposal?.proposal,
+    edit,
+  });
+  useEffect(() => {
+    if (!proposal || !edit) return;
+    const normalized = normalizeReviewEdit(edit, proposal.proposal);
+    // Normalize on every restored review, not only while this component happens
+    // to observe the Proposal id change. A revision may finish while the panel is
+    // closed or the page is reloading; the stable Job-scoped edit still must not
+    // duplicate a user-added title the replacement now suggests itself.
+    if (JSON.stringify(normalized) !== JSON.stringify(edit)) setEdit(normalized);
+  }, [edit, proposal, setEdit]);
   const startFresh = () => {
+    setEdit(undefined);
     run.reset();
     setStartedFresh(true);
     onStartFresh?.();
   };
+  const start = (intent: Intent) => {
+    setEdit(undefined);
+    run.start(intent);
+  };
+  const editFailedDescription = () => {
+    setEdit(undefined);
+    run.reset(true);
+  };
+  const retry = () => {
+    setEdit(undefined);
+    run.retry();
+  };
+  const failureNeedsEdit = run.failure?.recoveryAction !== "retry_later";
+  const failureTitle =
+    run.failure?.recoveryAction === "simplify_request"
+      ? "Try a more specific description"
+      : failureNeedsEdit
+        ? "Adjust your description"
+        : "We couldn't finish this channel";
+  const failureMessage =
+    run.failure?.reason === "discovery_budget_exhausted"
+      ? "Loomarr found too many possible directions. Add a decade, genre, network, or a few example titles."
+      : (run.failure?.message ?? "Something interrupted this channel. Your description is still here.");
 
   return (
-    <section className={cn("flex flex-col gap-4 rounded-lg border border-border p-4", className)}>
-      <div>
-        <h2 className="font-semibold text-lg">Add a channel</h2>
-        <p className="text-muted-foreground text-sm">
-          Describe the channel you want. Loomarr grounds every pick against your library and TMDB, then you
-          review and approve before anything is built.
-        </p>
-      </div>
-
+    <section className={cn("flex flex-col gap-4", className)}>
       {/* Idle — the describe form (with optional constraints). Suppressed while a run is in
           flight OR has failed: a failed run shows the failure below with its own way back,
           so falling through to a blank form here would swallow the error the user needs. */}
@@ -89,22 +171,41 @@ const ChannelSuggestPanel = ({
         <IntentForm
           initialDescription={startedFresh ? undefined : initialIntent}
           initialIntent={run.intent}
-          onSubmit={run.start}
+          onSubmit={start}
           submitting={run.isRunning}
         />
       )}
 
       {run.error != null &&
-        (aiUnconfigured ? (
+        !proposal &&
+        (aiUnconfigured || groundingUnconfigured ? (
           <div role="alert" className="rounded-lg border border-border bg-muted/40 p-4">
-            <p className="font-medium">Connect AI to describe a channel</p>
-            <p className="mt-1 text-muted-foreground text-sm">
-              This needs a configured AI provider and a selected tool-capable lineup model. Your description
-              is still here, so you can return and submit it after setup.
+            <p className="font-medium">
+              {groundingUnconfigured ? "Connect TMDB to build this channel" : "Finish AI setup"}
             </p>
-            <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
-              Open AI settings
-            </Link>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {groundingUnconfigured
+                ? isAdmin
+                  ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
+                  : "AI is connected, but an administrator needs to connect TMDB before Loomarr can match your description to real titles. Your draft is saved."
+                : isAdmin
+                  ? "Connect a provider and choose a lineup model. Your draft is saved."
+                  : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
+            </p>
+            {isAdmin &&
+              (groundingUnconfigured ? (
+                <Link
+                  to="/settings/connections"
+                  search={{ focus: "tmdb" }}
+                  className={buttonVariants({ variant: "link", size: "sm" })}
+                >
+                  Connect TMDB
+                </Link>
+              ) : (
+                <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
+                  Set up AI
+                </Link>
+              ))}
           </div>
         ) : (
           <ErrorState error={run.error} />
@@ -114,28 +215,34 @@ const ChannelSuggestPanel = ({
       {/* Before the first frame lands the model is already loading and thinking, so
           "reasoning" is the honest default. It used to fall back to "searching", which
           announced a library search that had not started and could not be the slow part. */}
-      {run.isRunning && (
-        <GenerationProgress phase={run.phase ?? "reasoning"} round={run.round} elapsedSeconds={elapsed} />
+      {run.isRunning && !proposal && (
+        <GenerationProgress phase={run.phase ?? "reasoning"} elapsedSeconds={elapsed} />
       )}
 
       {/* Failed — recovery copy is fixed by the authoritative Journey. Actions remain
           independently authorized by that Journey; guidance never grants a capability. */}
-      {run.failed && (
-        <div className="flex flex-col gap-3">
-          <GenerationProgress phase="failed" round={run.round} elapsedSeconds={elapsed} />
-          <div className="flex flex-col gap-1 text-sm">
-            <p className="text-muted-foreground">{run.failure?.message ?? "The run didn't finish."}</p>
-            {run.failure?.guidance && <p className="text-muted-foreground">{run.failure.guidance}</p>}
-          </div>
+      {run.failed && !proposal && (
+        <div
+          role="alert"
+          className="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-lg border border-border bg-muted/35 p-4"
+        >
           <div>
-            {run.actions.includes("retry") && (
-              <Button variant="outline" size="sm" onClick={run.retry}>
-                {run.failure?.recoveryAction === "retry_later" ? "Try again later" : "Try again"}
+            <h3 className="font-medium">{failureTitle}</h3>
+            <p className="mt-1 text-muted-foreground text-sm">{failureMessage}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {run.actions.includes("edit") && (
+              <Button
+                variant={failureNeedsEdit ? "default" : "outline"}
+                size="sm"
+                onClick={editFailedDescription}
+              >
+                {run.failure?.recoveryAction === "edit_reference" ? "Change reference" : "Edit description"}
               </Button>
             )}
-            {run.actions.includes("edit") && (
-              <Button variant="ghost" size="sm" onClick={() => run.reset(true)}>
-                {run.failure?.recoveryAction === "edit_reference" ? "Edit reference" : "Edit request"}
+            {run.actions.includes("retry") && (
+              <Button variant="outline" size="sm" onClick={retry}>
+                Try again
               </Button>
             )}
             {run.actions.includes("check_ai") && (
@@ -152,19 +259,28 @@ const ChannelSuggestPanel = ({
         <div className="flex flex-col gap-4">
           <ProposalReview
             proposal={proposal.proposal}
-            outlook={
-              proposal.status === "submitted" ? (
-                <LiveProposalOutlook
-                  id={proposal.id}
-                  proposal={proposal.proposal}
-                  onAddVariety={approve.isPending || deny.isPending ? undefined : () => run.reset(true)}
-                />
-              ) : undefined
+            showWorkflowHeading={false}
+            edit={edit}
+            assessment={
+              proposal.status === "submitted" && !outlook.isFetching && !outlook.isError
+                ? outlook.data
+                : undefined
             }
-            status={proposal.status}
+            assessmentPending={proposal.status === "submitted" && outlook.isFetching}
+            status={edit && proposal.status === "submitted" ? "partially-edited" : proposal.status}
+            selfService={isAdmin}
             busy={approve.isPending || deny.isPending}
-            onEditRequest={() => run.reset(true)}
-            onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: {} }) : undefined}
+            revising={run.isRunning}
+            revisionError={
+              run.error != null
+                ? toProblem(run.error).title
+                : run.failure != null
+                  ? run.failure.message
+                  : undefined
+            }
+            onEdit={isAdmin ? setEdit : undefined}
+            onRevise={canRevise ? run.revise : undefined}
+            onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: edit ?? {} }) : undefined}
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
           {(approve.error ?? deny.error) != null && (
@@ -172,7 +288,7 @@ const ChannelSuggestPanel = ({
               {toProblem(approve.error ?? deny.error).title ?? "That didn't go through. Try again."}
             </p>
           )}
-          {proposal.status === "approved" ? (
+          {proposal.status === "approved" && (
             <div className="flex flex-col items-start gap-2">
               <p role="status" className="text-lock text-sm">
                 {user?.autoApprove
@@ -183,10 +299,6 @@ const ChannelSuggestPanel = ({
                 Create another
               </Button>
             </div>
-          ) : (
-            <Button variant="outline" size="sm" className="w-fit" onClick={startFresh}>
-              Start over
-            </Button>
           )}
         </div>
       )}

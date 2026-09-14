@@ -4,9 +4,10 @@ import type { Intent } from "@loomarr/api/models/intent";
 import { unwrap } from "@loomarr/api/unwrap";
 import type { SuggestionPhase } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { roundOf } from "../round";
+import { clearSuggestionDraft, readSuggestionDraft, writeSuggestionDraft } from "../suggestion-draft";
 import type { SuggestionRun } from "./use-suggestion-run.type";
 
 const ACTIVE_JOB_KEY = "loomarr.activeProposalJob";
@@ -28,11 +29,35 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
   );
   // Keep the complete intent after an authorized edit clears the finished job. The form must
   // retain constraints; its description alone is not an honest retry of the request.
-  const [intent, setIntent] = useState<Intent | undefined>();
+  const [intent, setIntent] = useState<Intent | undefined>(() =>
+    initialJobId === undefined ? readSuggestionDraft() : undefined,
+  );
   const [phase, setPhase] = useState<SuggestionPhase | undefined>();
   const [round, setRound] = useState<number | undefined>();
 
+  // A deep-linked Journey is just as resumable as one started in this tab. Persist
+  // it before the Guide's Close action removes the URL handoff, so reopening the
+  // panel restores the same review and its Job-scoped local title choices.
+  useEffect(() => {
+    if (initialJobId && typeof window !== "undefined") {
+      window.sessionStorage.setItem(ACTIVE_JOB_KEY, initialJobId);
+    }
+  }, [initialJobId]);
+
   const submit = proposalsApi.useSubmitProposal();
+  const revision = proposalJobsApi.useReviseProposalJob({
+    mutation: {
+      // Keep the mutation pending until the authoritative Journey has been
+      // refreshed. This prevents the old review from briefly becoming active
+      // between the revision acknowledgement and the queued Journey read.
+      onSuccess: async (response, variables) => {
+        if (response.status !== 200) return;
+        await queryClient.invalidateQueries({
+          queryKey: proposalJobsApi.getGetProposalJobQueryKey(variables.jobId),
+        });
+      },
+    },
+  });
   const journeyQuery = proposalJobsApi.useGetProposalJob(jobId ?? "", {
     query: {
       enabled: jobId !== undefined,
@@ -61,29 +86,63 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
   };
   const start = (intent: Intent) => {
     setIntent(intent);
+    // The POST can reject before it creates a durable Proposal Job (for example when
+    // TMDB grounding is missing). Keep the complete validated Intent across the setup
+    // round trip until a Job exists to own it.
+    writeSuggestionDraft(intent);
     setPhase(undefined);
     setRound(undefined);
-    submit.mutate({ data: intent }, { onSuccess: (res) => res.status === 200 && setJobId(res.data.jobId) });
+    submit.mutate(
+      { data: intent },
+      {
+        onSuccess: (res) => {
+          if (res.status !== 200) return;
+          clearSuggestionDraft();
+          setJobId(res.data.jobId);
+        },
+      },
+    );
+  };
+  const revise = (nextIntent: Intent) => {
+    if (!jobId) return;
+    setIntent(nextIntent);
+    setPhase(undefined);
+    setRound(undefined);
+    revision.mutate({ jobId, data: nextIntent });
   };
 
   return {
+    jobId,
     phase,
     round,
     proposal: journey?.proposal,
     failure: journey?.failure,
     intent: journey?.intent ?? intent,
     actions: journey?.actions ?? [],
-    isRunning: jobId !== undefined && (!journey || journey.milestone === "generating"),
+    isRunning:
+      submit.isPending ||
+      revision.isPending ||
+      (jobId !== undefined && (!journey || journey.milestone === "generating")),
     failed: journey?.milestone === "failed",
-    error: submit.error ?? journeyQuery.error,
+    error: submit.error ?? revision.error ?? journeyQuery.error,
     start,
-    retry: () => journey && start(journey.intent),
+    revise,
+    retry: () => {
+      if (!journey) return;
+      if (journey.proposal) revise(journey.intent);
+      else start(journey.intent);
+    },
     reset: (preserveIntent = false) => {
       if (preserveIntent && journey?.intent) setIntent(journey.intent);
+      submit.reset();
+      revision.reset();
       setJobId(undefined);
       setPhase(undefined);
       setRound(undefined);
-      if (!preserveIntent) setIntent(undefined);
+      if (!preserveIntent) {
+        setIntent(undefined);
+        clearSuggestionDraft();
+      }
     },
   };
 };

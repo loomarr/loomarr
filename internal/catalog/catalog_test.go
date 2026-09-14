@@ -144,6 +144,26 @@ func TestCatalogSearch_TMDBOnly_NotInLibrary(t *testing.T) {
 	}
 }
 
+func TestCatalogSearch_AllScopeSkipsAnUnconfiguredLibrary(t *testing.T) {
+	tmdbServer := testkit.NewTMDB(t)
+	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
+	unconfiguredLibrary := library.NewDynamic(func() library.Connection { return library.Connection{} }, "dev-1")
+	c := catalog.New(unconfiguredLibrary, tmdbClient)
+
+	got, err := c.Search(context.Background(), "matrix", catalog.ScopeAll, 20)
+	if err != nil {
+		t.Fatalf("all configured corpora: %v", err)
+	}
+	if len(got) == 0 || got[0].TMDBID != 603 {
+		t.Fatalf("TMDB results after skipping unconfigured Library = %+v", got)
+	}
+
+	_, err = c.Search(context.Background(), "matrix", catalog.ScopeLibrary, 20)
+	if !errors.Is(err, library.ErrConnectionRequired) {
+		t.Fatalf("explicit Library search error = %v, want ErrConnectionRequired", err)
+	}
+}
+
 func TestCatalogSearch_InLibraryOrderedFirst(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "k")

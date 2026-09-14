@@ -306,6 +306,9 @@ type SettingsService interface {
 	SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) SettingResult
 	// Features returns the computed feature availability (config-design §7).
 	Features(ctx context.Context) map[string]bool
+	// MissingRequirements explains a false feature verdict with the same registry-owned
+	// prerequisite calculation. Values are setting keys ordered for recovery.
+	MissingRequirements(ctx context.Context, feature string) []string
 	// RegenerateSecret rotates a generated API or playout token and returns the new
 	// value (config-design §4).
 	RegenerateSecret(ctx context.Context, name string) (value string, err error)

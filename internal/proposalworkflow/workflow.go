@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -20,6 +21,7 @@ const (
 var (
 	ErrForbidden    = errors.New("proposal workflow: forbidden")
 	ErrInvalidState = errors.New("proposal workflow: invalid state")
+	ErrNotRevisable = store.ErrProposalNotRevisable
 )
 
 type JobStatus string
@@ -254,7 +256,7 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 		case ProposalSubmitted:
 			milestone = MilestoneAwaitingApproval
 			if viewer.Admin {
-				actions = []Action{ActionReview}
+				actions = []Action{ActionReview, ActionEdit}
 			}
 		case ProposalDenied:
 			milestone = MilestoneDenied
@@ -274,10 +276,18 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 	case JobFailed:
 		milestone = MilestoneFailed
 		failure := safeFailure(record.FailureCode, record.FailureTrace)
+		if record.Proposal != nil && record.Proposal.Status == ProposalSubmitted {
+			milestone = MilestoneAwaitingApproval
+			actions = []Action{ActionWait}
+			if viewer.Admin {
+				actions = []Action{ActionReview, ActionEdit, ActionRetry}
+			}
+			return journeyFrom(record, milestone, actions, &failure), nil
+		}
 		actions = []Action{ActionRetry}
-		if failure.Code == FailureNoGroundedTitles {
+		if recoveryNeedsEdit(failure.RecoveryAction) {
 			actions = []Action{ActionEdit, ActionRetry}
-		} else if viewer.Admin {
+		} else if viewer.Admin && isAIRecoveryReason(failure.Reason) {
 			actions = []Action{ActionRetry, ActionCheckAI}
 		}
 		return journeyFrom(record, milestone, actions, &failure), nil
@@ -286,6 +296,25 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 	}
 
 	return journeyFrom(record, milestone, actions, nil), nil
+}
+
+func recoveryNeedsEdit(action RecoveryAction) bool {
+	switch action {
+	case RecoveryActionEditReference, RecoveryActionBroadenRequest, RecoveryActionProvideExamples,
+		RecoveryActionResolveConstraints, RecoveryActionClarifyDates, RecoveryActionSimplifyRequest:
+		return true
+	default:
+		return false
+	}
+}
+
+func isAIRecoveryReason(reason FailureReason) bool {
+	switch reason {
+	case FailureReasonInvalidToolCalls, FailureReasonProviderTimeout, FailureReasonProviderUnavailable, FailureReasonProviderResponseInvalid:
+		return true
+	default:
+		return false
+	}
 }
 
 // List returns bounded authoritative Journeys newest-first. Member reads are
@@ -346,7 +375,7 @@ func failureDetails(code FailureCode, trace suggest.DecisionTrace) (FailureReaso
 	if suggest.ValidateDecisionTrace(trace) == nil {
 		switch trace.Terminal {
 		case suggest.TerminalRetrievalFailure:
-			return FailureReasonRetrievalUnavailable, RecoveryActionRetryLater, "Loomarr couldn't retrieve the catalog information needed for this request.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+			return FailureReasonRetrievalUnavailable, RecoveryActionRetryLater, "Loomarr couldn't retrieve the catalog information needed for this request.", "If this keeps happening, check the title sources in Connections."
 		case suggest.TerminalReferenceUnreadable:
 			return FailureReasonReferenceUnreadable, RecoveryActionEditReference, "Loomarr couldn't read a reference for this request.", "Check that the reference is a public page that does not require sign-in, or provide a few example titles and try again."
 		case suggest.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty:
@@ -432,6 +461,13 @@ func validateAttempts(record Record) error {
 	case JobRunning:
 		want = AttemptRunning
 	case JobDone:
+		if latest.Status == AttemptFailed && record.Proposal != nil &&
+			((record.Proposal.Status == ProposalApproved && record.Channel != nil) ||
+				record.Proposal.Status == ProposalDenied) {
+			// Deciding the preserved fallback resolves a failed revision without
+			// rewriting its failed Attempt into a fictional generation success.
+			return nil
+		}
 		want = AttemptSucceeded
 	case JobFailed:
 		want = AttemptFailed
