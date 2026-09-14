@@ -3,6 +3,7 @@ package suggest_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -42,5 +43,46 @@ func TestPrepareApprovalMatchesCommittedContentWithoutGrantingAddedRoles(t *test
 	}
 	if len(st.Commits) != 1 || st.Commits[0].Proposal.ProposalJSON != prepared.ProposalJSON || st.Commits[0].Proposal.ModSummary != prepared.ModSummary {
 		t.Fatalf("outlook preparation and actual approval diverged: %+v", st.Commits)
+	}
+}
+
+func TestPrepareApprovalDropsExcludedBackup(t *testing.T) {
+	body := suggest.Proposal{
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 1, Name: "Keep"}},
+		Alternates: []suggest.ProposalItem{
+			{MediaType: provision.Movie, TMDBID: 2, Name: "Excluded backup"},
+			{MediaType: provision.Movie, TMDBID: 3, Name: "Keep backup"},
+		},
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := store.Proposal{ID: "p-backup", Status: "submitted", ProposalJSON: string(raw)}
+	_, decoded, err := suggest.PrepareApproval(p, &suggest.ApprovalEdit{
+		DropKeys: []provision.Key{"movie:tmdb:2"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Alternates) != 1 || decoded.Alternates[0].Name != "Keep backup" {
+		t.Fatalf("alternates = %+v, want only the retained backup", decoded.Alternates)
+	}
+}
+
+func TestPrepareApprovalRejectsAnEmptyEffectiveChannel(t *testing.T) {
+	body := suggest.Proposal{Acquisitions: []suggest.ProposalItem{
+		{MediaType: provision.Movie, TMDBID: 1, Name: "Only title"},
+	}}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := store.Proposal{ID: "p-empty", Status: "submitted", ProposalJSON: string(raw)}
+	_, _, err = suggest.PrepareApproval(p, &suggest.ApprovalEdit{
+		DropKeys: []provision.Key{"movie:tmdb:1"},
+	})
+	if !errors.Is(err, suggest.ErrEmptyApproval) {
+		t.Fatalf("PrepareApproval error = %v, want ErrEmptyApproval", err)
 	}
 }

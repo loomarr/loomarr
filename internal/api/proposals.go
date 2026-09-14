@@ -373,6 +373,9 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	if errors.Is(err, suggest.ErrSuperseded) {
 		return nil, errConflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
 	}
+	if errors.Is(err, suggest.ErrEmptyApproval) {
+		return nil, errUnprocessable("Choose at least one title", "A channel needs at least one included title before it can be created.")
+	}
 	if err != nil {
 		return nil, err
 	}

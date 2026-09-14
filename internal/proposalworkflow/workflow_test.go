@@ -455,6 +455,12 @@ func TestWorkflowInspectFailureReturnsSafeGuidanceAndRoleActions(t *testing.T) {
 			wantActions: []Action{ActionEdit, ActionRetry},
 		},
 		{
+			name: "discovery budget asks for a useful edit before retrying", code: FailureBudgetExhausted,
+			viewer: Viewer{UserID: "member-1"}, wantCode: FailureBudgetExhausted,
+			wantMessage: "This request exceeded the bounded discovery budget. Try again with narrower constraints.",
+			wantActions: []Action{ActionEdit, ActionRetry},
+		},
+		{
 			name: "provider diagnostic is generalized for member", code: FailureGenerationFailed,
 			viewer: Viewer{UserID: "member-1"}, wantCode: FailureGenerationFailed,
 			wantMessage: "Loomarr couldn't generate this channel. Try again later.",

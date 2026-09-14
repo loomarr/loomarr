@@ -674,6 +674,17 @@ accidental complete-deck default.
 The client may propose title membership, but it cannot choose the episode selector that scheduling
 will execute.
 
+An approval edit also gives one predictable meaning to excluding a title: a dropped provisioning
+key is removed from the proposed lineup, acquisitions, **and alternates**. A title the reviewer
+excluded must not return later as an automatic backup. After a human edit's drops and additions, at
+least one effective lineup or acquisition title must remain; the approval gate rejects an edited
+empty Channel rather than relying on the client to keep one selected. A nil automatic re-curation
+delta remains valid because it means “keep the existing Channel” rather than “create an empty one.”
+Search additions remain grounded catalog identities
+and ride the same approval transaction as generated picks. The browser holds the delta locally and
+the exact edited outlook may be queried before approval, but no edit acquires, schedules, or persists
+anything before the existing approval gate commits it.
+
 The scheduler applies the selector after its never-relaxed audience, era, and season filters and
 before seeded ordering/windowing. A standalone episode or detected multi-part story is one atomic
 selection unit. A multi-part unit is rated only when every part has a valid rating, using the
@@ -2287,6 +2298,13 @@ actions incorporate ownership and role; the frontend never reconstructs authoriz
 Generation progress still streams over `/v1/events` as `suggestion` frames with
 `{jobId, phase, round}`. SSE only invalidates/refetches the Journey; a dropped terminal frame is a
 latency defect, never a correctness defect.
+
+The builder presents an in-flight Journey as one calm current-status message; it does not expose
+tool-loop rounds, a ticking timer, a percentage, or a checklist for a process that may revisit phases.
+A terminal failure replaces progress completely with one plain-language explanation and the useful
+server-authorized recovery action. In particular, `simplify_request` authorizes `edit`, restores the
+complete saved Intent, and makes editing the primary recovery; blindly retrying the unchanged request
+is not presented as the solution to a discovery-budget failure.
 
 **Workflow versus activities.** Ordering, transitions, attempt tokens, approval, grounding gates, and
 retry classification are deterministic workflow logic. Model turns, catalog reads, and external
@@ -10351,7 +10369,11 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 - **Queue** (route `/queue`) — **three tabs, per the v2 mock: `Needs approval · In flight · History`** (V27). *Needs approval* is the admin approval gate (§7) with per-row review/edit and **bulk approve**; *In flight* is the tracked titles below; *History* is the decided proposals — each carrying **when** it was approved (`approvedAt`), who by, what they changed, and any deny reason. This is what "the approvals queue as its own surface" means: **Queue is that surface**, which is why the mock hangs a pending-proposal count badge off this nav entry and not a separate one. Tab counts come from the same queries that fill the tabs, so a count cannot disagree with its list. Tracked titles by provisioning state keep their **retry** on a stalled acquisition, and each title's journey (*pending approval → acquiring (3/7) → live on channel N*). Named for what it holds — work waiting on someone — rather than "Board", which named a layout. Per §342's global-read model this list is **not per-member**: every authenticated user sees every tracked title, because `TitleDTO` carries no requester and the store has no per-user index to scope by. "My requests" as a heading would therefore be a promise the data cannot keep — scoping it is a schema change (a requester column + a filtered list route), not a UI filter.
 
   **The member-facing "My requests" surface therefore lists PROPOSALS, not titles** (§12, V26). The two halves of a request scope differently and it is worth being precise about why: a `Proposal` carries `created_by`, so *"the requests I submitted"* is answerable; a `Title` does not, so *"the titles acquired for me"* is not. The surface shows each proposal's journey (submitted → approved/denied), the approver's **note** and server-generated **modification summary** when it came back altered, and the **deny reason** when it did not — the provenance V25/V25b persist. Tracked titles remain the global list above. **Cancel** is likewise unbuilt: giving up on a title is `DELETE /v1/titles/{key}`, which is admin-only by the same §342 rule that makes enqueuing admin-only, so it is not a member-facing control on this route.
-- **Suggestion workspace** — enter intent (or start from a **template**, §13) → watch generation → review lineup + acquisitions w/ rationale + scores → **edit via search** (§7.2: add/replace titles; missing ones become acquisitions) → **submit**; admins get an **approval queue** and approve/deny with `approved_by` recorded. **The queue is also where a proposal is edited before approval** (§7.2 / D-K): "Review & edit picks" opens the same pick list with a drop control per title, an add-via-search box, and a note to the requester. The edit is a **delta** (`drop` by provisioning key, `add`, `note`) sent **on the approve call itself** — never a separate save — because `Approver.Approve` takes it as a parameter, keeping "what gets acquired" inside the one gate. Approving unmodified sends an empty body and behaves exactly as it did before the feature existed. Inline intent-writing hints. The same describe→review→approve machinery is reused **in a refine mode on an existing channel** (§7 `refine`): the intent is seeded from the channel's current lineup + a free-text change, and review shows a diff instead of a fresh lineup.
+- **Suggestion workspace** — enter intent (or start from a **template**, §13) → watch one calm current-status message → review an editable Channel draft → approve. A landed result replaces the Add-a-channel prompt with **Review your channel** and temporarily replaces the Guide grid/empty state so first creation is one focused task, not a card layered over Dead air. The default review answers what was made, which titles are included, what is ready now, what still needs adding, and what the final action will do. Generated rationale, qualifier evidence, estimate methodology, alternates, and the immutable decision trace remain available through progressive disclosure rather than dominating the first view.
+
+  Suggested titles start included. An admin may include/exclude each one, undo an exclusion, and add another grounded title through keyboard-accessible search; the exact edited outlook and final acquisition count update from the pending delta. Availability uses household language (**Ready now**, **Needs adding**, **Backup**) rather than requiring the operator to understand Lineup versus Acquisition storage. Backups explain that they are used only when an included title cannot become available and can be excluded under the same semantics. The final admin action is **Create channel**, paired with explicit consequence copy such as “Creates the channel and requests 8 missing titles”; self-origination offers **Discard**, not requester-facing Deny. A member sees the same calm result read-only as **Sent for approval**, with no inert admin controls and no broadened authority.
+
+  Guide and Queue reuse one lineup-composer interaction. Queue adds its requester context, optional note, Deny, and bulk-approval rules; it does not maintain a second title editor. The edit remains a **delta** (`drop` by provisioning key, `add`, `note`) sent **on the approve call itself** — never a separate save — because `Approver.Approve` takes it as a parameter, keeping what gets acquired inside the one gate. Approving unmodified sends an empty body and behaves exactly as it did before edit-before-approve. The same describe→review→approve machinery is reused **in a refine mode on an existing channel** (§7 `refine`): the intent is seeded from the channel's current lineup + a free-text change, and review shows a diff instead of a fresh lineup.
 - **Filler library** — browse/tag commercial clips (era/audience/category), trigger sync, review AI tags, preview a channel's pods (§10). This is the **catalog**; each channel *chooses* from it on its own Filler section (§10 per-channel selection). The two surfaces cross-link both ways — the catalog heading points to per-channel selection, a channel's Filler section links back to the catalog, and a clip offers a **"Use in a channel"** action that pins it into a channel's filler directly (a normal `PATCH …/{id}` of `policy.filler.pinned`, merged onto the channel's live policy).
 
   **Five destinations — `Overview · Sources · Incoming · Library · Manage`.** Overview is the default

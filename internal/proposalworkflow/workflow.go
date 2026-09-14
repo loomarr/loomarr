@@ -275,7 +275,7 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 		milestone = MilestoneFailed
 		failure := safeFailure(record.FailureCode, record.FailureTrace)
 		actions = []Action{ActionRetry}
-		if failure.Code == FailureNoGroundedTitles {
+		if recoveryNeedsEdit(failure.RecoveryAction) {
 			actions = []Action{ActionEdit, ActionRetry}
 		} else if viewer.Admin && isAIRecoveryReason(failure.Reason) {
 			actions = []Action{ActionRetry, ActionCheckAI}
@@ -286,6 +286,16 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 	}
 
 	return journeyFrom(record, milestone, actions, nil), nil
+}
+
+func recoveryNeedsEdit(action RecoveryAction) bool {
+	switch action {
+	case RecoveryActionEditReference, RecoveryActionBroadenRequest, RecoveryActionProvideExamples,
+		RecoveryActionResolveConstraints, RecoveryActionClarifyDates, RecoveryActionSimplifyRequest:
+		return true
+	default:
+		return false
+	}
 }
 
 func isAIRecoveryReason(reason FailureReason) bool {

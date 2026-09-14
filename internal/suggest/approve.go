@@ -21,6 +21,10 @@ var ErrNotSubmitted = store.ErrProposalNotSubmitted
 // row remains submitted for an explicit deny/audit decision.
 var ErrSuperseded = store.ErrProposalSuperseded
 
+// ErrEmptyApproval reports an edit that removes every effective title. Alternates are backups,
+// not a playable starting lineup, so they cannot make an otherwise empty edited approval valid.
+var ErrEmptyApproval = errors.New("approve: choose at least one title")
+
 // ApprovalEdit is an approver's modification, applied AT the gate (§7, decision D-K).
 //
 // ⚠ THE EDIT IS A PARAMETER TO Approve, not something a caller applies first, and that is the
@@ -29,8 +33,8 @@ var ErrSuperseded = store.ErrProposalSuperseded
 // would not share it — the two would drift on what approving means, which is exactly what §8's
 // one-implementation rule exists to prevent. Auto-approve passes nil and runs identical code.
 type ApprovalEdit struct {
-	// DropKeys are provisioning keys the approver removed. Applied to BOTH lineup and
-	// acquisitions: a dropped title should not be acquired and should not be scheduled.
+	// DropKeys are provisioning keys the approver removed. Applied to lineup, acquisitions,
+	// and alternates: a dropped title should not be acquired, scheduled, or restored as a backup.
 	DropKeys []provision.Key
 	// Add are titles the approver added via search. They join the acquisitions list and go
 	// through the same idempotent enqueue as anything the model proposed — an
@@ -291,6 +295,13 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit) (store.Proposal, Prop
 	if aerr != nil {
 		return store.Proposal{}, Proposal{}, aerr
 	}
+	// This guards the human edit boundary, where every title in an otherwise valid draft can
+	// be deliberately unchecked. A nil edit is also used by automatic re-curation, whose empty
+	// incoming delta is valid: it means "keep the existing channel" after its quality/cap filter
+	// admitted nothing new.
+	if edit != nil && len(body.Lineup) == 0 && len(body.Acquisitions) == 0 {
+		return store.Proposal{}, Proposal{}, ErrEmptyApproval
+	}
 	// The edit surface controls title membership, not scheduler semantics. Re-ground every
 	// series from the Proposal's original Intent after additions/drops, at this one approval
 	// boundary shared by manual, bulk, and automatic approval. This also repairs a missing or
@@ -325,10 +336,9 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit) (store.Proposal, Prop
 // code is a record of what happened, while the same string typed by an approver is a claim
 // about it. The audit trail is only worth keeping if it cannot be authored.
 //
-// Dropping applies to lineup AND acquisitions. A dropped title must not be acquired and must
-// not be scheduled, and a proposal can carry the same title in either list depending on whether
-// it was already in the library — so filtering one and not the other would drop it from the
-// acquisition queue while leaving it in the channel, or the reverse.
+// Dropping applies to lineup, acquisitions, AND alternates. A dropped title must not be acquired,
+// scheduled, or return later as a backup. A proposal can carry the same title in any of those
+// lists, so filtering only the visible starting list would make an explicit exclusion temporary.
 // Returns the summary and the re-serialised proposal JSON; an empty JSON string means the
 // stored bytes should be left exactly as they were.
 func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON string, err error) {
@@ -365,6 +375,8 @@ func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON s
 	body.Lineup, n = keep(body.Lineup)
 	droppedTotal += n
 	body.Acquisitions, n = keep(body.Acquisitions)
+	droppedTotal += n
+	body.Alternates, n = keep(body.Alternates)
 	droppedTotal += n
 
 	for _, added := range edit.Add {
