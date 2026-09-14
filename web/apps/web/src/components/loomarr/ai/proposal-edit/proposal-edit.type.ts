@@ -9,6 +9,7 @@ interface ProposalEditProps {
   // download, and the approver should see one list of "what I am approving".
   lineup: ProposalItem[];
   acquisitions: ProposalItem[];
+  alternates?: ProposalItem[];
   // Read-only server projection from the trusted Proposal Intent. Used only to
   // explain series added in this local edit; it is never copied into the edit DTO.
   episodeSelectionPreview?: EpisodeSelection;
@@ -16,8 +17,9 @@ interface ProposalEditProps {
   // been modified. Undefined is not the same as an empty edit (see the component): the caller
   // must send NO body in that case, so an unmodified approval stays byte-identical to what it
   // was before edit-before-approve existed.
-  onChange: (edit: ApprovalEditDTO | undefined) => void;
+  onChange?: (edit: ApprovalEditDTO | undefined) => void;
   renderFeedback?: (item: ProposalItem) => ReactNode;
+  showNote?: boolean;
   disabled?: boolean;
   className?: string;
 }

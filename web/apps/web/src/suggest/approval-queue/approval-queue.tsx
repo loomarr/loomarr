@@ -203,6 +203,7 @@ const ApprovalQueue = () => {
               acquisitions={p.proposal.acquisitions?.length ?? 0}
               lineup={p.proposal.lineup ?? []}
               acquisitionItems={p.proposal.acquisitions ?? []}
+              alternates={p.proposal.alternates ?? []}
               episodeSelectionPreview={p.episodeSelectionPreview}
               // What the proposal's own audience ceiling refused (§4, #259) — shown on the card
               // itself, because it changes what approving this row gets you.

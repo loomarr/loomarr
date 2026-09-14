@@ -10,7 +10,7 @@ const noop = () => {};
 const meta = {
   title: "AI/ProposalReview",
   component: ProposalReview,
-  args: { proposal, onApprove: noop, onDeny: noop, onEditItem: noop },
+  args: { proposal, onApprove: noop, onDeny: noop, onEdit: noop, selfService: true },
   decorators: [widthFrame(640)],
 } satisfies Meta<typeof ProposalReview>;
 

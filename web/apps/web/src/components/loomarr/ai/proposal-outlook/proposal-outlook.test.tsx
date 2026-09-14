@@ -8,7 +8,7 @@ describe("ProposalOutlook", () => {
   it("explains launch, fresh time and grounded mix with counts behind disclosure", async () => {
     const user = userEvent.setup();
     render(<ProposalOutlook assessment={outlook()} />);
-    expect(screen.getByText("Starts now after approval")).toBeInTheDocument();
+    expect(screen.getByText("Ready to start")).toBeInTheDocument();
     expect(screen.getByText(/This cycle has about 4 hours/)).toBeInTheDocument();
     expect(screen.getByText(/Mostly requested picks/)).toBeInTheDocument();
     await user.click(screen.getByText("How we estimated this"));
@@ -28,8 +28,8 @@ describe("ProposalOutlook", () => {
         })}
       />,
     );
-    expect(screen.getByText("Waiting on 2 acquisitions")).toBeInTheDocument();
-    expect(screen.getByText(/can be estimated when eligible media is available/)).toBeInTheDocument();
+    expect(screen.getByText("Starts as titles are added")).toBeInTheDocument();
+    expect(screen.getByText(/Programming will appear/)).toBeInTheDocument();
     expect(screen.queryByText(/This cycle has/)).not.toBeInTheDocument();
   });
 
@@ -63,8 +63,8 @@ describe("ProposalOutlook", () => {
         })}
       />,
     );
-    expect(screen.getByText(/Starts with available programming/)).toBeVisible();
-    expect(screen.getByText(/1 acquisition still missing/)).toBeVisible();
+    expect(screen.getByText(/Starts with the titles already in your library/)).toBeVisible();
+    expect(screen.getByText(/1 selected title is not in your library yet/)).toBeVisible();
     expect(screen.getByText(/A mix of requested and related picks/)).toBeVisible();
     expect(screen.queryByText(/Discovery-led/)).not.toBeInTheDocument();
   });
@@ -72,6 +72,6 @@ describe("ProposalOutlook", () => {
   it("hides previous estimates while a newer observation is pending", () => {
     render(<ProposalOutlook pending assessment={outlook()} />);
     expect(screen.getByRole("status")).toHaveTextContent("Checking this lineup");
-    expect(screen.queryByText("Starts now after approval")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ready to start")).not.toBeInTheDocument();
   });
 });

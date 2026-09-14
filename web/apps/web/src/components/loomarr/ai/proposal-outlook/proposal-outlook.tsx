@@ -23,12 +23,12 @@ const duration = (milliseconds: number, lowerBound = false) => {
 
 const mixCopy = (mix: Assessment["mix"]) => {
   const known = mix.core + mix.adjacent + mix.discovery;
-  if (known === 0) return "The original run has no recorded editorial mix evidence.";
+  if (known === 0) return null;
   if (mix.core > known / 2 && mix.adjacent + mix.discovery > 0)
     return "Mostly requested picks, with a few related or discovery choices.";
   if (mix.core === known) return "Built around your requested or retained picks.";
-  if (mix.adjacent > known / 2) return "Mostly related picks from the recommendation graph.";
-  if (mix.discovery > known / 2) return "Discovery-led picks grounded in the catalog.";
+  if (mix.adjacent > known / 2) return "Mostly related picks that fit alongside your request.";
+  if (mix.discovery > known / 2) return "Mostly new finds that match your request.";
   const roles = [
     mix.core > 0 && "requested",
     mix.adjacent > 0 && "related",
@@ -47,18 +47,18 @@ const ProposalOutlook = ({ assessment: value, pending = false, onAddVariety }: P
   if (!value)
     return (
       <p role="status" className="text-muted-foreground text-sm">
-        Launch and fresh-programming estimates are unavailable. Review the picks before approving.
+        A schedule preview isn't available yet. You can still review the titles.
       </p>
     );
   const launch =
     value.state === "ready"
       ? value.missingAcquisitions + value.missingLibrary + value.unknownTitles > 0
-        ? "Starts with available programming after approval"
-        : "Starts now after approval"
+        ? "Starts with the titles already in your library"
+        : "Ready to start"
       : value.state === "waiting"
-        ? `Waiting on ${value.missingAcquisitions} ${value.missingAcquisitions === 1 ? "acquisition" : "acquisitions"}`
+        ? "Starts as titles are added"
         : value.state === "uncertain"
-          ? "Launch readiness is uncertain"
+          ? "Some availability is still being checked"
           : "No eligible programming can start yet";
   return (
     <section aria-label="Channel outlook" className="flex flex-col gap-2 text-sm">
@@ -66,7 +66,10 @@ const ProposalOutlook = ({ assessment: value, pending = false, onAddVariety }: P
       {value.state === "ready" && value.missingAcquisitions > 0 && (
         <p>
           {value.missingAcquisitions}{" "}
-          {value.missingAcquisitions === 1 ? "acquisition still missing" : "acquisitions still missing"}.
+          {value.missingAcquisitions === 1
+            ? "selected title is not in your library yet"
+            : "selected titles are not in your library yet"}
+          .
         </p>
       )}
       {value.state === "ready" && value.missingLibrary + value.unknownTitles > 0 && (
@@ -81,14 +84,16 @@ const ProposalOutlook = ({ assessment: value, pending = false, onAddVariety }: P
             ` Its first repeat comes after ${duration(value.firstRepeatMs)} of program time.`}
         </p>
       ) : (
-        <p>Fresh-programming time can be estimated when eligible media is available.</p>
+        <p>Programming will appear as selected titles become available.</p>
       )}
-      <p>
-        {mixCopy(value.mix)}
-        {value.mix.unknown > 0 && value.mix.core + value.mix.adjacent + value.mix.discovery > 0
-          ? " Some picks have no recorded role."
-          : ""}
-      </p>
+      {mixCopy(value.mix) && (
+        <p>
+          {mixCopy(value.mix)}
+          {value.mix.unknown > 0 && value.mix.core + value.mix.adjacent + value.mix.discovery > 0
+            ? " Some picks have no recorded role."
+            : ""}
+        </p>
+      )}
       {value.thin && (
         <div className="flex flex-col gap-2">
           <p role="status" className="text-caution">

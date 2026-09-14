@@ -1,5 +1,5 @@
+import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { Proposal } from "@loomarr/api/models/proposal";
-import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { ReactNode } from "react";
 
 // The proposal shape is the orval-generated `Proposal` (from the BE's typed
@@ -10,7 +10,9 @@ type ProposalStatus = "draft" | "submitted" | "approved" | "denied" | "partially
 interface ProposalReviewProps {
   proposal: Proposal;
   outlook?: ReactNode;
+  edit?: ApprovalEditDTO;
   status?: ProposalStatus;
+  selfService?: boolean;
   busy?: boolean;
   onApprove?: () => void;
   // Deny carries the admin's optional reason. The API has persisted `denyReason` and
@@ -19,8 +21,8 @@ interface ProposalReviewProps {
   // OPTIONAL by design: requiring one would make denying a chore and produce "no"
   // fifty times over, but offering one costs a click.
   onDeny?: (reason?: string) => void;
+  onEdit?: (edit: ApprovalEditDTO | undefined) => void;
   onEditRequest?: () => void;
-  onEditItem?: (item: ProposalItem) => void;
   className?: string;
 }
 

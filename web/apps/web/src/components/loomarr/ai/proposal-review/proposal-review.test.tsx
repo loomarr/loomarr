@@ -1,30 +1,32 @@
 import type { Proposal } from "@loomarr/api";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { ProposalReview } from "./proposal-review";
 
-// The edit-per-item button carries a tooltip, and Radix tooltips need a provider
-// ancestor (mounted at the app root in __root.tsx). Wrap renders so the isolated
-// component test has one too.
-const renderWithTooltip = (ui: ReactElement) => render(<TooltipProvider>{ui}</TooltipProvider>);
+const renderReview = (ui: ReactElement) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+};
 
 const proposal: Proposal = {
+  channelName: "Friday Night Action",
   intent: { description: "90s action movies" },
-  rationale: "A high-energy 90s action block, front-loaded with the crowd-pleasers.",
+  rationale: "A high-energy 90s action block.",
   lineup: [
     {
       name: "Heat",
       year: 1995,
       mediaType: "movie",
+      tmdbId: 949,
       inLibrary: true,
-      confidence: 0.92,
-      rationale: "Peak-era Mann.",
+      rationale: "A grounded match for the requested era and tone.",
     },
   ],
-  acquisitions: [{ name: "Con Air", year: 1997, mediaType: "movie", inLibrary: false, confidence: 0.81 }],
-  alternates: [{ name: "Face/Off", mediaType: "movie", inLibrary: false }],
+  acquisitions: [{ name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false }],
+  alternates: [{ name: "Face/Off", mediaType: "movie", tmdbId: 754, inLibrary: false }],
   scores: {
     version: 1,
     themeFit: 1,
@@ -46,188 +48,130 @@ const proposal: Proposal = {
     truncated: false,
     candidates: [
       {
-        key: "movie:tmdb: Heat",
+        key: "movie:tmdb:949",
         name: "Heat",
         ownership: "library",
         constraints: { request: true, era: true },
         disposition: "selected",
         reason: "selected",
       },
-      {
-        key: "movie:tmdb: Face",
-        name: "Face/Off",
-        ownership: "acquisition",
-        disposition: "alternate",
-        reason: "acquisition_cap",
-      },
     ],
   },
 };
 
 describe("ProposalReview", () => {
-  it("separates library presence from acquisitions without confidence percentages", () => {
-    renderWithTooltip(<ProposalReview proposal={proposal} />);
-    expect(screen.getAllByText("Heat").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("In library")).toBeInTheDocument();
-    expect(screen.getByText("Will acquire")).toBeInTheDocument();
-    expect(screen.getByText(/Catalog metadata supports/)).toBeInTheDocument();
+  it("leads with a calm channel summary and plain availability", () => {
+    renderReview(<ProposalReview proposal={proposal} selfService />);
+    expect(screen.getByRole("heading", { name: "Review your channel" })).toBeInTheDocument();
+    expect(screen.getByText("Friday Night Action")).toBeInTheDocument();
+    expect(screen.getByText("2", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("Ready now")).toBeInTheDocument();
+    expect(screen.getByText("Needs adding")).toBeInTheDocument();
+    expect(screen.getByText("Backups")).toBeInTheDocument();
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Ready now")).not.toBeInTheDocument();
   });
 
-  it("shows unavailable episode-era evidence as not assessed", () => {
-    renderWithTooltip(
+  it("lets an admin choose titles and creates with the exact edited count", async () => {
+    const onEdit = vi.fn();
+    const onApprove = vi.fn();
+    const view = renderReview(
+      <ProposalReview
+        proposal={proposal}
+        status="submitted"
+        selfService
+        onEdit={onEdit}
+        onApprove={onApprove}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
+    expect(onEdit).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:949"] });
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProposalReview
+          proposal={proposal}
+          status="partially-edited"
+          selfService
+          edit={{ drop: ["movie:tmdb:949"] }}
+          onEdit={onEdit}
+          onApprove={onApprove}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText(/with 1 title/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create channel" }));
+    expect(onApprove).toHaveBeenCalledOnce();
+  });
+
+  it("prevents creating an empty channel", () => {
+    renderReview(
+      <ProposalReview
+        proposal={proposal}
+        status="submitted"
+        selfService
+        edit={{ drop: ["movie:tmdb:949", "movie:tmdb:1701"] }}
+        onEdit={vi.fn()}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Choose at least one title")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create channel" })).toBeDisabled();
+  });
+
+  it("keeps member review read-only and labels its state", () => {
+    renderReview(<ProposalReview proposal={proposal} status="submitted" />);
+    expect(screen.getByText("Sent for approval")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create channel" })).not.toBeInTheDocument();
+  });
+
+  it("puts deterministic evidence behind progressive disclosure", async () => {
+    renderReview(<ProposalReview proposal={proposal} />);
+    const evidence = screen.getByText("How Loomarr chose these titles").closest("details");
+    expect(evidence).not.toHaveAttribute("open");
+    await userEvent.click(screen.getByText("How Loomarr chose these titles"));
+    expect(evidence).toHaveAttribute("open");
+    await userEvent.click(screen.getByText("See the catalog decisions"));
+    expect(screen.getByText(/included · matched request, era/)).toBeInTheDocument();
+  });
+
+  it("calls out a partial interpretation in plain language", () => {
+    const onEditRequest = vi.fn();
+    renderReview(
       <ProposalReview
         proposal={{
           ...proposal,
           scores: {
             ...proposal.scores,
-            eraBalance: null,
-            era: { status: "unassessed", assessedItems: 0, matchingItems: 0, unknownItems: 2 },
+            theme: {
+              status: "partial",
+              basis: "qualifiers",
+              assessedItems: 2,
+              unknownItems: 0,
+              qualifiers: [{ term: "xqz", supportedItems: 0 }],
+            },
           },
         }}
+        onEditRequest={onEditRequest}
       />,
     );
-    expect(screen.getByText(/Date adherence is not assessed/)).toBeInTheDocument();
-    expect(screen.queryByText("100%")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Double-check the fit");
+    expect(screen.getByRole("status")).toHaveTextContent("Review the titles below");
+    expect(screen.getByRole("status")).not.toHaveTextContent("xqz");
   });
 
-  it("renders deterministic why-this and why-not evidence from the trace", () => {
-    renderWithTooltip(<ProposalReview proposal={proposal} />);
-    expect(screen.getByRole("heading", { name: "Why this / why not" })).toBeInTheDocument();
-    expect(screen.getAllByText("Heat").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("selected · matched request, era")).toBeInTheDocument();
-    expect(screen.getByText("acquisition cap")).toBeInTheDocument();
+  it("uses discard language for an admin reviewing their own draft", async () => {
+    const onDeny = vi.fn();
+    renderReview(
+      <ProposalReview
+        proposal={proposal}
+        status="submitted"
+        selfService
+        onApprove={vi.fn()}
+        onDeny={onDeny}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(onDeny).toHaveBeenCalledWith();
   });
-
-  it("explains episode selection before approval", () => {
-    const curated: Proposal = {
-      ...proposal,
-      lineup: [
-        {
-          name: "The Simpsons",
-          mediaType: "series",
-          tmdbId: 456,
-          inLibrary: true,
-          episodeSelection: { mode: "highlights" },
-        },
-      ],
-    };
-    renderWithTooltip(<ProposalReview proposal={curated} status="submitted" />);
-    expect(screen.getByText("Curated highlights")).toBeInTheDocument();
-  });
-
-  it("explains a complete episode deck before approval", () => {
-    const complete: Proposal = {
-      ...proposal,
-      lineup: [
-        {
-          name: "The Simpsons",
-          mediaType: "series",
-          tmdbId: 456,
-          inLibrary: true,
-          episodeSelection: { mode: "complete" },
-        },
-      ],
-    };
-    renderWithTooltip(<ProposalReview proposal={complete} status="submitted" />);
-    expect(screen.getByText("All episodes")).toBeInTheDocument();
-  });
-
-  it("explains omitted legacy series selection as the complete deck", () => {
-    const legacy: Proposal = {
-      ...proposal,
-      lineup: [
-        {
-          name: "The Simpsons",
-          mediaType: "series",
-          tmdbId: 456,
-          inLibrary: true,
-        },
-      ],
-    };
-    renderWithTooltip(<ProposalReview proposal={legacy} status="submitted" />);
-    expect(screen.getByText("All episodes")).toBeInTheDocument();
-  });
-
-  it("explains an unknown legacy series selection as the complete deck", () => {
-    const legacy: Proposal = {
-      ...proposal,
-      lineup: [
-        {
-          name: "The Simpsons",
-          mediaType: "series",
-          tmdbId: 456,
-          inLibrary: true,
-          episodeSelection: { mode: "retired-mode" },
-        },
-      ],
-    };
-    renderWithTooltip(<ProposalReview proposal={legacy} status="submitted" />);
-    expect(screen.getByText("All episodes")).toBeInTheDocument();
-  });
-
-  it("gates on approve for an actionable proposal", () => {
-    const onApprove = vi.fn();
-    renderWithTooltip(<ProposalReview proposal={proposal} status="submitted" onApprove={onApprove} />);
-    fireEvent.click(screen.getByRole("button", { name: /approve & acquire/i }));
-    expect(onApprove).toHaveBeenCalledOnce();
-  });
-
-  it("offers edit-via-search per item", () => {
-    const onEditItem = vi.fn();
-    renderWithTooltip(<ProposalReview proposal={proposal} onEditItem={onEditItem} />);
-    fireEvent.click(screen.getByRole("button", { name: /edit heat/i }));
-    expect(onEditItem).toHaveBeenCalledWith(proposal.lineup?.[0]);
-  });
-
-  it("retires the actions once approved", () => {
-    renderWithTooltip(<ProposalReview proposal={proposal} status="approved" />);
-    expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
-  });
-});
-
-it("explains partial interpretation and provides an edit action", () => {
-  const onEditRequest = vi.fn();
-  renderWithTooltip(
-    <ProposalReview
-      proposal={{
-        ...proposal,
-        scores: {
-          ...proposal.scores,
-          themeFit: 0.25,
-          theme: {
-            status: "partial",
-            basis: "qualifiers",
-            assessedItems: 1,
-            unknownItems: 0,
-            qualifiers: [
-              { term: "banana", supportedItems: 1 },
-              { term: "xqz", supportedItems: 0 },
-            ],
-          },
-        },
-      }}
-      onEditRequest={onEditRequest}
-    />,
-  );
-  expect(screen.getByRole("status")).toHaveTextContent("narrow reading");
-  fireEvent.click(screen.getByRole("button", { name: "Edit request" }));
-  expect(onEditRequest).toHaveBeenCalledOnce();
-  expect(screen.queryByText(/%/)).not.toBeInTheDocument();
-});
-
-it("does not reuse historical assessment or assessment after edits", () => {
-  const view = renderWithTooltip(
-    <ProposalReview proposal={{ ...proposal, scores: { ...proposal.scores, version: 0 } }} />,
-  );
-  expect(screen.getByText(/no current evidence assessment/)).toBeInTheDocument();
-  expect(screen.queryByText("Evidence behind this interpretation")).not.toBeInTheDocument();
-  view.rerender(
-    <TooltipProvider>
-      <ProposalReview proposal={proposal} status="partially-edited" />
-    </TooltipProvider>,
-  );
-  expect(screen.getByText(/original assessment no longer describes/)).toBeInTheDocument();
-  expect(screen.queryByText("Evidence behind this interpretation")).not.toBeInTheDocument();
 });

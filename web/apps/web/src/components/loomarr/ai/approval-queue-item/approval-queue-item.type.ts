@@ -20,6 +20,7 @@ interface ApprovalQueueItemProps {
   // the queue stays scannable; omit to keep the compact row.
   lineup?: ProposalItem[];
   acquisitionItems?: ProposalItem[];
+  alternates?: ProposalItem[];
   episodeSelectionPreview?: EpisodeSelection;
   // Picks the model grounded that this proposal's OWN audience ceiling cannot air (§4, #259).
   //

@@ -3,10 +3,11 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
-import { Plus, RotateCcw, X } from "lucide-react";
-import { useState } from "react";
+import { Plus, RotateCcw } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -14,32 +15,109 @@ import { SearchCommand } from "../../shell";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import type { ProposalEditProps } from "./proposal-edit.type";
 
-// ProposalEdit — edit-before-approve (V25b, design.md §7.2 / D-K). An admin drops titles they
-// don't want, adds ones the model missed, and leaves the requester a note explaining why their
-// request came back altered.
-//
-// THE EDIT IS A DELTA, NOT A REPLACED LIST: `{drop: [key], add: [item], note}`. That is the
-// backend's shape and it matters — `suggest.Approve` takes the edit as a PARAMETER so the
-// decision about what gets acquired stays inside the one approval gate. Applying the edit
-// client-side and posting a "final" list would move that decision outside the gate and leave
-// auto-approve running different logic.
-//
-// Drops are keyed by PROVISIONING KEY, never by index or name. The Go comment on the field says
-// why: an index means "the third one in the list I was looking at", which is wrong the moment
-// anything reorders between render and submit. `provisionKey` mirrors Go's derivation exactly —
-// a key that disagrees by one character does not error, it just matches nothing, and the title
-// the admin removed gets acquired anyway.
+type PickKind = "ready" | "missing" | "backup" | "added";
+type Keyed = { item: ProposalItem; key: string; kind: PickKind };
 
-// A pick with its derived key. An item with no usable id (no tmdbId, no tvdbId) yields "" and
-// cannot be dropped — it also cannot have been enqueued, so there is nothing to remove.
-type Keyed = { item: ProposalItem; key: string; kind: "lineup" | "acquire" };
+const mediaLabel = (item: ProposalItem) => (item.mediaType === "series" ? "Series" : "Movie");
 
+const itemDetails = (item: ProposalItem) =>
+  [mediaLabel(item), ...(item.genres ?? []).slice(0, 2), item.officialRating].filter(Boolean).join(" · ");
+
+const stateLabel = (kind: PickKind) => {
+  switch (kind) {
+    case "ready":
+      return { text: "Ready now", variant: "lock" as const };
+    case "backup":
+      return { text: "Backup", variant: "neutral" as const };
+    case "added":
+      return { text: "Added by you", variant: "suggest" as const };
+    default:
+      return { text: "Needs adding", variant: "tune" as const };
+  }
+};
+
+const seasonLabel = (item: ProposalItem) => {
+  const lo = item.seasonMin ?? 0;
+  const hi = item.seasonMax ?? 0;
+  if (lo <= 0 && hi <= 0) return null;
+  if (lo > 0 && hi > 0) return lo === hi ? `Season ${lo}` : `Seasons ${lo}–${hi}`;
+  return lo > 0 ? `From season ${lo}` : `Through season ${hi}`;
+};
+
+const PickRow = ({
+  pick,
+  included,
+  editable,
+  disabled,
+  episodeSelectionPreview,
+  feedback,
+  onToggle,
+}: {
+  pick: Keyed;
+  included: boolean;
+  editable: boolean;
+  disabled?: boolean;
+  episodeSelectionPreview?: ProposalEditProps["episodeSelectionPreview"];
+  feedback?: ReactNode;
+  onToggle: () => void;
+}) => {
+  const state = stateLabel(pick.kind);
+  const selection = episodeSelectionLabel(pick.item, episodeSelectionPreview);
+  const season = seasonLabel(pick.item);
+
+  return (
+    <li
+      className={cn(
+        "flex items-start gap-3 border-border border-b px-1 py-3 last:border-b-0",
+        !included && "opacity-55",
+      )}
+    >
+      {editable && pick.key !== "" && (
+        <Checkbox
+          className="mt-0.5 shrink-0"
+          checked={included}
+          disabled={disabled}
+          aria-label={`Include ${pick.item.name}`}
+          onChange={onToggle}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={cn("font-medium text-sm", !included && "line-through")}>{pick.item.name}</span>
+          {pick.item.year ? <span className="text-muted-foreground text-xs">{pick.item.year}</span> : null}
+          {included ? (
+            <Badge variant={state.variant}>{state.text}</Badge>
+          ) : (
+            <Badge variant="neutral">Not included</Badge>
+          )}
+          {season && <Badge variant="tune">{season}</Badge>}
+          {selection && <Badge variant="suggest">{selection}</Badge>}
+        </div>
+        <p className="mt-1 text-muted-foreground text-xs">{itemDetails(pick.item)}</p>
+        {included && pick.item.rationale && (
+          <details className="mt-1.5 text-sm">
+            <summary className="w-fit cursor-pointer text-muted-foreground text-xs hover:text-foreground">
+              Why this title?
+            </summary>
+            <p className="mt-1 max-w-prose text-muted-foreground">{pick.item.rationale}</p>
+          </details>
+        )}
+        {included && feedback && <div className="mt-2">{feedback}</div>}
+      </div>
+    </li>
+  );
+};
+
+// The one pre-approval title composer used by both the first-channel review and Queue. Its
+// state is only an ApprovalEdit delta; nothing persists until the existing approval gate runs.
 const ProposalEdit = ({
   lineup,
   acquisitions,
+  alternates = [],
   episodeSelectionPreview,
   onChange,
   renderFeedback,
+  showNote = false,
   disabled,
   className,
 }: ProposalEditProps) => {
@@ -48,26 +126,26 @@ const ProposalEdit = ({
   const [note, setNote] = useState("");
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
+  const editable = onChange !== undefined;
 
   const picks: Keyed[] = [
-    ...lineup.map((item) => ({ item, key: provisionKey(item), kind: "lineup" as const })),
-    ...acquisitions.map((item) => ({ item, key: provisionKey(item), kind: "acquire" as const })),
+    ...lineup.map((item) => ({
+      item,
+      key: provisionKey(item),
+      kind: item.inLibrary ? ("ready" as const) : ("missing" as const),
+    })),
+    ...acquisitions.map((item) => ({ item, key: provisionKey(item), kind: "missing" as const })),
   ];
+  const backups: Keyed[] = alternates.map((item) => ({ item, key: provisionKey(item), kind: "backup" }));
 
   const search = searchApi.useSearch(
     { q: query, scope: "all", limit: 8 },
     { query: { enabled: adding && query.trim().length > 1 } },
   );
-  const candidates = unwrap(search.data, (b) => b.candidates) ?? [];
+  const candidates = unwrap(search.data, (body) => body.candidates) ?? [];
 
-  // Emit the edit in the API's shape, or `undefined` when nothing has been modified.
-  //
-  // ⚠ UNDEFINED, NOT AN EMPTY OBJECT. The handler maps a body with no drops, no adds and no
-  // note to a nil edit precisely so an untouched approval is indistinguishable from the
-  // pre-edit behaviour — same code path, untouched proposal bytes, empty ModSummary. Sending
-  // `{drop: [], add: [], note: ""}` would still record "approved with modifications: none",
-  // which is a different and false claim about what the admin did.
   const emit = (nextDropped: string[], nextAdded: ProposalItem[], nextNote: string) => {
+    if (!onChange) return;
     const trimmed = nextNote.trim();
     if (nextDropped.length === 0 && nextAdded.length === 0 && trimmed === "") {
       onChange(undefined);
@@ -81,22 +159,23 @@ const ProposalEdit = ({
   };
 
   const toggleDrop = (key: string) => {
-    const next = dropped.includes(key) ? dropped.filter((k) => k !== key) : [...dropped, key];
+    const next = dropped.includes(key) ? dropped.filter((value) => value !== key) : [...dropped, key];
     setDropped(next);
     emit(next, added, note);
   };
 
-  const addCandidate = (c: SearchCandidate) => {
-    // The candidate becomes a ProposalItem the backend enqueues like any acquisition. It is
-    // never "in library" from here: an added title goes through the same idempotent enqueue as
-    // anything the model proposed, and the provisioner decides what is already present.
+  const addCandidate = (candidate: SearchCandidate) => {
     const item: ProposalItem = {
-      name: c.name,
-      mediaType: c.mediaType,
+      name: candidate.name,
+      mediaType: candidate.mediaType,
       inLibrary: false,
-      ...(c.year ? { year: c.year } : {}),
-      ...(c.tmdbId ? { tmdbId: c.tmdbId } : {}),
-      ...(c.tvdbId ? { tvdbId: c.tvdbId } : {}),
+      ...(candidate.year ? { year: candidate.year } : {}),
+      ...(candidate.tmdbId ? { tmdbId: candidate.tmdbId } : {}),
+      ...(candidate.tvdbId ? { tvdbId: candidate.tvdbId } : {}),
+      ...(candidate.genres ? { genres: candidate.genres } : {}),
+      ...(candidate.officialRating ? { officialRating: candidate.officialRating } : {}),
+      ...(candidate.overview ? { overview: candidate.overview } : {}),
+      ...(candidate.runtimeMinutes ? { runtimeMinutes: candidate.runtimeMinutes } : {}),
     };
     const next = [...added, item];
     setAdded(next);
@@ -106,140 +185,106 @@ const ProposalEdit = ({
   };
 
   const removeAdded = (key: string) => {
-    const next = added.filter((i) => provisionKey(i) !== key);
+    const next = added.filter((item) => provisionKey(item) !== key);
     setAdded(next);
     emit(dropped, next, note);
   };
 
-  const existingKeys = new Set([...picks.map((p) => p.key), ...added.map(provisionKey)]);
+  const existingKeys = new Set([
+    ...picks.map((pick) => pick.key),
+    ...backups.map((pick) => pick.key),
+    ...added.map(provisionKey),
+  ]);
+  const selectedCount = picks.filter((pick) => !dropped.includes(pick.key)).length + added.length;
   const edited = dropped.length > 0 || added.length > 0 || note.trim() !== "";
 
   return (
-    <div className={cn("flex flex-col gap-4", className)}>
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <h4 className="font-medium text-sm">What gets approved</h4>
-          {edited && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              onClick={() => {
-                setDropped([]);
-                setAdded([]);
-                setNote("");
-                onChange(undefined);
-              }}
-            >
-              <RotateCcw aria-hidden />
-              Reset
-            </Button>
-          )}
+    <div className={cn("flex min-w-0 flex-col gap-3", className)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="font-medium">Included titles</h3>
+          <p className="text-muted-foreground text-sm">
+            {selectedCount} {selectedCount === 1 ? "title" : "titles"} selected
+          </p>
         </div>
+        {edited && editable && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => {
+              setDropped([]);
+              setAdded([]);
+              setNote("");
+              onChange(undefined);
+            }}
+          >
+            <RotateCcw aria-hidden />
+            Reset changes
+          </Button>
+        )}
+      </div>
 
-        <ul className="flex flex-col gap-1.5">
-          {picks.map(({ item, key, kind }) => {
-            const isDropped = key !== "" && dropped.includes(key);
-            return (
-              <li
-                key={key || `unkeyed-${item.name}`}
-                className={cn(
-                  "flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm",
-                  isDropped && "opacity-50",
-                )}
-              >
-                <span className={cn("min-w-0 flex-1 truncate", isDropped && "line-through")}>
-                  {item.name}
-                  {item.year ? (
-                    <span className="ml-2 font-mono text-static-400 text-xs">{item.year}</span>
-                  ) : null}
-                </span>
-                <Badge variant={kind === "lineup" ? "lock" : "tune"}>
-                  {kind === "lineup" ? "In library" : "Will acquire"}
-                </Badge>
-                {episodeSelectionLabel(item, episodeSelectionPreview) && (
-                  <Badge variant="suggest">{episodeSelectionLabel(item, episodeSelectionPreview)}</Badge>
-                )}
-                {renderFeedback && !isDropped && renderFeedback(item)}
-                {/* A pick with no usable id was never enqueueable, so there is nothing to drop
-                    — the control is omitted rather than rendered inert. */}
-                {key !== "" && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 shrink-0"
-                    disabled={disabled}
-                    aria-label={isDropped ? `Keep ${item.name}` : `Remove ${item.name}`}
-                    onClick={() => toggleDrop(key)}
-                  >
-                    {isDropped ? <RotateCcw aria-hidden /> : <X aria-hidden />}
-                  </Button>
-                )}
-              </li>
-            );
-          })}
+      <ul
+        aria-label="Included titles"
+        className="scroll-thin max-h-112 overflow-y-auto rounded-md border border-border px-3"
+      >
+        {picks.map((pick) => (
+          <PickRow
+            key={pick.key || `unkeyed-${pick.item.name}`}
+            pick={pick}
+            included={!dropped.includes(pick.key)}
+            editable={editable}
+            disabled={disabled}
+            episodeSelectionPreview={episodeSelectionPreview}
+            feedback={renderFeedback?.(pick.item)}
+            onToggle={() => toggleDrop(pick.key)}
+          />
+        ))}
+        {added.map((item) => {
+          const key = provisionKey(item);
+          return (
+            <PickRow
+              key={key}
+              pick={{ item, key, kind: "added" }}
+              included
+              editable={editable}
+              disabled={disabled}
+              episodeSelectionPreview={episodeSelectionPreview}
+              feedback={renderFeedback?.(item)}
+              onToggle={() => removeAdded(key)}
+            />
+          );
+        })}
+      </ul>
 
-          {added.map((item) => {
-            const key = provisionKey(item);
-            return (
-              <li
-                key={key}
-                className="flex items-center gap-2 rounded-md border border-border bg-suggest-tint-15 px-3 py-2 text-sm"
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {item.name}
-                  {item.year ? (
-                    <span className="ml-2 font-mono text-static-400 text-xs">{item.year}</span>
-                  ) : null}
-                </span>
-                <Badge variant="suggest">Added</Badge>
-                {episodeSelectionLabel(item, episodeSelectionPreview) && (
-                  <Badge variant="suggest">{episodeSelectionLabel(item, episodeSelectionPreview)}</Badge>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 shrink-0"
-                  disabled={disabled}
-                  aria-label={`Remove ${item.name}`}
-                  onClick={() => removeAdded(key)}
-                >
-                  <X aria-hidden />
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-
-        {adding ? (
+      {editable &&
+        (adding ? (
           <div className="flex flex-col gap-2">
             <SearchCommand
               query={query}
               onQueryChange={setQuery}
               loading={search.isFetching}
-              // Escape does what Cancel does. Opt-in because the ⌘K palette binds Escape at
-              // the window level and a default binding would close both (see onEscape).
+              placeholder="Search for a movie or show…"
               onEscape={() => {
                 setQuery("");
                 setAdding(false);
               }}
-              // Already-picked titles and ones with no usable id are filtered out rather than
-              // offered and then silently ignored by the backend.
               results={candidates
-                .filter((c) => {
-                  const k = provisionKey(c);
-                  return k !== "" && !existingKeys.has(k);
+                .filter((candidate) => {
+                  const key = provisionKey(candidate);
+                  return key !== "" && !existingKeys.has(key);
                 })
-                .map((c) => ({
-                  id: provisionKey(c),
-                  scope: c.inLibrary ? ("library" as const) : ("tmdb" as const),
-                  name: c.name,
-                  ...(c.year ? { meta: String(c.year) } : {}),
-                  inLibrary: c.inLibrary,
+                .map((candidate) => ({
+                  id: provisionKey(candidate),
+                  scope: candidate.inLibrary ? ("library" as const) : ("tmdb" as const),
+                  name: candidate.name,
+                  ...(candidate.year ? { meta: String(candidate.year) } : {}),
+                  inLibrary: candidate.inLibrary,
                 }))}
-              onSelect={(r) => {
-                const c = candidates.find((x) => provisionKey(x) === r.id);
-                if (c) addCandidate(c);
+              onSelect={(result) => {
+                const candidate = candidates.find((value) => provisionKey(value) === result.id);
+                if (candidate) addCandidate(candidate);
               }}
             />
             <Button
@@ -263,28 +308,53 @@ const ProposalEdit = ({
             onClick={() => setAdding(true)}
           >
             <Plus aria-hidden />
-            Add a title…
+            Add another title
           </Button>
-        )}
-      </div>
+        ))}
 
-      {/* The note is the half of this feature that is about people rather than data: a request
-          that comes back altered without explanation reads as arbitrary. Optional — approving
-          unchanged needs no explanation (the same reasoning that kept Approve one click while
-          Deny became two-step in V23). */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="approval-note">Note to the requester</Label>
-        <Input
-          id="approval-note"
-          value={note}
-          disabled={disabled}
-          placeholder={edited ? "Why did this come back changed?" : "Optional"}
-          onChange={(e) => {
-            setNote(e.target.value);
-            emit(dropped, added, e.target.value);
-          }}
-        />
-      </div>
+      {backups.length > 0 && (
+        <details className="rounded-md border border-border px-3 py-2.5">
+          <summary className="cursor-pointer text-sm">
+            <span className="font-medium">Backups</span>
+            <span className="ml-2 text-muted-foreground">
+              {backups.filter((pick) => !dropped.includes(pick.key)).length} available
+            </span>
+          </summary>
+          <p className="mt-2 text-muted-foreground text-sm">
+            Used only when an included title cannot become available.
+          </p>
+          <ul className="mt-2 border-border border-t">
+            {backups.map((pick) => (
+              <PickRow
+                key={pick.key || `unkeyed-${pick.item.name}`}
+                pick={pick}
+                included={!dropped.includes(pick.key)}
+                editable={editable}
+                disabled={disabled}
+                episodeSelectionPreview={episodeSelectionPreview}
+                feedback={renderFeedback?.(pick.item)}
+                onToggle={() => toggleDrop(pick.key)}
+              />
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {showNote && editable && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="approval-note">Note to the requester</Label>
+          <Input
+            id="approval-note"
+            value={note}
+            disabled={disabled}
+            placeholder={edited ? "Explain what you changed" : "Optional"}
+            onChange={(event) => {
+              setNote(event.target.value);
+              emit(dropped, added, event.target.value);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };
