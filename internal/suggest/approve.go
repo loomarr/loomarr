@@ -21,6 +21,11 @@ var ErrNotSubmitted = store.ErrProposalNotSubmitted
 // row remains submitted for an explicit deny/audit decision.
 var ErrSuperseded = store.ErrProposalSuperseded
 
+// ErrRevisionActive reports a proposal whose replacement generation currently
+// owns its stable Job. Approval resumes only if that revision fails; success
+// atomically publishes a new submitted proposal instead.
+var ErrRevisionActive = store.ErrProposalRevisionActive
+
 // ErrEmptyApproval reports an edit that removes every effective title. Alternates are backups,
 // not a playable starting lineup, so they cannot make an otherwise empty edited approval valid.
 var ErrEmptyApproval = errors.New("approve: choose at least one title")

@@ -109,6 +109,22 @@ func (s *sqlStore) commitProposalApproval(
 		}
 	}
 
+	// Proposal revision and approval serialize on the stable Job row. Generating
+	// a replacement temporarily closes the approval gate; a failed replacement
+	// leaves the old submitted proposal intact and terminal, so it can be approved.
+	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
+	if s.dialect == DialectPostgres {
+		jobStatusQuery += ` FOR UPDATE`
+	}
+	var jobStatus string
+	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), commit.Proposal.JobID).Scan(&jobStatus)
+	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
+		return 0, fmt.Errorf("%w: proposal %s", ErrProposalRevisionActive, commit.Proposal.ID)
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("approve proposal %s: read job status: %w", commit.Proposal.ID, err)
+	}
+
 	p := commit.Proposal
 	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE proposals SET job_id=?, status=?, created_by=?, approved_by=?, deny_reason=?,

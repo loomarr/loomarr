@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -20,6 +21,7 @@ const (
 var (
 	ErrForbidden    = errors.New("proposal workflow: forbidden")
 	ErrInvalidState = errors.New("proposal workflow: invalid state")
+	ErrNotRevisable = store.ErrProposalNotRevisable
 )
 
 type JobStatus string
@@ -274,6 +276,14 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 	case JobFailed:
 		milestone = MilestoneFailed
 		failure := safeFailure(record.FailureCode, record.FailureTrace)
+		if record.Proposal != nil && record.Proposal.Status == ProposalSubmitted {
+			milestone = MilestoneAwaitingApproval
+			actions = []Action{ActionWait}
+			if viewer.Admin {
+				actions = []Action{ActionReview, ActionEdit, ActionRetry}
+			}
+			return journeyFrom(record, milestone, actions, &failure), nil
+		}
 		actions = []Action{ActionRetry}
 		if recoveryNeedsEdit(failure.RecoveryAction) {
 			actions = []Action{ActionEdit, ActionRetry}

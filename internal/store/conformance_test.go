@@ -76,6 +76,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("JobCacheByIntentHash", func(t *testing.T) { testJobCacheByHash(t, newStore) })
 		t.Run("SuggestionSuccessAtomic", func(t *testing.T) { testSuggestionSuccessAtomic(t, newStore) })
 		t.Run("SuggestionRequeueCAS", func(t *testing.T) { testSuggestionRequeueCAS(t, newStore) })
+		t.Run("ProposalRevisionLifecycle", func(t *testing.T) { testProposalRevisionLifecycle(t, newStore) })
 		t.Run("CloneSuggestionSuccess", func(t *testing.T) { testCloneSuggestionSuccess(t, newStore) })
 		t.Run("ProposalJobSnapshot", func(t *testing.T) { testProposalJobSnapshot(t, newStore) })
 		t.Run("ProposalJobFirstLiveMonotonic", func(t *testing.T) { testProposalJobFirstLiveMonotonic(t, newStore) })

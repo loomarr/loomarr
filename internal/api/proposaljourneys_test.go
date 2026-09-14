@@ -52,6 +52,51 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 	}
 }
 
+func TestReviseProposalJourneyKeepsTheStableJob(t *testing.T) {
+	t.Parallel()
+
+	workflow := &fakeProposalWorkflow{}
+	srv := proposalJourneyServer(t, workflow)
+	resp := do(t, srv, http.MethodPost, "/v1/proposal-jobs/job-1/revise", adminToken,
+		`{"description":"80s comedies with more variety","runtimeTargetMin":240}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST revision = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		JobID string `json:"jobId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.JobID != "job-1" || workflow.jobID != "job-1" || !workflow.viewer.Admin ||
+		workflow.intent.Description != "80s comedies with more variety" || workflow.intent.RuntimeTgt != 240 {
+		t.Fatalf("revision call = body %+v, viewer %+v, job %q, intent %+v",
+			body, workflow.viewer, workflow.jobID, workflow.intent)
+	}
+}
+
+func TestReviseProposalJourneyRequiresAdminAndCurrentReview(t *testing.T) {
+	t.Parallel()
+
+	workflow := &fakeProposalWorkflow{}
+	srv := proposalJourneyServer(t, workflow)
+	member := do(t, srv, http.MethodPost, "/v1/proposal-jobs/job-1/revise", memberToken,
+		`{"description":"more variety"}`)
+	defer func() { _ = member.Body.Close() }()
+	if member.StatusCode != http.StatusForbidden {
+		t.Fatalf("member revision = %d, want 403", member.StatusCode)
+	}
+
+	workflow.err = proposalworkflow.ErrNotRevisable
+	stale := do(t, srv, http.MethodPost, "/v1/proposal-jobs/job-1/revise", adminToken,
+		`{"description":"more variety"}`)
+	defer func() { _ = stale.Body.Close() }()
+	if stale.StatusCode != http.StatusConflict {
+		t.Fatalf("stale revision = %d, want 409", stale.StatusCode)
+	}
+}
+
 func TestProposalJourneyListEndpointUsesCallerScope(t *testing.T) {
 	t.Parallel()
 
@@ -175,6 +220,7 @@ type fakeProposalWorkflow struct {
 	viewer   proposalworkflow.Viewer
 	jobID    string
 	options  proposalworkflow.ListOptions
+	intent   suggest.Intent
 }
 
 func (f *fakeProposalWorkflow) List(
@@ -193,6 +239,16 @@ func (f *fakeProposalWorkflow) Inspect(
 ) (proposalworkflow.Journey, error) {
 	f.viewer, f.jobID = viewer, jobID
 	return f.journey, f.err
+}
+
+func (f *fakeProposalWorkflow) Revise(
+	_ context.Context,
+	viewer proposalworkflow.Viewer,
+	jobID string,
+	intent suggest.Intent,
+) error {
+	f.viewer, f.jobID, f.intent = viewer, jobID, intent
+	return f.err
 }
 
 func proposalJourneyServer(t *testing.T, workflow api.ProposalWorkflow) *httptest.Server {

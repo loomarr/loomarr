@@ -151,7 +151,7 @@ func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOu
 type ProposalDTO struct {
 	ID         string `json:"id"`
 	JobID      string `json:"jobId"`
-	Status     string `json:"status" enum:"submitted,approved,denied"`
+	Status     string `json:"status" enum:"submitted,approved,denied,superseded"`
 	CreatedBy  string `json:"createdBy,omitempty"`
 	ApprovedBy string `json:"approvedBy,omitempty"`
 	DenyReason string `json:"denyReason,omitempty"`
@@ -372,6 +372,9 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	}
 	if errors.Is(err, suggest.ErrSuperseded) {
 		return nil, errConflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
+	}
+	if errors.Is(err, suggest.ErrRevisionActive) {
+		return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before creating this channel.")
 	}
 	if errors.Is(err, suggest.ErrEmptyApproval) {
 		return nil, errUnprocessable("Choose at least one title", "A channel needs at least one included title before it can be created.")

@@ -89,6 +89,15 @@ func (s *sqlStore) CommitSuggestionSuccess(
 		}
 	}
 
+	// A successful Proposal revision replaces the prior review atomically. Until
+	// this commit the prior submitted row remains the fallback; once the new row is
+	// durable it must leave the approval queue in the same transaction.
+	if _, err := tx.ExecContext(ctx, s.ph(
+		`UPDATE proposals SET status='superseded', updated_at=? WHERE job_id=? AND status='submitted'`),
+		epoch(p.CreatedAt), jobID); err != nil {
+		return fmt.Errorf("complete suggestion job %s: supersede prior proposal: %w", jobID, err)
+	}
+
 	if err := insertProposalTx(ctx, tx, s, p); err != nil {
 		return fmt.Errorf("complete suggestion job %s: %w", jobID, err)
 	}
@@ -131,6 +140,72 @@ func (s *sqlStore) RequeueSuggestionJob(
 		return fmt.Errorf("requeue suggestion job %s: read status: %w", jobID, err)
 	}
 	return fmt.Errorf("%w: job %s has status %s or a newer attempt", ErrJobNotTerminal, jobID, status)
+}
+
+// ReviseSubmittedProposal starts a replacement generation without making the
+// current review disappear. The exact newest submitted proposal and the terminal
+// execution are one compare-and-swap, so approval, another revision, or a newer
+// result cannot race this request into a second actionable branch.
+func (s *sqlStore) ReviseSubmittedProposal(
+	ctx context.Context,
+	jobID, proposalID string,
+	expectedAttempt int,
+	intentJSON, intentHash string,
+	deadline, updatedAt time.Time,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("revise proposal %s: begin: %w", proposalID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	lockQuery := `SELECT status FROM jobs WHERE id = ?`
+	if s.dialect == DialectPostgres {
+		lockQuery += ` FOR UPDATE`
+	}
+	var status string
+	if err := tx.QueryRowContext(ctx, s.ph(lockQuery), jobID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("revise proposal %s: lock job: %w", proposalID, err)
+	}
+	if status != "done" && status != "failed" {
+		return ErrProposalNotRevisable
+	}
+
+	result, err := tx.ExecContext(ctx, s.ph(
+		`UPDATE jobs
+		    SET kind='suggest', status='queued', intent_json=?, intent_hash=?, last_error='',
+		        failure_code='', failure_trace_json='', deadline=?, updated_at=?
+		  WHERE id=? AND status IN ('done', 'failed') AND attempts=?
+		    AND ? = (
+		        SELECT p.id FROM proposals p
+		         WHERE p.job_id=jobs.id AND p.created_by=jobs.created_by
+		         ORDER BY p.created_at DESC, p.id DESC
+		         LIMIT 1
+		    )
+		    AND EXISTS (
+		        SELECT 1 FROM proposals p
+		         WHERE p.id=? AND p.job_id=jobs.id AND p.created_by=jobs.created_by
+		           AND p.status='submitted'
+		    )`),
+		intentJSON, intentHash, epoch(deadline), epoch(updatedAt), jobID, expectedAttempt,
+		proposalID, proposalID,
+	)
+	if err != nil {
+		return fmt.Errorf("revise proposal %s: transition: %w", proposalID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("revise proposal %s: transition count: %w", proposalID, err)
+	}
+	if affected != 1 {
+		return ErrProposalNotRevisable
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("revise proposal %s: commit: %w", proposalID, err)
+	}
+	return nil
 }
 
 // CommitSuggestionFailure is the generation-failure persistence boundary. It

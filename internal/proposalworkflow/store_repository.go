@@ -22,6 +22,7 @@ type Store interface {
 	FindJobByIntentHash(context.Context, string, time.Time) (store.Job, error)
 	CloneSuggestionSuccess(context.Context, string, store.Job, string) (store.Proposal, error)
 	RequeueSuggestionJob(context.Context, string, int, string, string, string, time.Time, time.Time) error
+	ReviseSubmittedProposal(context.Context, string, string, int, string, string, time.Time, time.Time) error
 	ClaimDueJobs(context.Context, time.Time, time.Duration, int) ([]store.Job, error)
 	CommitSuggestionSuccess(context.Context, string, int, store.Proposal, time.Time) error
 	CommitSuggestionFailure(context.Context, string, int, string, string, string, time.Time) error

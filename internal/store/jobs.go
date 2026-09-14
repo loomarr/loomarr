@@ -157,7 +157,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
 		   FROM jobs j
 		   LEFT JOIN proposals p
-		     ON j.status = 'done'
+		     ON (j.status = 'done' OR p.status = 'submitted')
 		    AND p.created_by = j.created_by
 		    AND p.id = (
 		        SELECT p2.id FROM proposals p2
