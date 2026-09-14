@@ -2038,8 +2038,11 @@ uses `provider_response_invalid` with `retry_later`; only an explicit invalid-to
 also uses `provider_response_invalid`: retrieval succeeded, but the provider did not finish the
 lineup. Exhaustion without grounded candidates retains `discovery_budget_exhausted`, but uses neutral
 `retry_later` guidance; a raw budget fact does not prove that the request was broad, vague, or had too
-many directions. Provider timeout and provider unavailability remain distinct reasons with
-`retry_later`. Retry guidance explains the failed stage and, if it repeats, points to the existing
+many directions. The review UI also translates a stored legacy `discovery_budget_exhausted` message
+into a short, neutral failure that preserves the description and offers only the Journey-authorized
+retry and edit actions; internal budget language never reaches the household user. Provider timeout
+and provider unavailability remain distinct reasons with `retry_later`. Retry guidance explains the
+failed stage and, if it repeats, points to the existing
 authorized AI-check action or asking an administrator; it does not assert that the user's request
 caused a provider protocol error. New producer-specific reasons remain unavailable until their
 allowlisted typed evidence exists; generic outer codes do not invent that evidence.

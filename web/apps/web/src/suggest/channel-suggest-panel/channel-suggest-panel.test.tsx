@@ -616,4 +616,28 @@ describe("ChannelSuggestPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(retry).toHaveBeenCalled();
   });
+
+  it("does not expose discovery budgets or blame the description", async () => {
+    const reset = vi.fn();
+    runOverride = failedRun({
+      reset,
+      failure: {
+        code: "budget_exhausted",
+        message: "This request exceeded the bounded discovery budget.",
+        reason: "discovery_budget_exhausted",
+        recoveryAction: "simplify_request",
+        guidance: "Simplify the request and try again.",
+      },
+      actions: ["edit", "retry"],
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("We couldn't finish the lineup");
+    expect(alert).toHaveTextContent("Your description is still here. Try again, or edit it if you want to.");
+    expect(alert).not.toHaveTextContent(/budget|more specific|too many possible directions/i);
+    await userEvent.click(screen.getByRole("button", { name: "Edit description" }));
+    expect(reset).toHaveBeenCalledWith(true);
+  });
 });
