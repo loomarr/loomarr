@@ -333,6 +333,17 @@ Server verification that typed input or a Source suggestion identifies one canon
 target. Resolution creates no Source and grants no acquisition or admission authority.
 _Avoid_: registration, search result, approval
 
+**Automatic download policy**:
+The effective interval and per-check clip limit Loomarr applies to one enabled Filler Source. A
+Source may inherit the installation defaults, override them, or opt out of automatic downloads
+while remaining available for search and deliberate checks.
+_Avoid_: fetch cron, task schedule, Source switch
+
+**Source check**:
+One successful listing of a Filler Source for available items, whether or not it finds or queues a
+new Clip. This is distinct from a successful fetch, which brought at least one item into Loomarr.
+_Avoid_: fetch, scan
+
 **Provider-declared licence metadata**:
 The exact licence value or URL a Provider reports for a Source or item. Loomarr preserves it for
 optional provenance details; presence, absence, or content never changes acquisition, screening,

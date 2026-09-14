@@ -4376,9 +4376,18 @@ retries. Hosted providers retain their existing portable prompt-and-parse path.
 
 ### Sources fetch on their own (V38b)
 
-A registered, enabled source is **polled on a schedule** and new items download without anyone
-asking. This supersedes §15's "there is no unattended crawler": clips arrive because you added a
-source, not because you pasted a URL each time.
+A registered, enabled source is **checked on its effective automatic-download policy** and new
+items download without anyone asking. This supersedes §15's "there is no unattended crawler":
+clips arrive because you added a source, not because you pasted a URL each time.
+
+`filler.fetch.every` is the **only user-controlled cadence authority**. There is no second filler
+fetch cron setting. The scheduler wakes a cheap internal due-source planner once per minute; that
+wake-up makes no provider request unless at least one source is due. A source is due when its
+effective interval has elapsed since its durable `last_checked_at`. A successful provider listing
+records the check even when it finds nothing new, so an empty or fully catalogued source is not
+polled on every internal wake. A failed listing does not record a successful check and may retry on
+the next wake. The fixed internal wake is implementation timing, not an operator setting and not a
+second product promise.
 
 ⚠ **The superseded rule's concern was legitimate — unattended fetching can fill a stranger's disk
 — so it survives as LIMITS rather than as a prohibition.** All are settings, all have defaults, and
@@ -4386,7 +4395,7 @@ all fail toward doing less:
 
 | Bound | Default | Why |
 | --- | --- | --- |
-| `filler.fetch.every` | `6h` | How often a source is polled. Off (`0`) disables auto-fetch entirely |
+| `filler.fetch.every` | `6h` | Default interval for enabled sources. Off (`0`) stops sources that inherit it; a source may still carry an explicit interval |
 | `filler.fetch.max_per_run` | `10` | Items one source may pull per poll — a collection of thousands trickles in rather than arriving at once |
 | `filler.fetch.max_catalog_clips` | `2000` | A **ceiling on the whole catalog**. At the limit, auto-fetch stops; manual queueing and approved pulls still work |
 | `filler.fetch.max_disk_gb` | `20` | A ceiling on what the drop-folder may consume. Same behaviour at the limit |
@@ -4432,14 +4441,15 @@ uses. The UI names the bound and its current/maximum values. This makes "nothing
 answerable state even after restart, and makes the warning disappear as soon as curation or a
 settings change creates room.
 
-**`Fetch now` runs acquisition as well as discovery (V56).** A source row invokes one ordinary
+**`Look for new clips` runs acquisition as well as discovery (V56).** A source row invokes one ordinary
 bounded fetch pass for that selected source and then scans the configured local sources. It is not
 an alias for the local catalog scan: that old wiring returned success on an Archive or YouTube row
 while queueing no download at all. Nor is it a global button repeated on every row: clicking the
 drop folder cannot unexpectedly start three remote collections. The deliberate admin action may
-run while unattended timing is off, but it retains the source's enabled switch, deduplication and
-disk/catalog/per-source ceilings, so it is not an unbounded bypass. Omitting the source id keeps the
-former all-source endpoint behavior for older clients.
+run before a source is due or while its automatic timing is off, but it retains the source's and
+Provider's enabled switches, geography, deduplication, and disk/catalog/per-source ceilings, so it
+is not an unbounded bypass. Explicitly queueing one searched item remains a separate action and does
+not consume or reset the source's automatic check cadence.
 
 The response preserves the selected source identity and the acquisition result: how many sources
 were polled, how many items were queued or skipped, and which capacity ceiling stopped the pass.
@@ -8667,6 +8677,15 @@ set up a drop-folder but have not" is §10's own answer to *"why is my catalog e
 collection and a small playlist genuinely want different numbers, and one global figure serves
 neither well.
 
+The effective policy is server-owned and returned with every Source: stored override state,
+effective interval, effective per-check count, and last successful check. The ordinary state is
+**Use automatic-download defaults**. Advanced Source settings offer exactly three choices:
+**Use automatic-download defaults**, **Use a different schedule**, and **Never download
+automatically**. The custom choice exposes an interval and per-check count; resetting clears both
+nullable overrides rather than copying the current global values. The sheet always summarizes the
+effective result in plain language, including when the global default is Never but this Source has
+its own schedule.
+
 ⚠ **Unset must be NULL, never 0.** `0` already means something for `fetch.every` — *never
 auto-fetch this source* — so "inherit the global" cannot share that encoding. A column defaulting
 to `0` would read as "every existing source is switched off", silently, on upgrade. That is the
@@ -8676,6 +8695,14 @@ sabotage-test here.
 ⚠ **The catalog and disk ceilings stay GLOBAL.** They bound the whole install — what the operator
 is protecting is one disk, not one source — and a per-source disk cap would let four sources each
 stay under their limit while together filling the volume.
+
+Filler → Manage presents the global policy as **Automatic downloads**. The common control offers
+Never, Every 6 hours, Every 12 hours, Daily, Weekly, and Custom; Custom reveals the duration editor.
+The per-source count is visible beside it rather than hidden as an expert-only limit. The section
+states the bounded consequence using the current number of enabled, configured remote Sources — for
+example, “3 sources means at most 30 new clips per check.” Catalog/storage protection remains under
+Advanced and is explained as a household-wide backstop. Environment-pinned values stay visibly
+locked through the ordinary settings contract.
 
 ### What the Sources tab shows (V38c — the mock, read properly)
 
