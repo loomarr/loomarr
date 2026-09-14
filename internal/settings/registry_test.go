@@ -210,6 +210,16 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 	if schedule.Presentation != PresentationFillerDownloadSchedule {
 		t.Errorf("filler.fetch.every presentation = %q, want household schedule presets", schedule.Presentation)
 	}
+	for _, valid := range []string{"0", "1m", "6h", "168h"} {
+		if _, err := schedule.parse(valid); err != nil {
+			t.Errorf("filler.fetch.every rejected bounded value %q: %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{"30s", "169h"} {
+		if _, err := schedule.parse(invalid); err == nil {
+			t.Errorf("filler.fetch.every accepted out-of-range value %q", invalid)
+		}
+	}
 	perCheck, ok := r.Get("filler.fetch.max_per_run")
 	if !ok {
 		t.Fatal("filler.fetch.max_per_run not declared")

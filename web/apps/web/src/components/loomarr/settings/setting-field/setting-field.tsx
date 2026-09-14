@@ -198,6 +198,7 @@ const SettingField = ({
               <Input
                 type="number"
                 min={1}
+                max={current.unit === "days" ? 7 : current.unit === "hours" ? 168 : 10080}
                 step="any"
                 value={current.amount}
                 disabled={pinned || disabledReason !== undefined}

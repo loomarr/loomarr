@@ -29,7 +29,8 @@ interface SettingsBlock {
   // ⚠ Inside the collapsible panel, so it is hidden while the block is collapsed, and connection
   // blocks collapse when their check passes. Maintainer's call: the notice reads as belonging to
   // TMDB, which a page-level footer under four unrelated blocks did not.
-  footer?: ReactNode;
+  // May read live, unsaved values when the note explains the consequence of this block.
+  footer?: ReactNode | ((ctx: SettingsRenderContext) => ReactNode);
   // A bordered surface for a focused workflow decision. Most settings pages remain flat; pages
   // such as Notifications use cards to separate outcomes rather than presenting one field wall.
   surface?: "plain" | "card";

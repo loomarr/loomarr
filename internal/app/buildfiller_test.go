@@ -42,7 +42,7 @@ func TestFillerSourceAdapter_HotEnablesTunarrAnnotation(t *testing.T) {
 	}
 }
 
-func TestFetchStoreAdapter_InheritsInstallationLocationAndExcludesOutOfMarketSources(t *testing.T) {
+func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfMarketSources(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	for _, tc := range []struct {
 		id, country, market string
@@ -69,14 +69,43 @@ func TestFetchStoreAdapter_InheritsInstallationLocationAndExcludesOutOfMarketSou
 	}
 	got := map[string]bool{}
 	for _, src := range sources {
-		got[src.ID] = true
+		got[src.ID] = src.Enabled
 	}
+	californiaEnabled, californiaPresent := got["california"]
+	canadianEnabled, canadianPresent := got["canadian"]
 	// Sources without their own geography—including the built-in starters and the
-	// explicit "unknown" row above—inherit the Installation location. Only an
-	// explicitly conflicting country or local market is excluded.
-	if !got["us-wide"] || !got["ny-local"] || !got["unknown"] || got["california"] || got["canadian"] {
-		t.Fatalf("fetch sources = %v, want matching and inherited sources but no explicit out-of-market sources", got)
+	// explicit "unknown" row above—inherit the Installation location. Explicitly conflicting
+	// sources stay visible to the fetcher as disabled so a manual check returns a refusal rather
+	// than pretending that an absent source was checked successfully.
+	if !got["us-wide"] || !got["ny-local"] || !got["unknown"] || !californiaPresent || californiaEnabled ||
+		!canadianPresent || canadianEnabled {
+		t.Fatalf("fetch sources = %v, want inherited/matching sources enabled and out-of-market sources disabled", got)
 	}
+}
+
+func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	src := store.NewFillerSource("archive:local", "archive", "local", "Local", time.Now().UTC())
+	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
+		t.Fatal(err)
+	}
+	adapter := fetchStoreAdapter{
+		st: st, fetchEvery: func() time.Duration { return time.Hour },
+		home: func() filler.Geography { return filler.Geography{} },
+	}
+	sources, err := adapter.ListFetchSources(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range sources {
+		if source.ID == src.ID {
+			if source.Enabled {
+				t.Fatal("source is enabled for downloading before the installation has a location")
+			}
+			return
+		}
+	}
+	t.Fatalf("source %q disappeared instead of remaining visible as disabled", src.ID)
 }
 
 func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {

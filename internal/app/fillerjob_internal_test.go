@@ -26,3 +26,13 @@ func TestFillerMediaJobsDeclareALongTimeout(t *testing.T) {
 		}
 	}
 }
+
+func TestFillerFetchJobUsesOnlyAnInternalWakeSchedule(t *testing.T) {
+	job := fillerFetchJob(nil)
+	if job.DefaultCron != "0 * * * * *" {
+		t.Fatalf("filler fetch wake = %q, want the fixed one-minute internal wake", job.DefaultCron)
+	}
+	if job.ScheduleKey != "" {
+		t.Fatalf("filler fetch schedule key = %q, want no operator cron authority", job.ScheduleKey)
+	}
+}

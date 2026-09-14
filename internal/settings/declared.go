@@ -118,6 +118,20 @@ func positiveDuration(v any) error {
 	return nil
 }
 
+func fillerFetchInterval(v any) error {
+	d, ok := v.(time.Duration)
+	if !ok {
+		return fmt.Errorf("want a duration")
+	}
+	if d == 0 {
+		return nil
+	}
+	if d < time.Minute || d > 7*24*time.Hour {
+		return fmt.Errorf("want Never or a duration from 1 minute through 7 days (got %s)", d)
+	}
+	return nil
+}
+
 func nonNegativeWholeNumber(v any) error {
 	n, ok := v.(int)
 	if !ok {
@@ -892,7 +906,7 @@ func declared() []Setting {
 		// wake up to 8,000 files".
 		{
 			Key: "filler.fetch.every", Label: "Look for new clips", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
-			Kind: KindDuration, Presentation: PresentationFillerDownloadSchedule, Default: "6h",
+			Kind: KindDuration, Presentation: PresentationFillerDownloadSchedule, Default: "6h", Validate: fillerFetchInterval,
 			Doc: "How often Loomarr checks enabled sources for new clips. Never stops sources that use this default; you can still check one yourself.",
 		},
 		{

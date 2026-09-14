@@ -16,6 +16,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { me } from "@/test/fixtures/users";
@@ -99,6 +100,7 @@ const stubSources = () => {
         sourcesPolled: 1,
         queued: 2,
         skipped: 0,
+        maxPerCheck: 10,
         total: 0,
         added: 0,
         updated: 0,
@@ -188,7 +190,12 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
   automaticDownloads:
     over.automaticDownloads ??
     ((over.kind === "archive" || over.kind === "youtube") && !over.group
-      ? { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 }
+      ? {
+          mode: "defaults",
+          everySeconds: 21600,
+          maxPerCheck: 10,
+          summary: "Uses your defaults: every 6 hours, up to 10 clips each check.",
+        }
       : undefined),
   actions:
     over.actions ??
@@ -280,6 +287,29 @@ describe("SourcesPanel", () => {
     });
   });
 
+  it("keeps an automatic-download save failure beside the controls", async () => {
+    stubSources();
+    server.use(
+      http.patch("*/v1/filler/sources/:id", () =>
+        HttpResponse.json(
+          { title: "Could not save", detail: "The source changed. Try saving again." },
+          { status: 409 },
+        ),
+      ),
+    );
+    renderPanel([source({ kind: "archive", id: "archive:classic", target: "Classic TV" })]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
+    const save = screen.getByRole("button", { name: "Save automatic downloads" });
+    await userEvent.click(save);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Automatic downloads couldn’t be saved. Try again.",
+    );
+    await waitFor(() => expect(save).toHaveFocus());
+  });
+
   it("uses the provider command for the provider switch", async () => {
     const { providers } = stubSources();
     renderPanel([source({ kind: "archive", id: "provider:archive", target: "Archive.org", group: true })]);
@@ -310,7 +340,12 @@ describe("SourcesPanel", () => {
         kind: "archive",
         id: "archive:classic",
         target: "Classic TV",
-        automaticDownloads: { mode: "custom", everySeconds: 43200, maxPerCheck: 4 },
+        automaticDownloads: {
+          mode: "custom",
+          everySeconds: 43200,
+          maxPerCheck: 4,
+          summary: "Every 12 hours, up to 4 clips each check.",
+        },
       }),
     ]);
 
@@ -508,7 +543,12 @@ describe("SourcesPanel", () => {
         kind: "archive",
         id: "archive:classic",
         target: "Classic TV",
-        automaticDownloads: { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 },
+        automaticDownloads: {
+          mode: "defaults",
+          everySeconds: 21600,
+          maxPerCheck: 10,
+          summary: "Uses your defaults: every 6 hours, up to 10 clips each check.",
+        },
       }),
     ]);
 
@@ -521,6 +561,8 @@ describe("SourcesPanel", () => {
 
     await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
     await userEvent.click(screen.getByRole("option", { name: "Use a different schedule" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Source check schedule" }));
+    await userEvent.click(screen.getByRole("option", { name: "Custom" }));
     fireEvent.change(screen.getByLabelText("Source check interval"), { target: { value: "12" } });
     fireEvent.change(screen.getByLabelText("Clips per source check"), { target: { value: "3" } });
     await userEvent.click(screen.getByRole("button", { name: "Save automatic downloads" }));
@@ -534,6 +576,9 @@ describe("SourcesPanel", () => {
         },
       });
     });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save automatic downloads" })).toHaveFocus(),
+    );
   });
 
   it("uses the installation location again when a source exception is cleared", async () => {

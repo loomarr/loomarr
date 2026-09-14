@@ -657,9 +657,11 @@ type FillerSourceStore interface {
 	DeleteFillerSource(ctx context.Context, id string) error
 	// MarkFillerSourceFetched stamps a successful fetch, for the Sources tab's "last fetched".
 	MarkFillerSourceFetched(ctx context.Context, id string, at time.Time) error
-	// MarkFillerSourceChecked stamps a successful listing, including one that found nothing new.
-	// It is the durable due-planner fact and does not imply that anything was downloaded.
-	MarkFillerSourceChecked(ctx context.Context, id string, at time.Time) error
+	// Claim/complete/fail are the durable source-check lease and retry boundary shared by the
+	// scheduler and the manual Look for new clips command.
+	ClaimFillerSourceCheck(ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time) (bool, error)
+	CompleteFillerSourceCheck(ctx context.Context, id string, leaseUntil, checkedAt time.Time) error
+	FailFillerSourceCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error
 	// SetFillerSourceFetchPolicy writes one source's per-source fetch overrides (§10 V38c).
 	//
 	// ⚠ The ONLY writer of those columns, like SetFillerSourceEnabled owns `enabled` — the upsert

@@ -12,6 +12,9 @@ backend-transition-go	internal/backendtransition/controller.go	contracts,go,post
 playout-go	internal/playout/session.go	contracts,go,postgres,image
 rust-worker	rust/loomarr-image/src/lib.rs	rust,image
 migration	internal/store/migrations/sqlite/00001_init.sql	contracts,go,go_full,postgres,image
+filler-download-backend	internal/filler/fetch.go	contracts,go,postgres,image
+filler-download-settings-ui	web/apps/web/src/routes/_authed/filler/settings.tsx	web,visual,e2e,tuner,image
+filler-download-policy-wave	internal/filler/fetch.go;internal/store/migrations/sqlite/00111_filler_source_check_state.sql;api/openapi.yaml;web/apps/web/src/routes/_authed/filler/settings.tsx;web/apps/web/tests/e2e/filler-download-policy.spec.ts;web/packages/fixtures/src/testcard/testcard.ts;docs/design.md	contracts,go,go_full,postgres,web,clients,visual,e2e,tuner,image,docs,policy
 generic-web	web/apps/web/src/diagnostics/client-reporter/client-reporter.ts	web,visual,tuner,image
 web-unit-test	web/apps/web/src/channels/channel-health/channel-health.test.ts	web,image
 web-unit-test-tsx	web/apps/web/src/diagnostics/application-diagnostics/application-diagnostics.test.tsx	web,image

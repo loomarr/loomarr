@@ -13,6 +13,18 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
+func completeSourceCheck(t *testing.T, st store.Store, id string, checkedAt time.Time) {
+	t.Helper()
+	claimAt, leaseUntil := checkedAt.Add(-time.Minute), checkedAt.Add(29*time.Minute)
+	claimed, err := st.ClaimFillerSourceCheck(t.Context(), id, time.Time{}, claimAt, leaseUntil)
+	if err != nil || !claimed {
+		t.Fatalf("claim source check %q = %v, %v", id, claimed, err)
+	}
+	if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, checkedAt); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The member-visible health projection describes the generation doing the work, not a saved
 // layout that is waiting on restart. Otherwise a pending clear could report zero sources while
 // this process is still scanning and playing from the applied root.
@@ -329,9 +341,7 @@ func TestFillerWatch_LongSilenceAsksForAttention(t *testing.T) {
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.MarkFillerSourceChecked(ctx, "classic", time.Now().UTC().Add(-5*24*time.Hour)); err != nil {
-		t.Fatal(err)
-	}
+	completeSourceCheck(t, st, "classic", time.Now().UTC().Add(-5*24*time.Hour))
 
 	body, _ := getWatch(t, srv.URL, adminToken)
 	if body.Health != "attention" {
@@ -354,12 +364,8 @@ func TestFillerWatch_OneCurrentSourceKeepsItHealthy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := st.MarkFillerSourceChecked(ctx, "stale", time.Now().UTC().Add(-30*24*time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.MarkFillerSourceChecked(ctx, "fresh", time.Now().UTC().Add(-time.Minute)); err != nil {
-		t.Fatal(err)
-	}
+	completeSourceCheck(t, st, "stale", time.Now().UTC().Add(-30*24*time.Hour))
+	completeSourceCheck(t, st, "fresh", time.Now().UTC().Add(-time.Minute))
 
 	body, _ := getWatch(t, srv.URL, adminToken)
 	if body.Health != "healthy" {

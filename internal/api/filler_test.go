@@ -69,6 +69,7 @@ type fakeFiller struct {
 	confirmNotFound       bool
 	confirmInvalid        bool
 	fetchStatus           filler.FetchStatus
+	fetchResult           filler.FetchResult
 	fetchErr              error
 	readiness             filler.Readiness
 	pullID                string
@@ -100,7 +101,7 @@ func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (filler.FetchResu
 	if f.fetchErr != nil {
 		return filler.FetchResult{}, f.fetchErr
 	}
-	return filler.FetchResult{SourcesPolled: 1, Queued: 2}, nil
+	return f.fetchResult, nil
 }
 
 func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
@@ -306,7 +307,10 @@ func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, live
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
-	ff := &fakeFiller{FillerAcquisitionPlanner: testkit.FillerAcquisitionPlanner{Store: st}}
+	ff := &fakeFiller{
+		FillerAcquisitionPlanner: testkit.FillerAcquisitionPlanner{Store: st},
+		fetchResult:              filler.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
+	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
 		// ⚠ `testAuthorizer`, not `NewTokenAuthorizer(adminToken)`. The production authorizer

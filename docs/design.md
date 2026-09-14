@@ -4385,9 +4385,19 @@ fetch cron setting. The scheduler wakes a cheap internal due-source planner once
 wake-up makes no provider request unless at least one source is due. A source is due when its
 effective interval has elapsed since its durable `last_checked_at`. A successful provider listing
 records the check even when it finds nothing new, so an empty or fully catalogued source is not
-polled on every internal wake. A failed listing does not record a successful check and may retry on
-the next wake. The fixed internal wake is implementation timing, not an operator setting and not a
-second product promise.
+polled on every internal wake. A failed listing increments durable failure state and retries after
+1 minute, then 5 minutes, then 15 minutes, capped at 1 hour; a successful check clears that backoff.
+The source row projects the next eligible automatic check from its interval, retry, and active
+claim rather than making the browser repeat that arithmetic.
+
+Before making a provider request, the planner atomically leases that exact source for at most 30
+minutes using the last-check fact it observed. A second scheduled or manual pass cannot enumerate
+the same source while that lease is live, and a stale worker cannot complete a newer worker's
+claim. The scheduler's job lease prevents duplicate full passes; the source lease closes the
+smaller race between a scheduled pass and **Look for new clips**. The manual command bypasses the
+selected cadence and retry delay, but not an active source claim, source/provider enablement,
+geography, deduplication, the effective count, or capacity protection. The fixed internal wake is
+implementation timing, not an operator setting and not a second product promise.
 
 ⚠ **The superseded rule's concern was legitimate — unattended fetching can fill a stranger's disk
 — so it survives as LIMITS rather than as a prohibition.** All are settings, all have defaults, and
@@ -4395,7 +4405,7 @@ all fail toward doing less:
 
 | Bound | Default | Why |
 | --- | --- | --- |
-| `filler.fetch.every` | `6h` | Default interval for enabled sources. Off (`0`) stops sources that inherit it; a source may still carry an explicit interval |
+| `filler.fetch.every` | `6h` | Default interval for enabled sources. Off (`0`) stops sources that inherit it; positive custom values are bounded from one minute through seven days, and a source may still carry an explicit interval |
 | `filler.fetch.max_per_run` | `10` | Items one source may pull per poll — a collection of thousands trickles in rather than arriving at once |
 | `filler.fetch.max_catalog_clips` | `2000` | A **ceiling on the whole catalog**. At the limit, auto-fetch stops; manual queueing and approved pulls still work |
 | `filler.fetch.max_disk_gb` | `20` | A ceiling on what the drop-folder may consume. Same behaviour at the limit |

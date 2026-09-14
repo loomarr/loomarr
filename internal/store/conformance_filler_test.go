@@ -2717,7 +2717,18 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("LastFetchedAt = %v, want %v", src1(t, s).LastFetchedAt, fetched)
 	}
 	checked := fetched.Add(30 * time.Minute)
-	if err := s.MarkFillerSourceChecked(ctx, "src-1", checked); err != nil {
+	claimAt, leaseUntil := fetched.Add(10*time.Minute), fetched.Add(40*time.Minute)
+	claimed, err := s.ClaimFillerSourceCheck(ctx, "src-1", time.Time{}, claimAt, leaseUntil)
+	if err != nil || !claimed {
+		t.Fatalf("first source check claim = %v, %v", claimed, err)
+	}
+	if claimed, err := s.ClaimFillerSourceCheck(ctx, "src-1", time.Time{}, claimAt, leaseUntil); err != nil || claimed {
+		t.Fatalf("overlapping source check claim = %v, %v, want false/nil", claimed, err)
+	}
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil.Add(time.Second), checked); !errors.Is(err, filler.ErrSourceCheckClaimLost) {
+		t.Fatalf("stale source check completion = %v, want claim lost", err)
+	}
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil, checked); err != nil {
 		t.Fatal(err)
 	}
 	if !src1(t, s).LastCheckedAt.Equal(checked) {
@@ -2725,6 +2736,35 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !src1(t, s).LastFetchedAt.Equal(fetched) {
 		t.Errorf("marking a check changed LastFetchedAt to %v, want %v", src1(t, s).LastFetchedAt, fetched)
+	}
+
+	// A provider failure is durably recorded and releases the claim into bounded backoff. The
+	// next successful completion clears it.
+	failedClaimAt, failedLease := checked.Add(time.Hour), checked.Add(90*time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, "src-1", checked, failedClaimAt, failedLease)
+	if err != nil || !claimed {
+		t.Fatalf("failure source check claim = %v, %v", claimed, err)
+	}
+	retryAt := failedClaimAt.Add(5 * time.Minute)
+	if err := s.FailFillerSourceCheck(ctx, "src-1", failedLease, retryAt); err != nil {
+		t.Fatal(err)
+	}
+	failedSource := src1(t, s)
+	if failedSource.CheckFailureCount != 1 || !failedSource.CheckRetryAt.Equal(retryAt) || !failedSource.CheckLeaseUntil.IsZero() {
+		t.Fatalf("durable source failure state = %+v", failedSource)
+	}
+	retryLease := retryAt.Add(30 * time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, "src-1", checked, retryAt, retryLease)
+	if err != nil || !claimed {
+		t.Fatalf("retry source check claim = %v, %v", claimed, err)
+	}
+	checked = retryAt.Add(time.Minute)
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", retryLease, checked); err != nil {
+		t.Fatal(err)
+	}
+	recoveredSource := src1(t, s)
+	if recoveredSource.CheckFailureCount != 0 || !recoveredSource.CheckRetryAt.IsZero() {
+		t.Fatalf("successful source check did not clear backoff: %+v", recoveredSource)
 	}
 
 	// ⚠ THE assertion this table's ON CONFLICT clause exists for. Re-registering a source

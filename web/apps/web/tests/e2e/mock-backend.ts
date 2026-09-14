@@ -63,6 +63,7 @@ interface MockBackend {
     approvalRequests: string[];
     fillerFetches: string[];
     fillerSourcePatches: Array<{ id: string; body: Record<string, unknown> }>;
+    fillerSourcePolicy: { mode: "defaults" | "custom" | "never"; everySeconds: number; maxPerCheck: number };
     fillerSourceItems: Array<{ sourceId: string; remoteId: string; url: string }>;
     fillerAcquisitionStatus: "queued" | "running" | "success" | "error";
   };
@@ -84,6 +85,11 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     approvalRequests: [] as string[],
     fillerFetches: [] as string[],
     fillerSourcePatches: [] as Array<{ id: string; body: Record<string, unknown> }>,
+    fillerSourcePolicy: {
+      mode: "defaults" as "defaults" | "custom" | "never",
+      everySeconds: 21600,
+      maxPerCheck: 10,
+    },
     fillerSourceItems: [] as Array<{ sourceId: string; remoteId: string; url: string }>,
     fillerAcquisitionStatus: "queued" as "queued" | "running" | "success" | "error",
     proposals: (opts.pendingProposal ? [{ id: "prop-1", status: "submitted" }] : []) as Array<{
@@ -490,6 +496,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           sourcesPolled: 1,
           queued: 2,
           skipped: 0,
+          maxPerCheck: 10,
           total: 0,
           added: 0,
           updated: 0,
@@ -564,13 +571,32 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       }
       const sourcePatchMatch = path.match(/^\/v1\/filler\/sources\/(.+)$/);
       if (sourcePatchMatch && method === "PATCH") {
+        const patch = body();
         state.fillerSourcePatches.push({
           id: decodeURIComponent(sourcePatchMatch[1] ?? ""),
-          body: body(),
+          body: patch,
         });
+        if (patch.automaticDownloads) {
+          state.fillerSourcePolicy = patch.automaticDownloads as typeof state.fillerSourcePolicy;
+        }
         return json(route, {});
       }
       if (path === "/v1/filler/sources") {
+        const inheritedEvery = state.edits["filler.fetch.every"] ?? "6h";
+        const inheritedEverySeconds = inheritedEvery === "0" ? 0 : Number.parseInt(inheritedEvery, 10) * 3600;
+        const inheritedMax = Number(state.edits["filler.fetch.max_per_run"] ?? "10");
+        const policy =
+          state.fillerSourcePolicy.mode === "defaults"
+            ? {
+                mode: "defaults" as const,
+                everySeconds: inheritedEverySeconds,
+                maxPerCheck: inheritedMax,
+              }
+            : state.fillerSourcePolicy;
+        const policySummary =
+          policy.mode === "never"
+            ? "Doesn’t download automatically. You can still look for clips yourself."
+            : `${policy.mode === "defaults" ? "Uses your defaults: e" : "E"}very ${policy.everySeconds / 3600} hours, up to ${policy.maxPerCheck} clips each check.`;
         return json(route, {
           sources: [
             {
@@ -632,7 +658,11 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               readiness: "ready",
               ready: true,
               locationSource: "installation",
-              automaticDownloads: { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 },
+              automaticDownloads: {
+                ...policy,
+                summary: policySummary,
+                ...(policy.mode === "never" ? {} : { nextCheckAt: "2026-09-13T18:00:00Z" }),
+              },
               actions: ["fetch", "search", "disable", "remove", "edit_location"],
             },
           ],
@@ -848,7 +878,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   secret: false,
                   set: true,
                   provenance: "db" as const,
-                  value: state.edits["filler.fetch.every"] ?? "6h",
+                  value: state.edits["filler.fetch.every"] ?? "6h0m0s",
                 },
                 {
                   key: "filler.fetch.max_per_run",

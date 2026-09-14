@@ -43,7 +43,8 @@ const SOURCE_KIND_COPY = {
 
 type QueuedClipJob = { sourceID: string; clipID: string; jobID: string };
 type AutomaticDownloadMode = "defaults" | "custom" | "never";
-type DownloadIntervalUnit = "hours" | "days";
+type DownloadIntervalUnit = "minutes" | "hours" | "days";
+type DownloadSchedulePreset = "6h" | "12h" | "daily" | "weekly" | "custom";
 const QUEUED_CLIP_JOBS_KEY = "loomarr:source-item-jobs";
 
 const readQueuedClipJobs = (): QueuedClipJob[] => {
@@ -85,19 +86,24 @@ const sourceKindLabel = (source: FillerSourceDTO) => {
 };
 
 const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutputBody) => {
+  const limit = ` This check could add up to ${result.maxPerCheck} ${result.maxPerCheck === 1 ? "clip" : "clips"}.`;
+  const skipped =
+    result.skipped > 0
+      ? ` ${result.skipped} ${result.skipped === 1 ? "clip was" : "clips were"} already known and skipped.`
+      : "";
   if (result.stoppedBy === "disk") {
-    return "Couldn’t look for new clips because filler storage is full.";
+    return `Couldn’t add clips from ${source.target} because filler storage is full.${limit}`;
   }
   if (result.stoppedBy === "catalog") {
-    return "Couldn’t look for new clips because the clip limit is full.";
+    return `Couldn’t add clips from ${source.target} because the clip limit is full.${limit}`;
   }
   if (result.queued > 0) {
-    return `${result.queued} new ${result.queued === 1 ? "clip was" : "clips were"} queued from ${source.target}.`;
+    return `${result.queued} new ${result.queued === 1 ? "clip was" : "clips were"} queued from ${source.target}.${limit}${skipped}`;
   }
   if (result.added > 0 || result.updated > 0) {
     return `Found ${result.added} new and ${result.updated} updated ${result.added + result.updated === 1 ? "clip" : "clips"} in ${source.target}.`;
   }
-  return `No new clips were found in ${source.target}.`;
+  return `No new clips were found in ${source.target}.${limit}${skipped}`;
 };
 
 const readinessLabel = (source: FillerSourceDTO) => {
@@ -129,24 +135,29 @@ const registeredSourceURL = (source: FillerSourceDTO) => {
 
 const downloadIntervalParts = (seconds: number): { amount: number; unit: DownloadIntervalUnit } => {
   if (seconds > 0 && seconds % 86400 === 0) return { amount: seconds / 86400, unit: "days" };
-  return { amount: Math.max(seconds / 3600, 1), unit: "hours" };
+  if (seconds >= 3600 && seconds % 3600 === 0) return { amount: seconds / 3600, unit: "hours" };
+  return { amount: Math.max(seconds / 60, 1), unit: "minutes" };
 };
 
 const downloadIntervalSeconds = (amount: number, unit: DownloadIntervalUnit): number =>
-  Math.round(Math.max(amount, 1) * (unit === "days" ? 86400 : 3600));
+  Math.round(Math.max(amount, 1) * ({ days: 86400, hours: 3600, minutes: 60 } as const)[unit]);
 
-const automaticDownloadSummary = (
-  mode: AutomaticDownloadMode,
-  everySeconds: number,
-  maxPerCheck: number,
-): string => {
-  if (everySeconds === 0) return "Doesn’t download automatically. You can still look for clips yourself.";
-  const { amount, unit } = downloadIntervalParts(everySeconds);
-  const interval = `${amount} ${amount === 1 ? unit.slice(0, -1) : unit}`;
-  const policy = `every ${interval}, up to ${maxPerCheck} ${maxPerCheck === 1 ? "clip" : "clips"} each check`;
-  return mode === "defaults"
-    ? `Uses your defaults: ${policy}.`
-    : `${policy.charAt(0).toUpperCase()}${policy.slice(1)}.`;
+const downloadIntervalMaximum = (unit: DownloadIntervalUnit): number =>
+  ({ days: 7, hours: 168, minutes: 10080 })[unit];
+
+const downloadSchedulePreset = (seconds: number): DownloadSchedulePreset => {
+  if (seconds === 6 * 3600) return "6h";
+  if (seconds === 12 * 3600) return "12h";
+  if (seconds === 24 * 3600) return "daily";
+  if (seconds === 7 * 24 * 3600) return "weekly";
+  return "custom";
+};
+
+const downloadScheduleSeconds: Record<Exclude<DownloadSchedulePreset, "custom">, number> = {
+  "6h": 6 * 3600,
+  "12h": 12 * 3600,
+  daily: 24 * 3600,
+  weekly: 7 * 24 * 3600,
 };
 
 // SourcesPanel — the Sources tab of the filler page (§10 V35/V37/V38c): registered sources
@@ -167,6 +178,9 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const [downloadMode, setDownloadMode] = useState<AutomaticDownloadMode>("defaults");
   const [downloadEverySeconds, setDownloadEverySeconds] = useState(6 * 3600);
   const [downloadMaxPerCheck, setDownloadMaxPerCheck] = useState(10);
+  const [editingCustomDownloadSchedule, setEditingCustomDownloadSchedule] = useState(false);
+  const [downloadSaveError, setDownloadSaveError] = useState<string>();
+  const downloadSaveButton = useRef<HTMLButtonElement>(null);
   const [searchPreview, setSearchPreview] = useState<FillerSourcePreviewItemDTO>();
   const sourceTrigger = useRef<HTMLElement>(null);
   const selectedSource = sources.find((source) => source.id === selectedSourceID);
@@ -252,6 +266,10 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
     setDownloadMode(source.automaticDownloads?.mode ?? "defaults");
     setDownloadEverySeconds(source.automaticDownloads?.everySeconds || 6 * 3600);
     setDownloadMaxPerCheck(source.automaticDownloads?.maxPerCheck ?? 10);
+    setEditingCustomDownloadSchedule(
+      downloadSchedulePreset(source.automaticDownloads?.everySeconds || 6 * 3600) === "custom",
+    );
+    setDownloadSaveError(undefined);
     const uri = source.uri?.trim();
     if ((source.kind === "archive" || source.kind === "youtube") && source.providerEnabled && uri) {
       resolveSourcePreview.mutate(
@@ -625,16 +643,25 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                           <div>
                             <p className="font-medium text-sm">Automatic downloads</p>
                             <p className="mt-1 text-muted-foreground text-sm">
-                              {automaticDownloadSummary(
-                                selectedSource.automaticDownloads.mode as AutomaticDownloadMode,
-                                selectedSource.automaticDownloads.everySeconds,
-                                selectedSource.automaticDownloads.maxPerCheck,
-                              )}
+                              {selectedSource.automaticDownloads.summary}
                             </p>
+                            {selectedSource.automaticDownloads.nextCheckAt && (
+                              <p className="mt-1 text-muted-foreground text-xs">
+                                Next automatic check{" "}
+                                {formatRelative(selectedSource.automaticDownloads.nextCheckAt)}
+                              </p>
+                            )}
                           </div>
                           <Select
                             value={downloadMode}
-                            onValueChange={(value) => setDownloadMode(value as AutomaticDownloadMode)}
+                            onValueChange={(value) => {
+                              setDownloadMode(value as AutomaticDownloadMode);
+                              if (value === "custom") {
+                                setEditingCustomDownloadSchedule(
+                                  downloadSchedulePreset(downloadEverySeconds) === "custom",
+                                );
+                              }
+                            }}
                           >
                             <SelectTrigger aria-label="Automatic downloads for this source">
                               <SelectValue />
@@ -648,45 +675,32 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                           {downloadMode === "custom" && (
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <div className="flex flex-col gap-1.5">
-                                <span className="text-sm">Check every</span>
-                                <div className="flex gap-2">
-                                  <Input
-                                    type="number"
-                                    min={1}
-                                    step="any"
-                                    aria-label="Source check interval"
-                                    value={downloadIntervalParts(downloadEverySeconds).amount}
-                                    onChange={(event) => {
-                                      const current = downloadIntervalParts(downloadEverySeconds);
-                                      setDownloadEverySeconds(
-                                        downloadIntervalSeconds(Number(event.target.value), current.unit),
-                                      );
-                                    }}
-                                  />
-                                  <Select
-                                    value={downloadIntervalParts(downloadEverySeconds).unit}
-                                    onValueChange={(value) => {
-                                      const current = downloadIntervalParts(downloadEverySeconds);
-                                      setDownloadEverySeconds(
-                                        downloadIntervalSeconds(
-                                          current.amount,
-                                          value as DownloadIntervalUnit,
-                                        ),
-                                      );
-                                    }}
-                                  >
-                                    <SelectTrigger
-                                      aria-label="Source check interval unit"
-                                      className="w-28 shrink-0"
-                                    >
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="hours">hours</SelectItem>
-                                      <SelectItem value="days">days</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
+                                <span className="text-sm">Look for new clips</span>
+                                <Select
+                                  value={
+                                    editingCustomDownloadSchedule
+                                      ? "custom"
+                                      : downloadSchedulePreset(downloadEverySeconds)
+                                  }
+                                  onValueChange={(value) => {
+                                    const preset = value as DownloadSchedulePreset;
+                                    setEditingCustomDownloadSchedule(preset === "custom");
+                                    if (preset !== "custom") {
+                                      setDownloadEverySeconds(downloadScheduleSeconds[preset]);
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger aria-label="Source check schedule">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="6h">Every 6 hours</SelectItem>
+                                    <SelectItem value="12h">Every 12 hours</SelectItem>
+                                    <SelectItem value="daily">Daily</SelectItem>
+                                    <SelectItem value="weekly">Weekly</SelectItem>
+                                    <SelectItem value="custom">Custom</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                               <div className="flex flex-col gap-1.5">
                                 <span className="text-sm">Add up to</span>
@@ -697,18 +711,76 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                                   aria-label="Clips per source check"
                                   value={downloadMaxPerCheck}
                                   onChange={(event) =>
-                                    setDownloadMaxPerCheck(Math.max(Number(event.target.value), 1))
+                                    setDownloadMaxPerCheck(
+                                      Math.min(1000, Math.max(Number(event.target.value), 1)),
+                                    )
                                   }
                                 />
                               </div>
+                              {editingCustomDownloadSchedule && (
+                                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                  <span className="text-sm">Custom schedule</span>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type="number"
+                                      min={1}
+                                      max={downloadIntervalMaximum(
+                                        downloadIntervalParts(downloadEverySeconds).unit,
+                                      )}
+                                      step="any"
+                                      aria-label="Source check interval"
+                                      value={downloadIntervalParts(downloadEverySeconds).amount}
+                                      onChange={(event) => {
+                                        const current = downloadIntervalParts(downloadEverySeconds);
+                                        const maximum = downloadIntervalMaximum(current.unit);
+                                        setDownloadEverySeconds(
+                                          downloadIntervalSeconds(
+                                            Math.min(Number(event.target.value), maximum),
+                                            current.unit,
+                                          ),
+                                        );
+                                      }}
+                                    />
+                                    <Select
+                                      value={downloadIntervalParts(downloadEverySeconds).unit}
+                                      onValueChange={(value) => {
+                                        const current = downloadIntervalParts(downloadEverySeconds);
+                                        setDownloadEverySeconds(
+                                          downloadIntervalSeconds(
+                                            Math.min(
+                                              current.amount,
+                                              downloadIntervalMaximum(value as DownloadIntervalUnit),
+                                            ),
+                                            value as DownloadIntervalUnit,
+                                          ),
+                                        );
+                                      }}
+                                    >
+                                      <SelectTrigger
+                                        aria-label="Source check interval unit"
+                                        className="w-28 shrink-0"
+                                      >
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="minutes">minutes</SelectItem>
+                                        <SelectItem value="hours">hours</SelectItem>
+                                        <SelectItem value="days">days</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                           <Button
+                            ref={downloadSaveButton}
                             type="button"
                             variant="outline"
                             className="self-start"
                             disabled={toggleSource.isPending}
                             onClick={() => {
+                              setDownloadSaveError(undefined);
                               setTogglingSource(selectedSource.id);
                               toggleSource.mutate(
                                 {
@@ -727,6 +799,12 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                                 },
                                 {
                                   onSuccess: () => toast.success("Automatic downloads updated"),
+                                  onError: (error) =>
+                                    setDownloadSaveError(
+                                      error.detail ?? "Automatic downloads couldn’t be saved. Try again.",
+                                    ),
+                                  onSettled: () =>
+                                    requestAnimationFrame(() => downloadSaveButton.current?.focus()),
                                 },
                               );
                             }}
@@ -735,6 +813,14 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                               ? "Saving…"
                               : "Save automatic downloads"}
                           </Button>
+                          {downloadSaveError && (
+                            <p
+                              role="alert"
+                              className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-sm"
+                            >
+                              {downloadSaveError}
+                            </p>
+                          )}
                         </div>
                       )}
 

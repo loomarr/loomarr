@@ -913,7 +913,12 @@ const fillerSourcesWithRemotes: FillerSourceDTO[] = [
     // Only archive can be searched in place — the per-row search expander's condition.
     searchable: true,
     lastCheckedAt: "2026-07-30T09:14:00Z",
-    automaticDownloads: { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 },
+    automaticDownloads: {
+      mode: "defaults",
+      everySeconds: 21600,
+      maxPerCheck: 10,
+      summary: "Uses your defaults: every 6 hours, up to 10 clips each check.",
+    },
   },
   // ⚠ Switched off AND never fetched: the row must read as "stopped fetching", not "gone", and
   // render "never" rather than an epoch date nobody meant.
@@ -934,7 +939,12 @@ const fillerSourcesWithRemotes: FillerSourceDTO[] = [
     configured: true,
     fetchable: true,
     searchable: false,
-    automaticDownloads: { mode: "never", everySeconds: 0, maxPerCheck: 10 },
+    automaticDownloads: {
+      mode: "never",
+      everySeconds: 0,
+      maxPerCheck: 10,
+      summary: "Doesn’t download automatically. You can still look for clips yourself.",
+    },
   },
 ];
 
@@ -997,7 +1007,12 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     fetchable: true,
     searchable: true,
     lastCheckedAt: "2026-07-30T09:14:00Z",
-    automaticDownloads: { mode: "defaults", everySeconds: 21600, maxPerCheck: 10 },
+    automaticDownloads: {
+      mode: "defaults",
+      everySeconds: 21600,
+      maxPerCheck: 10,
+      summary: "Uses your defaults: every 6 hours, up to 10 clips each check.",
+    },
   },
   // One child is off while provider policy remains on. Child readiness reports the mixed state.
   {
@@ -1015,7 +1030,12 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     fetchable: true,
     searchable: true,
     lastCheckedAt: "2026-07-28T11:02:00Z",
-    automaticDownloads: { mode: "custom", everySeconds: 86400, maxPerCheck: 4 },
+    automaticDownloads: {
+      mode: "custom",
+      everySeconds: 86400,
+      maxPerCheck: 4,
+      summary: "Every day, up to 4 clips each check.",
+    },
   },
   // ── YouTube: provider on, with its single playlist switched off ─────────────────────────────
   {
@@ -1047,7 +1067,12 @@ const fillerSourcesGrouped: FillerSourceDTO[] = [
     configured: true,
     fetchable: true,
     searchable: false,
-    automaticDownloads: { mode: "never", everySeconds: 0, maxPerCheck: 10 },
+    automaticDownloads: {
+      mode: "never",
+      everySeconds: 0,
+      maxPerCheck: 10,
+      summary: "Doesn’t download automatically. You can still look for clips yourself.",
+    },
   },
 ];
 

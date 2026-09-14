@@ -187,7 +187,14 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                 <ConnectionBlock
                   title={block.title}
                   optional={block.optional}
-                  {...(block.footer ? { footer: block.footer } : {})}
+                  {...(block.footer
+                    ? {
+                        footer:
+                          typeof block.footer === "function"
+                            ? block.footer({ liveValue, setEdit })
+                            : block.footer,
+                      }
+                    : {})}
                   verdict={verdict}
                   docHref={standing?.docHref}
                   open={openBlocks?.[block.group] ?? false}
@@ -237,6 +244,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                 onEnvOverride={onEnvOverride}
                 disabledReasons={block.disabledReasons}
               />
+              {typeof block.footer === "function" ? block.footer({ liveValue, setEdit }) : block.footer}
             </section>
           );
         })}

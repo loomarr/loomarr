@@ -240,6 +240,31 @@ func getSources(t *testing.T, srv *httptest.Server) sourcesBody {
 	return body
 }
 
+func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	src := store.NewFillerSource("archive:local", "archive", "local", "Local collection", time.Now().UTC())
+	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
+		t.Fatal(err)
+	}
+
+	var projected api.FillerSourceDTO
+	for _, source := range getSources(t, srv).Sources {
+		if source.ID == src.ID {
+			projected = source
+			break
+		}
+	}
+	if projected.ID == "" {
+		t.Fatal("registered source was not projected")
+	}
+	if projected.Readiness != api.FillerSourceNeedsLocation {
+		t.Fatalf("readiness = %q, want needs_location", projected.Readiness)
+	}
+	if projected.AutomaticDownloads == nil || projected.AutomaticDownloads.NextCheckAt != "" {
+		t.Fatalf("automatic downloads = %+v, want policy summary without a promised check", projected.AutomaticDownloads)
+	}
+}
+
 // The read-model's reason for existing: counts come from the CATALOG, not from a table.
 func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
 	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
@@ -485,12 +510,16 @@ func sourceOfKind(t *testing.T, body sourcesBody, kind string) api.FillerSourceD
 // Admin-only: the rows name filesystem paths and library targets, which is infrastructure
 // detail a member has no business reading.
 func TestFillerSources_RequiresAdmin(t *testing.T) {
-	srv := serverWithClips(t, nil, nil)
+	srv, _, _ := newFillerServer(t)
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/filler/sources"},
 		{http.MethodPost, "/v1/filler/sources/fetch"},
 	} {
-		resp := do(t, srv, tc.method, tc.path, "", "")
+		resp := do(t, srv, tc.method, tc.path, memberToken, "")
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %s as member → %d, want 403", tc.method, tc.path, resp.StatusCode)
+		}
+		resp = do(t, srv, tc.method, tc.path, "", "")
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
@@ -532,12 +561,72 @@ func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 		SourceID      string `json:"sourceId"`
 		SourcesPolled int    `json:"sourcesPolled"`
 		Queued        int    `json:"queued"`
+		MaxPerCheck   int    `json:"maxPerCheck"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.SourceID != "archive:classic" || body.SourcesPolled != 1 || body.Queued != 2 {
+	if body.SourceID != "archive:classic" || body.SourcesPolled != 1 || body.Queued != 2 || body.MaxPerCheck != 7 {
 		t.Fatalf("fetch result = %+v, want selected source identity and its acquisition outcome", body)
+	}
+}
+
+func TestFillerSources_FetchNowReportsAnActiveCheck(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.fetchErr = filler.ErrSourceCheckInProgress
+
+	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("fetch during an active check = %d, want 409", resp.StatusCode)
+	}
+	if ff.syncs != 0 {
+		t.Fatalf("catalog synced %d times after the source was already claimed, want 0", ff.syncs)
+	}
+}
+
+func TestFillerSources_FetchNowReportsTheEffectiveCapAndCapacityStop(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.fetchResult = filler.FetchResult{MaxPerCheck: 3, StoppedBy: "disk"}
+
+	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("capacity-stopped fetch = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		MaxPerCheck int    `json:"maxPerCheck"`
+		StoppedBy   string `json:"stoppedBy"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.MaxPerCheck != 3 || body.StoppedBy != "disk" {
+		t.Fatalf("capacity-stopped result = %+v, want effective cap 3 and disk stop", body)
+	}
+}
+
+func TestFillerSources_FetchNowRefusesADisabledSourceBeforeSync(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.fetchErr = filler.ErrSourceDisabled
+
+	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("fetch for a disabled source = %d, want 409", resp.StatusCode)
+	}
+	if ff.syncs != 0 {
+		t.Fatalf("catalog synced %d times after the source was refused, want 0", ff.syncs)
+	}
+}
+
+func TestFillerSources_FetchNowReturnsNotFoundForRemovedSource(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.fetchErr = filler.ErrFetchSourceNotFound
+
+	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=removed", adminToken, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("fetch for a removed source = %d, want 404", resp.StatusCode)
+	}
+	if ff.syncs != 0 {
+		t.Fatalf("catalog synced %d times after missing-source refusal, want 0", ff.syncs)
 	}
 }
 

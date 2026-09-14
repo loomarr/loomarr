@@ -424,8 +424,10 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 	}
 	out := make([]filler.FetchSource, 0, len(srcs))
 	for _, s := range srcs {
-		if a.home != nil && !s.GeographicallyEligible(a.home()) {
-			continue
+		geographicallyEligible := true
+		if a.home != nil {
+			home := a.home().Normalize()
+			geographicallyEligible = home.Country != "" && s.GeographicallyEligible(home)
 		}
 		// ⚠ The three-state override is resolved HERE, by the store's own method, and handed to
 		// the fetcher already decided (§10 V38c). `FetchEvery` is the single implementation of
@@ -438,11 +440,14 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 			every = 0
 		}
 		out = append(out, filler.FetchSource{
-			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.EffectiveEnabled(),
-			NeverFetch:    !pollable,
-			Every:         every,
-			LastCheckedAt: s.LastCheckedAt,
-			MaxPerRun:     s.MaxPerRun(0),
+			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.EffectiveEnabled() && geographicallyEligible,
+			NeverFetch:        !pollable,
+			Every:             every,
+			LastCheckedAt:     s.LastCheckedAt,
+			CheckFailureCount: s.CheckFailureCount,
+			CheckRetryAt:      s.CheckRetryAt,
+			CheckLeaseUntil:   s.CheckLeaseUntil,
+			MaxPerRun:         s.MaxPerRun(0),
 		})
 	}
 	return out, nil
@@ -473,8 +478,18 @@ func (a fetchStoreAdapter) MarkFetched(ctx context.Context, id string, at time.T
 	return a.st.MarkFillerSourceFetched(ctx, id, at)
 }
 
-func (a fetchStoreAdapter) MarkChecked(ctx context.Context, id string, at time.Time) error {
-	return a.st.MarkFillerSourceChecked(ctx, id, at)
+func (a fetchStoreAdapter) ClaimCheck(
+	ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time,
+) (bool, error) {
+	return a.st.ClaimFillerSourceCheck(ctx, id, observedLastCheck, now, leaseUntil)
+}
+
+func (a fetchStoreAdapter) CompleteCheck(ctx context.Context, id string, leaseUntil, checkedAt time.Time) error {
+	return a.st.CompleteFillerSourceCheck(ctx, id, leaseUntil, checkedAt)
+}
+
+func (a fetchStoreAdapter) FailCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error {
+	return a.st.FailFillerSourceCheck(ctx, id, leaseUntil, retryAt)
 }
 
 // registeredSourceEnumerator dispatches only by the registered row's explicit provider kind.

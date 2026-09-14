@@ -23,21 +23,29 @@ type fetchStub struct {
 	calls       int
 	listed      []string
 	listedKinds []string
+	enumErr     error
 	ingestErr   error
 	// stamped records which sources were marked fetched, and when.
-	stamped map[string]time.Time
-	checked map[string]time.Time
+	stamped      map[string]time.Time
+	checked      map[string]time.Time
+	activeChecks map[string]bool
+	failedChecks map[string]time.Time
+	claimCalls   int
+	catalogCalls int
 }
 
 func (f *fetchStub) ListFetchSources(context.Context) ([]filler.FetchSource, error) {
 	return f.sources, nil
 }
-func (f *fetchStub) CatalogPaths(context.Context) ([]string, error) { return f.paths, nil }
+func (f *fetchStub) CatalogPaths(context.Context) ([]string, error) {
+	f.catalogCalls++
+	return f.paths, nil
+}
 func (f *fetchStub) Enumerate(_ context.Context, source filler.FetchSource, _ int) ([]filler.DiscoveredRef, int, error) {
 	f.calls++
 	f.listed = append(f.listed, source.URI)
 	f.listedKinds = append(f.listedKinds, source.Kind)
-	return f.offers, len(f.offers), nil
+	return f.offers, len(f.offers), f.enumErr
 }
 func (f *fetchStub) IngestSource(_ context.Context, sourceID, sourceKind string, urls []string) (string, error) {
 	f.sourceID = sourceID
@@ -64,11 +72,33 @@ func (f *fetchStub) MarkFetched(_ context.Context, id string, at time.Time) erro
 	return nil
 }
 
-func (f *fetchStub) MarkChecked(_ context.Context, id string, at time.Time) error {
+func (f *fetchStub) ClaimCheck(_ context.Context, id string, _ time.Time, _, _ time.Time) (bool, error) {
+	f.claimCalls++
+	if f.activeChecks == nil {
+		f.activeChecks = map[string]bool{}
+	}
+	if f.activeChecks[id] {
+		return false, nil
+	}
+	f.activeChecks[id] = true
+	return true, nil
+}
+
+func (f *fetchStub) CompleteCheck(_ context.Context, id string, _ time.Time, at time.Time) error {
 	if f.checked == nil {
 		f.checked = map[string]time.Time{}
 	}
 	f.checked[id] = at
+	delete(f.activeChecks, id)
+	return nil
+}
+
+func (f *fetchStub) FailCheck(_ context.Context, id string, _ time.Time, retryAt time.Time) error {
+	if f.failedChecks == nil {
+		f.failedChecks = map[string]time.Time{}
+	}
+	f.failedChecks[id] = retryAt
+	delete(f.activeChecks, id)
 	return nil
 }
 
@@ -263,6 +293,18 @@ func TestFetch_SkipsDisabledSources(t *testing.T) {
 	}
 }
 
+func TestFetch_ManualCheckRefusesADisabledSource(t *testing.T) {
+	stub := &fetchStub{sources: []filler.FetchSource{{
+		ID: "off", Kind: "archive", URI: "collection", Enabled: false,
+	}}}
+
+	_, err := newFetcher(t, stub, limits(10, 2000, 20)).RunSource(t.Context(), "off")
+	if !errors.Is(err, filler.ErrSourceDisabled) || stub.catalogCalls != 0 || stub.calls != 0 {
+		t.Fatalf("disabled manual check = %v, catalog/provider calls = %d/%d; want refusal before work",
+			err, stub.catalogCalls, stub.calls)
+	}
+}
+
 // The config-backed rows are SCANNED, not fetched. They have no URI, and polling them would be a
 // request to nowhere.
 func TestFetch_SkipsFolderAndLibraryRows(t *testing.T) {
@@ -372,6 +414,24 @@ func TestFetch_StopsAndReportsAtTheCatalogCeiling(t *testing.T) {
 	}
 	if len(stub.queued) != 0 {
 		t.Errorf("queued %v at the ceiling", stub.queued)
+	}
+}
+
+func TestFetch_ManualCheckReportsItsCapWhenCapacityStopsIt(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{
+			ID: "selected", Kind: "archive", URI: "collection", Enabled: true, MaxPerRun: 3,
+		}},
+		paths: []string{"a", "b"},
+	}
+
+	res, err := newFetcher(t, stub, limits(10, 2, 20)).RunSource(t.Context(), "selected")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StoppedBy != "catalog" || res.MaxPerCheck != 3 || stub.calls != 0 {
+		t.Fatalf("manual capacity result = %+v, provider calls = %d; want catalog stop with source cap 3",
+			res, stub.calls)
 	}
 }
 
@@ -605,6 +665,23 @@ func TestFetch_ScheduledRunChecksOnlySourcesWhoseEffectiveIntervalIsDue(t *testi
 	}
 }
 
+func TestFetch_ScheduledRunWithNothingDueDoesNotReadCapacity(t *testing.T) {
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	stub := &fetchStub{sources: []filler.FetchSource{{
+		ID: "later", Kind: "archive", URI: "collection", Enabled: true,
+		Every: 6 * time.Hour, LastCheckedAt: now.Add(-time.Hour),
+	}}}
+
+	res, err := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return now }).Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SourcesPolled != 0 || stub.catalogCalls != 0 || stub.calls != 0 {
+		t.Fatalf("idle wake = %+v, catalog/provider calls = %d/%d; want a source-state-only no-op",
+			res, stub.catalogCalls, stub.calls)
+	}
+}
+
 func TestFetch_SuccessfulEmptyCheckAdvancesDueTimeWithoutClaimingAFetch(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
 	stub := &fetchStub{
@@ -619,6 +696,90 @@ func TestFetch_SuccessfulEmptyCheckAdvancesDueTimeWithoutClaimingAFetch(t *testi
 	}
 	if _, ok := stub.stamped["empty"]; ok {
 		t.Fatal("an empty check claimed that it fetched an item")
+	}
+}
+
+func TestFetch_NextAutomaticCheckCombinesCadenceRetryAndLease(t *testing.T) {
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	base := filler.FetchSource{
+		ID: "source", Kind: "archive", URI: "collection", Enabled: true,
+		Every: 6 * time.Hour, LastCheckedAt: now.Add(-4 * time.Hour),
+	}
+	if got, ok := base.NextAutomaticCheck(now); !ok || !got.Equal(now.Add(2*time.Hour)) {
+		t.Fatalf("cadence next check = %v/%v, want %v/true", got, ok, now.Add(2*time.Hour))
+	}
+	base.CheckRetryAt = now.Add(5 * time.Hour)
+	if got, _ := base.NextAutomaticCheck(now); !got.Equal(base.CheckRetryAt) {
+		t.Fatalf("retry next check = %v, want %v", got, base.CheckRetryAt)
+	}
+	base.CheckLeaseUntil = now.Add(10 * time.Hour)
+	if got, _ := base.NextAutomaticCheck(now); !got.Equal(base.CheckLeaseUntil) {
+		t.Fatalf("lease next check = %v, want %v", got, base.CheckLeaseUntil)
+	}
+	base.NeverFetch = true
+	if _, ok := base.NextAutomaticCheck(now); ok {
+		t.Fatal("opted-out source projected an automatic check")
+	}
+}
+
+func TestFetch_ProviderFailureUsesDurableBoundedBackoff(t *testing.T) {
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{
+			ID: "failing", Kind: "archive", URI: "collection", Enabled: true,
+			CheckFailureCount: 2,
+		}},
+		enumErr: errors.New("provider unavailable"),
+	}
+	res, err := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return now }).Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SourcesPolled != 1 || !stub.failedChecks["failing"].Equal(now.Add(15*time.Minute)) {
+		t.Fatalf("failure result/retry = %+v / %v, want third-failure 15m backoff", res, stub.failedChecks)
+	}
+	if got := filler.SourceCheckRetryDelay(20); got != time.Hour {
+		t.Fatalf("retry cap = %v, want 1h", got)
+	}
+}
+
+func TestFetch_ScheduledBackoffIsSkippedButManualCheckBypassesIt(t *testing.T) {
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{
+			ID: "retrying", Kind: "archive", URI: "collection", Enabled: true,
+			CheckRetryAt: now.Add(time.Hour), MaxPerRun: 3,
+		}},
+		offers: refs("a"),
+	}
+	fetcher := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return now })
+	if res, err := fetcher.Run(t.Context()); err != nil || res.SourcesPolled != 0 || stub.calls != 0 {
+		t.Fatalf("scheduled backoff result = %+v calls=%d err=%v", res, stub.calls, err)
+	}
+	res, err := fetcher.RunSource(t.Context(), "retrying")
+	if err != nil || res.SourcesPolled != 1 || res.MaxPerCheck != 3 || stub.calls != 1 {
+		t.Fatalf("manual retry result = %+v calls=%d err=%v", res, stub.calls, err)
+	}
+}
+
+func TestFetch_ManualCheckRefusesAnActiveSourceClaim(t *testing.T) {
+	stub := &fetchStub{
+		sources:      []filler.FetchSource{{ID: "active", Kind: "archive", URI: "collection", Enabled: true}},
+		activeChecks: map[string]bool{"active": true},
+	}
+	_, err := newFetcher(t, stub, limits(10, 2000, 20)).RunSource(t.Context(), "active")
+	if !errors.Is(err, filler.ErrSourceCheckInProgress) || stub.calls != 0 {
+		t.Fatalf("active check error/calls = %v/%d, want in-progress and no provider call", err, stub.calls)
+	}
+}
+
+func TestFetch_ManualCheckRejectsAnUnknownSource(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "known", Kind: "archive", URI: "collection", Enabled: true}},
+	}
+	_, err := newFetcher(t, stub, limits(10, 2000, 20)).RunSource(t.Context(), "missing")
+	if !errors.Is(err, filler.ErrFetchSourceNotFound) || stub.catalogCalls != 0 || stub.calls != 0 {
+		t.Fatalf("unknown source error/catalog/provider calls = %v/%d/%d, want not-found and no work", err, stub.catalogCalls, stub.calls)
 	}
 }
 

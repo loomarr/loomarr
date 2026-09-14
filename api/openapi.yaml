@@ -2938,6 +2938,10 @@ components:
         added:
           format: int64
           type: integer
+        maxPerCheck:
+          description: Effective clip limit for this selected source
+          format: int64
+          type: integer
         pruned:
           format: int64
           type: integer
@@ -2973,6 +2977,7 @@ components:
         - sourcesPolled
         - queued
         - skipped
+        - maxPerCheck
         - total
         - added
         - updated
@@ -9102,10 +9107,16 @@ components:
             - custom
             - never
           type: string
+        nextCheckAt:
+          description: RFC3339; absent while automatic checks are off
+          type: string
+        summary:
+          type: string
       required:
         - mode
         - everySeconds
         - maxPerCheck
+        - summary
       type: object
     SourceAutomaticDownloadsInput:
       additionalProperties: false

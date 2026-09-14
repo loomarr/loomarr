@@ -318,10 +318,16 @@ func TestSetFillerSourceEnabled_RefusesRowsWithNothingToStop(t *testing.T) {
 // actually express what the column can hold — the columns shipped in an earlier V38c step with
 // no route reaching them, which is the declared-but-unconsumed shape §15 forbids.
 func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
+		if key == "filler.home_country" {
+			return "US"
+		}
+		return ""
+	})
 	ctx := context.Background()
-	if err := st.UpsertFillerSource(ctx,
-		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+	source := store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
+	source.Geography.Country = "US"
+	if err := st.UpsertFillerSource(ctx, source); err != nil {
 		t.Fatal(err)
 	}
 
@@ -367,6 +373,12 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 		projected.AutomaticDownloads.EverySeconds != 900 || projected.AutomaticDownloads.MaxPerCheck != 5 {
 		t.Fatalf("projected automatic downloads = %+v, want custom 900s/5", projected.AutomaticDownloads)
 	}
+	if projected.AutomaticDownloads.Summary != "Every 15 minutes, up to 5 clips each check." {
+		t.Fatalf("summary = %q, want server-authored custom policy", projected.AutomaticDownloads.Summary)
+	}
+	if projected.AutomaticDownloads.NextCheckAt == "" {
+		t.Fatal("next automatic check is absent for an enabled, due custom source")
+	}
 
 	// A source switch changes only enabled. It must not silently clear timing hidden in the sheet.
 	res = sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic", `{"enabled":false}`, adminToken)
@@ -390,6 +402,16 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	}
 	if _, ok := got.FetchEvery(time.Hour); ok {
 		t.Error("a source set to never-fetch is still pollable — 0 was read as 'inherit'")
+	}
+	for _, row := range sourcesFrom(t, srv) {
+		if row.ID == "classic" {
+			projected = row
+		}
+	}
+	if projected.AutomaticDownloads == nil || projected.AutomaticDownloads.Mode != "never" ||
+		projected.AutomaticDownloads.NextCheckAt != "" ||
+		projected.AutomaticDownloads.Summary != "Doesn’t download automatically. You can still look for clips yourself." {
+		t.Fatalf("never policy projection = %+v", projected.AutomaticDownloads)
 	}
 	// Never clears the custom cap; it is irrelevant while automatic downloads are off and defaults
 	// should be restored if the operator later switches back to them.
@@ -430,6 +452,41 @@ func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 	if res.StatusCode != http.StatusUnprocessableEntity && res.StatusCode != http.StatusBadRequest {
 		t.Errorf("status = %d, want a validation refusal", res.StatusCode)
 	}
+}
+
+func TestListFillerSources_ProjectsDurableRetryAsTheNextAutomaticCheck(t *testing.T) {
+	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
+		if key == "filler.home_country" {
+			return "US"
+		}
+		return ""
+	})
+	ctx := t.Context()
+	src := store.NewFillerSource("retrying", "archive", "retrying", "Retrying", time.Now().UTC())
+	if err := st.UpsertFillerSource(ctx, src); err != nil {
+		t.Fatal(err)
+	}
+	claimAt := time.Now().UTC().Truncate(time.Second)
+	leaseUntil := claimAt.Add(30 * time.Minute)
+	claimed, err := st.ClaimFillerSourceCheck(ctx, src.ID, time.Time{}, claimAt, leaseUntil)
+	if err != nil || !claimed {
+		t.Fatalf("claim = %v, %v", claimed, err)
+	}
+	retryAt := claimAt.Add(45 * time.Minute)
+	if err := st.FailFillerSourceCheck(ctx, src.ID, leaseUntil, retryAt); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, row := range sourcesFrom(t, srv) {
+		if row.ID != src.ID {
+			continue
+		}
+		if row.AutomaticDownloads == nil || row.AutomaticDownloads.NextCheckAt != retryAt.Format(time.RFC3339) {
+			t.Fatalf("automatic downloads = %+v, want retry at %s", row.AutomaticDownloads, retryAt.Format(time.RFC3339))
+		}
+		return
+	}
+	t.Fatal("retrying source was not projected")
 }
 
 // Deleting forgets the registration. ⚠ It must NOT take the clips: they are real files, already
@@ -565,7 +622,12 @@ func TestListFillerSources_ShowsOperatorAddedFoldersAndLibraries(t *testing.T) {
 // rather than "does this row have anything to fetch". A control that cannot work is worse than no
 // control, and this is the shape §10 forbids by name.
 func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
+		if key == "filler.home_country" {
+			return "US"
+		}
+		return ""
+	})
 	ctx := context.Background()
 
 	// A YouTube row with no playlist yet — exactly how migration 00034 seeds it.

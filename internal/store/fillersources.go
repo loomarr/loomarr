@@ -50,7 +50,12 @@ type FillerSource struct {
 	// Automatic-download due planning uses this fact; LastFetchedAt remains the narrower
 	// provenance fact that at least one item was actually queued.
 	LastCheckedAt time.Time
-	CreatedAt     time.Time
+	// CheckFailureCount and CheckRetryAt retain provider-listing backoff across restarts.
+	// CheckLeaseUntil is the atomic source-level claim shared by scheduled and manual checks.
+	CheckFailureCount int
+	CheckRetryAt      time.Time
+	CheckLeaseUntil   time.Time
+	CreatedAt         time.Time
 	// Enabled is the Sources tab's on/off switch (V35). A disabled source is not scanned, not
 	// searched and not downloaded from.
 	//
@@ -198,7 +203,8 @@ func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSou
 	return FillerSource{ID: id, Kind: kind, URI: uri, Label: label, CreatedAt: createdAt, Enabled: true}
 }
 
-const fillerSourceSelect = `SELECT s.id, s.kind, s.uri, s.label, s.license, s.last_fetched_at, s.last_checked_at, s.created_at, s.enabled,
+const fillerSourceSelect = `SELECT s.id, s.kind, s.uri, s.label, s.license, s.last_fetched_at, s.last_checked_at,
+	s.check_failure_count, s.check_retry_at, s.check_lease_until, s.created_at, s.enabled,
 	s.fetch_every_seconds, s.fetch_max_per_run, s.country, s.market,
 	CASE WHEN s.kind IN ('archive', 'youtube') THEN COALESCE(p.enabled, FALSE) ELSE TRUE END
 	FROM filler_sources s LEFT JOIN filler_providers p ON p.kind = s.kind`
@@ -216,10 +222,12 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 	var out []FillerSource
 	for rows.Next() {
 		var (
-			src       FillerSource
-			fetchedAt int64
-			checkedAt int64
-			createdAt int64
+			src        FillerSource
+			fetchedAt  int64
+			checkedAt  int64
+			retryAt    int64
+			leaseUntil int64
+			createdAt  int64
 			// ⚠ sql.NullInt64, because NULL is MEANINGFUL here: it is "inherit the global",
 			// distinct from 0 = "never fetch this source" (§10 V38c). Scanning into a plain int
 			// would collapse the two and read every unset source as switched off.
@@ -227,12 +235,15 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 			perRun sql.NullInt64
 		)
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
-			&fetchedAt, &checkedAt, &createdAt, &src.Enabled, &every, &perRun,
+			&fetchedAt, &checkedAt, &src.CheckFailureCount, &retryAt, &leaseUntil,
+			&createdAt, &src.Enabled, &every, &perRun,
 			&src.Geography.Country, &src.Geography.Market, &src.ProviderEnabled); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
 		src.LastCheckedAt = fromEpoch(checkedAt)
+		src.CheckRetryAt = fromEpoch(retryAt)
+		src.CheckLeaseUntil = fromEpoch(leaseUntil)
 		src.CreatedAt = fromEpoch(createdAt)
 		if every.Valid {
 			v := int(every.Int64)
@@ -305,13 +316,15 @@ func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) err
 		// them in the update list would silently reset every operator's per-source tuning on the
 		// next re-register. Same failure V35 nearly shipped with `enabled`, one column over.
 		// SetFillerSourceFetchPolicy is their only writer.
-		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, last_checked_at, created_at, enabled,
+		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, last_checked_at,
+		   check_failure_count, check_retry_at, check_lease_until, created_at, enabled,
 		   fetch_every_seconds, fetch_max_per_run, country, market)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   kind=excluded.kind, uri=excluded.uri, label=excluded.label, license=excluded.license`),
 		src.ID, src.Kind, src.URI, src.Label, src.License,
-		epoch(src.LastFetchedAt), epoch(src.LastCheckedAt), epoch(src.CreatedAt), src.Enabled,
+		epoch(src.LastFetchedAt), epoch(src.LastCheckedAt), src.CheckFailureCount,
+		epoch(src.CheckRetryAt), epoch(src.CheckLeaseUntil), epoch(src.CreatedAt), src.Enabled,
 		nullableInt(src.FetchEverySeconds), nullableInt(src.FetchMaxPerRun),
 		src.Geography.Normalize().Country, src.Geography.Normalize().Market)
 	if err != nil {
@@ -413,21 +426,61 @@ func (s *sqlStore) MarkFillerSourceFetched(ctx context.Context, id string, at ti
 	return nil
 }
 
-// MarkFillerSourceChecked stamps a successful automatic or deliberate source check. It is
-// intentionally separate from LastFetchedAt: finding no new items is still a completed check and
-// must advance the source's due time without pretending anything was downloaded.
-func (s *sqlStore) MarkFillerSourceChecked(ctx context.Context, id string, at time.Time) error {
-	res, err := s.db.ExecContext(ctx,
-		s.ph(`UPDATE filler_sources SET last_checked_at = ? WHERE id = ?`), epoch(at), id)
+// ClaimFillerSourceCheck atomically leases one source against the last-check snapshot the planner
+// observed. The CAS closes both scheduled-vs-manual overlap and stale-planner races.
+func (s *sqlStore) ClaimFillerSourceCheck(
+	ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time,
+) (bool, error) {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_sources SET check_lease_until = ?
+		WHERE id = ? AND check_lease_until <= ? AND last_checked_at = ?`),
+		epoch(leaseUntil), id, epoch(now), epoch(observedLastCheck))
 	if err != nil {
-		return fmt.Errorf("mark filler source checked %s: %w", id, err)
+		return false, fmt.Errorf("claim filler source check %s: %w", id, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("mark filler source checked rows %s: %w", id, err)
+		return false, fmt.Errorf("claim filler source check rows %s: %w", id, err)
 	}
-	if n == 0 {
-		return ErrNotFound
+	return n == 1, nil
+}
+
+// CompleteFillerSourceCheck commits a successful check only for the lease that performed it.
+// The guarded completion prevents a timed-out stale worker from clearing a newer worker's claim.
+func (s *sqlStore) CompleteFillerSourceCheck(
+	ctx context.Context, id string, leaseUntil, checkedAt time.Time,
+) error {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_sources
+		SET last_checked_at = ?, check_failure_count = 0, check_retry_at = 0, check_lease_until = 0
+		WHERE id = ? AND check_lease_until = ?`), epoch(checkedAt), id, epoch(leaseUntil))
+	if err != nil {
+		return fmt.Errorf("complete filler source check %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("complete filler source check rows %s: %w", id, err)
+	}
+	if n != 1 {
+		return filler.ErrSourceCheckClaimLost
+	}
+	return nil
+}
+
+// FailFillerSourceCheck records provider-listing backoff and releases only the matching lease.
+func (s *sqlStore) FailFillerSourceCheck(
+	ctx context.Context, id string, leaseUntil, retryAt time.Time,
+) error {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_sources
+		SET check_failure_count = check_failure_count + 1, check_retry_at = ?, check_lease_until = 0
+		WHERE id = ? AND check_lease_until = ?`), epoch(retryAt), id, epoch(leaseUntil))
+	if err != nil {
+		return fmt.Errorf("fail filler source check %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("fail filler source check rows %s: %w", id, err)
+	}
+	if n != 1 {
+		return filler.ErrSourceCheckClaimLost
 	}
 	return nil
 }

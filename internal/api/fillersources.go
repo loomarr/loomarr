@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -207,7 +208,44 @@ func (s *Server) fillerFetchMaxPerCheck() int {
 	return 10
 }
 
-func (s *Server) sourceAutomaticDownloads(src store.FillerSource) *SourceAutomaticDownloadsDTO {
+func automaticDownloadInterval(every time.Duration) string {
+	switch {
+	case every%(24*time.Hour) == 0:
+		days := int(every / (24 * time.Hour))
+		if days == 1 {
+			return "day"
+		}
+		return fmt.Sprintf("%d days", days)
+	case every%time.Hour == 0:
+		hours := int(every / time.Hour)
+		if hours == 1 {
+			return "hour"
+		}
+		return fmt.Sprintf("%d hours", hours)
+	default:
+		minutes := int(every / time.Minute)
+		if minutes == 1 {
+			return "minute"
+		}
+		return fmt.Sprintf("%d minutes", minutes)
+	}
+}
+
+func automaticDownloadSummary(mode string, every time.Duration, maxPerCheck int) string {
+	if mode == "never" || every <= 0 {
+		return "Doesn’t download automatically. You can still look for clips yourself."
+	}
+	policy := fmt.Sprintf("every %s, up to %d clips each check", automaticDownloadInterval(every), maxPerCheck)
+	if maxPerCheck == 1 {
+		policy = fmt.Sprintf("every %s, up to 1 clip each check", automaticDownloadInterval(every))
+	}
+	if mode == "defaults" {
+		return "Uses your defaults: " + policy + "."
+	}
+	return strings.ToUpper(policy[:1]) + policy[1:] + "."
+}
+
+func (s *Server) sourceAutomaticDownloads(src store.FillerSource, active bool) *SourceAutomaticDownloadsDTO {
 	if src.Kind != "archive" && src.Kind != "youtube" {
 		return nil
 	}
@@ -218,9 +256,19 @@ func (s *Server) sourceAutomaticDownloads(src store.FillerSource) *SourceAutomat
 	} else if src.FetchEverySeconds != nil || src.FetchMaxPerRun != nil {
 		mode = "custom"
 	}
-	return &SourceAutomaticDownloadsDTO{
-		Mode: mode, EverySeconds: int(every.Seconds()), MaxPerCheck: src.MaxPerRun(s.fillerFetchMaxPerCheck()),
+	maxPerCheck := src.MaxPerRun(s.fillerFetchMaxPerCheck())
+	out := &SourceAutomaticDownloadsDTO{
+		Mode: mode, EverySeconds: int(every.Seconds()), MaxPerCheck: maxPerCheck,
+		Summary: automaticDownloadSummary(mode, every, maxPerCheck),
 	}
+	plan := filler.FetchSource{
+		Kind: src.Kind, URI: src.URI, Enabled: active, NeverFetch: !pollable, Every: every,
+		LastCheckedAt: src.LastCheckedAt, CheckRetryAt: src.CheckRetryAt, CheckLeaseUntil: src.CheckLeaseUntil,
+	}
+	if next, ok := plan.NextAutomaticCheck(time.Now().UTC()); ok {
+		out.NextCheckAt = next.UTC().Format(time.RFC3339)
+	}
+	return out
 }
 
 // providerGroups are the kinds that roll up, in the order their groups appear.
@@ -786,6 +834,8 @@ type SourceAutomaticDownloadsDTO struct {
 	Mode         string `json:"mode" enum:"defaults,custom,never"`
 	EverySeconds int    `json:"everySeconds" minimum:"0" maximum:"604800"`
 	MaxPerCheck  int    `json:"maxPerCheck" minimum:"1" maximum:"1000"`
+	Summary      string `json:"summary"`
+	NextCheckAt  string `json:"nextCheckAt,omitempty" doc:"RFC3339; absent while automatic checks are off"`
 }
 
 type SourceGeographyDTO struct {
@@ -946,6 +996,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		}
 		out.Body.AutomaticDownloads = &SourceAutomaticDownloadsDTO{
 			Mode: in.Body.AutomaticDownloads.Mode, EverySeconds: int(effectiveEvery.Seconds()), MaxPerCheck: effectiveMax,
+			Summary: automaticDownloadSummary(in.Body.AutomaticDownloads.Mode, effectiveEvery, effectiveMax),
 		}
 		return out, nil
 	}
@@ -1069,6 +1120,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// own children in one pre-ordered pass.
 	var registered []FillerSourceDTO
 	byProvider := map[string][]FillerSourceDTO{}
+	home := s.fillerHomeGeography().Normalize()
 	if srcs, srcErr := s.store.ListFillerSources(ctx); srcErr != nil {
 		s.log.Warn("list filler sources", "err", srcErr)
 	} else {
@@ -1091,6 +1143,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			if label == "" {
 				label = src.URI
 			}
+			eligible := home.Country != "" && src.GeographicallyEligible(home)
 			row := FillerSourceDTO{
 				ID:               src.ID,
 				Kind:             src.Kind,
@@ -1110,13 +1163,13 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				// A scanned folder whose button did nothing would read as broken; the store's
 				// `Fetchable()`/`Scannable()` pair is what keeps a folder out of a PULL plan,
 				// which is the distinction that actually matters.
-				Fetchable: canFetchRow(src, s.filler != nil) && src.GeographicallyEligible(s.fillerHomeGeography()),
+				Fetchable: canFetchRow(src, s.filler != nil) && eligible,
 				// ⚠ Only archive can be searched in place. A "search" box on a YouTube playlist
 				// would have nothing to query: yt-dlp enumerates a playlist, it does not search
 				// YouTube, and offering the box would be a control that returns nothing forever.
 				// A folder or library is not searchable for the same reason.
 				Searchable:         src.Kind == "archive" && s.filler != nil,
-				AutomaticDownloads: s.sourceAutomaticDownloads(src),
+				AutomaticDownloads: s.sourceAutomaticDownloads(src, src.EffectiveEnabled() && eligible),
 			}
 			// Exact source attribution (§10 V57), for downloaded and scanned sources alike. Older
 			// kind-only provenance remains in the folder/legacy aggregate rather than being guessed
@@ -1207,7 +1260,6 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 		out.Body.Sources = append(out.Body.Sources, providerNode(g.id, g.kind, g.label, g.detail, providerEnabled[g.kind], byProvider[g.kind]))
 		out.Body.Sources = append(out.Body.Sources, byProvider[g.kind]...)
 	}
-	home := s.fillerHomeGeography()
 	for i := range out.Body.Sources {
 		projectSourceReadiness(&out.Body.Sources[i], home)
 	}
@@ -1375,6 +1427,7 @@ type fetchFillerSourceOutput struct {
 		SourcesPolled int    `json:"sourcesPolled" doc:"Remote sources actually inspected by this pass"`
 		Queued        int    `json:"queued" doc:"New remote items queued for acquisition"`
 		Skipped       int    `json:"skipped" doc:"Remote items already known to the catalog or acquisition history"`
+		MaxPerCheck   int    `json:"maxPerCheck" doc:"Effective clip limit for this selected source"`
 		StoppedBy     string `json:"stoppedBy,omitempty" enum:"catalog,disk" doc:"Capacity ceiling that stopped the pass"`
 		Total         int    `json:"total"`
 		Added         int    `json:"added"`
@@ -1400,6 +1453,15 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 			return nil, errConflict("Downloading isn't available on this install",
 				"This build can't run the download tooling. Local folders can still be scanned.")
 		}
+		if errors.Is(err, filler.ErrSourceCheckInProgress) {
+			return nil, errConflict("Already looking for clips", "This source is already being checked.")
+		}
+		if errors.Is(err, filler.ErrSourceDisabled) {
+			return nil, errSourceDisabled()
+		}
+		if errors.Is(err, filler.ErrFetchSourceNotFound) {
+			return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
+		}
 		return nil, huma.Error502BadGateway("fetch remote filler", err)
 	}
 	total, added, updated, pruned, err := s.filler.Sync(ctx)
@@ -1416,6 +1478,7 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 	out.Body.SourcesPolled = fetchResult.SourcesPolled
 	out.Body.Queued = fetchResult.Queued
 	out.Body.Skipped = fetchResult.Skipped
+	out.Body.MaxPerCheck = fetchResult.MaxPerCheck
 	out.Body.StoppedBy = fetchResult.StoppedBy
 	out.Body.Total, out.Body.Added, out.Body.Updated, out.Body.Pruned = total, added, updated, pruned
 	return out, nil

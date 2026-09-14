@@ -2,6 +2,7 @@ package filler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -62,9 +63,59 @@ type FetchSource struct {
 	Every time.Duration
 	// LastCheckedAt is the last successful bounded check, whether or not it found a new item.
 	LastCheckedAt time.Time
+	// CheckFailureCount/CheckRetryAt retain provider backoff across restarts. CheckLeaseUntil
+	// prevents a scheduled pass and Look for new clips from listing the same source together.
+	CheckFailureCount int
+	CheckRetryAt      time.Time
+	CheckLeaseUntil   time.Time
 	// MaxPerRun is this source's resolved per-run cap — its override, or the global default.
 	// Zero means "use the global", which the caller has already applied.
 	MaxPerRun int
+}
+
+const SourceCheckLease = 30 * time.Minute
+
+var (
+	ErrSourceCheckInProgress = errors.New("filler: source check already in progress")
+	ErrSourceCheckClaimLost  = errors.New("filler: source check claim lost")
+	ErrFetchSourceNotFound   = errors.New("filler: source not found")
+)
+
+// NextAutomaticCheck returns the earliest time this source may be checked. Disabled, opted-out,
+// and local sources have no automatic check to promise.
+func (s FetchSource) NextAutomaticCheck(now time.Time) (time.Time, bool) {
+	if !s.Enabled || s.NeverFetch || s.URI == "" || s.Kind == "folder" || s.Kind == "library" {
+		return time.Time{}, false
+	}
+	due := now
+	if !s.LastCheckedAt.IsZero() {
+		due = s.LastCheckedAt.Add(s.Every)
+	}
+	if s.CheckRetryAt.After(due) {
+		due = s.CheckRetryAt
+	}
+	if s.CheckLeaseUntil.After(due) {
+		due = s.CheckLeaseUntil
+	}
+	if due.Before(now) {
+		due = now
+	}
+	return due, true
+}
+
+// SourceCheckRetryDelay is the bounded provider-listing retry ladder. Attempts after the third
+// remain hourly until a successful check clears the durable failure count.
+func SourceCheckRetryDelay(failures int) time.Duration {
+	switch {
+	case failures <= 1:
+		return time.Minute
+	case failures == 2:
+		return 5 * time.Minute
+	case failures == 3:
+		return 15 * time.Minute
+	default:
+		return time.Hour
+	}
 }
 
 // FetchStore is the slice of the store the fetch job needs.
@@ -79,9 +130,9 @@ type FetchStore interface {
 	// review queue: a held clip is not in the catalog by the ListClips default, but it is very
 	// much already on disk. That is the bug this comment exists to prevent.
 	CatalogPaths(ctx context.Context) ([]string, error)
-	// MarkChecked stamps a completed listing, including one that found nothing new. It is the
-	// due-planner fact and must not be collapsed into LastFetchedAt.
-	MarkChecked(ctx context.Context, id string, at time.Time) error
+	ClaimCheck(ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time) (bool, error)
+	CompleteCheck(ctx context.Context, id string, leaseUntil, checkedAt time.Time) error
+	FailCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error
 	// MarkFetched stamps a source that successfully queued at least one item.
 	//
 	// ⚠ Without this the Sources tab reads "never fetched" forever while auto-fetch runs behind
@@ -162,6 +213,8 @@ type FetchResult struct {
 	Queued        int
 	// Skipped counts items already in the catalog.
 	Skipped int
+	// MaxPerCheck is the selected source's effective cap on a manual run.
+	MaxPerCheck int
 	// StoppedBy names the limit that ended the pass early ("catalog", "disk", ""). ⚠ Reported
 	// rather than logged-and-forgotten: an operator whose catalog stopped growing must be able
 	// to see which ceiling stopped it (§10).
@@ -233,6 +286,58 @@ func (f *Fetcher) RunSource(ctx context.Context, sourceID string) (FetchResult, 
 
 func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (FetchResult, error) {
 	var res FetchResult
+	srcs, err := f.store.ListFetchSources(ctx)
+	if err != nil {
+		return res, fmt.Errorf("list sources: %w", err)
+	}
+	globalPerRun := f.limits.MaxPerRun()
+	if globalPerRun < 1 {
+		globalPerRun = 1
+	}
+	if sourceID != "" {
+		res.MaxPerCheck = globalPerRun
+		found := false
+		for _, src := range srcs {
+			if src.ID != sourceID {
+				continue
+			}
+			found = true
+			if src.MaxPerRun > 0 {
+				res.MaxPerCheck = src.MaxPerRun
+			}
+			break
+		}
+		if !found {
+			return res, ErrFetchSourceNotFound
+		}
+	}
+
+	// Resolve the due set before reading catalog or filesystem capacity. The scheduler wakes once
+	// a minute, while an ordinary source is due every six hours; an idle wake must remain a cheap
+	// source-state read rather than walking the filler directory 359 extra times between checks.
+	now := f.now()
+	due := make([]FetchSource, 0, len(srcs))
+	for _, src := range srcs {
+		if sourceID != "" && src.ID != sourceID {
+			continue
+		}
+		if !src.Enabled || src.URI == "" || src.Kind == "folder" || src.Kind == "library" {
+			if sourceID != "" && src.ID == sourceID && !src.Enabled {
+				return res, ErrSourceDisabled
+			}
+			continue
+		}
+		if scheduled {
+			next, automatic := src.NextAutomaticCheck(now)
+			if !automatic || next.After(now) {
+				continue
+			}
+		}
+		due = append(due, src)
+	}
+	if len(due) == 0 {
+		return res, nil
+	}
 
 	have, err := f.store.CatalogPaths(ctx)
 	if err != nil {
@@ -268,16 +373,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		return res, nil
 	}
 
-	srcs, err := f.store.ListFetchSources(ctx)
-	if err != nil {
-		return res, fmt.Errorf("list sources: %w", err)
-	}
-
-	globalPerRun := f.limits.MaxPerRun()
-	if globalPerRun < 1 {
-		globalPerRun = 1
-	}
-	for _, src := range srcs {
+	for _, src := range due {
 		select {
 		case <-ctx.Done():
 			return res, ctx.Err()
@@ -290,40 +386,46 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		// source can be on — searched, its clips counted, its switch showing "on" — while opting
 		// out of UNATTENDED fetching. Collapsing the two would make "stop auto-downloading from
 		// this one" require switching it off entirely, which also stops search.
-		if sourceID != "" && src.ID != sourceID {
-			continue
-		}
-		if !src.Enabled || src.URI == "" || src.Kind == "folder" || src.Kind == "library" {
-			continue
-		}
-		if scheduled && (src.NeverFetch || (src.Every > 0 && !src.LastCheckedAt.IsZero() && f.now().Before(src.LastCheckedAt.Add(src.Every)))) {
-			continue
-		}
-		res.SourcesPolled++
-
 		// This source's cap: its own override, or the global. A busy collection and a small
 		// playlist want different numbers, which one figure served badly.
 		perRun := src.MaxPerRun
 		if perRun < 1 {
 			perRun = globalPerRun
 		}
+		checkAt := f.now()
+		leaseUntil := checkAt.Add(SourceCheckLease)
+		claimed, claimErr := f.store.ClaimCheck(ctx, src.ID, src.LastCheckedAt, checkAt, leaseUntil)
+		if claimErr != nil {
+			return res, fmt.Errorf("claim source %q: %w", src.ID, claimErr)
+		}
+		if !claimed {
+			if !scheduled {
+				return res, fmt.Errorf("%w: %s", ErrSourceCheckInProgress, src.ID)
+			}
+			continue
+		}
+		res.SourcesPolled++
 
 		// Over-list so that a page full of already-held items still yields new ones. Without
 		// this a source whose first N items are all catalogued would report "nothing new"
 		// forever while the rest of the collection sat unfetched.
 		items, _, derr := f.enum.Enumerate(ctx, src, perRun*4)
 		if derr != nil {
+			retryAt := f.now().Add(SourceCheckRetryDelay(src.CheckFailureCount + 1))
+			if failErr := f.store.FailCheck(ctx, src.ID, leaseUntil, retryAt); failErr != nil {
+				return res, fmt.Errorf("record source %q check failure: %w", src.ID, failErr)
+			}
 			if !scheduled {
 				return res, fmt.Errorf("list source %q: %w", src.ID, derr)
 			}
 			f.log.Warn("filler auto-fetch: source could not be listed", "source", src.ID, "err", derr)
 			continue
 		}
-		// A successful listing is a completed check even when every result is already present.
-		// Stamp before selection so the minute-level planner cannot hammer an empty source. A
-		// listing failure above remains unstamped and is eligible for a prompt retry.
-		if merr := f.store.MarkChecked(ctx, src.ID, f.now()); merr != nil {
-			f.log.Warn("filler auto-fetch: could not stamp the source check", "source", src.ID, "err", merr)
+		completeCheck := func() error {
+			if completeErr := f.store.CompleteCheck(ctx, src.ID, leaseUntil, f.now()); completeErr != nil {
+				return fmt.Errorf("complete source %q check: %w", src.ID, completeErr)
+			}
+			return nil
 		}
 
 		// The scheduled path uses the same deterministic selector as explicit pulls. There are no
@@ -345,6 +447,9 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			CatalogReason: "Bounded scheduled refresh of a registered source.",
 		}, candidates, inPass)
 		if serr != nil {
+			if completeErr := completeCheck(); completeErr != nil {
+				return res, completeErr
+			}
 			if !scheduled {
 				return res, fmt.Errorf("select source %q: %w", src.ID, serr)
 			}
@@ -368,6 +473,9 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			})
 		}
 		if len(urls) == 0 {
+			if completeErr := completeCheck(); completeErr != nil {
+				return res, completeErr
+			}
 			continue
 		}
 		var ierr error
@@ -377,6 +485,9 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			_, ierr = f.ingest.IngestSource(ctx, src.ID, src.Kind, urls)
 		}
 		if ierr != nil {
+			if completeErr := completeCheck(); completeErr != nil {
+				return res, completeErr
+			}
 			if !scheduled {
 				return res, fmt.Errorf("queue source %q: %w", src.ID, ierr)
 			}
@@ -398,6 +509,9 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		// over a cosmetic timestamp would be the worse trade.
 		if merr := f.store.MarkFetched(ctx, src.ID, f.now()); merr != nil {
 			f.log.Warn("filler auto-fetch: could not stamp the source", "source", src.ID, "err", merr)
+		}
+		if completeErr := completeCheck(); completeErr != nil {
+			return res, completeErr
 		}
 	}
 
