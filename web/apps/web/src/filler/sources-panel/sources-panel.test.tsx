@@ -121,7 +121,15 @@ const stubSources = () => {
       empty: 0,
       startedAt: "2026-09-13T14:00:00Z",
       updatedAt: "2026-09-13T14:00:00Z",
-      outcome: { enrolled: 0, preparing: 0, needsDecision: 0, ready: 0, complete: 0, rejected: 0, dismissed: 0 },
+      outcome: {
+        enrolled: 0,
+        preparing: 0,
+        needsDecision: 0,
+        ready: 0,
+        complete: 0,
+        rejected: 0,
+        dismissed: 0,
+      },
       artifacts: { staged: 0, published: 0, consumed: 0, repair: 0 },
     }),
     getResolveFillerSourceMockHandler(async ({ request, params }) => {
@@ -615,7 +623,15 @@ describe("SourcesPanel per-source search", () => {
         startedAt: "2026-09-13T14:00:00Z",
         completedAt: "2026-09-13T14:01:00Z",
         updatedAt: "2026-09-13T14:01:00Z",
-        outcome: { enrolled: 0, preparing: 0, needsDecision: 0, ready: 0, complete: 0, rejected: 0, dismissed: 0 },
+        outcome: {
+          enrolled: 0,
+          preparing: 0,
+          needsDecision: 0,
+          ready: 0,
+          complete: 0,
+          rejected: 0,
+          dismissed: 0,
+        },
         artifacts: { staged: 0, published: 0, consumed: 0, repair: 0 },
       }),
     );
