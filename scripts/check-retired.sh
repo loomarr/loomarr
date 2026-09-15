@@ -38,7 +38,11 @@ RETIRED=(
   'JOB_FILLER_LANGUAGE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
   'JOB_FILLER_SPLIT_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
   'JOB_FILLER_TRANSCRIBE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
-  'JOB_FILLER_VISION_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+	'JOB_FILLER_VISION_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+	# #1254: the user-facing automatic-download policy is the only cadence authority. The
+	# scheduler's minute wake is fixed code and only asks the due-source planner for work.
+	'job.filler_fetch.schedule|#1254: use filler.fetch.every and per-source automatic-download policy'
+	'JOB_FILLER_FETCH_SCHEDULE|#1254: use FILLER_FETCH_EVERY; the due-source wake is not configurable'
   # V55 made graph mutation one atomic store operation: the node, closure, rollups, and category
   # shadow commit together. A disabled repair job left correctness behind an operator toggle and
   # exposed two public half-operations that callers could run in separate transactions.
@@ -55,6 +59,13 @@ RETIRED=(
   'RebuildRollups|V55: rollup rebuilding is private to ApplyTaxonomyEdit'
   'ListClipHashesLeaves|V55: the scheduled taxonomy repair work list was retired with its job'
   'UpdateClipTags|V55: taxonomy writes and scalar classification updates now have separate owners'
+  'filler.reject.unidentified|#1249: missing optional classification is descriptive and never rejects household filler'
+  'FILLER_REJECT_UNIDENTIFIED|#1249: there is no operator switch for a retired classification gate'
+  'StageAdmission|#1249: household readiness follows score directly; do not restore the dormant admission rung'
+  'NewAdmissionStage|#1249: no runtime classifier may sit between an enrolled clip and readiness'
+  'AdmissionObserver|#1249: classification observations are not release authority'
+  'DispositionFiled|#1249: use Ready for playable clips and Complete for processed composites'
+  'MarkPipelineFiled|#1249: completed composites have a distinct non-playable terminal operation'
   # ⚠ Not a rename: "how often do we go LOOKING for compilations" stopped being a question with
   # an answer, because every long recording reaches the split rung as it is ingested. An operator
   # told to raise this to split more often would be tuning nothing; the real bound is
@@ -192,17 +203,17 @@ RETIRED=(
   'INGEST_MAX_CONCURRENT|V55: ingest concurrency is pipeline-owned implementation policy'
   'filler.starter_collection|V55: starter media is not an operator setting'
   'FILLER_STARTER_COLLECTION|V55: starter media is not an operator setting'
-  # Filler has one publication authority: the certified applied-admission transaction. These
+  # Filler has one publication authority: the household terminal-ready transaction. These
   # identifiers exposed weaker alternate publishers through scalar confidence, source trust, or
   # an operator shortcut. Internal holding remains a one-way safety capability; legacy public
   # lifecycle controls disappear with the quarantined state they existed to repair.
-  'SetClipsHeld|filler publication is not a boolean setter; use HoldClips or the terminal applied-admission transaction'
+  'SetClipsHeld|filler publication is not a boolean setter; use HoldClips or the terminal-ready transaction'
   'AutoFilePolicy|classification confidence is diagnostic and cannot publish filler'
-  'WithAutoFile|the tagger enriches metadata; terminal applied admission owns publication'
-  '/v1/filler/file|retired: positive filler publication is the certified applied-admission action'
+  'WithAutoFile|the tagger enriches metadata; terminal readiness owns publication'
+  '/v1/filler/file|retired: positive filler publication is the terminal-ready transaction'
   'file-filler-clips|retired with /v1/filler/file'
   'useFileFillerClips|retired with /v1/filler/file'
-  '/v1/filler/hold|retired: legacy playable rows are quarantined by migration; applied actions own later transitions'
+  '/v1/filler/hold|retired: legacy playable rows are quarantined by migration; terminal readiness owns later publication'
   'hold-filler-clips|retired with /v1/filler/hold'
   'useHoldFillerClips|retired with /v1/filler/hold'
   'recentlyFiled|retired: legacy publications are quarantined, not exposed as a second UI lifecycle'
@@ -217,6 +228,19 @@ RETIRED=(
   'FILLER_AUTOFILE_MIN_CONFIDENCE|retired: classification confidence is diagnostic'
   'FILLER_AUTOFILE_NORMALIZE_LOUDNESS|retired: use FILLER_CONDITIONING_NORMALIZE_LOUDNESS'
   'TunePanel|retired: Sources owns acquisition policy; Incoming owns evidence review and terminal decisions'
+  # Private-home filler keeps provider-declared licence text as passive metadata, but it has no
+  # runtime legal authority. Restoring any of these identifiers would recreate the removed fifth
+  # screen, operator gate, current-grant registry, or receipt-bearing publication path.
+  '/v1/filler/rights|retired: licensing is passive source metadata, not a private-home playback gate'
+  'ScreenRights|retired: rendered-child screening has four media-safety and integrity axes'
+  'FillerRightsGrant|retired: there is no current-use rights authority in the home runtime'
+  'AppliedRightsReceipt|retired: terminal publication replays immutable screening without a live rights receipt'
+  'rights_provenance|retired: licensing does not create an Attention task'
+  'source_license|retired: provider licence metadata is not semantic admission evidence'
+  'missing_source_license|retired: missing licence metadata cannot hold private-home playback'
+  'conflict_source_license|retired: licence metadata conflicts are not runtime admission decisions'
+  'source_ineligible|retired: licensing cannot make a private-home source runtime-ineligible'
+  'filler-current-broadcast-rights|retired: there is no current broadcast-rights evaluator in the home runtime'
   # Wave 0 gives human authority work one typed server-owned interface. Restoring either review
   # route recreates the untyped queue whose task kind and actions the browser had to infer.
   '/v1/filler/decisions/reviews|retired: unresolved human work is projected by GET /v1/filler/attention'

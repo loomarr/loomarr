@@ -54,7 +54,6 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerCollections(humaAPI)
 	srv.registerFiller(humaAPI)
 	srv.registerFillerDecisions(humaAPI)
-	srv.registerFillerRights(humaAPI)
 	srv.registerFillerSources(humaAPI)
 	srv.registerFillerWatch(humaAPI)
 	srv.registerFillerPulls(humaAPI)
@@ -71,6 +70,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerSystemRestart(humaAPI)
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
+	srv.registerLocations(humaAPI)
 	srv.registerNotificationDestinations(humaAPI)
 	srv.registerHelp(humaAPI)
 	// registerEvents is nil-guarded on the bus; schemaOnly forces the frame schemas out so

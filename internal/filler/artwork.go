@@ -22,9 +22,11 @@ import (
 // request per hovered card against files tens of megabytes each, to show six seconds of a
 // 30-second advert. This pays once, per clip, and the hover then costs one cached asset.
 //
-// ⚠ **One exec, two outputs, ONE decode** (maintainer, 2026-08-03). ffmpeg writes both files from
-// a single `split` filter, so the first scan of a large drop-folder costs one process and one
+// ⚠ **One successful pass, two outputs, ONE decode** (maintainer, 2026-08-03). ffmpeg writes
+// both files from a single `split` filter, so the first scan of a large drop-folder costs one
 // decode per clip rather than two. Measured at ~0.47s per clip for both together on a 3MB spot.
+// A stock ffmpeg without libwebp first rejects that encoder before decoding, then takes the same
+// one-pass path with a bounded animated-GIF fallback; see FFmpegArtwork.
 //
 // The consequence of sharing an invocation is that they must share a SEEK — see previewStartFor.
 // That was the deliberate tradeoff: the still is now the animation's opening frame, so the two
@@ -60,6 +62,13 @@ const previewSeconds = 6
 // q=50/10fps ≈ 110KB, q=40/8fps ≈ 79KB. Below ~8fps camera pans start to strobe.
 const previewFPS = 12
 const previewQuality = 55
+
+// The compatibility fallback is deliberately smaller than the preferred animated WebP. GIF is
+// substantially larger for photographic video, so use the lowest frame rate that did not make
+// camera motion strobe in the measurements above and a bounded palette. The image service sniffs
+// and adopts the GIF bytes, then serves its normal animated WebP rendition to the browser.
+const fallbackPreviewFPS = 8
+const fallbackPaletteColors = 96
 
 // mediatools.PreviewWidth is shared by both outputs. The card renders the still and the animation in the
 // same box and swaps between them on hover, so differing widths would visibly jump at the moment
@@ -252,12 +261,14 @@ func FFmpegArtwork(ffmpegPath string) ArtworkRenderer {
 		// ⚠ `-update 1` on the JPEG is REQUIRED, not cosmetic. Without it the image2 muxer warns
 		// that a single-image output needs either a `%03d` pattern or this flag, and future
 		// ffmpeg versions promise to make that an error rather than a warning.
-		cmd := exec.CommandContext(ctx, bin,
+		common := []string{
 			"-nostdin",
 			"-ss", fmt.Sprintf("%.2f", startSeconds),
 			"-t", fmt.Sprintf("%d", previewSeconds),
 			"-i", src,
 			"-an",
+		}
+		webpArgs := append(append([]string{}, common...),
 			"-filter_complex", fmt.Sprintf(
 				"[0:v]split=2[still][anim];[still]select=eq(n\\,0),scale=%d:-1[s];[anim]fps=%d,scale=%d:-2:flags=lanczos[a]",
 				mediatools.PreviewWidth, previewFPS, mediatools.PreviewWidth),
@@ -268,11 +279,33 @@ func FFmpegArtwork(ffmpegPath string) ArtworkRenderer {
 			"-q:v", fmt.Sprintf("%d", previewQuality), "-compression_level", "4", "-loop", "0",
 			"-y", animDst,
 		)
+		cmd := exec.CommandContext(ctx, bin, webpArgs...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			// ffmpeg's diagnostics go to stderr and are the only clue why a clip has no artwork;
-			// truncated because a failure here is one line in a log, not an incident report.
-			return fmt.Errorf("artwork %s: %w: %s", src, err, truncate(string(out), 200))
+			// Homebrew's stock ffmpeg and other minimal builds may omit libwebp while retaining the
+			// built-in GIF encoder. The first command fails during encoder selection, before a
+			// decode; retry both outputs in one successful pass so a missing OPTIONAL codec cannot
+			// blank the entire catalog. The `.webp` suffix is private render-cache history: `-f gif`
+			// declares the bytes, and image adoption sniffs them before publishing a content-addressed
+			// animated WebP rendition to clients.
+			gifArgs := append(append([]string{}, common...),
+				"-filter_complex", fmt.Sprintf(
+					"[0:v]split=2[still][anim];[still]select=eq(n\\,0),scale=%d:-1[s];"+
+						"[anim]fps=%d,scale=%d:-2:flags=lanczos,split[a1][a2];"+
+						"[a1]palettegen=max_colors=%d:stats_mode=diff[p];"+
+						"[a2][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle[a]",
+					mediatools.PreviewWidth, fallbackPreviewFPS, mediatools.PreviewWidth, fallbackPaletteColors),
+				"-map", "[s]", "-frames:v", "1", "-q:v", "6", "-update", "1", "-y", stillDst,
+				"-map", "[a]", "-f", "gif", "-loop", "0", "-y", animDst,
+			)
+			fallback := exec.CommandContext(ctx, bin, gifArgs...)
+			fallbackOut, fallbackErr := fallback.CombinedOutput()
+			if fallbackErr != nil {
+				// ffmpeg's diagnostics are the only clue why a clip has no artwork; both outputs are
+				// truncated because this becomes one log line rather than an incident report.
+				return fmt.Errorf("artwork %s: webp: %w: %s; gif fallback: %v: %s",
+					src, err, truncate(string(out), 160), fallbackErr, truncate(string(fallbackOut), 160))
+			}
 		}
 		// A clip with no video stream, or one shorter than the seek point, exits 0 having written
 		// nothing. Reported as a failure so the caller does not record paths to empty files —

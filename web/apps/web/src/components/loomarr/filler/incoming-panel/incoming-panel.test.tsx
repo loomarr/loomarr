@@ -65,7 +65,7 @@ describe("IncomingPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Review tags" }));
     expect(onEditTags).toHaveBeenCalledWith(d(guessed));
     expect(screen.getByRole("button", { name: "Add tags" })).toBeInTheDocument();
-    expect(screen.getByText(/classification confidence is diagnostic/i)).toBeInTheDocument();
+    expect(screen.getByText(/safety and playback checks still run automatically/i)).toBeInTheDocument();
   });
 
   it("shows the guess as a guess, distinct from a confirmed tag", () => {
@@ -173,7 +173,6 @@ describe("IncomingPanel — being prepared", () => {
     "transcribe",
     "tag",
     "vision",
-    "admission",
     "score",
   ];
 

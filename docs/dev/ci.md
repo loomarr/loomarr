@@ -81,8 +81,9 @@ usable merge base — first push, force-push, new branch — runs everything.
 
 **Adding a new build input means adding it to the filter in the same PR.**
 
-Two non-obvious entries: `docs/help/` is in the Go filter because those pages are embedded and
-the doc-claims test reads them, and `scripts/` is there because the job executes them.
+Three non-obvious entries: `docs/help/` is in the Go filter because those pages are embedded and
+the doc-claims test reads them, `internal/installationlocation/` contains generated indexes embedded
+in the backend, and `scripts/` is there because the job executes them.
 
 ### Specialized gate classifier activates one job at a time
 
@@ -97,6 +98,9 @@ gates run, admits a release, or interprets existing evidence is control-plane po
 borrow an unrelated product build as proof. Unknown paths still select every gate. Local edit-loop
 test planning is a separate interface: it shares changed-path collection but deliberately chooses
 fast direct or related unit tests rather than authoritative CI gates.
+
+Browser-only test-card fixtures under `web/packages/fixtures/src/testcard/` select browser unit,
+visual, and image evidence, not native client builds. Other shared fixture paths remain native inputs.
 
 Postgres was the first active specialized output. `store-postgres` consumes `impact_postgres`
 directly while remaining in the required `CI` aggregate. The explicit release-candidate scope

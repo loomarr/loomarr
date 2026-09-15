@@ -19,7 +19,7 @@ describe("ScreeningSummary", () => {
     render(<ScreeningSummary summary={unavailable("screening_evidence_drift")} />);
 
     expect(screen.getByText("Screening evidence unavailable")).toBeInTheDocument();
-    expect(screen.getByText(/cannot be confirmed for the library/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs to check this exact clip again/i)).toBeInTheDocument();
     expect(screen.queryByText(/safe/i)).not.toBeInTheDocument();
   });
 

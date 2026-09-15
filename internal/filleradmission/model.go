@@ -2,7 +2,7 @@
 // versioned filler evidence and a catalog-admission decision.
 package filleradmission
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 type Claim string
 
@@ -12,7 +12,6 @@ const (
 	ClaimBrand          Claim = "brand"
 	ClaimProduct        Claim = "product"
 	ClaimContentRole    Claim = "content_role"
-	ClaimSourceLicense  Claim = "source_license"
 	ClaimSensitiveFlag  Claim = "sensitive_policy_flag"
 )
 
@@ -34,9 +33,6 @@ const (
 const (
 	UsabilityUsable   = "usable"
 	UsabilityUnusable = "unusable"
-
-	EligibilityEligible   = "eligible"
-	EligibilityIneligible = "ineligible"
 
 	RoleCommercial       = "commercial"
 	RolePromo            = "promo"
@@ -148,7 +144,6 @@ type ReasonCode string
 const (
 	ReasonEvidenceSatisfied             ReasonCode = "evidence_satisfied"
 	ReasonMediaUnusable                 ReasonCode = "media_unusable"
-	ReasonSourceIneligible              ReasonCode = "source_ineligible"
 	ReasonSensitivePolicyProhibited     ReasonCode = "sensitive_policy_prohibited"
 	ReasonContentRoleNotFiller          ReasonCode = "content_role_not_filler"
 	ReasonConflictMediaUsability        ReasonCode = "conflict_media_usability"
@@ -156,9 +151,7 @@ const (
 	ReasonConflictBrand                 ReasonCode = "conflict_brand"
 	ReasonConflictProduct               ReasonCode = "conflict_product"
 	ReasonConflictContentRole           ReasonCode = "conflict_content_role"
-	ReasonConflictSourceLicense         ReasonCode = "conflict_source_license"
 	ReasonMissingMediaUsability         ReasonCode = "missing_media_usability"
-	ReasonMissingSourceLicense          ReasonCode = "missing_source_license"
 	ReasonMissingContentRole            ReasonCode = "missing_content_role"
 	ReasonInsufficientContentRole       ReasonCode = "insufficient_content_role_evidence"
 	ReasonMissingCommercialIdentity     ReasonCode = "missing_commercial_identity"

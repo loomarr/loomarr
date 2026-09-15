@@ -44,11 +44,11 @@ func testQuarantineLegacyFillerMigration(t *testing.T, s Store, db *sql.DB, migr
 			}
 		}
 	}
-	seed("legacy-playable", false, false, time.Time{}, filler.DispositionFiled)
+	seed("legacy-playable", false, false, time.Time{}, filler.Disposition("filed"))
 	seed("legacy-without-pipeline", false, false, time.Time{}, "")
 	seed("already-held", true, false, time.Time{}, filler.DispositionReview)
-	seed("composite", false, true, time.Time{}, filler.DispositionFiled)
-	seed("removed", false, false, at, filler.DispositionFiled)
+	seed("composite", false, true, time.Time{}, filler.Disposition("filed"))
+	seed("removed", false, false, at, filler.Disposition("filed"))
 
 	// Simulate the retired publisher's physical marker. The migration clears it everywhere even
 	// though the application no longer reads the column.
@@ -83,7 +83,7 @@ func testQuarantineLegacyFillerMigration(t *testing.T, s Store, db *sql.DB, migr
 		row, found, err := s.GetClipPipeline(ctx, hash)
 		want := filler.DispositionReview
 		if hash != "already-held" {
-			want = filler.DispositionFiled
+			want = filler.Disposition("filed")
 		}
 		if err != nil || !found || row.Disposition != want {
 			t.Errorf("%s pipeline = %+v found:%v err:%v, want %s", hash, row, found, err, want)

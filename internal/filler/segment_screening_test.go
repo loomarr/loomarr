@@ -20,12 +20,12 @@ func segmentScreeningFixture(t *testing.T) SegmentScreeningEvidence {
 	return evidence
 }
 
-func TestSegmentScreeningRequiresAllFiveIndependentPasses(t *testing.T) {
+func TestSegmentScreeningRequiresAllFourIndependentPasses(t *testing.T) {
 	evidence := segmentScreeningFixture(t)
-	if !evidence.Passes() || len(evidence.Results) != 5 || evidence.Results[0].Axis != ScreenPlayback || evidence.Results[1].Axis != ScreenRights || evidence.Results[2].Axis != ScreenSpokenSafety || evidence.Results[3].Axis != ScreenVisualSafety || evidence.Results[4].Axis != ScreenWrittenSafety {
+	if !evidence.Passes() || len(evidence.Results) != 4 || evidence.Results[0].Axis != ScreenPlayback || evidence.Results[1].Axis != ScreenSpokenSafety || evidence.Results[2].Axis != ScreenVisualSafety || evidence.Results[3].Axis != ScreenWrittenSafety {
 		t.Fatalf("screening = %+v", evidence)
 	}
-	for _, axis := range []SegmentScreeningAxis{ScreenVisualSafety, ScreenSpokenSafety, ScreenWrittenSafety, ScreenRights, ScreenPlayback} {
+	for _, axis := range []SegmentScreeningAxis{ScreenVisualSafety, ScreenSpokenSafety, ScreenWrittenSafety, ScreenPlayback} {
 		t.Run(string(axis), func(t *testing.T) {
 			candidate := evidence
 			candidate.Results = append([]SegmentScreeningResult(nil), evidence.Results...)
@@ -47,7 +47,7 @@ func TestValidateSegmentScreeningRejectsCoverageAndIdentityDrift(t *testing.T) {
 		name   string
 		mutate func(*SegmentScreeningEvidence)
 	}{
-		{name: "missing axis", mutate: func(e *SegmentScreeningEvidence) { e.Results = e.Results[:4] }},
+		{name: "missing axis", mutate: func(e *SegmentScreeningEvidence) { e.Results = e.Results[:3] }},
 		{name: "duplicate axis", mutate: func(e *SegmentScreeningEvidence) { e.Results[1].Axis = e.Results[0].Axis }},
 		{name: "unknown outcome", mutate: func(e *SegmentScreeningEvidence) { e.Results[0].Outcome = "maybe" }},
 		{name: "missing authority", mutate: func(e *SegmentScreeningEvidence) { e.Results[0].AuthoritySHA256 = "" }},

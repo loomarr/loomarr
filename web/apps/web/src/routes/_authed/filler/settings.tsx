@@ -1,4 +1,6 @@
+import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import { unwrap } from "@loomarr/api/unwrap";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
@@ -8,6 +10,37 @@ import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 const settingValue = (entries: SettingEntry[], key: string): string =>
   entries.find((entry) => entry.key === key)?.value ?? "";
+
+const downloadIntervalSeconds = (value: string): number => {
+  if (value === "0") return 0;
+  const factors: Record<string, number> = { d: 86400, h: 3600, m: 60, s: 1 };
+  let seconds = 0;
+  let matched = false;
+  for (const match of value.matchAll(/(-?\d+(?:\.\d+)?)(d|h|m|s)/g)) {
+    matched = true;
+    seconds += Number(match[1]) * (factors[match[2] ?? ""] ?? 0);
+  }
+  return matched ? seconds : Number.NaN;
+};
+
+const downloadIntervalLabel = (value: string): string => {
+  const seconds = downloadIntervalSeconds(value);
+  if (seconds === 86400) return "Daily";
+  if (seconds === 7 * 86400) return "Weekly";
+  if (seconds > 0 && seconds % 86400 === 0) {
+    const days = seconds / 86400;
+    return `Every ${days} ${days === 1 ? "day" : "days"}`;
+  }
+  if (seconds > 0 && seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+    return `Every ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  if (seconds > 0 && seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    return `Every ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+  return `Every ${value}`;
+};
 
 // The language stage already skips with these same configuration facts. Mirror them at the
 // decision point so `en` cannot look active while every clip is actually passing unchecked.
@@ -37,6 +70,8 @@ const languageUnavailableReason = (entries: SettingEntry[]): string | undefined 
 const FillerOperations = () => {
   const entries = useSettingsEntries();
   const languageReason = languageUnavailableReason(entries);
+  const sourcesQuery = fillerApi.useListFillerSources();
+  const sources = unwrap(sourcesQuery.data, (body) => body.sources) ?? [];
   return (
     <SettingsPage
       title="Filler settings"
@@ -52,13 +87,48 @@ const FillerOperations = () => {
         {
           group: "filler",
           title: "Automatic downloads",
-          description: "How often enabled sources are checked. Safety limits stay available under Advanced.",
+          description: "Choose how often Loomarr looks for clips and how many each source may add.",
           keys: [
             "filler.fetch.every",
             "filler.fetch.max_per_run",
             "filler.fetch.max_catalog_clips",
             "filler.fetch.max_disk_gb",
           ],
+          footer: ({ liveValue }) => {
+            const every = liveValue("filler.fetch.every") || "6h";
+            const defaultMax = Math.max(1, Number(liveValue("filler.fetch.max_per_run")) || 10);
+            const activeSources = sources.filter(
+              (source) =>
+                !source.group &&
+                source.configured &&
+                source.effectiveEnabled &&
+                source.fetchable &&
+                (source.kind === "archive" || source.kind === "youtube") &&
+                (source.automaticDownloads?.everySeconds ?? 0) > 0,
+            );
+            const fullCheckMax = activeSources.reduce(
+              (total, source) =>
+                total +
+                (source.automaticDownloads?.mode === "defaults"
+                  ? defaultMax
+                  : (source.automaticDownloads?.maxPerCheck ?? defaultMax)),
+              0,
+            );
+            const sourceCount = activeSources.length;
+            const cadence =
+              downloadIntervalSeconds(every) === 0
+                ? "Automatic downloads are off for sources using these defaults."
+                : `${downloadIntervalLabel(every)}, each source using these defaults can add up to ${defaultMax} ${defaultMax === 1 ? "clip" : "clips"}.`;
+            const round =
+              sourceCount === 0
+                ? "No enabled sources are currently downloading automatically."
+                : `Across ${sourceCount} enabled ${sourceCount === 1 ? "source" : "sources"}, one full check can add up to ${fullCheckMax} ${fullCheckMax === 1 ? "clip" : "clips"}.`;
+            return (
+              <p className="rounded-lg bg-muted/50 px-4 py-3 text-muted-foreground text-sm">
+                {cadence} {round} Storage limits are under Advanced.
+              </p>
+            );
+          },
         },
         {
           group: "filler",
@@ -78,7 +148,6 @@ const FillerOperations = () => {
             "filler.autosplit.enabled",
             "filler.autosplit.min_confidence",
             "filler.autosplit.max_duration",
-            "filler.reject.unidentified",
           ],
         },
         {

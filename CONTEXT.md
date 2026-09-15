@@ -222,14 +222,19 @@ Loomarr-owned non-program content as a whole. It lives in a Tunarr-local media s
 in the operator's Library, so it structurally cannot leak into a programming Lineup (§10).
 _Avoid_: bumpers, interstitials (both are *kinds* of filler, not the category)
 
-**Attention task**:
-One unresolved filler authority ambiguity that requires a person's bounded decision. It names the
-exact subject, question, decisive evidence, and allowed outcomes; routine processing is not a task.
-_Avoid_: review queue item, Incoming item, work item
+**Enrollment authority**:
+The durable record that a person chose a Filler Source or item for household use. It authorizes
+Loomarr to prepare that material as Filler without asking for a second per-Clip approval.
+_Avoid_: source trust, auto-admit, licence grant
+
+**Needs-help task**:
+One exceptional Filler choice whose answer changes durable product state. Routine processing,
+optional enrichment, audit sampling, and machine recovery are not Needs-help tasks.
+_Avoid_: review queue item, Attention task, Incoming item, work item
 
 **Operational hold**:
 A recorded condition that prevents automated filler work from progressing without changing the
-semantic verdict. It is diagnostic state, not an Attention task.
+semantic verdict. It is diagnostic state, not a Needs-help task.
 _Avoid_: review, rejection, failed decision
 
 **Filler role**:
@@ -237,11 +242,25 @@ What kind of non-program item a Clip is, such as commercial, promo, bumper, PSA,
 trailer, or interstitial. A Filler role says nothing about Media quality or Airworthiness.
 _Avoid_: category, approval, suitability
 
+**Placement**:
+Where a Clip may be used in a break: break body, bookend, or not playable. Placement is a scheduling
+fact; it is not a claim about the Clip's exact Filler role.
+_Avoid_: role, category, admission
+
 **Unclassified filler**:
-A held Clip whose exact Filler role has not been established by the authority required for
-admission. `unclassified` is a closed lifecycle state, not a catch-all Filler role, and it can never
-be selected for a Pod or projected into a Schedule.
-_Avoid_: commercial, generic filler, unknown role
+A Clip whose exact Filler role is not known. It may still have an enrollment-grounded Placement;
+`unclassified` never means “commercial” and is not itself a Filler role.
+_Avoid_: commercial, generic filler, held clip
+
+**Ready clip**:
+An enrolled Clip whose required household runtime checks completed and whose playable bytes and
+Placement were committed. Ready is the only state eligible for a Pod.
+_Avoid_: filed, admitted, approved clip
+
+**Completed composite**:
+A Composite whose conveyor work finished without making the container playable. Its confirmed
+Segments continue independently toward Ready; the container itself never enters a Pod.
+_Avoid_: Ready clip, filed reel, playable source
 
 **Media quality**:
 Whether a Clip is technically intact, complete, and presentable enough for its intended playout.
@@ -289,10 +308,67 @@ publication. It is an implementation detail shipped in the Loomarr container, no
 optional integration.
 _Avoid_: image service (that includes the Go-owned domain), daemon, fallback
 
+### Filler sources and capacity
+
+**Filler Provider**:
+An external system through which Loomarr can discover or acquire filler, such as Archive.org or
+YouTube. A Provider can expose many Sources. Pausing it stops work through every Source beneath it
+without changing which Sources the operator individually enabled.
+_Avoid_: Source, collection, parent Source
+
+**Filler Source**:
+One operator-registered acquisition target, such as an Archive.org collection, YouTube channel or
+playlist, watched folder, or media-server library. Registration records where Loomarr may look; it
+does not establish Airworthiness or admission for anything found there. Any Provider-declared
+licence is passive provenance metadata, not a runtime decision or gate.
+_Avoid_: Provider, feed, catalog
+
+**Source suggestion**:
+An unselected discovery shortcut for a possible Filler Source. It becomes a Source only when the
+operator adds it, and its presence never grants acquisition or admission authority.
+_Avoid_: default Source, enabled Source, approved Source
+
+**Source resolution**:
+Server verification that typed input or a Source suggestion identifies one canonical Provider
+target. Resolution creates no Source and grants no acquisition or admission authority.
+_Avoid_: registration, search result, approval
+
+**Automatic download policy**:
+The effective interval and per-check clip limit Loomarr applies to one enabled Filler Source. A
+Source may inherit the installation defaults, override them, or opt out of automatic downloads
+while remaining available for search and deliberate checks.
+_Avoid_: fetch cron, task schedule, Source switch
+
+**Source check**:
+One successful listing of a Filler Source for available items, whether or not it finds or queues a
+new Clip. This is distinct from a successful fetch, which brought at least one item into Loomarr.
+_Avoid_: fetch, scan
+
+**Provider-declared licence metadata**:
+The exact licence value or URL a Provider reports for a Source or item. Loomarr preserves it for
+optional provenance details; presence, absence, or content never changes acquisition, screening,
+admission, readiness, or playback.
+_Avoid_: rights authority, approval, eligibility, permission
+
+**Storage allowance**:
+The most Loomarr-managed filler storage that unattended work may use on a filesystem. Reaching it
+pauses automatic acquisition without deleting retained media.
+_Avoid_: free space, disk capacity, quota (too broad)
+
+**Storage reserve**:
+Filesystem space Loomarr preserves for the host and other workloads. Neither automatic nor manual
+filler acquisition may consume it.
+_Avoid_: Storage allowance, spare space
+
+**Storage reservation**:
+A temporary claim against available bytes made before media work begins. It prevents concurrent
+jobs from each treating the same remaining capacity as theirs to spend.
+_Avoid_: allocation, downloaded size
+
 ### Filler geography
 
 **Installation geography**:
-The optional home country and local market that constrain automated filler use across the instance and supply the default for Channels without their own geography.
+The instance-wide viewer location: a home country and optional local market that constrain automated filler use and supply the default for Channels and Sources without their own geography.
 _Avoid_: guide timezone, locale, server location
 
 **Channel geography**:

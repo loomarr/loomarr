@@ -58,8 +58,10 @@ const fillerWatchStaleAfter = 3 * 24 * time.Hour
 type fillerWatchOutput struct {
 	Body struct {
 		Health FillerWatchHealth `json:"health" enum:"healthy,attention,unconfigured" doc:"Whether filler is working right now"`
-		// SourcesOn / SourcesTotal drive the "N of M sources on" clause.
+		// SourcesReady is the useful count; SourcesOn remains a separate truth because a source
+		// may be switched on while waiting for the Installation geography.
 		SourcesOn    int `json:"sourcesOn"`
+		SourcesReady int `json:"sourcesReady"`
 		SourcesTotal int `json:"sourcesTotal"`
 		// Clips is the whole catalog, NOT a filtered view — the header must not change meaning
 		// when someone types in the search box.
@@ -105,7 +107,7 @@ func (s *Server) registerFillerWatch(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-watch", Method: http.MethodGet, Path: "/v1/filler/watch",
 		Summary: "Is filler working right now",
-		Description: "The Filler page header's live status (§10 V38c): how many sources are on, how many clips " +
+		Description: "The Filler page header's live status (§10 V38c): how many sources are ready, how many clips " +
 			"the catalog holds, when anything last arrived, and a health verdict. " +
 			"⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in " +
 			"days') is domain logic, and deriving it in the client would also have left members with a " +
@@ -149,8 +151,9 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 	// running scanner and intake pipeline are operating until restart applies a new layout.
 	dir := s.fillerLayout.ClipDir()
 
-	var total, on int
+	var total, on, ready int
 	var newest time.Time
+	home := s.fillerHomeGeography()
 	for _, src := range srcs {
 		// A seeded-but-unconfigured row is not a source the operator has. It exists so the list
 		// can say "you could set this up but have not" (§10), which is the opposite of a source
@@ -160,15 +163,18 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 			continue
 		}
 		total++
-		if src.Enabled {
+		if src.EffectiveEnabled() {
 			on++
-			if src.LastFetchedAt.After(newest) {
-				newest = src.LastFetchedAt
+			if home.Country != "" && src.GeographicallyEligible(home) {
+				ready++
+			}
+			if home.Country != "" && src.GeographicallyEligible(home) && src.LastCheckedAt.After(newest) {
+				newest = src.LastCheckedAt
 			}
 		}
 	}
 
-	out.Body.SourcesOn, out.Body.SourcesTotal = on, total
+	out.Body.SourcesOn, out.Body.SourcesReady, out.Body.SourcesTotal = on, ready, total
 	out.Body.Clips, out.Body.Held = clipCount, heldCount
 	if svc, ok := s.filler.(fillerFetchStatusService); ok {
 		status, serr := svc.FetchStatus(ctx)
@@ -194,7 +200,7 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 	// and is holding them for review is WORKING, not broken. Passing only the catalog count made
 	// a successful first fetch report `attention` — the fetcher's own success looking like a
 	// failure.
-	out.Body.Health = fillerWatchVerdict(total, on, clipCount+heldCount, newest, time.Now())
+	out.Body.Health = fillerWatchVerdict(total, ready, clipCount+heldCount, newest, time.Now())
 	return out, nil
 }
 

@@ -378,7 +378,6 @@ func basePacket() fillerbakeoff.Packet {
 		SchemaVersion: fillerbakeoff.PacketSchemaVersion, CaseID: "case-1", EvidenceVersion: "evidence-1", ContentSHA256: strings.Repeat("a", 64),
 		Facts: []filleradmission.Evidence{
 			{ID: "usable", Claim: filleradmission.ClaimMediaUsability, Value: filleradmission.UsabilityUsable, Kind: filleradmission.KindDecoder, Source: "ffprobe"},
-			{ID: "licensed", Claim: filleradmission.ClaimSourceLicense, Value: filleradmission.EligibilityEligible, Kind: filleradmission.KindSourcePolicy, Source: "rights-ledger"},
 		},
 	}
 }
@@ -401,7 +400,6 @@ func certificationCase(id string, split fillereval.Split, contentHash, evidenceH
 		ContentRole: filleradmission.RoleBumper, Slices: []string{"contract"},
 		Evidence: []fillereval.Evidence{
 			{ID: "usable", Kind: "decoder", Claim: "media_usability", Value: filleradmission.UsabilityUsable, Provenance: "blind review"},
-			{ID: "licensed", Kind: "source_policy", Claim: "source_license", Value: filleradmission.EligibilityEligible, Provenance: "blind review"},
 			{ID: "role", Kind: "frame", Claim: "content_role", Value: filleradmission.RoleBumper, Provenance: "blind review"},
 		},
 		Provenance: fillereval.MediaProvenance{

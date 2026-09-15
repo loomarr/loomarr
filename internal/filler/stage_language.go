@@ -17,7 +17,7 @@ import (
 // ⚠ **The window V40 documented is now closed, and that is the point of moving it.** The job ran
 // on a timer *after* a clip was already catalogued, so a foreign clip could air once before the
 // gate reached it — an accepted cost of not blocking the scan. As a rung it runs before the clip
-// is ever filed, so there is no window at all.
+// becomes Ready, so there is no window at all.
 
 // LanguageClipStore is the slice of the store the language stage writes through.
 type LanguageClipStore interface {

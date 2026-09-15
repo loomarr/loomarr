@@ -114,7 +114,7 @@ describe("TaxonomyTab", () => {
     renderTab();
 
     expect(await screen.findByText("No playable clips yet")).toBeInTheDocument();
-    expect(screen.getByText(/coverage will appear after clips pass admission/i)).toBeInTheDocument();
+    expect(screen.getByText(/coverage will appear after clips are ready/i)).toBeInTheDocument();
     expect(screen.queryByText(/every playable clip/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/all playable clips/i)).not.toBeInTheDocument();
     expect(screen.queryByText("0 / 0")).not.toBeInTheDocument();

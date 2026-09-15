@@ -32,14 +32,16 @@ interface SourceSearchProps {
   query: string;
   onQueryChange: (q: string) => void;
   onSearch: () => void;
+  /** Preview one provider result without downloading it. */
+  onPreview?: (clip: DiscoveredClip) => void;
   /**
    * Queue one result for download. ⚠ This is the ONLY path on which anything is fetched:
    * searching streams previews from archive.org and downloads nothing, which the footnote says
    * out loud because the distinction is not visible from the rows.
    */
   onQueue: (clip: DiscoveredClip) => void;
-  /** Ids already queued this session, so a row reports `queued ✓` instead of inviting a repeat. */
-  queued?: string[];
+  /** Durable acquisition state for results the operator asked Loomarr to add. */
+  queueStatus?: Record<string, "queued" | "running" | "success" | "error">;
   /** A queue request is in flight for this id. */
   queueing?: string | null;
   searching?: boolean;

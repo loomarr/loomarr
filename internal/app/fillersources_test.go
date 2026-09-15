@@ -82,6 +82,9 @@ func (r recordingAcquisitions) UpsertAcquisitionRun(_ context.Context, run fille
 func (r *recordingSources) ListFillerSources(context.Context) ([]store.FillerSource, error) {
 	return r.upserted, nil
 }
+func (r *recordingSources) ListFillerProviders(context.Context) ([]store.FillerProvider, error) {
+	return []store.FillerProvider{{Kind: "archive", Enabled: true}, {Kind: "youtube", Enabled: true}}, nil
+}
 func (r *recordingSources) UpsertFillerSource(_ context.Context, s store.FillerSource) error {
 	if r.err != nil {
 		return r.err
@@ -357,6 +360,30 @@ func TestIngestPull_RejectsUnknownRegisteredKindBeforeDurableWork(t *testing.T) 
 	select {
 	case run := <-runs:
 		t.Fatalf("unknown registered kind persisted durable work: %+v", run)
+	default:
+	}
+}
+
+func TestIngest_ProviderPauseBlocksDirectDownloaderExecution(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	if err := st.SetFillerProviderEnabled(t.Context(), "archive", false); err != nil {
+		t.Fatal(err)
+	}
+	runs := make(chan filler.AcquisitionRun, 1)
+	a := fillerServiceAdapter{
+		sources: st, fetcher: successfulClipIngestor{}, acquisitions: recordingAcquisitions{runs: runs},
+		newID: func() string { return "must-not-start" },
+		start: func(time.Duration, func(context.Context) error, func(context.Context, error)) error {
+			t.Error("paused provider reached the operation launcher")
+			return nil
+		},
+	}
+	if _, err := a.Ingest(t.Context(), []string{"https://archive.org/details/one"}); !errors.Is(err, filler.ErrProviderPaused) {
+		t.Fatalf("direct ingest while Archive.org paused = %v, want ErrProviderPaused", err)
+	}
+	select {
+	case run := <-runs:
+		t.Fatalf("paused provider persisted durable work: %+v", run)
 	default:
 	}
 }

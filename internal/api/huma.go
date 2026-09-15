@@ -93,7 +93,6 @@ type Server struct {
 	filler          FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	fillerScreening FillerScreeningService
 	fillerDecisions *fillerdecision.Service // durable V63 admission audit and projections
-	fillerRights    FillerRightsService     // append-only current-use filler rights authority
 	pods            PodPreviewer            // /v1/channels/{id}/pods (§12); nil ⇒ 501
 	taxonomy        TaxonomyEditor          // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
@@ -184,7 +183,8 @@ type Server struct {
 	startupReports StartupReportService
 	healthRefresh  HealthRefreshService
 
-	liveConfigInt func(key string) int
+	liveConfigInt      func(key string) int
+	liveConfigDuration func(key string) time.Duration
 	// liveConfigBoolOn reads a BOOL setting whose safe answer is true (resolved.boolOn).
 	//
 	// ⚠ Bool keys must never go through liveConfig: settings.String PANICS on a non-string
@@ -391,6 +391,10 @@ type FillerService interface {
 	// operation the scheduled filler-fetch job runs; the Sources page uses it to run that policy
 	// now rather than merely scanning local files and claiming a remote fetch succeeded.
 	Fetch(ctx context.Context, sourceID string) (filler.FetchResult, error)
+	// SuggestSources and ResolveSource are read-only provider discovery. They create no registry
+	// row and grant no acquisition authority; POST /v1/filler/sources remains that boundary.
+	SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error)
+	ResolveSource(ctx context.Context, provider, input string) (filler.SourceSuggestion, error)
 	// Tag runs AI classification over untagged commercials.
 	Tag(ctx context.Context) (considered, tagged, partial, skipped int, err error)
 	// Ingest downloads clips from the given source URLs into the drop-folder, returning
@@ -401,6 +405,10 @@ type FillerService interface {
 	//
 	// ⚠ Downloads and nothing else — it does not register a source.
 	Ingest(ctx context.Context, urls []string) (jobID string, err error)
+	// IngestSourceItems queues exact candidates discovered inside one registered source. The
+	// source identity and provider kind are server-owned policy; RemoteID preserves provider
+	// deduplication and this path never registers an item as another source.
+	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (jobID string, err error)
 	// IngestPull validates readiness, constructs the queued run, and calls commit exactly once
 	// before launching the ordinary downloader. A failed commit must not start any work.
 	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (jobID string, err error)
@@ -983,7 +991,6 @@ type Options struct {
 	Filler          FillerService           // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	FillerScreening FillerScreeningService  // exact browser-safe rendered-child screening projection
 	FillerDecisions *fillerdecision.Service // /v1/filler/decisions* (§10 V63)
-	FillerRights    FillerRightsService     // /v1/filler/rights* (§10 V67)
 	Pods            PodPreviewer            // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	Taxonomy        TaxonomyEditor          // taxonomy impact + committed channel convergence
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
@@ -1095,6 +1102,9 @@ type Options struct {
 	// against a real settings service surfaced it (unit tests leave the seam nil, so the
 	// typed accessor was never reached).
 	LiveConfigInt func(key string) int
+	// LiveConfigDuration reads hot-applied duration settings without routing them through the
+	// string accessor, which deliberately panics on a kind mismatch.
+	LiveConfigDuration func(key string) time.Duration
 	// LiveConfigBoolOn is the BOOL-typed twin, and it exists for the same reason
 	// LiveConfigInt does — the third occurrence of that one bug, so the seam is now typed
 	// for every Kind a route reads rather than only the two that have already broken.

@@ -20,9 +20,9 @@ type pool struct {
 
 // candidatePools builds the ladder rungs for a window (§10 fallback ladder):
 //
-//  1. exact    — kind=commercial, inside the Era RANGE, matching Audience
-//  2. widened  — kind=commercial, a decade either side of that range, matching Audience
-//  3. audience — kind=commercial, any era, matching Audience
+//  1. exact    — break-body Placement, inside the Era RANGE, matching Audience
+//  2. widened  — break-body Placement, a decade either side of that range, matching Audience
+//  3. audience — break-body Placement, any era, matching Audience
 //
 // ⚠ **All three rungs are always built (V51f).** `policy.EraStrict` used to drop rung 2, and it
 // was set in tests and nowhere else — no settings key, no policy field, no way for an operator to
@@ -34,21 +34,21 @@ type pool struct {
 // in the window are excluded at fill time (no-repeat), not here.
 func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
-	commercials := make([]Clip, 0, len(catalog))
+	body := make([]Clip, 0, len(catalog))
 	for _, c := range catalog {
-		// ⚠ The quality floor applies to COMMERCIALS only, alongside the duration bounds —
+		// ⚠ The quality floor applies to break-body clips only, alongside the duration bounds —
 		// deliberately not catalog-wide. Bumpers are the ladder's floor and the station's own
 		// bookends; excluding them on resolution could leave a break with nothing to open or
 		// close on, trading a cosmetic complaint for a structural one.
-		if c.Kind == Commercial && durationEligible(c, policy) && qualityEligible(c, policy) {
-			commercials = append(commercials, c)
+		if c.EffectivePlacement() == PlacementBreakBody && durationEligible(c, policy) && qualityEligible(c, policy) {
+			body = append(body, c)
 		}
 	}
-	// Category narrowing (§10) applies to the commercial pool only — bumpers are
+	// Category narrowing (§10) applies to the break-body pool only — bumpers are
 	// bookends, not themed by category.
-	commercials = filterCategories(commercials, w.Categories)
+	body = filterCategories(body, w.Categories)
 
-	audienceMatch := filterAudience(commercials, w.Audience)
+	audienceMatch := filterAudience(body, w.Audience)
 
 	// ⚠ The era rungs draw from the STRICT audience pool and only the bottom rung widens to
 	// ungrounded clips — that ordering is the whole point. An unclassified clip with a perfect
@@ -56,7 +56,7 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 	return []pool{
 		{MatchExact, filterEraWindows(audienceMatch, w.eraWindows())},
 		{MatchWidened, filterEraWindows(audienceMatch, widenEraWindows(w.eraWindows()))},
-		{MatchAudience, filterAudienceWithUngrounded(commercials, w.Audience)},
+		{MatchAudience, filterAudienceWithUngrounded(body, w.Audience)},
 	}
 }
 
@@ -394,26 +394,24 @@ func filterAudienceWithUngrounded(clips []Clip, aud Audience) []Clip {
 	return out
 }
 
-// filterKinds keeps only playable concrete clips whose kind is in the selected set (§10 per-channel
-// "kinds to include"). Empty selection = the default kinds (commercial + the two
-// bumper kinds), which is what a channel with no kind preference should draw: ads
-// with bumper bookends. Applied catalog-wide BEFORE pickBumper/candidatePools, so a
+// filterKinds keeps only playable clips matching the selected descriptive roles (§10 per-channel
+// "kinds to include"). Empty selection accepts every playable Placement, including an enrolled
+// clip whose role remains unknown. Applied catalog-wide BEFORE pickBumper/candidatePools, so a
 // "bumpers only" selection empties the commercial pool and a "no bumpers" one leaves
 // pickBumper nothing — the kind choice shapes the whole pod, not just the middle.
 func filterKinds(clips []Clip, kinds []string) []Clip {
 	allow := map[Kind]bool{}
-	if len(kinds) == 0 {
-		allow[Commercial], allow[Bumper], allow[StationID] = true, true, true
-	} else {
+	if len(kinds) > 0 {
 		for _, k := range kinds {
 			allow[Kind(k)] = true
 		}
 	}
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
-		// Unclassified is held work, not a selectable role. Keep this independent of the store's
-		// held filter so an IncludeHeld mistake, explicit kind request, or pin cannot make it air.
-		if c.Kind != Unclassified && allow[c.Kind] {
+		if c.EffectivePlacement() == PlacementNotPlayable {
+			continue
+		}
+		if len(kinds) == 0 || c.Kind != Unclassified && allow[c.Kind] {
 			out = append(out, c)
 		}
 	}

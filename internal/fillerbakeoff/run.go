@@ -277,10 +277,9 @@ func validatePacket(c fillereval.Case, packet Packet, evidenceVersion, corpusRoo
 		return fmt.Errorf("case %q evidence packet exceeds bounded item counts", c.ID)
 	}
 	for _, fact := range packet.Facts {
-		validDeterministic := fact.Claim == filleradmission.ClaimMediaUsability && fact.Kind == filleradmission.KindDecoder ||
-			fact.Claim == filleradmission.ClaimSourceLicense && fact.Kind == filleradmission.KindSourcePolicy
+		validDeterministic := fact.Claim == filleradmission.ClaimMediaUsability && fact.Kind == filleradmission.KindDecoder
 		if !validDeterministic || fact.EvaluationID != "" {
-			return fmt.Errorf("case %q packet facts may contain only deterministic decoder and source-policy evidence", c.ID)
+			return fmt.Errorf("case %q packet facts may contain only deterministic decoder evidence", c.ID)
 		}
 	}
 	var packetBytes int64
@@ -707,7 +706,7 @@ func applyDecision(prediction *fillereval.Prediction, decision filleradmission.D
 func classifyReject(reasons []filleradmission.ReasonCode) fillereval.RejectClass {
 	for _, reason := range reasons {
 		switch reason {
-		case filleradmission.ReasonMediaUnusable, filleradmission.ReasonSourceIneligible:
+		case filleradmission.ReasonMediaUnusable:
 			continue
 		default:
 			return fillereval.RejectSemantic

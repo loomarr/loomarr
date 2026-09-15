@@ -1,19 +1,30 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
+import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
+import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
+import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { formatRelative } from "@loomarr/core/format";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { FillerSources } from "@/components/loomarr/filler/filler-sources";
 import { SourceSearch } from "@/components/loomarr/filler/source-search";
-// ⚠ No `Card` and no `Label`. Add-a-source is a plain block under a single top rule (the mock
-// draws no box), and its fields are labelled by their per-kind PLACEHOLDER plus `aria-label` —
-// a static visible label above an input whose meaning changes with the kind would contradict it.
+import { LocationPicker } from "@/components/loomarr/settings/installation-location";
+// ⚠ No `Card` and no `Label`. The local add flow lives directly inside Your files, and its fields
+// are labelled by their per-kind PLACEHOLDER plus `aria-label` — a static visible label above an
+// input whose meaning changes with the kind would contradict it.
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ProviderSourceFinder } from "./provider-source-finder";
+import { SourceContentPreview } from "./source-content-preview";
+import { SourceItemPreviewDialog } from "./source-item-preview-dialog";
 import type { SourcesPanelProps } from "./sources-panel.type";
 
 // Per-kind copy for "Add a source" (the mock's `newSourcePlaceholder`).
@@ -28,9 +39,126 @@ import type { SourcesPanelProps } from "./sources-panel.type";
 const SOURCE_KIND_COPY = {
   folder: { label: "Folder path", placeholder: "/data/filler — a full path Loomarr can read" },
   library: { label: "Library name", placeholder: "Commercials — as it appears on your media server" },
-  archive: { label: "Collection or URL", placeholder: "classic_tv_commercials" },
-  youtube: { label: "Playlist or channel URL", placeholder: "youtube.com/playlist?list=…" },
 } as const;
+
+type QueuedClipJob = { sourceID: string; clipID: string; jobID: string };
+type AutomaticDownloadMode = "defaults" | "custom" | "never";
+type DownloadIntervalUnit = "minutes" | "hours" | "days";
+type DownloadSchedulePreset = "6h" | "12h" | "daily" | "weekly" | "custom";
+const QUEUED_CLIP_JOBS_KEY = "loomarr:source-item-jobs";
+
+const readQueuedClipJobs = (): QueuedClipJob[] => {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(QUEUED_CLIP_JOBS_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is QueuedClipJob =>
+          typeof item?.sourceID === "string" &&
+          typeof item?.clipID === "string" &&
+          typeof item?.jobID === "string",
+      )
+      .slice(-50);
+  } catch {
+    return [];
+  }
+};
+
+const rememberQueuedClipJobs = (jobs: QueuedClipJob[]): void => {
+  try {
+    sessionStorage.setItem(QUEUED_CLIP_JOBS_KEY, JSON.stringify(jobs.slice(-50)));
+  } catch {
+    // Browser storage is only correlation; the acquisition resource remains authoritative.
+  }
+};
+
+const sourceKindLabel = (source: FillerSourceDTO) => {
+  switch (source.kind) {
+    case "archive":
+      return "Archive.org collection";
+    case "youtube":
+      return "YouTube channel or playlist";
+    case "library":
+      return "Media server library";
+    default:
+      return "Folder on this server";
+  }
+};
+
+const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutputBody) => {
+  const limit = ` This check could add up to ${result.maxPerCheck} ${result.maxPerCheck === 1 ? "clip" : "clips"}.`;
+  const skipped =
+    result.skipped > 0
+      ? ` ${result.skipped} ${result.skipped === 1 ? "clip was" : "clips were"} already known and skipped.`
+      : "";
+  if (result.stoppedBy === "disk") {
+    return `Couldn’t add clips from ${source.target} because filler storage is full.${limit}`;
+  }
+  if (result.stoppedBy === "catalog") {
+    return `Couldn’t add clips from ${source.target} because the clip limit is full.${limit}`;
+  }
+  if (result.queued > 0) {
+    return `${result.queued} new ${result.queued === 1 ? "clip was" : "clips were"} queued from ${source.target}.${limit}${skipped}`;
+  }
+  if (result.added > 0 || result.updated > 0) {
+    return `Found ${result.added} new and ${result.updated} updated ${result.added + result.updated === 1 ? "clip" : "clips"} in ${source.target}.`;
+  }
+  return `No new clips were found in ${source.target}.${limit}${skipped}`;
+};
+
+const readinessLabel = (source: FillerSourceDTO) => {
+  switch (source.readiness) {
+    case "off":
+    case "provider_off":
+      return "Paused";
+    case "needs_location":
+      return "Location needed";
+    case "out_of_area":
+      return "Not used in your area";
+    case "unavailable":
+      return "Couldn’t check this source";
+    case "not_configured":
+      return "Setup needed";
+    default:
+      return "Ready";
+  }
+};
+
+const registeredSourceURL = (source: FillerSourceDTO) => {
+  const uri = source.uri?.trim();
+  if (!uri) return;
+  if (source.kind === "youtube") return uri;
+  if (source.kind !== "archive") return;
+  if (/^https?:\/\//i.test(uri)) return uri;
+  return `https://archive.org/details/${encodeURIComponent(uri)}`;
+};
+
+const downloadIntervalParts = (seconds: number): { amount: number; unit: DownloadIntervalUnit } => {
+  if (seconds > 0 && seconds % 86400 === 0) return { amount: seconds / 86400, unit: "days" };
+  if (seconds >= 3600 && seconds % 3600 === 0) return { amount: seconds / 3600, unit: "hours" };
+  return { amount: Math.max(seconds / 60, 1), unit: "minutes" };
+};
+
+const downloadIntervalSeconds = (amount: number, unit: DownloadIntervalUnit): number =>
+  Math.round(Math.max(amount, 1) * ({ days: 86400, hours: 3600, minutes: 60 } as const)[unit]);
+
+const downloadIntervalMaximum = (unit: DownloadIntervalUnit): number =>
+  ({ days: 7, hours: 168, minutes: 10080 })[unit];
+
+const downloadSchedulePreset = (seconds: number): DownloadSchedulePreset => {
+  if (seconds === 6 * 3600) return "6h";
+  if (seconds === 12 * 3600) return "12h";
+  if (seconds === 24 * 3600) return "daily";
+  if (seconds === 7 * 24 * 3600) return "weekly";
+  return "custom";
+};
+
+const downloadScheduleSeconds: Record<Exclude<DownloadSchedulePreset, "custom">, number> = {
+  "6h": 6 * 3600,
+  "12h": 12 * 3600,
+  daily: 24 * 3600,
+  weekly: 7 * 24 * 3600,
+};
 
 // SourcesPanel — the Sources tab of the filler page (§10 V35/V37/V38c): registered sources
 // (folders, libraries, archive.org, YouTube), each switchable, fetchable and (if `removable`)
@@ -39,22 +167,28 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const queryClient = useQueryClient();
   const { isAdmin } = useAuth();
 
-  // The per-source search expander (V35b). Local rather than in the URL: an open panel with an
-  // empty query is not a view worth sharing, and the search TERM is already transient here.
-  //
-  // ⚠ **Which source's panel is open, not WHETHER one is (§10 V54 B6).** This was a single
-  // boolean shared by every row, and `renderSearch` is called once per source — so pressing
-  // "Search it" on one archive collection expanded the panel on EVERY searchable row at once,
-  // each showing the same query, the same results and the same "Close" button. With one
-  // collection registered it looked correct; the roll-up this phase renders is precisely what
-  // puts several of them on screen together.
-  const [searchOpenFor, setSearchOpenFor] = useState<string>();
-
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
+  const [selectedSourceID, setSelectedSourceID] = useState<string>();
+  const [sourcePreview, setSourcePreview] = useState<{
+    sourceID: string;
+    result: FillerSourceSuggestionDTO;
+  }>();
+  const [checkResult, setCheckResult] = useState<FetchFillerSourceOutputBody>();
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [downloadMode, setDownloadMode] = useState<AutomaticDownloadMode>("defaults");
+  const [downloadEverySeconds, setDownloadEverySeconds] = useState(6 * 3600);
+  const [downloadMaxPerCheck, setDownloadMaxPerCheck] = useState(10);
+  const [editingCustomDownloadSchedule, setEditingCustomDownloadSchedule] = useState(false);
+  const [downloadSaveError, setDownloadSaveError] = useState<string>();
+  const downloadSaveButton = useRef<HTMLButtonElement>(null);
+  const [searchPreview, setSearchPreview] = useState<FillerSourcePreviewItemDTO>();
+  const sourceTrigger = useRef<HTMLElement>(null);
+  const selectedSource = sources.find((source) => source.id === selectedSourceID);
 
   const fetchSource = fillerApi.useFetchFillerSource({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (response) => {
+        setCheckResult(unwrap(response, (body) => body));
         // Both: the catalog changed AND the per-source counts derive from it.
         void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
         void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() });
@@ -71,9 +205,6 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   // searching and downloading; clips already in the catalog are untouched, which is why nothing
   // here invalidates the clip list.
   const [togglingSource, setTogglingSource] = useState<string>();
-  // Which source's "Fetch now" is running. The request is row-scoped, and this local state keeps
-  // the corresponding card busy while the bounded acquisition and catalog scan complete.
-  const [fetchingSource, setFetchingSource] = useState<string>();
   const toggleSource = fillerApi.useSetFillerSourceEnabled({
     mutation: {
       onSettled: () => setTogglingSource(undefined),
@@ -90,27 +221,75 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   // V38c made folders and libraries addable, so the dropdown offered two options the state could
   // not hold. It defaults to `library` because that is the mock's first option, and the first
   // option is what an operator sees before touching anything.
-  const [newSourceKind, setNewSourceKind] = useState<"folder" | "library" | "archive" | "youtube">("library");
+  const [newSourceKind, setNewSourceKind] = useState<"folder" | "library">("library");
   const [newSourceURI, setNewSourceURI] = useState("");
-  const [newSourceCountry, setNewSourceCountry] = useState("");
-  const [newSourceMarket, setNewSourceMarket] = useState("");
   const addSource = fillerApi.useAddFillerSource({
     mutation: {
       onSuccess: () => {
         setNewSourceURI("");
-        setNewSourceCountry("");
-        setNewSourceMarket("");
         toast.success("Source added", { description: "Loomarr will check it on its download schedule." });
         void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() });
       },
     },
   });
 
+  const [togglingProvider, setTogglingProvider] = useState<"archive" | "youtube">();
+  const toggleProvider = fillerApi.useSetFillerProviderEnabled({
+    mutation: {
+      onSettled: () => setTogglingProvider(undefined),
+      // Keep the provider in its pending folded state until the refreshed read model arrives.
+      // Clearing `togglingProvider` before this promise settles would briefly reopen enabled-looking
+      // children between the PATCH response and the GET that reports `providerEnabled: false`.
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() }),
+    },
+  });
+
+  // Source-specific geography is an exception, not part of adding every source. Empty values
+  // mean follow the Installation geography; an explicit value is tucked under Source settings for a
+  // collection whose real coverage differs.
+  const [sourceCountry, setSourceCountry] = useState("");
+  const [sourceMarket, setSourceMarket] = useState("");
+  const resolveSourcePreview = fillerApi.useResolveFillerSource();
+  const openSource = (source: (typeof sources)[number]) => {
+    sourceTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSelectedSourceID(source.id);
+    setCheckResult(undefined);
+    setSourceCountry(source.country ?? "");
+    setSourceMarket(source.market ?? "");
+    setSourceQuery("");
+    setSubmittedQuery("");
+    setStatIds([]);
+    setSourcePreview(undefined);
+    setSearchPreview(undefined);
+    setBrowseOpen(false);
+    setSettingsOpen(false);
+    setDownloadMode(source.automaticDownloads?.mode ?? "defaults");
+    setDownloadEverySeconds(source.automaticDownloads?.everySeconds || 6 * 3600);
+    setDownloadMaxPerCheck(source.automaticDownloads?.maxPerCheck ?? 10);
+    setEditingCustomDownloadSchedule(
+      downloadSchedulePreset(source.automaticDownloads?.everySeconds || 6 * 3600) === "custom",
+    );
+    setDownloadSaveError(undefined);
+    const uri = source.uri?.trim();
+    if ((source.kind === "archive" || source.kind === "youtube") && source.providerEnabled && uri) {
+      resolveSourcePreview.mutate(
+        { kind: source.kind, data: { input: uri } },
+        {
+          onSuccess: (response) => {
+            const result = unwrap(response, (body) => body);
+            if (result) setSourcePreview({ sourceID: source.id, result });
+          },
+        },
+      );
+    }
+  };
+
   const [removingSource, setRemovingSource] = useState<string>();
   const removeSource = fillerApi.useDeleteFillerSource({
     mutation: {
       onSettled: () => setRemovingSource(undefined),
       onSuccess: () => {
+        setSelectedSourceID(undefined);
         toast.success("Source removed", {
           description: "Clips it already brought in stay in your catalog.",
         });
@@ -125,9 +304,8 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   // rude — and the results would flicker under the cursor.
   const [sourceQuery, setSourceQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
-  const searchedSource = sources.find((source) => source.id === searchOpenFor);
   const discover = fillerApi.useDiscoverFiller(
-    { q: submittedQuery, collection: searchedSource?.uri },
+    { q: submittedQuery, collection: selectedSource?.uri },
     // Admin-only on the server, and only once something has actually been submitted — an
     // enabled query with an empty q would 422 on mount.
     {
@@ -135,8 +313,8 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
         enabled:
           isAdmin &&
           submittedQuery.trim().length >= 2 &&
-          searchedSource?.kind === "archive" &&
-          Boolean(searchedSource.uri),
+          selectedSource?.kind === "archive" &&
+          Boolean(selectedSource.uri),
       },
     },
   );
@@ -157,245 +335,606 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   );
   const discoveredStats = unwrap(statsQuery.data, (b) => b.stats) ?? {};
 
-  // Opening a DIFFERENT source's search is a new search, so the query and the result set start
-  // clean rather than showing the previous row's answers under this row's name.
-  //
-  // ⚠ One panel open at a time, which is what lets the query state below stay single. Several
-  // open panels would each need their own query, submitted term and `statIds` — and `statIds`
-  // spends a real ~1.8s archive.org call per id, so two result sets on screen would quietly
-  // double that.
-  const toggleSearch = (id: string) => {
-    if (searchOpenFor === id) {
-      setSearchOpenFor(undefined);
-      return;
-    }
-    setSourceQuery("");
-    setSubmittedQuery("");
-    setStatIds([]);
-    setSearchOpenFor(id);
-  };
-
-  // Which results have been queued this session. ⚠ Session state, deliberately NOT derived from
-  // the catalog: a queued download has not landed yet, so the clip it becomes is not in the
-  // catalog to compare against, and the row must still report that the operator already asked.
-  const [queuedIds, setQueuedIds] = useState<string[]>([]);
+  // Keep only the browser's item→job correlation here; status itself is always read from the
+  // durable acquisition resource. This lets a dropped SSE frame cost latency rather than truth.
+  const [queuedJobs, setQueuedJobs] = useState<QueuedClipJob[]>(readQueuedClipJobs);
   const [queueingId, setQueueingId] = useState<string>();
-  const queueClip = fillerApi.useIngestFiller({
+  const selectedQueuedJobs = queuedJobs.filter((job) => job.sourceID === selectedSourceID);
+  const acquisitionQueries = useQueries({
+    queries: selectedQueuedJobs.map((job) => {
+      const cached = queryClient.getQueryData<fillerApi.GetFillerAcquisitionQueryResult>(
+        fillerApi.getGetFillerAcquisitionQueryKey(job.jobID),
+      );
+      const run = unwrap(cached, (body) => body);
+      return {
+        ...fillerApi.getGetFillerAcquisitionQueryOptions(job.jobID),
+        refetchInterval: run && (run.status === "success" || run.status === "error") ? false : 1_500,
+      };
+    }),
+  });
+  const queueStatus = Object.fromEntries(
+    selectedQueuedJobs
+      .map((job, index) => ({ job, query: acquisitionQueries[index] }))
+      .map(({ job, query }) => {
+        const run = unwrap(query?.data, (body) => body);
+        return [job.clipID, query?.isError ? "error" : (run?.status ?? "queued")];
+      }),
+  ) as Record<string, "queued" | "running" | "success" | "error">;
+  const queueClip = fillerApi.useQueueFillerSourceItem({
     mutation: {
       onSettled: () => setQueueingId(undefined),
-      onSuccess: () => {
-        // ⚠ The id comes from the state set at CLICK time, not from the mutation's variables:
-        // the request body carries a URL, and mapping it back to a row would mean re-deriving
-        // an identity the click already knew.
-        setQueuedIds((prev) => (queueingId ? [...prev, queueingId] : prev));
-        // Downloads land in the drop-folder and appear on the next scan, so the catalog and the
-        // per-source counts both become stale.
-        invalidate();
+      onSuccess: (response, variables) => {
+        const result = unwrap(response, (body) => body);
+        if (result?.jobId) {
+          setQueuedJobs((previous) => {
+            const next = [
+              ...previous.filter(
+                (job) => job.sourceID !== variables.id || job.clipID !== variables.data.remoteId,
+              ),
+              { sourceID: variables.id, clipID: variables.data.remoteId, jobID: result.jobId },
+            ].slice(-50);
+            rememberQueuedClipJobs(next);
+            return next;
+          });
+        }
       },
     },
   });
 
   const discoveredResults = unwrap(discover.data, (b) => b.items) ?? [];
+  const localSourceSetup = isAdmin ? (
+    <div className="flex flex-col gap-3">
+      <p className="font-medium text-sm">Add a folder or library</p>
+      <form
+        className="flex flex-wrap items-center gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!newSourceURI.trim()) return;
+          addSource.mutate({
+            data: {
+              kind: newSourceKind,
+              uri: newSourceURI.trim(),
+            },
+          });
+        }}
+      >
+        <Select
+          value={newSourceKind}
+          onValueChange={(value) => {
+            setNewSourceKind(value as typeof newSourceKind);
+          }}
+        >
+          <SelectTrigger id="new-source-kind" className="w-45" aria-label="Kind of source to add">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="library">Media server library</SelectItem>
+            <SelectItem value="folder">Watched folder</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          id="new-source-uri"
+          className="min-w-64 flex-1 font-mono"
+          value={newSourceURI}
+          placeholder={SOURCE_KIND_COPY[newSourceKind].placeholder}
+          aria-label={SOURCE_KIND_COPY[newSourceKind].label}
+          onChange={(event) => setNewSourceURI(event.target.value)}
+        />
+        <Button type="submit" variant="outline" disabled={addSource.isPending || !newSourceURI.trim()}>
+          {addSource.isPending ? "Adding…" : "+ Add source"}
+        </Button>
+      </form>
+      {addSource.error != null && <ErrorState error={addSource.error} />}
+      <Caption>Uses your location. Every clip is checked before it can play.</Caption>
+    </div>
+  ) : undefined;
 
   return (
     <div className="flex flex-col gap-6">
       <FillerSources
         sources={sources}
-        // ⚠ The pending row is tracked by ID. This used to be
-        // `fetching={fetchSource.isPending ? "folder" : null}` — a hardcoded row — so
-        // fetching ANY source lit the drop-folder's spinner. Invisible while the folder was
-        // the only fetchable row; a visible lie now that V38c allows many.
-        onFetch={(id) => {
-          setFetchingSource(id);
-          fetchSource.mutate({ params: { id } });
-        }}
-        fetching={fetchSource.isPending ? fetchingSource : null}
+        onSelect={openSource}
+        selectedId={selectedSourceID}
         onToggleEnabled={(id, enabled) => {
           setTogglingSource(id);
           toggleSource.mutate({ id, data: { enabled } });
         }}
         toggling={toggleSource.isPending ? togglingSource : null}
-        onRemove={(id) => {
-          setRemovingSource(id);
-          removeSource.mutate({ id });
+        onToggleProvider={(kind, enabled) => {
+          setTogglingProvider(kind);
+          toggleProvider.mutate({ kind, data: { enabled } });
         }}
-        removing={removeSource.isPending ? removingSource : null}
-        error={toggleSource.error?.detail ?? fetchSource.error?.detail ?? sourcesError ?? null}
-        // Finding clips is something you do TO a source (V35), so the search lives INSIDE
-        // the row that owns it rather than in a detached card below the list (V35b, the
-        // mock's `sv.showSearch`). ⚠ Searching downloads nothing; `Queue download` is the
-        // only path that fetches, and it goes through the SAME ingest route the manual URL
-        // box uses rather than a second downloader.
-        //
-        // ⚠ Reads the server's `searchable` flag (V37) rather than testing the kind here.
-        // V35b hard-coded `kind === "remote"` and noted that flattening would change which
-        // row matched; it did, and a client-side kind test would have silently searched the
-        // wrong row — or nothing. The server owns which sources have something to query:
-        // archive can be searched, a YouTube playlist can only be ENUMERATED by yt-dlp, and
-        // a search box there would return nothing forever.
-        //
-        // Still gated on `enabled` too: offering search on a source the operator just
-        // switched off would contradict the switch's own copy ("stops scanning, searching
-        // and downloading from it").
-        renderSearch={(source) =>
-          source.searchable && source.enabled ? (
-            <div className="mt-2 w-full border-border border-t pt-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleSearch(source.id)}
-                aria-expanded={searchOpenFor === source.id}
-                // ⚠ The accessible name carries the SOURCE. With several collections on screen
-                // under one provider, five buttons all reading "Search it" are indistinguishable
-                // to anyone not looking at the row they sit in.
-                aria-label={
-                  searchOpenFor === source.id
-                    ? `Close the search of ${source.target}`
-                    : `Search ${source.target}`
-                }
-              >
-                {searchOpenFor === source.id ? "Close" : "Search it"}
-              </Button>
-              {searchOpenFor === source.id && (
-                <div className="mt-3">
-                  <SourceSearch
-                    results={discoveredResults}
-                    total={unwrap(discover.data, (b) => b.total) ?? undefined}
-                    stats={discoveredStats}
-                    // ⚠ De-duplicated HERE, not in the component: the observer reports the
-                    // visible set on every scroll, and each id it repeats is a real ~1.8s
-                    // upstream request.
-                    onVisible={(visible) =>
-                      setStatIds((prev) => {
-                        const next = visible.filter((id) => !prev.includes(id));
-                        return next.length > 0 ? [...prev, ...next] : prev;
-                      })
-                    }
-                    loadingStats={statsQuery.isFetching ? statIds : []}
-                    query={sourceQuery}
-                    onQueryChange={setSourceQuery}
-                    onSearch={() => {
-                      setSubmittedQuery(sourceQuery);
-                      // A new search is a new result set: keeping the old ids would ask
-                      // archive.org about rows nobody is looking at any more.
-                      setStatIds([]);
-                    }}
-                    onQueue={(clip) => {
-                      setQueueingId(clip.id);
-                      queueClip.mutate({ data: { urls: [clip.url] } });
-                    }}
-                    queued={queuedIds}
-                    queueing={queueClip.isPending ? queueingId : null}
-                    searching={discover.isFetching}
-                    error={discover.error?.detail ?? queueClip.error?.detail ?? null}
-                  />
-                </div>
-              )}
-            </div>
-          ) : undefined
+        togglingProvider={toggleProvider.isPending ? togglingProvider : null}
+        renderLocalSetup={localSourceSetup}
+        error={
+          toggleSource.error?.detail ??
+          fetchSource.error?.detail ??
+          removeSource.error?.detail ??
+          toggleProvider.error?.detail ??
+          sourcesError ??
+          null
         }
+        renderProviderSetup={(provider) => {
+          if (provider.kind !== "archive" && provider.kind !== "youtube") return undefined;
+          return <ProviderSourceFinder kind={provider.kind} enabled={provider.enabled} />;
+        }}
       />
 
-      {/* Add a source (V37, the mock's "Add a source"). ⚠ The KIND select is what makes this
-          work at all: an archive identifier and a YouTube URL are validated by incompatible
-          rules on the server, so before V37 the hardcoded archive validator rejected every
-          playlist URL with a message about archive.org collections. The operator says which
-          kind they mean rather than the server guessing from the string. */}
-      {/* ⚠ NOT a Card. The mock draws this as a plain block separated from the list by a single
-          top rule (`border-top: #1B1E24`, 16px above) — it continues the Sources section rather
-          than sitting in a box of its own. An earlier pass boxed it, which read as a second,
-          competing panel below the list. */}
-      {isAdmin && (
-        <div className="flex flex-col gap-3 border-border/40 border-t pt-4">
-          <h3 className="font-medium text-sm">Add a source</h3>
-          <form
-            className="flex flex-wrap items-center gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!newSourceURI.trim()) return;
-              addSource.mutate({
-                data: {
-                  kind: newSourceKind,
-                  uri: newSourceURI.trim(),
-                  country: newSourceCountry.trim().toUpperCase(),
-                  market: newSourceMarket.trim(),
-                },
-              });
-            }}
-          >
-            {/* ⚠ No visible field labels — the mock has none, and the per-kind PLACEHOLDER is the
-                label ("Library name on Jellyfin — e.g. Commercials"). It changes with the kind, so
-                a static label above it would either repeat it or contradict it. `aria-label` keeps
-                both controls named for screen readers, which is what the visible label was for. */}
-            <Select
-              value={newSourceKind}
-              onValueChange={(v) => {
-                const kind = v as typeof newSourceKind;
-                setNewSourceKind(kind);
-                if (kind === "folder" || kind === "library") {
-                  setNewSourceCountry("");
-                  setNewSourceMarket("");
-                }
-              }}
-            >
-              <SelectTrigger id="new-source-kind" className="w-45" aria-label="Kind of source to add">
-                <SelectValue />
-              </SelectTrigger>
-              {/* The mock's `sourceKinds`, in its order. ⚠ `library` is here because V38c restored
-                  library SCANNING (§10) — V35 had removed the kind's work entirely, so offering it
-                  then would have added a row nothing acted on. */}
-              <SelectContent>
-                <SelectItem value="library">Media server library</SelectItem>
-                <SelectItem value="folder">Watched folder</SelectItem>
-                <SelectItem value="archive">Internet Archive</SelectItem>
-                <SelectItem value="youtube">Playlist / collection URL</SelectItem>
-              </SelectContent>
-            </Select>
-            {/* ⚠ MONO, per the mock: what goes in here is a path, an identifier or a URL — text
-                where character-level accuracy matters and a proportional font hides a typo. */}
-            <Input
-              id="new-source-uri"
-              className="min-w-64 flex-1 font-mono"
-              value={newSourceURI}
-              placeholder={SOURCE_KIND_COPY[newSourceKind].placeholder}
-              aria-label={SOURCE_KIND_COPY[newSourceKind].label}
-              onChange={(e) => setNewSourceURI(e.target.value)}
-            />
-            {(newSourceKind === "archive" || newSourceKind === "youtube") && (
-              <>
-                <Input
-                  className="w-24 font-mono uppercase"
-                  value={newSourceCountry}
-                  maxLength={2}
-                  placeholder="US"
-                  aria-label="Source country code"
-                  onChange={(e) => setNewSourceCountry(e.target.value)}
-                />
-                <Input
-                  className="min-w-40 flex-1"
-                  value={newSourceMarket}
-                  placeholder="Market (optional)"
-                  aria-label="Source local market"
-                  disabled={!newSourceCountry.trim()}
-                  onChange={(e) => setNewSourceMarket(e.target.value)}
-                />
-              </>
-            )}
-            <Button type="submit" variant="outline" disabled={addSource.isPending || !newSourceURI.trim()}>
-              {addSource.isPending ? "Adding…" : "+ Add source"}
-            </Button>
-          </form>
-          {addSource.error != null && <ErrorState error={addSource.error} />}
-          {/* Scheduled source polling is real work (§10 V38b), while every arrival remains held
-              until terminal admission releases it. Name both halves so a successful fetch does not
-              look broken merely because Catalog correctly excludes its Incoming clips. */}
-          <Caption>
-            Country-only sources are nationwide; add a market for local sources. Once installation geography
-            is configured, unclassified and out-of-market sources are not fetched. Source selection controls
-            acquisition only; every clip still needs certified safety, rights, and playback evidence.
-          </Caption>
-        </div>
-      )}
+      <Sheet
+        open={Boolean(selectedSource)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedSourceID(undefined);
+            setSourcePreview(undefined);
+            setSearchPreview(undefined);
+            setBrowseOpen(false);
+            setSettingsOpen(false);
+          }
+        }}
+        swipeDirection="right"
+      >
+        {selectedSource && (
+          <SheetContent finalFocus={sourceTrigger}>
+            <SheetHeader>
+              <SheetTitle>
+                {selectedSource.id === "folder" ? "Drop folder" : selectedSource.target}
+              </SheetTitle>
+              <SheetDescription>{sourceKindLabel(selectedSource)}</SheetDescription>
+            </SheetHeader>
+
+            <div className="flex flex-col gap-6 p-6">
+              <section aria-labelledby="source-status-heading" className="flex flex-col gap-3">
+                <div>
+                  <h3 id="source-status-heading" className="font-medium">
+                    {readinessLabel(selectedSource)}
+                  </h3>
+                  <p className="mt-1 text-muted-foreground text-sm">{selectedSource.detail}</p>
+                  <p className="mt-1 text-muted-foreground text-xs">
+                    {selectedSource.incoming > 0
+                      ? `${selectedSource.count} ready · `
+                      : `${selectedSource.count} ${selectedSource.count === 1 ? "clip" : "clips"}`}
+                    {selectedSource.incoming > 0 && (
+                      <a
+                        href="/filler/incoming"
+                        className="underline decoration-border underline-offset-2 hover:text-foreground"
+                      >
+                        {`${selectedSource.incoming} being checked`}
+                      </a>
+                    )}
+                    {selectedSource.lastCheckedAt
+                      ? ` · last checked ${formatRelative(selectedSource.lastCheckedAt)}`
+                      : " · not checked yet"}
+                  </p>
+                  {selectedSource.kind === "folder" && (
+                    <p className="mt-3 break-all font-mono text-muted-foreground text-xs">
+                      {selectedSource.uri ?? selectedSource.target}
+                    </p>
+                  )}
+                </div>
+
+                {selectedSource.actions.includes("fetch") && (
+                  <Button
+                    type="button"
+                    className="self-start"
+                    disabled={fetchSource.isPending}
+                    onClick={() => {
+                      setCheckResult(undefined);
+                      fetchSource.mutate({ params: { id: selectedSource.id } });
+                    }}
+                  >
+                    {fetchSource.isPending ? `Looking in ${selectedSource.target}…` : "Look for new clips"}
+                  </Button>
+                )}
+
+                {checkResult && checkResult.sourceId === selectedSource.id && (
+                  <p role="status" className="rounded-md bg-muted/40 px-3 py-2 text-sm">
+                    {checkResultText(selectedSource, checkResult)}
+                  </p>
+                )}
+                {fetchSource.error && (
+                  <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-sm">
+                    {fetchSource.error.detail}
+                  </p>
+                )}
+              </section>
+
+              {registeredSourceURL(selectedSource) &&
+                (selectedSource.kind === "archive" || selectedSource.kind === "youtube") && (
+                  <section aria-labelledby="source-preview-heading" className="border-border border-t pt-5">
+                    <h3 id="source-preview-heading" className="font-medium">
+                      From this source
+                    </h3>
+                    <div className="mt-2">
+                      <SourceContentPreview
+                        kind={selectedSource.kind}
+                        canonicalUrl={
+                          sourcePreview?.sourceID === selectedSource.id
+                            ? sourcePreview.result.canonicalUrl
+                            : registeredSourceURL(selectedSource)!
+                        }
+                        previewItems={
+                          sourcePreview?.sourceID === selectedSource.id
+                            ? sourcePreview.result.previewItems
+                            : undefined
+                        }
+                        loading={selectedSource.providerEnabled && resolveSourcePreview.isPending}
+                        error={
+                          !selectedSource.providerEnabled
+                            ? `Resume ${selectedSource.kind === "archive" ? "Archive.org" : "YouTube"} to refresh these examples.`
+                            : resolveSourcePreview.error
+                              ? "Examples aren’t available right now. You can still open the source."
+                              : null
+                        }
+                      />
+                    </div>
+                  </section>
+                )}
+
+              {selectedSource.actions.includes("search") && (
+                <Disclosure
+                  open={browseOpen}
+                  onOpenChange={setBrowseOpen}
+                  className="border-border border-t pt-5"
+                >
+                  <Disclosure.SectionTrigger
+                    label={`${browseOpen ? "Hide" : "Show"} tools for finding a specific clip`}
+                    title="Find a specific clip"
+                    description="Search this Archive.org collection by title or keyword."
+                  />
+                  <Disclosure.Panel className="pt-4">
+                    <SourceSearch
+                      results={discoveredResults}
+                      total={unwrap(discover.data, (body) => body.total) ?? undefined}
+                      stats={discoveredStats}
+                      onVisible={(visible) =>
+                        setStatIds((previous) => {
+                          const next = visible.filter((id) => !previous.includes(id));
+                          return next.length > 0 ? [...previous, ...next] : previous;
+                        })
+                      }
+                      loadingStats={statsQuery.isFetching ? statIds : []}
+                      query={sourceQuery}
+                      onQueryChange={setSourceQuery}
+                      onSearch={() => {
+                        setSubmittedQuery(sourceQuery);
+                        setStatIds([]);
+                      }}
+                      onPreview={(clip) =>
+                        setSearchPreview({
+                          title: clip.title || clip.id,
+                          url: clip.url,
+                          durationMs: discoveredStats[clip.id]?.durationMs ?? clip.durationMs,
+                        })
+                      }
+                      onQueue={(clip) => {
+                        if (!selectedSource) return;
+                        setQueueingId(clip.id);
+                        queueClip.mutate({
+                          id: selectedSource.id,
+                          data: { remoteId: clip.id, url: clip.url },
+                        });
+                      }}
+                      queueStatus={queueStatus}
+                      queueing={queueClip.isPending ? queueingId : null}
+                      searching={discover.isFetching}
+                      error={discover.error?.detail ?? queueClip.error?.detail ?? null}
+                    />
+                  </Disclosure.Panel>
+                </Disclosure>
+              )}
+
+              {(selectedSource.automaticDownloads ||
+                selectedSource.actions.includes("edit_location") ||
+                selectedSource.actions.includes("remove")) && (
+                <Disclosure
+                  open={settingsOpen}
+                  onOpenChange={setSettingsOpen}
+                  className="border-border border-t pt-5"
+                >
+                  <Disclosure.SectionTrigger
+                    label={`${settingsOpen ? "Hide" : "Show"} source settings`}
+                    title="Source settings"
+                    description="Automatic downloads, location, and removal"
+                  />
+                  <Disclosure.Panel className="pt-4">
+                    <div className="flex flex-col gap-3">
+                      {selectedSource.automaticDownloads && (
+                        <div className="flex flex-col gap-3">
+                          <div>
+                            <p className="font-medium text-sm">Automatic downloads</p>
+                            <p className="mt-1 text-muted-foreground text-sm">
+                              {selectedSource.automaticDownloads.summary}
+                            </p>
+                            {selectedSource.automaticDownloads.nextCheckAt && (
+                              <p className="mt-1 text-muted-foreground text-xs">
+                                Next automatic check{" "}
+                                {formatRelative(selectedSource.automaticDownloads.nextCheckAt)}
+                              </p>
+                            )}
+                          </div>
+                          <Select
+                            value={downloadMode}
+                            onValueChange={(value) => {
+                              setDownloadMode(value as AutomaticDownloadMode);
+                              if (value === "custom") {
+                                setEditingCustomDownloadSchedule(
+                                  downloadSchedulePreset(downloadEverySeconds) === "custom",
+                                );
+                              }
+                            }}
+                          >
+                            <SelectTrigger aria-label="Automatic downloads for this source">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="defaults">Use automatic-download defaults</SelectItem>
+                              <SelectItem value="custom">Use a different schedule</SelectItem>
+                              <SelectItem value="never">Never download automatically</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {downloadMode === "custom" && (
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-sm">Look for new clips</span>
+                                <Select
+                                  value={
+                                    editingCustomDownloadSchedule
+                                      ? "custom"
+                                      : downloadSchedulePreset(downloadEverySeconds)
+                                  }
+                                  onValueChange={(value) => {
+                                    const preset = value as DownloadSchedulePreset;
+                                    setEditingCustomDownloadSchedule(preset === "custom");
+                                    if (preset !== "custom") {
+                                      setDownloadEverySeconds(downloadScheduleSeconds[preset]);
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger aria-label="Source check schedule">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="6h">Every 6 hours</SelectItem>
+                                    <SelectItem value="12h">Every 12 hours</SelectItem>
+                                    <SelectItem value="daily">Daily</SelectItem>
+                                    <SelectItem value="weekly">Weekly</SelectItem>
+                                    <SelectItem value="custom">Custom</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-sm">Add up to</span>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={1000}
+                                  aria-label="Clips per source check"
+                                  value={downloadMaxPerCheck}
+                                  onChange={(event) =>
+                                    setDownloadMaxPerCheck(
+                                      Math.min(1000, Math.max(Number(event.target.value), 1)),
+                                    )
+                                  }
+                                />
+                              </div>
+                              {editingCustomDownloadSchedule && (
+                                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                  <span className="text-sm">Custom schedule</span>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type="number"
+                                      min={1}
+                                      max={downloadIntervalMaximum(
+                                        downloadIntervalParts(downloadEverySeconds).unit,
+                                      )}
+                                      step="any"
+                                      aria-label="Source check interval"
+                                      value={downloadIntervalParts(downloadEverySeconds).amount}
+                                      onChange={(event) => {
+                                        const current = downloadIntervalParts(downloadEverySeconds);
+                                        const maximum = downloadIntervalMaximum(current.unit);
+                                        setDownloadEverySeconds(
+                                          downloadIntervalSeconds(
+                                            Math.min(Number(event.target.value), maximum),
+                                            current.unit,
+                                          ),
+                                        );
+                                      }}
+                                    />
+                                    <Select
+                                      value={downloadIntervalParts(downloadEverySeconds).unit}
+                                      onValueChange={(value) => {
+                                        const current = downloadIntervalParts(downloadEverySeconds);
+                                        setDownloadEverySeconds(
+                                          downloadIntervalSeconds(
+                                            Math.min(
+                                              current.amount,
+                                              downloadIntervalMaximum(value as DownloadIntervalUnit),
+                                            ),
+                                            value as DownloadIntervalUnit,
+                                          ),
+                                        );
+                                      }}
+                                    >
+                                      <SelectTrigger
+                                        aria-label="Source check interval unit"
+                                        className="w-28 shrink-0"
+                                      >
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="minutes">minutes</SelectItem>
+                                        <SelectItem value="hours">hours</SelectItem>
+                                        <SelectItem value="days">days</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <Button
+                            ref={downloadSaveButton}
+                            type="button"
+                            variant="outline"
+                            className="self-start"
+                            disabled={toggleSource.isPending}
+                            onClick={() => {
+                              setDownloadSaveError(undefined);
+                              setTogglingSource(selectedSource.id);
+                              toggleSource.mutate(
+                                {
+                                  id: selectedSource.id,
+                                  data: {
+                                    enabled: selectedSource.enabled,
+                                    automaticDownloads:
+                                      downloadMode === "custom"
+                                        ? {
+                                            mode: "custom",
+                                            everySeconds: downloadEverySeconds,
+                                            maxPerCheck: downloadMaxPerCheck,
+                                          }
+                                        : { mode: downloadMode },
+                                  },
+                                },
+                                {
+                                  onSuccess: () => toast.success("Automatic downloads updated"),
+                                  onError: (error) =>
+                                    setDownloadSaveError(
+                                      error.detail ?? "Automatic downloads couldn’t be saved. Try again.",
+                                    ),
+                                  onSettled: () =>
+                                    requestAnimationFrame(() => downloadSaveButton.current?.focus()),
+                                },
+                              );
+                            }}
+                          >
+                            {toggleSource.isPending && togglingSource === selectedSource.id
+                              ? "Saving…"
+                              : "Save automatic downloads"}
+                          </Button>
+                          {downloadSaveError && (
+                            <p
+                              role="alert"
+                              className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-sm"
+                            >
+                              {downloadSaveError}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {selectedSource.actions.includes("edit_location") && (
+                        <div className="flex flex-col gap-3 border-border border-t pt-3">
+                          <p className="text-muted-foreground text-sm">
+                            Change this only when the source covers a different area from your location.
+                          </p>
+                          <LocationPicker
+                            value={
+                              sourceCountry
+                                ? { country: sourceCountry, market: sourceMarket }
+                                : {
+                                    country: selectedSource.effectiveCountry ?? "",
+                                    market: selectedSource.effectiveMarket ?? "",
+                                  }
+                            }
+                            onChange={(location) => {
+                              setSourceCountry(location.country);
+                              setSourceMarket(location.market ?? "");
+                            }}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={toggleSource.isPending || !sourceCountry.trim()}
+                              onClick={() => {
+                                setTogglingSource(selectedSource.id);
+                                toggleSource.mutate({
+                                  id: selectedSource.id,
+                                  data: {
+                                    enabled: selectedSource.enabled,
+                                    geography: {
+                                      country: sourceCountry.trim().toUpperCase(),
+                                      market: sourceMarket.trim(),
+                                    },
+                                  },
+                                });
+                              }}
+                            >
+                              Save different area
+                            </Button>
+                            {(sourceCountry.trim() || selectedSource.locationSource === "source") && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                disabled={toggleSource.isPending}
+                                onClick={() => {
+                                  if (selectedSource.locationSource !== "source") {
+                                    setSourceCountry("");
+                                    setSourceMarket("");
+                                    return;
+                                  }
+                                  setTogglingSource(selectedSource.id);
+                                  toggleSource.mutate(
+                                    {
+                                      id: selectedSource.id,
+                                      data: {
+                                        enabled: selectedSource.enabled,
+                                        geography: { country: "", market: "" },
+                                      },
+                                    },
+                                    {
+                                      onSuccess: () => {
+                                        setSourceCountry("");
+                                        setSourceMarket("");
+                                      },
+                                    },
+                                  );
+                                }}
+                              >
+                                Use my location
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedSource.actions.includes("remove") && (
+                        <div className="border-border border-t pt-3">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            disabled={removeSource.isPending}
+                            onClick={() => {
+                              setRemovingSource(selectedSource.id);
+                              removeSource.mutate({ id: selectedSource.id });
+                            }}
+                            aria-label={`Remove ${selectedSource.target}`}
+                          >
+                            {removeSource.isPending && removingSource === selectedSource.id
+                              ? "Removing…"
+                              : "Remove source"}
+                          </Button>
+                          <p className="mt-1 text-muted-foreground text-xs">
+                            Clips already downloaded stay in your library.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </Disclosure.Panel>
+                </Disclosure>
+              )}
+
+              <SourceItemPreviewDialog
+                item={searchPreview}
+                kind="archive"
+                onClose={() => setSearchPreview(undefined)}
+              />
+            </div>
+          </SheetContent>
+        )}
+      </Sheet>
     </div>
   );
 };

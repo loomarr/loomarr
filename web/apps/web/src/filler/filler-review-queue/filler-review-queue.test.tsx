@@ -56,7 +56,7 @@ const screening: FillerScreeningDTO = {
   evidenceSha256: "3".repeat(64),
   outcome: "pass",
   assessedAt: "2026-09-04T21:00:00Z",
-  axes: ["visual_safety", "spoken_safety", "written_safety", "rights", "playback_integrity"].map((axis) => ({
+  axes: ["visual_safety", "spoken_safety", "written_safety", "playback_integrity"].map((axis) => ({
     axis: axis as FillerScreeningDTO["axes"][number]["axis"],
     outcome: "pass",
     reasonCode: "policy_clear",
@@ -125,7 +125,7 @@ describe("FillerReviewQueue", () => {
     expect(screen.getByRole("button", { name: "Skip for now" })).toBeInTheDocument();
   });
 
-  it("loads and presents the five independent screens only when evidence is opened", async () => {
+  it("loads and presents the four independent screens only when evidence is opened", async () => {
     let screeningReads = 0;
     server.use(
       getFillerAttentionMockHandler({ rows: [review], total: 1 }),
@@ -143,9 +143,8 @@ describe("FillerReviewQueue", () => {
     expect(await screen.findByText("Visual safety")).toBeInTheDocument();
     expect(screen.getByText("Spoken safety")).toBeInTheDocument();
     expect(screen.getByText("Written safety")).toBeInTheDocument();
-    expect(screen.getByText("Current-use rights")).toBeInTheDocument();
     expect(screen.getByText("Playback integrity")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Audience airworthiness" })).toHaveTextContent(/all ages/i);
+    expect(screen.getByRole("region", { name: "Audience suitability" })).toHaveTextContent(/all ages/i);
     expect(screeningReads).toBe(1);
   });
 
@@ -357,6 +356,7 @@ describe("FillerReviewQueue", () => {
     server.use(getFillerAttentionMockHandler({ rows: [], total: 0 }));
     render(<FillerReviewQueue />, { wrapper });
     expect(await screen.findByText("Nothing needs your attention")).toBeInTheDocument();
+    expect(screen.getByText(/Loomarr is handling everything/i)).toBeInTheDocument();
   });
 
   it("shows all five screens and keeps positive confirmation closed when evidence is unavailable", async () => {
@@ -394,29 +394,5 @@ describe("FillerReviewQueue", () => {
     expect(screen.queryByRole("button", { name: "Correct" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Skip for now" })).not.toBeInTheDocument();
-  });
-
-  it("renders a rights task without generic editorial actions", async () => {
-    server.use(
-      getFillerAttentionMockHandler({
-        rows: [
-          {
-            ...review,
-            taskKind: "rights_provenance",
-            allowedActions: ["abandon"],
-            question: "Is this source and item licensed for use as filler?",
-            reasonCodes: ["missing_source_license"],
-          },
-        ],
-        total: 1,
-      }),
-    );
-    render(<FillerReviewQueue />, { wrapper });
-
-    expect(await screen.findByText("Rights and provenance decision")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Record as filler" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Correct answer" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Record as not filler" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Skip for now" })).toBeInTheDocument();
   });
 });

@@ -14,7 +14,6 @@ const (
 	qualificationSafetyEvidenceSchemaVersion   = 1
 	qualificationSafetyEvidenceContractVersion = "filler-rendered-child-safety-qualification-evidence-v1"
 	qualificationSafetyImplementationVersion   = "filler-rendered-child-safety-qualification-evaluator-v1"
-	qualificationRightsImplementationVersion   = "filler-current-broadcast-rights-evaluator-v1"
 	qualificationPlaybackImplementationVersion = "filler-playback-integrity-evaluator-v1"
 )
 
@@ -105,20 +104,16 @@ func (e *qualificationSafetyEvaluator) Evaluate(ctx context.Context, media Segme
 	return NewSegmentScreeningAxisEvidence(media.Subject, e.profile, ScreenHold, reasonCode, suitability, raw, e.now())
 }
 
-// NewQualificationSegmentScreeningRuntime activates the complete five-axis production boundary
-// before the three inference-backed safety lanes are certified. The local rights and playback
-// axes run normally; each missing safety axis records a non-authorizing hold over the exact child.
-func NewQualificationSegmentScreeningRuntime(evidenceRoot string, rightsRepository FillerRightsGrantRepository, now func() time.Time) (*SegmentScreeningRuntime, error) {
-	if rightsRepository == nil || now == nil {
-		return nil, fmt.Errorf("qualification segment screening requires rights repository and clock")
+// NewQualificationSegmentScreeningRuntime activates the complete four-axis production boundary
+// before the three inference-backed safety lanes are certified. The local playback axis runs
+// normally; each missing safety axis records a non-authorizing hold over the exact child.
+func NewQualificationSegmentScreeningRuntime(evidenceRoot string, now func() time.Time) (*SegmentScreeningRuntime, error) {
+	if now == nil {
+		return nil, fmt.Errorf("qualification segment screening requires a clock")
 	}
 	evidence, err := NewFileSegmentScreeningEvidenceRepository(evidenceRoot)
 	if err != nil {
 		return nil, fmt.Errorf("qualification segment screening evidence: %w", err)
-	}
-	rights, err := NewFillerRightsRegistry(rightsRepository)
-	if err != nil {
-		return nil, err
 	}
 	evaluators := make([]SegmentScreeningEvaluator, 0, len(segmentScreeningAxisOrder))
 	safetyProfiles := make([]SegmentScreeningAxisProfile, 0, 3)
@@ -130,13 +125,6 @@ func NewQualificationSegmentScreeningRuntime(evidenceRoot string, rightsReposito
 		evaluators = append(evaluators, evaluator)
 		safetyProfiles = append(safetyProfiles, evaluator.profile)
 	}
-	rightsEvaluator, err := NewFillerRightsEvaluator(
-		qualificationSegmentScreeningProfile(ScreenRights, fillerRightsEvidenceContractVersion, qualificationRightsImplementationVersion),
-		evidence, rights, now,
-	)
-	if err != nil {
-		return nil, err
-	}
 	playbackEvaluator, err := NewPlaybackIntegrityEvaluator(
 		qualificationSegmentScreeningProfile(ScreenPlayback, playbackIntegrityEvidenceContractVersion, qualificationPlaybackImplementationVersion),
 		evidence, now,
@@ -144,7 +132,7 @@ func NewQualificationSegmentScreeningRuntime(evidenceRoot string, rightsReposito
 	if err != nil {
 		return nil, err
 	}
-	evaluators = append(evaluators, rightsEvaluator, playbackEvaluator)
+	evaluators = append(evaluators, playbackEvaluator)
 	airworthiness, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileAllAges, safetyProfiles)
 	if err != nil {
 		return nil, err

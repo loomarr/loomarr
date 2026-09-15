@@ -30,7 +30,10 @@ type progMemStore struct {
 
 func newProgMemStore(hash string) *progMemStore {
 	return &progMemStore{
-		clips: map[string]StoreClip{hash: {Clip: Clip{Hash: hash, Path: "a/" + hash + ".mp4", Name: hash}}},
+		clips: map[string]StoreClip{hash: {Clip: Clip{
+			Hash: hash, Path: "a/" + hash + ".mp4", Name: hash,
+			Kind: Unclassified, Source: "test-source", Held: true,
+		}}},
 		rows: map[string]ClipPipeline{hash: {
 			ClipHash: hash, Stage: StageProbe, Status: StatusQueued, Disposition: DispositionRunning,
 		}},
@@ -90,6 +93,14 @@ func (m *progMemStore) HoldClips(context.Context, []string, time.Time) (int, err
 }
 func (m *progMemStore) ReleaseCompositeHolds(context.Context, []string, time.Time) (int, error) {
 	return 0, nil
+}
+func (m *progMemStore) CommitFillerReady(_ context.Context, commit ReadyCommit) error {
+	c := m.clips[commit.Event.ClipHash]
+	c.Held = false
+	c.Placement = commit.Event.Placement
+	m.clips[c.Hash] = c
+	m.rows[c.Hash] = commit.Pipeline
+	return nil
 }
 
 // reportingStage is a rung that emits a scripted progress script, the way transcode emits ffmpeg's

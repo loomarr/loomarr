@@ -397,7 +397,6 @@ func prepare(ctx context.Context, opts options, deriver mediaDeriver) (fillereva
 		}
 		packet := fillerbakeoff.Packet{SchemaVersion: fillerbakeoff.PacketSchemaVersion, CaseID: planned.CaseID, EvidenceVersion: plan.EvidenceVersion, ContentSHA256: hashes.sha256, Facts: []filleradmission.Evidence{
 			{ID: "media-usability", Claim: filleradmission.ClaimMediaUsability, Value: usability(measurement.Usable), Kind: filleradmission.KindDecoder, Source: "decoder:" + planned.CaseID, Location: measurement.Detail},
-			{ID: "source-license", Claim: filleradmission.ClaimSourceLicense, Value: filleradmission.EligibilityEligible, Kind: filleradmission.KindSourcePolicy, Source: "rights:" + planned.CaseID},
 		}, Signals: metadataSignals(item)}
 		if measurement.Usable {
 			caseDir := filepath.Join(stageRoot, fillercorpus.InventorySHA256([]byte(planned.CaseID)))

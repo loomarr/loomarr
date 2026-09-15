@@ -18,7 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func TestFillerScreeningReturnsOneExactBrowserSafeFiveAxisProjection(t *testing.T) {
+func TestFillerScreeningReturnsOneExactBrowserSafeFourAxisProjection(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -37,24 +37,9 @@ func TestFillerScreeningReturnsOneExactBrowserSafeFiveAxisProjection(t *testing.
 		t.Fatal(err)
 	}
 	service := &testkit.FillerScreeningService{Summary: apiScreeningSummaryFixture(t, hash)}
-	rights, err := filler.NewFillerRightsRegistry(st)
-	if err != nil {
-		t.Fatal(err)
-	}
-	recordedAt := time.Date(2026, time.September, 4, 20, 30, 0, 0, time.UTC)
-	grant, err := filler.NewFillerRightsGrant(
-		*service.Summary.RightsScope, filler.FillerRightsAuthorized, filler.FillerRightsWithdrawalClear,
-		strings.Repeat("9", 64), "reviewer-1", recordedAt, nil, nil, "", recordedAt,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rights.Record(t.Context(), grant); err != nil {
-		t.Fatal(err)
-	}
 	server := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		FillerLayout: layout, FillerScreening: service, FillerRights: rights,
+		FillerLayout: layout, FillerScreening: service,
 	}))
 	t.Cleanup(server.Close)
 
@@ -68,20 +53,14 @@ func TestFillerScreeningReturnsOneExactBrowserSafeFiveAxisProjection(t *testing.
 		t.Fatal(err)
 	}
 	if body.State != "available" || body.ClipHash != hash || body.Outcome != "pass" ||
-		len(body.Axes) != 5 || body.Axes[0].Axis != "visual_safety" ||
-		body.Axes[4].Axis != "playback_integrity" || body.Airworthiness == nil ||
+		len(body.Axes) != 4 || body.Axes[0].Axis != "visual_safety" ||
+		body.Axes[3].Axis != "playback_integrity" || body.Airworthiness == nil ||
 		body.Airworthiness.Verdict != "pass" || body.Airworthiness.SubjectSHA256 != service.Summary.SubjectSHA256 ||
 		body.Airworthiness.SchemaVersion != fillerairworthiness.DecisionSchemaVersion ||
 		body.Airworthiness.ContractVersion != fillerairworthiness.DecisionContractVersion ||
 		body.Airworthiness.PolicyVersion == "" || body.Airworthiness.VocabularyVersion == "" ||
 		len(body.Airworthiness.EvidenceSHA256s) != 3 || body.Airworthiness.AuthoritySHA256 == "" ||
-		body.Airworthiness.DecisionSHA256 == "" || body.RightsReview == nil ||
-		body.RightsReview.SourceID != service.Summary.RightsScope.SourceID ||
-		body.RightsReview.AcquisitionID != service.Summary.RightsScope.AcquisitionID ||
-		body.RightsReview.SourceMasterSHA256 != service.Summary.RightsScope.SourceMasterSHA256 ||
-		body.RightsReview.PolicySHA256 != service.Summary.RightsScope.PolicySHA256 ||
-		body.RightsReview.Use != filler.FillerBroadcastUse || !body.RightsReview.CanRecord ||
-		body.RightsReview.CurrentGrant == nil || body.RightsReview.CurrentGrant.SHA256 != grant.SHA256 {
+		body.Airworthiness.DecisionSHA256 == "" {
 		t.Fatalf("screening body=%+v service=%+v", body, service)
 	}
 	requests := service.Requests()
@@ -116,7 +95,7 @@ func apiScreeningSummaryFixture(t *testing.T, clipHash string) filler.SegmentScr
 	decision := apiAirworthinessDecisionFixture(t, subject)
 	axes := []filler.SegmentScreeningAxis{
 		filler.ScreenVisualSafety, filler.ScreenSpokenSafety, filler.ScreenWrittenSafety,
-		filler.ScreenRights, filler.ScreenPlayback,
+		filler.ScreenPlayback,
 	}
 	summaries := make([]filler.SegmentScreeningAxisSummary, 0, len(axes))
 	for index, axis := range axes {
@@ -129,11 +108,6 @@ func apiScreeningSummaryFixture(t *testing.T, clipHash string) filler.SegmentScr
 		State: filler.ScreeningSummaryAvailable, ClipHash: clipHash,
 		SubjectSHA256: subject, EvidenceSHA256: strings.Repeat("8", 64), Outcome: filler.ScreenPass,
 		Axes: summaries, Airworthiness: &decision,
-		RightsScope: &filler.FillerRightsScope{
-			SourceID: "archive:commercials", AcquisitionID: "acq-17",
-			SourceMasterSHA256: strings.Repeat("9", 64), PolicySHA256: strings.Repeat("4", 64),
-			Use: filler.FillerBroadcastUse,
-		},
 		AssessedAt: time.Date(2026, time.September, 4, 21, 0, 0, 0, time.UTC),
 	}
 	if err := filler.ValidateSegmentScreeningSummary(summary); err != nil {

@@ -26,9 +26,17 @@ interface DisclosureTriggerProps {
   className?: string;
 }
 
+interface DisclosureSectionTriggerProps {
+  /** Short accessible command describing what opening the section does. */
+  label: string;
+  title: string;
+  description?: string;
+  className?: string;
+}
+
 interface DisclosurePanelProps {
   children: ReactNode;
   className?: string;
 }
 
-export type { DisclosurePanelProps, DisclosureProps, DisclosureTriggerProps };
+export type { DisclosurePanelProps, DisclosureProps, DisclosureSectionTriggerProps, DisclosureTriggerProps };

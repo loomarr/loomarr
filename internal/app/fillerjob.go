@@ -45,9 +45,11 @@ func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 		// its own, and this walks every registered source.
 		Timeout: scheduler.LongJobTimeout,
 		Name:    "filler-fetch", Group: scheduler.GroupFiller, Title: "Fetch new filler",
-		Description: "Downloads new clips from configured sources into Filler Incoming for review.",
-		DefaultCron: "0 0 */6 * * *", ScheduleKey: "job.filler_fetch.schedule",
-		Run: func(ctx context.Context) error { _, err := f.Run(ctx); return err },
+		Description: "Checks sources whose automatic-download schedule is due and adds new clips to Incoming.",
+		// Fixed, cheap due-source wake. The user cadence lives only in filler.fetch.every and the
+		// per-source policy; an idle pass makes no provider request.
+		DefaultCron: "0 * * * * *",
+		Run:         func(ctx context.Context) error { _, err := f.Run(ctx); return err },
 	}
 }
 

@@ -60,18 +60,47 @@ test("a fetched arrival becomes playable only after terminal admission completes
       return reply({
         sources: [
           {
+            id: "provider:archive",
+            kind: "archive",
+            target: "Archive.org",
+            detail: "collections you added",
+            count: 0,
+            incoming: 0,
+            configured: true,
+            fetchable: false,
+            enabled: true,
+            effectiveEnabled: true,
+            providerEnabled: true,
+            switchable: false,
+            removable: false,
+            searchable: false,
+            group: true,
+            readiness: "ready",
+            ready: true,
+            locationSource: "missing",
+            actions: ["configure", "disable"],
+          },
+          {
             id: "archive:trusted",
             uri: "trusted",
             kind: "archive",
             target: "Trusted Commercials",
             detail: "an enabled archive.org collection",
             count: fetched ? 1 : 0,
+            incoming: fetched && !terminalAdmissionApplied ? 1 : 0,
             configured: true,
             fetchable: true,
             enabled: true,
+            effectiveEnabled: true,
+            providerEnabled: true,
             switchable: true,
             removable: true,
             searchable: false,
+            parentId: "provider:archive",
+            readiness: "ready",
+            ready: true,
+            locationSource: "installation",
+            actions: ["fetch", "disable", "remove", "edit_location"],
           },
         ],
         total: 1,
@@ -224,6 +253,7 @@ test("a fetched arrival becomes playable only after terminal admission completes
     if (path === "/v1/filler/watch") {
       return reply({
         sourcesOn: 1,
+        sourcesReady: 1,
         sourcesTotal: 1,
         clips: fetched ? 1 : 0,
         held: fetched && !terminalAdmissionApplied ? 1 : 0,
@@ -353,11 +383,10 @@ test("a fetched arrival becomes playable only after terminal admission completes
 
   await page.goto("/filler/sources");
   await expect(page.getByText("Trusted Commercials")).toBeVisible();
-  await expect(
-    page.getByText(/arrivals remain in Incoming until their safety, rights, playback/i),
-  ).toBeVisible();
+  await expect(page.getByText(/every clip is checked before it can play/i)).toBeVisible();
   await expect(page.getByRole("switch", { name: /automatically file grounded clips/i })).toHaveCount(0);
-  await page.getByRole("button", { name: /fetch now from trusted commercials/i }).click();
+  await page.getByRole("button", { name: /manage trusted commercials/i }).click();
+  await page.getByRole("button", { name: "Look for new clips" }).click();
   await expect.poll(() => fetched).toBe(true);
 
   const legacyIncomingRequests = requestedPaths.filter((path) => path === "/v1/filler/incoming").length;
@@ -384,7 +413,7 @@ test("a fetched arrival becomes playable only after terminal admission completes
   await expect(fillerNav.getByRole("link", { name: "Sources" })).toBeVisible();
 
   await page.goto("/filler/manage");
-  await expect(page.getByText("Would admit (shadow)")).toBeVisible();
+  await expect(page.getByText("Would add (preview)")).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();
@@ -401,8 +430,8 @@ test("a fetched arrival becomes playable only after terminal admission completes
   terminalAdmissionApplied = true;
 
   await page.goto("/filler/manage");
-  await expect(page.getByText("Would admit (shadow)")).toBeVisible();
-  await expect(page.getByText("Admitted automatically")).toBeVisible();
+  await expect(page.getByText("Would add (preview)")).toBeVisible();
+  await expect(page.getByText("Added automatically")).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();

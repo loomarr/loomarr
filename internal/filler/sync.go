@@ -478,8 +478,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		merged.TunarrProgramID = rc.TunarrProgramID
 		if found {
 			// A filename with no explicit role token cannot erase a concrete kind from an already
-			// admitted row. Its terminal admission remains the stronger authority. Held legacy rows
-			// do move to Unclassified so the old default-commercial inference cannot survive review.
+			// Ready row. Existing descriptive metadata remains the stronger fact.
 			if rc.Kind == Unclassified && !existing.Held && validConcreteKind(existing.Kind) {
 				merged.Kind = existing.Kind
 			}
@@ -506,6 +505,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			// alone would do; the file's own comment about the play counters argues for both,
 			// because a future edit to one that forgot the other fails silently.
 			merged.Held = existing.Held
+			merged.Placement = existing.Placement
 			merged.Confidence = existing.Confidence
 			merged.IsComposite = existing.IsComposite || rc.IsComposite
 			// ⚠ Play counters are PRESERVED, not re-derived: a scan knows nothing about what
@@ -533,19 +533,14 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			if merged.Source == "" {
 				merged.Source = "filler-dir"
 			}
-			// Every new non-composite arrival starts held. A hand copy proves that an operator
-			// wanted Loomarr to examine the bytes; it proves neither audience safety nor rights.
+			// Every new non-composite arrival starts held. The opted-in folder/source supplies
+			// Enrollment authority, while terminal readiness still owns the publication write.
 			// Existing rows preserve their settled state above, so a routine re-scan cannot
-			// withdraw already-admitted media.
+			// withdraw Ready media.
 			merged.Held = true
 			res.Added++
 		}
 		if rc.LineageInvalid || rc.ConditioningHold {
-			merged.Held = true
-		}
-		// A legacy or reconstructed row may predate the held-only role state. Close it here as
-		// soon as this scan discovers that no concrete role authority survives.
-		if merged.Kind == Unclassified {
 			merged.Held = true
 		}
 		if err := s.store.UpsertClip(ctx, merged); err != nil {

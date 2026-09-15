@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import { InstallationLocation } from "@/components/loomarr/settings/installation-location";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
@@ -41,7 +42,7 @@ const GeneralSettings = () => {
   return (
     <SettingsPage
       title="General"
-      description="Application-wide identity and addresses used across Loomarr."
+      description="Location and links used throughout Loomarr."
       entries={entries}
       blocks={[
         {
@@ -55,13 +56,24 @@ const GeneralSettings = () => {
       ]}
     >
       {({ liveValue, setEdit }) => (
-        <PublicURLDefault
-          editable={publicURL?.provenance !== "env"}
-          loaded={publicURL !== undefined}
-          persistedValue={publicURL?.value ?? ""}
-          liveValue={() => liveValue(publicURLKey)}
-          setEdit={setEdit}
-        />
+        <>
+          <InstallationLocation
+            entries={entries}
+            values={{
+              "filler.home_country": liveValue("filler.home_country"),
+              "filler.home_market": liveValue("filler.home_market"),
+            }}
+            onChange={setEdit}
+            card
+          />
+          <PublicURLDefault
+            editable={publicURL?.provenance !== "env"}
+            loaded={publicURL !== undefined}
+            persistedValue={publicURL?.value ?? ""}
+            liveValue={() => liveValue(publicURLKey)}
+            setEdit={setEdit}
+          />
+        </>
       )}
     </SettingsPage>
   );

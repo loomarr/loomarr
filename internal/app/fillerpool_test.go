@@ -213,8 +213,8 @@ func TestPool_CountsCatalogWithNoChannels(t *testing.T) {
 	if report.Clips != 3 {
 		t.Errorf("Clips = %d, want 3", report.Clips)
 	}
-	if report.Commercials != 2 {
-		t.Errorf("Commercials = %d, want 2 — the bumper is not a break body", report.Commercials)
+	if report.BreakBody != 2 {
+		t.Errorf("BreakBody = %d, want 2 — the bumper is not a break body", report.BreakBody)
 	}
 	if report.Untagged != 1 {
 		t.Errorf("Untagged = %d, want 1 (from the store's predicate, not a Go copy of it)", report.Untagged)

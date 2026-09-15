@@ -660,7 +660,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		//
 		// ⚠ This used to claim that "exhausting the retries leaves the reel in review". It does
 		// not: `split` is not in `fatalStages`, so `onFailure` resolves and the row STEPS ONWARD,
-		// through rungs the composite guard skips, landing at `filed`. The reel is still reviewable
+		// through rungs the composite guard skips, landing at `complete`. The reel is still reviewable
 		// — its proposal is intact and Incoming lists it — but the pipeline row says finished, not
 		// waiting. Corrected rather than deleted because the wrong version is the kind of comment
 		// someone reasons from when deciding whether a reel can be recovered.

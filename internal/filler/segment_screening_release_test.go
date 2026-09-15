@@ -1,7 +1,6 @@
 package filler
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,19 +14,8 @@ import (
 func TestSegmentScreeningCertificationReplaysEveryAxisAndRawEvidence(t *testing.T) {
 	subject := screeningChildSubjectFixture(t)
 	aggregate, certification, repository, records := screeningCertificationFixture(t, subject, true)
-	var currentRequest FillerRightsUseRequest
-	certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
-		currentRequest = request
-		decision, err := NewFillerRightsUseDecision(request, FillerRightsAuthorized, FillerRightsWithdrawalClear, screeningDigest("7"), nil, nil)
-		return decision, true, err
-	})
 	if err := certification.Verify(t.Context(), aggregate); err != nil {
 		t.Fatal(err)
-	}
-	if currentRequest.SubjectSHA256 != subject.SHA256 || currentRequest.SourceMasterSHA256 != subject.SourceMasterSHA256 ||
-		currentRequest.SourceID != subject.SourceID || currentRequest.AcquisitionID != subject.AcquisitionID ||
-		currentRequest.PolicySHA256 != screeningProfileFixture(ScreenRights, "4").PolicySHA256 || currentRequest.Use != FillerBroadcastUse {
-		t.Fatalf("current rights request = %+v", currentRequest)
 	}
 	for _, recorded := range records {
 		loaded, err := repository.GetSegmentScreeningAxisEvidence(t.Context(), recorded.Evidence.SHA256)
@@ -95,7 +83,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 		profiles := screeningProfiles(records)
 		profiles[0].PolicySHA256 = strings.Repeat("f", 64)
 		release := screeningReleaseFixture(profiles, true)
-		certification, err := NewSegmentScreeningCertification(release, repository, passingCurrentRightsAuthority(), screeningReleaseClock)
+		certification, err := NewSegmentScreeningCertification(release, repository)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,32 +102,12 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 		release.AirworthinessProfile = fillerairworthiness.ProfileGeneralAudience
 		release.AirworthinessAuthoritySHA256 = evaluator.AuthoritySHA256()
 		release.SHA256 = SegmentScreeningReleaseAuthoritySHA256(release)
-		certification, err := NewSegmentScreeningCertification(release, repository, passingCurrentRightsAuthority(), screeningReleaseClock)
+		certification, err := NewSegmentScreeningCertification(release, repository)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
 			t.Fatal("different valid Airworthiness profile reproduced aggregate")
-		}
-	})
-	t.Run("current rights missing", func(t *testing.T) {
-		aggregate, certification, _, _ := screeningCertificationFixture(t, subject, true)
-		certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
-			return FillerRightsUseDecision{}, false, nil
-		})
-		if err := certification.Verify(t.Context(), aggregate); err == nil {
-			t.Fatal("missing current rights passed")
-		}
-	})
-	t.Run("current rights withdrawn", func(t *testing.T) {
-		aggregate, certification, _, _ := screeningCertificationFixture(t, subject, true)
-		certification.rights = currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
-			withdrawn := request.RequestedAt.Add(-time.Minute)
-			decision, err := NewFillerRightsUseDecision(request, FillerRightsProhibited, FillerRightsWithdrawalActive, screeningDigest("7"), nil, &withdrawn)
-			return decision, true, err
-		})
-		if err := certification.Verify(t.Context(), aggregate); err == nil {
-			t.Fatal("withdrawn current rights passed")
 		}
 	})
 }
@@ -168,22 +136,11 @@ func screeningCertificationFixture(t *testing.T, subject SegmentScreeningSubject
 	if err := repository.PutSegmentScreeningEvidence(t.Context(), aggregate); err != nil {
 		t.Fatal(err)
 	}
-	certification, err := NewSegmentScreeningCertification(screeningReleaseFixture(screeningProfiles(records), production), repository, passingCurrentRightsAuthority(), screeningReleaseClock)
+	certification, err := NewSegmentScreeningCertification(screeningReleaseFixture(screeningProfiles(records), production), repository)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return aggregate, certification, repository, records
-}
-
-func passingCurrentRightsAuthority() CurrentFillerRightsAuthority {
-	return currentFillerRightsAuthorityFunc(func(_ context.Context, request FillerRightsUseRequest) (FillerRightsUseDecision, bool, error) {
-		decision, err := NewFillerRightsUseDecision(request, FillerRightsAuthorized, FillerRightsWithdrawalClear, screeningDigest("7"), nil, nil)
-		return decision, true, err
-	})
-}
-
-func screeningReleaseClock() time.Time {
-	return time.Date(2026, time.September, 12, 8, 0, 0, 0, time.UTC)
 }
 
 func screeningProfiles(records []RecordedSegmentScreeningAxisEvidence) []SegmentScreeningAxisProfile {

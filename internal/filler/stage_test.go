@@ -153,12 +153,7 @@ func heldClipWith(mut func(*filler.Clip)) filler.StoreClip {
 	return filler.StoreClip{Clip: c}
 }
 
-// ⚠⚠ **THE guard in this phase.** `filler.reject.unidentified` defaults ON, so a clip that nothing
-// has ever looked at must NOT be read as "we could not identify it". Without the `AITagged` check,
-// the first pipeline pass on an install with no LLM — or any catalog imported before tagging
-// existed — would tombstone every clip in it for a conclusion no tier ever reached.
-//
-// You cannot conclude that a signal is absent from a tier that never ran.
+// A missing classifier cannot create a household task or reject enrolled content.
 func TestScoreStage_NeverRejectsAClipNothingHasLookedAt(t *testing.T) {
 	st := newScoreMemStore()
 	rejectOn := func() bool { return true }
@@ -173,22 +168,22 @@ func TestScoreStage_NeverRejectsAClipNothingHasLookedAt(t *testing.T) {
 		t.Fatal("a clip the tagger has never seen was REJECTED as unidentified — on a fresh install " +
 			"or one with no LLM this tombstones the entire catalog")
 	}
-	if out.Verdict != filler.VerdictReview {
-		t.Errorf("verdict = %v, want review", out.Verdict)
+	if out.Verdict != filler.VerdictContinue {
+		t.Errorf("verdict = %v, want continue", out.Verdict)
 	}
 }
 
-// Once a tier HAS looked and found nothing, the reject is legitimate — and configurable.
-func TestScoreStage_UnidentifiedIsConfigurable(t *testing.T) {
+// Even when every optional classifier looked and abstained, enrollment remains the runtime
+// authority. The old reject setting is accepted by the constructor only while settings migrate.
+func TestScoreStage_UnidentifiedRemainsDescriptive(t *testing.T) {
 	looked := func(c *filler.Clip) { c.AITagged = true } // the tagger ran and grounded nothing
 
 	for _, tc := range []struct {
 		name   string
 		reject bool
-		want   filler.Verdict
 	}{
-		{"reject on", true, filler.VerdictReject},
-		{"reject off", false, filler.VerdictReview},
+		{"old reject setting on", true},
+		{"old reject setting off", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newScoreMemStore()
@@ -198,11 +193,8 @@ func TestScoreStage_UnidentifiedIsConfigurable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if out.Verdict != tc.want {
-				t.Errorf("verdict = %v, want %v", out.Verdict, tc.want)
-			}
-			if tc.reject && out.Reason != filler.ReasonUnidentified {
-				t.Errorf("reason = %q, want unidentified", out.Reason)
+			if out.Verdict != filler.VerdictContinue || out.Reason != "" {
+				t.Errorf("result = %+v, want descriptive continue", out)
 			}
 		})
 	}
@@ -256,13 +248,12 @@ func TestScoreStage_TheNoSpeechSentinelIsNotGrounding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictReject {
-		t.Errorf("verdict = %v — the wordless sentinel was counted as if it were speech", out.Verdict)
+	if out.Verdict != filler.VerdictContinue {
+		t.Errorf("verdict = %v, want descriptive continue for a wordless clip", out.Verdict)
 	}
 }
 
-// The score is persisted for diagnosis, but even a perfect classification remains held until the
-// certified terminal admission module publishes it.
+// The score is persisted for diagnosis; terminal readiness owns publication after this rung.
 func TestScoreStage_ScoresWithoutPublishing(t *testing.T) {
 	st := newScoreMemStore()
 	s := filler.NewScoreStage(st, func() bool { return false }, nil)
@@ -278,8 +269,8 @@ func TestScoreStage_ScoresWithoutPublishing(t *testing.T) {
 	if st.confidence[clip.Path] != 100 {
 		t.Errorf("confidence = %d, want 100 (everything grounded)", st.confidence[clip.Path])
 	}
-	if out.Verdict != filler.VerdictReview {
-		t.Errorf("verdict = %v, want review until terminal admission", out.Verdict)
+	if out.Verdict != filler.VerdictContinue {
+		t.Errorf("verdict = %v, want continue to terminal readiness", out.Verdict)
 	}
 }
 
@@ -294,7 +285,7 @@ func TestScoreStage_AnUngroundedEraRemainsDiagnostic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.confidence[clip.Path] != 40 || out.Verdict != filler.VerdictReview {
-		t.Fatalf("score/verdict = %d/%v, want diagnostic 40/review", st.confidence[clip.Path], out.Verdict)
+	if st.confidence[clip.Path] != 40 || out.Verdict != filler.VerdictContinue {
+		t.Fatalf("score/verdict = %d/%v, want diagnostic 40/continue", st.confidence[clip.Path], out.Verdict)
 	}
 }

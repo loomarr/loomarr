@@ -1,0 +1,42 @@
+{
+  "version": "2026-09",
+  "sources": [
+    {
+      "url": "https://download.geonames.org/export/dump/cities15000.zip",
+      "sha256": "15b9401f1e3216219bc58474a1d150c1c9e81dfbfb58e6188c96261f94a393db",
+      "credit": "GeoNames data is licensed under CC BY 4.0: https://www.geonames.org/"
+    },
+    {
+      "url": "https://download.geonames.org/export/dump/allCountries.zip",
+      "sha256": "0a90c49c9b4f0c76965469df22d507eb82b80da8e1cef8ec058be2bbdab2c287",
+      "credit": "GeoNames data is licensed under CC BY 4.0: https://www.geonames.org/"
+    },
+    {
+      "url": "https://download.geonames.org/export/dump/admin1CodesASCII.txt",
+      "sha256": "590651498043f674accda2b7f46d21286cda0e290b02f8561c5005eee9a5448c",
+      "credit": "GeoNames data is licensed under CC BY 4.0: https://www.geonames.org/"
+    },
+    {
+      "url": "https://download.geonames.org/export/dump/countryInfo.txt",
+      "sha256": "93bafc525813f22e4711ff9ed6d626343094ce48c26388dc7c49189b3d7d5512",
+      "credit": "GeoNames data is licensed under CC BY 4.0: https://www.geonames.org/"
+    },
+    {
+      "url": "https://download.db-ip.com/free/dbip-country-lite-2026-09.csv.gz",
+      "sha256": "a32bb3c384bd3de60ad9024596aa5b395a6dd5beaa27a7223407cc2edc681d0b",
+      "credit": "IP Geolocation by DB-IP (September 2026 Lite), licensed under CC BY 4.0: https://db-ip.com"
+    }
+  ],
+  "outputs": [
+    {
+      "file": "places.tsv.gz",
+      "sha256": "270de7d9a04ad203ef28cf195c66834467da7a82358395114767ce413fd26d71",
+      "rows": 147069
+    },
+    {
+      "file": "ip-country.csv.gz",
+      "sha256": "1c8ddd39391017c701483add55118d369490e56300031c67cf94d376edeed74b",
+      "rows": 717170
+    }
+  ]
+}

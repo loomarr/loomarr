@@ -118,6 +118,20 @@ func positiveDuration(v any) error {
 	return nil
 }
 
+func fillerFetchInterval(v any) error {
+	d, ok := v.(time.Duration)
+	if !ok {
+		return fmt.Errorf("want a duration")
+	}
+	if d == 0 {
+		return nil
+	}
+	if d < time.Minute || d > 7*24*time.Hour {
+		return fmt.Errorf("want Never or a duration from 1 minute through 7 days (got %s)", d)
+	}
+	return nil
+}
+
 func nonNegativeWholeNumber(v any) error {
 	n, ok := v.(int)
 	if !ok {
@@ -594,14 +608,14 @@ func declared() []Setting {
 
 		// --- Filler / commercials (§15, Phase 12; §10 redesign — Tunarr-owned) ---
 		{
-			Key: "filler.home_country", Label: "Home country", EnvVar: "FILLER_HOME_COUNTRY", Group: GroupFiller,
+			Key: "filler.home_country", Label: "Country", EnvVar: "FILLER_HOME_COUNTRY", Group: GroupFiller,
 			Kind: KindString, Default: "", Validate: optionalCountryCode,
-			Doc: "Optional ISO two-letter country that constrains automatic filler use. Unknown and foreign clips remain reviewable but do not air. Leave blank to preserve the legacy unrestricted pool until geography is configured.",
+			Doc: "Where your channels are watched. Loomarr uses this country for channels and filler sources.",
 		},
 		{
-			Key: "filler.home_market", Label: "Home local market", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,
+			Key: "filler.home_market", Label: "Local area", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,
 			Kind: KindString, Default: "",
-			Doc: "Optional local broadcast market inside the home country, such as New York or Seattle. Local clips must match it exactly; Loomarr never infers it from the guide timezone.",
+			Doc: "Optional. Add a city or TV market when you want local filler, such as New York or Seattle.",
 		},
 		{
 			// ⚠ Defaults inside /data, like database.url and backup.dir — the documented
@@ -883,24 +897,6 @@ func declared() []Setting {
 			Kind: KindInt, Default: 3, Advanced: true,
 			Doc: "How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes.",
 		},
-		{
-			// ⚠ **ON by default, and it is the only reject an operator can turn off** — because
-			// "we could not identify it" is not the same claim as "it is not a commercial". A
-			// wordless station ident is exactly that case, and §10 calls a silent advert some of
-			// the best filler there is.
-			//
-			// ⚠ It is also why the rejected list is NOT optional: an operator has to be able to
-			// see what this caught and put it back. The reject is recorded with its reason and is
-			// reversible in one click; a silent tombstone would not be acceptable at this default.
-			//
-			// The guard that makes it safe lives in the score rung: a clip is only "unidentified"
-			// if something actually LOOKED and found nothing. A clip the tagger never reached —
-			// an install with no LLM, a catalog imported before tagging existed — falls through
-			// to review, never to a reject.
-			Key: "filler.reject.unidentified", Label: "Set unidentified clips aside", EnvVar: "FILLER_REJECT_UNIDENTIFIED", Group: GroupFiller,
-			Kind: KindBool, Default: true,
-			Doc: "Set aside clips that nothing could identify — no era, brand, speech or on-screen text. They're listed under Filler → Incoming with a reason, and you can put any of them back.",
-		},
 		// Auto-fetch and its limits (§10 V38b). A registered source is polled on a schedule, which
 		// supersedes §15's "there is no unattended crawler" — the superseded rule's concern
 		// survives as these bounds rather than as a prohibition.
@@ -909,14 +905,14 @@ func declared() []Setting {
 		// a trickle they can live with; the failure mode being designed against is "add a source,
 		// wake up to 8,000 files".
 		{
-			Key: "filler.fetch.every", Label: "Check sources every", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
-			Kind: KindDuration, Default: "6h",
-			Doc: "How often Loomarr checks your sources for new clips. Set to 0 to stop fetching automatically — you can still queue clips yourself.",
+			Key: "filler.fetch.every", Label: "Look for new clips", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
+			Kind: KindDuration, Presentation: PresentationFillerDownloadSchedule, Default: "6h", Validate: fillerFetchInterval,
+			Doc: "How often Loomarr checks enabled sources for new clips. Never stops sources that use this default; you can still check one yourself.",
 		},
 		{
-			Key: "filler.fetch.max_per_run", Label: "Downloads per source check", EnvVar: "FILLER_FETCH_MAX_PER_RUN", Group: GroupFiller,
-			Kind: KindInt, Default: 10, Advanced: true, Validate: positiveLimit,
-			Doc: "How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once.",
+			Key: "filler.fetch.max_per_run", Label: "Add up to", EnvVar: "FILLER_FETCH_MAX_PER_RUN", Group: GroupFiller,
+			Kind: KindInt, Default: 10, Validate: positiveLimit,
+			Doc: "The most clips each enabled source may add in one automatic check.",
 		},
 		{
 			// ⚠ Bounds the UNATTENDED path only. An admin queueing a clip or approving a pull is
@@ -1210,19 +1206,6 @@ func declared() []Setting {
 			Key: "job.filler_split_sweep.schedule", EnvVar: "JOB_FILLER_SPLIT_SWEEP_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 45 4 * * *",
 			Doc: "How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`.",
-		},
-		{
-			// ⚠ A scheduler Job's `ScheduleKey` MUST be declared here — `Resolve` panics on an
-			// undeclared key, so a job registered without its row takes the whole app down at
-			// boot. Caught by comprehensive verification, which is the right place, but the coupling is easy
-			// to miss when adding a job.
-			//
-			// Distinct from `filler.fetch.every`, which is the operator-facing "how often" in the
-			// Filler group; this is the cron the scheduler actually runs on, in Advanced beside
-			// its siblings. The two agree by default (6h).
-			Key: "job.filler_fetch.schedule", EnvVar: "JOB_FILLER_FETCH_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 */6 * * *",
-			Doc: "How often Loomarr checks your filler sources for new clips (cron).",
 		},
 		{
 			// ⚠ **Every scheduled job needs its ScheduleKey declared here** — `Resolve` PANICS on

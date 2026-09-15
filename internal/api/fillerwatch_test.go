@@ -13,6 +13,18 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
+func completeSourceCheck(t *testing.T, st store.Store, id string, checkedAt time.Time) {
+	t.Helper()
+	claimAt, leaseUntil := checkedAt.Add(-time.Minute), checkedAt.Add(29*time.Minute)
+	claimed, err := st.ClaimFillerSourceCheck(t.Context(), id, time.Time{}, claimAt, leaseUntil)
+	if err != nil || !claimed {
+		t.Fatalf("claim source check %q = %v, %v", id, claimed, err)
+	}
+	if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, checkedAt); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The member-visible health projection describes the generation doing the work, not a saved
 // layout that is waiting on restart. Otherwise a pending clear could report zero sources while
 // this process is still scanning and playing from the applied root.
@@ -38,6 +50,9 @@ func TestFillerWatch_CountsAppliedLayoutUntilRestart(t *testing.T) {
 			if key == "filler.dir" {
 				return desired
 			}
+			if key == "filler.home_country" {
+				return "US"
+			}
 			return ""
 		},
 	})
@@ -57,6 +72,9 @@ func TestFillerWatch_CountsAppliedLayoutUntilRestart(t *testing.T) {
 	if body.SourcesTotal != 1 || body.SourcesOn != 1 {
 		t.Errorf("sources = %d of %d after desired clear, want applied 1 of 1 until restart", body.SourcesOn, body.SourcesTotal)
 	}
+	if body.SourcesReady != 1 {
+		t.Errorf("ready sources = %d after desired clear, want 1", body.SourcesReady)
+	}
 }
 
 // GET /v1/filler/watch — the Filler header's live status (§10 V38c).
@@ -69,6 +87,7 @@ func TestFillerWatch_CountsAppliedLayoutUntilRestart(t *testing.T) {
 type watchBody struct {
 	Health       string `json:"health"`
 	SourcesOn    int    `json:"sourcesOn"`
+	SourcesReady int    `json:"sourcesReady"`
 	SourcesTotal int    `json:"sourcesTotal"`
 	Clips        int    `json:"clips"`
 	Held         int    `json:"held"`
@@ -83,8 +102,18 @@ type watchBody struct {
 	} `json:"autoFetch"`
 }
 
+func newFillerWatchServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
+	t.Helper()
+	return newFillerServerWithConfig(t, nil, func(key string) string {
+		if key == "filler.home_country" {
+			return "US"
+		}
+		return ""
+	})
+}
+
 func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	srv, _, ff := newFillerWatchServer(t)
 	ff.fetchStatus = filler.FetchStatus{
 		Enabled: true, StoppedBy: "catalog",
 		CatalogClips: 2000, MaxCatalog: 2000, DiskBytes: 3 << 30, MaxDiskBytes: 20 << 30,
@@ -125,7 +154,7 @@ func getWatch(t *testing.T, srvURL, token string) (watchBody, int) {
 // WHERE it comes from. The sources listing stays admin-only because it names filesystem paths and
 // library targets — this carries counts and a verdict, and nothing else.
 func TestFillerWatch_IsMemberReadable(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerWatchServer(t)
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 
 	body, code := getWatch(t, srv.URL, memberToken)
@@ -152,7 +181,7 @@ func TestFillerWatch_IsMemberReadable(t *testing.T) {
 // A fresh install is UNCONFIGURED, not broken. An amber warning on first boot reads as a fault
 // the operator caused, which is the opposite of the truth: there is simply work still to do.
 func TestFillerWatch_FreshInstallIsUnconfiguredNotBroken(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	srv, _, _ := newFillerWatchServer(t)
 
 	body, code := getWatch(t, srv.URL, adminToken)
 	if code != http.StatusOK {
@@ -166,7 +195,7 @@ func TestFillerWatch_FreshInstallIsUnconfiguredNotBroken(t *testing.T) {
 // THE failure the hardcoded green dot hid: every source switched off, nothing scanning, and a
 // reassuring pulse claiming otherwise.
 func TestFillerWatch_AllSourcesOffAsksForAttention(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerWatchServer(t)
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 
@@ -190,7 +219,7 @@ func TestFillerWatch_AllSourcesOffAsksForAttention(t *testing.T) {
 // Sources on, catalog empty — usually an empty folder or a mount that did not come up. Worth
 // flagging on day one rather than after someone notices a channel playing silence.
 func TestFillerWatch_OnButEmptyAsksForAttention(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerWatchServer(t)
 	if err := st.UpsertFillerSource(t.Context(),
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -204,7 +233,7 @@ func TestFillerWatch_OnButEmptyAsksForAttention(t *testing.T) {
 
 // The healthy path, and the counts the header renders.
 func TestFillerWatch_ReportsCountsAndHealth(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerWatchServer(t)
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	seedClip(t, st, "b.mp4", filler.Commercial, 1994, filler.Kids, "cereal")
@@ -226,6 +255,9 @@ func TestFillerWatch_ReportsCountsAndHealth(t *testing.T) {
 	if body.SourcesOn != 1 || body.SourcesTotal != 2 {
 		t.Errorf("sources = %d of %d, want 1 of 2", body.SourcesOn, body.SourcesTotal)
 	}
+	if body.SourcesReady != 1 {
+		t.Errorf("ready sources = %d, want 1", body.SourcesReady)
+	}
 	if body.Clips != 2 {
 		t.Errorf("clips = %d, want 2", body.Clips)
 	}
@@ -238,7 +270,7 @@ func TestFillerWatch_ReportsCountsAndHealth(t *testing.T) {
 //
 // Found live: an install that had just pulled 12 clips showed "5 of 5 sources on · 0 clips".
 func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerWatchServer(t)
 	if err := st.UpsertFillerSource(t.Context(),
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -265,7 +297,7 @@ func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
 // The mirror, so the healthy-on-held rule above cannot be satisfied by never flagging anything:
 // sources on, and genuinely NOTHING anywhere, is still attention.
 func TestFillerWatch_NoClipsAtAllIsStillAttention(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerWatchServer(t)
 	if err := st.UpsertFillerSource(t.Context(),
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -284,7 +316,7 @@ func TestFillerWatch_NoClipsAtAllIsStillAttention(t *testing.T) {
 // than fetched, so an absent timestamp is the ordinary state — treating it as stale would light
 // every drop-folder install amber forever, which is how an operator learns to ignore the dot.
 func TestFillerWatch_NeverFetchedIsNotStale(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerWatchServer(t)
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	if err := st.UpsertFillerSource(t.Context(),
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
@@ -302,16 +334,14 @@ func TestFillerWatch_NeverFetchedIsNotStale(t *testing.T) {
 
 // Everything that reports a fetch time went quiet days ago.
 func TestFillerWatch_LongSilenceAsksForAttention(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerWatchServer(t)
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	if err := st.UpsertFillerSource(ctx,
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.MarkFillerSourceFetched(ctx, "classic", time.Now().UTC().Add(-5*24*time.Hour)); err != nil {
-		t.Fatal(err)
-	}
+	completeSourceCheck(t, st, "classic", time.Now().UTC().Add(-5*24*time.Hour))
 
 	body, _ := getWatch(t, srv.URL, adminToken)
 	if body.Health != "attention" {
@@ -325,7 +355,7 @@ func TestFillerWatch_LongSilenceAsksForAttention(t *testing.T) {
 // A recent fetch on ONE source is enough. A stale archive collection beside a folder that ran
 // this morning is not a problem worth a warning.
 func TestFillerWatch_OneCurrentSourceKeepsItHealthy(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerWatchServer(t)
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	for _, id := range []string{"stale", "fresh"} {
@@ -334,12 +364,8 @@ func TestFillerWatch_OneCurrentSourceKeepsItHealthy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := st.MarkFillerSourceFetched(ctx, "stale", time.Now().UTC().Add(-30*24*time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.MarkFillerSourceFetched(ctx, "fresh", time.Now().UTC().Add(-time.Minute)); err != nil {
-		t.Fatal(err)
-	}
+	completeSourceCheck(t, st, "stale", time.Now().UTC().Add(-30*24*time.Hour))
+	completeSourceCheck(t, st, "fresh", time.Now().UTC().Add(-time.Minute))
 
 	body, _ := getWatch(t, srv.URL, adminToken)
 	if body.Health != "healthy" {

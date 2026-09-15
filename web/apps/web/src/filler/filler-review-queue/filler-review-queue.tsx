@@ -23,8 +23,6 @@ const REVIEW_PAGE_SIZE = 10;
 
 const taskLabel = (task: FillerAttentionTaskDTO) => {
   switch (task.taskKind) {
-    case "rights_provenance":
-      return "Rights and provenance decision";
     case "suitability_exception":
       return "Suitability decision";
     case "split_boundary":
@@ -376,7 +374,7 @@ const FillerReviewQueue = ({ hideEmpty = false }: { hideEmpty?: boolean }) => {
       return (
         <EmptyState
           title="Nothing needs your attention"
-          description="No semantic questions are waiting. Recorded decisions remain available under Manage → Activity."
+          description="Loomarr is handling everything. You can see what it has done under Manage → Recent activity."
         />
       );
     }

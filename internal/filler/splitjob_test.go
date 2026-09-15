@@ -260,11 +260,11 @@ func (s *failingSplitStore) ReleaseCompositeHolds(ctx context.Context, paths []s
 	return s.splitMemStore.ReleaseCompositeHolds(ctx, paths, at)
 }
 
-func (s *failingSplitStore) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
+func (s *failingSplitStore) MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error {
 	if err := s.fail("pipeline filing"); err != nil {
 		return err
 	}
-	return s.splitMemStore.MarkPipelineFiled(ctx, hash, at)
+	return s.splitMemStore.MarkPipelineComplete(ctx, hash, at)
 }
 
 func (s *failingSplitStore) DeleteSplitProposal(ctx context.Context, id string) error {
@@ -443,7 +443,7 @@ func (m *splitMemStore) CompleteSplitConfirmation(ctx context.Context, completio
 	parent.IsComposite = true
 	parent.Held = false
 	m.clips[completion.ParentHash] = parent
-	parentPipeline.Disposition = filler.DispositionFiled
+	parentPipeline.Disposition = filler.DispositionComplete
 	parentPipeline.UpdatedAt = completion.At
 	m.pipelines[completion.ParentHash] = parentPipeline
 	for _, hash := range completion.ActivateHashes {
@@ -493,12 +493,12 @@ func (m *splitMemStore) ReleaseCompositeHolds(_ context.Context, paths []string,
 	}
 	return updated, nil
 }
-func (m *splitMemStore) MarkPipelineFiled(_ context.Context, hash string, at time.Time) error {
+func (m *splitMemStore) MarkPipelineComplete(_ context.Context, hash string, at time.Time) error {
 	row, ok := m.pipelines[hash]
 	if !ok {
 		return nil
 	}
-	row.Disposition = filler.DispositionFiled
+	row.Disposition = filler.DispositionComplete
 	row.UpdatedAt = at
 	m.pipelines[hash] = row
 	return nil

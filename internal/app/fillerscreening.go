@@ -20,7 +20,7 @@ func buildQualificationSegmentScreeningRuntime(st store.Store, layout filler.Lay
 		return nil, fmt.Errorf("qualification segment screening requires a store")
 	}
 	root := segmentScreeningEvidenceRoot(layout)
-	return filler.NewQualificationSegmentScreeningRuntime(root, st, time.Now)
+	return filler.NewQualificationSegmentScreeningRuntime(root, time.Now)
 }
 
 func buildSegmentScreeningSummaryService(layout filler.Layout) (*filler.SegmentScreeningSummaryService, error) {

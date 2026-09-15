@@ -26,11 +26,7 @@ interface IncomingPanelProps {
    * would grow as a clip advances instead of filling.
    */
   stageOrder?: string[];
-  /**
-   * What ingest REFUSED, and why (§10 V51b). Not optional in spirit:
-   * `filler.reject.unidentified` is on by default, so a
-   * default that can turn down good clips has to show what it caught.
-   */
+  /** What ingest objectively refused, and why (§10 V51b). */
   rejected?: IncomingRejectDTO[];
   rejectedTotal?: number;
   /**

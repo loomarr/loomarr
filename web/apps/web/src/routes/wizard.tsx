@@ -2,11 +2,13 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { unwrap } from "@loomarr/api/unwrap";
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback";
+import { InstallationLocation } from "@/components/loomarr/settings/installation-location";
 import { WizardShell } from "@/components/loomarr/setup/wizard-shell";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { BootstrapStep } from "@/wizard/bootstrap-step";
@@ -57,6 +59,10 @@ const COPY: Record<string, { title: string; description: string }> = {
     // who does not know what Tunarr is should still be able to answer confidently.
     description: "This decides what you'll need to set up next. Most people should keep the default.",
   },
+  location: {
+    title: "Where are your channels watched?",
+    description: "This helps Loomarr find filler for your country and local area.",
+  },
   checklist: {
     title: "Connect your services",
     description: "Loomarr live-tests each dependency. A red check tells you exactly what to fix.",
@@ -90,6 +96,7 @@ const SKIPPABLE = new Set(["library", "users"]);
 
 const WizardScreen = () => {
   useDocumentTitle("Setup");
+  const queryClient = useQueryClient();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const status = setupApi.useSetupStatus({ query: { enabled: isAuthenticated, retry: false } });
   const checks = unwrap(status.data, (b) => b.checks) ?? [];
@@ -102,6 +109,21 @@ const WizardScreen = () => {
   const entries = unwrap(settings.data, (b) => b.settings) ?? [];
   const playoutEntry = entries.find((e) => e.key === "playout.backend");
   const publicURLEntry = entries.find((e) => e.key === "server.public_url");
+  const locationEntries = entries.filter(
+    (entry) => entry.key === "filler.home_country" || entry.key === "filler.home_market",
+  );
+  const persistedCountry = locationEntries.find((entry) => entry.key === "filler.home_country")?.value ?? "";
+  const persistedMarket = locationEntries.find((entry) => entry.key === "filler.home_market")?.value ?? "";
+  const [locationEdits, setLocationEdits] = useState<Record<string, string>>({});
+  const liveCountry = locationEdits["filler.home_country"] ?? persistedCountry;
+  const liveMarket = locationEdits["filler.home_market"] ?? persistedMarket;
+  const locationPatch = settingsApi.useSettingsPatch({
+    mutation: {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+      },
+    },
+  });
   const backend: PlayoutBackend = playoutEntry?.value === PLAYOUT_TUNARR ? PLAYOUT_TUNARR : PLAYOUT_INTERNAL;
   // An env-pinned backend cannot be changed here (config-design §3); the step says so rather
   // than offering a control whose write would come back `pinned`.
@@ -109,7 +131,13 @@ const WizardScreen = () => {
     playoutEntry?.provenance === SettingEntryProvenance.env
       ? (playoutEntry.envVar ?? "An environment variable")
       : undefined;
-  const stepCtx = { checks, isAuthenticated, backend, publicURL: publicURLEntry?.value };
+  const stepCtx = {
+    checks,
+    isAuthenticated,
+    backend,
+    publicURL: publicURLEntry?.value,
+    installationCountry: persistedCountry,
+  };
 
   const { step: requestedStep, conn: requestedConn } = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -176,6 +204,20 @@ const WizardScreen = () => {
         return <BootstrapStep onDone={() => goTo("playout")} ownerName={user?.name} />;
       case "playout":
         return <PlayoutStep value={backend} pinnedBy={playoutPinnedBy} />;
+      case "location":
+        return (
+          <InstallationLocation
+            entries={locationEntries}
+            values={{
+              "filler.home_country": liveCountry,
+              "filler.home_market": liveMarket,
+            }}
+            onChange={(key, value) => setLocationEdits((previous) => ({ ...previous, [key]: value }))}
+            results={unwrap(locationPatch.data, (body) => body.results) ?? undefined}
+            error={locationPatch.error?.detail}
+            showHeading={false}
+          />
+        );
       case "checklist":
         return <ChecklistStep openId={openConn} onToggle={toggleConn} backend={backend} />;
       case "library":
@@ -197,6 +239,26 @@ const WizardScreen = () => {
   // fixing the other one.
   const bootstrapSelfAdvances = currentId === "bootstrap" && !isAuthenticated;
   const advances = !bootstrapSelfAdvances && index < steps.length - 1;
+  const advance = async () => {
+    if (currentId !== "location") {
+      goTo(steps[index + 1]?.id);
+      return;
+    }
+    if (!liveCountry.trim()) return;
+    if (Object.keys(locationEdits).length > 0) {
+      const response = await locationPatch.mutateAsync({ data: { edits: locationEdits } });
+      const results = unwrap(response, (body) => body.results) ?? [];
+      if (
+        !Object.keys(locationEdits).every((key) =>
+          results.some((result) => result.key === key && result.status === "saved"),
+        )
+      ) {
+        return;
+      }
+      setLocationEdits({});
+    }
+    goTo("checklist");
+  };
   const skip = () => {
     setSkipped((prev) => new Set(prev).add(currentId));
     goTo(steps[index + 1]?.id);
@@ -214,14 +276,20 @@ const WizardScreen = () => {
       title={copy?.title ?? step?.title ?? "Setup"}
       description={copy?.description}
       onBack={index > 0 ? () => goTo(steps[index - 1]?.id) : undefined}
-      onNext={advances ? () => goTo(steps[index + 1]?.id) : undefined}
+      onNext={advances ? () => void advance() : undefined}
       onSkip={advances && SKIPPABLE.has(currentId) ? skip : undefined}
       // A skippable step has no server check to satisfy, so it must never BLOCK: gating
       // Continue on `isStepDone` there would strand an operator who did the optional work
       // (imported users) behind a button that can never enable. Skip stays, to record the
       // deliberate pass as `skipped` rather than merely unfinished.
-      nextDisabled={advances && !SKIPPABLE.has(currentId) && !isStepDone(currentId, stepCtx)}
-      busy={status.isFetching}
+      nextDisabled={
+        advances &&
+        !SKIPPABLE.has(currentId) &&
+        (currentId === "location"
+          ? !liveCountry.trim() || locationPatch.isPending
+          : !isStepDone(currentId, stepCtx))
+      }
+      busy={status.isFetching || locationPatch.isPending}
     >
       {body()}
     </WizardShell>

@@ -1,5 +1,5 @@
 import type { FillerSourceDTO } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FillerSources } from "./filler-sources";
@@ -11,20 +11,41 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
   target: "/data/filler",
   detail: "watched directly",
   count: 0,
+  incoming: 0,
   configured: true,
   fetchable: true,
   enabled: true,
+  effectiveEnabled: over.effectiveEnabled ?? over.enabled !== false,
+  providerEnabled: true,
   switchable: true,
   removable: false,
   // Defaults to NOT searchable: only archive has an upstream catalog to query, so a default of
   // true would make every test render a search affordance that the real row would not have.
   searchable: false,
+  readiness:
+    over.readiness ??
+    (over.configured === false ? "not_configured" : over.enabled === false ? "off" : "ready"),
+  ready: over.ready ?? (over.configured !== false && over.enabled !== false),
+  locationSource: "installation",
+  actions:
+    over.actions ??
+    (over.configured === false
+      ? ["configure"]
+      : over.enabled === false
+        ? ["enable"]
+        : [
+            "fetch",
+            "disable",
+            ...(over.removable ? ["remove"] : []),
+            ...(over.searchable ? ["search"] : []),
+            ...(over.kind === "archive" || over.kind === "youtube" ? ["edit_location"] : []),
+          ]),
   ...over,
 });
 
 describe("FillerSources", () => {
   it("keeps the source section in the page heading hierarchy", () => {
-    render(<FillerSources sources={[]} onFetch={vi.fn()} />);
+    render(<FillerSources sources={[]} />);
 
     expect(screen.getByRole("heading", { level: 2, name: "Where filler comes from" })).toBeInTheDocument();
   });
@@ -35,12 +56,12 @@ describe("FillerSources", () => {
     render(
       <FillerSources
         sources={[source({ kind: "folder", target: "/data/filler", configured: false, fetchable: false })]}
-        onFetch={vi.fn()}
       />,
     );
-    // The row is present (its target renders) AND it is marked, rather than being omitted.
-    expect(screen.getByText("/data/filler")).toBeInTheDocument();
-    expect(screen.getByText(/not configured/i)).toBeInTheDocument();
+    // The row is present and explains what to add, rather than showing a raw placeholder path.
+    expect(screen.getByText("Drop folder")).toBeInTheDocument();
+    expect(screen.getByText("Choose a folder for files you add yourself.")).toBeInTheDocument();
+    expect(screen.getByText("Add details")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /fetch now/i })).not.toBeInTheDocument();
   });
 
@@ -49,40 +70,32 @@ describe("FillerSources", () => {
   // ⚠ The header reads "N of M on" (the mock's `svcOnLine`), not "N sources · M clips". An
   // operator who switched two sources off wants that reflected — a bare count where three are
   // dark is a reassuring lie. The catalog total lives in the page header's pill.
-  it("reports how many sources are switched on", () => {
+  it("reports how many sources are ready", () => {
     render(
       <FillerSources
         sources={[
           source({ kind: "folder", count: 2 }),
-          source({ id: "s2", kind: "archive", enabled: false }),
+          source({
+            id: "s2",
+            kind: "archive",
+            enabled: false,
+            ready: false,
+            readiness: "off",
+            actions: ["enable"],
+          }),
         ]}
-        onFetch={vi.fn()}
       />,
     );
-    expect(screen.getByText(/1 of 2 on/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 ready/)).toBeInTheDocument();
   });
 
-  it("fetches the row that was clicked", async () => {
-    const onFetch = vi.fn();
+  it("opens the workspace for the row that was clicked", async () => {
+    const onSelect = vi.fn();
     render(
-      <FillerSources sources={[source({ kind: "folder", target: "/data/filler" })]} onFetch={onFetch} />,
+      <FillerSources sources={[source({ kind: "folder", target: "/data/filler" })]} onSelect={onSelect} />,
     );
-    await userEvent.click(screen.getByRole("button", { name: /fetch now from \/data\/filler/i }));
-    expect(onFetch).toHaveBeenCalledWith("folder");
-  });
-
-  // One fetch at a time: the sync is global, so two in flight would race for the same catalog.
-  it("disables every fetch while one is running", () => {
-    render(
-      <FillerSources
-        sources={[source({ kind: "folder" }), source({ kind: "library", target: "library" })]}
-        onFetch={vi.fn()}
-        fetching="folder"
-      />,
-    );
-    for (const b of screen.getAllByRole("button")) {
-      expect(b).toBeDisabled();
-    }
+    await userEvent.click(screen.getByRole("button", { name: /manage drop folder/i }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "folder" }));
   });
 
   // A configured source contributing zero clips is a real, reportable state — usually an empty
@@ -91,27 +104,51 @@ describe("FillerSources", () => {
     render(
       <FillerSources
         sources={[source({ kind: "folder", target: "/data/filler", count: 0, configured: true })]}
-        onFetch={vi.fn()}
       />,
     );
     expect(screen.getByText("0 clips")).toBeInTheDocument();
     expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
   });
 
-  it("shows geography review only on remote acquisition sources", () => {
+  it("shows held clips as being checked instead of making a working source look empty", () => {
+    render(
+      <FillerSources sources={[source({ kind: "archive", target: "TV Ads", count: 0, incoming: 22 })]} />,
+    );
+
+    expect(screen.getByText("0 ready · 22 being checked")).toBeInTheDocument();
+    expect(screen.queryByText("0 clips")).not.toBeInTheDocument();
+  });
+
+  it("keeps inherited location quiet and shows one direct fix when the installation has none", () => {
     const { rerender } = render(
       <FillerSources
-        sources={[source({ kind: "archive", country: "US", market: "New York" })]}
-        onFetch={vi.fn()}
+        sources={[
+          source({
+            kind: "archive",
+            effectiveCountry: "US",
+            effectiveMarket: "New York",
+          }),
+        ]}
       />,
     );
-    expect(screen.getByText("US · New York")).toBeInTheDocument();
+    expect(screen.queryByText(/Uses your location/)).not.toBeInTheDocument();
 
-    rerender(<FillerSources sources={[source({ kind: "archive" })]} onFetch={vi.fn()} />);
-    expect(screen.getByText("geography needed")).toBeInTheDocument();
-
-    rerender(<FillerSources sources={[source({ kind: "folder" })]} onFetch={vi.fn()} />);
-    expect(screen.queryByText("geography needed")).not.toBeInTheDocument();
+    rerender(
+      <FillerSources
+        sources={[
+          source({
+            kind: "archive",
+            readiness: "needs_location",
+            ready: false,
+            locationSource: "missing",
+            actions: ["set_location"],
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Add your location")).toBeInTheDocument();
+    expect(screen.queryByText("Location needed")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Set location" })).toHaveAttribute("href", "/settings/general");
   });
 });
 
@@ -130,7 +167,7 @@ describe("FillerSources registered peers", () => {
       detail: "an archive.org collection",
       removable: true,
       searchable: true,
-      lastFetchedAt: "2026-07-30T12:00:00Z",
+      lastCheckedAt: "2026-07-30T12:00:00Z",
     }),
     source({
       kind: "youtube",
@@ -142,7 +179,7 @@ describe("FillerSources registered peers", () => {
   ];
 
   it("lists the specific sources an operator added", () => {
-    render(<FillerSources sources={flat} onFetch={() => {}} />);
+    render(<FillerSources sources={flat} />);
     expect(screen.getByText("Classic TV commercials")).toBeInTheDocument();
     expect(screen.getByText("vintage_ads")).toBeInTheDocument();
   });
@@ -154,7 +191,7 @@ describe("FillerSources registered peers", () => {
   // ordinary state, and "never" reads as a fault on a folder working exactly as intended. What
   // must never appear is an epoch date nobody meant.
   it("omits the scan time rather than showing a zero date", () => {
-    render(<FillerSources sources={flat} onFetch={() => {}} />);
+    render(<FillerSources sources={flat} />);
     expect(screen.queryByText(/1970/)).not.toBeInTheDocument();
     expect(screen.queryByText(/never/i)).not.toBeInTheDocument();
   });
@@ -163,26 +200,23 @@ describe("FillerSources registered peers", () => {
   // catalog empty?", which a list of things-that-exist cannot (§10). Flattening deleted the
   // container row; it must not have deleted this.
   it("keeps the config-backed row alongside the peers", () => {
-    render(<FillerSources sources={flat} onFetch={() => {}} />);
+    render(<FillerSources sources={flat} />);
     expect(screen.getByText("/data/filler")).toBeInTheDocument();
   });
 
   // A fetch time belongs to a REGISTERED source. The config rows are scanned, not fetched, so
   // "never fetched" under the drop-folder would be a category error rather than a fact.
   it("shows no fetch time on a config-backed row", () => {
-    render(<FillerSources sources={[flat[0]!]} onFetch={() => {}} />);
+    render(<FillerSources sources={[flat[0]!]} />);
     expect(screen.getByText("/data/filler")).toBeInTheDocument();
     expect(screen.queryByText(/never fetched/)).not.toBeInTheDocument();
   });
 
-  // Removing forgets the REGISTRATION. ⚠ Offered only on a removable row: the server 409s a
-  // delete of a config-backed singleton, so a button there would be a control that cannot work.
-  it("offers remove on a registered source and not on a config-backed one", async () => {
-    const onRemove = vi.fn();
-    render(<FillerSources sources={flat} onFetch={() => {}} onRemove={onRemove} />);
-    expect(screen.queryByRole("button", { name: /remove \/data\/filler/i })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /remove classic tv commercials/i }));
-    expect(onRemove).toHaveBeenCalledWith("archive:classic_tv");
+  it("keeps source actions out of the compact index", () => {
+    render(<FillerSources sources={flat} onSelect={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /check now/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /remove/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /manage classic tv commercials/i })).toBeInTheDocument();
   });
 });
 
@@ -194,7 +228,6 @@ describe("FillerSources switches", () => {
     render(
       <FillerSources
         sources={[source({ kind: "folder", target: "/data/filler" })]}
-        onFetch={() => {}}
         onToggleEnabled={onToggleEnabled}
       />,
     );
@@ -211,7 +244,6 @@ describe("FillerSources switches", () => {
     render(
       <FillerSources
         sources={[source({ kind: "folder", target: "/data/filler", enabled: false })]}
-        onFetch={() => {}}
         onToggleEnabled={() => {}}
       />,
     );
@@ -220,8 +252,8 @@ describe("FillerSources switches", () => {
     // "switched off" badge — the badge duplicated what the switch already showed. What must
     // survive is the SENTENCE, because an operator who reads "off" as "my clips are gone" will
     // switch it back on and re-download everything they already have.
-    expect(screen.getByText("off")).toBeInTheDocument();
-    expect(screen.getByText(/still in your catalog/i)).toBeInTheDocument();
+    expect(screen.getByText(/^off$/i)).toBeInTheDocument();
+    expect(screen.getByText(/existing clips stay/i)).toBeInTheDocument();
   });
 
   // ⚠ Nothing scans a media-server library for clips since §10 took the media server out of the
@@ -231,7 +263,6 @@ describe("FillerSources switches", () => {
     render(
       <FillerSources
         sources={[source({ kind: "library", target: "media server filler library", switchable: false })]}
-        onFetch={() => {}}
         onToggleEnabled={() => {}}
       />,
     );
@@ -241,9 +272,7 @@ describe("FillerSources switches", () => {
 
   // A caller that cannot mutate shows the same rows without a dead control.
   it("renders no switches at all without a handler", () => {
-    render(
-      <FillerSources sources={[source({ kind: "folder", target: "/data/filler" })]} onFetch={() => {}} />,
-    );
+    render(<FillerSources sources={[source({ kind: "folder", target: "/data/filler" })]} />);
 
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
@@ -263,12 +292,12 @@ describe("FillerSources provider roll-up", () => {
     {
       ...source({ kind: "archive", id: "provider:archive", target: "Archive.org" }),
       group: true,
-      switchable: false,
+      switchable: true,
       removable: false,
       fetchable: false,
       searchable: false,
       count: 179,
-      lastFetchedAt: "2026-07-30T09:14:00Z",
+      lastCheckedAt: "2026-07-30T09:14:00Z",
       ...over,
     },
     source({
@@ -291,7 +320,7 @@ describe("FillerSources provider roll-up", () => {
   ];
 
   it("nests a provider's sources under it, in their own list", () => {
-    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
+    render(<FillerSources sources={grouped()} />);
 
     // ⚠ The children are in a list OF THEIR OWN, not loose among the top-level rows. A screen
     // reader then announces "list, 2 items" for what is under this service instead of walking one
@@ -302,54 +331,96 @@ describe("FillerSources provider roll-up", () => {
     expect(screen.getByText("Vintage PSAs")).toBeInTheDocument();
   });
 
-  // Open by default: every row is visible on the flat list today, so defaulting shut would HIDE
-  // rows an operator can currently see.
-  it("twirls its sources away and back", async () => {
-    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
+  it("keeps provider sources visible without another disclosure control", () => {
+    render(<FillerSources sources={grouped()} />);
 
     expect(screen.getByText("Classic TV Commercials")).toBeVisible();
-
-    await userEvent.click(screen.getByRole("button", { name: /show the sources under Archive\.org/i }));
-    expect(screen.getByText("Classic TV Commercials")).not.toBeVisible();
-
-    await userEvent.click(screen.getByRole("button", { name: /show the sources under Archive\.org/i }));
-    expect(screen.getByText("Classic TV Commercials")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /show the sources under Archive\.org/i }),
+    ).not.toBeInTheDocument();
   });
 
   // ⚠ THE denominator bug (§10 V54 B2). The derived node is a summary of rows already in this
   // list, so counting it showed "3 of 4 on" beside a page-header pill saying "2 of 3" — two
   // summaries of one list disagreeing on screen.
   it("counts sources, not the provider rows that summarise them", () => {
-    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
+    render(<FillerSources sources={grouped()} />);
     // folder (on) + classic (on) + psas (off) = 2 of 3. NOT 3 of 4.
-    expect(screen.getByText(/2 of 3 on/)).toBeInTheDocument();
+    expect(screen.getByText(/2 of 3 ready/)).toBeInTheDocument();
   });
 
-  // The roll-up stat is over the CHILDREN, because a half-running provider is exactly what a
-  // single boolean cannot say — and why the group carries no switch of its own.
-  it("summarises its children rather than reporting one state for the service", () => {
-    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
-    expect(screen.getByText(/1 of 2 on/)).toBeInTheDocument();
+  it("summarises how many sources were added", () => {
+    render(<FillerSources sources={grouped()} />);
+    expect(screen.getByText(/2 sources/)).toBeInTheDocument();
+    expect(screen.queryByText(/needs attention/i)).not.toBeInTheDocument();
   });
 
-  // ⚠ A group is `switchable: false` BY DESIGN — a cascade switch would destroy each child's own
-  // choice — and every off-state was gated on `switchable && !enabled`. So a provider whose every
-  // collection was switched off rendered as if it were running.
-  it("reads as dormant when nothing beneath it is running", () => {
-    const sources = grouped({ enabled: false }).map((s) => (s.parentId ? { ...s, enabled: false } : s));
-    render(<FillerSources sources={sources} onFetch={vi.fn()} />);
+  it("counts an actionable source problem as attention", () => {
+    const sources = grouped().map((item) =>
+      item.id === "archive:classic" ? { ...item, readiness: "unavailable" as const, ready: false } : item,
+    );
+    render(<FillerSources sources={sources} />);
 
-    expect(screen.getByText(/every one of these is switched off/i)).toBeInTheDocument();
+    expect(screen.getByText("2 sources · 1 needs attention")).toBeInTheDocument();
   });
 
-  // ⚠ The container used to inherit the leaf chip, so the YouTube CONTAINER was labelled PLAYLIST
-  // — same word, colour and width as the playlist one line below it, with only the indent to tell
-  // them apart.
-  it("labels the container as a service, not as one of the things inside it", () => {
-    render(<FillerSources sources={grouped()} onFetch={vi.fn()} />);
-    expect(screen.getByText("SERVICE")).toBeInTheDocument();
-    // Its children still carry the kind chip they always did.
-    expect(screen.getAllByText("ARCHIVE")).toHaveLength(2);
+  it("reads as paused when its master switch is off", () => {
+    const sources = grouped({ enabled: false, effectiveEnabled: false }).map((s) =>
+      s.parentId
+        ? { ...s, effectiveEnabled: false, providerEnabled: false, readiness: "provider_off" as const }
+        : s,
+    );
+    render(<FillerSources sources={sources} />);
+
+    expect(screen.getByText(/Archive\.org is paused/i)).toBeInTheDocument();
+  });
+
+  it("folds and disables child sources without changing their saved switches", () => {
+    const paused = grouped({ enabled: false, effectiveEnabled: false }).map((item) =>
+      item.parentId
+        ? {
+            ...item,
+            effectiveEnabled: false,
+            providerEnabled: false,
+            readiness: "provider_off" as const,
+          }
+        : item,
+    );
+    const { rerender } = render(
+      <FillerSources sources={paused} onToggleEnabled={vi.fn()} onToggleProvider={vi.fn()} />,
+    );
+
+    const classic = screen.getByRole("switch", { name: "Use Classic TV Commercials", hidden: true });
+    const psas = screen.getByRole("switch", { name: "Use Vintage PSAs", hidden: true });
+    expect(classic).toBeDisabled();
+    expect(psas).toBeDisabled();
+    expect(screen.getByRole("list", { name: "Sources under Archive.org", hidden: true })).not.toBeVisible();
+
+    rerender(<FillerSources sources={grouped()} onToggleEnabled={vi.fn()} onToggleProvider={vi.fn()} />);
+
+    expect(screen.getByRole("switch", { name: "Use Classic TV Commercials" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Use Vintage PSAs" })).not.toBeChecked();
+    expect(screen.getByRole("list", { name: "Sources under Archive.org" })).toBeVisible();
+  });
+
+  it("starts folding children while the parent off request is pending", () => {
+    render(
+      <FillerSources
+        sources={grouped()}
+        onToggleEnabled={vi.fn()}
+        onToggleProvider={vi.fn()}
+        togglingProvider="archive"
+      />,
+    );
+
+    expect(screen.getByRole("switch", { name: "Use Classic TV Commercials", hidden: true })).toBeDisabled();
+    expect(screen.getByRole("list", { name: "Sources under Archive.org", hidden: true })).not.toBeVisible();
+  });
+
+  it("does not repeat provider context with type chips", () => {
+    render(<FillerSources sources={grouped()} />);
+    expect(screen.queryByText("SERVICE")).not.toBeInTheDocument();
+    expect(screen.queryByText("ARCHIVE")).not.toBeInTheDocument();
   });
 
   // ⚠ A provider with nothing under it is an INVITATION (§10, store/fillersources.go), and it
@@ -364,38 +435,124 @@ describe("FillerSources provider roll-up", () => {
             ...source({ kind: "archive", id: "provider:archive", target: "Archive.org" }),
             group: true,
             configured: false,
-            enabled: false,
-            switchable: false,
+            enabled: true,
+            effectiveEnabled: true,
+            switchable: true,
             removable: false,
             fetchable: false,
             searchable: false,
             count: 0,
           },
         ]}
-        onFetch={vi.fn()}
       />,
     );
 
     expect(screen.getByText(/nothing added yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/nothing added/)).toBeInTheDocument();
+    expect(screen.getByText(/^nothing added$/i)).toBeInTheDocument();
     // The caution Badge belongs to a source that is genuinely misconfigured, never to a service
     // nobody has added anything to yet.
     expect(screen.queryByText(/^not configured$/i)).not.toBeInTheDocument();
   });
 
-  // A group has no URI, so it offers none of the leaf controls — the server sends all four flags
-  // false and the row must honour every one.
-  it("offers no switch, fetch or remove on the provider itself", () => {
+  it("switches provider policy without calling the child-source handler", async () => {
+    const onToggleProvider = vi.fn();
+    const onToggleEnabled = vi.fn();
     render(
-      <FillerSources sources={grouped()} onFetch={vi.fn()} onToggleEnabled={vi.fn()} onRemove={vi.fn()} />,
+      <FillerSources
+        sources={grouped()}
+        onToggleEnabled={onToggleEnabled}
+        onToggleProvider={onToggleProvider}
+      />,
     );
 
-    // ⚠ Named, not counted. An earlier version asserted a switch COUNT and failed on the folder
-    // row's own switch — a count cannot say WHICH row is missing a control, which is the whole
-    // claim here.
-    expect(screen.queryByRole("switch", { name: /use Archive\.org/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: /use Classic TV Commercials/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("switch", { name: /use Archive\.org/i }));
+    expect(onToggleProvider).toHaveBeenCalledWith("archive", false);
+    expect(onToggleEnabled).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /fetch now from Archive\.org/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /remove Archive\.org/i })).not.toBeInTheDocument();
+  });
+
+  it("puts provider-specific setup inside the provider", () => {
+    render(
+      <FillerSources
+        sources={grouped()}
+        renderProviderSetup={(provider) => <button type="button">Add to {provider.target}</button>}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Add to Archive.org" })).toBeInTheDocument();
+  });
+
+  it("puts local setup inside Your files before the remote providers", () => {
+    const remoteOnly = grouped().filter((item) => item.id !== "folder");
+    render(
+      <FillerSources
+        sources={remoteOnly}
+        renderLocalSetup={<button type="button">Add a folder or library</button>}
+      />,
+    );
+
+    const local = screen.getByRole("region", { name: "Your files" });
+    const archive = screen.getByRole("region", { name: "Archive.org" });
+    expect(within(local).getByRole("button", { name: "Add a folder or library" })).toBeInTheDocument();
+    expect(within(local).getByText("Nothing added")).toBeInTheDocument();
+    expect(local.compareDocumentPosition(archive) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps paused sources visible without calling them attention in a long list", async () => {
+    const provider = {
+      ...source({ kind: "archive", id: "provider:archive", target: "Archive.org" }),
+      group: true,
+    };
+    const children = Array.from({ length: 20 }, (_, index) =>
+      source({
+        kind: "archive",
+        id: `archive:${index + 1}`,
+        parentId: provider.id,
+        target: index === 12 ? "Paused collection" : `Healthy collection ${index + 1}`,
+        enabled: index !== 12,
+        effectiveEnabled: index !== 12,
+        ready: index !== 12,
+        readiness: index === 12 ? "off" : "ready",
+      }),
+    );
+
+    render(<FillerSources sources={[provider, ...children]} onSelect={vi.fn()} />);
+
+    expect(screen.getByText("20 sources", { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText(/needs attention/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Paused collection")).toBeInTheDocument();
+    expect(screen.getByText("Healthy collection 1")).toBeInTheDocument();
+    expect(screen.getByText("Healthy collection 5")).toBeInTheDocument();
+    expect(screen.queryByText("Healthy collection 6")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Manage / })).toHaveLength(6);
+
+    await userEvent.click(screen.getByRole("button", { name: "Show 14 more under Archive.org" }));
+
+    expect(screen.getAllByRole("button", { name: /^Manage / })).toHaveLength(20);
+    expect(screen.getByRole("button", { name: "Show fewer under Archive.org" })).toBeInTheDocument();
+  });
+
+  it("filters registered sources without filtering the provider catalog", async () => {
+    const provider = {
+      ...source({ kind: "youtube", id: "provider:youtube", target: "YouTube" }),
+      group: true,
+    };
+    const children = Array.from({ length: 12 }, (_, index) =>
+      source({
+        kind: "youtube",
+        id: `youtube:${index + 1}`,
+        parentId: provider.id,
+        target: index === 10 ? "Museum of Classic Commercials" : `Channel ${index + 1}`,
+      }),
+    );
+
+    render(<FillerSources sources={[provider, ...children]} onSelect={vi.fn()} />);
+
+    const filter = screen.getByRole("searchbox", { name: "Filter YouTube sources" });
+    await userEvent.type(filter, "museum");
+
+    expect(screen.getByText("Museum of Classic Commercials")).toBeInTheDocument();
+    expect(screen.queryByText("Channel 1")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show .* more under YouTube/ })).not.toBeInTheDocument();
   });
 });

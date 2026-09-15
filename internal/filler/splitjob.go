@@ -66,9 +66,9 @@ type SplitStore interface {
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
 	// ReleaseCompositeHolds exposes the fully resolved parent as a non-airable lineage container.
 	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
-	// MarkPipelineFiled makes full confirmation the terminal owner of the parent pipeline row.
+	// MarkPipelineComplete makes full confirmation the terminal owner of the parent pipeline row.
 	// It belongs inside the confirmation saga so the application cannot fail after commit.
-	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
+	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
 	// CompleteSplitConfirmation atomically consumes one fully reviewed proposal, transitions its
 	// retained parent and replacement pipelines, and selects the replacement generation.
 	CompleteSplitConfirmation(ctx context.Context, completion SplitCompletion) (int, error)

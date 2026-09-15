@@ -2,6 +2,7 @@ import {
   fillerSources,
   fillerSourcesEmptyProvider,
   fillerSourcesGrouped,
+  fillerSourcesManyGrouped,
   fillerSourcesWithRemotes,
 } from "@loomarr/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -20,7 +21,7 @@ const meta = {
   component: FillerSources,
   // ⚠ No `total`. This header reads "N of M on"; the catalog size belongs to the page header's
   // `watchLine` pill, not here — two components reporting it is how they start disagreeing.
-  args: { sources: SOURCES, onFetch: noop },
+  args: { sources: SOURCES, onSelect: noop },
   decorators: [widthFrame(760)],
 } satisfies Meta<typeof FillerSources>;
 
@@ -36,8 +37,8 @@ const NothingConfigured: Story = {
   },
 };
 
-const Fetching: Story = {
-  args: { fetching: "folder" },
+const Selected: Story = {
+  args: { selectedId: "folder" },
 };
 
 const FetchFailed: Story = {
@@ -58,7 +59,7 @@ const FetchFailed: Story = {
 // pre-existing gap rather than a V37 one, closed here because this is the story that renders
 // every row type at once.
 const WithRegisteredSources: Story = {
-  args: { sources: fillerSourcesWithRemotes, onRemove: noop, onToggleEnabled: noop },
+  args: { sources: fillerSourcesWithRemotes, onSelect: noop, onToggleEnabled: noop },
 };
 
 // The PROVIDER ROLL-UP (§10 V51c) — one Archive.org row and one YouTube row, each twirling down
@@ -74,14 +75,20 @@ const WithRegisteredSources: Story = {
 // were running because every off-state was gated on `switchable && !enabled` and a group is not
 // switchable.
 const GroupedByProvider: Story = {
-  args: { sources: fillerSourcesGrouped, onRemove: noop, onToggleEnabled: noop },
+  args: { sources: fillerSourcesGrouped, onSelect: noop, onToggleEnabled: noop },
+};
+
+// Twenty registered collections: attention remains visible, healthy rows start collapsed, and
+// the registered-source filter is distinct from the provider catalog finder used by the page.
+const ManySources: Story = {
+  args: { sources: fillerSourcesManyGrouped, onSelect: noop, onToggleEnabled: noop },
 };
 
 // A provider with nothing under it — an INVITATION, not a fault. It used to draw the same red
 // `not configured` caution Badge a broken drop-folder gets, telling an operator something is
 // wrong when nothing is.
 const EmptyProvider: Story = {
-  args: { sources: fillerSourcesEmptyProvider, onRemove: noop, onToggleEnabled: noop },
+  args: { sources: fillerSourcesEmptyProvider, onSelect: noop, onToggleEnabled: noop },
 };
 
 export default meta;
@@ -89,8 +96,9 @@ export {
   Default,
   EmptyProvider,
   FetchFailed,
-  Fetching,
   GroupedByProvider,
+  ManySources,
   NothingConfigured,
+  Selected,
   WithRegisteredSources,
 };

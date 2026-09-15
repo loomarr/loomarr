@@ -55,7 +55,7 @@ const clip = (hash: string, name: string): ClipDTO => ({
 // `u.includes("/v1/filler?")`, which is a substring of every other filler route's URL too.
 //
 // ⚠ The `/v1/filler/pool` branch sent `{ total, untagged, channels }`. `FillerPoolOutputBody` has
-// no `total` at all, and REQUIRES `clips`, `commercials` and `eligible` — so the pool response was
+// no `total` at all, and REQUIRES `clips`, `breakBody` and `eligible` — so the pool response was
 // simultaneously carrying a field the API never sends and missing three it always does.
 //
 // ⚠ The `me` fixture omitted `local`, which MeBody requires.
@@ -65,9 +65,16 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; total?: number } = {}) => {
 
   server.use(
     getMeMockHandler(me({ name: "Admin" })),
-    getFillerWatchMockHandler({ sourcesOn: 4, sourcesTotal: 5, clips: 200, held: 0, health: "healthy" }),
+    getFillerWatchMockHandler({
+      sourcesOn: 4,
+      sourcesReady: 4,
+      sourcesTotal: 5,
+      clips: 200,
+      held: 0,
+      health: "healthy",
+    }),
     getFillerAttentionMockHandler({ rows: [], total: 0 }),
-    getFillerPoolMockHandler({ clips: 200, commercials: 200, eligible: 200, untagged: 0, channels: [] }),
+    getFillerPoolMockHandler({ clips: 200, breakBody: 200, eligible: 200, untagged: 0, channels: [] }),
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),
     getSettingsListMockHandler({ settings: [], features: { filler: true } }),
     // ⚠ `total` rides every listing response since §10 V51d — it is how many clips MATCH

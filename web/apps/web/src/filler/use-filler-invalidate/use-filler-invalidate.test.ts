@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { useFillerInvalidate } from "./use-filler-invalidate";
 
 // The three filler query keys travel together for a reason that is easy to forget at a call
-// site: filing, holding, removing or retagging a clip moves it between the Incoming queue and
+// site: publishing, holding, removing or retagging a clip moves it between the Incoming queue and
 // the Catalog, and both change what the pool strip reports. Invalidating only the clip list
 // leaves the row sitting in Incoming until a reload — "it worked but the UI lied".
 //
@@ -51,7 +51,7 @@ describe("useFillerInvalidate", () => {
   // ⚠ THE one that matters. A lifecycle write can move a clip between all three views, so
   // missing any single key shows the operator a stale queue. Asserted as a set so the hook is
   // free to reorder, but nothing may drop out.
-  it("invalidateLifecycle touches all three, because a filed clip changes all three", () => {
+  it("invalidateLifecycle touches all three, because a Ready clip changes all three", () => {
     const { invalidated, result } = setup();
     result.current.invalidateLifecycle();
     expect(invalidated().sort()).toEqual([CATALOG, INCOMING, POOL].sort());

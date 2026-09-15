@@ -73,12 +73,20 @@ describe("SourcesTab", () => {
           target: "/data/filler",
           detail: "watched directly",
           count: 12,
+          incoming: 0,
           configured: true,
           fetchable: false,
           enabled: true,
+          effectiveEnabled: true,
+          providerEnabled: true,
           switchable: true,
           removable: false,
           searchable: false,
+          readiness: "ready",
+          ready: true,
+          locationSource: "installation",
+          effectiveCountry: "US",
+          actions: [],
         },
       ],
       total: 12,
@@ -92,11 +100,11 @@ describe("SourcesTab", () => {
   // to find out WHY filler is broken, so its own error is the least useful moment to lose the
   // screen. The panel threads `sourcesError` into the source list's error slot (it renders
   // beside the rows), so what this seam guarantees is that a 500 does not throw and the
-  // "Add a source" affordance survives — the operator can still act.
+  // local-source affordance survives — the operator can still act.
   it("stays renderable when the source list fails", async () => {
     server.use(getMeMockHandler({ ...ADMIN }), sourcesFail());
     render(<SourcesTab />, { wrapper: makeWrapper() });
 
-    expect(await screen.findByText(/add a source/i)).toBeInTheDocument();
+    expect(await screen.findByText(/add a folder or library/i)).toBeInTheDocument();
   });
 });

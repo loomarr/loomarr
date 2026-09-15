@@ -15,8 +15,8 @@ import (
 // The source ROLL-UP (§10 V51c): three archive.org collections stop being three sibling rows and
 // become one Archive.org row with the collections beneath it.
 //
-// ⚠ **The grouping is DERIVED from `kind` at read time — no column, no table, no migration** — so
-// these tests are the whole specification of it. There is nothing persisted to inspect.
+// Group membership is derived from `kind` at read time. Provider policy is persisted separately,
+// so switching the service never rewrites a collection's own setting.
 
 // sourcesFrom reads the sources read-model off a server built by newFillerServer.
 func sourcesFrom(t *testing.T, srv *httptest.Server) []api.FillerSourceDTO {
@@ -39,7 +39,7 @@ func sourcesFrom(t *testing.T, srv *httptest.Server) []api.FillerSourceDTO {
 func addArchive(t *testing.T, st store.Store, id, label string, fetched time.Time) {
 	t.Helper()
 	src := store.NewFillerSource(id, "archive", id, label, time.Unix(1_700_000_000, 0).UTC())
-	src.LastFetchedAt = fetched
+	src.LastCheckedAt = fetched
 	if err := st.UpsertFillerSource(context.Background(), src); err != nil {
 		t.Fatal(err)
 	}
@@ -113,23 +113,25 @@ func TestSourceGroups_EmptyProviderIsStillEmittedAsAnInvitation(t *testing.T) {
 		if rows[i].Configured {
 			t.Errorf("%s.configured = true with no children; an empty provider is an invitation", id)
 		}
-		if rows[i].Count != 0 || rows[i].Enabled {
-			t.Errorf("%s reports count=%d enabled=%v with no children", id, rows[i].Count, rows[i].Enabled)
+		if rows[i].Count != 0 || !rows[i].Enabled {
+			t.Errorf("%s reports count=%d enabled=%v; a fresh provider remains on while empty", id, rows[i].Count, rows[i].Enabled)
 		}
 	}
 }
 
-// ⚠ **A group carries no switch and cannot be removed** — the opinionated call of the phase.
-// Cascade-on-write would destroy each child's own choice, which the store forbids in as many
-// words ("Disabling is not deleting… switching it back on restores what was there").
-func TestSourceGroups_GroupOffersNoControls(t *testing.T) {
+// A provider switch pauses every child without rewriting the child's remembered choice.
+func TestSourceGroups_ProviderSwitchPausesAndRestoresChildren(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	addArchive(t, st, "classic", "Classic TV", time.Time{})
+	addArchive(t, st, "vhs", "VHS Vault", time.Time{})
+	if err := st.SetFillerSourceEnabled(context.Background(), "vhs", false); err != nil {
+		t.Fatal(err)
+	}
 
 	rows := sourcesFrom(t, srv)
 	g := rows[indexOf(rows, "provider:archive")]
-	if g.Switchable {
-		t.Error("the group is switchable — a master switch has to be a visible bulk write, not a cascade")
+	if !g.Switchable || !g.Enabled {
+		t.Errorf("provider before pause = %+v, want an enabled master switch", g)
 	}
 	if g.Removable {
 		t.Error("the group is removable — deleting a provider would silently delete every child")
@@ -137,9 +139,44 @@ func TestSourceGroups_GroupOffersNoControls(t *testing.T) {
 	if g.Fetchable || g.Searchable {
 		t.Errorf("group fetchable=%v searchable=%v; a provider has no URI of its own", g.Fetchable, g.Searchable)
 	}
+
+	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/providers/archive", `{"enabled":false}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH provider off → %d, want 200", res.StatusCode)
+	}
+	rows = sourcesFrom(t, srv)
+	g = rows[indexOf(rows, "provider:archive")]
+	classic := rows[indexOf(rows, "classic")]
+	vhs := rows[indexOf(rows, "vhs")]
+	if g.Enabled || classic.EffectiveEnabled || vhs.EffectiveEnabled {
+		t.Errorf("paused projection: provider=%+v classic=%+v vhs=%+v", g, classic, vhs)
+	}
+	if !classic.Enabled || vhs.Enabled {
+		t.Error("pausing the provider rewrote a child's own switch")
+	}
+
+	res = sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/providers/archive", `{"enabled":true}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH provider on → %d, want 200", res.StatusCode)
+	}
+	rows = sourcesFrom(t, srv)
+	classic = rows[indexOf(rows, "classic")]
+	vhs = rows[indexOf(rows, "vhs")]
+	if !classic.EffectiveEnabled || vhs.EffectiveEnabled {
+		t.Error("resuming the provider did not restore the remembered child mix")
+	}
 }
 
-// The rollups: count SUMS, lastFetchedAt is the MAX, enabled is ANY.
+func TestSourceGroups_ProviderSwitchIsAdminOnly(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/providers/archive", `{"enabled":false}`, memberToken)
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("member PATCH provider → %d, want 403", res.StatusCode)
+	}
+}
+
+// The rollups: count SUMS and lastCheckedAt is the MAX. Enabled is provider policy, not a child
+// aggregate; turning every child off must not make the master switch lie about its own state.
 //
 // ⚠ The count is honest arithmetic over what the children claim and never invents attribution.
 // Nothing records which SOURCE a downloaded clip came from today, so children legitimately report
@@ -151,7 +188,7 @@ func TestSourceGroups_RollsUpCountLastFetchedAndEnabled(t *testing.T) {
 	addArchive(t, st, "classic", "Classic TV", older)
 	addArchive(t, st, "vhs", "VHS Vault", newer)
 
-	// One child switched off: the provider still reads as doing work, because the other is on.
+	// One child switched off: provider policy remains on.
 	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic", `{"enabled":false}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("PATCH child → %d, want 200", res.StatusCode)
@@ -160,18 +197,18 @@ func TestSourceGroups_RollsUpCountLastFetchedAndEnabled(t *testing.T) {
 	rows := sourcesFrom(t, srv)
 	g := rows[indexOf(rows, "provider:archive")]
 	if !g.Enabled {
-		t.Error("group reads as off while a child is still on — `enabled` is ANY, not ALL")
+		t.Error("provider policy changed when only a child was switched off")
 	}
-	if g.LastFetchedAt != newer.Format(time.RFC3339) {
-		t.Errorf("lastFetchedAt = %q, want the MAX over children (%q)", g.LastFetchedAt, newer.Format(time.RFC3339))
+	if g.LastCheckedAt != newer.Format(time.RFC3339) {
+		t.Errorf("lastCheckedAt = %q, want the MAX over children (%q)", g.LastCheckedAt, newer.Format(time.RFC3339))
 	}
 
-	// And with every child off, the provider reads as dormant rather than as running.
+	// And with every child off, provider policy still reads as on.
 	if r := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/vhs", `{"enabled":false}`, adminToken); r.StatusCode != http.StatusOK {
 		t.Fatalf("PATCH second child → %d", r.StatusCode)
 	}
-	if g := sourcesFrom(t, srv)[indexOf(sourcesFrom(t, srv), "provider:archive")]; g.Enabled {
-		t.Error("group reads as on with every child off")
+	if g := sourcesFrom(t, srv)[indexOf(sourcesFrom(t, srv), "provider:archive")]; !g.Enabled {
+		t.Error("provider master switch changed when only its children were switched off")
 	}
 }
 

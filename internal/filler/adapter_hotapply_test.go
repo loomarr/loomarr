@@ -52,8 +52,8 @@ func TestPodAdapter_ResolvesPolicyPerCall(t *testing.T) {
 	if after.Eligible != 1 {
 		t.Errorf("eligible = %d, want 1 — a 45s ceiling must exclude the 64s clip WITHOUT a restart", after.Eligible)
 	}
-	if after.Commercials != 2 {
-		t.Errorf("commercials = %d, want 2 — the ceiling is an eligibility filter, not a reject", after.Commercials)
+	if after.BreakBody != 2 {
+		t.Errorf("break body = %d, want 2 — the ceiling is an eligibility filter, not a reject", after.BreakBody)
 	}
 
 	// ⚠ Asserted explicitly: a resolver that were called once and cached would still satisfy the
@@ -73,9 +73,9 @@ func TestPodAdapter_NilPolicyResolverIsTheZeroPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a nil policy resolver must not fail: %v", err)
 	}
-	if report.Eligible != report.Commercials {
+	if report.Eligible != report.BreakBody {
 		t.Errorf("eligible=%d commercials=%d — with no policy every commercial is eligible",
-			report.Eligible, report.Commercials)
+			report.Eligible, report.BreakBody)
 	}
 }
 

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -111,5 +112,31 @@ func TestPlanAcquisition_BoundsTheWholeSourceAndCandidateSet(t *testing.T) {
 	}
 	if limited != 2 || len(plan.Selected) != 50 {
 		t.Fatalf("source decisions limited=%d selected=%d, want 2 and 50", limited, len(plan.Selected))
+	}
+}
+
+func TestPlanAcquisition_ProviderPausePreventsEnumeration(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	source := store.NewFillerSource("paused-archive", "archive", "paused_archive", "Paused", time.Now().UTC())
+	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetFillerProviderEnabled(t.Context(), "archive", false); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	adapter := fillerServiceAdapter{
+		pullPlanning: st,
+		sourceEnum: enumeratorFunc(func(context.Context, filler.FetchSource, int) ([]filler.DiscoveredRef, int, error) {
+			called = true
+			return []filler.DiscoveredRef{{ID: "should-not-run"}}, 1, nil
+		}),
+	}
+	_, err := adapter.PlanAcquisition(t.Context(), filler.AcquisitionIntent{Count: 1})
+	if !errors.Is(err, filler.ErrNoAcquisitionSources) {
+		t.Fatalf("plan while archive paused = %v, want ErrNoAcquisitionSources", err)
+	}
+	if called {
+		t.Error("provider enumerator ran while Archive.org was paused")
 	}
 }

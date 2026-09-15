@@ -14,7 +14,7 @@ import (
 )
 
 func screen(item fillereval.Case, packet fillerbakeoff.Packet, download DownloadCase, mappings map[string]ProductMapping, forest *taxonomy.Forest, contentFinding *AppliedContentFinding) (Case, error) {
-	media, usability, license, err := mediaSummary(packet)
+	media, usability, err := mediaSummary(packet)
 	if err != nil {
 		return Case{}, err
 	}
@@ -63,13 +63,6 @@ func screen(item fillereval.Case, packet fillerbakeoff.Packet, download Download
 	if media.SegmentDurationMS > 0 && media.SegmentDurationMS < 10_000 {
 		exclude = append(exclude, ReasonDurationTooShort)
 	}
-	switch license {
-	case filleradmission.EligibilityIneligible:
-		exclude = append(exclude, ReasonSourceIneligible)
-	case filleradmission.EligibilityEligible:
-	default:
-		hold = append(hold, ReasonSourceEvidenceMissing)
-	}
 	// The recovery preparer capped inspection at two minutes. A source extending materially
 	// beyond the bound has not established that the observed prefix is one complete filler unit.
 	if media.SourceDurationMS > media.SegmentStartMS+media.SegmentDurationMS+1000 {
@@ -112,38 +105,32 @@ func cloneContentFinding(finding *AppliedContentFinding) *AppliedContentFinding 
 	return &result
 }
 
-func mediaSummary(packet fillerbakeoff.Packet) (MediaSummary, string, string, error) {
+func mediaSummary(packet fillerbakeoff.Packet) (MediaSummary, string, error) {
 	var summary MediaSummary
-	var usability, license string
-	mediaFacts, rightsFacts := 0, 0
+	var usability string
+	mediaFacts := 0
 	for _, fact := range packet.Facts {
 		switch fact.Claim {
 		case filleradmission.ClaimMediaUsability:
 			mediaFacts++
 			usability = fact.Value
 			if strings.TrimSpace(fact.Source) == "" || fact.Location == "" || (fact.Value != filleradmission.UsabilityUsable && fact.Value != filleradmission.UsabilityUnusable) {
-				return MediaSummary{}, "", "", fmt.Errorf("incomplete media-usability fact")
+				return MediaSummary{}, "", fmt.Errorf("incomplete media-usability fact")
 			}
 			count, err := fmt.Sscanf(fact.Location,
 				"source_duration_ms=%d;segment_start_ms=%d;segment_duration_ms=%d;no_video=%t;no_audio=%t;black_percent=%d;silence_percent=%d",
 				&summary.SourceDurationMS, &summary.SegmentStartMS, &summary.SegmentDurationMS,
 				&summary.NoVideo, &summary.NoAudio, &summary.BlackPercent, &summary.SilencePercent)
 			if err != nil || count != 7 || summary.SourceDurationMS < 0 || summary.SegmentStartMS < 0 || summary.SegmentDurationMS < 0 || summary.BlackPercent < 0 || summary.BlackPercent > 100 || summary.SilencePercent < 0 || summary.SilencePercent > 100 {
-				return MediaSummary{}, "", "", fmt.Errorf("invalid media-usability measurement")
+				return MediaSummary{}, "", fmt.Errorf("invalid media-usability measurement")
 			}
 			if summary.SegmentStartMS > summary.SourceDurationMS || summary.SegmentDurationMS > summary.SourceDurationMS-summary.SegmentStartMS {
-				return MediaSummary{}, "", "", fmt.Errorf("invalid media-usability segment bounds")
-			}
-		case filleradmission.ClaimSourceLicense:
-			rightsFacts++
-			license = fact.Value
-			if strings.TrimSpace(fact.Source) == "" || (fact.Value != filleradmission.EligibilityEligible && fact.Value != filleradmission.EligibilityIneligible) {
-				return MediaSummary{}, "", "", fmt.Errorf("incomplete source-license fact")
+				return MediaSummary{}, "", fmt.Errorf("invalid media-usability segment bounds")
 			}
 		}
 	}
-	if mediaFacts != 1 || rightsFacts != 1 {
-		return MediaSummary{}, "", "", fmt.Errorf("packet requires exactly one media-usability fact and one source-license fact")
+	if mediaFacts != 1 {
+		return MediaSummary{}, "", fmt.Errorf("packet requires exactly one media-usability fact")
 	}
 	videoSignals := 0
 	for _, signal := range packet.Signals {
@@ -160,9 +147,9 @@ func mediaSummary(packet fillerbakeoff.Packet) (MediaSummary, string, string, er
 		summary.evidenceVideoValid = signal.Path != "" && validSHA256(signal.SHA256) && signal.Bytes > 0 && signal.DurationMS > 0 && signal.Width > 0 && signal.Height > 0 && slices.Equal(signal.ContentTypes, []string{"video/mp4"})
 	}
 	if videoSignals > 1 {
-		return MediaSummary{}, "", "", fmt.Errorf("packet contains multiple evidence-video presentations")
+		return MediaSummary{}, "", fmt.Errorf("packet contains multiple evidence-video presentations")
 	}
-	return summary, usability, license, nil
+	return summary, usability, nil
 }
 
 func productionTaxonomy(item fillereval.Case, mappings map[string]ProductMapping, forest *taxonomy.Forest) ([]string, []string) {

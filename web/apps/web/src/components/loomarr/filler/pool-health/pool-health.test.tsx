@@ -6,7 +6,7 @@ import { PoolHealth } from "./pool-health";
 
 const pool = (over: Partial<PoolDTO> = {}): PoolDTO => ({
   clips: 120,
-  commercials: 90,
+  breakBody: 90,
   eligible: 61,
   untagged: 0,
   channels: [],
@@ -21,7 +21,7 @@ describe("PoolHealth", () => {
     render(<PoolHealth pool={pool()} />);
 
     expect(screen.getByText("61")).toBeInTheDocument();
-    expect(screen.getByText("of 90 commercials")).toBeInTheDocument();
+    expect(screen.getByText("of 90 break clips")).toBeInTheDocument();
   });
 
   it("counts untagged clips as work rather than hiding them", () => {

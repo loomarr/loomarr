@@ -49,8 +49,6 @@ components:
         minHeight:
           format: int64
           type: integer
-        rights:
-          type: string
         roles:
           items:
             type: string
@@ -67,14 +65,13 @@ components:
           type: string
       required:
         - version
-        - rights
         - count
         - catalogReason
       type: object
     AcquisitionOutcomeDTO:
       additionalProperties: false
       properties:
-        admitted:
+        complete:
           format: int64
           type: integer
         dismissed:
@@ -89,6 +86,9 @@ components:
         preparing:
           format: int64
           type: integer
+        ready:
+          format: int64
+          type: integer
         rejected:
           format: int64
           type: integer
@@ -96,7 +96,8 @@ components:
         - enrolled
         - preparing
         - needsDecision
-        - admitted
+        - ready
+        - complete
         - rejected
         - dismissed
       type: object
@@ -2937,9 +2938,34 @@ components:
         added:
           format: int64
           type: integer
+        maxPerCheck:
+          description: Effective clip limit for this selected source
+          format: int64
+          type: integer
         pruned:
           format: int64
           type: integer
+        queued:
+          description: New remote items queued for acquisition
+          format: int64
+          type: integer
+        skipped:
+          description: Remote items already known to the catalog or acquisition history
+          format: int64
+          type: integer
+        sourceId:
+          description: Selected registered source
+          type: string
+        sourcesPolled:
+          description: Remote sources actually inspected by this pass
+          format: int64
+          type: integer
+        stoppedBy:
+          description: Capacity ceiling that stopped the pass
+          enum:
+            - catalog
+            - disk
+          type: string
         total:
           format: int64
           type: integer
@@ -2947,6 +2973,11 @@ components:
           format: int64
           type: integer
       required:
+        - sourceId
+        - sourcesPolled
+        - queued
+        - skipped
+        - maxPerCheck
         - total
         - added
         - updated
@@ -2955,6 +2986,13 @@ components:
     FillerAcquisitionRunDTO:
       additionalProperties: false
       properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerAcquisitionRunDTO.json
+          format: uri
+          readOnly: true
+          type: string
         artifacts:
           $ref: "#/components/schemas/AcquisitionArtifactOutcomeDTO"
         completedAt:
@@ -3265,7 +3303,6 @@ components:
         taskKind:
           enum:
             - identity_role
-            - rights_provenance
             - suitability_exception
             - split_boundary
           type: string
@@ -3290,7 +3327,8 @@ components:
           enum:
             - running
             - review
-            - filed
+            - ready
+            - complete
             - rejected
             - dismissed
           type: string
@@ -3313,7 +3351,6 @@ components:
             - transcribe
             - tag
             - vision
-            - admission
             - score
           type: string
         status:
@@ -3488,13 +3525,7 @@ components:
         id:
           type: string
         recovery:
-          enum:
-            - configure_provider
-            - adjust_budget
-            - retry_extraction
-            - inspect_media
-            - update_policy
-          type: string
+          $ref: "#/components/schemas/FillerDecisionRecoveryDTO"
         retryable:
           type: boolean
       required:
@@ -3554,6 +3585,71 @@ components:
         - healthy
         - nextAction
         - counts
+      type: object
+    FillerDecisionRecoveryDTO:
+      additionalProperties: false
+      properties:
+        action:
+          enum:
+            - configure_provider
+            - adjust_budget
+            - retry_extraction
+            - inspect_media
+            - update_policy
+          type: string
+        destination:
+          description: Exact application or media destination for configuration and inspection recovery
+          type: string
+        mode:
+          enum:
+            - automatic_retry
+            - manual_retry
+            - configuration
+            - inspection
+          type: string
+        retryAt:
+          description: Exact next-attempt time for automatic recovery
+          format: date-time
+          type: string
+      required:
+        - action
+        - mode
+      type: object
+    FillerDiagnosticRecoveryInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDiagnosticRecoveryInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        action:
+          enum:
+            - retry
+          type: string
+        actionId:
+          maxLength: 128
+          type: string
+      required:
+        - actionId
+        - action
+      type: object
+    FillerDiagnosticRecoveryOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDiagnosticRecoveryOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          type: string
+      required:
+        - id
       type: object
     FillerFetchStatusDTO:
       additionalProperties: false
@@ -3736,160 +3832,6 @@ components:
         - acquisitions
         - repairs
       type: object
-    FillerRightsGrantDTO:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerRightsGrantDTO.json
-          format: uri
-          readOnly: true
-          type: string
-        acquisitionId:
-          type: string
-        actorId:
-          type: string
-        effectiveAt:
-          format: date-time
-          type: string
-        evidenceSha256:
-          type: string
-        policySha256:
-          type: string
-        recordedAt:
-          format: date-time
-          type: string
-        sha256:
-          type: string
-        sourceId:
-          type: string
-        sourceMasterSha256:
-          type: string
-        status:
-          enum:
-            - authorized
-            - prohibited
-            - unknown
-          type: string
-        supersedesSha256:
-          type: string
-        use:
-          type: string
-        validUntil:
-          format: date-time
-          type: string
-        withdrawal:
-          enum:
-            - clear
-            - withdrawn
-            - unknown
-          type: string
-        withdrawnAt:
-          format: date-time
-          type: string
-      required:
-        - sha256
-        - sourceId
-        - acquisitionId
-        - sourceMasterSha256
-        - policySha256
-        - use
-        - status
-        - withdrawal
-        - evidenceSha256
-        - actorId
-        - effectiveAt
-        - recordedAt
-      type: object
-    FillerRightsGrantInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerRightsGrantInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        acquisitionId:
-          maxLength: 256
-          type: string
-        effectiveAt:
-          description: UTC instant; defaults to the recording instant
-          format: date-time
-          type: string
-        evidenceSha256:
-          maxLength: 64
-          minLength: 64
-          type: string
-        policySha256:
-          maxLength: 64
-          minLength: 64
-          type: string
-        sourceId:
-          maxLength: 256
-          type: string
-        sourceMasterSha256:
-          maxLength: 64
-          minLength: 64
-          type: string
-        status:
-          enum:
-            - authorized
-            - prohibited
-            - unknown
-          type: string
-        supersedesSha256:
-          description: Exact current grant digest required when replacing an authority
-          maxLength: 64
-          type: string
-        validUntil:
-          format: date-time
-          type: string
-        withdrawal:
-          enum:
-            - clear
-            - withdrawn
-            - unknown
-          type: string
-        withdrawnAt:
-          format: date-time
-          type: string
-      required:
-        - sourceId
-        - acquisitionId
-        - sourceMasterSha256
-        - policySha256
-        - status
-        - withdrawal
-        - evidenceSha256
-      type: object
-    FillerRightsReviewDTO:
-      additionalProperties: false
-      properties:
-        acquisitionId:
-          type: string
-        canRecord:
-          type: boolean
-        currentGrant:
-          $ref: "#/components/schemas/FillerRightsGrantDTO"
-        policySha256:
-          type: string
-        sourceId:
-          type: string
-        sourceMasterSha256:
-          type: string
-        use:
-          type: string
-      required:
-        - sourceId
-        - acquisitionId
-        - sourceMasterSha256
-        - policySha256
-        - use
-        - canRecord
-      type: object
     FillerScreeningAxisDTO:
       additionalProperties: false
       properties:
@@ -3898,7 +3840,6 @@ components:
             - visual_safety
             - spoken_safety
             - written_safety
-            - rights
             - playback_integrity
           type: string
         evidenceSha256:
@@ -3949,8 +3890,6 @@ components:
           type: string
         reasonCode:
           type: string
-        rightsReview:
-          $ref: "#/components/schemas/FillerRightsReviewDTO"
         state:
           enum:
             - not_screened
@@ -3997,6 +3936,13 @@ components:
     FillerSourceDTO:
       additionalProperties: false
       properties:
+        actions:
+          description: Closed actions currently valid for this source
+          items:
+            type: string
+          type: array
+        automaticDownloads:
+          $ref: "#/components/schemas/SourceAutomaticDownloadsDTO"
         configured:
           type: boolean
         count:
@@ -4007,6 +3953,14 @@ components:
           type: string
         detail:
           type: string
+        effectiveCountry:
+          description: Country this source uses after Installation geography inheritance
+          type: string
+        effectiveEnabled:
+          type: boolean
+        effectiveMarket:
+          description: Local market this source uses after Installation geography inheritance
+          type: string
         enabled:
           type: boolean
         fetchable:
@@ -4015,6 +3969,10 @@ components:
           type: boolean
         id:
           type: string
+        incoming:
+          description: Clips from this source still being prepared or awaiting a decision; NOT included in count
+          format: int64
+          type: integer
         kind:
           enum:
             - folder
@@ -4022,17 +3980,38 @@ components:
             - archive
             - youtube
           type: string
-        lastFetchedAt:
-          description: RFC3339; absent if never fetched
+        lastCheckedAt:
+          description: RFC3339; absent if never checked
           type: string
         license:
           description: Licence the source declared; absent means unknown, NOT public domain
+          type: string
+        locationSource:
+          description: Where the effective location came from
+          enum:
+            - installation
+            - source
+            - missing
           type: string
         market:
           description: Local market asserted for this source; absent means country-wide
           type: string
         parentId:
           type: string
+        providerEnabled:
+          type: boolean
+        readiness:
+          enum:
+            - ready
+            - "off"
+            - provider_off
+            - needs_location
+            - not_configured
+            - out_of_area
+            - unavailable
+          type: string
+        ready:
+          type: boolean
         removable:
           type: boolean
         searchable:
@@ -4046,6 +4025,8 @@ components:
       required:
         - id
         - enabled
+        - effectiveEnabled
+        - providerEnabled
         - switchable
         - removable
         - kind
@@ -4053,8 +4034,91 @@ components:
         - target
         - detail
         - count
+        - incoming
         - configured
         - fetchable
+        - locationSource
+        - readiness
+        - ready
+        - actions
+      type: object
+    FillerSourcePreviewItemDTO:
+      additionalProperties: false
+      properties:
+        durationMs:
+          format: int64
+          type: integer
+        title:
+          type: string
+        url:
+          type: string
+      required:
+        - title
+        - url
+      type: object
+    FillerSourceSuggestionDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerSourceSuggestionDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        alreadyAdded:
+          type: boolean
+        canonicalId:
+          type: string
+        canonicalUrl:
+          type: string
+        description:
+          type: string
+        itemCount:
+          format: int64
+          type: integer
+        previewItems:
+          items:
+            $ref: "#/components/schemas/FillerSourcePreviewItemDTO"
+          maxItems: 3
+          type: array
+        provider:
+          enum:
+            - archive
+            - youtube
+          type: string
+        targetType:
+          enum:
+            - collection
+            - channel
+            - playlist
+          type: string
+        title:
+          type: string
+      required:
+        - provider
+        - targetType
+        - canonicalId
+        - canonicalUrl
+        - title
+        - alreadyAdded
+      type: object
+    FillerSourceSuggestionsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerSourceSuggestionsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        suggestions:
+          items:
+            $ref: "#/components/schemas/FillerSourceSuggestionDTO"
+          type: array
+      required:
+        - suggestions
       type: object
     FillerSourcesOutputBody:
       additionalProperties: false
@@ -4135,12 +4199,16 @@ components:
         sourcesOn:
           format: int64
           type: integer
+        sourcesReady:
+          format: int64
+          type: integer
         sourcesTotal:
           format: int64
           type: integer
       required:
         - health
         - sourcesOn
+        - sourcesReady
         - sourcesTotal
         - clips
         - held
@@ -4969,12 +5037,6 @@ components:
           maximum: 4320
           minimum: 0
           type: integer
-        rights:
-          enum:
-            - any
-            - prefer_declared
-            - require_declared
-          type: string
         roles:
           items:
             type: string
@@ -5746,6 +5808,124 @@ components:
       required:
         - tunersReset
       type: object
+    LocationDTO:
+      additionalProperties: false
+      properties:
+        approximate:
+          description: True when the result came from IP/CDN evidence rather than selected device coordinates
+          type: boolean
+        attribution:
+          description: Required data-provider attribution URL
+          type: string
+        country:
+          description: ISO 3166-1 alpha-2 setting value
+          examples:
+            - US
+          maxLength: 2
+          minLength: 2
+          type: string
+        id:
+          description: Stable place identifier
+          type: string
+        label:
+          description: Human place label
+          examples:
+            - New York City, United States
+          type: string
+        market:
+          description: Local market setting value; empty for a country-only choice
+          examples:
+            - New York City
+          type: string
+        region:
+          description: Display-only first-level region used to distinguish search results
+          examples:
+            - New York
+          type: string
+        source:
+          description: Evidence used for an automatic suggestion
+          enum:
+            - device
+            - cloudflare
+            - cloudfront
+            - vercel
+            - proxy
+            - ip
+          type: string
+      required:
+        - id
+        - label
+        - country
+      type: object
+    LocationOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LocationOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        location:
+          $ref: "#/components/schemas/LocationDTO"
+      required:
+        - location
+      type: object
+    LocationResolveInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LocationResolveInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        latitude:
+          format: double
+          maximum: 90
+          minimum: -90
+          type: number
+        longitude:
+          format: double
+          maximum: 180
+          minimum: -180
+          type: number
+      required:
+        - latitude
+        - longitude
+      type: object
+    LocationSuggestionOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LocationSuggestionOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        suggestion:
+          $ref: "#/components/schemas/LocationDTO"
+      type: object
+    LocationsSearchOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LocationsSearchOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        locations:
+          items:
+            $ref: "#/components/schemas/LocationDTO"
+          type: array
+      required:
+        - locations
+      type: object
     LoginInputBody:
       additionalProperties: false
       properties:
@@ -6290,7 +6470,7 @@ components:
     PipelineOverviewDTO:
       additionalProperties: false
       properties:
-        admitted:
+        complete:
           format: int64
           type: integer
         dismissed:
@@ -6300,6 +6480,9 @@ components:
           format: int64
           type: integer
         needsDecision:
+          format: int64
+          type: integer
+        ready:
           format: int64
           type: integer
         recoverable:
@@ -6320,7 +6503,8 @@ components:
         - inProgress
         - scheduled
         - needsDecision
-        - admitted
+        - ready
+        - complete
         - rejected
         - dismissed
         - recoverable
@@ -6619,6 +6803,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        breakBody:
+          description: Clips that can fill a break body. Bookend clips cannot make one.
+          format: int64
+          type: integer
         channels:
           description: Live channels, WORST COVERAGE FIRST. Paused and detached channels are excluded — their breaks are not airing, so counting them as uncovered would report a problem the operator created deliberately.
           items:
@@ -6628,12 +6816,8 @@ components:
           description: Every clip in the catalog, of every kind
           format: int64
           type: integer
-        commercials:
-          description: Clips that can fill a break BODY. Bumpers and station IDs bookend a pod; they cannot make one.
-          format: int64
-          type: integer
         eligible:
-          description: Commercials that are ALSO duration-eligible under the active policy — the ones that can actually go in a break. Same gate pod assembly applies.
+          description: Break-body clips that are also duration-eligible under the active policy. The same gate is used by pod assembly.
           format: int64
           type: integer
         untagged:
@@ -6642,7 +6826,7 @@ components:
           type: integer
       required:
         - clips
-        - commercials
+        - breakBody
         - eligible
         - untagged
         - channels
@@ -7588,6 +7772,47 @@ components:
         - term
         - supportedItems
       type: object
+    QueueFillerSourceItemInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/QueueFillerSourceItemInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        remoteId:
+          description: Provider-stable item identity returned by discovery
+          maxLength: 512
+          minLength: 1
+          type: string
+        url:
+          description: Canonical item URL returned by discovery
+          format: uri
+          maxLength: 2048
+          minLength: 1
+          type: string
+      required:
+        - remoteId
+        - url
+      type: object
+    QueueFillerSourceItemOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/QueueFillerSourceItemOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        jobId:
+          description: Durable acquisition id; read /v1/filler/acquisitions/{jobId}
+          type: string
+      required:
+        - jobId
+      type: object
     Range:
       additionalProperties: false
       properties:
@@ -7808,6 +8033,23 @@ components:
       required:
         - next
       type: object
+    ResolveFillerSourceInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ResolveFillerSourceInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        input:
+          maxLength: 500
+          minLength: 1
+          type: string
+      required:
+        - input
+      type: object
     RestartCost:
       additionalProperties: false
       properties:
@@ -7915,7 +8157,6 @@ components:
             - transcribe
             - tag
             - vision
-            - admission
             - score
           type: string
         hash:
@@ -8498,6 +8739,39 @@ components:
         - coldStartMs
         - transcodeCost
       type: object
+    SetFillerProviderEnabledInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SetFillerProviderEnabledInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
+      required:
+        - enabled
+      type: object
+    SetFillerProviderEnabledOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SetFillerProviderEnabledOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
+        kind:
+          type: string
+      required:
+        - kind
+        - enabled
+      type: object
     SetFillerSourceEnabledInputBody:
       additionalProperties: false
       properties:
@@ -8508,20 +8782,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        automaticDownloads:
+          $ref: "#/components/schemas/SourceAutomaticDownloadsInput"
         enabled:
           type: boolean
-        fetchEverySeconds:
-          description: Seconds between automatic fetches of this source. 0 means never; omit or null to inherit the global setting.
-          format: int64
-          maximum: 604800
-          minimum: 0
-          type: integer
-        fetchMaxPerRun:
-          description: Most clips to take from this source in one run. Omit or null to inherit the global setting.
-          format: int64
-          maximum: 1000
-          minimum: 1
-          type: integer
         geography:
           $ref: "#/components/schemas/SourceGeographyDTO"
           description: Complete source coverage replacement; country-only means country-wide
@@ -8538,14 +8802,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        automaticDownloads:
+          $ref: "#/components/schemas/SourceAutomaticDownloadsDTO"
         enabled:
           type: boolean
-        fetchEverySeconds:
-          format: int64
-          type: integer
-        fetchMaxPerRun:
-          format: int64
-          type: integer
         geography:
           $ref: "#/components/schemas/SourceGeographyDTO"
         id:
@@ -8844,6 +9104,58 @@ components:
           type: array
       required:
         - checks
+      type: object
+    SourceAutomaticDownloadsDTO:
+      additionalProperties: false
+      properties:
+        everySeconds:
+          format: int64
+          maximum: 604800
+          minimum: 0
+          type: integer
+        maxPerCheck:
+          format: int64
+          maximum: 1000
+          minimum: 1
+          type: integer
+        mode:
+          enum:
+            - defaults
+            - custom
+            - never
+          type: string
+        nextCheckAt:
+          description: RFC3339; absent while automatic checks are off
+          type: string
+        summary:
+          type: string
+      required:
+        - mode
+        - everySeconds
+        - maxPerCheck
+        - summary
+      type: object
+    SourceAutomaticDownloadsInput:
+      additionalProperties: false
+      properties:
+        everySeconds:
+          format: int64
+          maximum: 604800
+          minimum: 60
+          type: integer
+        maxPerCheck:
+          format: int64
+          maximum: 1000
+          minimum: 1
+          type: integer
+        mode:
+          enum:
+            - defaults
+            - custom
+            - never
+          type: string
+      required:
+        - mode
       type: object
     SourceGeographyDTO:
       additionalProperties: false
@@ -12342,6 +12654,34 @@ paths:
       summary: List filler clips
       tags:
         - filler
+  /v1/filler/acquisitions/{jobId}:
+    get:
+      description: Admin only (§10). Durable reconnect state for one filler acquisition; SSE only reduces visible latency.
+      operationId: get-filler-acquisition
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            maxLength: 256
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerAcquisitionRunDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read one clip download
+      tags:
+        - filler
   /v1/filler/attention:
     get:
       description: Admin-only bounded semantic exceptions. Every task names its server-owned kind and currently allowed actions; machine work and operational holds are structurally excluded (§10 V63).
@@ -12565,6 +12905,39 @@ paths:
       summary: Filler admission processing diagnostics
       tags:
         - filler
+  /v1/filler/decisions/diagnostics/{id}/actions:
+    post:
+      description: Admin-only idempotent action selected from the current diagnostic recovery plan. The server records the authenticated actor and rejects stale or no-longer-retryable holds (§10 V63).
+      operationId: act-on-filler-diagnostic
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FillerDiagnosticRecoveryInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerDiagnosticRecoveryOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Recover a filler processing hold
+      tags:
+        - filler
   /v1/filler/decisions/overview:
     get:
       description: Member-readable server-owned V63 health and priority projection. Clients render nextAction; they do not reconstruct it from counts.
@@ -12710,7 +13083,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: What has been downloaded but isn't terminally admitted
+      summary: What has been downloaded but isn't terminally ready
       tags:
         - filler
   /v1/filler/ingest:
@@ -12793,6 +13166,122 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Catalog-wide filler health
+      tags:
+        - filler
+  /v1/filler/providers/{kind}:
+    patch:
+      description: Admin only (§10 V51c). Changes provider policy without rewriting child source switches or removing clips already in the catalog.
+      operationId: set-filler-provider-enabled
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema:
+            enum:
+              - archive
+              - youtube
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetFillerProviderEnabledInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetFillerProviderEnabledOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Pause or resume a filler provider
+      tags:
+        - filler
+  /v1/filler/providers/{kind}/resolve:
+    post:
+      description: Admin only (§10 V67). Validates one exact provider URL or identifier and returns its canonical target without registering or downloading it.
+      operationId: resolve-filler-source
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema:
+            enum:
+              - archive
+              - youtube
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveFillerSourceInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerSourceSuggestionDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Check a filler source
+      tags:
+        - filler
+  /v1/filler/providers/{kind}/suggestions:
+    get:
+      description: Admin only (§10 V67). Searches one provider for source candidates without registering a source, downloading media, or granting background-work authority.
+      operationId: suggest-filler-sources
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema:
+            enum:
+              - archive
+              - youtube
+            type: string
+        - explode: false
+          in: query
+          name: q
+          required: true
+          schema:
+            maxLength: 120
+            minLength: 2
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 8
+            format: int64
+            maximum: 8
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerSourceSuggestionsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Find a filler source
       tags:
         - filler
   /v1/filler/pulls:
@@ -12979,86 +13468,9 @@ paths:
       summary: Re-run a clip's ingest pipeline from one stage
       tags:
         - filler
-  /v1/filler/rights/current:
-    get:
-      description: Admin-only exact-scope read of the immutable grant currently used by rendered-child screening and terminal release (§10 V67).
-      operationId: current-filler-rights-grant
-      parameters:
-        - explode: false
-          in: query
-          name: sourceId
-          required: true
-          schema:
-            maxLength: 256
-            type: string
-        - explode: false
-          in: query
-          name: acquisitionId
-          required: true
-          schema:
-            maxLength: 256
-            type: string
-        - explode: false
-          in: query
-          name: sourceMasterSha256
-          required: true
-          schema:
-            maxLength: 64
-            minLength: 64
-            type: string
-        - explode: false
-          in: query
-          name: policySha256
-          required: true
-          schema:
-            maxLength: 64
-            minLength: 64
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerRightsGrantDTO"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Read current filler rights authority
-      tags:
-        - filler
-  /v1/filler/rights/grants:
-    post:
-      description: Admin-only append of one immutable reviewed grant. Replacing a current grant requires its exact digest; history cannot be edited or deleted (§10 V67).
-      operationId: record-filler-rights-grant
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FillerRightsGrantInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerRightsGrantDTO"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Record current-use filler rights authority
-      tags:
-        - filler
   /v1/filler/screening:
     get:
-      description: Admin-only browser-safe projection of visual, spoken, written, rights, playback-integrity, and Airworthiness evidence for one exact catalog hash. Raw provider evidence, text, paths, and private rights documents never cross this boundary.
+      description: Admin-only browser-safe projection of visual, spoken, written, playback-integrity, and Airworthiness evidence for one exact catalog hash. Raw provider evidence, text, and paths never cross this boundary.
       operationId: get-filler-screening
       parameters:
         - description: Exact catalog content hash
@@ -13084,7 +13496,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Exact clip's five-axis screening state
+      summary: Exact clip's four-axis screening state
       tags:
         - filler
   /v1/filler/sources:
@@ -13108,7 +13520,7 @@ paths:
       tags:
         - filler
     post:
-      description: Admin only (§10 V35/V38b). Registers a source for search, pulls, and bounded scheduled acquisition. Registration itself only records the source; enabled remote sources are downloaded on their configured schedule, while composed multi-source pulls retain their approval gate.
+      description: Admin only (§10 V35/V38b/V67). Registers a verified Archive.org collection or YouTube channel/playlist for bounded scheduled acquisition. Registration itself only records the source; enabled remote sources are downloaded on their configured schedule, while composed multi-source pulls retain their approval gate.
       operationId: add-filler-source
       requestBody:
         content:
@@ -13129,20 +13541,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Register a remote collection to pull filler from
+      summary: Add a remote filler source
       tags:
         - filler
   /v1/filler/sources/fetch:
     post:
-      description: Admin only (§10 V56). Runs one ordinary bounded acquisition pass for the selected source, then scans configured local sources. Omit id for the backward-compatible all-source pass. It retains enable checks, deduplication and safety limits; this is not an unbounded bypass.
+      description: Admin only (§10 V56). Runs one ordinary bounded acquisition pass for the selected source, then scans configured local sources. It retains provider/source enablement, geography, deduplication and safety limits; only timing is bypassed.
       operationId: fetch-filler-source
       parameters:
-        - description: Registered source id to refresh; omit to run all enabled sources
+        - description: Registered source id to check
           explode: false
           in: query
           name: id
           schema:
-            description: Registered source id to refresh; omit to run all enabled sources
+            description: Registered source id to check
+            minLength: 1
             type: string
       responses:
         "200":
@@ -13157,7 +13570,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Fetch and scan filler now
+      summary: Look for new clips in one source
       tags:
         - filler
   /v1/filler/sources/{id}:
@@ -13179,11 +13592,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Forget a registered remote collection
+      summary: Forget a registered remote source
       tags:
         - filler
     patch:
-      description: "Admin only (§10 V35, extended V38c/V57). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. Source configuration grants no catalog-admission authority. `folder` writes the drop-folder setting; any other id writes that source's own row. ⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never auto-fetch this source, or a positive number of seconds. Library sources became switchable in V38c, when §10 restored them to being scanned."
+      description: "Admin only (§10 V35, extended V38c/V57). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. Source configuration grants no catalog-admission authority. `folder` writes the drop-folder setting; any other id writes that source's own row. `automaticDownloads` is optional and uses an explicit defaults, custom, or never mode, so changing the switch or area cannot accidentally reset the policy. Library sources became switchable in V38c, when §10 restored them to being scanned."
       operationId: set-filler-source-enabled
       parameters:
         - in: path
@@ -13211,6 +13624,40 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Control source acquisition and fetch cadence
+      tags:
+        - filler
+  /v1/filler/sources/{id}/items:
+    post:
+      description: Admin only (§10). Queues one exact discovered item under its registered parent source. The server derives provider policy from the source; this never registers the item as another source.
+      operationId: queue-filler-source-item
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 256
+            minLength: 1
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueueFillerSourceItemInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueFillerSourceItemOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add one clip found inside a source
       tags:
         - filler
   /v1/filler/split:
@@ -13391,7 +13838,7 @@ paths:
         - filler
   /v1/filler/watch:
     get:
-      description: "The Filler page header's live status (§10 V38c): how many sources are on, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
+      description: "The Filler page header's live status (§10 V38c): how many sources are ready, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
       operationId: filler-watch
       responses:
         "200":
@@ -13940,6 +14387,93 @@ paths:
       summary: List media-server collections
       tags:
         - library
+  /v1/locations:
+    get:
+      description: Admin only. Searches Loomarr's embedded city, populated-municipality, and country index; no runtime geocoder is called.
+      operationId: locations-search
+      parameters:
+        - description: City, populated municipality, region, or country name
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: City, populated municipality, region, or country name
+            maxLength: 120
+            minLength: 2
+            type: string
+        - description: Maximum suggestions
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 8
+            description: Maximum suggestions
+            format: int64
+            maximum: 20
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationsSearchOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Search installation locations
+      tags:
+        - settings
+  /v1/locations/resolve:
+    post:
+      description: Admin only. Resolves transient browser coordinates against Loomarr's embedded place index. Coordinates are not stored.
+      operationId: locations-resolve
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocationResolveInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Resolve device coordinates
+      tags:
+        - settings
+  /v1/locations/suggestion:
+    get:
+      description: Admin only. Uses trusted CDN geography or the effective public client IP against Loomarr's embedded index. Never saves the suggestion.
+      operationId: locations-suggestion
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationSuggestionOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Suggest an approximate installation location
+      tags:
+        - settings
   /v1/metrics:
     get:
       description: Public, no credential — a scrape job holds no session. Go runtime collectors plus Loomarr's §17 series. Also served at `/metrics`.

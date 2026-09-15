@@ -34,36 +34,12 @@ const screeningFor = (clipHash: string): FillerScreeningDTO => ({
   assessedAt: new Date().toISOString(),
   subjectSha256: "b".repeat(64),
   evidenceSha256: "c".repeat(64),
-  axes: ["visual_safety", "spoken_safety", "written_safety", "rights", "playback_integrity"].map(
-    (axis, index) => ({
-      axis: axis as FillerScreeningDTO["axes"][number]["axis"],
-      outcome: "pass",
-      reasonCode: axis === "rights" ? "rights_verified" : "policy_clear",
-      evidenceSha256: String(index + 1).repeat(64),
-    }),
-  ),
-  rightsReview: {
-    sourceId: "archive:classic-commercials",
-    acquisitionId: "acq-mountain-dew-17",
-    sourceMasterSha256: "d".repeat(64),
-    policySha256: "4".repeat(64),
-    use: "filler_broadcast",
-    canRecord: true,
-    currentGrant: {
-      sha256: "e".repeat(64),
-      sourceId: "archive:classic-commercials",
-      acquisitionId: "acq-mountain-dew-17",
-      sourceMasterSha256: "d".repeat(64),
-      policySha256: "4".repeat(64),
-      use: "filler_broadcast",
-      status: "authorized",
-      withdrawal: "clear",
-      evidenceSha256: "f".repeat(64),
-      actorId: "admin-1",
-      effectiveAt: "2026-09-03T18:00:00Z",
-      recordedAt: "2026-09-03T18:00:00Z",
-    },
-  },
+  axes: ["visual_safety", "spoken_safety", "written_safety", "playback_integrity"].map((axis, index) => ({
+    axis: axis as FillerScreeningDTO["axes"][number]["axis"],
+    outcome: "pass",
+    reasonCode: "policy_clear",
+    evidenceSha256: String(index + 1).repeat(64),
+  })),
   airworthiness: {
     schemaVersion: 1,
     contractVersion: "filler-airworthiness-decision-v1",
@@ -182,34 +158,6 @@ export const EvidenceDrift: Story = {
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(await canvas.findByRole("button", { name: "Review evidence" }));
     await canvas.findByText("Screening evidence unavailable");
-  },
-};
-
-export const RightsRemediation: Story = {
-  decorators: [
-    withAttention(
-      { rows: [row(4)], total: 1 },
-      {
-        ...screeningFor(row(4).clipHash),
-        outcome: "hold",
-        axes: screeningFor(row(4).clipHash).axes.map((axis) =>
-          axis.axis === "rights" ? { ...axis, outcome: "hold", reasonCode: "rights_unknown" } : axis,
-        ),
-        rightsReview: {
-          sourceId: "archive:classic-commercials",
-          acquisitionId: "acq-mountain-dew-17",
-          sourceMasterSha256: "d".repeat(64),
-          policySha256: "4".repeat(64),
-          use: "filler_broadcast",
-          canRecord: true,
-        },
-      },
-    ),
-  ],
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByRole("button", { name: "Review evidence" }));
-    await userEvent.click(await canvas.findByRole("button", { name: "Review rights" }));
-    await canvas.findByLabelText("Private review file");
   },
 };
 

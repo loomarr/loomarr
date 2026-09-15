@@ -1,6 +1,7 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsSaveBar } from "@/components/loomarr/settings/settings-save-bar";
 import { useSettingsEdits } from "../settings-edits";
@@ -10,15 +11,22 @@ import { useSettingsEdits } from "../settings-edits";
 // save protocol.
 const SettingsSaveBarHost = () => {
   const queryClient = useQueryClient();
-  const { edits, resetEdits } = useSettingsEdits();
+  const { edits, clearEdits, resetEdits } = useSettingsEdits();
   const patch = settingsApi.useSettingsPatch({
     mutation: {
-      onSuccess: async () => {
+      onSuccess: async (response) => {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
           queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
         ]);
-        resetEdits();
+        if (response.status !== 200) return;
+        const saved = (response.data.results ?? [])
+          .filter((result) => result.status === "saved")
+          .map((result) => result.key);
+        clearEdits(saved);
+        const rejected = (response.data.results ?? []).filter((result) => result.status !== "saved");
+        if (saved.length > 0) toast.success(saved.length === 1 ? "Change saved" : "Changes saved");
+        if (rejected.length > 0) toast.error("Some changes need your attention");
       },
     },
   });

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -49,6 +49,25 @@ func (testAuthorizer) Authorize(r *http.Request) api.Role {
 	default:
 		return api.RoleAnonymous
 	}
+}
+
+type apiDiagnosticRecovery struct {
+	mu       sync.Mutex
+	retrying map[string]time.Time
+}
+
+func (r *apiDiagnosticRecovery) DiagnosticRetryStatus(_ context.Context, hash string) (fillerdecision.DiagnosticRetryStatus, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	retryAt, ok := r.retrying[hash]
+	return fillerdecision.DiagnosticRetryStatus{Automatic: ok, RetryAt: retryAt}, nil
+}
+
+func (r *apiDiagnosticRecovery) RetryDiagnostic(_ context.Context, hash string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.retrying[hash] = time.Now().UTC().Add(time.Minute)
+	return nil
 }
 
 // The migrated-template harness.
@@ -153,17 +172,13 @@ func newServer(t *testing.T) (*httptest.Server, store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rights, err := filler.NewFillerRightsRegistry(st)
-	if err != nil {
-		t.Fatal(err)
-	}
+	decisions.WithDiagnosticRecovery(&apiDiagnosticRecovery{retrying: make(map[string]time.Time)})
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:           st,
 		Auth:            testAuthorizer{},
 		Log:             slog.New(slog.DiscardHandler),
 		BackupSQLite:    store.SQLiteBackuper(st),
 		FillerDecisions: decisions,
-		FillerRights:    rights,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

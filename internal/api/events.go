@@ -123,7 +123,7 @@ type FillerSplitEvent struct {
 // and GET /v1/filler/incoming is the truth on reconnect.
 type FillerClipEvent struct {
 	Hash  string `json:"hash"`
-	Stage string `json:"stage" enum:"probe,transcode,split,screen,language,transcribe,tag,vision,admission,score"`
+	Stage string `json:"stage" enum:"probe,transcode,split,screen,language,transcribe,tag,vision,score"`
 	// Status is how the CURRENT stage is going. `skipped` means the stage does not apply to this
 	// clip in this install — a different fact from `done`, and re-evaluated on every pass.
 	Status string `json:"status" enum:"queued,running,done,failed,skipped"`
@@ -137,7 +137,7 @@ type FillerClipEvent struct {
 	Progress int `json:"progress"`
 	// Disposition is the CLIP-level outcome. `review` is terminal for the pipeline even though it
 	// is not terminal for the operator.
-	Disposition string `json:"disposition" enum:"running,review,filed,rejected,dismissed"`
+	Disposition string `json:"disposition" enum:"running,review,ready,complete,rejected,dismissed"`
 	// Reason is a stable CODE, never prose — the frontend owns the wording, the §11 refusal-code
 	// precedent. Empty unless disposition is `rejected`.
 	Reason string `json:"reason,omitempty"`

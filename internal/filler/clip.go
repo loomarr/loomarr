@@ -33,8 +33,8 @@ import (
 type Kind string
 
 const (
-	// Unclassified is held work whose exact filler role has not been established. It is not a
-	// generic filler role and must never be selected for playout (§10).
+	// Unclassified means only that the exact filler role has not been established. Enrollment may
+	// still give it a break-body Placement; it is never silently relabelled Commercial (§10).
 	Unclassified Kind = "unclassified"
 	Commercial   Kind = "commercial"
 	Bumper       Kind = "bumper"
@@ -42,6 +42,17 @@ const (
 	PSA          Kind = "psa"
 	Trailer      Kind = "trailer"
 	Interstitial Kind = "interstitial"
+)
+
+// Placement says where a Ready clip may be scheduled. It is deliberately separate from Kind:
+// selecting a source can authorize generic break-body use without claiming that unknown bytes are
+// a commercial.
+type Placement string
+
+const (
+	PlacementNotPlayable Placement = "not_playable"
+	PlacementBreakBody   Placement = "break_body"
+	PlacementBookend     Placement = "bookend"
 )
 
 // Audience is who a clip suits (§10). Matched to the channel (Saturday-morning
@@ -94,10 +105,11 @@ type Clip struct {
 	// while an install with no Tunarr simply has none. One catalog serves both backends —
 	// internal playout reads Path, Tunarr reads this.
 	TunarrProgramID string
-	Name            string   // display name (from the filename)
-	Kind            Kind     // unclassified (held-only) | commercial | bumper | station_id | psa | trailer | interstitial
-	Era             int      // decade/year, e.g. 1994; 0 = untagged
-	Audience        Audience // kids | family | general | late_night; "" = untagged
+	Name            string    // display name (from the filename)
+	Kind            Kind      // descriptive role; unclassified means unknown
+	Placement       Placement // break_body | bookend | not_playable; committed by terminal readiness
+	Era             int       // decade/year, e.g. 1994; 0 = untagged
+	Audience        Audience  // kids | family | general | late_night; "" = untagged
 	GeographicScope GeographicScope
 	Country         string // ISO 3166-1 alpha-2 when known
 	Market          string // local broadcast market; meaningful only for local scope
@@ -240,8 +252,8 @@ type Clip struct {
 	RemovedAt time.Time
 	// Held marks a clip that is recorded but NOT in the playable catalog (§10 V38). It is not
 	// matched into a pod, not attached to a filler-list, and not counted as coverage — it is
-	// waiting for processing and terminal admission or rejection. Every new non-composite clip
-	// starts held, including a hand copy: placement is acquisition intent, not safety authority.
+	// waiting for processing and terminal readiness or rejection. Every new non-composite clip
+	// starts held; the terminal-ready transaction is the only path that clears it.
 	//
 	// Held clips are excluded from listings and pod assembly by DEFAULT (opt-in to see them),
 	// the same polarity as RemovedAt and for the same reason: pod assembly loads the catalog
@@ -296,9 +308,42 @@ func (c Clip) Tagged() bool {
 	return c.Era > 0 && c.Audience != "" && c.Category != ""
 }
 
-// IsBumper reports whether a clip can serve as pod bookend bumper (§10 pod
-// structure: intro bumper → commercials → return bumper).
-func (c Clip) IsBumper() bool { return c.Kind == Bumper || c.Kind == StationID }
+// EffectivePlacement returns an explicitly committed placement when present. A zero Placement on
+// an in-memory/domain value derives the natural placement of a known role; persisted rows use the
+// explicit not_playable default until terminal readiness commits otherwise.
+func (c Clip) EffectivePlacement() Placement {
+	if c.Placement != "" {
+		return c.Placement
+	}
+	switch c.Kind {
+	case Bumper, StationID:
+		return PlacementBookend
+	case Commercial, PSA, Trailer, Interstitial:
+		return PlacementBreakBody
+	default:
+		return PlacementNotPlayable
+	}
+}
+
+// PlacementForRole derives scheduling placement without inventing a descriptive role. An enrolled
+// unknown is ordinary break-body filler; composites remain containers and can never be scheduled.
+func PlacementForRole(kind Kind, enrolled, composite bool) Placement {
+	if composite || !enrolled {
+		return PlacementNotPlayable
+	}
+	switch kind {
+	case Bumper, StationID:
+		return PlacementBookend
+	case Commercial, PSA, Trailer, Interstitial, Unclassified:
+		return PlacementBreakBody
+	default:
+		return PlacementNotPlayable
+	}
+}
+
+// IsBumper reports whether a clip can serve as a pod bookend (§10 pod structure: intro bumper →
+// break body → return bumper).
+func (c Clip) IsBumper() bool { return c.EffectivePlacement() == PlacementBookend }
 
 // ⚠ `Clip.decade()` was deleted here (V51f). It bucketed a clip to its containing decade for the
 // ladder's widened rung, and that rule could not generalise to a RANGE: a range already spanning

@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -316,10 +318,16 @@ func TestSetFillerSourceEnabled_RefusesRowsWithNothingToStop(t *testing.T) {
 // actually express what the column can hold — the columns shipped in an earlier V38c step with
 // no route reaching them, which is the declared-but-unconsumed shape §15 forbids.
 func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
+		if key == "filler.home_country" {
+			return "US"
+		}
+		return ""
+	})
 	ctx := context.Background()
-	if err := st.UpsertFillerSource(ctx,
-		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+	source := store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
+	source.Geography.Country = "US"
+	if err := st.UpsertFillerSource(ctx, source); err != nil {
 		t.Fatal(err)
 	}
 
@@ -338,9 +346,9 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 		return store.FillerSource{}
 	}
 
-	// 1. A positive interval — poll this source on its own schedule.
+	// 1. A custom policy — poll this source on its own schedule.
 	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic",
-		`{"enabled":true,"fetchEverySeconds":900,"fetchMaxPerRun":5}`, adminToken)
+		`{"enabled":true,"automaticDownloads":{"mode":"custom","everySeconds":900,"maxPerCheck":5}}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -355,11 +363,36 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	if every, ok := got.FetchEvery(time.Hour); !ok || every != 15*time.Minute {
 		t.Errorf("FetchEvery = %v/%v, want 15m and pollable", every, ok)
 	}
+	var projected api.FillerSourceDTO
+	for _, row := range sourcesFrom(t, srv) {
+		if row.ID == "classic" {
+			projected = row
+		}
+	}
+	if projected.AutomaticDownloads == nil || projected.AutomaticDownloads.Mode != "custom" ||
+		projected.AutomaticDownloads.EverySeconds != 900 || projected.AutomaticDownloads.MaxPerCheck != 5 {
+		t.Fatalf("projected automatic downloads = %+v, want custom 900s/5", projected.AutomaticDownloads)
+	}
+	if projected.AutomaticDownloads.Summary != "Every 15 minutes, up to 5 clips each check." {
+		t.Fatalf("summary = %q, want server-authored custom policy", projected.AutomaticDownloads.Summary)
+	}
+	if projected.AutomaticDownloads.NextCheckAt == "" {
+		t.Fatal("next automatic check is absent for an enabled, due custom source")
+	}
 
-	// 2. ZERO — never auto-fetch this source. ⚠ Distinct from "unset": a plain int could not
-	// tell these apart, and conflating them would read every untouched source as switched off.
+	// A source switch changes only enabled. It must not silently clear timing hidden in the sheet.
+	res = sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic", `{"enabled":false}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("switch-only status = %d, want 200", res.StatusCode)
+	}
+	got = sourceByID("classic")
+	if got.FetchEverySeconds == nil || *got.FetchEverySeconds != 900 || got.FetchMaxPerRun == nil || *got.FetchMaxPerRun != 5 {
+		t.Fatalf("switch-only PATCH changed policy to %v/%v", got.FetchEverySeconds, got.FetchMaxPerRun)
+	}
+
+	// 2. Never — explicit and distinct from inheriting defaults.
 	res = sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic",
-		`{"enabled":true,"fetchEverySeconds":0}`, adminToken)
+		`{"enabled":true,"automaticDownloads":{"mode":"never"}}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -370,9 +403,18 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	if _, ok := got.FetchEvery(time.Hour); ok {
 		t.Error("a source set to never-fetch is still pollable — 0 was read as 'inherit'")
 	}
-	// ⚠ maxPerRun was OMITTED on that request, which means "inherit" — it must have been cleared
-	// rather than left at 5. A partial write that keeps stale values is how an operator ends up
-	// with tuning they cannot see and did not ask for.
+	for _, row := range sourcesFrom(t, srv) {
+		if row.ID == "classic" {
+			projected = row
+		}
+	}
+	if projected.AutomaticDownloads == nil || projected.AutomaticDownloads.Mode != "never" ||
+		projected.AutomaticDownloads.NextCheckAt != "" ||
+		projected.AutomaticDownloads.Summary != "Doesn’t download automatically. You can still look for clips yourself." {
+		t.Fatalf("never policy projection = %+v", projected.AutomaticDownloads)
+	}
+	// Never clears the custom cap; it is irrelevant while automatic downloads are off and defaults
+	// should be restored if the operator later switches back to them.
 	if got.FetchMaxPerRun != nil {
 		t.Errorf("FetchMaxPerRun = %v, want nil — an omitted field means inherit", *got.FetchMaxPerRun)
 	}
@@ -380,7 +422,7 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	// 3. Cleared back to inheriting the global. This is a real action an operator takes, so it
 	// must be expressible — an override that can be set but never removed is a one-way door.
 	res = sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic",
-		`{"enabled":true}`, adminToken)
+		`{"enabled":true,"automaticDownloads":{"mode":"defaults"}}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -394,8 +436,8 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 	}
 }
 
-// ⚠ `fetchMaxPerRun: 0` is REFUSED, not stored. "Fetch nothing per run" is what
-// fetchEverySeconds=0 already says, and letting it be said twice invites the two to disagree —
+// ⚠ `maxPerCheck: 0` is REFUSED, not stored. "Fetch nothing per check" is what never already
+// says, and letting it be said twice invites the two to disagree —
 // a source scheduled to poll but capped at nothing looks enabled and does nothing.
 func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
@@ -406,10 +448,45 @@ func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 	}
 
 	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/classic",
-		`{"enabled":true,"fetchMaxPerRun":0}`, adminToken)
+		`{"enabled":true,"automaticDownloads":{"mode":"custom","everySeconds":900,"maxPerCheck":0}}`, adminToken)
 	if res.StatusCode != http.StatusUnprocessableEntity && res.StatusCode != http.StatusBadRequest {
 		t.Errorf("status = %d, want a validation refusal", res.StatusCode)
 	}
+}
+
+func TestListFillerSources_ProjectsDurableRetryAsTheNextAutomaticCheck(t *testing.T) {
+	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
+		if key == "filler.home_country" {
+			return "US"
+		}
+		return ""
+	})
+	ctx := t.Context()
+	src := store.NewFillerSource("retrying", "archive", "retrying", "Retrying", time.Now().UTC())
+	if err := st.UpsertFillerSource(ctx, src); err != nil {
+		t.Fatal(err)
+	}
+	claimAt := time.Now().UTC().Truncate(time.Second)
+	leaseUntil := claimAt.Add(30 * time.Minute)
+	claimed, err := st.ClaimFillerSourceCheck(ctx, src.ID, time.Time{}, claimAt, leaseUntil)
+	if err != nil || !claimed {
+		t.Fatalf("claim = %v, %v", claimed, err)
+	}
+	retryAt := claimAt.Add(45 * time.Minute)
+	if err := st.FailFillerSourceCheck(ctx, src.ID, leaseUntil, retryAt); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, row := range sourcesFrom(t, srv) {
+		if row.ID != src.ID {
+			continue
+		}
+		if row.AutomaticDownloads == nil || row.AutomaticDownloads.NextCheckAt != retryAt.Format(time.RFC3339) {
+			t.Fatalf("automatic downloads = %+v, want retry at %s", row.AutomaticDownloads, retryAt.Format(time.RFC3339))
+		}
+		return
+	}
+	t.Fatal("retrying source was not projected")
 }
 
 // Deleting forgets the registration. ⚠ It must NOT take the clips: they are real files, already
@@ -455,6 +532,8 @@ func TestFillerSourceRoutes_RequireAdmin(t *testing.T) {
 
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/filler/sources", `{"uri":"classic"}`},
+		{http.MethodGet, "/v1/filler/providers/archive/suggestions?q=classic", ""},
+		{http.MethodPost, "/v1/filler/providers/archive/resolve", `{"input":"classic"}`},
 		{http.MethodPatch, "/v1/filler/sources/classic", `{"enabled":false}`},
 		{http.MethodDelete, "/v1/filler/sources/classic", ""},
 	} {
@@ -543,7 +622,12 @@ func TestListFillerSources_ShowsOperatorAddedFoldersAndLibraries(t *testing.T) {
 // rather than "does this row have anything to fetch". A control that cannot work is worse than no
 // control, and this is the shape §10 forbids by name.
 func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
+		if key == "filler.home_country" {
+			return "US"
+		}
+		return ""
+	})
 	ctx := context.Background()
 
 	// A YouTube row with no playlist yet — exactly how migration 00034 seeds it.
@@ -578,5 +662,59 @@ func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
 	}
 	if !byID["youtube:PL1"] {
 		t.Error("a configured playlist cannot be fetched — the guard is too broad")
+	}
+}
+
+func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
+	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
+		return map[string]string{"filler.home_country": "US", "filler.home_market": "New York"}[key]
+	})
+	ctx := context.Background()
+
+	inherited := store.NewFillerSource("archive:inherited", "archive", "inherited", "Inherited", time.Now().UTC())
+	if err := st.UpsertFillerSource(ctx, inherited); err != nil {
+		t.Fatal(err)
+	}
+	overridden := store.NewFillerSource("archive:canada", "archive", "canada", "Canada", time.Now().UTC())
+	overridden.Geography = filler.Geography{Country: "CA"}
+	if err := st.UpsertFillerSource(ctx, overridden); err != nil {
+		t.Fatal(err)
+	}
+
+	res := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/sources", "", adminToken)
+	var body struct {
+		Sources []struct {
+			ID               string   `json:"id"`
+			Readiness        string   `json:"readiness"`
+			Ready            bool     `json:"ready"`
+			LocationSource   string   `json:"locationSource"`
+			EffectiveCountry string   `json:"effectiveCountry"`
+			EffectiveMarket  string   `json:"effectiveMarket"`
+			Actions          []string `json:"actions"`
+		} `json:"sources"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]struct {
+		readiness, source, country, market string
+		ready                              bool
+		actions                            []string
+	}{}
+	for _, row := range body.Sources {
+		byID[row.ID] = struct {
+			readiness, source, country, market string
+			ready                              bool
+			actions                            []string
+		}{row.Readiness, row.LocationSource, row.EffectiveCountry, row.EffectiveMarket, row.Ready, row.Actions}
+	}
+	got := byID["archive:inherited"]
+	if !got.ready || got.readiness != "ready" || got.source != "installation" ||
+		got.country != "US" || got.market != "New York" || !slices.Contains(got.actions, "fetch") {
+		t.Fatalf("inherited source projection = %+v", got)
+	}
+	got = byID["archive:canada"]
+	if got.ready || got.readiness != "out_of_area" || got.source != "source" {
+		t.Fatalf("overridden source projection = %+v", got)
 	}
 }

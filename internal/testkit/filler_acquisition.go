@@ -27,7 +27,7 @@ func (p FillerAcquisitionPlanner) PlanAcquisition(ctx context.Context, intent fi
 			return filler.AcquisitionPlan{}, err
 		}
 		for _, source := range sources {
-			if !source.Enabled || !source.Fetchable() || !source.GeographicallyEligible(intent.Geography) {
+			if !source.EffectiveEnabled() || !source.Fetchable() || !source.GeographicallyEligible(intent.Geography) {
 				continue
 			}
 			candidates = append(candidates, filler.AcquisitionCandidate{

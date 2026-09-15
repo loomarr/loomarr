@@ -16,7 +16,7 @@ type AppliedAdmissionMediaResolver interface {
 
 // AppliedAdmission is the deep terminal module between an applied semantic decision and catalog
 // publication. Its one interface owns current playback reprojection, complete release replay,
-// live-rights revalidation, and the final atomic persistence handoff.
+// and the final atomic persistence handoff.
 type AppliedAdmission struct {
 	resolver      AppliedAdmissionMediaResolver
 	summary       *SegmentScreeningSummaryService
@@ -75,10 +75,8 @@ func (a *AppliedAdmission) ActOnAppliedFillerDecision(
 	if a.resolver == nil || a.summary == nil || a.evidence == nil || a.certification == nil {
 		return fillerdecision.ErrAppliedUnavailable
 	}
-	var receipt *fillerdecision.AppliedRightsReceipt
 	if appliedActionPublishes(action) {
-		var err error
-		receipt, err = a.verifyCurrentRelease(ctx, record)
+		err = a.verifyCurrentRelease(ctx, record)
 		if err != nil {
 			existing, found, lookupErr := a.committer.FindFillerDecisionAction(ctx, action.ID)
 			if lookupErr != nil {
@@ -93,41 +91,36 @@ func (a *AppliedAdmission) ActOnAppliedFillerDecision(
 			return fmt.Errorf("%w: %v", fillerdecision.ErrAppliedUnavailable, err)
 		}
 	}
-	return a.committer.CommitAppliedFillerDecisionAction(ctx, action, receipt)
+	return a.committer.CommitAppliedFillerDecisionAction(ctx, action)
 }
 
-func (a *AppliedAdmission) verifyCurrentRelease(ctx context.Context, record fillerdecision.Record) (*fillerdecision.AppliedRightsReceipt, error) {
+func (a *AppliedAdmission) verifyCurrentRelease(ctx context.Context, record fillerdecision.Record) error {
 	if a.certification.AuthoritySHA256() != record.ReleaseAuthoritySHA256 {
-		return nil, fmt.Errorf("release authority does not match the applied decision")
+		return fmt.Errorf("release authority does not match the applied decision")
 	}
 	mediaPath, err := a.resolver.ResolveAppliedAdmissionMedia(ctx, record.ClipHash)
 	if err != nil {
-		return nil, fmt.Errorf("resolve current playback: %w", err)
+		return fmt.Errorf("resolve current playback: %w", err)
 	}
 	summary, err := a.summary.ReadSegmentScreeningSummary(ctx, record.ClipHash, mediaPath)
 	if err != nil {
-		return nil, fmt.Errorf("reproduce current screening: %w", err)
+		return fmt.Errorf("reproduce current screening: %w", err)
 	}
 	if summary.State != ScreeningSummaryAvailable || summary.Outcome != ScreenPass ||
 		summary.EvidenceSHA256 != record.ScreeningEvidenceSHA256 {
-		return nil, fmt.Errorf("current playback does not reproduce the applied screening pass")
+		return fmt.Errorf("current playback does not reproduce the applied screening pass")
 	}
 	aggregate, err := a.evidence.GetSegmentScreeningEvidence(ctx, record.ScreeningEvidenceSHA256)
 	if err != nil {
-		return nil, fmt.Errorf("reopen applied screening aggregate: %w", err)
+		return fmt.Errorf("reopen applied screening aggregate: %w", err)
 	}
 	if aggregate.SHA256 != record.ScreeningEvidenceSHA256 || !aggregate.Passes() {
-		return nil, fmt.Errorf("applied screening aggregate is not an exact five-axis pass")
+		return fmt.Errorf("applied screening aggregate is not an exact four-axis pass")
 	}
-	decision, err := a.certification.Replay(ctx, aggregate)
-	if err != nil {
-		return nil, fmt.Errorf("replay terminal release: %w", err)
+	if err := a.certification.Replay(ctx, aggregate); err != nil {
+		return fmt.Errorf("replay terminal release: %w", err)
 	}
-	return &fillerdecision.AppliedRightsReceipt{DecisionID: record.ID, ClipHash: record.ClipHash,
-		ScreeningEvidenceSHA256: record.ScreeningEvidenceSHA256, ReleaseAuthoritySHA256: record.ReleaseAuthoritySHA256,
-		SourceID: decision.SourceID, AcquisitionID: decision.AcquisitionID,
-		SourceMasterSHA256: decision.SourceMasterSHA256, PolicySHA256: decision.PolicySHA256,
-		Use: decision.Use, GrantSHA256: decision.BasisSHA256}, nil
+	return nil
 }
 
 func appliedActionPublishes(action fillerdecision.Action) bool {

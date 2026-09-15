@@ -44,9 +44,14 @@ func TestClipPipelineLifecycle(t *testing.T) {
 			want: PipelineLifecycle{State: LifecycleNeedsDecision},
 		},
 		{
-			name: "filed is admitted",
-			row:  ClipPipeline{Disposition: DispositionFiled, Stage: StageScore, Status: StatusDone},
-			want: PipelineLifecycle{State: LifecycleAdmitted},
+			name: "ready is playable",
+			row:  ClipPipeline{Disposition: DispositionReady, Stage: StageScore, Status: StatusDone},
+			want: PipelineLifecycle{State: LifecycleReady},
+		},
+		{
+			name: "completed composite is not ready",
+			row:  ClipPipeline{Disposition: DispositionComplete, Stage: StageScore, Status: StatusDone},
+			want: PipelineLifecycle{State: LifecycleComplete},
 		},
 		{
 			name: "exhausted transcode execution can retry after repair",

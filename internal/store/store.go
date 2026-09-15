@@ -346,6 +346,10 @@ type UserStore interface {
 // ClipStore is the filler clip catalog (§10).
 type ClipStore interface {
 	UpsertClip(ctx context.Context, c Clip) error
+	// CommitFillerReady atomically stores Placement, releases the held clip, settles its conveyor
+	// row, and appends the effective Ready event. It is the only non-composite publication path.
+	CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error
+	GetFillerReadyEvent(ctx context.Context, clipHash string) (filler.ReadyEvent, bool, error)
 	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
 	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
 	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
@@ -449,7 +453,7 @@ type ClipStore interface {
 	// direct and descendant counts for every taxon. It is computed over the whole catalog, never a UI page.
 	TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error)
 	// HoldClips can only remove content from rotation. Releasing playable content belongs to the
-	// applied-admission transaction; confirmed non-airable parents use ReleaseCompositeHolds.
+	// terminal-ready transaction; confirmed non-airable parents use ReleaseCompositeHolds.
 	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
 	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// UpdateClipClassification edits the non-taxonomy classifier facts (+ ai flag) — the tag
@@ -507,8 +511,8 @@ type SplitProposalStore interface {
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
-	// MarkPipelineFiled takes a clip off the belt, so a swept reel is not re-proposed forever.
-	MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error
+	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
+	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
 	// CompleteSplitConfirmation atomically transitions a fully reviewed split proposal, retained
 	// parent, replacement pipelines, and selected child generation (§10 V65).
 	CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error)
@@ -645,13 +649,6 @@ type FillerSafetyStore interface {
 	RecoverInterruptedSpokenSafetyRuns(context.Context, time.Time) (int, error)
 }
 
-// FillerRightsStore is the append-only operator-reviewed rights authority used by both rendered-
-// child screening and terminal release. Current-time interpretation remains in filler.Registry;
-// the store owns only immutable history and the atomic current-head pointer.
-type FillerRightsStore interface {
-	filler.FillerRightsGrantRepository
-}
-
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
@@ -659,6 +656,11 @@ type FillerRightsStore interface {
 // rows cannot express. These describe the specific archive.org collections an operator added, and
 // they nest under that read-model's `remote` row rather than replacing any of it.
 type FillerSourceStore interface {
+	// ListFillerProviders returns the closed provider policy set in stable order.
+	ListFillerProviders(ctx context.Context) ([]FillerProvider, error)
+	// SetFillerProviderEnabled pauses or resumes future work through one provider without
+	// rewriting any child source choice or removing already downloaded clips.
+	SetFillerProviderEnabled(ctx context.Context, kind string, enabled bool) error
 	// ListFillerSources returns every registered remote source, oldest first, so the UI order
 	// is stable across reloads.
 	ListFillerSources(ctx context.Context) ([]FillerSource, error)
@@ -670,6 +672,11 @@ type FillerSourceStore interface {
 	DeleteFillerSource(ctx context.Context, id string) error
 	// MarkFillerSourceFetched stamps a successful fetch, for the Sources tab's "last fetched".
 	MarkFillerSourceFetched(ctx context.Context, id string, at time.Time) error
+	// Claim/complete/fail are the durable source-check lease and retry boundary shared by the
+	// scheduler and the manual Look for new clips command.
+	ClaimFillerSourceCheck(ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time) (bool, error)
+	CompleteFillerSourceCheck(ctx context.Context, id string, leaseUntil, checkedAt time.Time) error
+	FailFillerSourceCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error
 	// SetFillerSourceFetchPolicy writes one source's per-source fetch overrides (§10 V38c).
 	//
 	// ⚠ The ONLY writer of those columns, like SetFillerSourceEnabled owns `enabled` — the upsert
@@ -895,7 +902,6 @@ type Store interface {
 	FillerStructureAssessmentStore
 	FillerDecisionStore
 	FillerSafetyStore
-	FillerRightsStore
 	SplitProposalStore
 	AiringStore
 	ActivityStore

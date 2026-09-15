@@ -41,8 +41,12 @@ type archiveClient struct {
 	base   string // e.g. https://archive.org
 	scheme string // "https" (prod) or "http" (tests) — for the file-download URL
 	http   *http.Client
-	fs     fileSink
-	maxPer int // cap items pulled per collection per pass (density guard)
+	// Source-finder clients bound public JSON reads and identify themselves. Zero values preserve
+	// the downloader's existing streaming metadata behavior.
+	maxJSONBytes int64
+	userAgent    string
+	fs           fileSink
+	maxPer       int // cap items pulled per collection per pass (density guard)
 }
 
 // fileSink abstracts writing downloaded media + sidecars (real = disk).
@@ -317,6 +321,9 @@ func (c *archiveClient) getJSON(ctx context.Context, u string, out any) error {
 	if err != nil {
 		return err
 	}
+	if c.userAgent != "" {
+		req.Header.Set("User-Agent", c.userAgent)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
@@ -325,7 +332,17 @@ func (c *archiveClient) getJSON(ctx context.Context, u string, out any) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("GET %s: status %d", u, resp.StatusCode)
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	if c.maxJSONBytes <= 0 {
+		return json.NewDecoder(resp.Body).Decode(out)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, c.maxJSONBytes+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) > c.maxJSONBytes {
+		return fmt.Errorf("GET %s: JSON response exceeded %d bytes", u, c.maxJSONBytes)
+	}
+	return json.Unmarshal(data, out)
 }
 
 func (c *archiveClient) fetchTo(ctx context.Context, u, path string) error {

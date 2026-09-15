@@ -169,22 +169,22 @@ func (s *sqlStore) GetClipPipeline(ctx context.Context, hash string) (filler.Cli
 	return p, true, nil
 }
 
-// MarkPipelineFiled takes a clip OFF the belt (§10 V54) — the split sweep's step 1.
+// MarkPipelineComplete takes a composite OFF the belt (§10 V54) — the split sweep's step 1.
 //
 // ⚠ **This is what stops the sweep becoming a churn loop.** A swept composite is still marked
 // `is_composite` and still enrolled, so leaving its row `running` means the split rung re-detects
 // it on the very next pass — propose → partly confirm → leftovers → sweep → re-propose, burning a
 // boundary scan every cycle and never converging. `ListPipelineWork` claims only `running`, so
-// `filed` is the existing, one-word way to say "this reel is finished".
+// `complete` says the reel finished processing without claiming it is Ready or playable.
 //
 // A missing row is not an error: a clip catalogued before the pipeline existed has none, and there
 // is nothing to take off a belt it was never on.
-func (s *sqlStore) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
+func (s *sqlStore) MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ? WHERE clip_hash = ?`),
-		string(filler.DispositionFiled), epoch(at), hash)
+		string(filler.DispositionComplete), epoch(at), hash)
 	if err != nil {
-		return fmt.Errorf("mark pipeline filed %s: %w", hash, err)
+		return fmt.Errorf("mark pipeline complete %s: %w", hash, err)
 	}
 	return nil
 }
@@ -314,40 +314,56 @@ func (s *sqlStore) CountClipPipelines(ctx context.Context, f filler.PipelineFilt
 // negative or inflated total. This also stays dialect-neutral; teaching shared store code two JSON
 // syntaxes would make SQLite and Postgres capable of reporting different Incoming totals.
 func (s *sqlStore) CountIncomingConveyor(ctx context.Context) (int, error) {
+	bySource, err := s.CountIncomingConveyorBySource(ctx)
+	if err != nil {
+		return 0, err
+	}
+	total := 0
+	for _, n := range bySource {
+		total += n
+	}
+	return total, nil
+}
+
+// CountIncomingConveyorBySource projects the same conveyor as CountIncomingConveyor while
+// retaining clip provenance. Sources uses this instead of counting every held row: completed
+// composite parents stay held for lineage and re-splitting but are no longer Incoming work.
+func (s *sqlStore) CountIncomingConveyorBySource(ctx context.Context) (map[string]int, error) {
 	args := []any{true, false, string(filler.DispositionRunning), string(filler.DispositionReview)}
 	const candidate = `((c.removed_at = 0 AND c.held = ? AND c.is_composite = ?)
 		OR EXISTS (SELECT 1 FROM filler_clip_pipeline p
 		  WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?)))`
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT sp.id, sp.segments_json
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.source, sp.id, sp.segments_json
 		FROM clips c
 		LEFT JOIN filler_split_proposals sp ON sp.clip_hash = c.hash
 		WHERE `+candidate), args...)
 	if err != nil {
-		return 0, fmt.Errorf("count incoming conveyor: %w", err)
+		return nil, fmt.Errorf("count incoming conveyor by source: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	n := 0
+	counts := map[string]int{}
 	for rows.Next() {
-		n++
+		var source string
 		var id, raw sql.NullString
-		if err := rows.Scan(&id, &raw); err != nil {
-			return 0, fmt.Errorf("scan incoming conveyor: %w", err)
+		if err := rows.Scan(&source, &id, &raw); err != nil {
+			return nil, fmt.Errorf("scan incoming conveyor by source: %w", err)
 		}
+		counts[source]++
 		if !raw.Valid {
 			continue
 		}
 		var proposal filler.SplitProposal
 		if err := unmarshalSplitProposal(raw.String, &proposal); err != nil {
-			return 0, fmt.Errorf("split proposal %s document corrupt: %w", id.String, err)
+			return nil, fmt.Errorf("split proposal %s document corrupt: %w", id.String, err)
 		}
 		if proposal.Ready() {
-			n--
+			counts[source]--
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("count incoming conveyor: %w", err)
+		return nil, fmt.Errorf("count incoming conveyor by source: %w", err)
 	}
-	return n, nil
+	return counts, nil
 }
 
 // CountIncomingDecisions counts only conveyor rows the machine has handed to a person. It is the

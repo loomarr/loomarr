@@ -512,7 +512,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// A missing catalog row still records actual airing truth. Re-admission must retain it.
-	missing := "removed-and-readmitted"
+	missing := "removed-and-reready"
 	if _, err := s.RecordClipPlay(ctx, "channel-a", missing, second); err != nil {
 		t.Fatal(err)
 	}
@@ -1103,8 +1103,10 @@ func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
 			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
 		{ClipHash: "review", Stage: filler.StageScore, Status: filler.StatusDone,
 			Disposition: filler.DispositionReview},
-		{ClipHash: "filed", Stage: filler.StageScore, Status: filler.StatusDone,
-			Disposition: filler.DispositionFiled},
+		{ClipHash: "ready", Stage: filler.StageScore, Status: filler.StatusDone,
+			Disposition: filler.DispositionReady},
+		{ClipHash: "complete", Stage: filler.StageScore, Status: filler.StatusDone,
+			Disposition: filler.DispositionComplete},
 		{ClipHash: "rejected", Stage: filler.StageTranscode, Status: filler.StatusFailed,
 			Disposition: filler.DispositionRejected, RejectReason: filler.ReasonUnplayable},
 		{ClipHash: "dismissed", Stage: filler.StageTag, Status: filler.StatusDone,
@@ -1122,7 +1124,7 @@ func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
 	}
 	want := filler.PipelineOverview{
 		Runnable: 1, InProgress: 1, Scheduled: 2, NeedsDecision: 1,
-		Admitted: 1, Rejected: 1, Dismissed: 1, Recoverable: 1,
+		Ready: 1, Complete: 1, Rejected: 1, Dismissed: 1, Recoverable: 1,
 	}
 	if got != want {
 		t.Fatalf("PipelineOverview() = %+v, want %+v", got, want)
@@ -1171,8 +1173,8 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 			Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now},
 		{ClipHash: "review", AcquisitionID: newer.ID, Stage: filler.StageScore, Status: filler.StatusDone,
 			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: "admitted", AcquisitionID: newer.ID, Stage: filler.StageScore, Status: filler.StatusDone,
-			Disposition: filler.DispositionFiled, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "ready", AcquisitionID: newer.ID, Stage: filler.StageScore, Status: filler.StatusDone,
+			Disposition: filler.DispositionReady, EnrolledAt: now, UpdatedAt: now},
 		{ClipHash: "rejected", AcquisitionID: newer.ID, Stage: filler.StageProbe, Status: filler.StatusFailed,
 			Disposition: filler.DispositionRejected, EnrolledAt: now, UpdatedAt: now},
 	}
@@ -1189,7 +1191,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	if len(runs) != 1 || runs[0].ID != newer.ID {
 		t.Fatalf("latest acquisition = %+v, want only %s", runs, newer.ID)
 	}
-	wantOutcome := filler.AcquisitionOutcome{Enrolled: 4, Preparing: 1, NeedsDecision: 1, Admitted: 1, Rejected: 1}
+	wantOutcome := filler.AcquisitionOutcome{Enrolled: 4, Preparing: 1, NeedsDecision: 1, Ready: 1, Rejected: 1}
 	if runs[0].Outcome != wantOutcome {
 		t.Fatalf("outcome = %+v, want %+v", runs[0].Outcome, wantOutcome)
 	}
@@ -1687,6 +1689,10 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !gotParent.IsComposite || gotParent.Held {
 		t.Fatalf("committed completion parent = %+v, %v", gotParent, err)
 	}
+	gotParentPipeline, found, err = s.GetClipPipeline(ctx, parent.Hash)
+	if err != nil || !found || gotParentPipeline.Disposition != filler.DispositionComplete {
+		t.Fatalf("committed completion parent pipeline = %+v, found=%v err=%v", gotParentPipeline, found, err)
+	}
 	active, err = s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
 	if err != nil || containsHash(active, old.Hash) || !containsHash(active, first.Hash) || !containsHash(active, second.Hash) {
 		t.Fatalf("committed selected generation = %+v, %v", active, err)
@@ -1705,8 +1711,8 @@ func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFu
 		parentDisposition *filler.Disposition
 	}{
 		{name: "missing parent pipeline"},
-		{name: "parent already filed", parentDisposition: func() *filler.Disposition {
-			disposition := filler.DispositionFiled
+		{name: "parent already complete", parentDisposition: func() *filler.Disposition {
+			disposition := filler.DispositionComplete
 			return &disposition
 		}()},
 	} {
@@ -2710,6 +2716,56 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if !src1(t, s).LastFetchedAt.Equal(fetched) {
 		t.Errorf("LastFetchedAt = %v, want %v", src1(t, s).LastFetchedAt, fetched)
 	}
+	checked := fetched.Add(30 * time.Minute)
+	claimAt, leaseUntil := fetched.Add(10*time.Minute), fetched.Add(40*time.Minute)
+	claimed, err := s.ClaimFillerSourceCheck(ctx, "src-1", time.Time{}, claimAt, leaseUntil)
+	if err != nil || !claimed {
+		t.Fatalf("first source check claim = %v, %v", claimed, err)
+	}
+	if claimed, err := s.ClaimFillerSourceCheck(ctx, "src-1", time.Time{}, claimAt, leaseUntil); err != nil || claimed {
+		t.Fatalf("overlapping source check claim = %v, %v, want false/nil", claimed, err)
+	}
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil.Add(time.Second), checked); !errors.Is(err, filler.ErrSourceCheckClaimLost) {
+		t.Fatalf("stale source check completion = %v, want claim lost", err)
+	}
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil, checked); err != nil {
+		t.Fatal(err)
+	}
+	if !src1(t, s).LastCheckedAt.Equal(checked) {
+		t.Errorf("LastCheckedAt = %v, want %v", src1(t, s).LastCheckedAt, checked)
+	}
+	if !src1(t, s).LastFetchedAt.Equal(fetched) {
+		t.Errorf("marking a check changed LastFetchedAt to %v, want %v", src1(t, s).LastFetchedAt, fetched)
+	}
+
+	// A provider failure is durably recorded and releases the claim into bounded backoff. The
+	// next successful completion clears it.
+	failedClaimAt, failedLease := checked.Add(time.Hour), checked.Add(90*time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, "src-1", checked, failedClaimAt, failedLease)
+	if err != nil || !claimed {
+		t.Fatalf("failure source check claim = %v, %v", claimed, err)
+	}
+	retryAt := failedClaimAt.Add(5 * time.Minute)
+	if err := s.FailFillerSourceCheck(ctx, "src-1", failedLease, retryAt); err != nil {
+		t.Fatal(err)
+	}
+	failedSource := src1(t, s)
+	if failedSource.CheckFailureCount != 1 || !failedSource.CheckRetryAt.Equal(retryAt) || !failedSource.CheckLeaseUntil.IsZero() {
+		t.Fatalf("durable source failure state = %+v", failedSource)
+	}
+	retryLease := retryAt.Add(30 * time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, "src-1", checked, retryAt, retryLease)
+	if err != nil || !claimed {
+		t.Fatalf("retry source check claim = %v, %v", claimed, err)
+	}
+	checked = retryAt.Add(time.Minute)
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", retryLease, checked); err != nil {
+		t.Fatal(err)
+	}
+	recoveredSource := src1(t, s)
+	if recoveredSource.CheckFailureCount != 0 || !recoveredSource.CheckRetryAt.IsZero() {
+		t.Fatalf("successful source check did not clear backoff: %+v", recoveredSource)
+	}
 
 	// ⚠ THE assertion this table's ON CONFLICT clause exists for. Re-registering a source
 	// (an operator fixing its label) knows nothing about fetches; if last_fetched_at joined
@@ -2724,6 +2780,9 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !src1(t, s).LastFetchedAt.Equal(fetched) {
 		t.Errorf("re-registering reset LastFetchedAt to %v — it must survive an upsert", src1(t, s).LastFetchedAt)
+	}
+	if !src1(t, s).LastCheckedAt.Equal(checked) {
+		t.Errorf("re-registering reset LastCheckedAt to %v — it must survive an upsert", src1(t, s).LastCheckedAt)
 	}
 
 	// The Sources tab's on/off switch (V35). Two properties, each a claim the switch's own
@@ -2801,6 +2860,130 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if err := s.SetFillerSourceEnabled(ctx, "nope", false); !errors.Is(err, ErrNotFound) {
 		t.Errorf("set enabled on unknown = %v, want ErrNotFound", err)
 	}
+
+	// Restart durability is part of the scheduler contract, not merely a same-process read.
+	// Persist all three timing facts plus a source override, close the production store, reopen
+	// the same database, and prove the next process sees the exact state on both SQL backends.
+	restartSource := NewFillerSource("restart-policy", "archive", "restart_policy", "Restart policy", created)
+	if err := s.UpsertFillerSource(ctx, restartSource); err != nil {
+		t.Fatal(err)
+	}
+	restartEvery, restartMax := 12*60*60, 7
+	if err := s.SetFillerSourceFetchPolicy(ctx, restartSource.ID, &restartEvery, &restartMax); err != nil {
+		t.Fatal(err)
+	}
+	restartChecked := created.Add(12 * time.Hour)
+	restartLease := restartChecked.Add(-time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, restartSource.ID, time.Time{}, restartChecked.Add(-2*time.Minute), restartLease)
+	if err != nil || !claimed {
+		t.Fatalf("restart source success claim = %v, %v", claimed, err)
+	}
+	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, restartChecked); err != nil {
+		t.Fatal(err)
+	}
+	failureAt := restartChecked.Add(time.Hour)
+	failureLease := failureAt.Add(30 * time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, restartSource.ID, restartChecked, failureAt, failureLease)
+	if err != nil || !claimed {
+		t.Fatalf("restart source failure claim = %v, %v", claimed, err)
+	}
+	restartRetry := failureAt.Add(5 * time.Minute)
+	if err := s.FailFillerSourceCheck(ctx, restartSource.ID, failureLease, restartRetry); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := restartConformanceStore(t, s)
+	restarted, ok := findSource(t, reopened, restartSource.ID)
+	if !ok {
+		_ = reopened.Close()
+		t.Fatal("source check state disappeared across store restart")
+	}
+	if restarted.FetchEverySeconds == nil || *restarted.FetchEverySeconds != restartEvery ||
+		restarted.FetchMaxPerRun == nil || *restarted.FetchMaxPerRun != restartMax ||
+		!restarted.LastCheckedAt.Equal(restartChecked) || restarted.CheckFailureCount != 1 ||
+		!restarted.CheckRetryAt.Equal(restartRetry) || !restarted.CheckLeaseUntil.IsZero() {
+		_ = reopened.Close()
+		t.Fatalf("source policy/check state after restart = %+v", restarted)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testFillerProviderPolicy protects the master-switch contract through the store's public seam on
+// both SQL adapters. A provider pause changes effective acquisition policy without rewriting the
+// operator's child choices, so resuming restores the exact mix that existed before the pause.
+func testFillerProviderPolicy(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+
+	providers, err := s.ListFillerProviders(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !providerEnabled(providers, "archive") || !providerEnabled(providers, "youtube") {
+		t.Fatalf("fresh provider policy = %+v, want archive and youtube enabled", providers)
+	}
+
+	if err := s.UpsertFillerSource(ctx, NewFillerSource("provider-policy-on", "archive", "provider_policy_on", "On", time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+	off := NewFillerSource("provider-policy-off", "archive", "provider_policy_off", "Off", time.Now().UTC().Add(time.Second))
+	if err := s.UpsertFillerSource(ctx, off); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetFillerSourceEnabled(ctx, off.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetFillerProviderEnabled(ctx, "archive", false); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := s.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]FillerSource, len(sources))
+	for _, source := range sources {
+		byID[source.ID] = source
+	}
+	if !byID["provider-policy-on"].Enabled || byID["provider-policy-on"].EffectiveEnabled() {
+		t.Errorf("enabled child while provider paused = %+v, want choice retained but effective state off", byID["provider-policy-on"])
+	}
+	if byID["provider-policy-off"].Enabled || byID["provider-policy-off"].EffectiveEnabled() {
+		t.Errorf("disabled child while provider paused = %+v, want child and effective state off", byID["provider-policy-off"])
+	}
+
+	if err := s.SetFillerProviderEnabled(ctx, "archive", true); err != nil {
+		t.Fatal(err)
+	}
+	sources, err = s.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID = make(map[string]FillerSource, len(sources))
+	for _, source := range sources {
+		byID[source.ID] = source
+	}
+	if !byID["provider-policy-on"].EffectiveEnabled() {
+		t.Error("resuming archive did not restore its previously enabled child")
+	}
+	if byID["provider-policy-off"].EffectiveEnabled() {
+		t.Error("resuming archive enabled a child the operator had left off")
+	}
+	if err := s.SetFillerProviderEnabled(ctx, "not-a-provider", false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("set unknown provider = %v, want ErrNotFound", err)
+	}
+}
+
+func providerEnabled(providers []FillerProvider, kind string) bool {
+	for _, provider := range providers {
+		if provider.Kind == kind {
+			return provider.Enabled
+		}
+	}
+	return false
 }
 
 // testSeededDefaultSources covers what migration 00034 puts in a FRESH store, on BOTH backends
@@ -2893,7 +3076,7 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	p := filler.Pull{
 		ID: "pull_1", Title: "Top up the 1990s", Reason: "Saturday Mornings falls back to bumpers.",
 		ProposedBy: "admin-1", Status: filler.PullPending, CreatedAt: created,
-		Intent: filler.AcquisitionIntent{Version: filler.AcquisitionIntentVersion, EraStart: 1990, EraEnd: 1999, Count: 2, Rights: filler.RightsPreferDeclared},
+		Intent: filler.AcquisitionIntent{Version: filler.AcquisitionIntentVersion, EraStart: 1990, EraEnd: 1999, Count: 2},
 		Plan: []filler.PullPlanRow{
 			{SourceID: "classic", Provider: "archive", RemoteID: "ad-one", URL: "https://archive.org/details/ad-one", Tag: "1990s", Name: "Classic TV commercials", Why: "Era match", EstimateClips: 1},
 			{SourceID: "psa", Provider: "archive", RemoteID: "psa-one", URL: "https://archive.org/details/psa-one", Tag: "psa", Name: "Public service", Why: "Filler variety", EstimateClips: 1},
@@ -3385,7 +3568,9 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	// terminal here: the pipeline has done all it can and is waiting on a person, so re-running
 	// the ladder would burn Whisper and vision calls on a clip whose only missing input is a
 	// human decision.
-	for _, d := range []filler.Disposition{filler.DispositionReview, filler.DispositionFiled, filler.DispositionRejected} {
+	for _, d := range []filler.Disposition{
+		filler.DispositionReview, filler.DispositionReady, filler.DispositionComplete, filler.DispositionRejected,
+	} {
 		term := p
 		term.Disposition = d
 		term.NextRun = now.Add(-time.Hour) // overdue on purpose
@@ -3878,6 +4063,7 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	counters, ok := s.(interface {
 		CountIncomingConveyor(context.Context) (int, error)
+		CountIncomingConveyorBySource(context.Context) (map[string]int, error)
 	})
 	if !ok {
 		t.Fatal("store does not expose the Incoming conveyor counter")
@@ -3885,9 +4071,9 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 
 	for _, c := range []Clip{
 		{Clip: filler.Clip{Hash: "draft-reel", Path: "reels/draft.mp4", Name: "Draft reel",
-			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true}},
+			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
 		{Clip: filler.Clip{Hash: "ready-reel", Path: "reels/ready.mp4", Name: "Ready reel",
-			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true}},
+			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
 	} {
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
@@ -3918,6 +4104,13 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got != 1 {
 		t.Errorf("Incoming conveyor count = %d, want 1 draft reel; the ready reel has its own row", got)
+	}
+	bySource, err := counters.CountIncomingConveyorBySource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bySource["archive:test"] != 1 {
+		t.Errorf("Incoming conveyor source count = %d, want the same 1 draft reel", bySource["archive:test"])
 	}
 }
 
@@ -4383,9 +4576,73 @@ func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testFillerDiagnosticRecoveryActions(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 12, 16, 0, 0, 0, time.UTC)
+	record := fillerdecision.Record{
+		ID: "diagnostic-retry", ClipHash: "clip-diagnostic", EvidenceHash: "evidence-diagnostic",
+		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
+		PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
+		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
+		Result: filleradmission.Result{Hold: &filleradmission.Hold{
+			Code: filleradmission.HoldExtractionFailed, Retryable: true,
+		}},
+	}
+	if err := s.PutFillerDecision(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	request := fillerdecision.DiagnosticRecoveryRequest{
+		ID: "diagnostic-action-1", DecisionID: record.ID, ActorID: "admin-1",
+		Action: fillerdecision.DiagnosticRecoveryRetry, CreatedAt: at.Add(time.Second),
+	}
+	if err := s.CommitFillerDiagnosticRecovery(ctx, request); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CommitFillerDiagnosticRecovery(ctx, request); err != nil {
+		t.Fatalf("idempotent diagnostic recovery = %v", err)
+	}
+	got, found, err := s.FindFillerDiagnosticRecovery(ctx, request.ID)
+	if err != nil || !found || !fillerdecision.SameDiagnosticRecovery(got, request) || got.CreatedAt != request.CreatedAt {
+		t.Fatalf("diagnostic recovery round trip = %+v, %v, %v", got, found, err)
+	}
+	changed := request
+	changed.DecisionID = "other-decision"
+	if err := s.CommitFillerDiagnosticRecovery(ctx, changed); !errors.Is(err, fillerdecision.ErrConflict) {
+		t.Fatalf("conflicting diagnostic action = %v", err)
+	}
+
+	nonRetryable := record
+	nonRetryable.ID, nonRetryable.ClipHash = "diagnostic-inspect", "clip-inspect"
+	nonRetryable.Result.Hold = &filleradmission.Hold{Code: filleradmission.HoldExtractionFailed, Retryable: false}
+	if err := s.PutFillerDecision(ctx, nonRetryable); err != nil {
+		t.Fatal(err)
+	}
+	denied := request
+	denied.ID, denied.DecisionID = "diagnostic-action-denied", nonRetryable.ID
+	if err := s.CommitFillerDiagnosticRecovery(ctx, denied); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
+		t.Fatalf("non-retryable diagnostic action = %v", err)
+	}
+
+	recovered := record
+	recovered.ID = "diagnostic-recovered"
+	recovered.Result = filleradmission.Result{Decision: &filleradmission.Decision{
+		Verdict: filleradmission.VerdictAdmit, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
+	}}
+	recovered.CreatedAt = at.Add(2 * time.Second)
+	if err := s.PutFillerDecision(ctx, recovered); err != nil {
+		t.Fatal(err)
+	}
+	stale := request
+	stale.ID = "diagnostic-action-stale"
+	if err := s.CommitFillerDiagnosticRecovery(ctx, stale); !errors.Is(err, fillerdecision.ErrActionStale) {
+		t.Fatalf("stale diagnostic action = %v", err)
+	}
+}
+
 func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
-	t.Run("negative rights cases", func(t *testing.T) { testFillerAppliedAdmissionNegativeCases(t, newStore) })
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Date(2026, 9, 13, 2, 0, 0, 0, time.UTC)
@@ -4415,7 +4672,7 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		}
 		if withPipeline {
 			if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-				ClipHash: hash, Stage: filler.StageAdmission, Status: filler.StatusDone,
+				ClipHash: hash, Stage: filler.StageID("admission"), Status: filler.StatusDone,
 				Disposition: filler.DispositionReview, UpdatedAt: at,
 			}); err != nil {
 				t.Fatal(err)
@@ -4428,22 +4685,6 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 	}
 
 	hash := strings.Repeat("a", 64)
-	rightsScope := filler.FillerRightsScope{SourceID: "source-1", AcquisitionID: "acquisition-1",
-		SourceMasterSHA256: strings.Repeat("1", 64), PolicySHA256: strings.Repeat("2", 64), Use: filler.FillerBroadcastUse}
-	rightsNow := time.Now().UTC()
-	rightsGrant, err := filler.NewFillerRightsGrant(rightsScope, filler.FillerRightsAuthorized, filler.FillerRightsWithdrawalClear,
-		strings.Repeat("3", 64), "operator-1", rightsNow.Add(-time.Hour), nil, nil, "", rightsNow)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutFillerRightsGrant(ctx, rightsGrant); err != nil {
-		t.Fatal(err)
-	}
-	rightsReceipt := &fillerdecision.AppliedRightsReceipt{DecisionID: "applied-review", ClipHash: hash,
-		ScreeningEvidenceSHA256: strings.Repeat("b", 64), ReleaseAuthoritySHA256: strings.Repeat("c", 64),
-		SourceID: rightsScope.SourceID, AcquisitionID: rightsScope.AcquisitionID,
-		SourceMasterSHA256: rightsScope.SourceMasterSHA256, PolicySHA256: rightsScope.PolicySHA256,
-		Use: rightsScope.Use, GrantSHA256: rightsGrant.SHA256}
 	seed(hash, "aa/aa/"+hash+".mp4", true)
 	decision := newDecision("applied-review", hash)
 	if err := s.PutFillerDecision(ctx, decision); err != nil {
@@ -4456,7 +4697,7 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 	if err := s.CommitFillerDecisionAction(ctx, action); !errors.Is(err, fillerdecision.ErrActionMode) {
 		t.Fatalf("ordinary writer accepted applied decision: %v", err)
 	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, action, rightsReceipt); err != nil {
+	if err := s.CommitAppliedFillerDecisionAction(ctx, action); err != nil {
 		t.Fatal(err)
 	}
 	clip, err := s.GetClip(ctx, hash)
@@ -4464,67 +4705,19 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		t.Fatalf("applied admit clip = %+v, err = %v", clip, err)
 	}
 	pipeline, found, err := s.GetClipPipeline(ctx, hash)
-	if err != nil || !found || pipeline.Disposition != filler.DispositionFiled || pipeline.Status != filler.StatusDone {
+	if err != nil || !found || pipeline.Disposition != filler.DispositionReady || pipeline.Status != filler.StatusDone {
 		t.Fatalf("applied admit pipeline = %+v, found = %v, err = %v", pipeline, found, err)
 	}
 	actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: decision.ID, Limit: 10})
 	if err != nil || actions.Total != 1 || actions.Rows[0].ID != action.ID {
 		t.Fatalf("applied admit actions = %+v, err = %v", actions, err)
 	}
-
-	// Store-boundary race reproduction: a release can verify the old authorized head, then an
-	// operator withdrawal can win before this publication transaction starts. The stale receipt
-	// must leave action, catalog, and pipeline untouched.
-	withdrawnAt := rightsNow.Add(-time.Minute)
-	withdrawnGrant, err := filler.NewFillerRightsGrant(rightsScope, filler.FillerRightsProhibited, filler.FillerRightsWithdrawalActive,
-		strings.Repeat("4", 64), "operator-1", withdrawnAt, nil, &withdrawnAt, rightsGrant.SHA256, rightsNow)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutFillerRightsGrant(ctx, withdrawnGrant); err != nil {
-		t.Fatal(err)
-	}
-	racedHash := strings.Repeat("9", 64)
-	seed(racedHash, "99/99/"+racedHash+".mp4", true)
-	racedDecision := newDecision("applied-withdrawn-rights", racedHash)
-	if err := s.PutFillerDecision(ctx, racedDecision); err != nil {
-		t.Fatal(err)
-	}
-	racedAction := fillerdecision.Action{ID: "applied-withdrawn-rights-admit", DecisionID: racedDecision.ID,
-		Kind: fillerdecision.ActionAdmit, ActorID: "admin-1", CreatedAt: at.Add(90 * time.Second)}
-	racedReceipt := *rightsReceipt
-	racedReceipt.DecisionID, racedReceipt.ClipHash = racedDecision.ID, racedHash
-	if err := s.CommitAppliedFillerDecisionAction(ctx, racedAction, &racedReceipt); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
-		t.Fatalf("withdrawn current rights published = %v", err)
-	}
-	racedClip, err := s.GetClip(ctx, racedHash)
-	if err != nil || !racedClip.Held {
-		t.Fatalf("withdrawn current rights changed clip = %+v, err = %v", racedClip, err)
-	}
-	racedPipeline, found, err := s.GetClipPipeline(ctx, racedHash)
-	if err != nil || !found || racedPipeline.Disposition != filler.DispositionReview {
-		t.Fatalf("withdrawn current rights changed pipeline = %+v, found = %t, err = %v", racedPipeline, found, err)
-	}
-	racedActions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: racedDecision.ID, Limit: 10})
-	if err != nil || racedActions.Total != 0 {
-		t.Fatalf("withdrawn current rights persisted action = %+v, err = %v", racedActions, err)
-	}
-	reauthorizedGrant, err := filler.NewFillerRightsGrant(rightsScope, filler.FillerRightsAuthorized, filler.FillerRightsWithdrawalClear,
-		strings.Repeat("5", 64), "operator-1", rightsNow.Add(-time.Minute), nil, nil, withdrawnGrant.SHA256, rightsNow)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutFillerRightsGrant(ctx, reauthorizedGrant); err != nil {
-		t.Fatal(err)
-	}
-	rightsReceipt.GrantSHA256 = reauthorizedGrant.SHA256
-
 	reverse := fillerdecision.Action{
 		ID: "applied-reverse", DecisionID: decision.ID, Kind: fillerdecision.ActionReverse,
 		ActorID: "admin-1", Reason: "current evidence was withdrawn", SupersedesID: action.ID,
 		CreatedAt: at.Add(2 * time.Minute),
 	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, reverse, nil); err != nil {
+	if err := s.CommitAppliedFillerDecisionAction(ctx, reverse); err != nil {
 		t.Fatal(err)
 	}
 	clip, _ = s.GetClip(ctx, hash)
@@ -4537,7 +4730,7 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		ActorID: "admin-1", Reason: "fresh terminal release replay passed", SupersedesID: reverse.ID,
 		CreatedAt: at.Add(3 * time.Minute),
 	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, restore, nil); err != nil {
+	if err := s.CommitAppliedFillerDecisionAction(ctx, restore); err != nil {
 		t.Fatal(err)
 	}
 	clip, _ = s.GetClip(ctx, hash)
@@ -4549,8 +4742,8 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
 		UnresolvedOnly: true, Limit: 10,
 	})
-	if err != nil || reviews.Total != 2 || len(reviews.Rows) != 2 ||
-		!decisionPageContains(reviews, decision.ID) || !decisionPageContains(reviews, racedDecision.ID) {
+	if err != nil || reviews.Total != 1 || len(reviews.Rows) != 1 ||
+		!decisionPageContains(reviews, decision.ID) {
 		t.Fatalf("applied restored review queue = %+v, err = %v", reviews, err)
 	}
 	counts, err := s.FillerDecisionCounts(ctx)
@@ -4561,12 +4754,12 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		ID: "applied-readmit", DecisionID: decision.ID, Kind: fillerdecision.ActionAdmit,
 		ActorID: "admin-1", SupersedesID: restore.ID, CreatedAt: at.Add(3*time.Minute + time.Second),
 	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, readmit, rightsReceipt); err != nil {
+	if err := s.CommitAppliedFillerDecisionAction(ctx, readmit); err != nil {
 		t.Fatalf("applied restored review did not accept a new decision: %v", err)
 	}
 	clip, _ = s.GetClip(ctx, hash)
 	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
-	if clip.Held || pipeline.Disposition != filler.DispositionFiled {
+	if clip.Held || pipeline.Disposition != filler.DispositionReady {
 		t.Fatalf("applied readmit left clip=%+v pipeline=%+v", clip, pipeline)
 	}
 
@@ -4580,7 +4773,7 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		ID: "applied-reject", DecisionID: rejectedDecision.ID, Kind: fillerdecision.ActionReject,
 		ActorID: "admin-1", CreatedAt: at.Add(4 * time.Minute),
 	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, reject, nil); err != nil {
+	if err := s.CommitAppliedFillerDecisionAction(ctx, reject); err != nil {
 		t.Fatal(err)
 	}
 	playable, err := s.ListClips(ctx, ClipFilter{Hashes: []string{rejectedHash}})
@@ -4596,7 +4789,7 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		ActorID: "admin-1", Reason: "new terminal release replay passed", SupersedesID: reject.ID,
 		CreatedAt: at.Add(5 * time.Minute),
 	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, restoreRejected, nil); err != nil {
+	if err := s.CommitAppliedFillerDecisionAction(ctx, restoreRejected); err != nil {
 		t.Fatal(err)
 	}
 	playable, err = s.ListClips(ctx, ClipFilter{Hashes: []string{rejectedHash}})
@@ -4615,8 +4808,8 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
 		UnresolvedOnly: true, Limit: 10,
 	})
-	if err != nil || reviews.Total != 2 || len(reviews.Rows) != 2 ||
-		!decisionPageContains(reviews, rejectedDecision.ID) || !decisionPageContains(reviews, racedDecision.ID) {
+	if err != nil || reviews.Total != 1 || len(reviews.Rows) != 1 ||
+		!decisionPageContains(reviews, rejectedDecision.ID) {
 		t.Fatalf("restored reject review queue = %+v, err = %v", reviews, err)
 	}
 	counts, err = s.FillerDecisionCounts(ctx)
@@ -4634,9 +4827,7 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		ID: "applied-rollback", DecisionID: rollbackDecision.ID, Kind: fillerdecision.ActionAdmit,
 		ActorID: "admin-1", CreatedAt: at.Add(6 * time.Minute),
 	}
-	rollbackReceipt := *rightsReceipt
-	rollbackReceipt.DecisionID, rollbackReceipt.ClipHash = rollbackDecision.ID, rollbackHash
-	if err := s.CommitAppliedFillerDecisionAction(ctx, rollbackAction, &rollbackReceipt); !errors.Is(err, fillerdecision.ErrActionStale) {
+	if err := s.CommitAppliedFillerDecisionAction(ctx, rollbackAction); !errors.Is(err, fillerdecision.ErrActionStale) {
 		t.Fatalf("missing pipeline effect = %v, want stale rollback", err)
 	}
 	clip, err = s.GetClip(ctx, rollbackHash)
@@ -4648,9 +4839,8 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		t.Fatalf("rolled-back action persisted = %+v, err = %v", actions, err)
 	}
 
-	// A terminal decision cannot publish bytes whose exact filler role remains unclassified.
-	// The catalog predicate and transaction rollback keep clip, pipeline, and action history closed
-	// even when every otherwise-required applied admission authority is supplied.
+	// The ordinary scan upsert cannot release a hold, even when its caller supplies held=false. An
+	// unknown role is no longer rejected at this boundary; terminal readiness owns its Placement.
 	unclassifiedHash := strings.Repeat("8", 64)
 	seedKind(unclassifiedHash, "88/88/"+unclassifiedHash+".mp4", filler.Unclassified, true)
 	unclassifiedClip, err := s.GetClip(ctx, unclassifiedHash)
@@ -4659,14 +4849,25 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 	}
 	unheld := unclassifiedClip
 	unheld.Held = false
-	if err := s.UpsertClip(ctx, unheld); err == nil {
-		t.Fatal("application boundary accepted an unheld unclassified clip")
+	if err := s.UpsertClip(ctx, unheld); err != nil {
+		t.Fatalf("ordinary upsert rejected descriptive unclassified state: %v", err)
+	}
+	unclassifiedClip, err = s.GetClip(ctx, unclassifiedHash)
+	if err != nil || !unclassifiedClip.Held {
+		t.Fatalf("ordinary upsert released hold = %+v, err = %v", unclassifiedClip, err)
 	}
 	if err := s.SetClipComposite(ctx, unclassifiedHash, true, at.Add(6*time.Minute+time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ReleaseCompositeHolds(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err == nil {
-		t.Fatal("database boundary released an unclassified clip through the composite exception")
+	if _, err := s.ReleaseCompositeHolds(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	playableUnknown, err := s.ListClips(ctx, ClipFilter{Hashes: []string{unclassifiedHash}, IncludeComposites: true})
+	if err != nil || len(playableUnknown) != 0 {
+		t.Fatalf("released composite became playable despite not_playable placement: %+v, err=%v", playableUnknown, err)
+	}
+	if _, err := s.HoldClips(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err != nil {
+		t.Fatal(err)
 	}
 	unclassifiedDecision := newDecision("applied-unclassified", unclassifiedHash)
 	if err := s.PutFillerDecision(ctx, unclassifiedDecision); err != nil {
@@ -4676,9 +4877,7 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 		ID: "applied-unclassified-admit", DecisionID: unclassifiedDecision.ID,
 		Kind: fillerdecision.ActionAdmit, ActorID: "admin-1", CreatedAt: at.Add(7 * time.Minute),
 	}
-	unclassifiedReceipt := *rightsReceipt
-	unclassifiedReceipt.DecisionID, unclassifiedReceipt.ClipHash = unclassifiedDecision.ID, unclassifiedHash
-	if err := s.CommitAppliedFillerDecisionAction(ctx, unclassifiedAction, &unclassifiedReceipt); !errors.Is(err, fillerdecision.ErrActionStale) {
+	if err := s.CommitAppliedFillerDecisionAction(ctx, unclassifiedAction); !errors.Is(err, fillerdecision.ErrActionStale) {
 		t.Fatalf("unclassified applied admission = %v, want stale", err)
 	}
 	unclassifiedClip, err = s.GetClip(ctx, unclassifiedHash)
@@ -4695,195 +4894,6 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 	}
 }
 
-func testFillerAppliedAdmissionNegativeCases(t *testing.T, newStore NewStoreFunc) {
-	t.Helper()
-	const fixtureClipHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	newCase := func(t *testing.T, grant *filler.FillerRightsGrant) (Store, context.Context, fillerdecision.Action, *fillerdecision.AppliedRightsReceipt) {
-		t.Helper()
-		s := newStore(t)
-		ctx := context.Background()
-		at := time.Date(2026, 9, 13, 2, 0, 0, 0, time.UTC)
-		hash := fixtureClipHash
-		scope := filler.FillerRightsScope{SourceID: "source-1", AcquisitionID: "acquisition-1", SourceMasterSHA256: strings.Repeat("1", 64), PolicySHA256: strings.Repeat("2", 64), Use: filler.FillerBroadcastUse}
-		if grant != nil {
-			if err := s.PutFillerRightsGrant(ctx, *grant); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{Hash: hash, Path: "aa/aa/" + hash + ".mp4", Name: "candidate", Kind: filler.Commercial, DurationMs: 30000, Held: true}, UpdatedAt: at}); err != nil {
-			t.Fatal(err)
-		}
-		if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{ClipHash: hash, Stage: filler.StageAdmission, Status: filler.StatusDone, Disposition: filler.DispositionReview, UpdatedAt: at}); err != nil {
-			t.Fatal(err)
-		}
-		record := fillerdecision.Record{ID: "applied-negative", ClipHash: hash, EvidenceHash: "evidence", EvidenceVersion: "v1", SchemaVersion: filleradmission.SchemaVersion, PolicyVersion: "p1", TaxonomyVersion: "t1", ApplicationMode: fillerdecision.ApplicationModeApplied, ScreeningEvidenceSHA256: strings.Repeat("b", 64), ReleaseAuthoritySHA256: strings.Repeat("c", 64), Result: filleradmission.Result{Decision: &filleradmission.Decision{Verdict: filleradmission.VerdictReview, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonMissingCommercialIdentity}, ReviewQuestion: "What product is this clip advertising?"}}, CreatedAt: at}
-		if err := s.PutFillerDecision(ctx, record); err != nil {
-			t.Fatal(err)
-		}
-		action := fillerdecision.Action{ID: "negative-admit", DecisionID: record.ID, Kind: fillerdecision.ActionAdmit, ActorID: "admin", CreatedAt: at.Add(time.Minute)}
-		receipt := &fillerdecision.AppliedRightsReceipt{DecisionID: record.ID, ClipHash: hash, ScreeningEvidenceSHA256: record.ScreeningEvidenceSHA256, ReleaseAuthoritySHA256: record.ReleaseAuthoritySHA256, SourceID: scope.SourceID, AcquisitionID: scope.AcquisitionID, SourceMasterSHA256: scope.SourceMasterSHA256, PolicySHA256: scope.PolicySHA256, Use: scope.Use}
-		if grant != nil {
-			receipt.GrantSHA256 = grant.SHA256
-		}
-		return s, ctx, action, receipt
-	}
-	assertRejected := func(t *testing.T, s Store, ctx context.Context, action fillerdecision.Action) {
-		t.Helper()
-		clip, err := s.GetClip(ctx, fixtureClipHash)
-		if err != nil || !clip.Held {
-			t.Fatalf("rejected admission changed held clip = %+v, err = %v", clip, err)
-		}
-		pipeline, found, err := s.GetClipPipeline(ctx, fixtureClipHash)
-		if err != nil || !found || pipeline.Stage != filler.StageAdmission || pipeline.Status != filler.StatusDone || pipeline.Disposition != filler.DispositionReview {
-			t.Fatalf("rejected admission changed review pipeline = %+v, found = %v, err = %v", pipeline, found, err)
-		}
-		actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: action.DecisionID, Limit: 10})
-		if err != nil || actions.Total != 0 || len(actions.Rows) != 0 {
-			t.Fatalf("rejected admission persisted actions = %+v, err = %v", actions, err)
-		}
-	}
-	rights := func(effective time.Time, until *time.Time, parent string, seed string) filler.FillerRightsGrant {
-		scope := filler.FillerRightsScope{SourceID: "source-1", AcquisitionID: "acquisition-1", SourceMasterSHA256: strings.Repeat("1", 64), PolicySHA256: strings.Repeat("2", 64), Use: filler.FillerBroadcastUse}
-		grant, err := filler.NewFillerRightsGrant(scope, filler.FillerRightsAuthorized, filler.FillerRightsWithdrawalClear, strings.Repeat(seed, 64), "operator", effective, until, nil, parent, time.Now().UTC())
-		if err != nil {
-			t.Fatal(err)
-		}
-		return grant
-	}
-	valid := rights(time.Now().UTC().Add(-time.Hour), nil, "", "3")
-	for _, tc := range []struct {
-		name  string
-		alter func(*fillerdecision.AppliedRightsReceipt)
-	}{
-		{"nil receipt", func(r *fillerdecision.AppliedRightsReceipt) { *r = fillerdecision.AppliedRightsReceipt{} }},
-		{"wrong decision", func(r *fillerdecision.AppliedRightsReceipt) { r.DecisionID = "wrong" }},
-		{"wrong clip", func(r *fillerdecision.AppliedRightsReceipt) { r.ClipHash = strings.Repeat("f", 64) }},
-		{"wrong screening", func(r *fillerdecision.AppliedRightsReceipt) { r.ScreeningEvidenceSHA256 = strings.Repeat("d", 64) }},
-		{"wrong authority", func(r *fillerdecision.AppliedRightsReceipt) { r.ReleaseAuthoritySHA256 = strings.Repeat("e", 64) }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s, ctx, action, receipt := newCase(t, &valid)
-			if tc.name == "nil receipt" {
-				receipt = nil
-			} else {
-				tc.alter(receipt)
-			}
-			if err := s.CommitAppliedFillerDecisionAction(ctx, action, receipt); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
-				t.Fatalf("error = %v", err)
-			}
-			assertRejected(t, s, ctx, action)
-		})
-	}
-	t.Run("missing current grant", func(t *testing.T) {
-		s, ctx, action, receipt := newCase(t, nil)
-		receipt.GrantSHA256 = valid.SHA256
-		if err := s.CommitAppliedFillerDecisionAction(ctx, action, receipt); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
-			t.Fatalf("error = %v", err)
-		}
-		assertRejected(t, s, ctx, action)
-	})
-	t.Run("superseded grant", func(t *testing.T) {
-		old := valid
-		current := rights(time.Now().UTC().Add(-time.Hour), nil, old.SHA256, "4")
-		s, ctx, action, receipt := newCase(t, &old)
-		if err := s.PutFillerRightsGrant(ctx, current); err != nil {
-			t.Fatal(err)
-		}
-		receipt.GrantSHA256 = old.SHA256
-		if err := s.CommitAppliedFillerDecisionAction(ctx, action, receipt); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
-			t.Fatalf("error = %v", err)
-		}
-		assertRejected(t, s, ctx, action)
-	})
-	for _, tc := range []struct {
-		name      string
-		effective time.Time
-		until     *time.Time
-	}{
-		{"expired", time.Now().UTC().Add(-2 * time.Hour), func() *time.Time { v := time.Now().UTC().Add(-time.Hour); return &v }()},
-		{"not yet effective", time.Now().UTC().Add(time.Hour), nil},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			grant := rights(tc.effective, tc.until, "", "6")
-			s, ctx, action, receipt := newCase(t, &grant)
-			if tc.until != nil {
-				action.CreatedAt = tc.effective.Add(tc.until.Sub(tc.effective) / 2)
-			} else {
-				action.CreatedAt = tc.effective.Add(time.Minute)
-			}
-			if err := s.CommitAppliedFillerDecisionAction(ctx, action, receipt); !errors.Is(err, fillerdecision.ErrAppliedUnavailable) {
-				t.Fatalf("error = %v", err)
-			}
-			assertRejected(t, s, ctx, action)
-		})
-	}
-	t.Run("same action is idempotent", func(t *testing.T) {
-		s, ctx, action, receipt := newCase(t, &valid)
-		if err := s.CommitAppliedFillerDecisionAction(ctx, action, receipt); err != nil {
-			t.Fatal(err)
-		}
-		now := time.Now().UTC()
-		expiredUntil := now.Add(-time.Hour)
-		expired := rights(now.Add(-2*time.Hour), &expiredUntil, valid.SHA256, "7")
-		withdrawnAt := now.Add(-90 * time.Minute)
-		withdrawn, err := filler.NewFillerRightsGrant(
-			valid.Scope, filler.FillerRightsProhibited, filler.FillerRightsWithdrawalActive,
-			strings.Repeat("8", 64), "operator", now.Add(-time.Hour), nil, &withdrawnAt,
-			expired.SHA256, now,
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		changes := []struct {
-			name  string
-			grant filler.FillerRightsGrant
-		}{
-			{"expired", expired},
-			{"withdrawn", withdrawn},
-			{"superseded", rights(now.Add(-time.Hour), nil, withdrawn.SHA256, "9")},
-		}
-		for _, change := range changes {
-			t.Run(change.name, func(t *testing.T) {
-				if err := s.PutFillerRightsGrant(ctx, change.grant); err != nil {
-					t.Fatal(err)
-				}
-				if err := s.CommitAppliedFillerDecisionAction(ctx, action, receipt); err != nil {
-					t.Fatalf("exact retry after %s = %v", change.name, err)
-				}
-				clip, err := s.GetClip(ctx, fixtureClipHash)
-				if err != nil || clip.Held {
-					t.Fatalf("exact retry after %s changed filed clip = %+v, err = %v", change.name, clip, err)
-				}
-				pipeline, found, err := s.GetClipPipeline(ctx, fixtureClipHash)
-				if err != nil || !found || pipeline.Disposition != filler.DispositionFiled || pipeline.Status != filler.StatusDone {
-					t.Fatalf("exact retry after %s changed pipeline = %+v, found = %v, err = %v", change.name, pipeline, found, err)
-				}
-				page, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: action.DecisionID, Limit: 10})
-				if err != nil || page.Total != 1 {
-					t.Fatalf("exact retry after %s actions = %+v, err = %v", change.name, page, err)
-				}
-			})
-		}
-		conflict := action
-		conflict.ActorID = "other-admin"
-		if err := s.CommitAppliedFillerDecisionAction(ctx, conflict, receipt); !errors.Is(err, fillerdecision.ErrConflict) {
-			t.Fatalf("conflicting retry = %v, want conflict", err)
-		}
-		clip, err := s.GetClip(ctx, fixtureClipHash)
-		if err != nil || clip.Held {
-			t.Fatalf("idempotent admit clip = %+v, err = %v", clip, err)
-		}
-		pipeline, found, err := s.GetClipPipeline(ctx, fixtureClipHash)
-		if err != nil || !found || pipeline.Stage != filler.StageAdmission || pipeline.Status != filler.StatusDone || pipeline.Disposition != filler.DispositionFiled {
-			t.Fatalf("idempotent admit pipeline = %+v, found = %v, err = %v", pipeline, found, err)
-		}
-		page, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: action.DecisionID, Limit: 10})
-		if err != nil || page.Total != 1 {
-			t.Fatalf("actions = %+v, err = %v", page, err)
-		}
-	})
-}
-
 func decisionPageContains(page fillerdecision.DecisionPage, id string) bool {
 	for _, record := range page.Rows {
 		if record.ID == id {
@@ -4891,6 +4901,123 @@ func decisionPageContains(page fillerdecision.DecisionPage, id string) bool {
 		}
 	}
 	return false
+}
+
+func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, time.September, 13, 18, 0, 0, 0, time.UTC)
+	hash := strings.Repeat("7", 64)
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Hash: hash, Path: "77/77/" + hash + ".mp4", Name: "Unknown enrolled clip",
+		Kind: filler.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
+		DurationMs: 30_000,
+	}, UpdatedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	current := filler.ClipPipeline{
+		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: filler.StageScore,
+		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
+		EnrolledAt: at, UpdatedAt: at,
+	}
+	for _, stage := range filler.StageOrder[:len(filler.StageOrder)-1] {
+		current.Stages = append(current.Stages, filler.StageRecord{Stage: stage, Status: filler.StatusDone, At: at})
+	}
+	if err := s.UpsertClipPipeline(ctx, current); err != nil {
+		t.Fatal(err)
+	}
+	settled := current
+	settled.Status = filler.StatusDone
+	settled.Disposition = filler.DispositionReady
+	settled.NextRun = time.Time{}
+	settled.Stages = append(settled.Stages, filler.StageRecord{Stage: filler.StageScore, Status: filler.StatusDone, At: at})
+	event := filler.ReadyEvent{
+		ID: "ready:" + hash, ClipHash: hash, AcquisitionID: current.AcquisitionID,
+		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: current.AcquisitionID},
+		Placement:  filler.PlacementBreakBody, CreatedAt: at,
+	}
+	commit := filler.ReadyCommit{Event: event, Pipeline: settled}
+	if err := s.CommitFillerReady(ctx, commit); err != nil {
+		t.Fatal(err)
+	}
+	clip, err := s.GetClip(ctx, hash)
+	if err != nil || clip.Held || clip.Placement != filler.PlacementBreakBody || clip.Kind != filler.Unclassified {
+		t.Fatalf("ready clip = %+v, err = %v", clip, err)
+	}
+	row, found, err := s.GetClipPipeline(ctx, hash)
+	if err != nil || !found || row.Disposition != filler.DispositionReady || row.Status != filler.StatusDone {
+		t.Fatalf("ready pipeline = %+v, found=%t err=%v", row, found, err)
+	}
+	gotEvent, found, err := s.GetFillerReadyEvent(ctx, hash)
+	if err != nil || !found || gotEvent.ID != event.ID || gotEvent.Placement != filler.PlacementBreakBody ||
+		gotEvent.Enrollment != event.Enrollment {
+		t.Fatalf("ready event = %+v, found=%t err=%v", gotEvent, found, err)
+	}
+	playable, err := s.ListClips(ctx, ClipFilter{Hashes: []string{hash}})
+	if err != nil || len(playable) != 1 {
+		t.Fatalf("ready unknown-role clip is not playable: %+v, err=%v", playable, err)
+	}
+	if err := s.CommitFillerReady(ctx, commit); err != nil {
+		t.Fatalf("exact ready retry was not idempotent: %v", err)
+	}
+
+	staleHash := strings.Repeat("6", 64)
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Hash: staleHash, Path: "66/66/" + staleHash + ".mp4", Name: "No pipeline",
+		Kind: filler.Unclassified, Source: "test-folder", Held: true, DurationMs: 30_000,
+	}, UpdatedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	stale := commit
+	stale.Event.ID = "ready:" + staleHash
+	stale.Event.ClipHash = staleHash
+	stale.Event.AcquisitionID = ""
+	stale.Event.Enrollment = filler.Enrollment{Kind: filler.EnrollmentSource, Reference: "test-folder"}
+	stale.Pipeline.ClipHash = staleHash
+	stale.Pipeline.AcquisitionID = ""
+	if err := s.CommitFillerReady(ctx, stale); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing conveyor error = %v, want not found", err)
+	}
+	staleClip, err := s.GetClip(ctx, staleHash)
+	if err != nil || !staleClip.Held || staleClip.Placement != filler.PlacementNotPlayable {
+		t.Fatalf("failed ready transaction changed clip = %+v, err=%v", staleClip, err)
+	}
+	if _, found, err := s.GetFillerReadyEvent(ctx, staleHash); err != nil || found {
+		t.Fatalf("failed ready transaction recorded event, found=%t err=%v", found, err)
+	}
+
+	// A caller cannot publish a fabricated completed ladder over a row whose header still looks
+	// current. The transaction compares every persisted prior rung before changing any table.
+	driftHash := strings.Repeat("5", 64)
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Hash: driftHash, Path: "55/55/" + driftHash + ".mp4", Name: "Drifted ladder",
+		Kind: filler.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
+		DurationMs: 30_000,
+	}, UpdatedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	driftedCurrent := current
+	driftedCurrent.ClipHash = driftHash
+	driftedCurrent.Stages = append([]filler.StageRecord(nil), current.Stages...)
+	driftedCurrent.Stages[0].Note = "the persisted probe evidence changed"
+	if err := s.UpsertClipPipeline(ctx, driftedCurrent); err != nil {
+		t.Fatal(err)
+	}
+	driftedCommit := commit
+	driftedCommit.Event.ID = "ready:" + driftHash
+	driftedCommit.Event.ClipHash = driftHash
+	driftedCommit.Pipeline.ClipHash = driftHash
+	if err := s.CommitFillerReady(ctx, driftedCommit); !errors.Is(err, filler.ErrReadyStale) {
+		t.Fatalf("drifted ladder error = %v, want ErrReadyStale", err)
+	}
+	driftedClip, err := s.GetClip(ctx, driftHash)
+	if err != nil || !driftedClip.Held || driftedClip.Placement != filler.PlacementNotPlayable {
+		t.Fatalf("drifted transaction changed clip = %+v, err=%v", driftedClip, err)
+	}
+	if _, found, err := s.GetFillerReadyEvent(ctx, driftHash); err != nil || found {
+		t.Fatalf("drifted transaction recorded event, found=%t err=%v", found, err)
+	}
 }
 
 func testFillerSplitShadowDecisions(t *testing.T, newStore NewStoreFunc) {
@@ -5313,4 +5440,25 @@ func openSecondConformanceStore(t *testing.T, s Store) Store {
 		t.Fatalf("open second conformance store: %v", err)
 	}
 	return second
+}
+
+func restartConformanceStore(t *testing.T, s Store) Store {
+	t.Helper()
+	impl := s.(*sqlStore)
+	dialect, path, dsn := impl.dialect, impl.path, impl.dsn
+	if err := s.Close(); err != nil {
+		t.Fatalf("close conformance store for restart: %v", err)
+	}
+	if dialect == DialectPostgres {
+		reopened, err := openPostgres(t.Context(), dsn)
+		if err != nil {
+			t.Fatalf("reopen Postgres conformance store: %v", err)
+		}
+		return reopened
+	}
+	reopened, err := Open(t.Context(), "sqlite://"+path, true)
+	if err != nil {
+		t.Fatalf("reopen SQLite conformance store: %v", err)
+	}
+	return reopened
 }

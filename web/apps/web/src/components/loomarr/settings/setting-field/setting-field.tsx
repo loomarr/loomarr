@@ -49,6 +49,25 @@ const durationRaw = (amount: number, unit: DurationUnit): string => {
   return `${Number(seconds.toFixed(3))}s`;
 };
 
+const fillerSchedulePreset = (raw: string): string => {
+  const { amount, unit } = durationParts(raw);
+  const seconds = amount * ({ days: 86400, hours: 3600, minutes: 60, seconds: 1 } as const)[unit];
+  if (seconds === 0) return "never";
+  if (seconds === 6 * 3600) return "6h";
+  if (seconds === 12 * 3600) return "12h";
+  if (seconds === 24 * 3600) return "daily";
+  if (seconds === 7 * 24 * 3600) return "weekly";
+  return "custom";
+};
+
+const fillerScheduleRaw: Record<string, string> = {
+  never: "0s",
+  "6h": "6h",
+  "12h": "12h",
+  daily: "24h",
+  weekly: "168h",
+};
+
 const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
   const bytes = Number(raw);
   if (!Number.isFinite(bytes)) return { amount: 0, unit: "MiB" };
@@ -68,6 +87,7 @@ const SettingField = ({
   className,
 }: SettingFieldProps) => {
   const [replacing, setReplacing] = useState(false);
+  const [editingCustomSchedule, setEditingCustomSchedule] = useState(false);
   const id = `setting-${entry.key}`;
   const label = entry.label || humanizeSettingKey(entry.key);
   // `pinned` is the LOCK STATE, which is no longer the same question as "is this env's key".
@@ -137,6 +157,73 @@ const SettingField = ({
             ))}
           </SelectContent>
         </Select>
+      );
+    }
+    if (entry.presentation === "filler_download_schedule") {
+      const preset = editingCustomSchedule ? "custom" : fillerSchedulePreset(value);
+      const current = durationParts(value);
+      return (
+        <div className="flex flex-col gap-2">
+          <Select
+            value={preset}
+            disabled={pinned || disabledReason !== undefined}
+            onValueChange={(next) => {
+              if (next === "custom") {
+                setEditingCustomSchedule(true);
+                return;
+              }
+              setEditingCustomSchedule(false);
+              onChange(fillerScheduleRaw[next] ?? value);
+            }}
+          >
+            <SelectTrigger
+              id={id}
+              aria-describedby={describedBy}
+              aria-labelledby={labelledBy}
+              aria-invalid={invalid ? "true" : undefined}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="never">Never</SelectItem>
+              <SelectItem value="6h">Every 6 hours</SelectItem>
+              <SelectItem value="12h">Every 12 hours</SelectItem>
+              <SelectItem value="daily">Daily</SelectItem>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          {preset === "custom" && (
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={current.unit === "days" ? 7 : current.unit === "hours" ? 168 : 10080}
+                step="any"
+                value={current.amount}
+                disabled={pinned || disabledReason !== undefined}
+                aria-label="Custom check interval"
+                onChange={(event) => onChange(durationRaw(Number(event.target.value), current.unit))}
+              />
+              <Select
+                value={current.unit}
+                disabled={pinned || disabledReason !== undefined}
+                onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
+              >
+                <SelectTrigger aria-label="Custom check interval unit" className="w-32 shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["days", "hours", "minutes"] as const).map((unit) => (
+                    <SelectItem key={unit} value={unit}>
+                      {unit}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
       );
     }
     if (entry.kind === "duration") {

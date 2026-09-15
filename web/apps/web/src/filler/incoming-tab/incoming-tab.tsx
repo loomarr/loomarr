@@ -123,8 +123,8 @@ const IncomingTab = ({
           <div className="rounded-lg border border-border p-3">
             <p className="font-medium text-sm">Stopped or settled</p>
             <p className="text-muted-foreground text-xs">
-              {visibleOverview.rejected} rejected · {visibleOverview.admitted} admitted ·{" "}
-              {visibleOverview.dismissed} dismissed
+              {visibleOverview.rejected} rejected · {visibleOverview.ready} ready · {visibleOverview.complete}{" "}
+              containers complete · {visibleOverview.dismissed} dismissed
             </p>
           </div>
         </section>

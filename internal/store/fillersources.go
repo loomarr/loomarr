@@ -9,6 +9,12 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 )
 
+// FillerProvider is persisted policy shared by every source of one remote kind.
+type FillerProvider struct {
+	Kind    string
+	Enabled bool
+}
+
 // The persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ **Remote sources only, and that boundary is the design.** V28 made `GET /v1/filler/sources`
@@ -40,7 +46,16 @@ type FillerSource struct {
 	// LastFetchedAt is zero when never fetched, which renders as "never" rather than as an
 	// epoch date nobody meant.
 	LastFetchedAt time.Time
-	CreatedAt     time.Time
+	// LastCheckedAt records a successful bounded source check even when nothing new was found.
+	// Automatic-download due planning uses this fact; LastFetchedAt remains the narrower
+	// provenance fact that at least one item was actually queued.
+	LastCheckedAt time.Time
+	// CheckFailureCount and CheckRetryAt retain provider-listing backoff across restarts.
+	// CheckLeaseUntil is the atomic source-level claim shared by scheduled and manual checks.
+	CheckFailureCount int
+	CheckRetryAt      time.Time
+	CheckLeaseUntil   time.Time
+	CreatedAt         time.Time
 	// Enabled is the Sources tab's on/off switch (V35). A disabled source is not scanned, not
 	// searched and not downloaded from.
 	//
@@ -49,6 +64,10 @@ type FillerSource struct {
 	// already brought in are untouched either way — they are real files an operator may have
 	// tagged and pinned.
 	Enabled bool
+	// ProviderEnabled is the provider-level half of effective acquisition policy. It is populated
+	// by ListFillerSources for remote kinds and deliberately does not overwrite Enabled, which is
+	// the operator's remembered choice for this exact target.
+	ProviderEnabled bool
 	// FetchEverySeconds overrides `filler.fetch.every` for THIS source (§10 V38c). A busy archive
 	// collection and a small playlist want different numbers, and one global figure serves
 	// neither well.
@@ -68,6 +87,17 @@ type FillerSource struct {
 	// Geography is asserted source coverage. Country-only sources may feed any market in that
 	// country; a market-scoped source may feed only that market. Empty means unknown.
 	Geography filler.Geography
+}
+
+// EffectiveEnabled is the one source-policy projection acquisition callers use. Local sources
+// have no provider policy; remote sources require both their own and their provider's switches.
+func (f FillerSource) EffectiveEnabled() bool {
+	switch f.Kind {
+	case "archive", "youtube":
+		return f.Enabled && f.ProviderEnabled
+	default:
+		return f.Enabled
+	}
 }
 
 // FetchEvery resolves this source's poll interval against the global default (§10 V38c).
@@ -95,8 +125,15 @@ func (f FillerSource) MaxPerRun(global int) int {
 }
 
 // GeographicallyEligible reports whether this source may contribute to the target installation.
+// An empty source value means "follow this installation", not "ask the operator to repeat the
+// same location on every row". Candidate geography is still checked independently by the pull
+// planner, so this inheritance cannot make missing or conflicting item evidence pass.
 func (f FillerSource) GeographicallyEligible(target filler.Geography) bool {
-	return filler.SourceGeographicallyEligible(f.Geography, target)
+	coverage := f.Geography.Normalize()
+	if coverage.Country == "" {
+		coverage = target.Normalize()
+	}
+	return filler.SourceGeographicallyEligible(coverage, target)
 }
 
 // Fetchable reports whether this source can be DOWNLOADED FROM — i.e. whether it may enter a
@@ -166,9 +203,11 @@ func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSou
 	return FillerSource{ID: id, Kind: kind, URI: uri, Label: label, CreatedAt: createdAt, Enabled: true}
 }
 
-const fillerSourceSelect = `SELECT id, kind, uri, label, license, last_fetched_at, created_at, enabled,
-	fetch_every_seconds, fetch_max_per_run, country, market
-	FROM filler_sources`
+const fillerSourceSelect = `SELECT s.id, s.kind, s.uri, s.label, s.license, s.last_fetched_at, s.last_checked_at,
+	s.check_failure_count, s.check_retry_at, s.check_lease_until, s.created_at, s.enabled,
+	s.fetch_every_seconds, s.fetch_max_per_run, s.country, s.market,
+	CASE WHEN s.kind IN ('archive', 'youtube') THEN COALESCE(p.enabled, FALSE) ELSE TRUE END
+	FROM filler_sources s LEFT JOIN filler_providers p ON p.kind = s.kind`
 
 // ListFillerSources returns every source, OLDEST FIRST. Ordering is explicit rather than
 // left to the engine: an unordered list reshuffles between reads on Postgres, and a Sources
@@ -183,9 +222,12 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 	var out []FillerSource
 	for rows.Next() {
 		var (
-			src       FillerSource
-			fetchedAt int64
-			createdAt int64
+			src        FillerSource
+			fetchedAt  int64
+			checkedAt  int64
+			retryAt    int64
+			leaseUntil int64
+			createdAt  int64
 			// ⚠ sql.NullInt64, because NULL is MEANINGFUL here: it is "inherit the global",
 			// distinct from 0 = "never fetch this source" (§10 V38c). Scanning into a plain int
 			// would collapse the two and read every unset source as switched off.
@@ -193,11 +235,15 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 			perRun sql.NullInt64
 		)
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
-			&fetchedAt, &createdAt, &src.Enabled, &every, &perRun,
-			&src.Geography.Country, &src.Geography.Market); err != nil {
+			&fetchedAt, &checkedAt, &src.CheckFailureCount, &retryAt, &leaseUntil,
+			&createdAt, &src.Enabled, &every, &perRun,
+			&src.Geography.Country, &src.Geography.Market, &src.ProviderEnabled); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
+		src.LastCheckedAt = fromEpoch(checkedAt)
+		src.CheckRetryAt = fromEpoch(retryAt)
+		src.CheckLeaseUntil = fromEpoch(leaseUntil)
 		src.CreatedAt = fromEpoch(createdAt)
 		if every.Valid {
 			v := int(every.Int64)
@@ -210,6 +256,41 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 		out = append(out, src)
 	}
 	return out, rows.Err()
+}
+
+// ListFillerProviders returns the two built-in remote providers in a stable UI order.
+func (s *sqlStore) ListFillerProviders(ctx context.Context) ([]FillerProvider, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, enabled FROM filler_providers
+		ORDER BY CASE kind WHEN 'archive' THEN 0 WHEN 'youtube' THEN 1 ELSE 2 END, kind`))
+	if err != nil {
+		return nil, fmt.Errorf("list filler providers: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []FillerProvider
+	for rows.Next() {
+		var provider FillerProvider
+		if err := rows.Scan(&provider.Kind, &provider.Enabled); err != nil {
+			return nil, fmt.Errorf("scan filler provider: %w", err)
+		}
+		out = append(out, provider)
+	}
+	return out, rows.Err()
+}
+
+// SetFillerProviderEnabled is the only provider-policy writer.
+func (s *sqlStore) SetFillerProviderEnabled(ctx context.Context, kind string, enabled bool) error {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_providers SET enabled = ? WHERE kind = ?`), enabled, kind)
+	if err != nil {
+		return fmt.Errorf("set filler provider enabled: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("set filler provider enabled rows: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // UpsertFillerSource adds or updates a source by id.
@@ -235,13 +316,15 @@ func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) err
 		// them in the update list would silently reset every operator's per-source tuning on the
 		// next re-register. Same failure V35 nearly shipped with `enabled`, one column over.
 		// SetFillerSourceFetchPolicy is their only writer.
-		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, created_at, enabled,
+		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, last_checked_at,
+		   check_failure_count, check_retry_at, check_lease_until, created_at, enabled,
 		   fetch_every_seconds, fetch_max_per_run, country, market)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   kind=excluded.kind, uri=excluded.uri, label=excluded.label, license=excluded.license`),
 		src.ID, src.Kind, src.URI, src.Label, src.License,
-		epoch(src.LastFetchedAt), epoch(src.CreatedAt), src.Enabled,
+		epoch(src.LastFetchedAt), epoch(src.LastCheckedAt), src.CheckFailureCount,
+		epoch(src.CheckRetryAt), epoch(src.CheckLeaseUntil), epoch(src.CreatedAt), src.Enabled,
 		nullableInt(src.FetchEverySeconds), nullableInt(src.FetchMaxPerRun),
 		src.Geography.Normalize().Country, src.Geography.Normalize().Market)
 	if err != nil {
@@ -339,6 +422,65 @@ func (s *sqlStore) MarkFillerSourceFetched(ctx context.Context, id string, at ti
 	}
 	if n == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// ClaimFillerSourceCheck atomically leases one source against the last-check snapshot the planner
+// observed. The CAS closes both scheduled-vs-manual overlap and stale-planner races.
+func (s *sqlStore) ClaimFillerSourceCheck(
+	ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time,
+) (bool, error) {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_sources SET check_lease_until = ?
+		WHERE id = ? AND check_lease_until <= ? AND last_checked_at = ?`),
+		epoch(leaseUntil), id, epoch(now), epoch(observedLastCheck))
+	if err != nil {
+		return false, fmt.Errorf("claim filler source check %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("claim filler source check rows %s: %w", id, err)
+	}
+	return n == 1, nil
+}
+
+// CompleteFillerSourceCheck commits a successful check only for the lease that performed it.
+// The guarded completion prevents a timed-out stale worker from clearing a newer worker's claim.
+func (s *sqlStore) CompleteFillerSourceCheck(
+	ctx context.Context, id string, leaseUntil, checkedAt time.Time,
+) error {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_sources
+		SET last_checked_at = ?, check_failure_count = 0, check_retry_at = 0, check_lease_until = 0
+		WHERE id = ? AND check_lease_until = ?`), epoch(checkedAt), id, epoch(leaseUntil))
+	if err != nil {
+		return fmt.Errorf("complete filler source check %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("complete filler source check rows %s: %w", id, err)
+	}
+	if n != 1 {
+		return filler.ErrSourceCheckClaimLost
+	}
+	return nil
+}
+
+// FailFillerSourceCheck records provider-listing backoff and releases only the matching lease.
+func (s *sqlStore) FailFillerSourceCheck(
+	ctx context.Context, id string, leaseUntil, retryAt time.Time,
+) error {
+	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_sources
+		SET check_failure_count = check_failure_count + 1, check_retry_at = ?, check_lease_until = 0
+		WHERE id = ? AND check_lease_until = ?`), epoch(retryAt), id, epoch(leaseUntil))
+	if err != nil {
+		return fmt.Errorf("fail filler source check %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("fail filler source check rows %s: %w", id, err)
+	}
+	if n != 1 {
+		return filler.ErrSourceCheckClaimLost
 	}
 	return nil
 }

@@ -183,11 +183,11 @@ var fatalStages = map[StageID]RejectReason{
 // ClipStore is the slice of the store the pipeline needs beyond PipelineStore.
 type ClipStore interface {
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
-	// HoldClips keeps every review verdict out of rotation, including a previously-filed clip that
+	// HoldClips keeps every review verdict out of rotation, including a previously-Ready clip that
 	// was not already held when a later quality check asked for help.
 	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
 	// ReleaseCompositeHolds exposes confirmed lineage containers. Its store predicate excludes
-	// playable rows; non-composite publication belongs only to applied admission.
+	// playable rows; non-composite publication belongs only to terminal readiness.
 	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// SetClipsRemoved tombstones a refused clip. ⚠ A TOMBSTONE, not a delete: `clips` is a synced
 	// cache, so a hard delete would be undone by the next scan finding the file still on disk and
@@ -203,6 +203,7 @@ type Notifier func(p ClipPipeline, c StoreClip)
 type Pipeline struct {
 	store PipelineStore
 	clips ClipStore
+	ready *TerminalReady
 	// rewind + clipDir back `Rewind` (pipelinerewind.go). Optional: an install that never re-runs
 	// a stage does not need them, and `Rewind` refuses rather than half-working without them.
 	rewind  RewindStore
@@ -221,7 +222,7 @@ type Pipeline struct {
 	// across restarts; this bool merely avoids re-reading a settled queue every pass.
 	legacySplitReviewsChecked bool
 	// legacyCompositeHoldsChecked gates the compatibility pass for composites fully confirmed
-	// before Confirm began filing their parent row. The pipeline disposition and absence of a
+	// before Confirm began completing their parent row. The pipeline disposition and absence of a
 	// proposal make the old state recognizable without a schema version or a new migration.
 	legacyCompositeHoldsChecked bool
 	// legacySegmentScreeningChecked gates the one-time rewind of children created before the
@@ -240,7 +241,18 @@ func NewPipeline(store PipelineStore, clips ClipStore, stages []Stage, budget Bu
 	for _, s := range stages {
 		byID[s.ID()] = s
 	}
-	return &Pipeline{store: store, clips: clips, stages: byID, budget: budget, notify: notify, now: now, log: log}
+	p := &Pipeline{store: store, clips: clips, stages: byID, budget: budget, notify: notify, now: now, log: log}
+	if repository, ok := store.(ReadyRepository); ok {
+		p.ready = NewTerminalReady(repository, now)
+	}
+	return p
+}
+
+// WithTerminalReady supplies the publication boundary when the pipeline state store and Ready
+// repository are separate adapters. NewPipeline discovers a combined production store itself.
+func (p *Pipeline) WithTerminalReady(repository ReadyRepository) *Pipeline {
+	p.ready = NewTerminalReady(repository, p.now)
+	return p
 }
 
 // EnrolMissing puts newly catalogued clips onto the durable conveyor without running a stage.
@@ -389,7 +401,7 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		switch outcome {
 		case DispositionRejected:
 			res.Rejected++
-		case DispositionFiled, DispositionReview:
+		case DispositionReady, DispositionComplete, DispositionReview:
 			res.Completed++
 		}
 	}
@@ -414,8 +426,9 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 			"completed", res.Completed, "rejected", res.Rejected, "failed", res.Failed,
 			"deferred", res.Deferred, "runnable", res.Overview.Runnable,
 			"in_progress", res.Overview.InProgress, "scheduled", res.Overview.Scheduled,
-			"needs_decision", res.Overview.NeedsDecision, "terminal", res.Overview.Rejected,
-			"admitted", res.Overview.Admitted, "dismissed", res.Overview.Dismissed,
+			"needs_decision", res.Overview.NeedsDecision, "rejected", res.Overview.Rejected,
+			"ready", res.Overview.Ready, "complete", res.Overview.Complete,
+			"dismissed", res.Overview.Dismissed,
 			"no_advance_reason", res.NoAdvanceReason)
 	}
 	return res, nil
@@ -439,7 +452,7 @@ func (p *Pipeline) requeueLegacySegmentScreening(ctx context.Context) (int, erro
 			continue
 		}
 		switch row.Disposition {
-		case DispositionRunning, DispositionReview, DispositionFiled:
+		case DispositionRunning, DispositionReview, DispositionReady:
 		case DispositionRejected:
 			if !row.RejectReason.Soft() {
 				continue
@@ -479,7 +492,7 @@ func (p *Pipeline) requeueLegacySegmentScreening(ctx context.Context) (int, erro
 }
 
 // repairLegacyCompositeHolds releases parent rows confirmed before full confirmation started doing
-// that itself. A filed pipeline row says the reel is terminal; no surviving proposal says there
+// that itself. A complete pipeline row says the reel is terminal; no surviving proposal says there
 // are no leftover cuts awaiting a person. Both facts are required. The parent remains non-airable
 // because IsComposite is an independent catalog-selection gate.
 func (p *Pipeline) repairLegacyCompositeHolds(ctx context.Context) (int, error) {
@@ -500,7 +513,7 @@ func (p *Pipeline) repairLegacyCompositeHolds(ctx context.Context) (int, error) 
 	}
 	n := 0
 	for _, row := range rows {
-		if row.Disposition != DispositionFiled {
+		if row.Disposition != DispositionComplete {
 			continue
 		}
 		if _, ok := pending[row.ClipHash]; ok {
@@ -564,7 +577,7 @@ func (p *Pipeline) requeueResumableSplitReviews(ctx context.Context) (int, error
 	return n, nil
 }
 
-// requeueLegacyQuality finds only the recognisable pre-quality state: a FILED pipeline row whose
+// requeueLegacyQuality finds only the recognisable pre-quality state: a Ready pipeline row whose
 // media sidecar proves the mezzanine encode completed but has no quality report. It resets the row
 // to transcode without clearing the marker or any clip metadata; TranscodeStage therefore performs
 // a detector-only decode. Review/rejected/operator-dismissed rows are decisions and are untouched.
@@ -578,7 +591,7 @@ func (p *Pipeline) requeueLegacyQuality(ctx context.Context) (int, error) {
 	}
 	n := 0
 	for _, row := range rows {
-		if row.Disposition != DispositionFiled {
+		if row.Disposition != DispositionReady {
 			continue
 		}
 		clip, found, err := p.clips.GetClip(ctx, row.ClipHash)
@@ -732,7 +745,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		// Six copies of that check is six chances for a new rung to forget it, and forgetting it
 		// is silent. One rule, stated once, and a new rung inherits it by existing.
 		if clip.IsComposite && row.Stage != StageProbe && row.Stage != StageSplit {
-			row.Record(row.Stage, StatusSkipped, "a compilation is cut up rather than filed", row.Attempts, p.now().UTC())
+			row.Record(row.Stage, StatusSkipped, "a compilation is completed after its segments are prepared", row.Attempts, p.now().UTC())
 			if done := p.step(&row); done {
 				break
 			}
@@ -861,13 +874,25 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		}
 	}
 
-	if row.Disposition == DispositionRunning {
-		row.Disposition = DispositionFiled
+	if row.Disposition != DispositionRunning {
+		return row.Disposition, p.persist(ctx, row, clip)
 	}
-	// ⚠ The terminal write — `filed`, or the last rung done. Detached like the rest: a clip that
-	// finished its whole ladder inside a pass that then expired would otherwise be re-run from
-	// wherever it was last durably recorded, spending the expensive rungs again.
-	return row.Disposition, p.persist(ctx, row, clip)
+	if clip.IsComposite {
+		// A completed container leaves the conveyor but never becomes Ready or playable.
+		row.Disposition = DispositionComplete
+		return row.Disposition, p.persist(ctx, row, clip)
+	}
+	// The terminal write is detached like ordinary persistence: finishing the ladder before the
+	// pass context expires must not re-spend the expensive rungs. The repository transaction owns
+	// the Ready event, Placement, hold release, and pipeline settlement together.
+	readyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	settled, err := p.ready.Commit(readyCtx, clip, row)
+	if err != nil {
+		return DispositionRunning, err
+	}
+	p.publish(settled, clip)
+	return settled.Disposition, nil
 }
 
 // runStage contains a broken rung to one clip. The scheduler also recovers panics, but that
@@ -928,10 +953,8 @@ func (p *Pipeline) persist(ctx context.Context, row ClipPipeline, clip StoreClip
 // the stage has RESOLVED (exhausted its retries and been skipped) so the caller advances.
 func (p *Pipeline) onFailure(row *ClipPipeline, err error) bool {
 	now := p.now().UTC()
-	// Admission persistence is the fail-closed seam before V38 may file a clip. Exhausting ordinary
-	// retries cannot skip it: that would turn a store outage into publication authority. Keep the
-	// clip parked on this rung and retry at the bounded terminal backoff until the audit is durable.
-	if (row.Stage == StageScreen || row.Stage == StageAdmission) && row.Attempts >= MaxAttempts {
+	// Screening persistence is fail-closed when it produces a configured effective result.
+	if row.Stage == StageScreen && row.Attempts >= MaxAttempts {
 		row.Attempts = MaxAttempts
 		row.NextRun = now.Add(backoff(MaxAttempts))
 		row.Record(row.Stage, StatusFailed, err.Error(), row.Attempts, now)

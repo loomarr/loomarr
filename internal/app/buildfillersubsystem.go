@@ -12,7 +12,6 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
@@ -24,7 +23,6 @@ import (
 type fillerBuild struct {
 	service   api.FillerService
 	decisions *fillerdecision.Service
-	rights    *filler.FillerRightsRegistry
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 }
@@ -48,32 +46,11 @@ func buildFillerSubsystem(
 	if st == nil {
 		return result
 	}
-	rightsRegistry, err := filler.NewFillerRightsRegistry(st)
-	if err != nil {
-		log.Error("could not construct filler rights registry", "err", err)
-	} else {
-		result.rights = rightsRegistry
-	}
 	decisionService, err := fillerdecision.New(st)
 	if err != nil {
 		log.Error("could not construct filler decision service", "err", err)
 	} else {
 		result.decisions = decisionService
-	}
-	var admissionObserver filler.AdmissionObserver
-	if decisionService != nil {
-		admissionObserver, err = fillerdecision.NewShadow(decisionService, filleradmission.Policy{
-			Version:         "production-shadow-v1",
-			TaxonomyVersion: "production-shadow-no-product-taxonomy-v1",
-			AllowedContentRoles: []string{
-				filleradmission.RoleCommercial, filleradmission.RoleBumper,
-				filleradmission.RolePSA, filleradmission.RoleStationID,
-				filleradmission.RoleTrailer, filleradmission.RoleInterstitial,
-			},
-		}, "production-pipeline-evidence-v1")
-		if err != nil {
-			log.Error("could not construct filler admission shadow", "err", err)
-		}
 	}
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
@@ -124,15 +101,20 @@ func buildFillerSubsystem(
 	taggerProvider, tagger := buildTagger(st, set, layout, log, metricRecorder)
 	fetcher := buildFetcher(set, layout, log, st)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder)
+	ytDlpPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
 		start: owner.startInteractiveOperation, operations: st,
 		sources: st, pullPlanning: st, acquisitions: st, readiness: st, now: time.Now,
+		archiveFinder: clipfetch.NewArchiveSourceFinder(),
 		home: func() filler.Geography {
 			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
 		},
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
+	}
+	if ytDlpPath != "" {
+		adapter.youtubeFinder = clipfetch.NewYouTubeSourceFinder(ytDlpPath)
 	}
 
 	pods := buildPodAdapter(st, set, log).WithMetrics(metricRecorder)
@@ -150,9 +132,12 @@ func buildFillerSubsystem(
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake,
-		processDiagnostics, admissionObserver, metricRecorder)
+		processDiagnostics, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
 	adapter.pipeline = pipeline
+	if decisionService != nil {
+		decisionService.WithDiagnosticRecovery(adapter)
+	}
 	adapter.afterIngest = func(ctx context.Context) error {
 		if _, err := syncer.Sync(ctx); err != nil {
 			return err
@@ -166,7 +151,7 @@ func buildFillerSubsystem(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
 	)))
-	sourceEnumerator := registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp"))}
+	sourceEnumerator := registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(ytDlpPath)}
 	adapter.sourceEnum = sourceEnumerator
 	autoFetch := filler.NewFetcher(
 		fetchStoreAdapter{
@@ -182,7 +167,7 @@ func buildFillerSubsystem(
 			MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
 			MaxDiskGB:       func() int { return set.intv("filler.fetch.max_disk_gb") },
 		}, log,
-	).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
+	)
 	adapter.autoFetch = autoFetch
 	result.service = adapter
 	jobs.Add(fillerFetchJob(autoFetch))

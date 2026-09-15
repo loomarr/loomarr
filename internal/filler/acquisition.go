@@ -68,7 +68,8 @@ type AcquisitionOutcome struct {
 	Enrolled      int
 	Preparing     int
 	NeedsDecision int
-	Admitted      int
+	Ready         int
+	Complete      int
 	Rejected      int
 	Dismissed     int
 }
@@ -114,8 +115,10 @@ func AcquisitionOutcomeFrom(rows []ClipPipeline, at time.Time) AcquisitionOutcom
 			out.Preparing++
 		case LifecycleNeedsDecision:
 			out.NeedsDecision++
-		case LifecycleAdmitted:
-			out.Admitted++
+		case LifecycleReady:
+			out.Ready++
+		case LifecycleComplete:
+			out.Complete++
 		case LifecycleRejected:
 			out.Rejected++
 		case LifecycleDismissed:

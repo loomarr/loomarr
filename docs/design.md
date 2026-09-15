@@ -124,7 +124,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `contact` | 5 | — |
 | `diagnostics` | 8 | — |
 | `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
-| `filleradmission` | 8 | — |
+| `filleradmission` | 7 | — |
 | `fillerbakeoff` | 8 | `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
 | `fillercorpus` | 7 | — |
 | `fillereval` | 7 | — |
@@ -165,7 +165,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 8 importers
+- **`filleradmission`** · 7 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
@@ -179,6 +179,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
+- **`installationlocation`** · 1 importer
+  Owns Loomarr's offline place search and location resolution.
 - **`inventory`** · 3 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`landiscovery`**
@@ -394,12 +396,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 13**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `installationlocation`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 14**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -1110,8 +1112,10 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | POST | `/v1/filler/rewind` | Re-run one clip from a named ingest stage (admin, §10 V55). This is the recovery path after a configuration or provider problem has been fixed: it resets that stage and every dependent stage, durably forces the selected rung past its ordinary applicability shortcut, clears only derived artifacts safe for that rung to replace, and puts the pipeline row back on the conveyor. Rewinding `transcode` is refused unless `force:true`, because it can replace the playable derivative (the V66 source master remains retained); routine UI actions expose only non-destructive rewinds. |
 | POST | `/v1/filler/retry` | Retry one or up to 50 execution failures (admin, §10 V56). The server selects the failed rung from the lifecycle projection, preserves completed upstream work, and reports rows that are no longer retryable without coercing them. For an exhausted probe/transcode failure, restore, hold, and requeue commit atomically; content-decision overrides remain on the separate restore path. |
 | GET | `/v1/filler/discover` | Browse clips the operator could add, **downloading nothing** (admin, §10 V33/V17d). `q` searches archive.org by keyword; `collection` lists one named collection (a URL, a `/details/<id>` path, or a bare identifier); sending both searches **within that collection**, which is what a registered source row promises. The `collection`-only mode is what a **starter pack** is — a curated collection listed for keep/exclude before anything is fetched — so browsing a suggested pack and browsing a search result are one code path, not two. Neither mode requires the ingest tooling: listing is plain `net/http`, so an operator on a degraded install can still see what exists and learn why the fetch is unavailable. Licence availability is stated **once, about the search** — archive.org declares one on ~8% of items, so a per-row chip would imply a check that never happened (build plan §6.3). |
+| POST | `/v1/filler/sources/{id}/items` | Queue one exact item discovered inside a registered remote source (admin). The body carries the provider's stable `remoteId` and canonical item URL; the server derives provider kind and acquisition policy from `{id}` rather than trusting browser-supplied policy. The resulting durable acquisition keeps parent-source and remote-item identity, returns a `jobId`, and **never registers the item as another recurring source**. This is the command behind a registered source's **Queue download** result row; `POST /v1/filler/ingest` remains the separate direct pasted-URL action. |
 | POST | `/v1/filler/sync` | Sync catalog from the Tunarr `local` filler source (§10). |
 | POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` if the vendored ingest tooling isn't runnable — it ships in the single image (§10, §16), so this is a degraded-install signal, not an opt-in gate. |
+| GET | `/v1/filler/acquisitions/{jobId}` | Read one durable filler acquisition run (admin), including queued/running/terminal download state, safe error, artifact publication, and current pipeline outcomes. This is reconnect truth for both direct and registered-source item downloads; `filler_ingest` SSE frames only reduce visible latency. |
 | POST | `/v1/filler/tag` | Start an AI-tagging job over untagged clips (§10). |
 | POST | `/v1/filler/split` | Propose splits for a compilation clip (admin, §10 V34). ⚠ The clip is identified by its content `hash` in the BODY — same wire-identity rule as `PATCH /v1/filler/tags` above. Runs detection — chapters → `blackdetect`/`silencedetect` → transcript rescue for over-long segments — as an **interactive operation** (minutes per file; progress on `/v1/events`), producing a persisted **split proposal**: the cut points, per-segment duration/tags (era suggestions marked unconfirmed when the year is not in the text), and dedup flags (a segment whose dHash matches an existing clip). The returned `jobId` is retained as the wire name for compatibility and identifies the durable operation read below. **Nothing enters the catalog here** — review is not optional, because detection quality is a property of the source (§10). |
 | GET | `/v1/filler/split-operations/{jobId}` | Read one split-detection operation (admin): queued/running/terminal state plus the terminal `proposalId` or safe error. This is the reconnect truth for the identifier returned by `POST /v1/filler/split`; a successful proposal remains a separate resource at `/v1/filler/splits/{proposalId}`. |
@@ -1120,16 +1124,20 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | GET | `/v1/filler/media/{path...}` | Stream a clip's own bytes for in-app preview (§10 V35). The path is resolved inside `FILLER_DIR` and anything escaping it is refused before the file is opened. Served with `http.ServeContent`, so Range and conditional requests work and a `<video>` element can seek. ⚠ **Deliberately not named `preview`**: "preview" already means a pod listing in two places (build plan §6.2). ⚠ It had two siblings serving a clip's still and hover loop; both were **retired in V52 phase 8** (§22) — artwork is image-service content now, addressed by content hash and served from `/v1/images/{hash}`. This route survives because a clip's own bytes are not an image. |
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
 | GET | `/v1/filler/readiness` | **The Filler Overview's single whole-workspace verdict.** Member-readable filler readiness returns one server-ranked next action plus fetch ceilings, disjoint pipeline ownership counts, channel coverage with usable duration and grounded variety, and bounded recent acquisition runs. The browser renders this decision; it does not reproduce the priority rule or substitute the health of one subsystem. Acquisition runs preserve their source/pull attribution and terminal outcome across restart, while rejected/dismissed audit remains distinct from failures with an explicit retry or restore action. |
-| GET | `/v1/filler/decisions/overview` | Member-readable, server-owned **admission** health: semantic and operational counts plus at most one admission-ranked next action. It is a supporting projection on Filler Overview, not the whole-workspace verdict; clients never derive either health or priority from its detail feeds (§10 V63). |
-| GET | `/v1/filler/attention` | Admin-only bounded page of unresolved Attention tasks. Every row names one closed task kind, one plain question, its required `shadow | applied` application mode, the exact currently allowed actions, and only the decisive reason codes, evidence references, and conflicts (§10 V63). Routine processing and Operational holds are structurally excluded. A shadow row asks for calibration/audit evidence only: answering it never files, removes, schedules, or otherwise changes the clip. |
-| GET | `/v1/filler/decisions/activity` | Member-readable bounded audit of automatic decisions and human actions. Automatic admission, automatic rejection, correction, restore, and reversal remain distinct event kinds (§10 V63). |
-| GET | `/v1/filler/decisions/diagnostics` | Admin-only bounded operational holds. Returns stable recovery codes and redacted details; queued/running/retry/provider/budget state never appears in the human review feed (§10 V63). |
-| POST | `/v1/filler/attention/{id}/actions` | Act on one current Attention task (admin). The request names one of that task's server-projected allowed actions and records actor, reason, and optional corrected answer as an append-only event; it never rewrites evaluator evidence (§10 V63). Reusing an action id with a different body or acting on a stale task fails closed. |
+| GET | `/v1/filler/decisions/overview` | Member-readable, server-owned processing health retained during the Incoming projection migration. It reports effective Ready/not-usable outcomes and machine failures; it never counts audit-only classification as work a person owes. |
+| GET | `/v1/filler/attention` | Admin-only bounded page of genuine Needs-help tasks. Every row names one plain question and only actions that immediately change durable product state. Routine processing, optional classification, audit sampling, and Operational holds are structurally excluded. |
+| GET | `/v1/filler/decisions/activity` | Member-readable bounded audit of effective Ready/not-usable outcomes and genuine human actions. Runtime shadow/application-mode vocabulary is retired. |
+| GET | `/v1/filler/decisions/diagnostics` | Admin-only bounded operational holds. Returns one server-authored recovery plan per current hold: an automatic retry and its next-attempt time, a currently allowed manual retry, a precise configuration destination, or inspection of the exact held media. Raw provider responses and private paths stay redacted; operational work never appears in the human review feed (§10 V63). |
+| POST | `/v1/filler/decisions/diagnostics/{id}/actions` | Execute a currently advertised diagnostic recovery action (admin, §10 V63). Initial action `retry` is idempotent by request id, records the authenticated actor, and fails closed when the decision is stale or no longer retryable. |
+| POST | `/v1/filler/attention/{id}/actions` | Act on one current Needs-help task (admin). The request names one server-projected action and must change durable product state atomically; audit-only answers are not a runtime capability. Reusing an action id with a different body or acting on a stale task fails closed. |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
-| PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c/V57). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. Source trust cannot grant publication authority: the former `autoAdmit` switch is retired because source provenance is only one input to the certified terminal decision. The PATCH body carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
-| GET | `/v1/filler/watch` | **The Filler header's live source status (§10 V38c/V55).** Returns `{health, sourcesOn, sourcesTotal, clips, lastScanAt?, autoFetch?}` — everything the page header renders, computed on the SERVER. `autoFetch` names whether fetching is enabled, the current catalog/disk measurements and ceilings, and the ceiling currently stopping it (`catalog` or `disk`); it is current state, not merely the last scheduler result, so a removal or settings change clears the warning immediately. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that source-acquisition judgement.** It must not be presented as the whole Filler workspace verdict; `/v1/filler/readiness` owns that answer. Deriving source health in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
+| PATCH | `/v1/filler/providers/{kind}` | Pause or resume one built-in remote provider (`archive` or `youtube`, admin). The body is `{enabled}`. This changes provider policy only: child source switches, targets, history, and downloaded clips are retained. Provider state and server-owned effective source state are returned by `GET /v1/filler/sources` (§10 V51c). |
+| GET | `/v1/filler/providers/{kind}/suggestions` | Find sources an admin may choose to register, **creating and downloading nothing**. `q` is ordinary text or an exact provider URL/id; `limit` is server-bounded. Archive.org uses its public collection index and YouTube uses bounded listing-only yt-dlp search. Results carry a canonical provider identity, display metadata, and whether that source is already registered; the browser never constructs provider query syntax or canonical ids. A disabled provider rejects this work before an external request (§10 “Finding a source is not adding it”). |
+| POST | `/v1/filler/providers/{kind}/resolve` | Validate one pasted source reference and return its canonical identity plus provider metadata, **creating and downloading nothing**. This is the exact-target sibling of suggestions and shares the same provider adapter. Only a subsequent `POST /v1/filler/sources` is registration authority (§10 “Finding a source is not adding it”). |
+| PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c/V57). ⚠ Registration plus enablement creates durable household Enrollment authority for subsequently selected items. Disabling withdraws future scanning, searching, downloading, and enrollment; it never removes or rewrites clips already processed. There is no separate `autoAdmit` switch. `automaticDownloads` is optional and uses an explicit `defaults`, `custom`, or `never` mode; omitting it leaves policy unchanged, `defaults` clears both nullable overrides, and `custom` requires an interval and at least one clip per check. This prevents a switch- or geography-only PATCH from silently resetting source timing. |
+| GET | `/v1/filler/watch` | **The Filler header's live source status (§10 V38c/V55).** Returns `{health, sourcesOn, sourcesReady, sourcesTotal, clips, lastScanAt?, autoFetch?}` — everything the page header renders, computed on the SERVER. `sourcesReady` counts sources that are on and usable for the Installation geography; `sourcesOn` remains separate so the UI can distinguish an enabled source that still needs attention. `autoFetch` names whether fetching is enabled, the current catalog/disk measurements and ceilings, and the ceiling currently stopping it (`catalog` or `disk`); it is current state, not merely the last scheduler result, so a removal or settings change clears the warning immediately. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that source-acquisition judgement.** It must not be presented as the whole Filler workspace verdict; `/v1/filler/readiness` owns that answer. Deriving source health in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
 | GET | `/v1/filler/incoming` | Legacy admin-only ingest-conveyor projection retained while its machine state migrates under Manage → Diagnostics (§10 V35/V63). It is operational truth, not the human Attention interface, and the ordinary Filler UI does not fetch or render it. **Every row list is capped at 100** and carries its full server-counted total (`clipsTotal`, `decisionsTotal`, `reelsTotal`, `rejectedTotal`). Confidence is the real grounding-capped score (§10 V38), never model self-assessment and never an admission threshold. Clients must not infer task kinds or actions from this payload. |
-| GET | `/v1/filler/screening?hash=` | The admin-only, browser-safe five-axis screening projection for one exact filler clip. It returns `not_screened`, `available`, or `unavailable`; an available result contains the immutable subject/aggregate identities, overall outcome, the ordered visual/spoken/written/rights/playback outcomes and safe reason codes, assessment time, and the closed public Airworthiness decision. An unavailable attached reference retains only its safe failure code and content identities. Before publication, the route reopens the clip's current applied sidecar, reproduces its subject and aggregate, and reopens the playable file to match its complete-byte digest, byte count, and sparse catalog identity. A missing, unsafe, or changed playback object can therefore never retain a visible pass. It never returns a path, prompt, transcript, OCR text, restricted phrase, provider response, credential, private rights document, or raw evidence. Incoming loads this bounded record only when a row is expanded rather than multiplying filesystem reads across the whole conveyor. |
+| GET | `/v1/filler/screening?hash=` | The admin-only, browser-safe four-axis screening projection for one exact filler clip. It returns `not_screened`, `available`, or `unavailable`; an available result contains the immutable subject/aggregate identities, overall outcome, the ordered visual/spoken/written/playback outcomes and safe reason codes, assessment time, and the closed public Airworthiness decision. An unavailable attached reference retains only its safe failure code and content identities. Before publication, the route reopens the clip's current applied sidecar, reproduces its subject and aggregate, and reopens the playable file to match its complete-byte digest, byte count, and sparse catalog identity. A missing, unsafe, or changed playback object can therefore never retain a visible pass. It never returns a path, prompt, transcript, OCR text, restricted phrase, provider response, credential, or raw evidence. Incoming loads this bounded record only when a row is expanded rather than multiplying filesystem reads across the whole conveyor. |
 | POST | `/v1/filler/bulk/tag` | Retag a selection (admin, §10 V35). Each tag field is **independent** — omitting one leaves it alone, so setting only the audience never blanks an era. Setting an era confirms an outstanding suggestion through the **same** path the single-clip edit uses. A selected clip that no longer exists is counted, not fatal: a selection races a re-scan. |
 | POST | `/v1/filler/bulk/remove` | Remove a selection from the catalog (admin, §10 V35). ⚠ **A tombstone.** The clip leaves the catalog and stops being used in breaks; **the file is untouched**, and the mark survives a re-scan (which a row delete could not). `restore:true` undoes it. |
 | POST | `/v1/filler/pulls` | Propose a **pull** — a plan across sources (admin, §10 V35). **Downloads nothing**: it writes a proposal for the approval queue. Refused when every source the plan needs is disabled, with the switch to flip named. |
@@ -1153,6 +1161,9 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | GET | `/v1/system/version` | Version/commit/build time + the readiness `/readyz` reports, plus what the **About** page (§16, V12) shows an operator writing a bug report: **Go runtime + os/arch**, **`startedAt`** (the process start, from which the UI derives uptime), and the **applied schema version** with the backend. The typed, authenticated twin of the ops probes. ⚠ *This used to add that the probes "stay OUTSIDE the versioned API and unauthenticated… putting auth in front of a container health probe would be the wrong trade". The trade was real; the premise no longer is. `RolePublic` makes non-authentication an explicit property of an operation, so `/v1/healthz` and `/v1/readyz` are versioned, typed AND anonymous, with their bare paths kept as permanent aliases. This endpoint still earns its place: it carries the version, build and schema information an operator quotes in a bug report, which a liveness probe has no business returning.* ⚠ **`startedAt`, never a pre-computed uptime**: a duration is stale the moment it is serialized, so the server sends the instant and the client renders the elapsed time it can keep current. |
 | GET | `/v1/system/discovery-quality/export` | Download the admin-only, local discovery-quality JSON export (§17): versioned UTC daily aggregates plus only their referenced evaluation-run snapshots. Raw receipts and idempotency keys are never returned. Reading it sends nothing externally and does not mutate retention state. |
 | POST | `/v1/setup/test` | Run one named check (powers per-block Test buttons; `config-design.md` §8). |
+| GET | `/v1/locations?q=&limit=` | Search the embedded Installation-location index by city or country and return bounded `{id,label,country,market}` suggestions (admin). No coordinates leave Loomarr and no runtime provider is called. |
+| GET | `/v1/locations/suggestion` | Return an approximate country/place suggestion from an allowlisted CDN geography header when `security.trust_proxy=true`, otherwise from the public client IP against Loomarr's embedded country index (admin). Cloudflare, CloudFront, and Vercel headers are recognized directly; any other CDN/proxy can normalize its evidence to `X-Loomarr-Geo-Country` plus optional `X-Loomarr-Geo-City`. Direct connections use the socket peer; forwarded addresses require the existing trust-proxy gate. Invalid/special codes and private/LAN addresses produce no suggestion. The result names its source and attribution and is never persisted automatically. |
+| POST | `/v1/locations/resolve` | Resolve explicitly shared browser coordinates to the nearest embedded place and return `{id,label,country,market}` (admin). Coordinates are request-only, are neither logged nor stored, and an invalid or unsupported point returns a problem response without guessing. |
 | GET | `/v1/settings` | Settings registry with per-key provenance; secret values masked (admin, §15). |
 | PATCH | `/v1/settings` | Update settings; validates and persists immediately, then applies by the key's runtime lifecycle (`config-design.md` §3); env-pinned keys rejected (admin). An empty value clears an optional key — except a secret, which is replace-only (`config-design.md` §9). |
 | DELETE | `/v1/settings/{key}` | Explicitly clear a key's stored override (reverts to env/default); the only way to unset a secret. 204 · 404 unknown · 409 env-pinned (admin, `config-design.md` §8). |
@@ -1712,7 +1723,7 @@ Loomarr's model work has three product pillars with separate authority and relea
 2. **Channel curation** turns a chosen Intent into a grounded Proposal and ChannelPolicy, then supports
    Refine and re-curation. This is the planner-model contract certified below.
 3. **Filler curation** classifies, summarizes, tags, and ranks clips and pod candidates from bounded
-   transcript, OCR, filename, frame, audio, or video evidence. Rights, admission, confidence, review,
+   transcript, OCR, filename, frame, audio, or video evidence. Admission, confidence, review,
    deletion, and scheduling authority remain with deterministic filler policy and the existing gates.
 
 Recommendation and channel curation may share a text/tool-calling base or adapter. Filler may instead
@@ -4366,10 +4377,10 @@ Titles come from TMDB via Seerr/Sonarr/Radarr. Commercials, bumpers, and station
 ### Filler catalog (metadata is what enables matching)
 Each clip carries metadata so the scheduler can place it well, persisted in the store (§5):
 - `kind`: unclassified | commercial | bumper | station_id | psa | trailer | interstitial.
-  `unclassified` is a closed held-work lifecycle state, not a generic filler role: it records that
-  no exact role authority has yet projected one of the concrete kinds. Filename inference may retain
-  an explicit concrete token as diagnostic metadata, but an unknown filename defaults to
-  `unclassified`, never `commercial`.
+  `unclassified` records that no exact role has been established. It is descriptive rather than a
+  lifecycle state: Enrollment may still ground a break-body Placement without relabelling the Clip
+  as a commercial. Filename inference may retain an explicit concrete token as diagnostic metadata,
+  but an unknown filename defaults to `unclassified`, never `commercial`.
 - `era`: decade / year (e.g., 1994)
 - `audience`: kids | family | general | late_night
 - `category`: toys | cereal | cars | tech | fast_food | movie_trailer | …
@@ -4407,9 +4418,28 @@ retries. Hosted providers retain their existing portable prompt-and-parse path.
 
 ### Sources fetch on their own (V38b)
 
-A registered, enabled source is **polled on a schedule** and new items download without anyone
-asking. This supersedes §15's "there is no unattended crawler": clips arrive because you added a
-source, not because you pasted a URL each time.
+A registered, enabled source is **checked on its effective automatic-download policy** and new
+items download without anyone asking. This supersedes §15's "there is no unattended crawler":
+clips arrive because you added a source, not because you pasted a URL each time.
+
+`filler.fetch.every` is the **only user-controlled cadence authority**. There is no second filler
+fetch cron setting. The scheduler wakes a cheap internal due-source planner once per minute; that
+wake-up makes no provider request unless at least one source is due. A source is due when its
+effective interval has elapsed since its durable `last_checked_at`. A successful provider listing
+records the check even when it finds nothing new, so an empty or fully catalogued source is not
+polled on every internal wake. A failed listing increments durable failure state and retries after
+1 minute, then 5 minutes, then 15 minutes, capped at 1 hour; a successful check clears that backoff.
+The source row projects the next eligible automatic check from its interval, retry, and active
+claim rather than making the browser repeat that arithmetic.
+
+Before making a provider request, the planner atomically leases that exact source for at most 30
+minutes using the last-check fact it observed. A second scheduled or manual pass cannot enumerate
+the same source while that lease is live, and a stale worker cannot complete a newer worker's
+claim. The scheduler's job lease prevents duplicate full passes; the source lease closes the
+smaller race between a scheduled pass and **Look for new clips**. The manual command bypasses the
+selected cadence and retry delay, but not an active source claim, source/provider enablement,
+geography, deduplication, the effective count, or capacity protection. The fixed internal wake is
+implementation timing, not an operator setting and not a second product promise.
 
 ⚠ **The superseded rule's concern was legitimate — unattended fetching can fill a stranger's disk
 — so it survives as LIMITS rather than as a prohibition.** All are settings, all have defaults, and
@@ -4417,7 +4447,7 @@ all fail toward doing less:
 
 | Bound | Default | Why |
 | --- | --- | --- |
-| `filler.fetch.every` | `6h` | How often a source is polled. Off (`0`) disables auto-fetch entirely |
+| `filler.fetch.every` | `6h` | Default interval for enabled sources. Off (`0`) stops sources that inherit it; positive custom values are bounded from one minute through seven days, and a source may still carry an explicit interval |
 | `filler.fetch.max_per_run` | `10` | Items one source may pull per poll — a collection of thousands trickles in rather than arriving at once |
 | `filler.fetch.max_catalog_clips` | `2000` | A **ceiling on the whole catalog**. At the limit, auto-fetch stops; manual queueing and approved pulls still work |
 | `filler.fetch.max_disk_gb` | `20` | A ceiling on what the drop-folder may consume. Same behaviour at the limit |
@@ -4427,9 +4457,10 @@ all fail toward doing less:
 1. **Only registered, ENABLED sources are polled.** The Sources switch already claims Loomarr
    "stops scanning, searching and downloading" from a source that is off; auto-fetch is bound by
    the same switch or that copy becomes false.
-2. **Everything fetched arrives HELD.** Auto-fetch does not bypass the lifecycle — a downloaded
-   clip is still tagged, still scored, and still gated by the confidence cap before it can play.
-   The unattended step is *acquisition*, never *admission*.
+2. **Everything fetched arrives HELD and converges automatically.** Registration or an explicit
+   one-item queue supplies durable household Enrollment authority. A downloaded clip is still
+   probed, conditioned, and checked before it becomes Ready, but missing optional classification
+   does not create a second approval gate.
 3. **A limit that is reached is REPORTED, never silent.** An operator whose catalog stopped
    growing must be able to see which ceiling stopped it. A crawler that quietly does nothing is
    indistinguishable from one that is broken.
@@ -4437,14 +4468,17 @@ all fail toward doing less:
 **Archive.org and YouTube are peer acquisition partners, not a primary source and a fallback.**
 Every registered remote is enumerated by its explicit `kind`: Archive uses the bounded collection
 API, while YouTube uses yt-dlp's listing-only flat-playlist mode. The fetcher never guesses a
-registered source's provider from a returned URL. The operator adding a YouTube playlist or
-channel is the bounded authorization to enumerate that target; Loomarr does not perform global
-YouTube search, follow recommendations, or crawl beyond it. Enumeration downloads no media and
+registered source's provider from a returned URL. The Sources page may perform a bounded,
+user-initiated YouTube channel search through yt-dlp's listing-only mode so a person need not know
+a channel URL; it does not follow recommendations or crawl beyond the typed query. Selecting a
+suggestion is still not authorization to enumerate that channel on a schedule: only the separate
+registration command grants that authority. Enumeration downloads no media and
 is capped before its per-item URLs enter the ordinary ingest path. Both partners then share the
 same per-source limit, catalog and disk ceilings, acquisition record, held lifecycle, provenance
-sidecar, cleanup pipeline, and admission authority. Missing YouTube licence metadata remains
-unknown rather than becoming either permission or a rejection; the source URL, uploader metadata,
-acquisition id, sidecar, and content hash remain the evidence trail.
+sidecar, cleanup pipeline, and admission authority. Provider-declared licence metadata is passive
+provenance: Loomarr records it when supplied and treats absence as “not provided,” but it never
+ranks, filters, holds, rejects, or admits an item. The source URL, uploader metadata, acquisition id,
+sidecar, and content hash remain the evidence trail.
 
 ⚠ **The explicit kind is load-bearing at both boundaries.** A registered YouTube source once
 passed through the Archive collection enumerator because the fetcher accepted only one untyped
@@ -4459,14 +4493,21 @@ uses. The UI names the bound and its current/maximum values. This makes "nothing
 answerable state even after restart, and makes the warning disappear as soon as curation or a
 settings change creates room.
 
-**`Fetch now` runs acquisition as well as discovery (V56).** A source row invokes one ordinary
+**`Look for new clips` runs acquisition as well as discovery (V56).** A source row invokes one ordinary
 bounded fetch pass for that selected source and then scans the configured local sources. It is not
 an alias for the local catalog scan: that old wiring returned success on an Archive or YouTube row
 while queueing no download at all. Nor is it a global button repeated on every row: clicking the
 drop folder cannot unexpectedly start three remote collections. The deliberate admin action may
-run while unattended timing is off, but it retains the source's enabled switch, deduplication and
-disk/catalog/per-source ceilings, so it is not an unbounded bypass. Omitting the source id keeps the
-former all-source endpoint behavior for older clients.
+run before a source is due or while its automatic timing is off, but it retains the source's and
+Provider's enabled switches, geography, deduplication, and disk/catalog/per-source ceilings, so it
+is not an unbounded bypass. Explicitly queueing one searched item remains a separate action and does
+not consume or reset the source's automatic check cadence.
+
+The response preserves the selected source identity and the acquisition result: how many sources
+were polled, how many items were queued or skipped, and which capacity ceiling stopped the pass.
+The browser therefore reports **Checked Classic TV Commercials — 2 clips queued**, not a generic
+success inferred from a refreshed list. Other remote rows retain their own status and never appear
+to have participated in the selected-source command.
 
 ⚠ **Archive.org collections are the case the limits exist for.** A collection is thousands of
 items; `max_per_run` is what stops "add a source" from meaning "download 8,000 files tonight".
@@ -4495,34 +4536,36 @@ rule that quietly stops holding when a second case appears.
 was a claim about the whole subsystem made from one binary's absence; a source that can fetch says
 so, and one that cannot says which tool it wants.
 
-### The clip lifecycle: held, then admitted (V38/V66)
+### The clip lifecycle: held, then Ready (V38/V66; household beta)
 
 Until V38 a clip had no lifecycle. The folder scan catalogued it and the tagger tagged it **in
 place**, which meant everything Loomarr downloaded was playable the moment it landed — tagged or
 not, right or wrong. V38 gives an arriving clip a **state**:
 
-- **held** — in Loomarr's records, **not in the playable catalog**. It is not matched into a pod,
-  not attached to a filler-list, and not counted as coverage. It is waiting for processing and a
-  terminal admission or rejection.
-- **admitted** — the catalog proper. Everything that plays was admitted by the one terminal
-  applied-decision transaction after it reproduced the exact safety, playback and rights proof.
+- **held** — recorded but not playable while required runtime work is incomplete or failed;
+- **Ready** — exact playable bytes, Enrollment authority, and Placement were committed together by
+  the terminal-ready operation. Only Ready clips may enter a Pod;
+- **not usable** — an objective failure, positive non-filler determination, composite container, or
+  removal prevents playback.
 
-An `unclassified` clip is always held. It cannot be matched into a pod, attached to a filler-list,
-projected into a schedule, or accepted as terminal admission output, even if a caller accidentally
-lifts the ordinary held filter. Admission observation, score, auto-file policy, unrelated grounding,
-and source trust can record evidence or route review but cannot change either fact. A future
-final-conditioned-child role authority may project a verified concrete kind while the clip remains
-held; only the terminal admission transaction removes that hold after reproducing every required
-proof. Until the role authority exists, the state remains held and unclassified. Existing admitted
-clips that already carry a concrete kind retain their playback behavior.
+Enrollment authority comes from choosing and enabling a Filler Source, opting a folder or Library
+into Filler, or explicitly queueing one item. It is captured when the Clip enters the conveyor, so a
+later Source disable stops future work without rewriting existing outcomes. The enabled Source is
+the household's approval; the runtime must not ask for a second per-Clip approval merely because an
+optional classifier did not identify an exact role.
 
-⚠ **The V38 compatibility exceptions are retired.** Acquisition intent is not publication
-authority, whether the bytes came from a downloader, a watched folder, or a hand copy. Every new
-non-composite arrival starts held. Migration `00098` also quarantines every existing playable
-non-composite and returns any `filed` pipeline row to `review`; this can deliberately empty an
-upgraded install's filler pool until evidence is certified. Preserving unexplained playback would
-be safer for continuity and worse for the audience. Composite containers retain their separate
-split-repair lifecycle and are never themselves scheduled.
+Role and Placement are separate. Role describes what the Clip is; Placement says where it may run.
+A known commercial, promo, PSA, trailer, or interstitial maps to break body. A bumper or station ID
+maps to bookend. Enrollment grounds break body when the exact role remains unclassified; this does
+not relabel the Clip as a commercial. Composites and positively identified programme excerpts map to
+not playable. An explicit channel kind filter still narrows to known roles; default scheduling may
+use enrollment-grounded break-body Clips.
+
+Every new arrival still starts held. The distinction is that the ordinary pipeline now has an
+executable terminal operation: after required runtime checks it atomically stores Placement, clears
+the hold, settles the conveyor as Ready, and appends the effective activity outcome. Exact retries
+are idempotent and stale clip/pipeline identity rolls the transaction back. Composite containers
+retain their separate split-repair lifecycle and are never themselves scheduled.
 
 ### The quality gate: reject the broken, normalise the quiet (V40)
 
@@ -4962,7 +5005,7 @@ multiple match ids may share one supplied interval. Apple source-level positives
 whole-source interval because that producer supplies no timestamps.
 
 The rendered-child spoken and visual adapters own the complete bridge from those producer reports into the
-five-axis screening operation. Before replay or inference, an adapter reopens the evidence derivative and
+four-axis screening operation. Before replay or inference, an adapter reopens the evidence derivative and
 reproduces the child's full byte digest, byte count, and sparse catalog identity; missing, unsafe, or drifted
 bytes produce no semantic axis authority and therefore remain an operational hold. Once the current bytes are
 proved, the adapter replays an already settled subject/profile operation before invoking its producer, so a
@@ -4978,7 +5021,7 @@ mean the observed content is appropriate for every audience. Complete positive e
 axis `pass` while its closed observations drive the audience-specific Airworthiness `reject` or `hold`.
 Incomplete or unprojectable coverage is an axis `hold`. This separation is load-bearing: mapping every positive
 fact to an axis `reject` would bypass the audience policy and incorrectly prohibit facts that one profile may
-allow or review. The final aggregate still requires all five axis operations to complete and Airworthiness to
+allow or review. The final aggregate still requires all four axis operations to complete and Airworthiness to
 pass before a child can advance.
 
 Each axis record binds the complete child subject described above, its outcome, and the evaluator's policy,
@@ -4986,7 +5029,7 @@ certification, implementation, and evidence-contract profile, plus the SHA-256 o
 ledger or measurement bytes. The axis record publishes only after those raw bytes are durable. A child
 screening coordinator requires exactly one named evaluator for each axis, makes the path-free subject durable
 before the first call, calls them serially without showing one evaluator another's answer, rejects subject or
-profile drift, and persists each axis before moving to the next and the validated five-axis aggregate before
+profile drift, and persists each axis before moving to the next and the validated four-axis aggregate before
 returning it. Each evaluator owns repeat-safe settlement of its exact operation;
 a retry after a later persistence failure replays the same closed authority-bound result instead of repeating
 a possibly billed call. The aggregate's `assessedAt` is the latest of those five immutable axis assessment
@@ -5012,16 +5055,16 @@ and advanced. A review-shaped screening result is recorded as done at its curren
 be filed, because a person's generic catalog action is not a substitute for the release authority.
 
 Production starts this rung with a **qualification runtime**, rather than leaving the whole coordinator
-absent until every independent safety lane is certified. The runtime uses the production rights registry and
-deterministic playback verifier immediately, and installs one explicit non-authorizing evaluator for each
+absent until every independent safety lane is certified. The runtime uses the deterministic playback verifier
+immediately and installs one explicit non-authorizing evaluator for each
 of visual, spoken, and written safety. Each non-authorizing evaluator reopens the exact evidence derivative,
 records its measured artifact identity, and returns a durable `hold` naming the missing axis certification;
 it never emits `pass` or `reject` and performs no inference or provider call. Its profile hashes identify
 the built-in qualification policy, unavailable-certification marker, and implementation—not a safety
-certificate. Consequently the five-axis aggregate and per-axis evidence are exercised on real children,
-rights prohibitions and objective playback failures retain their closed outcomes, and no child can reach
-enrichment or release while one of the three safety authorities is absent. An unavailable evidence root,
-rights repository, or runtime constructor leaves the existing missing-coordinator hold in place. The private
+certificate. Consequently the four-axis aggregate and per-axis evidence are exercised on real children,
+objective playback failures retain their closed outcomes, and no child can reach enrichment or release while
+one of the three safety authorities is absent. An unavailable evidence root or runtime constructor leaves the
+existing missing-coordinator hold in place. The private
 content-addressed repository lives under the filler root's excluded `.loomarr/segment-screening` tree.
 
 #### Complete-source visual-sensitive-content authority (V68)
@@ -5103,66 +5146,33 @@ complete decode, seek, keyframe, A/V, loudness, and fast-start evidence; the con
 rejects objective dead air and holds long black, silent, or frozen spans. A sparse-hash match alone never
 passes because middle-of-file changes must be caught by the full digest.
 
-The rights evaluator has one deliberately narrow dependency: a current-use authority queried for the exact
-child subject, source, acquisition, source-master bytes, production policy, `filler_broadcast` use, and UTC
-decision instant. A provider-declared licence string, source `autoAdmit`, acquisition preference, old corpus
-rights worksheet, or matching document digest is not that authority. Missing source/acquisition identity or
-an absent/unknown current decision produces a rights hold; an exact current prohibition or withdrawal
-rejects; only an exact, unexpired, withdrawal-clear authorization passes. Malformed, stale, differently bound,
-or self-inconsistent authority is an operational failure rather than a guessed semantic answer. The private
-raw axis evidence retains the path-free request and content-addressed decision. The settled screening result
-is immutable historical evidence; terminal release must query the same current-use boundary again so a later
-expiry or withdrawal cannot be hidden by replaying an earlier pass. The production registry below satisfies
-this port; without a matching current grant, the rights axis remains held.
-
-The production rights registry is append-only and operator-reviewed. One content-addressed grant binds the
-source, acquisition, source-master bytes, policy, and use above to a closed authorization, prohibition, or
-unknown decision; it also binds the private review-evidence digest, recording actor, effective instant,
-optional expiry or withdrawal, and the exact prior grant it supersedes. A separate current-head row exists
-only to provide an atomic compare-and-swap over that immutable history: two reviewers cannot silently fork
-or overwrite the same scope. The current-use module opens the exact head, validates its complete content
-identity, applies its effective/expiry/withdrawal state at the requested instant, and derives the
-subject-specific decision consumed by both screening and terminal release. A future or expired grant yields
-an attributable unknown decision, never authorization. Recording a grant alone does not make a child
-airable; every other certified screening axis and the terminal admission decision still apply.
-Administrators record and inspect this history through an admin-only append endpoint and exact-scope current
-read. The server supplies the authenticated actor and recording instant; the request supplies the immutable
-scope, closed decision, private evidence digest, effective/expiry/withdrawal times, and expected current
-grant digest. There is no update or delete endpoint.
-
-Incoming presents that write only in the exact rendered-child screening context. The authenticated summary
-projects the path-free source, acquisition, source-master, policy, and use scope reproduced from the current
-subject and rights-axis record, plus the current immutable grant when one exists; the operator never copies
-those identifiers into a generic form. The review basis is a local file chosen in the browser: the client
-computes its SHA-256 and sends only that digest, while the private file remains with the operator. A new
-authorization, prohibition, unknown decision, or withdrawal appends through the same compare-and-swap head;
-it cannot edit history. Saving rights does not mutate the already-settled screening result. Incoming explains
-that the clip remains held and offers a separate explicit screen-stage rewind so any provider work, cost, and
-new immutable evidence are visible rather than silently triggered by the rights write.
+Provider-declared licence values remain exact provenance metadata on Sources, candidates, sidecars, and clips.
+They are not an inference input, acquisition preference, screening axis, admission claim, publication receipt,
+or user decision. Missing metadata means only that the Provider supplied none. Private household playback does
+not ask an operator to adjudicate copyright, and the runtime contains no current-use rights authority, grant,
+withdrawal, or remediation path. Project-owned corpus acquisition and redistribution retain their separate
+rights controls because those govern what the Loomarr project itself may copy or distribute.
 
 Screening aggregates, provider-neutral axis records, operation identities, and opaque raw evidence live
-separately in a private content-addressed repository. The immutable screening-release authority is explicitly
-non-authorizing by default, names exactly one canonical profile per axis, and locks the aggregate contract.
-Terminal admission
-must re-read the aggregate, every axis record, its unique settled operation, and every raw-evidence identity;
-verify exact child lineage,
-all three media identities, parent span, outcomes, reasons, and profiles; and require all five passes plus
-explicit production permission. A boolean callback, aggregate-only replay, model self-assertion, pre-split
-screen, or structure certificate cannot release a child. Missing, stale, rejected, held, identity-drifted,
-profile-drifted, or unverifiable evidence keeps it held.
+separately in a private content-addressed repository. They support measured classification and configured
+household protection without becoming a second approval system. A positive objective media failure or a
+configured positive safety finding can make a Clip not usable. An unavailable optional model, incomplete
+certification corpus, missing classification fact, or absent audit evidence cannot block an otherwise valid
+enrolled Clip. Any screening fact used by runtime still binds the exact playable bytes and profile; stale or
+identity-drifted evidence is ignored rather than treated as a pass.
 
-**Replacement contract (maintainer decision, 2026-09-06).** The new filler pipeline replaces the
-previous pipeline entirely. There is no live compatibility fallback for automatic materialization or
-catalog publication. Missing, disabled, malformed, expired, or non-authorizing configuration,
-deployment, certificate, assessment, or evidence leaves material held with an attributable reason.
+**Replacement contract (revised for household beta, 2026-09-13).** The new filler pipeline replaces
+the previous pipeline entirely. There is no live compatibility fallback or dormant publication mode.
+Missing required bytes, failed media checks, or absent Enrollment authority leaves material held with
+an attributable reason; missing optional classifiers, certification, or audit evidence does not.
 A structure-assessment failure, including a source outside the reviewed duration envelope, keeps
 the source and its pending proposal at the split review rung. It must not exhaust ordinary
-non-fatal retries into a terminal filed disposition. Cancellation preserves resumable work and is
+non-fatal retries into a terminal Complete disposition. Cancellation preserves resumable work and is
 not an assessment result. No such failure may create children or confer publication authority.
-No confidence score, source trust, detector-only proposal, or alternate filing route may substitute
-for the new pipeline's required authority. Human review supplies the particular missing decision
-through its governed review path; it does not waive unrelated structure, screening, rights, or
-terminal-publication requirements. This contract supersedes earlier rollout language in this section.
+No confidence score or detector-only proposal may substitute for the new pipeline's required runtime
+checks. Source selection is not inferred trust: it is the explicit Enrollment authority for private
+household use. A human is asked only for a genuine unresolved product choice. This contract
+supersedes earlier rollout language in this section.
 
 The split stage applies only the complete-plan materialization gate. A proposal without a verified
 complete-timeline decision and matching materialization authority remains reviewable and cannot
@@ -5171,16 +5181,15 @@ for measurement. Its immutable shadow record binds proposal, source, assessment,
 and policy identities plus exact materialize, hold, and discard spans. Recording agreement never
 activates a slice. Failure to persist a required comparison blocks unattended materialization; it
 never selects the comparison result as a fallback. Screening identities do not enter this ledger
-because no child playback derivative exists yet. The separate admission shadow ledger compares
-held-child terminal decisions only after all child evidence exists. Shadow decisions never publish;
-only the new pipeline's verified terminal applied decision can grant broadcast availability.
+because no child playback derivative exists yet. Admission comparisons remain development evidence
+only. Runtime publication belongs exclusively to the terminal-ready transaction.
 
 Structure-validated children reuse the V66 derivative publisher and are prepared as one replacement generation.
 Their playable and evidence derivatives are built from the exact reviewed source intervals, not from an
 older playback rendition. The parent, assessment, observations, and prior complete child generation remain
 intact until every replacement child and durable lineage record validates and the generation switch commits
 atomically. New children remain held through derivative production, the five screens, enrichment, and
-terminal admission; filesystem visibility is not broadcast permission. A crash, partial re-split,
+terminal readiness; filesystem visibility is not broadcast permission. A crash, partial re-split,
 derivative failure, or screening failure cannot replace a complete generation with a partial airable one.
 
 Certification is separate from production assessment. Its rights-cleared corpus is split by source family
@@ -6072,10 +6081,10 @@ different questions and share no publication control. There are no `filler.embed
 
 The tagger records a **confidence score** (0–100) alongside the tags. It is diagnostic evidence for
 classification review and prioritisation. It never decides whether a clip is playable: terminal
-admission replays exact five-axis safety, playback, Airworthiness, and current-use rights evidence.
+admission replays exact four-axis safety, playback, and Airworthiness evidence.
 
 ⚠ **V38 originally used this score as an auto-file threshold; that publication use is retired.**
-A grounded taxonomy result is not a safety verdict, a rights grant, or proof of complete playback.
+A grounded taxonomy result is not a safety verdict or proof of complete playback.
 Keeping the score is useful; keeping a shortcut from score to airability would recreate a second,
 weaker admission authority.
 
@@ -6102,46 +6111,34 @@ confidence threshold, `auto_filed` application state, legacy audit list, and dir
 route are retired rather than maintained as a parallel lifecycle. Historical database columns may
 remain until a future schema rebuild, but no domain or API contract assigns them meaning.
 
-#### Evidence-based admission certification (V61 — supersedes the scalar gate)
+#### Evidence-based classification and terminal readiness (V61; household beta)
 
-V38's grounding cap was a necessary improvement over admitting every scanned file, but it is not a
-certification boundary. A literal token proves only that the token occurred. It does not resolve
-which of two conflicting years describes the recording, prove that uploader text is trustworthy,
-or calibrate a model's `confidence` against observed correctness. Consequently
-The V38 publication switch and threshold are retired. Confidence remains versioned diagnostic
-evidence for classification and split review, but **a scalar score is never publication authority**.
-There is intentionally no compatibility publisher while certified V61 authorities are being
-completed: an installation without terminal release proof accumulates held, reviewable clips rather
-than airing content whose identity, rights, audience suitability, or playback integrity is unknown.
+V38's grounding cap remains useful for descriptive classification, but it is not household-use
+authority. A literal token can support a role, era, or product fact without deciding whether the
+person who selected a Source must approve the same Clip again. Confidence therefore remains
+versioned diagnostic metadata and never controls readiness.
 
-The terminal decision belongs to one Go-owned **filler admission evaluator** after evidence
-extraction and before catalog filing. Extractors return versioned facts and may abstain; they never
-authorize playback. The evaluator returns exactly one semantic verdict:
-
-- `admit` — sufficient policy-eligible evidence exists for this certified content slice;
-- `reject` — measured media or policy evidence proves the input cannot be used as filler; or
-- `review` — a named contradiction or missing fact can be resolved by one answerable human
-  question.
-
-Retries, provider failures, exhausted budgets, and unsupported modalities are operational states,
-not semantic verdicts. They keep the clip held and recoverable. They never guess-admit, become a
-semantic rejection, or create review work a person cannot resolve.
+The production terminal decision belongs to one Go-owned **terminal-ready module** after required
+runtime processing. Its small interface receives the exact Clip, durable Enrollment authority, and
+completed conveyor state. It returns one of three effective outcomes: Ready, not usable, or a real
+Needs-help task whose action changes durable state. Retries, provider failures, exhausted budgets,
+and unavailable optional enrichment are operational states in Diagnostics; they cannot become
+semantic chores by changing labels.
 
 Evidence is claim-specific and carries provenance. Decoder measurements own media usability;
 source-owned dates and recording sidecars outrank a year merely spoken in a clip; readable end
-cards, packaging, and spoken advertiser claims support brand/product; source and item policy own
-licence eligibility. Filename, uploader metadata, transcript, OCR, frames, audio, and video are all
+cards, packaging, and spoken advertiser claims support brand/product. Provider-declared licence data
+remains passive provenance outside the evaluator. Filename, uploader metadata, transcript, OCR, frames, audio, and video are all
 untrusted data with no instruction authority. **Contradiction is a first-class evidence result**:
 the evaluator either invokes one bounded additional rung or abstains with a specific question. More
 conflicting tokens never increase confidence.
 
 The evaluator accepts one closed, versioned evidence document rather than a prompt-shaped bag of
 strings. Its claim roles are exactly media usability, recording date/era, brand, product, content
-role, source/licence, and sensitive-policy flags. Each fact names its extractor kind, source
+role, and sensitive-policy flags. Each fact names its extractor kind, source
 identity, bounded location, and inference evaluation when one produced it. Authority is assigned by
 the Go policy from the claim and provenance kind; evidence cannot declare its own rank. Decoder
-measurements alone can prove unusable media, and source policy alone can prove source/licence
-eligibility. For conflict-prone semantic claims, independent corroboration means distinct extractor
+measurements alone can prove unusable media. For conflict-prone semantic claims, independent corroboration means distinct extractor
 kinds over distinct derivatives or source records — repeated tokens from one transcript, OCR frame,
 or model generation still count once. A filename year and a different spoken historical year are a
 conflict, not two votes; a source-owned recording date may resolve them because the policy, not
@@ -6149,18 +6146,20 @@ literal presence, grants that source authority.
 
 Content-role and product corroboration also require at least one in-clip signal (transcript, OCR,
 frame, audio, or video). A filename plus an uploader description are two fields controlled by the
-same uploader, not proof that the bytes contain the claimed advert; metadata-only agreement remains
-review evidence and cannot authorize admission.
+same uploader, not proof that the bytes contain the claimed advert; metadata-only agreement may
+support a suggestion but cannot become a high-confidence descriptive classification.
 
-A commercial requires a corroborated product from the closed taxonomy before admission. Brand is
-retained as useful evidence and may expose a conflict, but the advertiser-name field is open text and
-cannot substitute for that closed product gate; two copies of instruction-looking OCR/transcript text
-therefore cannot become a commercial identity merely by agreeing with each other.
+A high-confidence commercial classification requires a corroborated product from the closed
+taxonomy. Brand is retained as useful evidence and may expose a conflict, but the advertiser-name
+field is open text and cannot substitute for that closed product classification; two copies of
+instruction-looking OCR/transcript text therefore cannot become a commercial identity merely by
+agreeing with each other. A Clip may still become Ready with an enrollment-grounded break-body
+Placement while its exact role remains unclassified.
 
-`filleradmission.Evaluator.Evaluate` is deterministic and has no provider, decoder, store, clock, or
-network dependency. It returns a semantic decision only after validating the complete evidence and
-policy versions. Decisions carry a stable sorted set of reason codes, the exact evidence references
-that support them, all material conflicts, at most one answerable review question, and the inference
+`filleradmission.Evaluator.Evaluate` remains deterministic development and certification tooling; it
+has no provider, decoder, store, clock, or network dependency and is not a runtime publication gate.
+Its measurements carry a stable sorted set of reason codes, the exact evidence references that
+support them, all material conflicts, at most one review question, and the inference
 attribution/usage supplied with the evidence. Every semantic inference attribution is referenced by
 at least one fact, and every fact's inference reference must resolve; unrelated or dangling model
 calls cannot be smuggled into a decision's audit. The sole exception is an explicit semantic
@@ -6172,91 +6171,27 @@ verdict. Model confidence is retained for diagnostics but is never read by admis
 Untrusted evidence values are compared only as data; instruction-looking metadata, OCR, or transcript
 text cannot select a reason, change precedence, or authorize a verdict.
 
-The evaluator may record shadow decisions while certification is incomplete, but these records
-grant no catalog effect. The former V38 confidence publisher is removed; incomplete rollout cannot
-reactivate it. New non-composite arrivals remain held until a certified slice and sealed release
-authority are wired and the replacement pipeline validates the required evidence and commits the
-terminal applied admission decision.
+Runtime has one effective path and no `shadow` / `applied` mode. Audit-only human answers and
+certification-only release bindings are not runtime capabilities. The terminal-ready module owns
+the complete transition before any publication write: it validates the exact Clip identity,
+requires durable Enrollment authority, derives Placement without inventing a Role, and checks that
+the required pipeline work completed. One store transaction then records the Ready event, stores
+Placement, clears `clips.held`, and settles the matching conveyor row as Ready. A missing or changed
+Clip, stale pipeline row, absent authority, composite, or objective failure rolls the whole write
+back. Repeating the same completed transition is an idempotent success.
 
-Every durable filler decision carries a closed `ApplicationMode`: exactly `shadow` or `applied`.
-`shadow` records what the evaluator would decide without granting catalog filing authority;
-`applied` means the decision was the filing authority and its corresponding catalog effect committed.
-All current production decision records are explicitly `shadow`; `applied` is reserved and has no
-producer. Omitted or unknown modes fail closed at the domain and store boundary. The forward migration
-marks every pre-existing decision `shadow`, matching the only production writer that could have created
-one, and keeps `shadow` as the database default for omitted raw inserts.
+The storage interface exposes no generic `held=false` writer. Ordinary pipeline and operator code
+may hold or tombstone a Clip, while only the terminal-ready transaction may publish a non-composite.
+Composite containers retain a separate constrained operation and remain excluded from Pods
+independently of their hold. This concentrates atomicity and stale-state handling behind one deep
+module instead of asking each pipeline rung or source adapter to reproduce the rules.
 
-The member-readable activity projection carries that mode as a required closed `applicationMode`
-wire field. An automatic shadow verdict is presented as `Would admit (shadow)` or
-`Would reject (shadow)` with caution styling; only an applied verdict may use the effect labels
-`Admitted automatically` or `Rejected automatically`. A client that receives an omitted or unknown mode
-presents `Decision mode unavailable` with caution styling and never infers an applied effect.
-Operator-action entries in activity describe their recorded event and never infer a catalog effect.
-The unresolved-review projection carries the same required mode. In particular, an `admit` answer
-to a shadow review records the operator's semantic judgment but has no catalog effect; calling it
-“Confirm for library” would falsely turn an audit event into a publication claim. Applied-mode
-operator confirmation remains unavailable until the terminal-admission module can revalidate the
-exact current release evidence and commit the action plus catalog effect as one outcome.
-
-That terminal module has one action interface and owns the complete proof before any publication
-write. For an applied `admit` (including a correction to `admit`) it resolves the decision's exact
-catalog hash to the current playback object, reprojects the attached sidecar, verifies the complete
-playback bytes, reproduces the referenced five-axis aggregate, replays the configured immutable
-release authority and every private axis record, and rechecks current rights. Only after all of
-those reads pass does one store transaction append the action, change `clips.held`, and settle the
-matching pipeline row to `filed`; a missing clip or pipeline row, stale decision, changed playback,
-held axis, authority drift, or rights withdrawal rolls the whole write back. Applied rejection (or
-a correction to `reject`) atomically appends the action, tombstones and holds the clip, and settles
-the pipeline row as an operator dismissal. Reversal and restore atomically return the clip to held
-review state; abandonment remains an append-only skip with no catalog mutation. The ordinary
-action writer accepts `shadow` rows only, while the publication writer accepts `applied` rows only,
-so bypassing the terminal module cannot accidentally give a shadow judgment a catalog effect.
-Every applied decision therefore carries the exact screening-aggregate and release-authority
-SHA-256 identities that terminal replay must reproduce; shadow rows carry neither. Application mode
-cannot be toggled independently from those bindings in either the domain validator or database.
-
-For a publishing action, terminal replay also carries the exact current rights-grant identity and
-source/acquisition/master/policy/use scope into the publication transaction, bound to the replayed
-decision, clip, screening aggregate, and release authority. The transaction checks that the grant is
-still the current head, authorized, effective, unexpired, and withdrawal-clear at the current
-transaction-time check. It serializes that check with rights-head changes through the catalog commit;
-a withdrawal or superseding grant committed before that check prevents publication and leaves the
-action, catalog, and pipeline unchanged. An old action timestamp cannot substitute for current time.
-This is an internal replay result, not an operator-supplied permission or a replacement for complete
-release verification. Non-publishing actions do not require a grant to return material to held state.
-
-An exact retry of an already committed action returns its recorded result without another catalog
-effect or fresh release replay. This remains true after the grant expires, is withdrawn, or is
-superseded, or the applied executor becomes unavailable. The recorded action must match the decision,
-actor, kind, reason, answer, corrected verdict, and superseded-action identity; a conflicting request
-under the same action id fails closed. Server-assigned retry time does not change request identity.
-This read of an immutable prior result never authorizes a new action: new publishing actions still
-require the complete current proof and transaction checks, and each store writer retains its
-shadow/applied mode guard.
-
-The storage interface enforces the same rule by capability. Ordinary pipeline and operator code may
-hold a clip, tombstone it, or expose a confirmed composite container, but it has no generic
-`held=false` writer for playable content. Only the applied-admission transaction may move a
-non-composite clip from held to playable. The former confidence tagger, score rung, source-trust
-switch, and `/v1/filler/file` route are retired rather than left as dormant alternate publishers.
-Composite containers use a separate store operation constrained by `is_composite=true`; making their
-lineage visible cannot make their media eligible for a pod.
-
-The ingest ladder places a fail-closed `admission` rung after extraction and immediately before the
-diagnostic `score` rung. Its first production evidence version records only facts whose provenance the
-current pipeline can prove: successful decoder passage, an explicit content-role token in the
-original filename, and an explicit filename year. It does not translate V38 confidence, persisted
-classifier fields, a source-declared licence URL, or `autoAdmit` into V61 evidence. Consequently an
-ordinary clip initially records an honest missing-rights or missing-corroboration review outcome.
-The rung versions and hashes the complete observation, evaluates it, and persists the immutable V63
-record before `score` may run. If that durable write remains unavailable after bounded retries, the
-pipeline stays parked on `admission`; it never skips the audit or falls through to another publisher.
-
-Every evaluation durably attributes the clip and evidence hashes, extractor/prompt/schema/taxonomy/
-policy versions, requested and resolved model/provider, modality and derivative bounds, returned
-token categories, provider-reported charged cost, the price snapshot used for local estimation,
-latency/retries, reason codes, evidence references, conflicts, and terminal outcome. Aggregate token
-metrics remain useful for operations; the durable row is the audit and cost-accounting truth.
+The ingest ladder performs enrichment and diagnostic scoring before terminal readiness. A skipped
+optional classifier remains a visible stage fact but cannot stop an otherwise valid enrolled Clip.
+Positive measured media failures still reject automatically. Provider-declared licence metadata is
+persisted unchanged and never enters the readiness decision. Development/certification evaluations
+continue to record exact evidence, model/provider attribution, cost, and disagreement for improving
+classification policy; those records grant no runtime action and never appear as Needs-help work.
 
 Certification artifact schema v5 requires the per-inference-step ledger and the corpus-diversity
 identity used by the statistical contract. Earlier schemas are rejected: no completed bakeoff
@@ -8162,34 +8097,26 @@ ceiling, processor boundary, and first recruitment batch before any contact, sig
 download, provider upload, or spend. Changing any of those approved identities invalidates the
 affected schedule rather than being treated as a compatible metadata update.
 
-Rollout is shadow-first on a bounded appliance workload. Deterministic rejection enables before
-certified admission slices; harder slices enable only after shadow evidence. A random sample of
-automatic outcomes and every disagreement between rungs remains auditable. Any model, provider,
-prompt, schema, taxonomy, extractor, or policy change invalidates the affected certification until
-it is replayed.
+Certification rollout is comparison-first on a bounded development workload. These comparisons
+measure classifiers and preserve disagreement evidence; they do not run in the household conveyor
+and cannot create, delay, or reverse a Ready transition. Any model, provider, prompt, schema,
+taxonomy, extractor, or policy change invalidates the affected certification measurement until it
+is replayed.
 
-The human surface follows the same ownership boundary. **Needs attention contains semantic
-exceptions only**, each asking one plain question and showing the decisive evidence/conflict.
-Automatic admits/rejects belong to Activity; queued/running/retry/provider/budget state belongs to
-Diagnostics. Overview answers whether the whole Filler workspace is working from the readiness
-projection and offers its one ranked action only when one exists. The admission overview contributes
-supporting outcome counts but cannot replace or contradict that verdict. The header watch pill reports
-source activity only. Ordinary maintenance never asks a person to interpret confidence thresholds.
+The human surface follows the same ownership boundary. **Needs help contains exceptional choices
+only**, each asking one plain question whose answer changes durable product state and showing the
+decisive evidence or conflict. Ready/not-usable outcomes belong to Activity; queued, running, retry,
+provider, and budget state belongs to Diagnostics. Overview answers whether the whole Filler
+workspace is working from the readiness projection and offers its one ranked action only when one
+exists. The header watch pill reports source activity only. Ordinary maintenance never asks a
+person to interpret confidence thresholds or audit classifier output.
 
-Incoming consumes the bounded review cursor ten rows at a time and renders one focused evidence
-card, with a compact question navigator for the rest of that server page. It never materializes the
-100-row ceiling as 100 simultaneous full cards or reorders questions using browser-owned policy.
-Forward/back page controls preserve the server cursor history; selecting or paging is navigation,
-not a semantic action. Recording filler, not-filler, or a corrected verdict requires successful
-playback of the exact resolved clip in the current browser session. Only `Skip for now` remains
-available without playback, because it records no semantic answer. An unsupported applied-mode row
-therefore exposes no answer path even through rejection or correction.
-
-The rendered review prototype compares evidence-first and proposal-visible ordering. Production
-uses evidence-first: decisive conflicts and reasons appear before any operator action, and Loomarr
-does not invent a proposed answer for an evaluator that explicitly abstained. The proposal-visible
-variant remains a Storybook comparison artifact so future measured human-review trials can revisit
-the choice without quietly changing the ordinary surface.
+Incoming is a calm progress surface for first-time and ordinary use: a compact summary of preparing,
+Ready, not-usable, and genuinely blocked items, followed by the recent items people are most likely
+to inspect. It does not render one review form per Clip. A Needs-help card appears only when the
+server provides a current task and actions; playback is required before a media-content answer, while
+navigation and diagnostics never masquerade as semantic actions. Classification detail and
+certification comparisons are Advanced/development views rather than a household inbox.
 
 #### Certified role routing and evaluation accounting (V62)
 
@@ -8233,65 +8160,62 @@ The deterministic evaluation cache identity includes the clip/evidence, extracto
 concrete model/provider and role/capability policy, taxonomy, admission policy, modality, and bounded
 derivative dimensions. A change to any semantic input cannot reuse an older answer accidentally.
 
-#### Durable admission audit and operator projections (V63)
+#### Durable readiness audit and operator projections (V63; household beta revision)
 
-`fillerdecision` is the single lifecycle owner between the pure V61 evaluator and operator-facing
-reads. It accepts a canonical evaluator result, persists it before it can affect a catalog, and
-returns a durable decision id. A semantic decision and an operational hold use one envelope but
-remain disjoint states; a provider, schema, extraction, or budget failure cannot enter the semantic
-review queue by changing labels in an API handler.
+The terminal-ready module is the single runtime lifecycle owner between conveyor completion and the
+playable catalog. It consumes persisted Clip/pipeline state, commits the effective outcome before it
+can affect scheduling, and appends a durable event. Classification evaluation stays outside this
+authority. A provider, schema, extraction, or budget failure cannot enter Needs help merely by
+changing labels in an API handler.
 
-The original decision row is immutable and stores the clip and evidence identities, complete
-canonical V61 result, policy/schema/taxonomy lineage, creation time, and the inference-evaluation
-references whose exact usage and cost live in V62 accounting. Human resolution, correction,
-explicit review abandonment, restore, and reversal are append-only action rows. They name a closed
-action kind, actor, reason, time, and optional corrected answer, and point to the action they
-supersede when relevant. History
-therefore distinguishes an automatic admission from a reviewed admission, a rejection from an
-operational failure, and a correction from a later reversal without overwriting the evidence that
-caused the original result.
+The effective event is immutable and stores the exact Clip identity, Enrollment reference,
+Placement, pipeline identity, outcome, and creation time. Genuine human state changes remain
+append-only actions. Development classification decisions retain their evidence and cost lineage in
+their own measurement store but are never joined into runtime readiness by inference.
 
-An `abandon` action means **skip for now**, not reject. It is measurable review-friction evidence,
-does not resolve the semantic question, and is excluded when computing the latest state-changing
-action; the same review may therefore be answered later without pretending the operator expressed
-a content preference. The ordinary UI hides an explicitly skipped card only for that page session.
+Skipping a diagnostic or optional detail is navigation, not an action. The server records only an
+answer that changes durable product state; it does not manufacture review-friction events.
 
-The store exposes one conformance contract over SQLite and Postgres. Insertion is idempotent by
-decision id and rejects a different payload under the same id. Decision plus first action is
-transactional where an operation requires both. Reads use bounded keyset pagination with a stable
-`(created_at, id)` order; decision/action time retains nanoseconds so two transitions in one second
-cannot be reordered by random ids. Counts are computed by the same predicates as their rows. Startup
-needs no queue repair because decisions and actions are not leased work. Forward migrations add the
-tables and indexes; applied migrations remain immutable.
+The store exposes one conformance contract over SQLite and Postgres. Ready-event insertion is
+idempotent by event id and rejects a different payload under the same id. Event insertion, Placement,
+hold release, and pipeline settlement are one transaction. Reads use bounded keyset pagination with
+a stable `(created_at, id)` order, and counts are computed by the same predicates as their rows.
+Forward migrations add the tables and indexes; applied migrations remain immutable.
 
-Four projections are owned by `fillerdecision`, not by clients:
+Four runtime projections are server-owned, not client-derived:
 
-- **Overview** reports the latest durable outcome per clip, semantic and operational counts, and at
-  most one admission-ranked next action. It is the admission subsystem's projection and supporting
-  evidence on the Filler Overview page; the broader readiness projection owns that page's single
-  workspace verdict and next action. A later successful decision clears an older operational hold from
-  current health without erasing it from Activity. An
-  operational failure that prevents all progress ranks first, followed by a recoverable hold,
-  semantic review, an empty admitted pool, then no action.
-- **Attention** contains only the latest unresolved `review` decision per clip, projected as one
-  typed Attention task with exactly one non-empty question, decisive reason codes, safe evidence
-  references, conflicts, and the closed set of actions currently allowed for that task kind and
-  application mode. Initial task kinds are `identity_role`, `rights_provenance`, and
-  `suitability_exception`; `split_boundary` is reserved for the structure authority rather than
-  inferred from a generic held clip. Queued work, retries, and provider or budget holds are
-  structurally ineligible. The browser neither classifies a task from reason text nor invents an
-  action absent from the response.
-- **Activity** is the bounded audit of automatic decisions and append-only operator actions.
-- **Diagnostics** contains each clip's latest operational hold with stable recovery codes and retryability. Provider
-  response text, local paths, raw prompts, and evidence locations are never projected.
+- **Overview** reports the latest effective outcome per Clip, operational counts, and at most one
+  server-ranked next action. The broader readiness projection owns the page's single workspace
+  verdict. A later Ready event clears an older Operational hold from current health without erasing
+  it from Activity.
+- **Needs help** contains only current exceptional choices with one non-empty question, decisive
+  evidence, and the closed actions currently allowed. Queued work, retries, optional classification,
+  provider/budget holds, and audit sampling are structurally ineligible. The browser never invents
+  task kinds or actions from reason text.
+- **Activity** is the bounded audit of Ready/not-usable events and genuine human actions.
+- **Diagnostics** contains each clip's latest operational hold and one server-authored recovery plan.
+  The plan is exactly one of: an automatic retry with its next attempt time, a currently allowed
+  manual retry, a precise configuration destination, or inspection of the exact held media. Provider,
+  budget, extraction, media-inspection, and policy holds map to those closed modes in
+  the server; the browser neither derives a destination from the hold code nor invents a
+  command. Provider response text, local paths, raw prompts, and evidence locations are never
+  projected.
 
-Overview and Activity follow the existing member-readable filler contract. Attention,
+Manual diagnostic retries use a separate append-only recovery-action ledger rather than semantic
+review actions. The request carries a caller id, the authenticated actor is recorded by the server,
+and the store rechecks that the named decision is still the latest retryable operational hold before
+committing it. Repeating the same request id is a no-op; reusing it for another decision conflicts.
+The executor may move first and the ledger second: if a process stops between them, retrying the same
+request recognizes already-scheduled machine work and safely completes the audit. A failed executor
+records no success. Until a newer admission result exists, the hold remains visible with its actual
+automatic/manual state; the UI never removes it optimistically.
+
+Overview and Activity follow the existing member-readable filler contract. Needs help,
 Diagnostics, and every action require an admin; member attempts return 403 and create no action.
 The API never returns raw evidence sources or locations, provider response bodies, or secrets. A
-review action requires the current unresolved review and is idempotent under its action id; stale or
-duplicate conflicting actions fail closed. Automatic catalog filing requires the replacement pipeline
-and an explicitly certified slice. Durable shadow records never grant filing authority, and absent
-certification leaves clips held without a compatibility fallback.
+Needs-help action requires the current unresolved task and is idempotent under its action id; stale
+or duplicate conflicting actions fail closed. Automatic publication requires the terminal-ready
+transaction and Enrollment authority. Classification certification never grants or withholds it.
 
 **Loudness normalisation is playback conditioning, not admission.** The transcode rung may build a
 normalised playback derivative when `filler.conditioning.normalize_loudness` is enabled, using the
@@ -8375,9 +8299,9 @@ bounded pagination. The normalized remote
 identity is `(provider, registered source id, provider item id)`; URLs are payload, not identity.
 Archive and YouTube are peers behind this seam. The planner filters items already catalogued,
 staged, queued by another pending/approved pull, previously declined in the same intent family,
-or repeated within the proposal. It then applies rights,
-geography, duration, era-observation and representation-quality constraints. Missing metadata does
-not imply permission and does not satisfy a hard floor.
+or repeated within the proposal. It then applies geography, duration, era-observation and
+representation-quality constraints. Provider-declared licence metadata remains attached to the
+candidate for provenance but is not a constraint or ranking signal.
 
 Every registered source receives its own durable disposition (`enumerated`, `disabled`,
 `not_fetchable`, `not_allowed`, `geography_mismatch`, `source_limit`, or
@@ -8385,12 +8309,12 @@ Every registered source receives its own durable disposition (`enumerated`, `dis
 to an item. Every considered item likewise receives a stable disposition code and measured observations. Selected rows
 retain their exact item URL; excluded rows retain why they lost (`already_catalogued`,
 `already_queued`, `previously_declined`, `duplicate_remote`, `source_not_allowed`,
-`geography_mismatch`, `rights_unknown`,
+`geography_mismatch`,
 `era_unknown`, `era_mismatch`, `duration_unknown`, `duration_exceeded`, `quality_unknown`,
 `quality_below_floor`, `role_unknown`, `role_mismatch`, `audience_unknown`,
 `audience_mismatch`, `taxonomy_unknown`, `taxonomy_mismatch`, or
-`ranked_below_limit`). Ranking is deterministic: constraint fitness, declared-rights preference,
-representation quality, useful diversity across source/era observations, then normalized remote
+`ranked_below_limit`). Ranking is deterministic: constraint fitness, representation quality,
+useful diversity across source/era observations, then normalized remote
 identity as the final tie-break. The same inputs therefore produce the same proposal and rejected
 explanations.
 
@@ -8805,6 +8729,15 @@ set up a drop-folder but have not" is §10's own answer to *"why is my catalog e
 collection and a small playlist genuinely want different numbers, and one global figure serves
 neither well.
 
+The effective policy is server-owned and returned with every Source: stored override state,
+effective interval, effective per-check count, and last successful check. The ordinary state is
+**Use automatic-download defaults**. Advanced Source settings offer exactly three choices:
+**Use automatic-download defaults**, **Use a different schedule**, and **Never download
+automatically**. The custom choice exposes an interval and per-check count; resetting clears both
+nullable overrides rather than copying the current global values. The sheet always summarizes the
+effective result in plain language, including when the global default is Never but this Source has
+its own schedule.
+
 ⚠ **Unset must be NULL, never 0.** `0` already means something for `fetch.every` — *never
 auto-fetch this source* — so "inherit the global" cannot share that encoding. A column defaulting
 to `0` would read as "every existing source is switched off", silently, on upgrade. That is the
@@ -8814,6 +8747,14 @@ sabotage-test here.
 ⚠ **The catalog and disk ceilings stay GLOBAL.** They bound the whole install — what the operator
 is protecting is one disk, not one source — and a per-source disk cap would let four sources each
 stay under their limit while together filling the volume.
+
+Filler → Manage presents the global policy as **Automatic downloads**. The common control offers
+Never, Every 6 hours, Every 12 hours, Daily, Weekly, and Custom; Custom reveals the duration editor.
+The per-source count is visible beside it rather than hidden as an expert-only limit. The section
+states the bounded consequence using the current number of enabled, configured remote Sources — for
+example, “3 sources means at most 30 new clips per check.” Catalog/storage protection remains under
+Advanced and is explained as a household-wide backstop. Environment-pinned values stay visibly
+locked through the ordinary settings contract.
 
 ### What the Sources tab shows (V38c — the mock, read properly)
 
@@ -8825,9 +8766,27 @@ were never read. **A summary is not the source**, which is the same lesson the t
 correction records one section up.
 
 Per row: an on/off switch · a **kind badge** (fixed-width, colour-coded) · name + description ·
-a **stat** reading *"6 clips · scanned 2m ago"* · an optional Search expander · an optional
-remove. ⚠ **A disabled row is GREYED** (the mock's `sv.opacity`), not merely badged — the switch's
-effect has to be visible at a glance down a list.
+a lifecycle stat reading *"6 ready · 12 being checked · checked 2m ago"* · an optional Search
+expander · an optional remove. Ready clips and the active Incoming conveyor are separate counts:
+Incoming clips remain unable to play, but they must not disappear from the source that brought them in. A source with zero ready
+clips and a non-empty Incoming queue therefore says *"0 ready · 12 being checked"*, never merely
+*"0 clips"*. Being checked uses the same conveyor definition as the Incoming page: it includes a
+compilation while Loomarr is preparing it, excludes a completed split proposal that has its own reel
+row, and excludes retained terminal compilation containers that will never play. The count links to
+Incoming from the source workspace. ⚠ **A disabled row is
+GREYED** (the mock's `sv.opacity`), not merely badged — the switch's effect has to be visible at a
+glance down a list.
+
+**Source setup inherits the Installation geography (V68).** The ordinary Sources flow never asks
+the operator to repeat their country and market for every row. A source with no explicit coverage
+uses the current Installation geography when Loomarr decides whether it is ready; changing the
+Installation geography therefore updates every inheriting source immediately rather than copying a
+value into each row. A source whose real coverage differs may carry an explicit country and optional
+market through an Advanced disclosure. The read model reports the effective geography, whether it
+is inherited or overridden, and one closed readiness state (`ready`, `off`, `needs_location`,
+`not_configured`, or `out_of_area`); counts and available actions use that server-owned state rather
+than browser inference. Candidate-level geography remains a separate hard acquisition constraint,
+and an inherited source value does not turn missing or conflicting candidate evidence into a match.
 
 **A config disclosure per row** (V38c), on the same shelf as the search and URL expanders the mock
 already draws. It shows the source's target **read-only** and makes its *behaviour* editable —
@@ -8874,7 +8833,7 @@ unconfirmed suggestion.
    ⚠ **This was "not optional, ever" until V43, and the blanket rule was over-applied.** Boundary
    confidence can safely automate the mechanical creation of well-supported child clips while
    uncertain cuts remain for review. That automation does not publish the children: each child
-   still traverses conditioning, classification, five-axis screening, rights, and terminal admission.
+   still traverses conditioning, classification, configured safety/playback checks, and terminal readiness.
 
    **`filler-split` is a scheduled job** (on by default). It proposes splits for over-long catalog clips rather than waiting for a click, so proposals are ready when the operator looks instead of costing minutes of waiting once they do.
 
@@ -8888,8 +8847,8 @@ unconfirmed suggestion.
 
    ⚠ **A confirmed segment is not airable.** Confirm writes the rendered child and lineage, then the
    child traverses the complete pipeline while held. Boundary confidence decides whether a cut may
-   be created unattended; it is not evidence that the resulting content is safe, rights-cleared, or
-   eligible for a pod. Only the terminal applied-admission transaction may release it.
+   be created unattended; it is not evidence that the resulting content is technically playable or
+   eligible for a pod. Only the terminal-ready transaction may release it.
 
    ⚠ **The `filler.min_duration` floor is no longer one of those conditions, because it is enforced earlier (V54).** It used to be, and that is the reason auto-split could never fire: a real commercial compilation is *made of* sub-floor material. Measured 2026-08-11 on an 82-segment archive.org reel, **39 segments sat under the 10s floor**, the shortest 3.1s — station IDs and inter-ad bumpers. `AutoConfirmable` returns on the first failing segment, so `RejectTooShort` sank the reel before the grounding checks at the bottom of the loop were ever reached, and the V54 grounder below could not have changed the outcome no matter how well it worked. Those fragments are now dropped at **detection** (step 2 above), where a fragment the scan boundary would refuse anyway costs nothing to discard. `RejectTooShort` stays in the gate as defence-in-depth for hand-edited proposals and for those detected before V54; it is no longer a reason a freshly-detected reel sinks.
 
@@ -8995,10 +8954,12 @@ Two consequences, and the second is the one an operator feels:
 
 V51b replaces the seven sweeps with **one ordered per-clip pipeline** and one driver job.
 
-**The stages, in order:** `probe → transcode → split → language → transcribe → tag → vision →
-score`. Each stage answers two questions separately — *does this stage apply to this clip, in this
-install?* (no exec, re-evaluated every pass) and *do the work* — so switching `filler.vision.enabled`
-on picks up clips that already passed that rung, without a migration or a re-sweep.
+**The stages, in order:** `probe → transcode → split → screen → language → transcribe → tag →
+vision → score`. Each stage answers two questions separately — *does this stage apply to this Clip,
+in this install?* (no exec, re-evaluated while the Clip is on the conveyor) and *do the work*.
+Missing optional capability records a skipped rung and does not block Ready. A later capability
+change enriches already-Ready Clips through the separate progressive-enrichment path; it never
+rewinds readiness or holds playable media (#1251).
 
 **The pipeline is sequential and budget-bounded, and that is not a limitation.** Whisper is ~341s
 per clip under QEMU and ffmpeg competes with playout for the GPU, so one clip at a time is what
@@ -9026,8 +8987,9 @@ delete-and-rescan workaround: recovery must preserve identity, provenance, and o
 
 **Lifecycle and recovery are domain answers, not UI guesses (V56).** The persisted row remains the
 fact record, but `filler.Pipeline` projects it into one bounded lifecycle vocabulary shared by the
-runner, Incoming, and telemetry: `runnable`, `in_progress`, `scheduled`, `needs_decision`,
-`admitted`, `rejected`, or `dismissed`. A failed rung additionally carries a stable failure code,
+runner, Incoming, and telemetry: `runnable`, `in_progress`, `scheduled`, `needs_decision`, `ready`,
+`complete`, `rejected`, or `dismissed`. `ready` is playable; `complete` is reserved for a processed
+Composite container that is structurally not playable. A failed rung additionally carries a stable failure code,
 the exact rung that can be retried, and one sanctioned recovery action. This prevents three callers
 from independently interpreting combinations of disposition, status, backoff, and reject reason;
 the store aggregates facts, while the filler domain owns their meaning.
@@ -9147,13 +9109,13 @@ one enumeration can carry two subjects. That is the argument `reject.go` already
 | Operator action | Route | Pipeline row |
 | --- | --- | --- |
 | Review or correct tags | tag editor | classification changes; remains held |
-| Applied admit/corrected admit/restore | terminal applied-admission action | atomic `review → filed` after exact replay |
+| Required work completes | terminal-ready operation | atomic `running → ready` with Placement |
 | *Don't use it* | `POST /v1/filler/bulk/remove` | `review → dismissed` |
 | Restore | `bulk/remove` with `restore: true` | `dismissed`/`rejected` `→ review` |
 
-⚠ **Positive publication is never a best-effort pair of writes.** The action, clip release, and
-pipeline settlement commit in one transaction or none do. Tag correction remains deliberately
-non-terminal: it improves evidence and may trigger re-screening, but it cannot make media playable.
+⚠ **Positive publication is never a best-effort pair of writes.** The Ready event, Placement, clip
+release, and pipeline settlement commit in one transaction or none do. Tag correction remains
+deliberately non-terminal: it improves descriptive metadata but cannot make media playable.
 
 ⚠ **`dismissed` is off the conveyor AND off the refusals list, and the second is not an
 oversight.** *"Loomarr didn't use N clips"* is the audit of what the appliance decided **without**
@@ -9169,12 +9131,13 @@ Three archive.org collections sat as three sibling rows with no indication they 
 and adding YouTube channels would have made it worse. The Sources tab now shows one **Archive.org**
 row and one **YouTube** row, each twirling down to the targets an operator added beneath it.
 
-⚠ **The grouping is DERIVED from `kind` at read time. There is no `parent_id`, no new table, and
-no migration** — and that is a correctness argument, not a shortcut. *The grouping being asked for
-is already a column*: every `archive` row belongs under Archive.org, and there is no representable
-case where it belongs anywhere else. A stored parent would be a second encoding of a fact `kind`
-already carries, and second encodings make illegal states representable
-(`kind='archive', parent_id='provider:youtube'`).
+⚠ **The grouping is DERIVED from `kind` at read time. There is no `parent_id`.** *The grouping
+being asked for is already a column*: every `archive` row belongs under Archive.org, and there is
+no representable case where it belongs anywhere else. A stored parent would be a second encoding
+of a fact `kind` already carries, and second encodings make illegal states representable
+(`kind='archive', parent_id='provider:youtube'`). Provider policy is different: Archive.org and
+YouTube now have persisted master switches in `filler_providers`, keyed by that same closed `kind`
+vocabulary. The table stores policy about a provider, never hierarchy about a source.
 
 Three concrete costs a stored parent would have added, each measured against code that exists:
 
@@ -9189,9 +9152,10 @@ Three concrete costs a stored parent would have added, each measured against cod
 - `filler_pulls.plan_json` stores `SourceID` strings looked up at approve time, so rewriting the
   seeded `youtube` row's id would 409 any pending pull.
 
-⚠ **The escape hatch, recorded so this is not re-litigated:** if a provider ever gains state of its
-own — a YouTube API key, an archive.org rate budget — add a `filler_providers` table keyed on the
-existing `kind` vocabulary. **Not `parent_id`**, because that state is per-provider, not per-node.
+`filler_providers` seeds `archive` and `youtube` enabled on upgrade. Its switch is independent of
+every child switch: pausing Archive.org leaves each collection's `enabled` value untouched, and
+resuming it restores the exact mix the operator chose. Existing clips remain catalogued and
+playable; pause governs future provider work only.
 
 **Wire shape: flat, pre-ordered, `group` + `parentId`.** Not nested — a recursive `children: []`
 generates badly through orval and the frontend has no tree primitive, while a flat pre-order array
@@ -9200,19 +9164,116 @@ additive, so a client that knows neither field renders the flat list it always d
 
 **What does NOT inherit, and why each one is deliberate:**
 
-- ⚠ **`enabled`: no group switch.** Cascade-on-write destroys each child's own choice, which §10
-  forbids in as many words ("Disabling is not deleting… switching it back on restores what was
-  there"). A computed `effective = parent && child` is worse: a fifth thing every call site must
-  remember, whose failure direction is *fetching from a provider the operator switched off*. The
-  group reports `enabled` as ANY-child-on and offers no lever. A master switch, if ever wanted,
-  ships as a **visible bulk write** over the children.
+- **`enabled`: provider policy composes with, and never rewrites, child policy.** The store's source
+  projection owns `effectiveEnabled = provider.enabled && source.enabled`; acquisition callers use
+  that projection rather than re-reading either flag. Provider-off blocks scheduled and manual
+  enumeration/search/fetch, pull proposal, the approval-time recheck, and direct provider-adapter
+  execution. Editing an existing target's local policy remains allowed while paused. Adding a new
+  remote target now repeats exact provider resolution at registration (V67), so it is paused with
+  search and resolution rather than creating an unverified row; resume the provider to add it.
+  The read model exposes both the remembered child choice
+  and effective state so the UI can say “Paused with Archive.org” without pretending the child was
+  switched off.
 - **Fetch overrides: leaf only** — see the three-tier argument above.
-- **`lastFetchedAt`: a read-only `MAX` over children**, computed in the API so no column can
-  disagree. Absent when no child has fetched, so the row reads "never" rather than an epoch date.
+- **`lastCheckedAt`: a read-only `MAX` over children**, computed in the API so no column can
+  disagree. Absent when no child has been checked, so the row reads "never" rather than an epoch date.
 
 ⚠ **`folder` and `library` do not group.** A twirl-down exists because ONE SERVICE offers many
 targets; two watched folders are unrelated directories with no service in common, so a "Folders"
 container would be a row that dims and changes nothing — the shape §10 forbids.
+
+### Finding a source is not adding it (V67)
+
+Remote setup has three deliberately separate steps: a **source suggestion** is one transient
+provider result, **source resolution** verifies typed input and returns one canonical provider
+target, and **registration** persists that target as a filler source. Suggestion and resolution
+create no database row, download no media, enqueue no work, and grant no background-acquisition
+authority. Only `POST /v1/filler/sources` registers a source. Search responses are short-lived
+cache material, not embedded catalog data, so they do not belong in the database.
+
+One provider-neutral finder owns that contract while provider adapters hide their query syntax,
+canonicalisation, timeouts, result caps, and response parsing. Archive.org uses its public Advanced
+Search endpoint restricted to `mediatype:collection`, then resolves an exact identifier through
+`/metadata/{id}` and refuses anything whose metadata is not a collection. YouTube uses the shipped
+yt-dlp executable in flat, listing-only mode; it needs no Google project or operator credential.
+Both paths are bounded and fail closed before external work when their provider master switch is
+off. The browser sends text and renders server results; it does not reproduce provider rules.
+YouTube video-search hits are collapsed by stable channel identity, and a channel resolves to its
+canonical `/channel/{id}/videos` target rather than the channel root: the root lists channel tabs,
+not the bounded stream of videos the registered-source enumerator needs. A video-only URL is
+rejected here rather than silently turning one video into an unattended recurring source; one-off
+ingest remains a separate deliberate action.
+
+The Sources page renders one calm section for Archive.org and one for YouTube. Each has its master
+switch, a single accessible **search-or-paste** field, a stable keyboard-operable suggestion list,
+and quiet rows for sources already added. Selecting a suggestion first shows the exact target that
+will be added; registration remains an explicit action with duplicate and failure states beside
+that target. Provider/type chips, repeated card borders, and always-visible tuning controls are
+absent: provider headings already supply the context.
+Turning a provider's master switch off disables its child source controls and folds the provider
+body closed, including its add flow and registered rows. It changes no child's saved switch value:
+turning the provider back on unfolds the body with those choices intact. The fold begins with the
+pending off action and reopens if that action fails, rather than leaving apparently usable children
+on screen while the parent change is in flight.
+Provider summaries reserve **needs attention** for an actionable problem; a child the operator
+intentionally switched off remains counted as a saved source but is not labelled a problem.
+
+Exact resolution also returns at most three provider-native example items from that target. The
+selection preview links to the source and names those examples so the operator can understand what
+Loomarr will check before registration. Each example has an explicit **Preview** action that loads
+the provider's own player in the shared dialog only after the operator asks, and asks that player to
+begin immediately because opening the dialog is the playback gesture; **Open original** is always
+available as the fallback. Examples stay text-only until then: no thumbnail wall, eager
+embed, local download, database row, or acquisition authority. An unavailable example preview does
+not make an otherwise valid source unregistrable, and the UI describes examples as a bounded look
+at the source rather than a promise that every shown item will be accepted or played.
+The example section and its heading occupy their final position while those at-most-three items are
+being resolved, with Loomarr's indeterminate loader in place of the rows. The loader is replaced by
+the examples without shifting an otherwise unlabelled loading message into a new section.
+Archive.org examples are selected separately from acquisition order: one bounded Advanced Search
+request restricts the sample to movie items with a video representation Loomarr can consume and
+orders those items by Archive.org download count. This produces recognizable, playable examples
+without claiming that popularity changes what acquisition is allowed to inspect; the returned count
+describes the video items eligible for that preview, not every metadata record attached to the
+collection.
+
+A registered source row is an index entry, not a miniature settings page. It shows the switch,
+name, one truthful status, and one affordance to open the source workspace. That workspace reuses
+the application Sheet: it slides from the right on desktop, fills a narrow screen, traps and
+restores focus, and keeps the Sources list stationary behind it. The selected source's exact check
+outcome, provider link, same three-item source preview used before registration, clip browser,
+location exception, cadence/limits, and removal live together there. Opening a registered remote
+source resolves its saved target directly; the operator never has to search for a source they have
+already added. The primary manual action is labelled **Look for new clips** because it may queue
+downloads; “check” is reserved for status and must not hide that consequence. Repeated prose around
+the three-item sample is removed once the source status already explains review. Archive's optional
+catalog tool is labelled **Find a specific clip** and starts collapsed: it is an intentional escape
+hatch, not a required setup step or a peer of unattended acquisition. Its result rows reuse the same
+provider-native Preview dialog as the three-item sample before offering **Queue download**. Queueing
+an item keeps the registered parent Source and provider item identity; it never turns the item into
+another recurring Source. The row moves through **Queueing…**, **Downloading…**, then the truthful
+terminal **Added — being checked** or **Couldn’t add** state. The browser retains only the small
+item-to-job correlation needed to restore that row after navigation; the acquisition GET is the
+authoritative state after reconnect, while SSE only shortens the delay. An accepted request is never
+rendered as permanently queued after its background job has failed.
+The full visible row for this tool and **Source settings** is the disclosure trigger; a small
+far-edge chevron alone is not an adequate or discoverable hit target.
+Clip search initially reveals eight results and progressively reveals the rest of the bounded 25-result
+page inside the sheet's own scroll area; it never lengthens the Sources page. A local-source sheet
+retains the concrete folder path or library name and latest-check time; a wide workspace that repeats
+only “Ready” and one button does not give the operator enough context to justify opening it. At ten registered
+sources in a provider or local section, the section adds a registered-source filter. Without a
+filter it shows every paused, failed, or attention-needed row first, then five healthy rows, with
+the remaining healthy count behind **Show N more**; **Show fewer** restores that calm view. An
+active filter searches only registered rows, shows every match, and never changes the provider
+catalog finder above it. Local folders and media-server libraries use the same source workspace where their
+capabilities apply. **Your files** is the first source group, ahead of remote providers, and owns its
+compact folder/library add form just as each remote provider owns its catalog finder; that form is
+never detached at the bottom of the page and the group remains visible as an invitation when it has
+no sources yet. It has no remote catalog to search. A location exception reuses the same single searchable location picker as setup and
+Settings; it never exposes separate country and market fields. Automatic detection belongs to the
+installation location. In a source workspace, **Use my location** instead clears the exception and
+returns the source to installation-location inheritance.
 
 ⚠ **An honest gap this exposes rather than creates:** `sync.go` writes `Source = "filler-dir"` for
 every clip the folder scan finds, and the sidecar records only *whether* Loomarr downloaded a clip,
@@ -9395,10 +9456,9 @@ next frame; a suppressed re-run looks like the machine has stopped.
 ⚠ **This does not contradict V40's "no badge, no review step", and the boundary is worth stating
 because the next reader will otherwise take V40 as forbidding this section.** V40 refuses files at
 the **scan** boundary, before they are catalogued, where listing every skipped file in an
-operator's media folder would be noise about files Loomarr never took responsibility for. These
-refusals happen **after** cataloguing, to clips Loomarr accepted and then decided against — and
-`filler.reject.unidentified` is ON by default, so a default that can turn down a good clip has to
-show its work.
+operator's media folder would be noise about files Loomarr never took responsibility for. Runtime
+refusals after cataloguing must be objective and remain visible with their measured reason; missing
+descriptive classification is not one of them.
 
 ### A rung may not spend per SEGMENT what the budget allows per CLIP (V51g)
 
@@ -9755,7 +9815,7 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   approved pull attribution, requested/downloaded/skipped/failed/empty counts, and queued/running/
   terminal state. Its id travels beside the downloaded bytes in the Loomarr sidecar, through
   compilation splitting, and into each resulting pipeline row. Reconnecting clients therefore read
-  the current run and its preparing/needs-decision/admitted/rejected/dismissed outcomes from the
+  the current run and its preparing/needs-decision/ready/complete/rejected/dismissed outcomes from the
   store; SSE remains a latency hint and is never the only history. A job whose initial run record
   cannot be persisted does not start. On single-replica startup, queued/running rows left by the
   previous process become terminal interrupted errors rather than appearing active forever.
@@ -9784,9 +9844,9 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   behavior the ordinary path. Per-clip overrides stay collapsed under explicit `Prefer on this
   channel` and `Exclude from this channel` language; they are never presented as required setup.
 
-  Acquisition is not admission. These records and summaries do not weaken registered-source
-  enablement, disk/catalog limits, approval, grounding, or the held-to-filed gate. Machine work,
-  operator decisions, terminal audit outcomes, and admitted catalog content remain distinct even
+  Acquisition is not readiness. These records and summaries do not weaken registered-source
+  enablement, disk/catalog limits, grounding, required checks, or the held-to-Ready transition.
+  Machine work, genuine operator decisions, completed Composite containers, and Ready catalog content remain distinct even
   when the simple overview brings them onto one page.
 - **Fallback ladder:** exact-era match → widen era (a decade either side of the range) → any appropriate-audience clip → **clips whose audience could not be grounded** → channel bumper card (Tunarr's flex fallback). Never dead air.
 
@@ -10408,8 +10468,8 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   and explains the current source → prepare/split/screen/review → library → channel journey plus the
   single highest-priority next action from the server-owned projection. The client renders that
   answer; it never recreates health, severity, or priority from detail feeds. Coverage and variety
-  remain separate server-owned context because a healthy admission system may still need more
-  playable clips. Automatic outcomes, human exceptions, operational failures, and admitted clips
+  remain separate server-owned context because a healthy readiness system may still need more
+  playable Clips. Automatic outcomes, human exceptions, operational failures, and Ready Clips
   stay visibly distinct.
 
   **Wave 0 shell contract.** Backend-owned lifecycle complexity must present one simple, hands-off
@@ -10425,21 +10485,17 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   - **Sources** — registered sources, source-scoped discovery, explicit acquisition planning, and
     current fetch state. This is routine intake work, not an expert panel nested under Manage.
-  - **Incoming** — the evidence desk for genuine authority ambiguity. An exact clip or reel appears
-    once as a typed Attention task when the server says a person must decide something automation is
-    not authorized to infer;
-    routine preparation and recovery may be summarized as context but never form a second actionable
-    queue. Expanding a rendered child loads its exact playable bytes and the server-owned five-axis
+  - **Incoming** — a calm progress and recent-content surface. It summarizes preparation, Ready,
+    not-usable, and genuinely blocked work without turning each Clip into a form. An exact Clip or
+    reel appears as a Needs-help task only when the server says a person must make a durable product
+    choice; routine preparation and recovery may be summarized as context but never form a second
+    actionable queue. Expanding a rendered child loads its exact playable bytes and the server-owned four-axis
     screening projection:
-    visual safety, spoken safety, written safety, current-use rights, and playback integrity remain
+    visual safety, spoken safety, written safety, and playback integrity remain
     independent rows with pass/reject/hold, safe reason codes, assessment time, and evidence
     identities. Closed Airworthiness flags and bounded trigger intervals may be shown; raw provider
-    output, OCR/transcript text, restricted phrases, private paths, and private rights evidence may
-    not. A rights hold exposes contextual review beside that exact child: the source/acquisition/master/
-    policy scope is server-owned, the browser hashes a locally selected review file without uploading it,
-    and an append or supersession uses the exact current grant digest. Recording the grant leaves the old
-    screen immutable and requires an explicit screen-stage rerun. Provider failures, budget ceilings,
-    missing evidence, and stale authorities are operational recovery states in Manage → Diagnostics,
+    output, OCR/transcript text, restricted phrases, and private paths may not. Provider failures,
+    budget ceilings, missing evidence, and stale authorities are operational recovery states in Manage → Diagnostics,
     never questions asking a person to guess whether the content is safe. Overview may rank one of
     those states as the next action, but its link opens the owning diagnostic detail rather than
     manufacturing an Incoming decision. The
@@ -10520,10 +10576,11 @@ Consequences, embraced:
 On a fresh instance the UI then walks the owner through, in order:
 1. **Bootstrap** — create the owning admin (local username + password, `POST /v1/setup/bootstrap`, §11). Works with zero media-server config; succeeds once (while no admin exists), then this step is done forever. **Once done it renders read-only**, naming the owner: the step cannot run twice, so offering the form again is a dead end an operator can only discover by submitting it.
 2. **Playout** — *"How should Loomarr play your channels?"* Two choices, writing `playout.backend` (§9.1): **Loomarr** (default) or **Tunarr**. See "The playout choice shapes the wizard" below — this answer decides which of the remaining steps exist at all. **Choosing Loomarr reveals the ordinary `server.public_url` field on this same step and the step remains incomplete until a valid address has been persisted.** The copy says this must be an address the media server can reach; inferring it from the browser or request headers would give a containerised media server an often-unreachable host. An environment-pinned `SERVER_PUBLIC_URL` remains locked and satisfies the step when non-empty. ⚠ **Choosing Tunarr reveals Tunarr's own connection form on this same step**, rather than sending the operator to Connections for it: "which one plays my channels" and "where is it" are one decision, and splitting them across two screens made it feel like two. Both forms are ordinary registry-backed settings fields, so they write through the same PATCH path as everything else (config-design §6).
-3. **Connection checklist** — live-tests each dependency and shows pass/fail with a fix hint and a deep link into the relevant docs page: media server reachable + `library.token` valid; filler library found (if configured); Seerr reachable + key valid; LLM reachable + model present **and supports tool-calling** (Ollama: query the model's capabilities — a non-tools model fails grounding silently otherwise); TMDB key valid. **Tunarr is never a block on this step** — it is configured on the Playout step above — but on the Tunarr path its check still **gates** here: being configured elsewhere does not stop it being required (**Tunarr reachable *and* with a media source matching `library.url`**, queryable via Tunarr's API, which verifies §6's "Important" invariant instead of just documenting it).
-4. **Give Tunarr your library** (**Tunarr path only**) — one-click wiring + scan of Tunarr's Emby/Jellyfin source (`POST /v1/setup/tunarr-connect`, §6/§7), so channels get real programs rather than dead air. Internal playout reads the library directly and needs no equivalent, so the step does not exist there.
-5. **Import media-server users** (optional) — the admin picks which Emby/Jellyfin accounts get in (`POST /v1/users/import`, §11); only imported users can sign in. Skippable for a solo install (the bootstrap admin is enough).
-6. **Guided first channel** — offer a template intent (below); since the owner is an admin, they can self-approve and watch the full pipeline run end to end.
+3. **Location** — *"Where are your channels watched?"* writes the Installation geography used across the instance: an ISO country and an optional local market. Setup and Settings share **one place combobox**, labelled **Location**, whose selected value reads like `New York, United States`; country and market are implementation details rather than two ordinary-user fields. Typing searches Loomarr's embedded city, populated-municipality, and country index after a short pause, works by keyboard, keeps the result panel stable while a request is in flight, and always remains available. Region names distinguish otherwise ambiguous results without becoming another setting. **Use my location** follows one bounded resolver pipeline: browser coordinates after explicit permission; supported geography from a configured trusted reverse proxy/CDN (for example Cloudflare, CloudFront, or Vercel); then the request's public client IP against Loomarr's embedded country index. A private/LAN address yields no estimate. These paths propose a place and never save it. Proxy geography is accepted only when `security.trust_proxy=true`; direct connections use their socket peer rather than forwarding headers. IP-derived results are visibly labelled approximate and never invent a city when the evidence supplies only a country. Loomarr never infers this setting from browser locale, timezone, untrusted request headers, or server location, and never calls a runtime third-party geocoder. Denial, timeout, unavailable coordinates, or no supported result leaves manual search usable and does not stage a guess. Selecting a place stages `filler.home_country` and `filler.home_market` as one logical edit; Save reports success only when both results are `saved`, retains either rejected edit, and the wizard advances only after that pair is persisted. Environment-pinned geography remains visible and read-only. A country-only selection is valid because country-wide channels and sources are valid. The same control lives in Settings → General for the life of the install.
+4. **Connection checklist** — live-tests each dependency and shows pass/fail with a fix hint and a deep link into the relevant docs page: media server reachable + `library.token` valid; filler library found (if configured); Seerr reachable + key valid; LLM reachable + model present **and supports tool-calling** (Ollama: query the model's capabilities — a non-tools model fails grounding silently otherwise); TMDB key valid. **Tunarr is never a block on this step** — it is configured on the Playout step above — but on the Tunarr path its check still **gates** here: being configured elsewhere does not stop it being required (**Tunarr reachable *and* with a media source matching `library.url`**, queryable via Tunarr's API, which verifies §6's "Important" invariant instead of just documenting it).
+5. **Give Tunarr your library** (**Tunarr path only**) — one-click wiring + scan of Tunarr's Emby/Jellyfin source (`POST /v1/setup/tunarr-connect`, §6/§7), so channels get real programs rather than dead air. Internal playout reads the library directly and needs no equivalent, so the step does not exist there.
+6. **Import media-server users** (optional) — the admin picks which Emby/Jellyfin accounts get in (`POST /v1/users/import`, §11); only imported users can sign in. Skippable for a solo install (the bootstrap admin is enough).
+7. **Guided first channel** — offer a template intent (below); since the owner is an admin, they can self-approve and watch the full pipeline run end to end.
 
 #### The playout choice shapes the wizard
 
@@ -10655,6 +10712,7 @@ surface without a wire-format migration. The opt-in profiler also exposes Go 1.2
 | Sessions | hand-rolled in the Store (random 256-bit token, **SHA-256-hashed at rest**, HttpOnly cookie) | We need revocation-by-user + dual-backend anyway; `scs`/`gorilla` add a dependency for no gain |
 | Human passwords | `golang.org/x/crypto/argon2` (Argon2id v=19; 64 MiB, 3 passes, 4 lanes; 16-byte salt; 32-byte tag), with `x/crypto/bcrypt` read-only for legacy verification | Local accounts and media-server offline fallback need a memory-hard, non-reversible verifier. One bounded PHC parser owns encoding and rejects unsupported or oversized parameters before allocation. Existing bcrypt rows upgrade to Argon2id immediately after their next successful local login; bcrypt is never written. `x/crypto` is already a direct dependency. Session *tokens* stay SHA-256 (fast, high-entropy); only human passwords use Argon2id. |
 | Unicode phrase matching | `golang.org/x/text` (`cases.Fold` + `unicode/norm`) | Episode intent and thematic evidence must match canonically equivalent non-ASCII words without locale guesses. Version `v0.41.0` was already pinned transitively; this promotes the same module/version to direct ownership, adding no module or runtime service. |
+| Installation location data | **GeoNames `cities15000.zip` + populated ADM3/ADM4 records from `allCountries.zip` + `admin1CodesASCII.txt` + `countryInfo.txt`, and DB-IP Country Lite September 2026, generated into compact embedded indexes** | One friendly Location field needs city, populated-municipality, and country search, coordinate resolution, and a direct-IP fallback without sending an install's position to a geocoder. Region names disambiguate labels but are not stored as a separate setting; unpopulated administrative records and unrelated GeoNames features are discarded by the generator. Both providers are CC BY 4.0. The generator verifies exact source SHA-256 digests, records required attribution, emits deterministic bytes, and is the only way the checked-in indexes change. Runtime lookup is local and bounded and uses only the Go standard library. The UI links DB-IP attribution whenever its estimate is shown; its reduced-accuracy monthly Lite data is suggestion evidence, never silently persisted or an authorization signal. |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
 | Database secret encryption | Go standard-library `crypto/aes`, `crypto/cipher`, `crypto/rand`, and `crypto/sha256` behind Loomarr's secret-protection module | Grafana-style envelope encryption needs authenticated encryption, secure randomness, and a non-secret installation-key fingerprint; the standard library supplies the complete primitive set, so no new cryptography dependency or runtime enters the release. |
@@ -11151,7 +11209,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `filleradmission` | Pure evidence-to-`admit \| reject \| review` policy, with conflicts and operational holds kept outside semantic verdicts (§10 V61) |
 | `fillerbakeoff` | Bounded label-blind provider execution, reason-gated cascades, and immutable per-call accounting before hermetic scoring (§10 V61) |
 | `fillercorpus` | Source-neutral, non-authorizing certification inventory and rights-yield pilot contracts (§10 V61) |
-| `fillerdecision` | Durable admission lifecycle, append-only actions, and server-owned review/activity/diagnostic projections (§10 V63) |
+| `fillerdecision` | Development classification audit plus the temporary server-owned projection adapter while Incoming migrates to effective Ready/needs-help/diagnostic events (§10 V63) |
 | `fillereval` | Hermetic filler-admission certification: versioned corpus contracts, selective-risk/cost scoring, and captured-decision replay (§10 V61) |
 | `fillerreview` | Verified identity-blind media packaging for independent semantic label review (§10 V61) |
 | `mediatools` | The ffmpeg/ffprobe/whisper layer — exec calls, output parsers, and the shapes those tools return (§10). Carved out of `filler`; the dependency runs one way and nothing here knows what a clip is |
@@ -11345,7 +11403,6 @@ Notifications → Add provider**.
 | `INGEST_WHISPER_PATH` / `INGEST_WHISPER_MODEL` | vendored paths in the image — the whisper.cpp binary and its model file (§10, §14, V34). Unset/unrunnable ⇒ compilation splitting's transcript-rescue step is unavailable: over-long segments surface to the operator as **unsplittable** in the review UI rather than being guessed at (coarse splitting still works — it needs only ffmpeg). Overridable like the other tool paths |
 | `INGEST_TIMEOUT` | `30m` — per-item wall-clock ceiling so one wedged fetch cannot hold the pipeline forever. Ingest concurrency is pipeline-owned policy. |
 | `FILLER_PIPELINE_MAX_CLIPS` / `FILLER_TRANSCODE_MAX_PER_RUN` / `FILLER_PIPELINE_MAX_WHISPER` / `FILLER_PIPELINE_MAX_VISION` / `FILLER_PIPELINE_MAX_SPLITS` | **`25` / `3` / `10` / `5` / `3`** (§10 V51b). The ingest pipeline's per-run budget. Each bounds ONE PASS, not the catalog, so a backlog drains over cycles — the property the per-job batch constants they replace were chosen to defend, with the numbers carried forward unchanged. ⚠ **Zero means NONE, a distinct state from the default**: it is the only way to say "never do this kind of work on this box", which matters most for the transcode budget — the rung that creates V66's evidence and playback derivatives while retaining the source master. (⚠ `FILLER_SPLIT_EVERY` is retired: splitting is a rung every long recording reaches as it is ingested, so "how often do we go looking" stopped being a question with an answer.) |
-| `FILLER_REJECT_UNIDENTIFIED` | **`true`** (§10 V51b). Set aside a clip when every signal tier ran and grounded nothing — no era, audience, tag, brand, speech or on-screen text. ⚠ **The only reject an operator can switch off**, because "we could not identify it" is not the claim "it is not a commercial", and a wordless station ident is exactly that case. ⚠ It is also why the rejected list is not optional: every refusal carries a stable reason code plus the measured detail and is reversible in one click. The guard that makes the default safe lives in the score rung — a clip is only unidentified if something actually LOOKED, so a clip the tagger never reached falls through to review, never to a reject |
 | `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every remaining segment must reach. Known duplicates and below-`FILLER_MIN_DURATION` fragments are discarded first; they are deterministic non-clips, not review decisions, and the preserved composite is the recovery path. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert. That risk has not changed; the evidence has. The gate remains strict (the remaining reel qualifies as a whole or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. Its confidence threshold governs cut acceptance only and cannot make any child playable. |
 | `FILLER_AUTOSPLIT_MAX_DURATION` | `120s` (§10 V43). The longest a segment may be and still count as advert-shaped. ⚠ Serves TWO jobs and that is why it is one key: it selects which catalog clips the split job even looks at (longer than this ⇒ a compilation worth detecting), and it is the ceiling every segment must clear for auto-confirm. A single number keeps those two answers from disagreeing — a clip the job considers too long to be an advert must not then auto-confirm as one |
 | `FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH` | **empty** (§10 V67). Optional absolute path to the separately reviewed long-reel materialization-authority JSON. Empty, missing, malformed, drifted, or non-authorizing evidence enables no certified slice. The file is loaded at generation start and therefore requires restart after replacement. A valid authority permits independently assessed long-reel proposals to use the certified complete-plan gate. Without matching authority and a verified decision, automatic materialization holds; no compatibility fallback exists. Materialization can create held children but grants no training or broadcast admission. |

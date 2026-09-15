@@ -86,8 +86,8 @@ const PoolHealth = ({ pool, onProposePull, proposing, className }: PoolHealthPro
       <Stat
         label="Fits a break"
         value={String(pool.eligible)}
-        note={`of ${pluralize(pool.commercials, "commercial")}`}
-        {...(pool.commercials > 0 && pool.eligible === 0 ? { tone: "warn" as const } : {})}
+        note={`of ${pluralize(pool.breakBody, "break clip")}`}
+        {...(pool.breakBody > 0 && pool.eligible === 0 ? { tone: "warn" as const } : {})}
       />
 
       {/* ⚠ **The note has to describe the same population the fraction counts.** It said "every

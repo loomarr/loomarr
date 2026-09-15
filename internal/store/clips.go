@@ -211,9 +211,6 @@ func clipOrderBy(f ClipFilter) (string, error) {
 }
 
 func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
-	if c.Kind == filler.Unclassified && !c.Held {
-		return fmt.Errorf("upsert clip %s: unclassified filler must remain held", c.Hash)
-	}
 	_, err := s.db.ExecContext(ctx, s.ph(
 		// ⚠ play_count / last_played_at are INSERTed (so a new row starts at 0) but deliberately
 		// NOT in the DO UPDATE list. A re-sync knows nothing about plays, so writing
@@ -227,9 +224,8 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// (V38). The folder scan re-upserts every file it finds with `held = false`; if that rode
 		// along in the update list, one scan pass would file every held clip — clearing the
 		// review queue and putting untagged, unreviewed clips straight into channels, with no
-		// operator action and nothing in the logs. The one-way CASE below is the narrow exception:
-		// discovering an unclassified role may impose a hold, but an upsert can never lift one.
-		// HoldClips and terminal admission own every other change.
+		// operator action and nothing in the logs. Enrollment holds new clips; only the atomic
+		// terminal-ready transaction may lift one after the pipeline completes.
 		//
 		// `confidence` is omitted too. A scan knows nothing about tagging, and the Clip it builds
 		// carries a zero score — so leaving it in the update list would blank a tagged clip's
@@ -271,13 +267,12 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, geographic_scope, country, market, network, station, air_date, geo_evidence, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, placement, era, audience, category, geographic_scope, country, market, network, station, air_date, geo_evidence, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
 		   name=excluded.name, kind=excluded.kind,
-		   held=CASE WHEN excluded.kind = 'unclassified' THEN TRUE ELSE clips.held END,
 		   era=excluded.era, audience=excluded.audience,
 		   category=excluded.category, duration_ms=excluded.duration_ms, rating=excluded.rating,
 		   source=excluded.source, ai_tagged=excluded.ai_tagged, quality=excluded.quality,
@@ -292,7 +287,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   language=excluded.language,
 		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
-		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), c.Era, string(c.Audience), c.Category,
+		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), string(clipPlacement(c)), c.Era, string(c.Audience), c.Category,
 		clipGeographicScope(c), c.Country, c.Market, c.Network, c.Station, c.AirDate, c.GeoEvidence,
 		c.DurationMs, c.Rating, c.Source,
 		// ⚠ Bound as real bools. `ai_tagged` used `boolToInt` until V38c, when 00033 rebuilt the
@@ -628,7 +623,16 @@ func clipGeographicScope(c Clip) string {
 	return string(c.GeographicScope)
 }
 
-const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
+// clipPlacement gives a direct insert of an already-unheld known role its natural placement. Real
+// intake inserts held rows and therefore starts not_playable until CommitFillerReady.
+func clipPlacement(c Clip) filler.Placement {
+	if c.Held {
+		return filler.PlacementNotPlayable
+	}
+	return c.EffectivePlacement()
+}
+
+const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, placement, era, audience, category, duration_ms,
 	geographic_scope, country, market, network, station, air_date, geo_evidence,
 	rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
 	is_composite, parent_hash,
@@ -872,6 +876,8 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 	} else if !f.IncludeHeld {
 		where = append(where, "held = ?")
 		args = append(args, false)
+		where = append(where, "placement <> ?")
+		args = append(args, string(filler.PlacementNotPlayable))
 	}
 	// ⚠ THE composite chokepoint (§10 V45), the same shape as the held block above and for the same
 	// reason: pod assembly loads the catalog here with a zero filter, so a composite excluded ONCE
@@ -911,7 +917,7 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 // commercial-scoped UntaggedOnly filter.
 //
 // ⚠ **IncludeHeld is required, not optional** (§10 V38). Held clips are exactly the ones most in
-// need of tagging — a held clip is waiting for enrichment and terminal admission — and the default
+// need of tagging — a held clip is waiting for enrichment and terminal readiness — and the default
 // catalog filter excludes them. Without this the tagger would silently skip every new arrival.
 func (s *sqlStore) ListUntaggedCommercials(ctx context.Context) ([]Clip, error) {
 	return s.ListClips(ctx, ClipFilter{UntaggedOnly: true, IncludeHeld: true})
@@ -1158,7 +1164,7 @@ func scanClip(sc scannable) (Clip, error) {
 		// dialect split every epoch value here follows, and both are 64-bit.
 		createdAt int64
 	)
-	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
+	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Placement, &c.Era, &audience, &c.Category,
 		&c.DurationMs, &c.GeographicScope, &c.Country, &c.Market, &c.Network, &c.Station, &c.AirDate, &c.GeoEvidence,
 		&c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,

@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	AuditSchemaVersion    = 3
-	ContractVersion       = "filler-reference-cohort-2026-08-31-v3"
-	PacketEvidenceVersion = "filler-evidence-v1"
+	AuditSchemaVersion    = 4
+	ContractVersion       = "filler-reference-cohort-2026-09-13-v4"
+	PacketEvidenceVersion = "filler-evidence-v2"
 	ContentReviewKind     = "filler_reference_content_review"
 )
 
@@ -34,8 +34,6 @@ const (
 	ReasonMediaUnusable            ReasonCode = "media_unusable"
 	ReasonDurationTooShort         ReasonCode = "duration_too_short"
 	ReasonMediaEvidenceMissing     ReasonCode = "media_evidence_missing"
-	ReasonSourceIneligible         ReasonCode = "source_ineligible"
-	ReasonSourceEvidenceMissing    ReasonCode = "source_evidence_missing"
 	ReasonSourceCoverageIncomplete ReasonCode = "source_coverage_incomplete"
 	ReasonCommercialProductMissing ReasonCode = "commercial_product_missing"
 	ReasonNonBroadcastMaterial     ReasonCode = "non_broadcast_material"

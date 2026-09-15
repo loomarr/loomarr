@@ -44,6 +44,37 @@ func TestPostgresQuarantineLegacyFillerMigration(t *testing.T) {
 	testQuarantineLegacyFillerMigration(t, s, s.db, "migrations/postgres/00101_quarantine_legacy_filler.sql")
 }
 
+func TestPostgresRetireFillerRuntimeRightsMigration(t *testing.T) {
+	ctx := context.Background()
+	dsn := startPostgres(t)
+	s, err := openPostgres(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	testRetireFillerRuntimeRightsMigration(t, s, "migrations/postgres")
+}
+
+func TestPostgresFillerReadyDispositionsMigration(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgres(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	testFillerReadyDispositionsMigration(t, s, "migrations/postgres")
+}
+
+func TestPostgresRemoveFillerAdmissionRungMigration(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgres(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	testRemoveFillerAdmissionRungMigration(t, s, "migrations/postgres")
+}
+
 func TestPostgresFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("pgx", startPostgres(t))

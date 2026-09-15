@@ -193,11 +193,7 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
     await page.goto("/filler");
     await expect(page.getByText("Add filler to get started")).toBeVisible();
     await expect(page.getByText("Filler is working on its own")).toHaveCount(0);
-    const contextualLink = page.getByRole("link", { name: "uses its own grounded selection" });
-    await expect(contextualLink).toBeVisible();
-    expect(await contextualLink.evaluate((link) => getComputedStyle(link).textDecorationLine)).toContain(
-      "underline",
-    );
+    await expect(page.getByText("Each channel picks what fits from the shared library.")).toBeVisible();
 
     const results = await new AxeBuilder({ page }).analyze();
     const blocking = results.violations.filter(

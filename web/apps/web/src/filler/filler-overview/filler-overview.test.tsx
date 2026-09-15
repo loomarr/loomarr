@@ -27,11 +27,12 @@ const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO =
       inProgress: 0,
       needsDecision: 0,
       recoverable: 0,
-      admitted: 25,
+      ready: 25,
+      complete: 0,
       rejected: 0,
       dismissed: 0,
     },
-    pool: { clips: 25, commercials: 20, eligible: 18, untagged: 0, channels: [] },
+    pool: { clips: 25, breakBody: 20, eligible: 18, untagged: 0, channels: [] },
     acquisitions: [],
     ...rest,
   };
@@ -134,7 +135,7 @@ describe("FillerOverview", () => {
       readiness({
         pool: {
           clips: 25,
-          commercials: 20,
+          breakBody: 20,
           eligible: 18,
           untagged: 0,
           channels: [

@@ -127,15 +127,23 @@ const stubReachable = () => {
         {
           id: "archive:classic_tv_commercials",
           enabled: true,
+          effectiveEnabled: true,
+          providerEnabled: true,
           switchable: true,
           removable: true,
           kind: "archive",
           target: "Classic TV Commercials",
           detail: "an archive.org collection — searchable here",
           count: 0,
+          incoming: 0,
           configured: true,
           fetchable: true,
           searchable: true,
+          readiness: "ready",
+          ready: true,
+          locationSource: "installation",
+          effectiveCountry: "US",
+          actions: ["fetch", "search", "disable", "remove", "edit_location"],
         },
       ],
       total: 1,
@@ -435,7 +443,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V63's durable audit half. A shadow admission decision is normal work, so it belongs in Manage
     // activity rather than in the exception queue. Keeping this route-level assertion prevents
     // unattended decisions from becoming invisible when the old Incoming surface is retired.
-    ["/filler/manage", /would admit \(shadow\)/i, "the shadow decision activity"],
+    ["/filler/manage", /would add \(preview\)/i, "the preview decision activity"],
     // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
     // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
     ["/filler", /^incoming/i, "the incoming workbench's own entry point"],
@@ -453,18 +461,17 @@ describe("feature-gated panels mount when their flag is on", () => {
     // a whole phase — the route shipped, `DiscoverPanel` was deleted rather than left orphaned,
     // and nothing called it. This is the assertion that stops it going back to that state.
     //
-    // ⚠ V35b moved the search INSIDE the archive source row, behind a "Search it" toggle, and
-    // this assertion correctly went red when the old "Find clips" heading disappeared. It now
-    // names the new DOOR. It deliberately does not reach past the toggle: what this suite
+    // Search now lives in the selected source workspace. The source row is the door into that
+    // workspace, so this assertion deliberately does not reach past it: what this suite
     // guards is that an entry point exists, and asserting on something behind the click would
     // pass just as happily with no way in — the exact state it was written to catch. The
     // panel's own contents are covered by the expander test below.
-    ["/filler/sources", /search it/i, "the per-source search's entry point"],
+    ["/filler/sources", /Classic TV Commercials/i, "the per-source workspace entry point"],
     // V37: adding a source. ⚠ `POST /v1/filler/sources` shipped in V35 and NOTHING called it for
     // two phases — the route existed, the store wrote, and there was no way to reach it from the
     // app. That is the same API-only state this suite caught for `discover`, and the reason
     // YouTube could not be registered was partly that no UI ever tried.
-    ["/filler/sources", /add a source/i, "the add-a-source form"],
+    ["/filler/sources", /add a folder or library/i, "the local add-source form"],
   ])("%s mounts %s", async (path, pattern) => {
     stubReachable();
     renderAt(path);
@@ -474,23 +481,18 @@ describe("feature-gated panels mount when their flag is on", () => {
     expect(found.length).toBeGreaterThan(0);
   });
 
-  // V35b: the per-source search moved INSIDE the archive row, behind a "Search it" toggle. The
-  // row above proves the door exists; this proves it OPENS onto the real panel.
+  // The row above proves the source-workspace door exists; this proves its optional search opens.
   //
   // ⚠ The assertion is the search's downloads-nothing promise, not merely the input. That line
   // is a behaviour claim — it is why an operator dares to browse a collection at all — and it
   // previously sat in a card that was always mounted. Behind a click it needs a click to guard,
   // or the promise could silently stop rendering with every test still green.
-  it("/filler/sources opens the archive row's search onto its downloads-nothing promise", async () => {
+  it("/filler/sources opens an archive source workspace onto its downloads-nothing promise", async () => {
     stubReachable();
     renderAt("/filler/sources");
-    // ⚠ By the SOURCE's name, not the button's visible "Search it" (§10 V54 B6). The accessible
-    // name now carries the target, because the provider roll-up puts several collections on
-    // screen at once and five buttons all reading "Search it" are indistinguishable to anyone
-    // not looking at the row they sit in. The row-level assertion above still matches the visible
-    // text, which is deliberately unchanged.
-    await userEvent.click(await screen.findByRole("button", { name: /^search Classic TV Commercials$/i }));
-    const found = await screen.findAllByText(/nothing downloads until you queue it/i, undefined, {
+    await userEvent.click(await screen.findByRole("button", { name: /^Manage Classic TV Commercials$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    const found = await screen.findAllByText(/searching doesn’t download anything/i, undefined, {
       timeout: 3000,
     });
     expect(found.length).toBeGreaterThan(0);

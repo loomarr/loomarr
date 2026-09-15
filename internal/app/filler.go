@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
@@ -186,8 +187,8 @@ func (a fillerSweepStoreAdapter) DeleteSplitProposal(ctx context.Context, id str
 func (a fillerSweepStoreAdapter) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
 	return a.st.MarkClipReaped(ctx, hash, at)
 }
-func (a fillerSweepStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
-	return a.st.MarkPipelineFiled(ctx, hash, at)
+func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkPipelineComplete(ctx, hash, at)
 }
 
 // fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
@@ -205,7 +206,7 @@ func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]filler.
 	}
 	out := make([]filler.ScanSource, 0, len(srcs))
 	for _, s := range srcs {
-		if s.Enabled && s.Scannable() {
+		if s.EffectiveEnabled() && s.Scannable() {
 			out = append(out, filler.ScanSource{ID: s.ID, Kind: s.Kind, URI: s.URI})
 		}
 	}
@@ -252,7 +253,7 @@ func (a fillerLibraryAdapter) ListLibraryClips(ctx context.Context, name string)
 	return out, nil
 }
 
-// fillerChannelWake is the shared post-commit latency path for every non-HTTP filing operation.
+// fillerChannelWake is the shared post-commit latency path for every non-HTTP eligibility change.
 // It deliberately depends on only Reconcile: pipeline code does not need the API's wider channel
 // management surface merely to announce that pod eligibility changed.
 type fillerChannelWake struct {
@@ -423,8 +424,10 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 	}
 	out := make([]filler.FetchSource, 0, len(srcs))
 	for _, s := range srcs {
-		if a.home != nil && !s.GeographicallyEligible(a.home()) {
-			continue
+		geographicallyEligible := true
+		if a.home != nil {
+			home := a.home().Normalize()
+			geographicallyEligible = home.Country != "" && s.GeographicallyEligible(home)
 		}
 		// ⚠ The three-state override is resolved HERE, by the store's own method, and handed to
 		// the fetcher already decided (§10 V38c). `FetchEvery` is the single implementation of
@@ -432,13 +435,19 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 		// they would drift is toward treating "never" as "inherit" — i.e. fetching from a source
 		// the operator opted out of.
 		//
-		// The interval itself is not passed on: the JOB's cron decides when a pass happens, so
-		// what the fetcher needs from a per-source interval is only whether it is zero.
-		_, pollable := s.FetchEvery(a.fetchEvery())
+		every, pollable := s.FetchEvery(a.fetchEvery())
+		if !pollable {
+			every = 0
+		}
 		out = append(out, filler.FetchSource{
-			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.Enabled,
-			NeverFetch: !pollable,
-			MaxPerRun:  s.MaxPerRun(0),
+			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.EffectiveEnabled() && geographicallyEligible,
+			NeverFetch:        !pollable,
+			Every:             every,
+			LastCheckedAt:     s.LastCheckedAt,
+			CheckFailureCount: s.CheckFailureCount,
+			CheckRetryAt:      s.CheckRetryAt,
+			CheckLeaseUntil:   s.CheckLeaseUntil,
+			MaxPerRun:         s.MaxPerRun(0),
 		})
 	}
 	return out, nil
@@ -467,6 +476,20 @@ func (a fetchStoreAdapter) ListAcquisitionRemoteStates(ctx context.Context) (map
 
 func (a fetchStoreAdapter) MarkFetched(ctx context.Context, id string, at time.Time) error {
 	return a.st.MarkFillerSourceFetched(ctx, id, at)
+}
+
+func (a fetchStoreAdapter) ClaimCheck(
+	ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time,
+) (bool, error) {
+	return a.st.ClaimFillerSourceCheck(ctx, id, observedLastCheck, now, leaseUntil)
+}
+
+func (a fetchStoreAdapter) CompleteCheck(ctx context.Context, id string, leaseUntil, checkedAt time.Time) error {
+	return a.st.CompleteFillerSourceCheck(ctx, id, leaseUntil, checkedAt)
+}
+
+func (a fetchStoreAdapter) FailCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error {
+	return a.st.FailFillerSourceCheck(ctx, id, leaseUntil, retryAt)
 }
 
 // registeredSourceEnumerator dispatches only by the registered row's explicit provider kind.
@@ -628,8 +651,8 @@ func (a fillerSplitStoreAdapter) ReleaseSplitProposalClaim(ctx context.Context, 
 func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
 	return a.st.DeleteSplitProposal(ctx, id)
 }
-func (a fillerSplitStoreAdapter) MarkPipelineFiled(ctx context.Context, hash string, at time.Time) error {
-	return a.st.MarkPipelineFiled(ctx, hash, at)
+func (a fillerSplitStoreAdapter) MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error {
+	return a.st.MarkPipelineComplete(ctx, hash, at)
 }
 func (a fillerSplitStoreAdapter) CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error) {
 	return a.st.CompleteSplitConfirmation(ctx, completion)
@@ -681,9 +704,11 @@ type fillerServiceAdapter struct {
 	sources fillerSourceRegistry
 	// pullPlanning is the read side of candidate-level pull composition. It is separate from
 	// sources because approval history is evidence for "already queued/declined" selection.
-	pullPlanning fillerPullPlanningStore
-	sourceEnum   filler.SourceEnumerator
-	home         func() filler.Geography
+	pullPlanning  fillerPullPlanningStore
+	sourceEnum    filler.SourceEnumerator
+	archiveFinder *clipfetch.ArchiveSourceFinder
+	youtubeFinder *clipfetch.YouTubeSourceFinder
+	home          func() filler.Geography
 	// acquisitions is the reconnect truth for background downloads. nil is allowed only in
 	// narrow tests; production always supplies the store before any job can be accepted.
 	acquisitions fillerAcquisitionWriter
@@ -704,11 +729,49 @@ type fillerServiceAdapter struct {
 	autoFetch *filler.Fetcher
 }
 
-var _ api.FillerRewinder = fillerServiceAdapter{}
+func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
+	switch provider {
+	case "archive":
+		finder := a.archiveFinder
+		if finder == nil {
+			finder = clipfetch.NewArchiveSourceFinder()
+		}
+		return finder.Suggest(ctx, query, limit)
+	case "youtube":
+		if a.youtubeFinder == nil {
+			return nil, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
+		}
+		return a.youtubeFinder.Suggest(ctx, query, limit)
+	default:
+		return nil, fmt.Errorf("source suggestions are not implemented for %s", provider)
+	}
+}
 
-// fillerSourceRegistry is the acquisition-side source slice. Admission policy is deliberately
-// absent: this adapter registers and fetches sources but is not allowed to change their trust.
+func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input string) (filler.SourceSuggestion, error) {
+	switch provider {
+	case "archive":
+		finder := a.archiveFinder
+		if finder == nil {
+			finder = clipfetch.NewArchiveSourceFinder()
+		}
+		return finder.Resolve(ctx, input)
+	case "youtube":
+		if a.youtubeFinder == nil {
+			return filler.SourceSuggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
+		}
+		return a.youtubeFinder.Resolve(ctx, input)
+	default:
+		return filler.SourceSuggestion{}, fmt.Errorf("source resolution is not implemented for %s", provider)
+	}
+}
+
+var _ api.FillerRewinder = fillerServiceAdapter{}
+var _ fillerdecision.DiagnosticRecoveryExecutor = fillerServiceAdapter{}
+
+// fillerSourceRegistry is the acquisition-side source slice. Readiness is deliberately absent:
+// this adapter registers and fetches sources but cannot publish a Clip by itself.
 type fillerSourceRegistry interface {
+	ListFillerProviders(context.Context) ([]store.FillerProvider, error)
 	ListFillerSources(context.Context) ([]store.FillerSource, error)
 	UpsertFillerSource(context.Context, store.FillerSource) error
 }
@@ -794,6 +857,33 @@ func (a fillerServiceAdapter) RetryFailure(ctx context.Context, hash string) err
 	return a.pipeline.RetryFailure(ctx, hash)
 }
 
+func (a fillerServiceAdapter) DiagnosticRetryStatus(ctx context.Context, hash string) (fillerdecision.DiagnosticRetryStatus, error) {
+	if a.pipeline == nil {
+		return fillerdecision.DiagnosticRetryStatus{}, nil
+	}
+	status, err := a.pipeline.DiagnosticRetryStatus(ctx, hash)
+	return fillerdecision.DiagnosticRetryStatus{Automatic: status.Automatic, RetryAt: status.RetryAt}, err
+}
+
+func (a fillerServiceAdapter) RetryDiagnostic(ctx context.Context, hash string) error {
+	if a.pipeline == nil {
+		return errors.New("filler pipeline is not configured")
+	}
+	status, err := a.pipeline.DiagnosticRetryStatus(ctx, hash)
+	if err != nil {
+		return err
+	}
+	if status.Automatic {
+		return nil
+	}
+	if err := a.pipeline.RetryFailure(ctx, hash); err == nil {
+		return nil
+	} else if !errors.Is(err, filler.ErrPipelineNotRetryable) {
+		return err
+	}
+	return a.pipeline.Rewind(ctx, hash, filler.StageScore, false)
+}
+
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
 	res, err := a.syncer.Sync(ctx)
 	return res.Total, res.Added, res.Updated, res.Pruned, err
@@ -817,7 +907,7 @@ func (a fillerServiceAdapter) Ingest(ctx context.Context, urls []string) (string
 }
 
 // IngestSource is the unattended registered-source path. It preserves source attribution through
-// the downloader sidecar so the catalog can apply and audit the correct admission policy.
+// the downloader sidecar while durable acquisition state carries the Enrollment authority.
 func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID, sourceKind string, urls []string) (string, error) {
 	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, sourceKind, urls), nil)
 }
@@ -876,6 +966,16 @@ func (a fillerServiceAdapter) ingest(
 	if a.start == nil {
 		return "", errors.New("filler acquisition lifecycle is not configured")
 	}
+	providerEnabled := map[string]bool{}
+	if a.sources != nil {
+		providers, err := a.sources.ListFillerProviders(ctx)
+		if err != nil {
+			return "", fmt.Errorf("read filler provider policy: %w", err)
+		}
+		for _, provider := range providers {
+			providerEnabled[provider.Kind] = provider.Enabled
+		}
+	}
 	jobID := a.newID()
 	sources := make([]clipfetch.Source, 0, len(targets))
 	for _, target := range targets {
@@ -885,6 +985,9 @@ func (a fillerServiceAdapter) ingest(
 			kind = clipfetch.KindForURL(target.URL)
 		} else if kind != clipfetch.Archive && kind != clipfetch.YouTube {
 			return "", fmt.Errorf("unsupported registered filler source kind %q", target.Kind)
+		}
+		if enabled, known := providerEnabled[string(kind)]; known && !enabled {
+			return "", fmt.Errorf("%w: %s", filler.ErrProviderPaused, kind)
 		}
 		sources = append(sources, clipfetch.Source{
 			ID: target.SourceID, AcquisitionID: jobID,
@@ -1100,7 +1203,7 @@ func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID strin
 		return api.ErrSplitUnavailable
 	}
 	// Confirm owns the complete parent/child durable batch, including terminal parent pipeline
-	// filing. The adapter must not add a fallible write after the generation commits: reporting an
+	// completion. The adapter must not add a fallible write after the generation commits: reporting an
 	// error then would invite an operator retry of an operation that already succeeded.
 	_, err := a.splitter.Confirm(ctx, proposalID, segments)
 	return err
@@ -1235,7 +1338,7 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	// ⚠ **The predicate is shared; the SCOPE is not.** `ListUntaggedCommercials` sets
 	// `IncludeHeld: true` on purpose, because held clips are exactly what the tagger must tag.
 	// Reusing it here inherited that as a silent side effect, and every OTHER number in this
-	// report counts the catalog alone — so an install with 1 filed clip and 12 held ones rendered
+	// report counts the catalog alone — so an install with 1 Ready clip and 12 held ones rendered
 	// "CLIPS 1 / 12 clips still need tagging", a headline its own subtext contradicts.
 	//
 	// Counting held clips here is not merely inconsistent, it is unactionable: the strip's advice

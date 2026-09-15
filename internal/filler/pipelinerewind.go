@@ -60,6 +60,13 @@ var ErrTranscodeNeedsForce = errors.New("re-encoding loses a generation of quali
 // override. API callers map it to a conflict after reloading the authoritative row.
 var ErrPipelineNotRetryable = errors.New("pipeline row does not have a retryable execution failure")
 
+// DiagnosticRetryStatus is the small admission-recovery view of pipeline ownership. Automatic
+// always carries the exact time at which the persisted row becomes eligible again.
+type DiagnosticRetryStatus struct {
+	Automatic bool
+	RetryAt   time.Time
+}
+
 // WithRewind attaches the invalidation seam. Without it, `Rewind` still resets the ladder but
 // cannot clear derived data — so it refuses rather than producing a rewind that silently
 // self-skips.
@@ -160,6 +167,24 @@ func (p *Pipeline) RetryFailure(ctx context.Context, hash string) error {
 	}
 	p.publish(row, clip)
 	return nil
+}
+
+// DiagnosticRetryStatus reports whether the conveyor already owns retrying a held clip. It does
+// not expose stages to fillerdecision or mutate the row.
+func (p *Pipeline) DiagnosticRetryStatus(ctx context.Context, hash string) (DiagnosticRetryStatus, error) {
+	row, found, err := p.store.GetClipPipeline(ctx, hash)
+	if err != nil || !found {
+		return DiagnosticRetryStatus{}, err
+	}
+	now := p.now().UTC()
+	if row.Disposition != DispositionRunning {
+		return DiagnosticRetryStatus{}, nil
+	}
+	retryAt := row.NextRun.UTC()
+	if retryAt.IsZero() || !retryAt.After(now) {
+		retryAt = now
+	}
+	return DiagnosticRetryStatus{Automatic: true, RetryAt: retryAt}, nil
 }
 
 func resetPipelineRow(row ClipPipeline, from StageID, now time.Time) ClipPipeline {

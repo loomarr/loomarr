@@ -57,7 +57,7 @@ func FuzzEvaluatorUnknownClosedProductNeverAdmits(f *testing.F) {
 	f.Fuzz(func(t *testing.T, value string) {
 		e := mustEvaluator(t)
 		doc := eligibleDocument()
-		doc.Evidence[5].Value = value
+		doc.Evidence[4].Value = value
 		got := e.Evaluate(doc)
 		if value != "soda" && got.Decision != nil && got.Decision.Verdict == VerdictAdmit {
 			t.Fatalf("unknown or conflicting product %q admitted: %+v", value, got)

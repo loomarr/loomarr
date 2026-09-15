@@ -26,7 +26,7 @@ const NavTabs = ({ tabs, activeId, linkComponent: Link, label, className }: NavT
   <nav
     aria-label={label}
     className={cn(
-      "flex flex-wrap gap-1 border-border border-b pb-2 sm:flex-nowrap sm:overflow-x-auto",
+      "flex shrink-0 flex-wrap gap-1 border-border border-b pb-2 sm:flex-nowrap sm:overflow-x-auto",
       className,
     )}
   >

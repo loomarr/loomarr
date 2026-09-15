@@ -52,6 +52,13 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleMember), s.fillerReadiness)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "get-filler-acquisition", Method: http.MethodGet, Path: "/v1/filler/acquisitions/{jobId}",
+		Summary:     "Read one clip download",
+		Description: "Admin only (§10). Durable reconnect state for one filler acquisition; SSE only reduces visible latency.",
+		Tags:        []string{"filler"},
+	}, RoleAdmin), s.getFillerAcquisition)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/tags",
 		Summary: "Edit a clip's classification", Description: "Admin only. Corrects kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a).", Tags: []string{"filler"},
 	}, RoleAdmin), s.patchFillerClip)
@@ -207,7 +214,7 @@ func (s *Server) registerFiller(api huma.API) {
 type rewindFillerClipInput struct {
 	Body struct {
 		Hash  string `json:"hash" minLength:"1"`
-		From  string `json:"from" enum:"probe,transcode,split,screen,language,transcribe,tag,vision,admission,score"`
+		From  string `json:"from" enum:"probe,transcode,split,screen,language,transcribe,tag,vision,score"`
 		Force bool   `json:"force,omitempty"`
 	}
 }
@@ -839,6 +846,10 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 	// it is the one path that registers a source. Auto-fetch and approved pulls carry the items
 	// inside an already-registered collection and must not add a row per clip.
 	jobID, err := s.filler.IngestAsked(ctx, in.Body.URLs)
+	if errors.Is(err, filler.ErrProviderPaused) {
+		return nil, errConflict("That provider is paused",
+			"Resume it under Filler → Sources before downloading from it.")
+	}
 	if errors.Is(err, ErrIngestUnavailable) {
 		// NOT feature_not_configured: no setting can assert that a binary RUNS. ⚠ This
 		// used to say "run the loomarr:filler image" — that variant no longer exists (the
@@ -895,6 +906,9 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 		return nil, errNotImplemented("Filler isn't set up",
 			"Enable filler in Settings before searching for clips to add.")
 	}
+	if err := s.requireFillerProvider(ctx, "archive"); err != nil {
+		return nil, err
+	}
 
 	// At least one mode. With both present, the keyword is scoped to the named collection — the
 	// request made by a source row's search box. Neither is the empty search the minLength above
@@ -932,6 +946,26 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 	out.Body.Total = total
 	out.Body.LicenceNote = "Licence information isn't available for most results. Check before reusing."
 	return out, nil
+}
+
+func (s *Server) requireFillerProvider(ctx context.Context, kind string) error {
+	if s.store == nil {
+		return huma.Error501NotImplemented("no store configured")
+	}
+	providers, err := s.store.ListFillerProviders(ctx)
+	if err != nil {
+		return huma.Error500InternalServerError("read filler provider policy", err)
+	}
+	for _, provider := range providers {
+		if provider.Kind == kind {
+			if provider.Enabled {
+				return nil
+			}
+			return errConflict("That provider is paused",
+				"Resume it under Filler → Sources before searching or downloading from it.")
+		}
+	}
+	return errNotFound("Provider not found", "That filler provider isn't available on this install.")
 }
 
 type discoverStatsInput struct {
@@ -975,6 +1009,9 @@ func (s *Server) discoverFillerStats(ctx context.Context, in *discoverStatsInput
 	if len(in.IDs) == 0 {
 		return nil, apiErr(http.StatusUnprocessableEntity, "Nothing to describe",
 			"Send at least one id.")
+	}
+	if err := s.requireFillerProvider(ctx, "archive"); err != nil {
+		return nil, err
 	}
 
 	stats, err := s.filler.EnrichDiscovered(ctx, in.IDs)

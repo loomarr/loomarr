@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/devbootstrap"
+	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -20,6 +21,9 @@ func main() {
 	}
 	if err := devbootstrap.ValidateTarget(os.Getenv("LOOMARR_REPO_ROOT"), cfg.DatabaseURL); err != nil {
 		log.Fatalf("dev-bootstrap: %v", err)
+	}
+	if err := ensureDevEncryptionKey(cfg.DatabaseURL); err != nil {
+		log.Fatalf("dev-bootstrap: prepare isolated encryption key: %v", err)
 	}
 	ctx := context.Background()
 	st, err := store.Open(ctx, cfg.DatabaseURL, true)
@@ -37,4 +41,15 @@ func main() {
 		return
 	}
 	fmt.Printf("dev-bootstrap: kept %s and completed setup\n", result.User)
+}
+
+// ensureDevEncryptionKey creates the same random, mode-0600 installation key the application
+// creates in production, but beside the isolated SQLite database before the dev server starts.
+// The worktree runtime exports that file explicitly; no known key or inherited shell secret is
+// needed, and a restart opens the exact same disposable database.
+func ensureDevEncryptionKey(databaseURL string) error {
+	_, err := secretprotection.LoadInstallationKey(secretprotection.InstallationKeyOptions{
+		DataDir: config.DataDirFor(databaseURL),
+	})
+	return err
 }

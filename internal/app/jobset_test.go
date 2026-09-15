@@ -35,7 +35,7 @@ func TestJobSet(t *testing.T) {
 		// Its presence here is the deliberate record of that: §15 previously said "there is no
 		// unattended crawler", and this row is what a future reader sees when they check whether
 		// that is still true.
-		"filler-fetch | filler | 0 0 */6 * * * | job.filler_fetch.schedule",
+		"filler-fetch | filler | 0 * * * * * | ",
 		// ⚠ **The ingest pipeline (§10 V51b) — this ONE row replaced FOUR**: `filler-language`
 		// (:30), `filler-split` (:45), `filler-transcribe` (:15) and `filler-vision` (:50). Their
 		// staggered minutes were a hand-maintained scheduling discipline that kept four expensive

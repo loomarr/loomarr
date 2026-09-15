@@ -116,7 +116,6 @@ To replace the installation key, supply the new current key and provide the old 
 | `job.playout_prepare.schedule` (`JOB_PLAYOUT_PREPARE_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr looks ahead in accepted channel schedules and prepares the nearest programmes while spare hardware is available. _(advanced)_ |
 | `job.filler_sync.schedule` (`JOB_FILLER_SYNC_SCHEDULE`) | cron | `0 */15 * * * *` | How often Loomarr syncs the filler catalog (cron). |
 | `job.filler_split_sweep.schedule` (`JOB_FILLER_SPLIT_SWEEP_SCHEDULE`) | cron | `0 45 4 * * *` | How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`. |
-| `job.filler_fetch.schedule` (`JOB_FILLER_FETCH_SCHEDULE`) | cron | `0 0 */6 * * *` | How often Loomarr checks your filler sources for new clips (cron). |
 | `job.filler_pipeline.schedule` (`JOB_FILLER_PIPELINE_SCHEDULE`) | cron | `0 */2 * * * *` | How often Loomarr advances new filler clips through preparation — measuring, re-encoding, splitting, listening and identifying them (cron). |
 | `job.images_fetch.schedule` (`JOB_IMAGES_FETCH_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders. |
 | `job.images_adopt_artwork.schedule` (`JOB_IMAGES_ADOPT_ARTWORK_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr copies clip thumbnails and hover previews into the shared image library (cron). Until a clip has been copied over, its older thumbnail is still what you see. |
@@ -150,8 +149,8 @@ To replace the installation key, supply the new current key and provide the old 
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `filler.home_country` (`FILLER_HOME_COUNTRY`) | string | — | Optional ISO two-letter country that constrains automatic filler use. Unknown and foreign clips remain reviewable but do not air. Leave blank to preserve the legacy unrestricted pool until geography is configured. |
-| `filler.home_market` (`FILLER_HOME_MARKET`) | string | — | Optional local broadcast market inside the home country, such as New York or Seattle. Local clips must match it exactly; Loomarr never infers it from the guide timezone. |
+| `filler.home_country` (`FILLER_HOME_COUNTRY`) | string | — | Where your channels are watched. Loomarr uses this country for channels and filler sources. |
+| `filler.home_market` (`FILLER_HOME_MARKET`) | string | — | Optional. Add a city or TV market when you want local filler, such as New York or Seattle. |
 | `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler; applies after restart)_ |
 | `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. _(applies after restart)_ |
 | `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often Loomarr drains the drop folder and reconciles its own clip library. _(advanced)_ |
@@ -177,9 +176,8 @@ To replace the installation key, supply the new current key and provide the old 
 | `filler.pipeline.max_vision` (`FILLER_PIPELINE_MAX_VISION`) | int | `5` | How many clips Loomarr looks at with a vision model in one pass. The smallest budget, because on a hosted model each one is a charge. _(advanced)_ |
 | `filler.pipeline.max_split_vision` (`FILLER_PIPELINE_MAX_SPLIT_VISION`) | int | `60` | How many segments of one recording Loomarr looks at in a single pass. A longer recording is judged over several passes rather than made to wait for you — this bounds how much looking happens at once, not how big a recording can be. _(advanced)_ |
 | `filler.pipeline.max_splits` (`FILLER_PIPELINE_MAX_SPLITS`) | int | `3` | How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes. _(advanced)_ |
-| `filler.reject.unidentified` (`FILLER_REJECT_UNIDENTIFIED`) | bool | `true` | Set aside clips that nothing could identify — no era, brand, speech or on-screen text. They're listed under Filler → Incoming with a reason, and you can put any of them back. |
-| `filler.fetch.every` (`FILLER_FETCH_EVERY`) | duration | `6h` | How often Loomarr checks your sources for new clips. Set to 0 to stop fetching automatically — you can still queue clips yourself. |
-| `filler.fetch.max_per_run` (`FILLER_FETCH_MAX_PER_RUN`) | int | `10` | How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once. _(advanced)_ |
+| `filler.fetch.every` (`FILLER_FETCH_EVERY`) | duration | `6h` | How often Loomarr checks enabled sources for new clips. Never stops sources that use this default; you can still check one yourself. |
+| `filler.fetch.max_per_run` (`FILLER_FETCH_MAX_PER_RUN`) | int | `10` | The most clips each enabled source may add in one automatic check. |
 | `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. _(advanced)_ |
 | `filler.fetch.max_disk_gb` (`FILLER_FETCH_MAX_DISK_GB`) | int | `20` | Stop fetching automatically once the filler folder reaches this size in GB. _(advanced)_ |
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency. |

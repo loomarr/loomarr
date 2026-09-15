@@ -95,10 +95,12 @@ const stubSettings = (settings = SETTINGS) => {
     }),
     getSettingsPatchMockHandler(async ({ request }) => {
       seq.push("patch");
-      patches.push(await request.json());
+      const body = (await request.json()) as { edits: Record<string, string> };
+      patches.push(body);
       // ⚠ `results` is a `SettingResult[]`. A sibling file was serving `{ results: {} }` — a
-      // shape the API cannot produce — and passing.
-      return { results: [] };
+      // shape the API cannot produce — and passing. Return the per-key success contract too:
+      // connection Test must stop when even one staged value is rejected.
+      return { results: Object.keys(body.edits).map((key) => ({ key, status: "saved" as const })) };
     }),
     getSettingsListMockHandler({ features: {}, settings }),
     // Registered so the negative assertion below has something to be negative ABOUT. If the FE

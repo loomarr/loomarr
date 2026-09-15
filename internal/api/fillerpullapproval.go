@@ -74,7 +74,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	live := make(map[string]store.FillerSource, len(srcs))
 	home := s.fillerHomeGeography()
 	for _, src := range srcs {
-		if src.Enabled && src.Fetchable() && src.GeographicallyEligible(home) {
+		if src.EffectiveEnabled() && src.Fetchable() && src.GeographicallyEligible(home) {
 			live[src.ID] = src
 		}
 	}

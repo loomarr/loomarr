@@ -44,7 +44,6 @@ type SegmentScreeningSummary struct {
 	EvidenceSHA256 string
 	Outcome        SegmentScreeningOutcome
 	Axes           []SegmentScreeningAxisSummary
-	RightsScope    *FillerRightsScope
 	Airworthiness  *fillerairworthiness.Decision
 	AssessedAt     time.Time
 }
@@ -147,29 +146,6 @@ func (s *SegmentScreeningSummaryService) ReadSegmentScreeningSummary(ctx context
 			EvidenceSHA256: result.AuthoritySHA256,
 		})
 	}
-	if subject.SourceID != "" && subject.AcquisitionID != "" {
-		rightsResult := byAxis[ScreenRights]
-		rightsRecord, err := s.evidence.GetSegmentScreeningAxisRecord(ctx, rightsResult.AuthoritySHA256)
-		if err != nil {
-			base.State = ScreeningSummaryUnavailable
-			base.ReasonCode = ScreeningSummaryReasonEvidenceUnavailable
-			base.Axes = nil
-			return base, fmt.Errorf("read segment screening summary rights record: %w", err)
-		}
-		scope := FillerRightsScope{
-			SourceID: subject.SourceID, AcquisitionID: subject.AcquisitionID,
-			SourceMasterSHA256: subject.SourceMasterSHA256,
-			PolicySHA256:       rightsRecord.Profile.PolicySHA256, Use: FillerBroadcastUse,
-		}
-		if rightsRecord.SHA256 != rightsResult.AuthoritySHA256 || rightsRecord.SubjectSHA256 != subject.SHA256 ||
-			rightsRecord.Profile.Axis != ScreenRights || ValidateFillerRightsScope(scope) != nil {
-			base.State = ScreeningSummaryUnavailable
-			base.ReasonCode = ScreeningSummaryReasonEvidenceDrift
-			base.Axes = nil
-			return base, fmt.Errorf("segment screening summary rights context drifted")
-		}
-		base.RightsScope = &scope
-	}
 	decision := cloneAirworthinessDecision(evidence.Airworthiness)
 	base.State = ScreeningSummaryAvailable
 	base.Outcome = screeningSummaryOutcomeFromClosedResults(base.Axes, decision.Verdict)
@@ -216,9 +192,6 @@ func ValidateSegmentScreeningSummary(summary SegmentScreeningSummary) error {
 			summary.Airworthiness.SubjectSHA256 != summary.SubjectSHA256 {
 			return fmt.Errorf("available summary is incomplete")
 		}
-		if summary.RightsScope != nil && ValidateFillerRightsScope(*summary.RightsScope) != nil {
-			return fmt.Errorf("available summary rights scope is invalid")
-		}
 		for index, axis := range summary.Axes {
 			if axis.Axis != segmentScreeningAxisOrder[index] ||
 				validateSegmentScreeningResult(SegmentScreeningResult{Axis: axis.Axis, Outcome: axis.Outcome, AuthoritySHA256: axis.EvidenceSHA256, ReasonCode: axis.ReasonCode}) != nil {
@@ -247,7 +220,7 @@ func screeningSummaryOutcomeFromClosedResults(axes []SegmentScreeningAxisSummary
 }
 
 func emptySegmentScreeningSummary(summary SegmentScreeningSummary) bool {
-	return summary.Outcome == "" && len(summary.Axes) == 0 && summary.RightsScope == nil && summary.Airworthiness == nil && summary.AssessedAt.IsZero()
+	return summary.Outcome == "" && len(summary.Axes) == 0 && summary.Airworthiness == nil && summary.AssessedAt.IsZero()
 }
 
 func validScreeningReasonCodeOrEmpty(value string) bool {

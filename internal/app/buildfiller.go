@@ -223,7 +223,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 // conditional to "clean up" the nil cases.
 func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, taggerProvider llm.Provider, wake *fillerChannelWake,
-	processDiagnostics *diagnostics.ProcessManager, admissionObserver filler.AdmissionObserver,
+	processDiagnostics *diagnostics.ProcessManager,
 	recorder *metrics.Recorder) *filler.Pipeline {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
@@ -351,11 +351,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st: st}, fillerDrop, time.Now),
 		filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
 			func() bool { return set.boolv("filler.vision.enabled") }, time.Now),
-		// V61 shadow execution records only production facts with known provenance. Score remains
-		// diagnostic; it cannot publish a clip while certified terminal admission is unavailable.
-		filler.NewAdmissionStage(admissionObserver),
-		filler.NewScoreStage(fillerTagStoreAdapter{st: st},
-			func() bool { return set.boolv("filler.reject.unidentified") }, time.Now),
+		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, nil, time.Now),
 	}
 	if splitter != nil {
 		autoSplitPolicy := &filler.AutoSplitPolicy{

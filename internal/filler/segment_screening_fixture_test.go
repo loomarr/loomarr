@@ -72,8 +72,6 @@ func passingAxisEvidence(t *testing.T, subject SegmentScreeningSubject) []Record
 	for index, axis := range segmentScreeningAxisOrder {
 		reason := "policy_clear"
 		switch axis {
-		case ScreenRights:
-			reason = "rights_verified"
 		case ScreenPlayback:
 			reason = "playback_verified"
 		}

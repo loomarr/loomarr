@@ -17,7 +17,7 @@ type fillerScreeningInput struct {
 }
 
 type FillerScreeningAxisDTO struct {
-	Axis           string `json:"axis" enum:"visual_safety,spoken_safety,written_safety,rights,playback_integrity"`
+	Axis           string `json:"axis" enum:"visual_safety,spoken_safety,written_safety,playback_integrity"`
 	Outcome        string `json:"outcome" enum:"pass,reject,hold"`
 	ReasonCode     string `json:"reasonCode"`
 	EvidenceSHA256 string `json:"evidenceSha256" doc:"Immutable closed axis-record identity; never raw provider evidence"`
@@ -52,16 +52,6 @@ type FillerAirworthinessDTO struct {
 	DecisionSHA256    string                          `json:"decisionSha256"`
 }
 
-type FillerRightsReviewDTO struct {
-	SourceID           string                `json:"sourceId"`
-	AcquisitionID      string                `json:"acquisitionId"`
-	SourceMasterSHA256 string                `json:"sourceMasterSha256"`
-	PolicySHA256       string                `json:"policySha256"`
-	Use                string                `json:"use"`
-	CanRecord          bool                  `json:"canRecord"`
-	CurrentGrant       *fillerRightsGrantDTO `json:"currentGrant,omitempty"`
-}
-
 type FillerScreeningDTO struct {
 	State          string                   `json:"state" enum:"not_screened,available,unavailable"`
 	ReasonCode     string                   `json:"reasonCode,omitempty"`
@@ -70,7 +60,6 @@ type FillerScreeningDTO struct {
 	EvidenceSHA256 string                   `json:"evidenceSha256,omitempty"`
 	Outcome        string                   `json:"outcome,omitempty" enum:"pass,reject,hold"`
 	Axes           []FillerScreeningAxisDTO `json:"axes"`
-	RightsReview   *FillerRightsReviewDTO   `json:"rightsReview,omitempty"`
 	Airworthiness  *FillerAirworthinessDTO  `json:"airworthiness,omitempty"`
 	AssessedAt     string                   `json:"assessedAt,omitempty" format:"date-time"`
 }
@@ -80,8 +69,8 @@ type fillerScreeningOutput struct{ Body FillerScreeningDTO }
 func (s *Server) registerFillerScreening(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-filler-screening", Method: http.MethodGet, Path: "/v1/filler/screening",
-		Summary:     "Exact clip's five-axis screening state",
-		Description: "Admin-only browser-safe projection of visual, spoken, written, rights, playback-integrity, and Airworthiness evidence for one exact catalog hash. Raw provider evidence, text, paths, and private rights documents never cross this boundary.",
+		Summary:     "Exact clip's four-axis screening state",
+		Description: "Admin-only browser-safe projection of visual, spoken, written, playback-integrity, and Airworthiness evidence for one exact catalog hash. Raw provider evidence, text, and paths never cross this boundary.",
 		Tags:        []string{"filler"},
 	}, RoleAdmin), s.getFillerScreening)
 }
@@ -111,26 +100,7 @@ func (s *Server) getFillerScreening(ctx context.Context, input *fillerScreeningI
 	if filler.ValidateSegmentScreeningSummary(summary) != nil || summary.ClipHash != clip.Hash {
 		return nil, huma.Error500InternalServerError("project filler screening evidence")
 	}
-	dto := fillerScreeningDTO(summary)
-	if summary.RightsScope != nil {
-		dto.RightsReview = &FillerRightsReviewDTO{
-			SourceID: summary.RightsScope.SourceID, AcquisitionID: summary.RightsScope.AcquisitionID,
-			SourceMasterSHA256: summary.RightsScope.SourceMasterSHA256,
-			PolicySHA256:       summary.RightsScope.PolicySHA256, Use: summary.RightsScope.Use,
-			CanRecord: s.fillerRights != nil,
-		}
-		if s.fillerRights != nil {
-			grant, found, grantErr := s.fillerRights.CurrentGrant(ctx, *summary.RightsScope)
-			if grantErr != nil {
-				return nil, huma.Error500InternalServerError("read current filler rights authority", grantErr)
-			}
-			if found {
-				current := fillerRightsGrantDTOFrom(grant)
-				dto.RightsReview.CurrentGrant = &current
-			}
-		}
-	}
-	return &fillerScreeningOutput{Body: dto}, nil
+	return &fillerScreeningOutput{Body: fillerScreeningDTO(summary)}, nil
 }
 
 func fillerScreeningDTO(summary filler.SegmentScreeningSummary) FillerScreeningDTO {

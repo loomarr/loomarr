@@ -504,9 +504,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
           {data.totalClips === 0 ? (
             <>
               <p className="mt-1 font-semibold text-xl">No playable clips yet</p>
-              <p className="mt-1 text-muted-foreground text-sm">
-                Coverage begins after clips pass admission.
-              </p>
+              <p className="mt-1 text-muted-foreground text-sm">Coverage begins after clips are ready.</p>
             </>
           ) : (
             <>
@@ -562,7 +560,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
         </div>
         {data.totalClips === 0 ? (
           <Card className="mt-3 p-4 text-muted-foreground text-sm">
-            Coverage will appear after clips pass admission. The vocabulary below is ready when they do.
+            Coverage will appear after clips are ready. The vocabulary below is ready when they are.
           </Card>
         ) : (
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

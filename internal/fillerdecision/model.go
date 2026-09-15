@@ -70,15 +70,6 @@ type Action struct {
 	CreatedAt                                             time.Time
 }
 
-// AppliedRightsReceipt is the exact current-grant identity observed while replaying a release.
-// It is an internal handoff, not persisted action data: the store must re-read and lock the
-// current head before it can publish.
-type AppliedRightsReceipt struct {
-	DecisionID, ClipHash, ScreeningEvidenceSHA256, ReleaseAuthoritySHA256 string
-	SourceID, AcquisitionID, SourceMasterSHA256, PolicySHA256, Use        string
-	GrantSHA256                                                           string
-}
-
 type Cursor struct {
 	BeforeCreatedAt time.Time
 	BeforeID        string
@@ -118,11 +109,13 @@ type Counts struct {
 // canonical result bytes and validate action transitions transactionally.
 type Repository interface {
 	ActionLookup
+	DiagnosticRecoveryLookup
 	PutFillerDecision(context.Context, Record) error
 	GetFillerDecision(context.Context, string) (Record, error)
 	ListFillerDecisions(context.Context, DecisionFilter) (DecisionPage, error)
 	FillerDecisionCounts(context.Context) (Counts, error)
 	CommitFillerDecisionAction(context.Context, Action) error
+	CommitFillerDiagnosticRecovery(context.Context, DiagnosticRecoveryRequest) error
 	ListFillerDecisionActions(context.Context, ActionFilter) (ActionPage, error)
 	ListFillerDecisionActivity(context.Context, Cursor, int) (ActivityPage, error)
 }
@@ -132,7 +125,7 @@ type Repository interface {
 // in one transaction. Release verification happens before this seam in AppliedActionExecutor.
 type AppliedActionRepository interface {
 	ActionLookup
-	CommitAppliedFillerDecisionAction(context.Context, Action, *AppliedRightsReceipt) error
+	CommitAppliedFillerDecisionAction(context.Context, Action) error
 }
 
 // ActionLookup lets retry boundaries recognize an already committed immutable action before
@@ -140,6 +133,12 @@ type AppliedActionRepository interface {
 // compare every request-identity field before treating a result as a retry.
 type ActionLookup interface {
 	FindFillerDecisionAction(context.Context, string) (Action, bool, error)
+}
+
+// DiagnosticRecoveryLookup keeps operational recovery retries idempotent without putting machine
+// work into the semantic review-action lifecycle.
+type DiagnosticRecoveryLookup interface {
+	FindFillerDiagnosticRecovery(context.Context, string) (DiagnosticRecoveryRequest, bool, error)
 }
 
 func SameAction(a, b Action) bool {
@@ -156,12 +155,13 @@ type AppliedActionExecutor interface {
 }
 
 var (
-	ErrInvalid            = errors.New("filler decision: invalid")
-	ErrConflict           = errors.New("filler decision: conflicting immutable record")
-	ErrActionStale        = errors.New("filler decision: stale action")
-	ErrActionNotAllowed   = errors.New("filler decision: action not allowed")
-	ErrActionMode         = errors.New("filler decision: action writer does not match application mode")
-	ErrAppliedUnavailable = errors.New("filler decision: applied terminal admission is unavailable")
+	ErrInvalid             = errors.New("filler decision: invalid")
+	ErrConflict            = errors.New("filler decision: conflicting immutable record")
+	ErrActionStale         = errors.New("filler decision: stale action")
+	ErrActionNotAllowed    = errors.New("filler decision: action not allowed")
+	ErrActionMode          = errors.New("filler decision: action writer does not match application mode")
+	ErrAppliedUnavailable  = errors.New("filler decision: applied terminal admission is unavailable")
+	ErrRecoveryUnavailable = errors.New("filler decision: diagnostic recovery is unavailable")
 )
 
 type NextAction string
@@ -184,7 +184,6 @@ type AttentionTaskKind string
 
 const (
 	AttentionIdentityRole         AttentionTaskKind = "identity_role"
-	AttentionRightsProvenance     AttentionTaskKind = "rights_provenance"
 	AttentionSuitabilityException AttentionTaskKind = "suitability_exception"
 	AttentionSplitBoundary        AttentionTaskKind = "split_boundary"
 )
@@ -215,11 +214,55 @@ const (
 	RecoveryUpdatePolicy      RecoveryAction = "update_policy"
 )
 
+type RecoveryMode string
+
+const (
+	RecoveryModeAutomaticRetry RecoveryMode = "automatic_retry"
+	RecoveryModeManualRetry    RecoveryMode = "manual_retry"
+	RecoveryModeConfiguration  RecoveryMode = "configuration"
+	RecoveryModeInspection     RecoveryMode = "inspection"
+)
+
+type RecoveryPlan struct {
+	Action      RecoveryAction
+	Mode        RecoveryMode
+	Destination string
+	RetryAt     time.Time
+}
+
+type DiagnosticRecoveryAction string
+
+const DiagnosticRecoveryRetry DiagnosticRecoveryAction = "retry"
+
+type DiagnosticRecoveryRequest struct {
+	ID, DecisionID, ActorID string
+	Action                  DiagnosticRecoveryAction
+	CreatedAt               time.Time
+}
+
+func SameDiagnosticRecovery(a, b DiagnosticRecoveryRequest) bool {
+	return a.ID == b.ID && a.DecisionID == b.DecisionID && a.ActorID == b.ActorID && a.Action == b.Action
+}
+
+// DiagnosticRetryStatus is the only pipeline state fillerdecision needs. Automatic retries carry
+// an exact next-attempt time; the zero value means the hold currently needs a manual retry.
+type DiagnosticRetryStatus struct {
+	Automatic bool
+	RetryAt   time.Time
+}
+
+// DiagnosticRecoveryExecutor hides pipeline stages and invalidation from the decision service.
+// Production supplies the filler pipeline adapter; tests can exercise the contract directly.
+type DiagnosticRecoveryExecutor interface {
+	DiagnosticRetryStatus(context.Context, string) (DiagnosticRetryStatus, error)
+	RetryDiagnostic(context.Context, string) error
+}
+
 type DiagnosticItem struct {
 	ID, ClipHash string
 	Code         filleradmission.OperationalCode
 	Retryable    bool
-	Recovery     RecoveryAction
+	Recovery     RecoveryPlan
 	CreatedAt    time.Time
 }
 

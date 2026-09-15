@@ -16,14 +16,14 @@ func candidate(source, id string, year, height int, license string) filler.Acqui
 }
 
 func TestPlanAcquisition_IsDeterministicAndDiverse(t *testing.T) {
-	intent := filler.AcquisitionIntent{Count: 3, Rights: filler.RightsPreferDeclared}
+	intent := filler.AcquisitionIntent{Count: 3}
 	input := []filler.AcquisitionCandidate{
 		candidate("a", "third", 1992, 1080, ""),
 		candidate("a", "first", 1990, 480, "cc-by"),
 		candidate("b", "second", 1990, 720, "cc-by"),
 		candidate("a", "fourth", 1993, 2160, "cc-by"),
 	}
-	want := []string{"fourth", "second", "first"}
+	want := []string{"fourth", "third", "second"}
 	for run := 0; run < 2; run++ {
 		plan, err := filler.PlanAcquisition(intent, input, nil)
 		if err != nil {
@@ -49,7 +49,6 @@ func TestPlanAcquisition_UnknownNeverSatisfiesHardConstraints(t *testing.T) {
 		intent filler.AcquisitionIntent
 		want   filler.CandidateDisposition
 	}{
-		{"rights", filler.AcquisitionIntent{Rights: filler.RightsRequireDeclared}, filler.CandidateRightsUnknown},
 		{"era", filler.AcquisitionIntent{EraStart: 1980, EraEnd: 1989}, filler.CandidateEraUnknown},
 		{"duration", filler.AcquisitionIntent{MaxDurationMS: 120_000}, filler.CandidateDurationUnknown},
 		{"quality", filler.AcquisitionIntent{MinHeight: 480}, filler.CandidateQualityUnknown},
@@ -67,6 +66,21 @@ func TestPlanAcquisition_UnknownNeverSatisfiesHardConstraints(t *testing.T) {
 				t.Fatalf("plan = %+v, want rejection %s", plan, tc.want)
 			}
 		})
+	}
+}
+
+func TestPlanAcquisition_LicenseMetadataDoesNotAffectSelection(t *testing.T) {
+	withLicense := candidate("classic", "z-declared", 1992, 720, "cc-by")
+	withoutLicense := candidate("classic", "a-not-provided", 1992, 720, "")
+	plan, err := filler.PlanAcquisition(filler.AcquisitionIntent{Count: 1}, []filler.AcquisitionCandidate{withLicense, withoutLicense}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Selected) != 1 || plan.Selected[0].Candidate.Identity.RemoteID != "a-not-provided" {
+		t.Fatalf("selected = %+v, want stable identity ordering independent of licence metadata", plan.Selected)
+	}
+	if plan.Selected[0].Candidate.License != "" || len(plan.Rejected) != 1 || plan.Rejected[0].Candidate.License != "cc-by" {
+		t.Fatalf("plan did not preserve passive licence metadata: %+v", plan)
 	}
 }
 

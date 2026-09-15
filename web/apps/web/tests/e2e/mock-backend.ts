@@ -65,6 +65,11 @@ interface MockBackend {
     channelCreationRequests: Record<string, unknown>[];
     approvalRequests: string[];
     approvalEdits: Record<string, unknown>[];
+    fillerFetches: string[];
+    fillerSourcePatches: Array<{ id: string; body: Record<string, unknown> }>;
+    fillerSourcePolicy: { mode: "defaults" | "custom" | "never"; everySeconds: number; maxPerCheck: number };
+    fillerSourceItems: Array<{ sourceId: string; remoteId: string; url: string }>;
+    fillerAcquisitionStatus: "queued" | "running" | "success" | "error";
   };
 }
 
@@ -85,6 +90,15 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     channelCreationRequests: [] as Record<string, unknown>[],
     approvalRequests: [] as string[],
     approvalEdits: [] as Record<string, unknown>[],
+    fillerFetches: [] as string[],
+    fillerSourcePatches: [] as Array<{ id: string; body: Record<string, unknown> }>,
+    fillerSourcePolicy: {
+      mode: "defaults" as "defaults" | "custom" | "never",
+      everySeconds: 21600,
+      maxPerCheck: 10,
+    },
+    fillerSourceItems: [] as Array<{ sourceId: string; remoteId: string; url: string }>,
+    fillerAcquisitionStatus: "queued" as "queued" | "running" | "success" | "error",
     proposals: (opts.pendingProposal ? [{ id: "prop-1", status: "submitted" }] : []) as Array<{
       id: string;
       status: string;
@@ -428,12 +442,219 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     // client deliberately trusts generated response shapes once the capability is enabled.
     if (opts.fillerEnabled) {
       if (path === "/v1/filler/watch") {
-        return json(route, { health: "attention", sourcesOn: 2, sourcesTotal: 2, clips: 0, held: 0 });
+        return json(route, {
+          health: "attention",
+          sourcesOn: 2,
+          sourcesReady: 2,
+          sourcesTotal: 2,
+          clips: 0,
+          held: 0,
+        });
       }
       if (path === "/v1/filler/attention") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/decisions/activity") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/decisions/diagnostics") return json(route, { rows: [], total: 0 });
+      if (path === "/v1/filler/providers/archive/suggestions" && method === "GET") {
+        return json(route, {
+          suggestions: [
+            {
+              provider: "archive",
+              targetType: "collection",
+              canonicalId: "classic_tv_commercials",
+              canonicalUrl: "https://archive.org/details/classic_tv_commercials",
+              title: "Classic TV Commercials",
+              description: "Public commercials and station breaks",
+              itemCount: 8457,
+              alreadyAdded: false,
+            },
+          ],
+        });
+      }
+      if (path === "/v1/filler/providers/archive/resolve" && method === "POST") {
+        return json(route, {
+          provider: "archive",
+          targetType: "collection",
+          canonicalId: "classic_tv_commercials",
+          canonicalUrl: "https://archive.org/details/classic_tv_commercials",
+          title: "Classic TV Commercials",
+          itemCount: 8457,
+          alreadyAdded: false,
+          previewItems: [
+            {
+              title: "1970s station break",
+              url: "https://archive.org/details/station_break_1978",
+              durationMs: 31500,
+            },
+            {
+              title: "Local weather bumper",
+              url: "https://archive.org/details/weather_bumper",
+            },
+            {
+              title: "Saturday morning promo",
+              url: "https://archive.org/details/saturday_promo",
+            },
+          ],
+        });
+      }
+      if (path === "/v1/filler/providers/youtube/suggestions" && method === "GET") {
+        return json(route, {
+          suggestions: [
+            {
+              provider: "youtube",
+              targetType: "channel",
+              canonicalId: "UC-retro-reels",
+              canonicalUrl: "https://www.youtube.com/channel/UC-retro-reels/videos",
+              title: "Retro Reels",
+              description: "Found from “An hour of vintage station breaks”",
+              alreadyAdded: false,
+            },
+            {
+              provider: "youtube",
+              targetType: "channel",
+              canonicalId: "UC-broadcast-vault",
+              canonicalUrl: "https://www.youtube.com/channel/UC-broadcast-vault/videos",
+              title: "Broadcast Vault",
+              description: "Found from “Classic local commercials”",
+              alreadyAdded: false,
+            },
+          ],
+        });
+      }
+      if (path === "/v1/filler/providers/youtube/resolve" && method === "POST") {
+        return json(route, {
+          provider: "youtube",
+          targetType: "channel",
+          canonicalId: "UC-retro-reels",
+          canonicalUrl: "https://www.youtube.com/channel/UC-retro-reels/videos",
+          title: "Retro Reels",
+          itemCount: 24,
+          alreadyAdded: false,
+          previewItems: [
+            {
+              title: "An hour of vintage station breaks",
+              url: "https://www.youtube.com/watch?v=retro-breaks",
+              durationMs: 3600000,
+            },
+            {
+              title: "Classic local commercials",
+              url: "https://www.youtube.com/watch?v=local-commercials",
+            },
+            {
+              title: "Network IDs from 1982",
+              url: "https://www.youtube.com/watch?v=network-ids",
+            },
+          ],
+        });
+      }
+      if (path === "/v1/filler/sources/fetch" && method === "POST") {
+        const sourceId = url.searchParams.get("id") ?? "";
+        state.fillerFetches.push(sourceId);
+        return json(route, {
+          sourceId,
+          sourcesPolled: 1,
+          queued: 2,
+          skipped: 0,
+          maxPerCheck: 10,
+          total: 0,
+          added: 0,
+          updated: 0,
+          pruned: 0,
+        });
+      }
+      if (path === "/v1/filler/discover" && method === "GET") {
+        const items = Array.from({ length: 20 }, (_, index) => ({
+          id: `clip-${index + 1}`,
+          title: `Found clip ${index + 1}`,
+          url: `https://archive.org/details/clip-${index + 1}`,
+          date: "1978-01-01",
+        }));
+        return json(route, { items, total: items.length, licenceNote: "Check each item's licence." });
+      }
+      if (path === "/v1/filler/discover/stats" && method === "GET") {
+        return json(route, { stats: {} });
+      }
+      const sourceItemMatch = path.match(/^\/v1\/filler\/sources\/([^/]+)\/items$/);
+      if (sourceItemMatch && method === "POST") {
+        const request = body() as { remoteId?: unknown; url?: unknown };
+        state.fillerSourceItems.push({
+          sourceId: decodeURIComponent(sourceItemMatch[1] ?? ""),
+          remoteId: String(request.remoteId ?? ""),
+          url: String(request.url ?? ""),
+        });
+        return json(route, { jobId: "e2e-source-item-acquisition" });
+      }
+      if (path === "/v1/filler/acquisitions/e2e-source-item-acquisition" && method === "GET") {
+        const terminal =
+          state.fillerAcquisitionStatus === "success" || state.fillerAcquisitionStatus === "error";
+        return json(route, {
+          id: "e2e-source-item-acquisition",
+          trigger: "source",
+          sourceId: "archive:long",
+          status: state.fillerAcquisitionStatus,
+          requested: 1,
+          fetched: state.fillerAcquisitionStatus === "success" ? 1 : 0,
+          skipped: 0,
+          failed: state.fillerAcquisitionStatus === "error" ? 1 : 0,
+          empty: 0,
+          error: state.fillerAcquisitionStatus === "error" ? "Archive.org timed out" : undefined,
+          startedAt: "2026-09-13T14:00:00Z",
+          completedAt: terminal ? "2026-09-13T14:01:00Z" : undefined,
+          updatedAt: terminal ? "2026-09-13T14:01:00Z" : "2026-09-13T14:00:00Z",
+          outcome: {
+            enrolled: state.fillerAcquisitionStatus === "success" ? 1 : 0,
+            preparing: state.fillerAcquisitionStatus === "success" ? 1 : 0,
+            needsDecision: 0,
+            admitted: 0,
+            rejected: 0,
+            dismissed: 0,
+          },
+          artifacts: {
+            staged: 0,
+            published: 0,
+            consumed: state.fillerAcquisitionStatus === "success" ? 1 : 0,
+            repair: 0,
+          },
+        });
+      }
+      if (path === "/v1/filler/ingest" && method === "POST") {
+        return json(route, { jobId: "e2e-filler-ingest" });
+      }
+      if (path === "/v1/filler/sources" && method === "POST") {
+        return json(route, {
+          id: "archive:classic_tv_commercials",
+          uri: "classic_tv_commercials",
+          label: "Classic TV Commercials",
+          enabled: true,
+        });
+      }
+      const sourcePatchMatch = path.match(/^\/v1\/filler\/sources\/(.+)$/);
+      if (sourcePatchMatch && method === "PATCH") {
+        const patch = body();
+        state.fillerSourcePatches.push({
+          id: decodeURIComponent(sourcePatchMatch[1] ?? ""),
+          body: patch,
+        });
+        if (patch.automaticDownloads) {
+          state.fillerSourcePolicy = patch.automaticDownloads as typeof state.fillerSourcePolicy;
+        }
+        return json(route, {});
+      }
       if (path === "/v1/filler/sources") {
+        const inheritedEvery = state.edits["filler.fetch.every"] ?? "6h";
+        const inheritedEverySeconds = inheritedEvery === "0" ? 0 : Number.parseInt(inheritedEvery, 10) * 3600;
+        const inheritedMax = Number(state.edits["filler.fetch.max_per_run"] ?? "10");
+        const policy =
+          state.fillerSourcePolicy.mode === "defaults"
+            ? {
+                mode: "defaults" as const,
+                everySeconds: inheritedEverySeconds,
+                maxPerCheck: inheritedMax,
+              }
+            : state.fillerSourcePolicy;
+        const policySummary =
+          policy.mode === "never"
+            ? "Doesn’t download automatically. You can still look for clips yourself."
+            : `${policy.mode === "defaults" ? "Uses your defaults: e" : "E"}very ${policy.everySeconds / 3600} hours, up to ${policy.maxPerCheck} clips each check.`;
         return json(route, {
           sources: [
             {
@@ -446,9 +667,15 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               configured: true,
               fetchable: true,
               enabled: true,
+              effectiveEnabled: true,
+              providerEnabled: true,
               switchable: true,
               removable: false,
               searchable: false,
+              readiness: "ready",
+              ready: true,
+              locationSource: "installation",
+              actions: ["fetch", "disable"],
             },
             {
               id: "provider:archive",
@@ -459,10 +686,16 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               configured: true,
               fetchable: false,
               enabled: true,
+              effectiveEnabled: true,
+              providerEnabled: true,
               switchable: false,
               removable: false,
               searchable: false,
               group: true,
+              readiness: "ready",
+              ready: true,
+              locationSource: "missing",
+              actions: ["configure", "disable"],
             },
             {
               id: "archive:long",
@@ -474,10 +707,21 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               configured: true,
               fetchable: true,
               enabled: true,
+              effectiveEnabled: true,
+              providerEnabled: true,
               switchable: true,
               removable: true,
               searchable: true,
               parentId: "provider:archive",
+              readiness: "ready",
+              ready: true,
+              locationSource: "installation",
+              automaticDownloads: {
+                ...policy,
+                summary: policySummary,
+                ...(policy.mode === "never" ? {} : { nextCheckAt: "2026-09-13T18:00:00Z" }),
+              },
+              actions: ["fetch", "search", "disable", "remove", "edit_location"],
             },
           ],
           total: 0,
@@ -540,6 +784,44 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       Object.assign(state.edits, (body().edits as Record<string, string>) ?? {});
       const results = Object.keys(state.edits).map((key) => ({ key, status: "saved" }));
       return json(route, { results });
+    }
+    if (path === "/v1/locations" && method === "GET") {
+      const query = (url.searchParams.get("q") ?? "").toLowerCase();
+      const locations = [
+        { id: "5128581", label: "New York City, United States", country: "US", market: "New York City" },
+        {
+          id: "5129061",
+          label: "North Greenbush, United States",
+          country: "US",
+          market: "North Greenbush",
+          region: "New York",
+        },
+        { id: "country-US", label: "United States", country: "US" },
+        { id: "2643743", label: "London, United Kingdom", country: "GB", market: "London" },
+      ].filter((location) => location.label.toLowerCase().includes(query));
+      return json(route, { locations });
+    }
+    if (path === "/v1/locations/resolve" && method === "POST") {
+      return json(route, {
+        location: {
+          id: "5128581",
+          label: "New York City, United States",
+          country: "US",
+          market: "New York City",
+          source: "device",
+        },
+      });
+    }
+    if (path === "/v1/locations/suggestion" && method === "GET") {
+      return json(route, {
+        suggestion: {
+          id: "country-US",
+          label: "United States",
+          country: "US",
+          source: "proxy",
+          approximate: true,
+        },
+      });
     }
     if (path === "/v1/settings") {
       // A field per connection group so the Connections step (config-design §6) renders its
@@ -606,6 +888,30 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             provenance: "db",
             value: state.edits["setup.completed"] ?? "false",
           },
+          {
+            key: "filler.home_country",
+            label: "Country",
+            group: "filler",
+            kind: "string",
+            doc: "Country where the channels are watched.",
+            advanced: false,
+            secret: false,
+            set: Boolean(state.edits["filler.home_country"]),
+            provenance: "db",
+            value: state.edits["filler.home_country"] ?? "",
+          },
+          {
+            key: "filler.home_market",
+            label: "Local area",
+            group: "filler",
+            kind: "string",
+            doc: "Local area where the channels are watched.",
+            advanced: false,
+            secret: false,
+            set: Boolean(state.edits["filler.home_market"]),
+            provenance: "db",
+            value: state.edits["filler.home_market"] ?? "",
+          },
           ...(opts.fillerEnabled
             ? [
                 {
@@ -618,6 +924,55 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   set: true,
                   provenance: "db" as const,
                   value: "/data/filler",
+                },
+                {
+                  key: "filler.fetch.every",
+                  label: "Look for new clips",
+                  group: "filler",
+                  kind: "duration",
+                  presentation: "filler_download_schedule",
+                  doc: "How often Loomarr checks enabled sources for new clips.",
+                  advanced: false,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: state.edits["filler.fetch.every"] ?? "6h0m0s",
+                },
+                {
+                  key: "filler.fetch.max_per_run",
+                  label: "Add up to",
+                  group: "filler",
+                  kind: "int",
+                  doc: "The most clips each enabled source may add in one automatic check.",
+                  advanced: false,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: state.edits["filler.fetch.max_per_run"] ?? "10",
+                },
+                {
+                  key: "filler.fetch.max_catalog_clips",
+                  label: "Automatic-download catalog limit",
+                  group: "filler",
+                  kind: "int",
+                  doc: "Stop downloading automatically once the catalog reaches this size.",
+                  advanced: true,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: "2000",
+                },
+                {
+                  key: "filler.fetch.max_disk_gb",
+                  label: "Automatic-download storage limit (GB)",
+                  group: "filler",
+                  kind: "int",
+                  doc: "Stop downloading automatically once filler storage reaches this size.",
+                  advanced: true,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: "20",
                 },
               ]
             : []),

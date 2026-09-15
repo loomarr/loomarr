@@ -30,8 +30,12 @@ type reviewWire struct {
 }
 
 type diagnosticWire struct {
-	ID, ClipHash, Code, Recovery string
-	Retryable                    bool
+	ID, ClipHash, Code string
+	Retryable          bool
+	Recovery           struct {
+		Action, Mode, Destination string
+		RetryAt                   *time.Time `json:"retryAt"`
+	}
 }
 
 type activityWire struct {
@@ -131,7 +135,9 @@ func TestFillerDecisionProjectionsSeparateHumanWorkFromDiagnostics(t *testing.T)
 		t.Fatal(err)
 	}
 	if diagnostics.Total != 1 || len(diagnostics.Rows) != 1 || diagnostics.Rows[0].Code != "provider_unavailable" ||
-		diagnostics.Rows[0].Recovery != "configure_provider" || !diagnostics.Rows[0].Retryable {
+		diagnostics.Rows[0].Recovery.Action != "configure_provider" ||
+		diagnostics.Rows[0].Recovery.Mode != "configuration" ||
+		diagnostics.Rows[0].Recovery.Destination != "/settings/ai" || !diagnostics.Rows[0].Retryable {
 		t.Fatalf("diagnostics = %+v", diagnostics)
 	}
 
@@ -140,6 +146,52 @@ func TestFillerDecisionProjectionsSeparateHumanWorkFromDiagnostics(t *testing.T)
 	decodeDecisionResponse(t, res, &activity)
 	if activity.Total != 1 || len(activity.Rows) != 1 || activity.Rows[0].Kind != "review_requested" {
 		t.Fatalf("activity = %+v", activity)
+	}
+}
+
+func TestFillerDiagnosticRecoveryRequiresAdminAndIsIdempotent(t *testing.T) {
+	srv, st := newServer(t)
+	at := time.Date(2026, 9, 12, 16, 0, 0, 0, time.UTC)
+	if err := st.PutFillerDecision(t.Context(), fillerdecision.Record{
+		ID: "retryable-hold", ClipHash: "clip-retry", EvidenceHash: "evidence-retry",
+		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
+		PolicyVersion: "p1", TaxonomyVersion: "t1", ApplicationMode: fillerdecision.ApplicationModeShadow,
+		CreatedAt: at, Result: filleradmission.Result{Hold: &filleradmission.Hold{
+			Code: filleradmission.HoldExtractionFailed, Retryable: true,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"actionId":"diagnostic-retry-1","action":"retry"}`
+	res := do(t, srv, http.MethodPost, "/v1/filler/decisions/diagnostics/retryable-hold/actions", memberToken, body)
+	if res.StatusCode != http.StatusForbidden {
+		_ = res.Body.Close()
+		t.Fatalf("member recovery = %d, want 403", res.StatusCode)
+	}
+	_ = res.Body.Close()
+	if _, found, err := st.FindFillerDiagnosticRecovery(t.Context(), "diagnostic-retry-1"); err != nil || found {
+		t.Fatalf("member recovery persisted = %v, %v", found, err)
+	}
+	for range 2 {
+		res = do(t, srv, http.MethodPost, "/v1/filler/decisions/diagnostics/retryable-hold/actions", adminToken, body)
+		if res.StatusCode != http.StatusOK {
+			raw, _ := io.ReadAll(res.Body)
+			_ = res.Body.Close()
+			t.Fatalf("admin recovery = %d: %s", res.StatusCode, raw)
+		}
+		_ = res.Body.Close()
+	}
+	request, found, err := st.FindFillerDiagnosticRecovery(t.Context(), "diagnostic-retry-1")
+	if err != nil || !found || request.ActorID != "api-token" || request.DecisionID != "retryable-hold" {
+		t.Fatalf("recorded diagnostic recovery = %+v, %v, %v", request, found, err)
+	}
+
+	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/diagnostics?limit=10", adminToken, "")
+	var diagnostics decisionListBody[diagnosticWire]
+	decodeDecisionResponse(t, res, &diagnostics)
+	if diagnostics.Total != 1 || diagnostics.Rows[0].Recovery.Mode != "automatic_retry" ||
+		diagnostics.Rows[0].Recovery.RetryAt == nil {
+		t.Fatalf("hold did not update to its server-owned retry schedule: %+v", diagnostics)
 	}
 }
 

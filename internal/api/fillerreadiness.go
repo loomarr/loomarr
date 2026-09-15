@@ -2,16 +2,20 @@ package api
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 type AcquisitionOutcomeDTO struct {
 	Enrolled      int `json:"enrolled"`
 	Preparing     int `json:"preparing"`
 	NeedsDecision int `json:"needsDecision"`
-	Admitted      int `json:"admitted"`
+	Ready         int `json:"ready"`
+	Complete      int `json:"complete"`
 	Rejected      int `json:"rejected"`
 	Dismissed     int `json:"dismissed"`
 }
@@ -67,6 +71,25 @@ type fillerReadinessOutput struct {
 	Body FillerReadinessDTO
 }
 
+type getFillerAcquisitionInput struct {
+	JobID string `path:"jobId" minLength:"1" maxLength:"256"`
+}
+
+type getFillerAcquisitionOutput struct {
+	Body FillerAcquisitionRunDTO
+}
+
+func (s *Server) getFillerAcquisition(ctx context.Context, in *getFillerAcquisitionInput) (*getFillerAcquisitionOutput, error) {
+	run, err := s.store.GetAcquisitionRun(ctx, in.JobID, time.Now().UTC())
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, huma.Error404NotFound("Filler acquisition not found")
+	}
+	if err != nil {
+		return nil, huma.Error500InternalServerError("read filler acquisition", err)
+	}
+	return &getFillerAcquisitionOutput{Body: acquisitionRunDTO(run)}, nil
+}
+
 func (s *Server) fillerReadiness(ctx context.Context, _ *struct{}) (*fillerReadinessOutput, error) {
 	if s.filler == nil {
 		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before checking readiness.")
@@ -106,7 +129,8 @@ func acquisitionRunDTO(run filler.AcquisitionRun) FillerAcquisitionRunDTO {
 		UpdatedAt: formatAcquisitionTime(run.UpdatedAt),
 		Outcome: AcquisitionOutcomeDTO{
 			Enrolled: run.Outcome.Enrolled, Preparing: run.Outcome.Preparing,
-			NeedsDecision: run.Outcome.NeedsDecision, Admitted: run.Outcome.Admitted,
+			NeedsDecision: run.Outcome.NeedsDecision, Ready: run.Outcome.Ready,
+			Complete: run.Outcome.Complete,
 			Rejected: run.Outcome.Rejected, Dismissed: run.Outcome.Dismissed,
 		},
 		Artifacts: AcquisitionArtifactOutcomeDTO{

@@ -65,9 +65,11 @@ if [ "$ROOT" = "$PRIMARY" ]; then
 	DEFAULT_GRAFANA=3000
 	DEFAULT_DATABASE=
 	DEFAULT_FILLER=
+	DEFAULT_IMAGES=
 	DEFAULT_PREPARED=
 	DEFAULT_DIAGNOSTICS=
 	DEFAULT_DEV_LOGIN=
+	DEFAULT_ENCRYPTION_KEY_FILE=
 else
 	INSTANCE="${BRANCH_SLUG}-$(printf '%03d' "$SLOT")"
 	DEFAULT_BACKEND=$((18000 + SLOT))
@@ -78,9 +80,14 @@ else
 	DEFAULT_GRAFANA=$((21000 + SLOT))
 	DEFAULT_DATABASE="sqlite://$ROOT/.agent-data/loomarr.db"
 	DEFAULT_FILLER="$ROOT/.filler-drop"
+	DEFAULT_IMAGES="$ROOT/.agent-data/images"
 	DEFAULT_PREPARED="$ROOT/.agent-data/prepared"
 	DEFAULT_DIAGNOSTICS="$ROOT/.agent-data/diagnostics"
 	DEFAULT_DEV_LOGIN=1
+	# `make bootstrap` creates this worktree-private key before the server starts. Pointing at the
+	# file makes restarts reproducible without inheriting a hidden terminal secret or trying to
+	# write production's `/data`; the primary worktree remains entirely untouched.
+	DEFAULT_ENCRYPTION_KEY_FILE="$ROOT/.agent-data/encryption.key"
 fi
 
 BACKEND_PORT="${LOOMARR_DEV_PORT:-$DEFAULT_BACKEND}"
@@ -107,10 +114,12 @@ OBSERVABILITY_COMPOSE_SLUG="${OBSERVABILITY_COMPOSE_PROJECT_NAME:-$COMPOSE_SLUG-
 ARTIFACT_DIR="$ROOT/.artifacts/$INSTANCE"
 DATABASE_OVERRIDE="${LOOMARR_AGENT_DATABASE_URL:-$DEFAULT_DATABASE}"
 FILLER_OVERRIDE="${LOOMARR_AGENT_FILLER_DIR:-$DEFAULT_FILLER}"
+IMAGES_OVERRIDE="${LOOMARR_AGENT_IMAGES_DIR:-$DEFAULT_IMAGES}"
 PREPARED_OVERRIDE="${LOOMARR_AGENT_PREPARED_DIR:-$DEFAULT_PREPARED}"
 DIAGNOSTICS_OVERRIDE="${LOOMARR_AGENT_DIAGNOSTICS_DIR:-$DEFAULT_DIAGNOSTICS}"
 PUBLIC_URL_OVERRIDE="${LOOMARR_AGENT_PUBLIC_URL:-$DEFAULT_PUBLIC_URL}"
 DEV_LOGIN_OVERRIDE="${LOOMARR_AGENT_DEV_LOGIN:-$DEFAULT_DEV_LOGIN}"
+ENCRYPTION_KEY_FILE_OVERRIDE="${LOOMARR_AGENT_ENCRYPTION_KEY_FILE:-$DEFAULT_ENCRYPTION_KEY_FILE}"
 
 emit_export() {
 	name="$1"
@@ -138,10 +147,12 @@ case "${1:-show}" in
 		emit_export LOOMARR_ARTIFACT_DIR "$ARTIFACT_DIR"
 		emit_export LOOMARR_AGENT_DATABASE_URL "$DATABASE_OVERRIDE"
 		emit_export LOOMARR_AGENT_FILLER_DIR "$FILLER_OVERRIDE"
+		emit_export LOOMARR_AGENT_IMAGES_DIR "$IMAGES_OVERRIDE"
 		emit_export LOOMARR_AGENT_PREPARED_DIR "$PREPARED_OVERRIDE"
 		emit_export LOOMARR_AGENT_DIAGNOSTICS_DIR "$DIAGNOSTICS_OVERRIDE"
 		emit_export LOOMARR_AGENT_PUBLIC_URL "$PUBLIC_URL_OVERRIDE"
 		emit_export LOOMARR_AGENT_DEV_LOGIN "$DEV_LOGIN_OVERRIDE"
+		emit_export LOOMARR_AGENT_ENCRYPTION_KEY_FILE "$ENCRYPTION_KEY_FILE_OVERRIDE"
 		emit_export FILLER_DROP_DIR "${FILLER_DROP_DIR:-$ROOT/.filler-drop}"
 		;;
 	show)
@@ -160,6 +171,7 @@ case "${1:-show}" in
 			'artifacts' "$ARTIFACT_DIR" \
 			'database override' "${DATABASE_OVERRIDE:-<from .env>}" \
 			'filler override' "${FILLER_OVERRIDE:-<from .env>}" \
+			'images override' "${IMAGES_OVERRIDE:-<from .env>}" \
 			'prepared override' "${PREPARED_OVERRIDE:-<from .env>}" \
 			'diagnostics override' "${DIAGNOSTICS_OVERRIDE:-<from .env>}" \
 			'public URL override' "${PUBLIC_URL_OVERRIDE:-<from .env>}"

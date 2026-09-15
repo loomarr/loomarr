@@ -1,7 +1,12 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { DisclosurePanelProps, DisclosureProps, DisclosureTriggerProps } from "./disclosure.type";
+import type {
+  DisclosurePanelProps,
+  DisclosureProps,
+  DisclosureSectionTriggerProps,
+  DisclosureTriggerProps,
+} from "./disclosure.type";
 
 // Disclosure — a reveal whose trigger is a DISCRETE chevron, not the whole header (§5.1c, Layer 1).
 //
@@ -53,6 +58,33 @@ const DisclosureTrigger = ({ label, className }: DisclosureTriggerProps) => (
   </Collapsible.Trigger>
 );
 
+// A sparse section has no sibling controls, so its complete visible header can be the trigger.
+// This keeps collapsed content discoverable and gives touch users a real hit target while the
+// icon-only Trigger above remains available for dense rows with independent actions.
+const DisclosureSectionTrigger = ({
+  label,
+  title,
+  description,
+  className,
+}: DisclosureSectionTriggerProps) => (
+  <Collapsible.Trigger
+    aria-label={label}
+    className={cn(
+      "group -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-static-800",
+      className,
+    )}
+  >
+    <span className="min-w-0 flex-1">
+      <span className="block font-medium">{title}</span>
+      {description && <span className="mt-1 block text-muted-foreground text-sm">{description}</span>}
+    </span>
+    <ChevronDown
+      className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-180"
+      aria-hidden
+    />
+  </Collapsible.Trigger>
+);
+
 // The reveal: grid 0fr→1fr so the body slides open with no fixed height (styles.css).
 //
 // ⚠ `.reveal` keys off `data-open`, which Base UI emits VALUELESS when open — styles.css matches
@@ -70,6 +102,10 @@ const DisclosurePanel = ({ children, className }: DisclosurePanelProps) => (
 // ⚠ Attached as properties rather than exported as three names, and that is load-bearing for more
 // than ergonomics: `story-coverage.test.ts` enumerates the barrel's runtime function exports, so
 // three exports would demand three story files for one component. One compound, one story.
-const Disclosure = Object.assign(DisclosureRoot, { Panel: DisclosurePanel, Trigger: DisclosureTrigger });
+const Disclosure = Object.assign(DisclosureRoot, {
+  Panel: DisclosurePanel,
+  SectionTrigger: DisclosureSectionTrigger,
+  Trigger: DisclosureTrigger,
+});
 
 export { Disclosure };
