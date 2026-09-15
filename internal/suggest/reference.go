@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
@@ -202,7 +203,7 @@ func (s *Suggester) groundReference(ctx context.Context, intent *Intent, meaning
 
 func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning, evidence reference.Evidence, hints []string) (referenceGrounding, bool, error) {
 	rawTitles := boundedTitles(evidence.TitleAnchors, reference.MaxTitleAnchors)
-	titles, mediaTypes := referenceCatalogTitles(rawTitles)
+	titles, mediaTypes, years := referenceCatalogTitles(rawTitles)
 	if len(titles) == 0 {
 		return referenceGrounding{}, true, errors.New("reference contains no title anchors")
 	}
@@ -224,9 +225,11 @@ func (s *Suggester) groundReferenceEvidence(ctx context.Context, intent *Intent,
 		}
 		exact := make([]catalog.Candidate, 0, len(candidates))
 		expectedMediaType := mediaTypes[strings.ToLower(title)]
+		expectedYear := years[strings.ToLower(title)]
 		for _, candidate := range candidates {
 			if sameExactTitle(candidate.Name, title) &&
-				(!expectedMediaType.Valid() || candidate.MediaType == expectedMediaType) {
+				(!expectedMediaType.Valid() || candidate.MediaType == expectedMediaType) &&
+				(expectedYear == 0 || candidate.Year == expectedYear) {
 				exact = append(exact, candidate)
 			}
 		}
@@ -518,6 +521,52 @@ func preserveRequiredTitles(intent Intent, picks []pick, surfaced map[provision.
 	return result
 }
 
+// completeNamedSourceSelection turns the provider's named-set shortlist into
+// the bounded review pool. The provider's grounded choices remain first; unused
+// members may enter only from the independently resolved source candidates.
+func completeNamedSourceSelection(intent Intent, picks []pick, surfaced map[provision.Key]catalog.Candidate) []pick {
+	if !requiresMembershipEvidence(intent) || len(intent.referenceCandidates) == 0 {
+		return picks
+	}
+	selected := make(map[provision.Key]bool, len(picks))
+	groundedCount := 0
+	for _, proposed := range picks {
+		key := provision.Key(proposed.key())
+		if key == "" || selected[key] || !intent.membershipKeys[key] {
+			continue
+		}
+		if _, found := surfaced[key]; !found {
+			continue
+		}
+		selected[key] = true
+		groundedCount++
+	}
+	if groundedCount == 0 {
+		return picks
+	}
+	result := append([]pick(nil), picks...)
+	for _, candidate := range intent.referenceCandidates {
+		if groundedCount == maxFinalSelectionPicks {
+			break
+		}
+		key, err := candidate.Key()
+		if err != nil || selected[key] || !intent.referenceKeys[key] || !intent.membershipKeys[key] {
+			continue
+		}
+		grounded, found := surfaced[key]
+		if !found {
+			continue
+		}
+		result = append(result, pick{
+			MediaType: string(grounded.MediaType), Key: string(key), Name: grounded.Name,
+			Year: grounded.Year, Confidence: 1,
+		})
+		selected[key] = true
+		groundedCount++
+	}
+	return result
+}
+
 func requiredIdentityConflicts(intent Intent, candidate catalog.Candidate) bool {
 	want, required := intent.requiredTitleKeys[normalizeTitleLabel(candidate.Name)]
 	if !required {
@@ -774,19 +823,30 @@ func boundedReferenceTitles(values []string) []string {
 
 // referenceCatalogTitles keeps a source article's TV-series disambiguator as
 // identity evidence while removing it from the Catalog query and display name.
-// Without the type constraint, an owned namesake movie can incorrectly win the
-// unambiguous-membership shortcut for a source member such as "Clueless (TV series)".
-func referenceCatalogTitles(values []string) ([]string, map[string]provision.MediaType) {
+// Without the type/year constraint, a namesake can incorrectly win or make an
+// exact source member such as "Sabrina the Teenage Witch (1996 TV series)" ambiguous.
+func referenceCatalogTitles(values []string) ([]string, map[string]provision.MediaType, map[string]int) {
 	titles := make([]string, 0, len(values))
 	mediaTypes := make(map[string]provision.MediaType)
+	years := make(map[string]int)
 	for _, value := range values {
 		name := value
 		mediaType := provision.MediaType("")
+		year := 0
 		if base, suffix, found := strings.Cut(value, " ("); found && strings.HasSuffix(suffix, ")") {
 			disambiguator := strings.ToLower(strings.TrimSuffix(suffix, ")"))
 			if disambiguator == "tv series" || disambiguator == "television series" {
 				name = base
 				mediaType = provision.Series
+			} else {
+				parts := strings.Fields(disambiguator)
+				if len(parts) == 3 && (parts[1] == "tv" || parts[1] == "television") && parts[2] == "series" {
+					if parsed, err := strconv.Atoi(parts[0]); err == nil && parsed >= 1800 && parsed <= 2200 {
+						name = base
+						mediaType = provision.Series
+						year = parsed
+					}
+				}
 			}
 		}
 		name = strings.Join(strings.Fields(name), " ")
@@ -802,8 +862,13 @@ func referenceCatalogTitles(values []string) ([]string, map[string]provision.Med
 		} else if _, found := mediaTypes[key]; !found {
 			mediaTypes[key] = ""
 		}
+		if year > 0 {
+			years[key] = year
+		} else if _, found := years[key]; !found {
+			years[key] = 0
+		}
 	}
-	return titles, mediaTypes
+	return titles, mediaTypes, years
 }
 
 func boundedTitles(values []string, limit int) []string {

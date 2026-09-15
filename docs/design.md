@@ -1410,7 +1410,8 @@ routing, redirect, timeout and response-size bounds. The category must include t
 subject itself; only its direct article members become title anchors. Historical schedule tables,
 search snippets and unrelated links are not rosters. Category membership is observed for this
 request, not claimed as an immutable historical roster. Parenthetical TV-series disambiguators are
-removed from Catalog query and display names but retained as a series identity constraint. When an exact
+removed from Catalog query and display names but retained as series identity constraints, including an
+explicit four-digit year when the source supplies one. When an exact
 source title maps to multiple canonical Catalog identities, a single exact identity already present in
 the connected Library is the actionable
 identity for that request; unavailable namesakes cannot make an owned title ambiguous. No match or
@@ -1484,6 +1485,11 @@ mandatory selections. If a named-set request has independently grounded every re
 but the provider exhausts or malforms its final response, Loomarr may finish with that thinner exact
 set. This fallback is unavailable to ordinary themes, where required titles alone do not reconstruct
 the requested editorial selection.
+For a resolved named set, the provider's shortlist does not silently discard other independently
+grounded source members. Loomarr keeps the provider-selected members first, then fills the same
+eight-pick bound with distinct remaining source members. These are ordinary review rows under the
+existing approval editor: the operator can remove any of them or add another catalog title before
+approval. A source name that is missing, ambiguous, excluded, or not grounded never enters that pool.
 Network, genre, era, adjacent recommendations, and model rationale may help discover a theme, but never
 prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
 rules. A member whose series premiered before a requested decade is not excluded merely by that premiere
@@ -1881,14 +1887,17 @@ request.
 `reference-source-v4` broadens bounded source-roster inspection and preserves TV-series
 disambiguators as media-type evidence. It invalidates cached named-set Proposals built from a thin
 alphabetical prefix or an owned namesake of the wrong media type.
-`reference-source-v5` binds exact required-title identities across named and ordinary intents,
+`reference-source-v6` binds exact required-title identities across named and ordinary intents,
 collapses duplicate selected keys, recognizes Unicode-dash and direct-constituent named-block
 punctuation, rejects known
 country/genre contradictions, respects locally negated episode-mode cues, and assesses resolved
 network/person evidence without counting direct-title or episode-policy grammar as themes. It also
 projects a provider's one-word thematic title lookup onto the intent's explicit country/genre
 discovery pair, preserves complete audit facts for synthesized required picks, and permits the
-bounded exact-set fallback above. It invalidates successful cached Proposals produced by the prior behavior.
+bounded exact-set fallback above. It completes a provider's shorter named-set selection with distinct,
+independently grounded source members up to the review bound and retains a source-supplied series year when
+resolving same-name Catalog identities. It invalidates successful cached Proposals
+produced by the prior behavior.
 Only the configured model is live in this replay; actual source discovery needs separate diagnostic
 and installed-journey evidence. This
 release holdout complements the full active certification corpus; its one-trial canary and
