@@ -129,7 +129,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
         },
         pool: {
           clips: readyCommitted ? 1 : 0,
-          commercials: readyCommitted ? 1 : 0,
+          breakBody: readyCommitted ? 1 : 0,
           eligible: readyCommitted ? 1 : 0,
           untagged: 0,
           channels: readyCommitted

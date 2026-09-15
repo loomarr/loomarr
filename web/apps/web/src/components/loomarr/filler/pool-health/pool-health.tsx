@@ -76,7 +76,9 @@ const PoolHealth = ({ pool, onProposePull, proposing, className }: PoolHealthPro
         note={
           pool.untagged > 0
             ? `${pluralize(pool.untagged, "commercial")} could use details`
-            : "ready to browse"
+            : pool.clips > 0
+              ? "ready to browse"
+              : "no clips yet"
         }
       />
 

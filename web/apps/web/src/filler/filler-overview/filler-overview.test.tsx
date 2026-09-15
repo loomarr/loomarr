@@ -51,9 +51,9 @@ describe("FillerOverview", () => {
     ["enable_fetch", "Turn on automatic sourcing", "Review automation", "/filler/settings"],
     ["free_catalog_capacity", "Make room in the filler catalog", "Review limits", "/filler/settings"],
     ["free_disk_capacity", "Make room for more filler", "Review limits", "/filler/settings"],
-    ["retry_acquisition", "A source pull needs recovery", "Open diagnostics", "/filler/manage"],
+    ["retry_acquisition", "A download needs another try", "Open diagnostics", "/filler/manage"],
     ["retry_failed_work", "Some filler can be retried", "Open diagnostics", "/filler/manage"],
-    ["review_incoming", "A few clips need your judgment", "Review clips", "/filler/incoming"],
+    ["review_incoming", "A few clips need your help", "Review clips", "/filler/incoming"],
     ["add_filler", "Add filler to get started", "Open sources", "/filler/sources"],
     [
       "improve_channel_coverage",
@@ -78,6 +78,7 @@ describe("FillerOverview", () => {
     expect(await screen.findByText("Filler is working on its own")).toBeInTheDocument();
     expect(screen.getByText("Working automatically")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /diagnostics|review clips/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/admission|admitted|readiness projection/i)).not.toBeInTheDocument();
   });
 
   it("uses workspace readiness rather than a healthy admission subset", async () => {
@@ -92,10 +93,11 @@ describe("FillerOverview", () => {
   it("uses the current needs-help action without resurfacing legacy decision counts", async () => {
     show(readiness({ ready: false, nextAction: "review_incoming", actionCount: 4 }));
 
-    expect(await screen.findByText("A few clips need your judgment")).toBeInTheDocument();
+    expect(await screen.findByText("A few clips need your help")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review clips" })).toHaveAttribute("href", "/filler/incoming");
     expect(screen.queryByRole("heading", { name: "Admission summary" })).not.toBeInTheDocument();
     expect(screen.queryByText("Needs judgment")).not.toBeInTheDocument();
+    expect(screen.queryByText(/classified safely without a person/i)).not.toBeInTheDocument();
   });
 
   it("routes operational recovery to diagnostics, never the review queue", async () => {

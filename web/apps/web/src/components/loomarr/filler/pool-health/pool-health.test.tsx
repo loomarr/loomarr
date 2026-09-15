@@ -37,6 +37,13 @@ describe("PoolHealth", () => {
     expect(screen.queryByText("all tagged")).not.toBeInTheDocument();
   });
 
+  it("does not claim an empty library is ready to browse", () => {
+    render(<PoolHealth pool={pool({ clips: 0, breakBody: 0, eligible: 0 })} />);
+
+    expect(screen.getByText("no clips yet")).toBeInTheDocument();
+    expect(screen.queryByText("ready to browse")).not.toBeInTheDocument();
+  });
+
   // The diagnosis. Naming the channel is the difference between "something is thin" and
   // something an operator can act on — and the server already ordered the list worst-first, so
   // the head is read positionally rather than re-sorted here.

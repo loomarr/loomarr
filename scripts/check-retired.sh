@@ -252,6 +252,7 @@ RETIRED=(
   'FillerReviewQueue|#1249: audit decisions are not an operator review queue'
   'IncomingTab|#1249: Incoming has one bounded server-backed screen'
   'IncomingPanel|#1249: Incoming has one bounded server-backed screen'
+  'admission-summary-heading|#1249: Overview uses household readiness, not audit-only admission counts'
   'ConveyorOnly|#1249: read models select exact pipeline dispositions'
   'RejectedOnly|#1249: rejected history is not part of Incoming'
   '"reconcile.every"|V55: superseded by the active channel and library schedules'
