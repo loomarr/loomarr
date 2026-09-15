@@ -360,6 +360,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 				continue
 			}
 			out.Picks = preserveRequiredTitles(intent, out.Picks, surfaced)
+			out.Picks = completeNamedSourceSelection(intent, out.Picks, surfaced)
 			if len(surfaced) == 0 && len(out.Picks) > 0 {
 				out.Picks, out.nameGroundingIncomplete, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
 				if err != nil {

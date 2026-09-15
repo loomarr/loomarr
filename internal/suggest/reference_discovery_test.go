@@ -129,6 +129,45 @@ func TestSuggestNamedBlockContinuesPastUnresolvedSourceAnchors(t *testing.T) {
 	}
 }
 
+func TestSuggestNamedBlockSurfacesGroundedMembersBeyondModelShortlist(t *testing.T) {
+	titles := []catalog.Candidate{
+		{MediaType: provision.Series, TMDBID: 1001, Name: "Full House", InLibrary: true},
+		{MediaType: provision.Series, TMDBID: 1007, Name: "Sabrina the Teenage Witch", InLibrary: true},
+	}
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		for _, candidate := range titles {
+			if query == candidate.Name {
+				return []catalog.Candidate{candidate}, nil
+			}
+		}
+		return nil, nil
+	}}
+	references := &testkit.ReferenceResolver{DiscoveryEvidence: reference.Evidence{
+		URL: "https://lineups.example/tgif", Title: "TGIF", Excerpt: "A verified programming block.",
+		TitleAnchors: []string{"Full House", "Sabrina the Teenage Witch"},
+	}}
+	model := testkit.NewLLM(
+		testkit.FinalResponse(`{"channelName":"TGIF","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
+		testkit.FinalResponse(`{"channelName":"TGIF","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
+			{"mediaType":"series","key":"series:tmdb:1001","name":"Full House"}
+		],"policy":{}}`),
+	)
+
+	proposal, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+		WithReferences(references).
+		Suggest(context.Background(), suggest.Intent{Description: "TGIF"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	for _, item := range items {
+		if item.Name == "Sabrina the Teenage Witch" {
+			return
+		}
+	}
+	t.Fatalf("selectable TGIF items = %+v, want grounded Sabrina beyond the model shortlist", items)
+}
+
 func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t *testing.T) {
 	fullHouse := catalog.Candidate{MediaType: provision.Series, TMDBID: 1001, Name: "Full House", Year: 1987, InLibrary: true}
 	familyMatters := catalog.Candidate{MediaType: provision.Series, TMDBID: 1002, Name: "Family Matters", Year: 1989, InLibrary: true}
@@ -255,6 +294,37 @@ func TestSuggestNamedBlockPreservesSourceMediaType(t *testing.T) {
 	}
 	if len(proposal.Lineup) != 0 || len(proposal.Acquisitions) != 1 || proposal.Acquisitions[0].MediaType != "series" {
 		t.Fatalf("proposal=%+v, want the source-typed series rather than the owned namesake movie", proposal)
+	}
+}
+
+func TestSuggestNamedBlockUsesSourceYearToResolveSeriesNamesake(t *testing.T) {
+	animated := catalog.Candidate{MediaType: provision.Series, TMDBID: 1001, Name: "Sabrina the Teenage Witch", Year: 1970}
+	liveAction := catalog.Candidate{MediaType: provision.Series, TMDBID: 1002, Name: "Sabrina the Teenage Witch", Year: 1996}
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		if query == "Sabrina the Teenage Witch" {
+			return []catalog.Candidate{animated, liveAction}, nil
+		}
+		return nil, nil
+	}}
+	references := &testkit.ReferenceResolver{DiscoveryEvidence: reference.Evidence{
+		URL: "https://lineups.example/tgif", Title: "TGIF", Excerpt: "A verified programming block.",
+		TitleAnchors: []string{"Sabrina the Teenage Witch (1996 TV series)"},
+	}}
+	model := testkit.NewLLM(
+		testkit.FinalResponse(`{"channelName":"TGIF","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
+		testkit.FinalResponse(`{"channelName":"TGIF","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
+			{"mediaType":"series","key":"series:tmdb:1002","name":"Sabrina the Teenage Witch"}
+		],"policy":{}}`),
+	)
+
+	proposal, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+		WithReferences(references).
+		Suggest(context.Background(), suggest.Intent{Description: "TGIF"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.Acquisitions) != 1 || proposal.Acquisitions[0].TMDBID != 1002 || proposal.Acquisitions[0].Year != 1996 {
+		t.Fatalf("proposal = %+v, want the source-disambiguated 1996 series", proposal)
 	}
 }
 

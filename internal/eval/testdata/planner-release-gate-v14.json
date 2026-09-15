@@ -321,5 +321,5 @@
     "path": "testdata/planner-release-sources-v1.json",
     "sha256": "db34b291a15d8a7b5cadfd4441b0da1faa0c27ac86b3fcac9743e408a7661644"
   },
-  "sourceVersion": "reference-source-v5"
+  "sourceVersion": "reference-source-v6"
 }
