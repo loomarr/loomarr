@@ -17,10 +17,10 @@ const clip = {
   playsCounted: true,
 };
 
-test("a fetched arrival becomes playable only after terminal admission completes", async ({ page }) => {
+test("a fetched arrival becomes playable automatically after its checks complete", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
   let fetched = false;
-  let terminalAdmissionApplied = false;
+  let readyCommitted = false;
   const calls: string[] = [];
   const requestedPaths: string[] = [];
 
@@ -87,7 +87,7 @@ test("a fetched arrival becomes playable only after terminal admission completes
             target: "Trusted Commercials",
             detail: "an enabled archive.org collection",
             count: fetched ? 1 : 0,
-            incoming: fetched && !terminalAdmissionApplied ? 1 : 0,
+            incoming: fetched && !readyCommitted ? 1 : 0,
             configured: true,
             fetchable: true,
             enabled: true,
@@ -114,25 +114,25 @@ test("a fetched arrival becomes playable only after terminal admission completes
     }
     if (path === "/v1/filler/readiness") {
       return reply({
-        ready: terminalAdmissionApplied,
-        nextAction: terminalAdmissionApplied ? "none" : "add_filler",
+        ready: readyCommitted,
+        nextAction: readyCommitted ? "none" : "add_filler",
         fetch: { enabled: true, catalogClips: fetched ? 1 : 0 },
         pipeline: {
-          runnable: fetched && !terminalAdmissionApplied ? 1 : 0,
+          runnable: fetched && !readyCommitted ? 1 : 0,
           scheduled: 0,
           inProgress: 0,
           needsDecision: 0,
           recoverable: 0,
-          admitted: terminalAdmissionApplied ? 1 : 0,
+          ready: readyCommitted ? 1 : 0,
           rejected: 0,
           dismissed: 0,
         },
         pool: {
-          clips: terminalAdmissionApplied ? 1 : 0,
-          commercials: terminalAdmissionApplied ? 1 : 0,
-          eligible: terminalAdmissionApplied ? 1 : 0,
+          clips: readyCommitted ? 1 : 0,
+          breakBody: readyCommitted ? 1 : 0,
+          eligible: readyCommitted ? 1 : 0,
           untagged: 0,
-          channels: terminalAdmissionApplied
+          channels: readyCommitted
             ? [
                 {
                   channelId: "ch-1",
@@ -164,9 +164,9 @@ test("a fetched arrival becomes playable only after terminal admission completes
                 completedAt: "2026-08-24T04:00:01Z",
                 outcome: {
                   enrolled: fetched ? 1 : 0,
-                  preparing: fetched && !terminalAdmissionApplied ? 1 : 0,
+                  preparing: fetched && !readyCommitted ? 1 : 0,
                   needsDecision: 0,
-                  admitted: terminalAdmissionApplied ? 1 : 0,
+                  ready: readyCommitted ? 1 : 0,
                   rejected: 0,
                   dismissed: 0,
                 },
@@ -175,24 +175,9 @@ test("a fetched arrival becomes playable only after terminal admission completes
           : [],
       });
     }
-    if (path === "/v1/filler/decisions/overview") {
-      return reply({
-        healthy: false,
-        nextAction: "review_decisions",
-        actionCount: 1,
-        counts: {
-          admitted: terminalAdmissionApplied ? 1 : 0,
-          rejected: 0,
-          reviews: 1,
-          unresolvedReviews: 1,
-          operational: 0,
-          retryable: 0,
-        },
-      });
-    }
     if (path === "/v1/filler/decisions/activity") {
       return reply({
-        rows: terminalAdmissionApplied
+        rows: readyCommitted
           ? [
               {
                 id: "automatic-event",
@@ -203,7 +188,7 @@ test("a fetched arrival becomes playable only after terminal admission completes
               },
             ]
           : [],
-        total: terminalAdmissionApplied ? 1 : 0,
+        total: readyCommitted ? 1 : 0,
       });
     }
     if (path === "/v1/filler/decisions/diagnostics") return reply({ rows: [], total: 0 });
@@ -213,12 +198,12 @@ test("a fetched arrival becomes playable only after terminal admission completes
         sourcesReady: 1,
         sourcesTotal: 1,
         clips: fetched ? 1 : 0,
-        held: fetched && !terminalAdmissionApplied ? 1 : 0,
+        held: fetched && !readyCommitted ? 1 : 0,
         health: "healthy",
       });
     }
     if (path === "/v1/filler/incoming") {
-      const preparing = fetched && !terminalAdmissionApplied;
+      const preparing = fetched && !readyCommitted;
       const status = {
         clipHash: clip.hash,
         name: clip.name,
@@ -232,15 +217,15 @@ test("a fetched arrival becomes playable only after terminal admission completes
         preparing: { rows: preparing ? [status] : [], total: preparing ? 1 : 0 },
         needsHelp: { rows: [], total: 0 },
         recentlyReady: {
-          rows: terminalAdmissionApplied ? [status] : [],
-          total: terminalAdmissionApplied ? 1 : 0,
+          rows: readyCommitted ? [status] : [],
+          total: readyCommitted ? 1 : 0,
         },
       });
     }
     if (path === "/v1/filler") {
       return reply({
-        clips: terminalAdmissionApplied ? [clip] : [],
-        total: terminalAdmissionApplied ? 1 : 0,
+        clips: readyCommitted ? [clip] : [],
+        total: readyCommitted ? 1 : 0,
       });
     }
     if (path === "/v1/channels/ch-1") {
@@ -254,24 +239,24 @@ test("a fetched arrival becomes playable only after terminal admission completes
         strategy: "shuffle",
         lineup: [],
         policy: { scope: { era: { from: 1990, to: 1999 } } },
-        breakCount: terminalAdmissionApplied ? 1 : 0,
+        breakCount: readyCommitted ? 1 : 0,
         pendingCount: 0,
         programCount: 2,
-        slotCount: terminalAdmissionApplied ? 3 : 2,
+        slotCount: readyCommitted ? 3 : 2,
       });
     }
     if (path === "/v1/channels/ch-1/filler/coverage") {
       return reply({
         level: "exact",
-        total: terminalAdmissionApplied ? 1 : 0,
-        rungs: [{ level: "exact", clips: terminalAdmissionApplied ? 1 : 0 }],
+        total: readyCommitted ? 1 : 0,
+        rungs: [{ level: "exact", clips: readyCommitted ? 1 : 0 }],
         criteria: [
-          { criterion: "era", clips: terminalAdmissionApplied ? 1 : 0 },
-          { criterion: "audience", clips: terminalAdmissionApplied ? 1 : 0 },
-          { criterion: "category", clips: terminalAdmissionApplied ? 1 : 0 },
-          { criterion: "kind", clips: terminalAdmissionApplied ? 1 : 0 },
-          { criterion: "duration", clips: terminalAdmissionApplied ? 1 : 0 },
-          { criterion: "quality", clips: terminalAdmissionApplied ? 1 : 0 },
+          { criterion: "era", clips: readyCommitted ? 1 : 0 },
+          { criterion: "audience", clips: readyCommitted ? 1 : 0 },
+          { criterion: "category", clips: readyCommitted ? 1 : 0 },
+          { criterion: "kind", clips: readyCommitted ? 1 : 0 },
+          { criterion: "duration", clips: readyCommitted ? 1 : 0 },
+          { criterion: "quality", clips: readyCommitted ? 1 : 0 },
         ],
       });
     }
@@ -280,11 +265,11 @@ test("a fetched arrival becomes playable only after terminal admission completes
       return reply({
         coverage: {
           level: "exact",
-          total: terminalAdmissionApplied ? 1 : 0,
-          rungs: [{ level: "exact", clips: terminalAdmissionApplied ? 1 : 0 }],
+          total: readyCommitted ? 1 : 0,
+          rungs: [{ level: "exact", clips: readyCommitted ? 1 : 0 }],
           criteria: [],
         },
-        entries: terminalAdmissionApplied
+        entries: readyCommitted
           ? [
               {
                 path: clip.path,
@@ -296,15 +281,15 @@ test("a fetched arrival becomes playable only after terminal admission completes
               },
             ]
           : [],
-        totalMs: terminalAdmissionApplied ? 30000 : 0,
+        totalMs: readyCommitted ? 30000 : 0,
         matchLevel: "exact",
       });
     }
     if (path === "/v1/taxonomy") {
       return reply({
         taxa: [],
-        totalClips: terminalAdmissionApplied ? 1 : 0,
-        taggedClips: terminalAdmissionApplied ? 1 : 0,
+        totalClips: readyCommitted ? 1 : 0,
+        taggedClips: readyCommitted ? 1 : 0,
         unclassifiedClips: 0,
         axisCoverage: [],
       });
@@ -330,9 +315,10 @@ test("a fetched arrival becomes playable only after terminal admission completes
   await expect(
     page.getByText("No playable filler is available yet. Add a source or drop in your own clips."),
   ).toBeVisible();
-  const admissionSummary = page.getByRole("region", { name: "Admission summary" });
-  await expect(admissionSummary).toContainText("Needs judgment");
-  await expect(admissionSummary).toContainText("1");
+  await expect(page.getByRole("heading", { name: "Admission summary" })).toHaveCount(0);
+  await expect(page.getByText("Needs judgment")).toHaveCount(0);
+  await expect(page.getByText(/licen[cs]/i)).toHaveCount(0);
+  expect(requestedPaths).not.toContain("/v1/filler/decisions/overview");
   const fillerNav = page.getByRole("navigation", { name: "Filler sections" });
   await expect(fillerNav.getByRole("link", { name: "Overview" })).toBeVisible();
   await expect(fillerNav.getByRole("link", { name: "Incoming" })).toBeVisible();
@@ -351,8 +337,8 @@ test("a fetched arrival becomes playable only after terminal admission completes
   await expect(page.getByRole("button", { name: /apply filler/i })).toHaveCount(0);
 
   // This is a backend-state simulation, not an operator approval or UI publish action. It models
-  // certified automatic terminal admission completing after fetch; the frontend only observes it.
-  terminalAdmissionApplied = true;
+  // the automatic terminal Ready commit completing after fetch; the frontend only observes it.
+  readyCommitted = true;
 
   await page.goto("/filler/manage");
   await expect(page.getByText("Added automatically")).toBeVisible();
@@ -366,4 +352,16 @@ test("a fetched arrival becomes playable only after terminal admission completes
   await expect(page.getByLabel("Pod segments")).toContainText("Trusted Toy Spot");
   await expect(page.getByRole("button", { name: /apply filler/i })).toHaveCount(0);
   expect(calls).toEqual(["bounded source fetch", "automatic break preview"]);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/filler/incoming");
+  await page.evaluate(() => {
+    document.body.style.zoom = "2";
+  });
+  const details = page.getByRole("button", { name: "View details for Trusted Toy Spot" });
+  await details.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Trusted Toy Spot" })).toBeVisible();
+  await expect(page.getByText(/licen[cs]|admission|classification approval/i)).toHaveCount(0);
 });

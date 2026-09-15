@@ -1,18 +1,11 @@
-import type { FillerDecisionOverviewDTO, FillerReadinessDTO } from "@loomarr/api";
-import { getFillerDecisionOverviewMockHandler, getFillerReadinessMockHandler } from "@loomarr/api/msw";
+import type { FillerReadinessDTO } from "@loomarr/api";
+import { getFillerReadinessMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { FillerOverview, readinessAction } from "./filler-overview";
-
-const decision = (over: Partial<FillerDecisionOverviewDTO> = {}): FillerDecisionOverviewDTO => ({
-  healthy: true,
-  nextAction: "none",
-  counts: { admitted: 25, rejected: 12, reviews: 0, unresolvedReviews: 0, operational: 0, retryable: 0 },
-  ...over,
-});
 
 const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO => {
   const { repairs, ...rest } = over;
@@ -38,8 +31,8 @@ const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO =
   };
 };
 
-const show = (overview: FillerDecisionOverviewDTO, coverage: FillerReadinessDTO = readiness()) => {
-  server.use(getFillerDecisionOverviewMockHandler(overview), getFillerReadinessMockHandler(coverage));
+const show = (coverage: FillerReadinessDTO = readiness()) => {
+  server.use(getFillerReadinessMockHandler(coverage));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <RouterHarness
@@ -58,9 +51,9 @@ describe("FillerOverview", () => {
     ["enable_fetch", "Turn on automatic sourcing", "Review automation", "/filler/settings"],
     ["free_catalog_capacity", "Make room in the filler catalog", "Review limits", "/filler/settings"],
     ["free_disk_capacity", "Make room for more filler", "Review limits", "/filler/settings"],
-    ["retry_acquisition", "A source pull needs recovery", "Open diagnostics", "/filler/manage"],
+    ["retry_acquisition", "A download needs another try", "Open diagnostics", "/filler/manage"],
     ["retry_failed_work", "Some filler can be retried", "Open diagnostics", "/filler/manage"],
-    ["review_incoming", "A few clips need your judgment", "Review clips", "/filler/incoming"],
+    ["review_incoming", "A few clips need your help", "Review clips", "/filler/incoming"],
     ["add_filler", "Add filler to get started", "Open sources", "/filler/sources"],
     [
       "improve_channel_coverage",
@@ -81,17 +74,15 @@ describe("FillerOverview", () => {
   });
 
   it("renders the server-owned healthy answer without inventing an action", async () => {
-    show(decision());
+    show();
     expect(await screen.findByText("Filler is working on its own")).toBeInTheDocument();
     expect(screen.getByText("Working automatically")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /diagnostics|review clips/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/admission|admitted|readiness projection/i)).not.toBeInTheDocument();
   });
 
   it("uses workspace readiness rather than a healthy admission subset", async () => {
-    show(
-      decision({ healthy: true, nextAction: "none" }),
-      readiness({ ready: false, nextAction: "add_filler" }),
-    );
+    show(readiness({ ready: false, nextAction: "add_filler" }));
 
     expect(await screen.findByText("Add filler to get started")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open sources" })).toHaveAttribute("href", "/filler/sources");
@@ -99,39 +90,24 @@ describe("FillerOverview", () => {
     expect(screen.queryByText("Working automatically")).not.toBeInTheDocument();
   });
 
-  it("renders the server-ranked review action and distinct counts", async () => {
-    show(
-      decision({
-        healthy: false,
-        nextAction: "review_decisions",
-        actionCount: 4,
-        counts: { admitted: 18, rejected: 9, reviews: 5, unresolvedReviews: 4, operational: 2, retryable: 1 },
-      }),
-      readiness({ ready: false, nextAction: "review_incoming", actionCount: 4 }),
-    );
+  it("uses the current needs-help action without resurfacing legacy decision counts", async () => {
+    show(readiness({ ready: false, nextAction: "review_incoming", actionCount: 4 }));
 
-    expect(await screen.findByText("A few clips need your judgment")).toBeInTheDocument();
+    expect(await screen.findByText("A few clips need your help")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review clips" })).toHaveAttribute("href", "/filler/incoming");
-    const summary = screen.getByRole("heading", { name: "Admission summary" }).parentElement?.parentElement;
-    expect(summary).toBeTruthy();
-    expect(within(summary as HTMLElement).getByText("18")).toBeInTheDocument();
-    expect(within(summary as HTMLElement).getByText("9")).toBeInTheDocument();
-    expect(within(summary as HTMLElement).getByText("4")).toBeInTheDocument();
-    expect(within(summary as HTMLElement).getByText("2")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Admission summary" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Needs judgment")).not.toBeInTheDocument();
+    expect(screen.queryByText(/classified safely without a person/i)).not.toBeInTheDocument();
   });
 
   it("routes operational recovery to diagnostics, never the review queue", async () => {
-    show(
-      decision({ healthy: false, nextAction: "retry_processing", actionCount: 2 }),
-      readiness({ ready: false, nextAction: "retry_failed_work", actionCount: 2 }),
-    );
+    show(readiness({ ready: false, nextAction: "retry_failed_work", actionCount: 2 }));
     expect(await screen.findByText("Some filler can be retried")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open diagnostics" })).toHaveAttribute("href", "/filler/manage");
   });
 
   it("keeps channel coverage separate from admission health", async () => {
     show(
-      decision(),
       readiness({
         pool: {
           clips: 25,

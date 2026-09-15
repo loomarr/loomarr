@@ -1,4 +1,4 @@
-import type { FillerDecisionOverviewDTO, FillerReadinessDTO } from "@loomarr/api";
+import type { FillerReadinessDTO } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { widthFrame, withRouter } from "@/test/story-utils";
@@ -41,14 +41,15 @@ const readiness: FillerReadinessDTO = {
   acquisitions: [],
 };
 
-const withOverview =
-  (overview: FillerDecisionOverviewDTO, workspace: FillerReadinessDTO = readiness): Decorator =>
+const withReadiness =
+  (workspace: FillerReadinessDTO = readiness): Decorator =>
   (Story) => {
-    window.fetch = ((input: RequestInfo | URL) => {
-      const url = String(input);
-      const body = url.includes("/decisions/overview") ? overview : workspace;
+    window.fetch = (() => {
       return Promise.resolve(
-        new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }),
+        new Response(JSON.stringify(workspace), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
       );
     }) as typeof fetch;
     return (
@@ -59,7 +60,7 @@ const withOverview =
   };
 
 const meta = {
-  title: "Filler/DecisionOverview",
+  title: "Filler/Overview",
   component: FillerOverview,
   decorators: [widthFrame(960), withRouter("/filler")],
 } satisfies Meta<typeof FillerOverview>;
@@ -68,52 +69,24 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const HealthyZeroWork: Story = {
-  decorators: [
-    withOverview({
-      healthy: true,
-      nextAction: "none",
-      counts: { admitted: 48, rejected: 22, reviews: 1, unresolvedReviews: 0, operational: 0, retryable: 0 },
-    }),
-  ],
+  decorators: [withReadiness()],
 };
 
 export const RecoverableFailure: Story = {
   decorators: [
-    withOverview(
-      {
-        healthy: false,
-        nextAction: "retry_processing",
-        actionCount: 2,
-        counts: {
-          admitted: 46,
-          rejected: 22,
-          reviews: 1,
-          unresolvedReviews: 0,
-          operational: 2,
-          retryable: 2,
-        },
-      },
-      { ...readiness, ready: false, nextAction: "retry_failed_work", actionCount: 2 },
-    ),
+    withReadiness({ ...readiness, ready: false, nextAction: "retry_failed_work", actionCount: 2 }),
   ],
 };
 
 export const EmptyLibrary: Story = {
   decorators: [
-    withOverview(
-      {
-        healthy: true,
-        nextAction: "none",
-        counts: { admitted: 0, rejected: 0, reviews: 0, unresolvedReviews: 0, operational: 0, retryable: 0 },
-      },
-      {
-        ...readiness,
-        ready: false,
-        nextAction: "add_filler",
-        fetch: { enabled: true, catalogClips: 0 },
-        pipeline: { ...readiness.pipeline, ready: 0, rejected: 0 },
-        pool: { clips: 0, breakBody: 0, eligible: 0, untagged: 0, channels: [] },
-      },
-    ),
+    withReadiness({
+      ...readiness,
+      ready: false,
+      nextAction: "add_filler",
+      fetch: { enabled: true, catalogClips: 0 },
+      pipeline: { ...readiness.pipeline, ready: 0, rejected: 0 },
+      pool: { clips: 0, breakBody: 0, eligible: 0, untagged: 0, channels: [] },
+    }),
   ],
 };

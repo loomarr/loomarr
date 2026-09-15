@@ -45,8 +45,8 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
       };
     case "retry_acquisition":
       return {
-        title: "A source pull needs recovery",
-        description: `${pluralize(readiness.actionCount ?? 0, "item")} could not finish entering the filler pipeline.`,
+        title: "A download needs another try",
+        description: `${pluralize(readiness.actionCount ?? 0, "item")} could not finish downloading.`,
         label: "Open diagnostics",
         to: "/filler/manage",
       };
@@ -59,8 +59,8 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
       };
     case "review_incoming":
       return {
-        title: "A few clips need your judgment",
-        description: `${pluralize(readiness.actionCount ?? 0, "clip")} could not be classified safely without a person.`,
+        title: "A few clips need your help",
+        description: `${pluralize(readiness.actionCount ?? 0, "clip")} ${readiness.actionCount === 1 ? "needs" : "need"} a choice before preparation can continue.`,
         label: "Review clips",
         to: "/filler/incoming",
       };
@@ -92,9 +92,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
 };
 
 const FillerOverview = () => {
-  const decisionQuery = fillerApi.useFillerDecisionOverview();
   const readinessQuery = fillerApi.useFillerReadiness();
-  const overview = unwrap(decisionQuery.data, (body) => body);
   const readiness = unwrap(readinessQuery.data, (body) => body);
 
   if (readinessQuery.error) {
@@ -104,7 +102,7 @@ const FillerOverview = () => {
     return (
       <Card aria-live="polite" className="p-6">
         <p className="font-medium">Checking filler health…</p>
-        <p className="mt-1 text-muted-foreground text-sm">Reading the workspace readiness projection.</p>
+        <p className="mt-1 text-muted-foreground text-sm">Finding out what's ready and what's on the way.</p>
       </Card>
     );
   }
@@ -122,53 +120,12 @@ const FillerOverview = () => {
             <h2 className="mt-3 font-semibold text-xl">{action?.title ?? "Filler is working on its own"}</h2>
             <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
               {action?.description ??
-                "Recent clips were admitted or rejected automatically, and nothing needs your attention."}
+                "Loomarr is preparing clips automatically. Nothing needs your attention."}
             </p>
           </div>
           {action ? <Button render={<Link to={action.to} />}>{action.label}</Button> : null}
         </div>
       </Card>
-
-      <section aria-labelledby="admission-summary-heading">
-        <div className="mb-3">
-          <h2 id="admission-summary-heading" className="font-semibold text-lg">
-            Admission summary
-          </h2>
-          <p className="text-muted-foreground text-sm">Current outcomes, kept separate by the server.</p>
-        </div>
-        {decisionQuery.error ? (
-          <ErrorState error={decisionQuery.error} onRetry={() => decisionQuery.refetch()} />
-        ) : overview ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-muted-foreground text-sm">Admitted</p>
-              <p className="mt-1 font-semibold text-2xl tabular-nums">{overview.counts.admitted}</p>
-              <p className="mt-1 text-muted-foreground text-xs">Ready for the compatible filing gate</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-muted-foreground text-sm">Rejected automatically</p>
-              <p className="mt-1 font-semibold text-2xl tabular-nums">{overview.counts.rejected}</p>
-              <p className="mt-1 text-muted-foreground text-xs">Normal outcomes, not chores</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-muted-foreground text-sm">Needs judgment</p>
-              <p className="mt-1 font-semibold text-2xl tabular-nums">{overview.counts.unresolvedReviews}</p>
-              <p className="mt-1 text-muted-foreground text-xs">Semantic questions only</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-muted-foreground text-sm">Processing holds</p>
-              <p className="mt-1 font-semibold text-2xl tabular-nums">{overview.counts.operational}</p>
-              <p className="mt-1 text-muted-foreground text-xs">
-                {pluralize(overview.counts.retryable, "retryable item")}
-              </p>
-            </Card>
-          </div>
-        ) : (
-          <Card aria-live="polite" className="p-4 text-muted-foreground text-sm">
-            Loading admission outcomes…
-          </Card>
-        )}
-      </section>
 
       <section aria-labelledby="coverage-heading">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -177,7 +134,7 @@ const FillerOverview = () => {
               Channel coverage
             </h2>
             <p className="text-muted-foreground text-sm">
-              Playable time and variety remain separate from admission health.
+              See how much filler each channel has ready to play.
             </p>
           </div>
           <Button variant="outline" size="sm" render={<Link to="/filler/library" />}>
