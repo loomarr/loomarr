@@ -92,9 +92,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
 };
 
 const FillerOverview = () => {
-  const decisionQuery = fillerApi.useFillerDecisionOverview();
   const readinessQuery = fillerApi.useFillerReadiness();
-  const overview = unwrap(decisionQuery.data, (body) => body);
   const readiness = unwrap(readinessQuery.data, (body) => body);
 
   if (readinessQuery.error) {
@@ -128,47 +126,6 @@ const FillerOverview = () => {
           {action ? <Button render={<Link to={action.to} />}>{action.label}</Button> : null}
         </div>
       </Card>
-
-      <section aria-labelledby="admission-summary-heading">
-        <div className="mb-3">
-          <h2 id="admission-summary-heading" className="font-semibold text-lg">
-            Admission summary
-          </h2>
-          <p className="text-muted-foreground text-sm">Current outcomes, kept separate by the server.</p>
-        </div>
-        {decisionQuery.error ? (
-          <ErrorState error={decisionQuery.error} onRetry={() => decisionQuery.refetch()} />
-        ) : overview ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-muted-foreground text-sm">Admitted</p>
-              <p className="mt-1 font-semibold text-2xl tabular-nums">{overview.counts.admitted}</p>
-              <p className="mt-1 text-muted-foreground text-xs">Ready for the compatible filing gate</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-muted-foreground text-sm">Rejected automatically</p>
-              <p className="mt-1 font-semibold text-2xl tabular-nums">{overview.counts.rejected}</p>
-              <p className="mt-1 text-muted-foreground text-xs">Normal outcomes, not chores</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-muted-foreground text-sm">Needs judgment</p>
-              <p className="mt-1 font-semibold text-2xl tabular-nums">{overview.counts.unresolvedReviews}</p>
-              <p className="mt-1 text-muted-foreground text-xs">Semantic questions only</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-muted-foreground text-sm">Processing holds</p>
-              <p className="mt-1 font-semibold text-2xl tabular-nums">{overview.counts.operational}</p>
-              <p className="mt-1 text-muted-foreground text-xs">
-                {pluralize(overview.counts.retryable, "retryable item")}
-              </p>
-            </Card>
-          </div>
-        ) : (
-          <Card aria-live="polite" className="p-4 text-muted-foreground text-sm">
-            Loading admission outcomes…
-          </Card>
-        )}
-      </section>
 
       <section aria-labelledby="coverage-heading">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
