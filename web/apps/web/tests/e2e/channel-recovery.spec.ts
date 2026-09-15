@@ -106,7 +106,7 @@ test("a failed builder journey preserves the complete intent through authorized 
   expect(mock.state.enqueued).toEqual([]);
 });
 
-test("a bounded-discovery failure offers a useful edit instead of an internal budget error", async ({
+test("a bounded-discovery failure preserves the draft without exposing an internal budget", async ({
   page,
 }) => {
   await installMockBackend(page, { authed: true, role: "admin", failedProposalJourney: true });
@@ -140,9 +140,11 @@ test("a bounded-discovery failure offers a useful edit instead of an internal bu
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
 
   const recovery = page.getByRole("alert");
-  await expect(recovery).toContainText("Try a more specific description");
-  await expect(recovery).toContainText("Add a decade, genre, network, or a few example titles");
-  await expect(recovery).not.toContainText("bounded discovery budget");
+  await expect(recovery).toContainText("We couldn't finish the lineup");
+  await expect(recovery).toContainText(
+    "Your description is still here. Try again, or edit it if you want to.",
+  );
+  await expect(recovery).not.toContainText(/budget|more specific|too many possible directions/i);
   await page.getByRole("button", { name: "Edit description" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("Create a TGIF channel");
 });

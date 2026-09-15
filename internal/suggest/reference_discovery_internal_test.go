@@ -3,6 +3,9 @@ package suggest
 import (
 	"reflect"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func TestNamedBlockLabelPreservesAmbiguityAndNetworkRoles(t *testing.T) {
@@ -42,16 +45,28 @@ func TestReferencePrefetchPrioritizesDirectlyNamedSourceMembers(t *testing.T) {
 	intent := Intent{Description: "TGIF, with Full House, Family Matters, and Step by Step."}
 	titles := []string{"Camp Wilder", "Boy Meets World", "Hangin' with Mr. Cooper", "Sister, Sister", "Sabrina the Teenage Witch", "Clueless", "Teen Angel", "You Wish", "Full House", "Family Matters", "Step by Step"}
 	got := prioritizedReferenceTitles(intent, titles, []string{"Camp Wilder", "Boy Meets World"})
-	want := []string{"Full House", "Family Matters", "Step by Step", "Camp Wilder", "Boy Meets World", "Hangin' with Mr. Cooper", "Sister, Sister", "Sabrina the Teenage Witch"}
+	want := []string{"Full House", "Family Matters", "Step by Step", "Camp Wilder", "Boy Meets World", "Hangin' with Mr. Cooper", "Sister, Sister", "Sabrina the Teenage Witch", "Clueless", "Teen Angel", "You Wish"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("titles=%v, want directly named members before model hints", got)
 	}
 }
 
+func TestReferenceCandidatePoolKeepsLibraryAndStrongExternalMembersVisible(t *testing.T) {
+	got := prioritizeReferenceCandidatePool([]catalog.Candidate{
+		{MediaType: provision.Series, TMDBID: 1, Name: "Obscure external", VoteCount: 5},
+		{MediaType: provision.Series, TMDBID: 2, Name: "Owned classic", InLibrary: true},
+		{MediaType: provision.Series, TMDBID: 3, Name: "Defining external", VoteCount: 5000},
+	})
+	want := []string{"Owned classic", "Defining external", "Obscure external"}
+	if names := []string{got[0].Name, got[1].Name, got[2].Name}; !reflect.DeepEqual(names, want) {
+		t.Fatalf("candidate order=%v, want library first then stronger external members", names)
+	}
+}
+
 func TestNamedSourceContractInvalidatesPriorSuccessfulProposal(t *testing.T) {
-	// Frozen reference-source-v1 identity, before owned-identity resolution and
-	// direct-member prefetch priority changed the named-source result.
-	const prior = "1badcd576e97648da87451ad031a746ee3cc10dc0765387bb9953b6617567704"
+	// Frozen reference-source-v3 identity, before broader roster inspection and
+	// source media-type preservation changed the named-source result.
+	const prior = "da78510e8dea8ac714a496c924d9289b0ef1f560a4fadcc682258384bb970286"
 	if IntentHash(Intent{Description: "TGIF"}) == prior {
 		t.Fatal("source contract reused the prior proposal cache identity")
 	}

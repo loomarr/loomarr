@@ -1410,16 +1410,22 @@ not establish constituent membership. Retrieve its exact named category through 
 routing, redirect, timeout and response-size bounds. The category must include the discovered
 subject itself; only its direct article members become title anchors. Historical schedule tables,
 search snippets and unrelated links are not rosters. Category membership is observed for this
-request, not claimed as an immutable historical roster. Parenthetical TV-series disambiguators may
-be removed from display names. When an exact source title maps to multiple canonical Catalog
-identities, a single exact identity already present in the connected Library is the actionable
+request, not claimed as an immutable historical roster. Parenthetical TV-series disambiguators are
+removed from Catalog query and display names but retained as a series identity constraint. When an exact
+source title maps to multiple canonical Catalog identities, a single exact identity already present in
+the connected Library is the actionable
 identity for that request; unavailable namesakes cannot make an owned title ambiguous. No match or
 multiple owned exact identities still fails closed, and model-provided media/year filters cannot
 choose between them.
 No brand roster, model-authored URL, arbitrary crawler, or new runtime dependency is added.
 The discovery operation has one shared 10-second budget and at most two bounded GET operations
 (search and category members); its result is reused within that Suggest invocation. Keep up to 128
-source anchors as membership evidence, but at most eight source-prefetch Catalog lookups. Existing
+source anchors as membership evidence. Source prefetch may inspect at most 48 of those anchors so an
+alphabetical run of unavailable or ambiguous names cannot consume the usable-candidate allowance;
+the final prompt still receives at most 24 grounded candidates. That pool prioritizes resolved
+Library members before filling its remaining capacity with external candidates ordered by their
+available Catalog audience signal. This is a presentation priority inside already-proven
+membership, not evidence that popularity or Library presence establishes membership. Existing
 model-tool and membership-resolution operation budgets remain separate and unchanged. Evaluation attributes acknowledged model-tool operations to actual provider responses.
 Synthesized reference transcript entries do not become model operations; their real Catalog work
 remains in the independent Catalog operation ledger. Unexecuted final output is not a dispatched
@@ -1428,6 +1434,11 @@ from older transcript-only counts. Exact source anchors that the operator direct
 bounded prefetch slots first. Validated model title hypotheses may then prioritize remaining anchors
 for lookup only when the source independently contains that name; reordering cannot add a member,
 choose an ambiguous identity, or change source authority.
+Once automatic source grounding yields at least one usable constituent, retrieval is complete for
+that invocation: the planner retires the catalog tool and asks the provider to finalize from the
+source-grounded candidates. A model-authored collection hypothesis that misses those constituents
+cannot keep discovery open or spend the remaining tool rounds after the stronger source evidence is
+already available.
 Absent or ambiguous sources preserve named-set uncertainty; transport failures remain retrieval
 failures. Existing operator-supplied pages keep their site-neutral lookup behavior.
 
@@ -1828,7 +1839,8 @@ no-grounded-title outcome, adds no selection or approval authority, and changes 
 `planner-release-gate-v10` retains the exact supplementary release cases, fixtures and gates while
 binding the same prompt. `planner-release-gate-v11` keeps those inputs and thresholds unchanged and
 binds `reference-source-v2`. `planner-release-gate-v12` keeps those inputs and thresholds unchanged
-and binds `reference-source-v3`; prior manifests remain immutable.
+and binds `reference-source-v3`. `planner-release-gate-v13` again preserves them while binding
+`reference-source-v4`; prior manifests remain immutable.
 
 The supplementary `planner-release-gate-v4` release replay retains v1's 18 synthetic cases,
 fixture bytes, acceptable members, hard negatives and thresholds, and binds them explicitly to the
@@ -1840,6 +1852,9 @@ successful Proposals from prior source behavior cannot be reused.
 `reference-source-v3` adds the date-omission guard at both producer boundaries. It likewise
 invalidates successful cached Proposals that could have accepted `kind: none` for an explicit date
 request.
+`reference-source-v4` broadens bounded source-roster inspection and preserves TV-series
+disambiguators as media-type evidence. It invalidates cached named-set Proposals built from a thin
+alphabetical prefix or an owned namesake of the wrong media type.
 Only the configured model is live in this replay; actual source discovery needs separate diagnostic
 and installed-journey evidence. This
 release holdout complements the full active certification corpus; its one-trial canary and
@@ -2030,13 +2045,18 @@ settings.
 
 The fixed projection keeps malformed final JSON separate from invalid tool arguments: the former
 uses `provider_response_invalid` with `retry_later`; only an explicit invalid-tool terminal uses
-`invalid_tool_calls` with `retry_later`. Ordinary exhausted discovery without that terminal uses
-`discovery_budget_exhausted` with `simplify_request`. Provider timeout and provider unavailability
-remain distinct reasons with `retry_later`. Retry guidance explains the failed provider stage and,
-if it repeats, points to the existing authorized AI-check action or asking an administrator; it does
-not assert that the user's request caused a provider protocol error. New producer-specific reasons
-remain unavailable until their allowlisted typed evidence exists; generic outer codes do not invent
-that evidence.
+`invalid_tool_calls` with `retry_later`. An exhausted run that already surfaced grounded candidates
+also uses `provider_response_invalid`: retrieval succeeded, but the provider did not finish the
+lineup. Exhaustion without grounded candidates retains `discovery_budget_exhausted`, but uses neutral
+`retry_later` guidance; a raw budget fact does not prove that the request was broad, vague, or had too
+many directions. The review UI also translates a stored legacy `discovery_budget_exhausted` message
+into a short, neutral failure that preserves the description and offers only the Journey-authorized
+retry and edit actions; internal budget language never reaches the household user. Provider timeout
+and provider unavailability remain distinct reasons with `retry_later`. Retry guidance explains the
+failed stage and, if it repeats, points to the existing
+authorized AI-check action or asking an administrator; it does not assert that the user's request
+caused a provider protocol error. New producer-specific reasons remain unavailable until their
+allowlisted typed evidence exists; generic outer codes do not invent that evidence.
 
 The existing `retrieval_failure` terminal covers both reference and catalog operations. It therefore
 projects as `retrieval_unavailable` with `retry_later`; it does not assert that the reference page
@@ -2314,9 +2334,8 @@ latency defect, never a correctness defect.
 The builder presents an in-flight Journey as one calm current-status message; it does not expose
 tool-loop rounds, a ticking timer, a percentage, or a checklist for a process that may revisit phases.
 A terminal failure replaces progress completely with one plain-language explanation and the useful
-server-authorized recovery action. In particular, `simplify_request` authorizes `edit`, restores the
-complete saved Intent, and makes editing the primary recovery; blindly retrying the unchanged request
-is not presented as the solution to a discovery-budget failure.
+server-authorized recovery action. The copy states what Loomarr could not finish and preserves the
+saved Intent; it does not infer a defect in the user's description from an internal work limit.
 
 **Workflow versus activities.** Ordering, transitions, attempt tokens, approval, grounding gates, and
 retry classification are deterministic workflow logic. Model turns, catalog reads, and external
