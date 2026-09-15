@@ -3,6 +3,7 @@ import {
   getBulkRemoveFillerMockHandler,
   getBulkTagFillerMockHandler,
   getCreateTaxonMockHandler,
+  getFillerIncomingMockHandler,
   getFillerPoolMockHandler,
   getFillerWatchMockHandler,
   getGetFillerSplitMockHandler,
@@ -164,6 +165,11 @@ const stubFiller = ({
       untagged: 0,
       channels: [],
     }),
+    getFillerIncomingMockHandler({
+      preparing: { rows: [], total: 0 },
+      needsHelp: { rows: [], total: 0 },
+      recentlyReady: { rows: [], total: 0 },
+    } as never),
     // The header pill's live status (§10 V38c). ⚠ Served here because the header reads it from
     // the SERVER — counts and health verdict both — rather than deriving them from the sources
     // list, which is admin-only and would leave a member's pill permanently grey.

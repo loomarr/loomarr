@@ -451,7 +451,6 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           held: 0,
         });
       }
-      if (path === "/v1/filler/attention") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/decisions/activity") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/decisions/diagnostics") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/providers/archive/suggestions" && method === "GET") {
@@ -732,14 +731,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       }
       if (path === "/v1/filler/incoming") {
         return json(route, {
-          clips: [],
-          reels: [],
-          rejected: [],
-          stageOrder: [],
-          clipsTotal: 0,
-          decisionsTotal: 0,
-          reelsTotal: 0,
-          rejectedTotal: 0,
+          preparing: { rows: [], total: 0 },
+          needsHelp: { rows: [], total: 0 },
+          recentlyReady: { rows: [], total: 0 },
         });
       }
       if (path === "/v1/filler/decisions/overview") {

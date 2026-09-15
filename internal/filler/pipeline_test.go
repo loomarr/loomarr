@@ -152,11 +152,14 @@ func (m *pipeMemStore) GetClipPipeline(_ context.Context, hash string) (filler.C
 func (m *pipeMemStore) ListClipPipelines(_ context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error) {
 	var out []filler.ClipPipeline
 	for _, r := range m.rows {
-		if f.ConveyorOnly && r.Disposition != filler.DispositionRunning && r.Disposition != filler.DispositionReview {
-			continue
-		}
-		if f.RejectedOnly && r.Disposition != filler.DispositionRejected {
-			continue
+		if len(f.Dispositions) > 0 {
+			matched := false
+			for _, disposition := range f.Dispositions {
+				matched = matched || r.Disposition == disposition
+			}
+			if !matched {
+				continue
+			}
 		}
 		out = append(out, r)
 	}

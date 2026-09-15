@@ -21,26 +21,9 @@ const admin: MeBody = {
   autoApprove: false,
 };
 const incoming: FillerIncomingOutputBody = {
-  overview: {
-    runnable: 0,
-    inProgress: 0,
-    scheduled: 0,
-    needsDecision: 0,
-    recoverable: 0,
-    ready: 0,
-    complete: 0,
-    rejected: 0,
-    dismissed: 0,
-  },
-  clips: [],
-  clipsTotal: 0,
-  decisionsTotal: 0,
-  reels: [],
-  reelsTotal: 0,
-  rejected: [],
-  rejectedTotal: 0,
-  stageOrder: [],
-  total: 0,
+  preparing: { rows: [], total: 0 },
+  needsHelp: { rows: [], total: 0 },
+  recentlyReady: { rows: [], total: 0 },
 };
 
 const withManage = (
@@ -130,7 +113,6 @@ export const AuditAndCorrection: Story = {
             decisionId: "decision-1",
             clipHash: "abcdef012345",
             kind: "automatic_admit",
-            applicationMode: "shadow",
             createdAt: new Date().toISOString(),
           },
           {
@@ -139,7 +121,6 @@ export const AuditAndCorrection: Story = {
             actionId: "action-2",
             clipHash: "123456abcdef",
             kind: "correction",
-            applicationMode: "shadow",
             createdAt: new Date().toISOString(),
           },
           {
@@ -148,7 +129,6 @@ export const AuditAndCorrection: Story = {
             actionId: "action-3",
             clipHash: "fedcba654321",
             kind: "reversal",
-            applicationMode: "shadow",
             createdAt: new Date().toISOString(),
           },
           {
@@ -157,7 +137,6 @@ export const AuditAndCorrection: Story = {
             actionId: "action-4",
             clipHash: "987654abcdef",
             kind: "review_abandoned",
-            applicationMode: "shadow",
             createdAt: new Date().toISOString(),
           },
         ],

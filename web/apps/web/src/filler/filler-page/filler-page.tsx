@@ -19,8 +19,8 @@ import { ClipTagDialog } from "../clip-tag-dialog";
 import { FillerCatalog } from "../filler-catalog";
 import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
-import { FillerReviewQueue } from "../filler-review-queue";
 import type { FillerSearch } from "../filler-search";
+import { Incoming } from "../incoming";
 import { SourcesTab } from "../sources-tab";
 import { TaxonomyTab } from "../taxonomy-tab";
 import { useFillerInvalidate } from "../use-filler-invalidate";
@@ -175,7 +175,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         {tab === "overview" ? (
           <FillerOverview />
         ) : tab === "incoming" && isAdmin ? (
-          <FillerReviewQueue />
+          <Incoming />
         ) : tab === "manage" ? (
           <FillerManage />
         ) : tab === "sources" ? (

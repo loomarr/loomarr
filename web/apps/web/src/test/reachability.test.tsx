@@ -3,9 +3,9 @@ import {
   getChannelTracksMockHandler,
   getChannelUpcomingMockHandler,
   getDiscoverFillerMockHandler,
-  getFillerAttentionMockHandler,
   getFillerDecisionActivityMockHandler,
   getFillerDecisionDiagnosticsMockHandler,
+  getFillerIncomingMockHandler,
   getGetChannelMockHandler,
   getGetFillerSplitMockHandler,
   getGetPlayoutStatusMockHandler,
@@ -148,23 +148,25 @@ const stubReachable = () => {
       ],
       total: 1,
     }),
-    getFillerAttentionMockHandler({
-      rows: [
-        {
-          id: "decision-review",
-          clipHash: "held-hash",
-          applicationMode: "shadow",
-          taskKind: "identity_role",
-          allowedActions: ["admit", "reject", "correct", "abandon"],
-          createdAt: "2026-08-25T12:00:00Z",
-          question: "Is this a toy commercial?",
-          reasonCodes: ["unidentified"],
-          evidenceRefs: ["frame-1"],
-          conflicts: [],
-        },
-      ],
-      total: 1,
-    }),
+    getFillerIncomingMockHandler({
+      preparing: { rows: [], total: 0 },
+      needsHelp: {
+        rows: [
+          {
+            id: "split-review",
+            kind: "split_boundary",
+            clipHash: "comp-hash",
+            name: "Saturday morning commercial reel",
+            createdAt: "2026-08-25T12:00:00Z",
+            question: "Where should this compilation be split?",
+            actionLabel: "Review clips",
+            actionHref: "/filler/splits/sp-1",
+          },
+        ],
+        total: 1,
+      },
+      recentlyReady: { rows: [], total: 0 },
+    } as never),
     getFillerDecisionActivityMockHandler({
       rows: [
         {
@@ -172,7 +174,6 @@ const stubReachable = () => {
           decisionId: "automatic-admit-decision",
           clipHash: "auto-hash",
           kind: "automatic_admit",
-          applicationMode: "shadow",
           createdAt: "2026-08-25T12:00:00Z",
         },
       ],
@@ -439,11 +440,10 @@ describe("feature-gated panels mount when their flag is on", () => {
     // through, and it is asserted there.
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
-    ["/filler/incoming", /is this a toy commercial/i, "the semantic decision queue"],
-    // V63's durable audit half. A shadow admission decision is normal work, so it belongs in Manage
-    // activity rather than in the exception queue. Keeping this route-level assertion prevents
-    // unattended decisions from becoming invisible when the old Incoming surface is retired.
-    ["/filler/manage", /would add \(preview\)/i, "the preview decision activity"],
+    ["/filler/incoming", /where should this compilation be split/i, "the genuine Incoming choice"],
+    // Automatic outcomes remain visible as plain activity without exposing the runtime mode that
+    // produced them. Keeping this route-level assertion prevents unattended work from disappearing.
+    ["/filler/manage", /added automatically/i, "automatic filler activity"],
     // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
     // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
     ["/filler", /^incoming/i, "the incoming workbench's own entry point"],

@@ -219,8 +219,8 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
     }
   }
 
-  expect(fillerRequests.filter((path) => path === "/v1/filler/attention").length).toBeGreaterThanOrEqual(
+  expect(fillerRequests.filter((path) => path === "/v1/filler/incoming").length).toBeGreaterThanOrEqual(
     viewports.length,
   );
-  expect(fillerRequests).not.toContain("/v1/filler/incoming");
+  expect(fillerRequests).not.toContain("/v1/filler/attention");
 });

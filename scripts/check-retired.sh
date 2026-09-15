@@ -241,12 +241,19 @@ RETIRED=(
   'conflict_source_license|retired: licence metadata conflicts are not runtime admission decisions'
   'source_ineligible|retired: licensing cannot make a private-home source runtime-ineligible'
   'filler-current-broadcast-rights|retired: there is no current broadcast-rights evaluator in the home runtime'
-  # Wave 0 gives human authority work one typed server-owned interface. Restoring either review
-  # route recreates the untyped queue whose task kind and actions the browser had to infer.
-  '/v1/filler/decisions/reviews|retired: unresolved human work is projected by GET /v1/filler/attention'
+  # The hands-off Incoming projection contains only current durable choices. Historical review
+  # records remain audit data; restoring either review route would recreate operator work.
+  '/v1/filler/decisions/reviews|retired: historical decision records are audit data, not Incoming work'
   'filler-decision-reviews|retired with /v1/filler/decisions/reviews'
-  '/v1/filler/decisions/{id}/actions|retired: task-scoped actions use /v1/filler/attention/{id}/actions'
+  '/v1/filler/decisions/{id}/actions|retired: filler no longer exposes a generic human-decision action route'
   'act-on-filler-decision|retired with the untyped decision action route'
+  'OperationID: "filler-attention|#1249: Incoming is the only user-facing work projection'
+  'createFileRoute("/_authed/filler/attention")|#1249: the former Attention page was removed, not redirected'
+  'FillerReviewQueue|#1249: audit decisions are not an operator review queue'
+  'IncomingTab|#1249: Incoming has one bounded server-backed screen'
+  'IncomingPanel|#1249: Incoming has one bounded server-backed screen'
+  'ConveyorOnly|#1249: read models select exact pipeline dispositions'
+  'RejectedOnly|#1249: rejected history is not part of Incoming'
   '"reconcile.every"|V55: superseded by the active channel and library schedules'
   $'\x60reconcile.every\x60|V55: superseded by the active channel and library schedules'
   'RECONCILE_EVERY=5m|V55: superseded by the active channel and library schedules'

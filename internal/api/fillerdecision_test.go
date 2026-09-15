@@ -9,13 +9,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 )
 
-// The operator's decision has to reach the PIPELINE ROW, not only `clips` (§10 V54).
-//
-// ⚠ These assert through `GET /v1/filler/incoming` rather than by reading the row back, and that
-// is deliberate. The defect was never "a column holds the wrong string" — it was "the clip I just
-// decided on is still sitting in my queue", and the queue is the only thing that can say so. A
-// test that read the disposition directly would have gone green on a fix that left the belt's
-// fallback loop re-resolving the clip anyway.
+// The operator's decision has to reach the pipeline row, not only `clips` (§10 V54). Incoming no
+// longer exposes review/refusal audit, so the durable row is the direct regression seam here.
 
 // seedForDecision puts a held clip with a pipeline row waiting on a person.
 func seedForDecision(t *testing.T, st interface {
@@ -46,20 +41,6 @@ func TestBulkRemoveFiller_DismissalTakesTheClipOffTheBelt(t *testing.T) {
 	if res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/bulk/remove",
 		`{"hashes":["`+hash+`"]}`, adminToken); res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", res.StatusCode)
-	}
-
-	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
-	for _, c := range body.Clips {
-		if c.Hash == hash {
-			t.Error("a dismissed clip is still on the conveyor — the fallback loop re-resolved it")
-		}
-	}
-	// ⚠ And NOT on the refusals list either: that is the audit of what Loomarr decided WITHOUT the
-	// operator, and a dismissal is what the operator decided themselves.
-	for _, r := range body.Rejected {
-		if r.Hash == hash {
-			t.Error("an operator dismissal appeared under 'Loomarr didn't use these' — that list is the machine's")
-		}
 	}
 
 	row, found, err := st.GetClipPipeline(context.Background(), hash)

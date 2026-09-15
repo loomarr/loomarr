@@ -286,14 +286,6 @@ func (s *sqlStore) CountClipPipelines(ctx context.Context, f filler.PipelineFilt
 func clipPipelineWhere(f filler.PipelineFilter, includeCursor bool) (string, []any, error) {
 	var where []string
 	var args []any
-	if f.ConveyorOnly {
-		where = append(where, `disposition IN (?, ?)`)
-		args = append(args, string(filler.DispositionRunning), string(filler.DispositionReview))
-	}
-	if f.RejectedOnly {
-		where = append(where, `disposition = ?`)
-		args = append(args, string(filler.DispositionRejected))
-	}
 	if len(f.Dispositions) > 0 {
 		placeholders := make([]string, 0, len(f.Dispositions))
 		for _, disposition := range f.Dispositions {

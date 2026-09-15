@@ -264,7 +264,9 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	if len(topLevel) != 1 || topLevel[0].Hash != compHash {
 		t.Fatalf("top-level catalog = %+v, want the confirmed composite parent", topLevel)
 	}
-	conveyor, err := st.ListClipPipelines(ctx, filler.PipelineFilter{ConveyorOnly: true})
+	conveyor, err := st.ListClipPipelines(ctx, filler.PipelineFilter{
+		Dispositions: []filler.Disposition{filler.DispositionRunning, filler.DispositionReview},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

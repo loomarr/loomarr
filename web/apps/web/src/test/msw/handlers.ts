@@ -4,7 +4,6 @@ import {
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
   getDeviceListMockHandler,
-  getFillerAttentionMockHandler,
   getFillerDecisionActivityMockHandler,
   getFillerDecisionDiagnosticsMockHandler,
   getFillerDecisionOverviewMockHandler,
@@ -192,7 +191,6 @@ const appHandlers = (): RequestHandler[] => [
     nextAction: "none",
     counts: { admitted: 0, rejected: 0, reviews: 0, unresolvedReviews: 0, operational: 0, retryable: 0 },
   }),
-  getFillerAttentionMockHandler({ rows: [], total: 0 }),
   getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
   getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
 ];
