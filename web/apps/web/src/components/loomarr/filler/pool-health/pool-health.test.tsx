@@ -24,16 +24,17 @@ describe("PoolHealth", () => {
     expect(screen.getByText("of 90 break clips")).toBeInTheDocument();
   });
 
-  it("counts untagged clips as work rather than hiding them", () => {
+  it("shows optional metadata work without making it a readiness gate", () => {
     render(<PoolHealth pool={pool({ untagged: 14 })} />);
 
-    expect(screen.getByText("14 clips still need tagging")).toBeInTheDocument();
+    expect(screen.getByText("14 commercials could use details")).toBeInTheDocument();
   });
 
-  it("says so plainly when nothing needs tagging", () => {
+  it("does not claim every clip is tagged when the metric only counts commercials", () => {
     render(<PoolHealth pool={pool({ untagged: 0 })} />);
 
-    expect(screen.getByText("all tagged")).toBeInTheDocument();
+    expect(screen.getByText("ready to browse")).toBeInTheDocument();
+    expect(screen.queryByText("all tagged")).not.toBeInTheDocument();
   });
 
   // The diagnosis. Naming the channel is the difference between "something is thin" and
