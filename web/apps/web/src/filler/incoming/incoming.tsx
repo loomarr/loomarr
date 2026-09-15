@@ -1,10 +1,8 @@
-import type {
-  FillerIncomingOutputBody,
-  IncomingClipGroupDTO,
-  IncomingHelpGroupDTO,
-  IncomingStatusDTO,
-} from "@loomarr/api";
 import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { FillerIncomingOutputBody } from "@loomarr/api/models/fillerIncomingOutputBody";
+import type { IncomingClipGroupDTO } from "@loomarr/api/models/incomingClipGroupDTO";
+import type { IncomingHelpGroupDTO } from "@loomarr/api/models/incomingHelpGroupDTO";
+import type { IncomingStatusDTO } from "@loomarr/api/models/incomingStatusDTO";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatRelative, pluralize } from "@loomarr/core/format";
 import { useQueryClient } from "@tanstack/react-query";
