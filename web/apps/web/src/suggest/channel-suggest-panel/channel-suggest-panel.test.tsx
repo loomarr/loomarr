@@ -321,6 +321,35 @@ describe("ChannelSuggestPanel", () => {
     expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
   });
 
+  it("keeps title selection usable when a live response has no alternate list", async () => {
+    const user = userEvent.setup();
+    stubSuggest({ proposals: [PROPOSAL] });
+    server.use(
+      http.get("*/v1/proposal-jobs/job-1", () =>
+        HttpResponse.json({
+          version: 1,
+          jobId: "job-1",
+          milestone: "awaiting_approval",
+          intent: PROPOSAL.proposal.intent,
+          attempts: [],
+          proposal: { ...PROPOSAL, proposal: { ...PROPOSAL.proposal, alternates: null } },
+          actions: ["review", "edit"],
+          createdAt: "2026-09-15T12:00:00Z",
+          updatedAt: "2026-09-15T12:00:00Z",
+        }),
+      ),
+    );
+    renderPanel(() => {});
+    await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+    await user.click(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" }));
+    await user.click(screen.getByText("Suggestion details"));
+    expect(
+      screen.getByText("You changed the title list. Check any titles you added against your brief."),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Create channel" })).toBeDisabled();
+  });
+
   it("revises a landed brief on the same Job without leaving the current review", async () => {
     const user = userEvent.setup();
     const { approvals, submissions, revisions } = stubSuggest({ proposals: [PROPOSAL] });

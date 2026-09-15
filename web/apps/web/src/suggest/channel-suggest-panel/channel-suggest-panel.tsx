@@ -34,8 +34,10 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // live phases; a landed proposal → review with Approve/Deny. A successful approve or
 // "Create another" resets back to the form.
 const normalizeReviewEdit = (edit: ApprovalEditDTO, proposal: Proposal): ApprovalEditDTO | undefined => {
-  const selectedKeys = new Set([...proposal.lineup, ...proposal.acquisitions].map(provisionKey));
-  const alternateKeys = new Set(proposal.alternates.map(provisionKey));
+  const selectedKeys = new Set(
+    [...(proposal.lineup ?? []), ...(proposal.acquisitions ?? [])].map(provisionKey),
+  );
+  const alternateKeys = new Set((proposal.alternates ?? []).map(provisionKey));
   const proposalKeys = new Set([...selectedKeys, ...alternateKeys]);
   const originallyAddedKeys = new Set((edit.add ?? []).map(provisionKey));
   const add = edit.add?.filter((item) => !selectedKeys.has(provisionKey(item)));

@@ -4,6 +4,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { outlook } from "@/test/fixtures/outlook";
 import { ProposalReview } from "./proposal-review";
 
 const renderReview = (ui: ReactElement) => {
@@ -203,8 +204,99 @@ describe("ProposalReview", () => {
     expect(evidence).not.toHaveAttribute("open");
     await userEvent.click(screen.getByText("Suggestion details"));
     expect(evidence).toHaveAttribute("open");
-    await userEvent.click(screen.getByText("See the catalog decisions"));
-    expect(screen.getByText(/included · matched request, era/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Why these titles" })).toBeVisible();
+    expect(screen.getByText(proposal.rationale!)).not.toBeVisible();
+    await userEvent.click(screen.getByText("Technical details"));
+    expect(screen.getByText("Included in the original suggestions")).toBeVisible();
+    expect(screen.queryByText(/matched request, era/)).not.toBeInTheDocument();
+  });
+
+  it("makes named-lineup details readable without a diagnostic wall of text", async () => {
+    renderReview(
+      <ProposalReview
+        proposal={{
+          ...proposal,
+          rationale: "Every offered title is backed by resolved public-reference constituent evidence.",
+          scores: { ...proposal.scores!, theme: { ...proposal.scores!.theme, basis: "named_membership" } },
+        }}
+        assessment={outlook({
+          titles: 8,
+          scheduledTitles: 6,
+          programs: 63,
+          seasons: 27,
+          missingAcquisitions: 2,
+          mix: { core: 8, adjacent: 0, discovery: 0, unknown: 0 },
+          relaxations: [{ kind: "separation", from: "3", to: "1" }],
+        })}
+      />,
+    );
+    await userEvent.click(screen.getByText("Suggestion details"));
+    expect(
+      screen.getByText("These suggestions are listed as part of the lineup you asked for."),
+    ).toBeVisible();
+    expect(screen.getByText("63 playable episodes or movies from 6 titles.")).toBeVisible();
+    expect(
+      screen.getByText("2 titles still need adding and aren't included in the estimate yet."),
+    ).toBeVisible();
+    expect(screen.queryByText(/You did not ask/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Core 8/)).not.toBeInTheDocument();
+    expect(screen.getByText(/constituent evidence/)).not.toBeVisible();
+    expect(screen.getByText(/recorded policy relaxation/)).not.toBeVisible();
+  });
+
+  it("does not imply lexical candidates were verified members or expose unnamed identities as titles", async () => {
+    renderReview(
+      <ProposalReview
+        proposal={{
+          ...proposal,
+          trace: {
+            ...proposal.trace!,
+            candidates: [
+              {
+                ...proposal.trace!.candidates[0]!,
+                name: "The Great Indian Family",
+                disposition: "not_selected",
+                reason: "not_selected",
+              },
+              {
+                key: "series:tmdb:3921",
+                ownership: "",
+                name: "",
+                disposition: "validation_dropped",
+                reason: "not_surfaced",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+    await userEvent.click(screen.getByText("Suggestion details"));
+    expect(screen.getByText("The Great Indian Family")).not.toBeVisible();
+    await userEvent.click(screen.getByText("Technical details"));
+    expect(screen.getByText("Considered, but not chosen")).toBeVisible();
+    expect(screen.getByText("Unidentified catalog entry")).toBeVisible();
+    expect(screen.queryByText(/matched request/)).not.toBeInTheDocument();
+    expect(screen.getByText(/series:tmdb:3921/)).not.toBeVisible();
+    await userEvent.click(screen.getByText("Raw diagnostic evidence"));
+    expect(screen.getByText(/series:tmdb:3921/)).toBeVisible();
+  });
+
+  it("hides stale availability details during an edited-lineup assessment", async () => {
+    renderReview(
+      <ProposalReview
+        proposal={proposal}
+        status="partially-edited"
+        assessmentPending
+        assessment={outlook()}
+      />,
+    );
+    await userEvent.click(screen.getByText("Suggestion details"));
+    expect(
+      screen.getByText("You changed the title list. Check any titles you added against your brief."),
+    ).toBeVisible();
+    expect(screen.getByText("Updating what's ready to play…")).toBeVisible();
+    expect(screen.queryByText(/12 playable/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Observed/)).not.toBeInTheDocument();
   });
 
   it("calls out a partial interpretation in plain language", () => {

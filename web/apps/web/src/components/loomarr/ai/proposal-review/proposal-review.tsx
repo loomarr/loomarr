@@ -1,4 +1,3 @@
-import type { ConstraintMatches } from "@loomarr/api/models/constraintMatches";
 import { provisionKey } from "@loomarr/core/provision";
 import { Check, X } from "lucide-react";
 import { useId, useState } from "react";
@@ -7,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ProposalEdit } from "../proposal-edit";
-import { ProposalOutlook, ProposalOutlookDetails } from "../proposal-outlook";
+import { ProposalOutlook, ProposalOutlookDetails, ProposalOutlookDiagnostics } from "../proposal-outlook";
 import type { ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
 
 const STATUS: Partial<
@@ -19,17 +18,19 @@ const STATUS: Partial<
   superseded: { label: "Replaced", variant: "neutral" },
 };
 
-const constraintSummary = (matches?: ConstraintMatches): string => {
-  if (!matches) return "";
-  const labels = [
-    matches.request && "request",
-    matches.tone && "tone",
-    matches.era && "era",
-    matches.mustInclude && "required terms",
-    matches.mustExclude && "excluded terms",
-    matches.refine && "refinement",
-  ].filter((label): label is string => Boolean(label));
-  return labels.length > 0 ? ` · matched ${labels.join(", ")}` : "";
+const catalogDecision = (disposition: string, reason: string) => {
+  if (disposition === "selected") return "Included in the original suggestions";
+  if (disposition === "alternate") return "Kept as a backup";
+  const reasons: Record<string, string> = {
+    not_selected: "Considered, but not chosen",
+    not_surfaced: "Not confirmed by the catalog search",
+    no_relevance_evidence: "Not enough evidence that it fits your request",
+    malformed_id: "Could not identify this title reliably",
+    over_ceiling: "Outside the audience limit",
+    never: "Excluded by your preferences",
+    validation_dropped: "Did not pass the final title checks",
+  };
+  return reasons[reason] ?? "Not included in the suggestions";
 };
 
 const availabilitySummary = (selected: number, ready: number, missing: number) => {
@@ -282,63 +283,94 @@ const ProposalReview = ({
 
       <details className="border-border border-t pt-3 text-sm">
         <summary className="cursor-pointer font-medium text-muted-foreground">Suggestion details</summary>
-        <div className="mt-3 flex flex-col gap-3 text-muted-foreground">
-          {proposal.rationale && <p>{proposal.rationale}</p>}
-          {assessment && <ProposalOutlookDetails assessment={assessment} />}
-          {status === "partially-edited" ? (
-            <p>You changed the title list, so the original assessment no longer describes every pick.</p>
-          ) : proposal.scores?.version !== 1 ? (
-            <p>
-              This saved channel draft has no current catalog assessment. Review each title before creating
-              it.
-            </p>
-          ) : (
-            <>
+        <div className="mt-4 flex flex-col gap-5 text-muted-foreground">
+          <section aria-label="Why these titles" className="flex flex-col gap-2">
+            <h3 className="font-medium text-foreground">Why these titles</h3>
+            {status === "partially-edited" ? (
+              <p>You changed the title list. Check any titles you added against your brief.</p>
+            ) : proposal.scores?.version !== 1 ? (
               <p>
-                {proposal.scores.theme.basis === "named_membership"
-                  ? "Catalog sources place these titles in the named lineup you requested."
-                  : proposal.scores.theme.basis === "none"
-                    ? "No specific theme terms needed checking."
-                    : "Loomarr checked your theme words against catalog metadata. This is supporting evidence, not a guarantee."}
+                This saved channel draft has no current catalog assessment. Review each title before creating
+                it.
               </p>
-              {proposal.scores.theme.basis === "qualifiers" && (
-                <ul className="list-inside list-disc">
-                  {(proposal.scores.theme.qualifiers ?? []).map((qualifier) => (
-                    <li key={qualifier.term}>
-                      “{qualifier.term}” matched {qualifier.supportedItems} of{" "}
-                      {proposal.scores.theme.assessedItems} checked titles
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <p>
-                {proposal.scores.era.status === "not_requested"
-                  ? "You did not ask for a particular date range."
-                  : proposal.scores.era.status === "unassessed"
-                    ? "Loomarr could not check the date range because some catalog dates were missing."
-                    : `${proposal.scores.era.matchingItems} of ${proposal.scores.era.assessedItems} titles with known dates matched your requested range.`}
-              </p>
-            </>
-          )}
+            ) : (
+              <>
+                <p>
+                  {proposal.scores.theme.basis === "named_membership"
+                    ? "These suggestions are listed as part of the lineup you asked for."
+                    : proposal.scores.theme.basis === "none"
+                      ? "Review the titles to decide whether this is the channel you want."
+                      : "We checked the titles against your brief using catalog information. A match isn't a guarantee—remove anything that doesn't fit."}
+                </p>
+                {proposal.scores.theme.basis === "qualifiers" && (
+                  <ul className="list-inside list-disc">
+                    {(proposal.scores.theme.qualifiers ?? []).map((qualifier) => (
+                      <li key={qualifier.term}>
+                        “{qualifier.term}” matched {qualifier.supportedItems} of{" "}
+                        {proposal.scores.theme.assessedItems} checked titles
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {proposal.scores.era.status !== "not_requested" && (
+                  <p>
+                    {proposal.scores.era.status === "unassessed"
+                      ? "Loomarr could not check the date range because some catalog dates were missing."
+                      : `${proposal.scores.era.matchingItems} of ${proposal.scores.era.assessedItems} titles with known dates matched your requested range.`}
+                  </p>
+                )}
+              </>
+            )}
+          </section>
 
-          {proposal.trace?.candidates?.length ? (
-            <details>
-              <summary className="cursor-pointer">See the catalog decisions</summary>
-              <ul className="mt-2 flex flex-col gap-1">
-                {proposal.trace.candidates.map((candidate) => (
-                  <li key={`${candidate.key}-${candidate.disposition}`}>
-                    <span className="font-medium text-foreground">
-                      {candidate.name || candidate.key || "Title"}
-                    </span>{" "}
-                    {candidate.disposition === "selected"
-                      ? "included"
-                      : candidate.reason.replaceAll("_", " ")}
-                    {constraintSummary(candidate.constraints)}
-                  </li>
-                ))}
-              </ul>
-            </details>
+          {assessmentPending ? (
+            <p role="status">Updating what's ready to play…</p>
+          ) : assessment ? (
+            <ProposalOutlookDetails assessment={assessment} showDiagnostics={false} />
           ) : null}
+
+          {(proposal.rationale || assessment || proposal.trace?.candidates?.length) && (
+            <details className="border-border border-t pt-3">
+              <summary className="w-fit cursor-pointer">Technical details</summary>
+              <div className="mt-3 flex flex-col gap-4">
+                <p className="text-xs">
+                  For troubleshooting. Catalog decisions describe the original suggestions, not your later
+                  edits.
+                </p>
+                {proposal.rationale && (
+                  <section>
+                    <h3 className="mb-1 font-medium text-foreground">Original explanation</h3>
+                    <p>{proposal.rationale}</p>
+                  </section>
+                )}
+                {assessment && !assessmentPending && <ProposalOutlookDiagnostics assessment={assessment} />}
+                {proposal.trace?.candidates?.length ? (
+                  <section aria-label="Catalog decisions">
+                    <h3 className="mb-2 font-medium text-foreground">Catalog decisions</h3>
+                    <ul className="flex flex-col divide-y divide-border">
+                      {proposal.trace.candidates.map((candidate) => (
+                        <li
+                          key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
+                          className="py-2"
+                        >
+                          <p className="font-medium text-foreground">
+                            {candidate.name || "Unidentified catalog entry"}
+                          </p>
+                          <p>{catalogDecision(candidate.disposition, candidate.reason)}</p>
+                        </li>
+                      ))}
+                    </ul>
+                    <details className="mt-3">
+                      <summary className="w-fit cursor-pointer text-xs">Raw diagnostic evidence</summary>
+                      <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs">
+                        {JSON.stringify(proposal.trace, null, 2)}
+                      </pre>
+                    </details>
+                  </section>
+                ) : null}
+              </div>
+            </details>
+          )}
         </div>
       </details>
     </section>
