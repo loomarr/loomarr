@@ -32,7 +32,6 @@ const NAV_PATHS = [
   "/queue",
   "/filler",
   "/filler/advanced",
-  "/filler/attention",
   "/filler/incoming",
   "/filler/library",
   "/filler/manage",

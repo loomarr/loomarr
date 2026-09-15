@@ -28,21 +28,7 @@ const ACTIVITY_LABELS: Record<FillerDecisionActivityWireDTOKind, string> = {
 
 type ActivityPresentation = { label: string; variant: BadgeProps["variant"] };
 
-const activityPresentation = (
-  kind: FillerDecisionActivityWireDTOKind,
-  applicationMode: unknown,
-): ActivityPresentation => {
-  if (kind === "automatic_admit" || kind === "automatic_reject") {
-    if (applicationMode === "shadow") {
-      return {
-        label: kind === "automatic_admit" ? "Would add (preview)" : "Would skip (preview)",
-        variant: "caution",
-      };
-    }
-    if (applicationMode !== "applied") {
-      return { label: "Status unavailable", variant: "caution" };
-    }
-  }
+const activityPresentation = (kind: FillerDecisionActivityWireDTOKind): ActivityPresentation => {
   return {
     label: ACTIVITY_LABELS[kind],
     variant:
@@ -243,7 +229,7 @@ const FillerManage = () => {
         {activity?.rows.length ? (
           <div className="overflow-hidden rounded-lg border border-border">
             {activity.rows.map((row) => {
-              const presentation = activityPresentation(row.kind, row.applicationMode);
+              const presentation = activityPresentation(row.kind);
               return (
                 <div
                   key={row.id}

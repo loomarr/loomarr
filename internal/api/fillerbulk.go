@@ -204,9 +204,8 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 	} else {
 		// ⚠ **"Don't use it" has to move the pipeline row, not just the tombstone** (§10 V54).
 		// `SetClipsRemoved` writes `removed_at` and `GetClip` carries no `removed_at` predicate, so
-		// the Incoming belt's fallback loop re-resolved a dismissed clip and put it straight back on
-		// the queue. Settling the row is what actually takes it off the belt: `dismissed` is not in
-		// `ConveyorOnly`'s `running|review` set, so the row is never fetched to be re-resolved.
+		// the pipeline's fallback loop re-resolved a dismissed clip and put it straight back on the
+		// queue. Settling the row is what actually takes it out of the running work set.
 		//
 		// From `review` OR `ready`: this route also serves the Catalog tab's bulk bar, where the
 		// clip being removed became Ready long ago.

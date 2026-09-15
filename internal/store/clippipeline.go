@@ -248,22 +248,11 @@ func (s *sqlStore) PipelineOverview(ctx context.Context, at time.Time) (filler.P
 
 // ListClipPipelines reads pipeline rows for the Incoming read model.
 func (s *sqlStore) ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error) {
-	q := clipPipelineSelect
-	var where []string
-	var args []any
-	if f.ConveyorOnly {
-		// ⚠ `running` OR `review` — the two halves of one belt. `review` is terminal for the
-		// PIPELINE and not for the operator, so a clip sitting there is still Incoming's business.
-		where = append(where, `disposition IN (?, ?)`)
-		args = append(args, string(filler.DispositionRunning), string(filler.DispositionReview))
+	where, args, err := clipPipelineWhere(f, true)
+	if err != nil {
+		return nil, err
 	}
-	if f.RejectedOnly {
-		where = append(where, `disposition = ?`)
-		args = append(args, string(filler.DispositionRejected))
-	}
-	if len(where) > 0 {
-		q += ` WHERE ` + strings.Join(where, ` AND `)
-	}
+	q := clipPipelineSelect + where
 	// Newest first: the rejected list is an audit feed, and what was just refused is what an
 	// operator is looking for. The hash tie-break keeps paging stable on Postgres.
 	q += ` ORDER BY updated_at DESC, clip_hash`
@@ -282,25 +271,45 @@ func (s *sqlStore) ListClipPipelines(ctx context.Context, f filler.PipelineFilte
 // CountClipPipelines answers the same filtered question without materialising an audit feed.
 // Incoming uses it to report an honest total while keeping the returned rows to one page.
 func (s *sqlStore) CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error) {
-	q := `SELECT COUNT(*) FROM filler_clip_pipeline`
-	var where []string
-	var args []any
-	if f.ConveyorOnly {
-		where = append(where, `disposition IN (?, ?)`)
-		args = append(args, string(filler.DispositionRunning), string(filler.DispositionReview))
+	where, args, err := clipPipelineWhere(f, false)
+	if err != nil {
+		return 0, err
 	}
-	if f.RejectedOnly {
-		where = append(where, `disposition = ?`)
-		args = append(args, string(filler.DispositionRejected))
-	}
-	if len(where) > 0 {
-		q += ` WHERE ` + strings.Join(where, ` AND `)
-	}
+	q := `SELECT COUNT(*) FROM filler_clip_pipeline` + where
 	var n int
 	if err := s.db.QueryRowContext(ctx, s.ph(q), args...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count clip pipelines: %w", err)
 	}
 	return n, nil
+}
+
+func clipPipelineWhere(f filler.PipelineFilter, includeCursor bool) (string, []any, error) {
+	var where []string
+	var args []any
+	if len(f.Dispositions) > 0 {
+		placeholders := make([]string, 0, len(f.Dispositions))
+		for _, disposition := range f.Dispositions {
+			placeholders = append(placeholders, `?`)
+			args = append(args, string(disposition))
+		}
+		where = append(where, `disposition IN (`+strings.Join(placeholders, `, `)+`)`)
+	}
+	if !f.UpdatedAtOrAfter.IsZero() {
+		where = append(where, `updated_at >= ?`)
+		args = append(args, epoch(f.UpdatedAtOrAfter))
+	}
+	if includeCursor && (!f.BeforeUpdatedAt.IsZero() || f.BeforeClipHash != "") {
+		if f.BeforeUpdatedAt.IsZero() || f.BeforeClipHash == "" {
+			return "", nil, fmt.Errorf("pipeline cursor requires updated time and clip hash")
+		}
+		at := epoch(f.BeforeUpdatedAt)
+		where = append(where, `(updated_at < ? OR (updated_at = ? AND clip_hash > ?))`)
+		args = append(args, at, at, f.BeforeClipHash)
+	}
+	if len(where) > 0 {
+		return ` WHERE ` + strings.Join(where, ` AND `), args, nil
+	}
+	return "", args, nil
 }
 
 // CountIncomingConveyor counts the exact union rendered by the Incoming belt: held legacy clips

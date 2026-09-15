@@ -499,6 +499,10 @@ type SplitProposalStore interface {
 	// ListSplitProposals returns every pending proposal, oldest first — the Incoming tab's
 	// "reels" (V35). One read behind that tab, so a restart cannot lose the queue.
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
+	// ListReadySplitProposalsAfter is the bounded, newest-first Needs-help read. Detection
+	// checkpoints are skipped without consuming the page limit.
+	ListReadySplitProposalsAfter(ctx context.Context, cursor filler.SplitProposalCursor, limit int) ([]filler.SplitProposal, error)
+	CountReadySplitProposals(ctx context.Context) (int, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
 	// UpdateSplitProposal replaces an EXISTING proposal document; ErrNotFound if the row is gone.
@@ -544,6 +548,9 @@ type SplitProposalStore interface {
 	PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error)
 	// ListClipPipelines serves the Incoming read model — what is moving, and what was refused.
 	ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error)
+	// CountClipPipelines shares ListClipPipelines' lifecycle predicate while ignoring its cursor
+	// and limit, so a bounded page and its total cannot describe different populations.
+	CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error)
 	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
 	// lazy and self-healing rather than a data migration.
 	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error)

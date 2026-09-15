@@ -38,26 +38,6 @@ type fillerDecisionPageInput struct {
 	BeforeID string    `query:"beforeId,omitempty" maxLength:"137" doc:"Opaque id from the last row of the previous page"`
 }
 
-type fillerAttentionTaskDTO struct {
-	ID              string                           `json:"id"`
-	ClipHash        string                           `json:"clipHash"`
-	Question        string                           `json:"question"`
-	TaskKind        fillerdecision.AttentionTaskKind `json:"taskKind" enum:"identity_role,suitability_exception,split_boundary"`
-	ApplicationMode fillerdecision.ApplicationMode   `json:"applicationMode" enum:"shadow,applied"`
-	AllowedActions  []fillerdecision.ActionKind      `json:"allowedActions" enum:"admit,reject,correct,abandon"`
-	ReasonCodes     []filleradmission.ReasonCode     `json:"reasonCodes"`
-	EvidenceRefs    []string                         `json:"evidenceRefs"`
-	Conflicts       []filleradmission.Conflict       `json:"conflicts"`
-	CreatedAt       time.Time                        `json:"createdAt"`
-}
-
-type fillerAttentionOutput struct {
-	Body struct {
-		Rows  []fillerAttentionTaskDTO `json:"rows"`
-		Total int                      `json:"total"`
-	}
-}
-
 type fillerDecisionDiagnosticDTO struct {
 	ID        string                          `json:"id"`
 	ClipHash  string                          `json:"clipHash"`
@@ -84,37 +64,18 @@ type fillerDecisionDiagnosticsOutput struct {
 // Marshal-facing fields are separate so Huma documents each name rather than
 // flattening a compact Go declaration into an opaque schema.
 type fillerDecisionActivityWireDTO struct {
-	ID              string                         `json:"id"`
-	ActionID        string                         `json:"actionId,omitempty"`
-	DecisionID      string                         `json:"decisionId"`
-	ClipHash        string                         `json:"clipHash"`
-	Kind            fillerdecision.ActivityKind    `json:"kind" enum:"automatic_admit,automatic_reject,review_requested,review_admit,review_reject,correction,review_abandoned,restore,reversal"`
-	ApplicationMode fillerdecision.ApplicationMode `json:"applicationMode" enum:"shadow,applied"`
-	CreatedAt       time.Time                      `json:"createdAt"`
+	ID         string                      `json:"id"`
+	ActionID   string                      `json:"actionId,omitempty"`
+	DecisionID string                      `json:"decisionId"`
+	ClipHash   string                      `json:"clipHash"`
+	Kind       fillerdecision.ActivityKind `json:"kind" enum:"automatic_admit,automatic_reject,review_requested,review_admit,review_reject,correction,review_abandoned,restore,reversal"`
+	CreatedAt  time.Time                   `json:"createdAt"`
 }
 
 type fillerDecisionActivityOutput struct {
 	Body struct {
 		Rows  []fillerDecisionActivityWireDTO `json:"rows"`
 		Total int                             `json:"total"`
-	}
-}
-
-type fillerDecisionActionInput struct {
-	ID   string `path:"id" maxLength:"128"`
-	Body struct {
-		ActionID         string                    `json:"actionId" maxLength:"128"`
-		Kind             fillerdecision.ActionKind `json:"kind" enum:"admit,reject,correct,abandon,restore,reverse"`
-		Reason           string                    `json:"reason,omitempty" maxLength:"512"`
-		Answer           string                    `json:"answer,omitempty" maxLength:"512"`
-		CorrectedVerdict filleradmission.Verdict   `json:"correctedVerdict,omitempty" enum:"admit,reject"`
-		SupersedesID     string                    `json:"supersedesId,omitempty" maxLength:"128"`
-	}
-}
-
-type fillerDecisionActionOutput struct {
-	Body struct {
-		ID string `json:"id"`
 	}
 }
 
@@ -138,10 +99,6 @@ func (s *Server) registerFillerDecisions(api huma.API) {
 		Summary: "Admission decision health and next action", Description: "Member-readable server-owned V63 health and priority projection. Clients render nextAction; they do not reconstruct it from counts.", Tags: []string{"filler"},
 	}, RoleMember), s.fillerDecisionOverview)
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "filler-attention", Method: http.MethodGet, Path: "/v1/filler/attention",
-		Summary: "Filler Attention tasks", Description: "Admin-only bounded semantic exceptions. Every task names its server-owned kind and currently allowed actions; machine work and operational holds are structurally excluded (§10 V63).", Tags: []string{"filler"},
-	}, RoleAdmin), s.fillerAttention)
-	huma.Register(api, withRole(huma.Operation{
 		OperationID: "filler-decision-activity", Method: http.MethodGet, Path: "/v1/filler/decisions/activity",
 		Summary: "Filler admission decision activity", Description: "Member-readable bounded audit of automatic semantic decisions and subsequent operator actions (§10 V63).", Tags: []string{"filler"},
 	}, RoleMember), s.fillerDecisionActivity)
@@ -149,10 +106,6 @@ func (s *Server) registerFillerDecisions(api huma.API) {
 		OperationID: "filler-decision-diagnostics", Method: http.MethodGet, Path: "/v1/filler/decisions/diagnostics",
 		Summary: "Filler admission processing diagnostics", Description: "Admin-only operational holds. Raw provider responses, prompts, paths, evidence locations, and secrets are never projected (§10 V63).", Tags: []string{"filler"},
 	}, RoleAdmin), s.fillerDecisionDiagnostics)
-	huma.Register(api, withRole(huma.Operation{
-		OperationID: "act-on-filler-attention", Method: http.MethodPost, Path: "/v1/filler/attention/{id}/actions",
-		Summary: "Act on a Filler Attention task", Description: "Admin-only append-only action from the task's allowed action set. The server records the authenticated actor and rejects stale or invalid state transitions. Shadow actions are audit-only; an applied action can change the catalog only after terminal release replay and commits that effect atomically (§10 V63).", Tags: []string{"filler"},
-	}, RoleAdmin), s.actOnFillerAttention)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "act-on-filler-diagnostic", Method: http.MethodPost, Path: "/v1/filler/decisions/diagnostics/{id}/actions",
 		Summary: "Recover a filler processing hold", Description: "Admin-only idempotent action selected from the current diagnostic recovery plan. The server records the authenticated actor and rejects stale or no-longer-retryable holds (§10 V63).", Tags: []string{"filler"},
@@ -175,30 +128,6 @@ func (s *Server) fillerDecisionOverview(ctx context.Context, _ *struct{}) (*fill
 			Retryable: overview.Counts.Retryable, UnresolvedReviews: overview.Counts.UnresolvedReviews,
 		},
 	}}, nil
-}
-
-func (s *Server) fillerAttention(ctx context.Context, in *fillerDecisionPageInput) (*fillerAttentionOutput, error) {
-	if s.fillerDecisions == nil {
-		return nil, errFeatureNotConfigured("Filler decision audit unavailable", "The durable filler decision service is not configured.")
-	}
-	page, err := s.fillerDecisions.Attention(ctx, decisionCursor(in), in.Limit)
-	if err != nil {
-		return nil, fillerDecisionError(err)
-	}
-	out := &fillerAttentionOutput{}
-	out.Body.Total = page.Total
-	out.Body.Rows = make([]fillerAttentionTaskDTO, 0, len(page.Tasks))
-	for _, item := range page.Tasks {
-		out.Body.Rows = append(out.Body.Rows, fillerAttentionTaskDTO{
-			ID: item.ID, ClipHash: item.ClipHash, Question: item.Question,
-			TaskKind: item.Kind, ApplicationMode: item.ApplicationMode,
-			AllowedActions: append([]fillerdecision.ActionKind{}, item.AllowedActions...),
-			ReasonCodes:    append([]filleradmission.ReasonCode{}, item.ReasonCodes...),
-			EvidenceRefs:   append([]string{}, item.EvidenceRefs...),
-			Conflicts:      append([]filleradmission.Conflict{}, item.Conflicts...), CreatedAt: item.CreatedAt,
-		})
-	}
-	return out, nil
 }
 
 func (s *Server) fillerDecisionDiagnostics(ctx context.Context, in *fillerDecisionPageInput) (*fillerDecisionDiagnosticsOutput, error) {
@@ -265,30 +194,9 @@ func (s *Server) fillerDecisionActivity(ctx context.Context, in *fillerDecisionP
 	for _, item := range page.Rows {
 		out.Body.Rows = append(out.Body.Rows, fillerDecisionActivityWireDTO{
 			ID: item.ID, ActionID: item.ActionID, DecisionID: item.DecisionID, ClipHash: item.ClipHash,
-			Kind: item.Kind, ApplicationMode: item.ApplicationMode, CreatedAt: item.CreatedAt,
+			Kind: item.Kind, CreatedAt: item.CreatedAt,
 		})
 	}
-	return out, nil
-}
-
-func (s *Server) actOnFillerAttention(ctx context.Context, in *fillerDecisionActionInput) (*fillerDecisionActionOutput, error) {
-	if s.fillerDecisions == nil {
-		return nil, errFeatureNotConfigured("Filler decision audit unavailable", "The durable filler decision service is not configured.")
-	}
-	actor := userIDFromHuma(ctx)
-	if actor == "" {
-		actor = "api-token"
-	}
-	action := fillerdecision.Action{
-		ID: strings.TrimSpace(in.Body.ActionID), DecisionID: in.ID, Kind: in.Body.Kind,
-		ActorID: actor, Reason: strings.TrimSpace(in.Body.Reason), Answer: strings.TrimSpace(in.Body.Answer),
-		CorrectedVerdict: in.Body.CorrectedVerdict, SupersedesID: in.Body.SupersedesID, CreatedAt: time.Now().UTC(),
-	}
-	if err := s.fillerDecisions.ActOnAttention(ctx, action); err != nil {
-		return nil, fillerDecisionError(err)
-	}
-	out := &fillerDecisionActionOutput{}
-	out.Body.ID = action.ID
 	return out, nil
 }
 

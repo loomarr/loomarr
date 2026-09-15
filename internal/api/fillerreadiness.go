@@ -33,6 +33,18 @@ type AcquisitionRepairSummaryDTO struct {
 	LatestReason string `json:"latestReason,omitempty"`
 }
 
+type PipelineOverviewDTO struct {
+	Runnable      int `json:"runnable"`
+	InProgress    int `json:"inProgress"`
+	Scheduled     int `json:"scheduled"`
+	NeedsDecision int `json:"needsDecision"`
+	Ready         int `json:"ready"`
+	Complete      int `json:"complete"`
+	Rejected      int `json:"rejected"`
+	Dismissed     int `json:"dismissed"`
+	Recoverable   int `json:"recoverable" doc:"Terminal failures with an explicit retry or restore action"`
+}
+
 type FillerAcquisitionRunDTO struct {
 	ID       string `json:"id"`
 	Trigger  string `json:"trigger" enum:"scheduled,source,pull,manual"`
@@ -117,6 +129,14 @@ func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {
 		Pipeline: pipelineOverviewDTO(readiness.Pipeline), Pool: poolDTO(readiness.Pool),
 		Acquisitions: runs,
 		Repairs:      AcquisitionRepairSummaryDTO{Count: readiness.Repairs.Count, LatestReason: readiness.Repairs.LatestReason},
+	}
+}
+
+func pipelineOverviewDTO(overview filler.PipelineOverview) PipelineOverviewDTO {
+	return PipelineOverviewDTO{
+		Runnable: overview.Runnable, InProgress: overview.InProgress, Scheduled: overview.Scheduled,
+		NeedsDecision: overview.NeedsDecision, Ready: overview.Ready, Complete: overview.Complete,
+		Rejected: overview.Rejected, Dismissed: overview.Dismissed, Recoverable: overview.Recoverable,
 	}
 }
 

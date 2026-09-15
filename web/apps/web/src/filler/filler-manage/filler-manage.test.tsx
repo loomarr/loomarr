@@ -24,7 +24,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 describe("FillerManage", () => {
-  it("distinguishes shadow and applied automatic outcomes", async () => {
+  it("shows automatic outcomes without exposing runtime modes", async () => {
     server.use(
       getMeMockHandler(me({ name: "Admin" })),
       getFillerDecisionActivityMockHandler({
@@ -34,7 +34,6 @@ describe("FillerManage", () => {
             decisionId: "decision-1",
             clipHash: "abcdef012345",
             kind: "automatic_admit",
-            applicationMode: "shadow",
             createdAt: "2026-08-25T12:00:00Z",
           },
           {
@@ -42,7 +41,6 @@ describe("FillerManage", () => {
             decisionId: "decision-2",
             clipHash: "123456abcdef",
             kind: "automatic_reject",
-            applicationMode: "shadow",
             createdAt: "2026-08-25T12:00:01Z",
           },
           {
@@ -50,7 +48,6 @@ describe("FillerManage", () => {
             decisionId: "decision-3",
             clipHash: "fedcba654321",
             kind: "automatic_admit",
-            applicationMode: "applied",
             createdAt: "2026-08-25T12:00:02Z",
           },
           {
@@ -58,7 +55,6 @@ describe("FillerManage", () => {
             decisionId: "decision-4",
             clipHash: "987654abcdef",
             kind: "automatic_reject",
-            applicationMode: "applied",
             createdAt: "2026-08-25T12:00:03Z",
           },
         ],
@@ -68,48 +64,12 @@ describe("FillerManage", () => {
     );
     render(<FillerManage />, { wrapper });
 
-    expect(await screen.findByText("Would add (preview)")).toHaveClass("text-caution");
-    expect(screen.getByText("Would skip (preview)")).toHaveClass("text-caution");
-    expect(screen.getByText("Added automatically")).toHaveClass("text-signal");
-    expect(screen.getByText("Skipped automatically")).toBeInTheDocument();
+    expect(await screen.findAllByText("Added automatically")).toHaveLength(2);
+    expect(screen.getAllByText("Added automatically")[0]).toHaveClass("text-signal");
+    expect(screen.getAllByText("Skipped automatically")).toHaveLength(2);
+    expect(screen.queryByText(/preview/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show issues" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Processing queue")).not.toBeInTheDocument();
-  });
-
-  it("does not claim an applied effect when decision mode is unavailable", async () => {
-    server.use(
-      getMeMockHandler(me({ name: "Admin" })),
-      http.get("*/v1/filler/decisions/activity", () =>
-        HttpResponse.json({
-          rows: [
-            {
-              id: "event-unknown",
-              decisionId: "decision-unknown",
-              clipHash: "abcdef012345",
-              kind: "automatic_admit",
-              applicationMode: "automatic",
-              createdAt: "2026-08-25T12:00:00Z",
-            },
-            {
-              id: "event-omitted",
-              decisionId: "decision-omitted",
-              clipHash: "123456abcdef",
-              kind: "automatic_reject",
-              createdAt: "2026-08-25T12:00:01Z",
-            },
-          ],
-          total: 2,
-        }),
-      ),
-      getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
-    );
-    render(<FillerManage />, { wrapper });
-
-    const unavailable = await screen.findAllByText("Status unavailable");
-    expect(unavailable).toHaveLength(2);
-    for (const badge of unavailable) expect(badge).toHaveClass("text-caution");
-    expect(screen.queryByText("Added automatically")).not.toBeInTheDocument();
-    expect(screen.queryByText("Skipped automatically")).not.toBeInTheDocument();
   });
 
   it("shows recoverable failures only after opening Diagnostics", async () => {

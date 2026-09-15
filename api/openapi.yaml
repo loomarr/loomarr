@@ -1644,31 +1644,6 @@ components:
       required:
         - clips
       type: object
-    Conflict:
-      additionalProperties: false
-      properties:
-        claim:
-          type: string
-        evidenceRefs:
-          items:
-            type: string
-          type: array
-        resolved:
-          type: boolean
-        resolvedBy:
-          items:
-            type: string
-          type: array
-        values:
-          items:
-            type: string
-          type: array
-      required:
-        - claim
-        - values
-        - evidenceRefs
-        - resolved
-      type: object
     ConstraintMatches:
       additionalProperties: false
       properties:
@@ -3241,83 +3216,6 @@ components:
         - effect
         - evidenceSha256
       type: object
-    FillerAttentionOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerAttentionOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        rows:
-          items:
-            $ref: "#/components/schemas/FillerAttentionTaskDTO"
-          type: array
-        total:
-          format: int64
-          type: integer
-      required:
-        - rows
-        - total
-      type: object
-    FillerAttentionTaskDTO:
-      additionalProperties: false
-      properties:
-        allowedActions:
-          items:
-            enum:
-              - admit
-              - reject
-              - correct
-              - abandon
-            type: string
-          type: array
-        applicationMode:
-          enum:
-            - shadow
-            - applied
-          type: string
-        clipHash:
-          type: string
-        conflicts:
-          items:
-            $ref: "#/components/schemas/Conflict"
-          type: array
-        createdAt:
-          format: date-time
-          type: string
-        evidenceRefs:
-          items:
-            type: string
-          type: array
-        id:
-          type: string
-        question:
-          type: string
-        reasonCodes:
-          items:
-            type: string
-          type: array
-        taskKind:
-          enum:
-            - identity_role
-            - suitability_exception
-            - split_boundary
-          type: string
-      required:
-        - id
-        - clipHash
-        - question
-        - taskKind
-        - applicationMode
-        - allowedActions
-        - reasonCodes
-        - evidenceRefs
-        - conflicts
-        - createdAt
-      type: object
     FillerClipEvent:
       additionalProperties: false
       properties:
@@ -3368,61 +3266,6 @@ components:
         - progress
         - disposition
       type: object
-    FillerDecisionActionInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDecisionActionInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        actionId:
-          maxLength: 128
-          type: string
-        answer:
-          maxLength: 512
-          type: string
-        correctedVerdict:
-          enum:
-            - admit
-            - reject
-          type: string
-        kind:
-          enum:
-            - admit
-            - reject
-            - correct
-            - abandon
-            - restore
-            - reverse
-          type: string
-        reason:
-          maxLength: 512
-          type: string
-        supersedesId:
-          maxLength: 128
-          type: string
-      required:
-        - actionId
-        - kind
-      type: object
-    FillerDecisionActionOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDecisionActionOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        id:
-          type: string
-      required:
-        - id
-      type: object
     FillerDecisionActivityOutputBody:
       additionalProperties: false
       properties:
@@ -3448,11 +3291,6 @@ components:
       additionalProperties: false
       properties:
         actionId:
-          type: string
-        applicationMode:
-          enum:
-            - shadow
-            - applied
           type: string
         clipHash:
           type: string
@@ -3480,7 +3318,6 @@ components:
         - decisionId
         - clipHash
         - kind
-        - applicationMode
         - createdAt
       type: object
     FillerDecisionCountsDTO:
@@ -3697,57 +3534,16 @@ components:
           format: uri
           readOnly: true
           type: string
-        clips:
-          items:
-            $ref: "#/components/schemas/IncomingClipDTO"
-          type: array
-        clipsTotal:
-          description: All clips on the conveyor; clips is capped to one page
-          format: int64
-          type: integer
-        decisionsTotal:
-          description: All conveyor clips waiting on a person, including rows beyond this page
-          format: int64
-          type: integer
-        overview:
-          $ref: "#/components/schemas/PipelineOverviewDTO"
-          description: Bounded lifecycle counts across the durable filler pipeline
-        reels:
-          items:
-            $ref: "#/components/schemas/IncomingReelDTO"
-          type: array
-        reelsTotal:
-          description: All reviewable reels; reels is capped to one page
-          format: int64
-          type: integer
-        rejected:
-          items:
-            $ref: "#/components/schemas/IncomingRejectDTO"
-          type: array
-        rejectedTotal:
-          description: All rejected audit rows; rejected is capped to one page
-          format: int64
-          type: integer
-        stageOrder:
-          description: Every pipeline stage id, in run order
-          items:
-            type: string
-          type: array
-        total:
-          description: Everything waiting on a human — asks plus reels
-          format: int64
-          type: integer
+        needsHelp:
+          $ref: "#/components/schemas/IncomingHelpGroupDTO"
+        preparing:
+          $ref: "#/components/schemas/IncomingClipGroupDTO"
+        recentlyReady:
+          $ref: "#/components/schemas/IncomingClipGroupDTO"
       required:
-        - overview
-        - clips
-        - clipsTotal
-        - decisionsTotal
-        - reels
-        - reelsTotal
-        - rejected
-        - rejectedTotal
-        - stageOrder
-        - total
+        - preparing
+        - needsHelp
+        - recentlyReady
       type: object
     FillerIngestEvent:
       additionalProperties: false
@@ -4758,171 +4554,137 @@ components:
       required:
         - imported
       type: object
-    IncomingClipDTO:
+    IncomingClipGroupDTO:
       additionalProperties: false
       properties:
-        audience:
+        nextCursor:
+          description: Opaque cursor for the next newest-first page
           type: string
-        category:
-          type: string
-        confidence:
-          format: int64
-          type: integer
-        durationMs:
-          format: int64
-          type: integer
-        era:
-          format: int64
-          type: integer
-        from:
-          type: string
-        hash:
-          description: Clip identity — its content hash
-          type: string
-        kind:
-          type: string
-        name:
-          type: string
-        needsDecision:
-          type: boolean
-        path:
-          description: The clip's disk path — used by the hold operation
-          type: string
-        pipeline:
-          $ref: "#/components/schemas/IncomingPipelineDTO"
-        reason:
-          type: string
-        suggestedEra:
-          format: int64
-          type: integer
-        thumbImage:
-          $ref: "#/components/schemas/ImageDTO"
-          description: Image-service record for the extracted frame; absent until adopted or when none was extracted
-      required:
-        - hash
-        - path
-        - name
-        - durationMs
-        - kind
-        - reason
-      type: object
-    IncomingPipelineDTO:
-      additionalProperties: false
-      properties:
-        attempts:
-          description: Retries spent on the current stage; absent on the first try
-          format: int64
-          type: integer
-        failureCode:
-          description: Stable execution failure class
-          type: string
-        lifecycle:
-          description: "Who owns this clip now: runnable, in_progress, scheduled, or needs_decision"
-          type: string
-        progress:
-          format: int64
-          type: integer
-        recovery:
-          description: Server-sanctioned recovery action
-          type: string
-        retryStage:
-          description: Exact dependency suffix a safe retry will reset
-          type: string
-        stage:
-          type: string
-        stages:
+        rows:
           items:
-            $ref: "#/components/schemas/IncomingStageDTO"
+            $ref: "#/components/schemas/IncomingStatusDTO"
           type: array
-        status:
-          type: string
-        updatedAt:
-          description: RFC3339
-          type: string
+        total:
+          format: int64
+          type: integer
       required:
-        - stage
-        - status
-        - progress
-        - stages
-        - updatedAt
-        - lifecycle
+        - rows
+        - total
       type: object
-    IncomingReelDTO:
+    IncomingHelpDTO:
       additionalProperties: false
       properties:
-        clipHash:
+        actionHref:
           type: string
-        clipName:
+        actionLabel:
+          type: string
+        clipHash:
           type: string
         createdAt:
           description: RFC3339
           type: string
-        needsAttention:
-          format: int64
-          type: integer
-        proposalId:
+        id:
           type: string
-        segments:
-          description: How many clips the detector found
-          format: int64
-          type: integer
-      required:
-        - proposalId
-        - clipHash
-        - clipName
-        - segments
-        - needsAttention
-        - createdAt
-      type: object
-    IncomingRejectDTO:
-      additionalProperties: false
-      properties:
-        at:
-          description: RFC3339
-          type: string
-        detail:
-          type: string
-        failureCode:
-          description: Stable execution failure class
-          type: string
-        hash:
+        kind:
+          enum:
+            - split_boundary
           type: string
         name:
           type: string
-        reason:
-          type: string
-        recovery:
-          description: retry for failed work, restore for an overridable content decision
-          type: string
-        restorable:
-          type: boolean
-        retryStage:
-          description: Server-selected stage for recovery
-          type: string
-        stage:
-          description: Which stage refused it
+        question:
           type: string
       required:
-        - hash
-        - reason
-        - restorable
-        - stage
-        - at
+        - id
+        - kind
+        - clipHash
+        - name
+        - question
+        - actionLabel
+        - actionHref
+        - createdAt
       type: object
-    IncomingStageDTO:
+    IncomingHelpGroupDTO:
+      additionalProperties: false
+      properties:
+        nextCursor:
+          description: Opaque cursor for the next newest-first page
+          type: string
+        rows:
+          items:
+            $ref: "#/components/schemas/IncomingHelpDTO"
+          type: array
+        total:
+          format: int64
+          type: integer
+      required:
+        - rows
+        - total
+      type: object
+    IncomingStatusDTO:
+      additionalProperties: false
+      properties:
+        clipHash:
+          type: string
+        durationMs:
+          format: int64
+          type: integer
+        from:
+          type: string
+        name:
+          type: string
+        progress:
+          format: int64
+          maximum: 100
+          minimum: -1
+          type: integer
+        statusLabel:
+          type: string
+        technical:
+          $ref: "#/components/schemas/IncomingTechnicalDTO"
+        thumbImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Extracted still; absent while artwork is not ready
+        updatedAt:
+          description: RFC3339
+          type: string
+      required:
+        - clipHash
+        - name
+        - durationMs
+        - statusLabel
+        - updatedAt
+        - technical
+      type: object
+    IncomingTechnicalDTO:
+      additionalProperties: false
+      properties:
+        attempts:
+          format: int64
+          type: integer
+        nextTryAt:
+          description: RFC3339; absent unless this work is scheduled to retry
+          type: string
+        stages:
+          items:
+            $ref: "#/components/schemas/IncomingTechnicalStageDTO"
+          type: array
+      required:
+        - stages
+      type: object
+    IncomingTechnicalStageDTO:
       additionalProperties: false
       properties:
         at:
           description: RFC3339
           type: string
-        note:
+        label:
           type: string
-        stage:
+        note:
           type: string
         status:
           type: string
       required:
-        - stage
+        - label
         - status
         - at
       type: object
@@ -12682,85 +12444,6 @@ paths:
       summary: Read one clip download
       tags:
         - filler
-  /v1/filler/attention:
-    get:
-      description: Admin-only bounded semantic exceptions. Every task names its server-owned kind and currently allowed actions; machine work and operational holds are structurally excluded (§10 V63).
-      operationId: filler-attention
-      parameters:
-        - explode: false
-          in: query
-          name: limit
-          schema:
-            default: 100
-            format: int64
-            maximum: 100
-            minimum: 1
-            type: integer
-        - description: Created-at value from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeAt
-          schema:
-            description: Created-at value from the last row of the previous page
-            format: date-time
-            type: string
-        - description: Opaque id from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeId
-          schema:
-            description: Opaque id from the last row of the previous page
-            maxLength: 137
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerAttentionOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Filler Attention tasks
-      tags:
-        - filler
-  /v1/filler/attention/{id}/actions:
-    post:
-      description: Admin-only append-only action from the task's allowed action set. The server records the authenticated actor and rejects stale or invalid state transitions. Shadow actions are audit-only; an applied action can change the catalog only after terminal release replay and commits that effect atomically (§10 V63).
-      operationId: act-on-filler-attention
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 128
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FillerDecisionActionInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDecisionActionOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Act on a Filler Attention task
-      tags:
-        - filler
   /v1/filler/bulk/remove:
     post:
       description: "Admin only (§10 V35). ⚠ A TOMBSTONE, not a delete: the clip stops appearing in the catalog and stops being used in commercial breaks, and **the file is left exactly where it is**. Nothing in Loomarr deletes an operator's media. It survives re-scans, which a row delete could not — the next scan would find the file and put it back. Pass `restore:true` to undo."
@@ -13068,8 +12751,33 @@ paths:
         - channels
   /v1/filler/incoming:
     get:
-      description: Admin only (§10 V35) — legacy operational projection, not the Attention task interface. One bounded read for the clip conveyor, reviewable reels, and rejected clips. Each list carries its full total so a large import cannot make the response unbounded or make the badge report only the first page.
+      description: Admin-only hands-off Incoming projection (§10). Each disjoint group is bounded, newest first, and carries its full server-counted total plus an opaque next-page cursor. Needs help contains only a current durable choice; operational and audit history are excluded.
       operationId: filler-incoming
+      parameters:
+        - description: Opaque preparing cursor from the previous page
+          explode: false
+          in: query
+          name: preparingCursor
+          schema:
+            description: Opaque preparing cursor from the previous page
+            maxLength: 512
+            type: string
+        - description: Opaque Needs-help cursor from the previous page
+          explode: false
+          in: query
+          name: needsHelpCursor
+          schema:
+            description: Opaque Needs-help cursor from the previous page
+            maxLength: 512
+            type: string
+        - description: Opaque recently-Ready cursor from the previous page
+          explode: false
+          in: query
+          name: readyCursor
+          schema:
+            description: Opaque recently-Ready cursor from the previous page
+            maxLength: 512
+            type: string
       responses:
         "200":
           content:
@@ -13083,7 +12791,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: What has been downloaded but isn't terminally ready
+      summary: Filler clips being prepared, needing help, or recently ready
       tags:
         - filler
   /v1/filler/ingest:

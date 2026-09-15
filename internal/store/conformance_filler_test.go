@@ -3590,7 +3590,9 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClipPipeline(ctx, rej); err != nil {
 		t.Fatal(err)
 	}
-	rejected, err := s.ListClipPipelines(ctx, filler.PipelineFilter{RejectedOnly: true})
+	rejected, err := s.ListClipPipelines(ctx, filler.PipelineFilter{
+		Dispositions: []filler.Disposition{filler.DispositionRejected},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -190,63 +190,20 @@ test("a fetched arrival becomes playable only after terminal admission completes
         },
       });
     }
-    if (path === "/v1/filler/attention") {
-      const rows = [
-        {
-          id: "review-1",
-          clipHash: "ambiguous-spot",
-          taskKind: "identity_role",
-          applicationMode: "shadow",
-          allowedActions: ["admit", "reject", "correct", "abandon"],
-          question: "Is this a toy commercial?",
-          reasonCodes: ["conflict_product"],
-          evidenceRefs: ["closing-frame"],
-          conflicts: [
-            {
-              claim: "product",
-              values: ["toy", "programme excerpt"],
-              evidenceRefs: ["closing-frame"],
-              resolved: false,
-            },
-          ],
-          createdAt: "2026-08-24T03:59:00Z",
-        },
-      ];
-      return reply({ rows, total: rows.length });
-    }
-    if (path === "/v1/filler/attention/review-1/actions" && method === "POST") {
-      const body = request.postDataJSON();
-      expect(body).toMatchObject({ kind: "abandon", reason: "skip for now" });
-      calls.push("review skipped without verdict");
-      return reply({ id: body.actionId });
-    }
     if (path === "/v1/filler/decisions/activity") {
       return reply({
-        rows: fetched
+        rows: terminalAdmissionApplied
           ? [
               {
-                id: "shadow-event",
-                decisionId: "decision-1",
+                id: "automatic-event",
+                decisionId: "decision-2",
                 clipHash: clip.hash,
                 kind: "automatic_admit",
-                applicationMode: "shadow",
-                createdAt: "2026-08-24T04:00:01Z",
+                createdAt: "2026-08-24T04:00:02Z",
               },
-              ...(terminalAdmissionApplied
-                ? [
-                    {
-                      id: "applied-event",
-                      decisionId: "decision-2",
-                      clipHash: clip.hash,
-                      kind: "automatic_admit",
-                      applicationMode: "applied",
-                      createdAt: "2026-08-24T04:00:02Z",
-                    },
-                  ]
-                : []),
             ]
           : [],
-        total: fetched ? (terminalAdmissionApplied ? 2 : 1) : 0,
+        total: terminalAdmissionApplied ? 1 : 0,
       });
     }
     if (path === "/v1/filler/decisions/diagnostics") return reply({ rows: [], total: 0 });
@@ -261,43 +218,23 @@ test("a fetched arrival becomes playable only after terminal admission completes
       });
     }
     if (path === "/v1/filler/incoming") {
-      const incoming = fetched && !terminalAdmissionApplied;
+      const preparing = fetched && !terminalAdmissionApplied;
+      const status = {
+        clipHash: clip.hash,
+        name: clip.name,
+        from: "Trusted Commercials",
+        durationMs: clip.durationMs,
+        statusLabel: preparing ? "Checking video" : "Ready",
+        updatedAt: "2026-08-24T04:00:01Z",
+        technical: { attempts: 1, stages: [] },
+      };
       return reply({
-        clips: incoming
-          ? [
-              {
-                ...clip,
-                from: "Trusted Commercials",
-                reason: "Record the admission check",
-                pipeline: {
-                  lifecycle: "runnable",
-                  progress: 0,
-                  stage: "admission",
-                  stages: [],
-                  status: "pending",
-                  updatedAt: "2026-08-24T04:00:01Z",
-                },
-              },
-            ]
-          : [],
-        clipsTotal: incoming ? 1 : 0,
-        decisionsTotal: 0,
-        overview: {
-          runnable: incoming ? 1 : 0,
-          scheduled: 0,
-          inProgress: 0,
-          needsDecision: 0,
-          recoverable: 0,
-          admitted: terminalAdmissionApplied ? 1 : 0,
-          rejected: 0,
-          dismissed: 0,
+        preparing: { rows: preparing ? [status] : [], total: preparing ? 1 : 0 },
+        needsHelp: { rows: [], total: 0 },
+        recentlyReady: {
+          rows: terminalAdmissionApplied ? [status] : [],
+          total: terminalAdmissionApplied ? 1 : 0,
         },
-        reels: [],
-        reelsTotal: 0,
-        rejected: [],
-        rejectedTotal: 0,
-        stageOrder: ["admission"],
-        total: 0,
       });
     }
     if (path === "/v1/filler") {
@@ -375,12 +312,6 @@ test("a fetched arrival becomes playable only after terminal admission completes
     return route.fallback();
   });
 
-  await page.goto("/filler/attention");
-  await expect(page.getByRole("heading", { name: "Is this a toy commercial?" })).toBeVisible();
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page.getByText("You're caught up for now")).toBeVisible();
-  expect(calls).toContain("review skipped without verdict");
-
   await page.goto("/filler/sources");
   await expect(page.getByText("Trusted Commercials")).toBeVisible();
   await expect(page.getByText(/every clip is checked before it can play/i)).toBeVisible();
@@ -389,13 +320,10 @@ test("a fetched arrival becomes playable only after terminal admission completes
   await page.getByRole("button", { name: "Look for new clips" }).click();
   await expect.poll(() => fetched).toBe(true);
 
-  const legacyIncomingRequests = requestedPaths.filter((path) => path === "/v1/filler/incoming").length;
   await page.goto("/filler/incoming");
-  await expect(page.getByRole("heading", { name: "Is this a toy commercial?" })).toBeVisible();
-  await expect(page.getByText("Trusted Toy Spot", { exact: true })).toHaveCount(0);
-  expect(requestedPaths.filter((path) => path === "/v1/filler/incoming")).toHaveLength(
-    legacyIncomingRequests,
-  );
+  await expect(page.getByRole("heading", { name: "1 clip is getting ready" })).toBeVisible();
+  await expect(page.getByText("Trusted Toy Spot", { exact: true })).toBeVisible();
+  expect(requestedPaths).toContain("/v1/filler/incoming");
 
   await page.goto("/filler");
   await expect(page.getByRole("heading", { name: "Add filler to get started" })).toBeVisible();
@@ -413,7 +341,7 @@ test("a fetched arrival becomes playable only after terminal admission completes
   await expect(fillerNav.getByRole("link", { name: "Sources" })).toBeVisible();
 
   await page.goto("/filler/manage");
-  await expect(page.getByText("Would add (preview)")).toBeVisible();
+  await expect(page.getByText("Nothing has happened yet.")).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();
@@ -422,24 +350,20 @@ test("a fetched arrival becomes playable only after terminal admission completes
   await expect(page.getByText("1 eligible commercial", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /apply filler/i })).toHaveCount(0);
 
-  await page.goto("/filler/attention");
-  await expect(page.getByRole("heading", { name: "Is this a toy commercial?" })).toBeVisible();
-
   // This is a backend-state simulation, not an operator approval or UI publish action. It models
   // certified automatic terminal admission completing after fetch; the frontend only observes it.
   terminalAdmissionApplied = true;
 
   await page.goto("/filler/manage");
-  await expect(page.getByText("Would add (preview)")).toBeVisible();
   await expect(page.getByText("Added automatically")).toBeVisible();
+
+  await page.goto("/filler/incoming");
+  await expect(page.getByRole("heading", { name: "1 clip added to your Library" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ready" })).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();
   await expect(page.getByLabel("Pod segments")).toContainText("Trusted Toy Spot");
   await expect(page.getByRole("button", { name: /apply filler/i })).toHaveCount(0);
-  expect(calls).toEqual([
-    "review skipped without verdict",
-    "bounded source fetch",
-    "automatic break preview",
-  ]);
+  expect(calls).toEqual(["bounded source fetch", "automatic break preview"]);
 });

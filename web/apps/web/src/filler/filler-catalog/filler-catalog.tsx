@@ -254,11 +254,6 @@ const FillerCatalog = ({ isAdmin, onEditTags, onProposePull }: FillerCatalogProp
   // behind it. Deleting the state rather than leaving it wired to nothing: an unused query that
   // still fires is how a page keeps paying for a feature nobody can reach.
 
-  // ⚠ The filing mutations (file / hold / confirm-era) and their busy-row state moved into
-  // `IncomingTab` with the queue they serve. They are not shared: nothing outside Incoming
-  // files or holds a clip, so mounting them here made the Catalog tab pay for a surface it
-  // never touches.
-
   // Bulk selection (V35). ⚠ Deliberately NOT in the URL, unlike the filters: a selection is a
   // transient intent about the rows in front of you, and a shared link that carried it would
   // hand someone else a pre-armed destructive action over clips they never chose.

@@ -1,6 +1,5 @@
 import type { ClipDTO } from "@loomarr/api";
 import {
-  getFillerAttentionMockHandler,
   getFillerPoolMockHandler,
   getFillerWatchMockHandler,
   getListFillerMockHandler,
@@ -73,7 +72,13 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; total?: number } = {}) => {
       held: 0,
       health: "healthy",
     }),
-    getFillerAttentionMockHandler({ rows: [], total: 0 }),
+    http.get("*/v1/filler/incoming", () =>
+      HttpResponse.json({
+        preparing: { rows: [], total: 0 },
+        needsHelp: { rows: [], total: 0 },
+        recentlyReady: { rows: [], total: 0 },
+      }),
+    ),
     getFillerPoolMockHandler({ clips: 200, breakBody: 200, eligible: 200, untagged: 0, channels: [] }),
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),
     getSettingsListMockHandler({ settings: [], features: { filler: true } }),
@@ -115,40 +120,42 @@ describe("FillerPage shell", () => {
     expect(within(catalogTab).getByText("200")).toBeInTheDocument();
   });
 
-  it("does not fetch Attention for an inactive destination", async () => {
+  it("does not fetch Incoming for an inactive destination", async () => {
     stubFillerPage();
-    let attentionReads = 0;
+    let incomingReads = 0;
     server.use(
-      http.get("*/v1/filler/attention", () => {
-        attentionReads += 1;
-        return HttpResponse.json({ rows: [], total: 0 });
+      http.get("*/v1/filler/incoming", () => {
+        incomingReads += 1;
+        return HttpResponse.json({
+          preparing: { rows: [], total: 0 },
+          needsHelp: { rows: [], total: 0 },
+          recentlyReady: { rows: [], total: 0 },
+        });
       }),
     );
     renderPage("library");
 
     await screen.findByRole("link", { name: /^library/i });
-    expect(attentionReads).toBe(0);
+    expect(incomingReads).toBe(0);
   });
 
-  it("renders only the Attention projection on Incoming", async () => {
+  it("renders the hands-off Incoming projection", async () => {
     stubFillerPage();
-    let attentionReads = 0;
-    let legacyIncomingReads = 0;
+    let incomingReads = 0;
     server.use(
-      http.get("*/v1/filler/attention", () => {
-        attentionReads += 1;
-        return HttpResponse.json({ rows: [], total: 0 });
-      }),
       http.get("*/v1/filler/incoming", () => {
-        legacyIncomingReads += 1;
-        return HttpResponse.json({ clips: [], reels: [], rejected: [], stageOrder: [], total: 0 });
+        incomingReads += 1;
+        return HttpResponse.json({
+          preparing: { rows: [], total: 0 },
+          needsHelp: { rows: [], total: 0 },
+          recentlyReady: { rows: [], total: 0 },
+        });
       }),
     );
     renderPage("incoming", "/filler/incoming");
 
-    expect(await screen.findByText("Nothing needs your attention")).toBeInTheDocument();
-    expect(attentionReads).toBe(1);
-    expect(legacyIncomingReads).toBe(0);
+    expect(await screen.findByText("Nothing on the way")).toBeInTheDocument();
+    expect(incomingReads).toBe(1);
   });
 
   it("makes Sources a routine top-level destination", async () => {
