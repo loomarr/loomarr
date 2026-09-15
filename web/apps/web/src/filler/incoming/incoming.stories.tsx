@@ -33,12 +33,15 @@ const empty: FillerIncomingOutputBody = {
 const withIncoming =
   (body: FillerIncomingOutputBody): Decorator =>
   (Story) => {
-    window.fetch = (() =>
+    window.fetch = ((input: RequestInfo | URL) =>
       Promise.resolve(
-        new Response(JSON.stringify(body), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify(String(input).includes("/filler/incoming") ? body : { clips: [], total: 0 }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
       )) as typeof fetch;
     return (
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
