@@ -93,7 +93,7 @@ func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWo
 	}
 
 	res, body := readIncoming(t, srv.URL, "/v1/filler/incoming", adminToken)
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
