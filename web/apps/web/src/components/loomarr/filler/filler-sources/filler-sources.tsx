@@ -149,7 +149,7 @@ const FillerSources = ({
         ].join(" · ");
     const details = (
       <>
-        <div className="min-w-0 flex-1 text-left">
+        <div className="min-w-0 basis-full text-left sm:flex-1 sm:basis-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="truncate font-medium text-sm">
               {source.id === "folder" ? "Drop folder" : source.target}
@@ -216,14 +216,16 @@ const FillerSources = ({
           {onSelect ? (
             <button
               type="button"
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-nowrap"
               aria-label={`Manage ${source.id === "folder" ? "Drop folder" : source.target}`}
               onClick={() => onSelect(source)}
             >
               {details}
             </button>
           ) : (
-            <div className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2">{details}</div>
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 px-2 py-2 sm:flex-nowrap">
+              {details}
+            </div>
           )}
         </div>
       </li>
@@ -298,8 +300,8 @@ const FillerSources = ({
             aria-labelledby={`provider-${provider.kind}`}
             className="border-border/60 border-t pt-5"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
+            <div className="flex flex-wrap items-start justify-between gap-4 sm:flex-nowrap">
+              <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
                 <h3 id={`provider-${provider.kind}`} className="font-medium">
                   {provider.target}
                 </h3>
@@ -311,7 +313,7 @@ const FillerSources = ({
                       : "Channels and playlists you choose from YouTube."}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-3">
+              <div className="ml-auto flex shrink-0 items-center gap-3">
                 <span className="text-muted-foreground text-xs">{sourceSummary(children)}</span>
                 {onToggleProvider && providerKind && (
                   <Switch

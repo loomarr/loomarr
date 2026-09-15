@@ -222,13 +222,16 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 		}
 	}
 
-	// SQL migrations seed exactly these six identities. Remove only those rows so the
+	// SQL migrations seed exactly these source and provider identities. Remove only those rows so the
 	// SQLite source remains authoritative for edits or deletions to the defaults. Never
 	// clear arbitrary target tables: MigrateToPostgres's immediate preflight owns the
 	// empty-target guarantee, and an unexpected row must cause a collision, not deletion.
 	if _, err := dstTx.ExecContext(ctx, `DELETE FROM filler_sources WHERE id IN
 		('folder', 'library', 'archive:classic_tv_commercials', 'archive:vhscommercials', 'archive:tv_ads', 'youtube')`); err != nil {
 		return prog, fmt.Errorf("clear SQL-seeded filler sources: %w", err)
+	}
+	if _, err := dstTx.ExecContext(ctx, `DELETE FROM filler_providers WHERE kind IN ('archive', 'youtube')`); err != nil {
+		return prog, fmt.Errorf("clear SQL-seeded filler providers: %w", err)
 	}
 
 	report := func() {
