@@ -83,6 +83,12 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 		return preparedToolCall{arguments: arguments, meaning: meaning, collection: true}, "", DecisionTrace{}, true
 	}
 	discovery, discoveryMode, parseErr := parseDiscoveryQueryWithDateMeaning(arguments, meaning)
+	if parseErr == nil && !discoveryMode {
+		if projected, ok := projectThematicTitleSearch(arguments, intent); ok {
+			arguments = projected
+			discovery, discoveryMode, parseErr = parseDiscoveryQueryWithDateMeaning(arguments, meaning)
+		}
+	}
 	if parseErr != nil {
 		if projected, ok := projectCatalogArguments(tc.Arguments); ok {
 			arguments = projected
@@ -97,6 +103,36 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 		prepared.queries = projectDiscoveryWindows(discovery, meaning)
 	}
 	return prepared, "", DecisionTrace{}, true
+}
+
+// projectThematicTitleSearch repairs a narrow provider mistake without guessing
+// new intent: a model sometimes puts one ordinary mood/topic word in `query`
+// even though the user's same sentence explicitly supplies both a known genre
+// and country. A title lookup for "village" cannot find British mysteries; the
+// source-backed discovery fields can. Exact titles and positive examples remain
+// title searches, and every projected constraint comes directly from the intent.
+func projectThematicTitleSearch(args map[string]any, intent Intent) (map[string]any, bool) {
+	query := strings.TrimSpace(stringArg(args["query"]))
+	if query == "" || len(evidenceWords(query)) != 1 || positiveIntentOrReferenceNamesTitle(intent, query) {
+		return nil, false
+	}
+	genres := explicitHardGenreTerms(intent)
+	countries := explicitOriginCountryCodes(intent)
+	if len(genres) == 0 || len(countries) != 1 {
+		return nil, false
+	}
+	projected := projectArgumentKeys(args, "media_type", "dateMeaning")
+	projected["genres"] = stringSliceAsAny(genres)
+	projected["origin_country"] = countries[0]
+	return projected, true
+}
+
+func stringSliceAsAny(values []string) []any {
+	result := make([]any, len(values))
+	for index, value := range values {
+		result[index] = value
+	}
+	return result
 }
 
 func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {

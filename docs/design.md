@@ -647,7 +647,8 @@ Every proposed series in the lineup, acquisitions, **or alternates** persists on
 default), `highlights`, or `holiday`. An omitted/unknown legacy value is read
 as `complete`. The mode is derived in deterministic code from explicit Intent, never emitted by the
 model: Unicode-normalized whole-word `classic`, `best`, favorites/reruns/curated/highlights select `highlights`; explicit
-chronological/start-to-finish/binge/marathon language selects `complete`; a named built-in holiday
+affirmative chronological/start-to-finish/binge/marathon language selects `complete`, while a locally
+negated cue such as “not a full binge” does not; a named built-in holiday
 selects only that holiday, while an explicit generic "holiday episodes/specials" request selects the
 closed built-in holiday vocabulary. `mustExclude` terms remain grounding constraints and never count
 as positive mode cues. Named holidays use the same whole-phrase matcher over all affirmative Intent
@@ -1470,13 +1471,21 @@ proof. Only unambiguous Catalog identities for explicit user-supplied constituen
 reference anchors are members; an ambiguous anchor remains unproven rather than selecting a remake.
 A model-proposed title can help resolve examples embedded in free-form description text only when its
 exact normalized title is also present in that submitted text (or in a resolved reference anchor).
-For a named set, titles supplied through `mustInclude` or direct inclusion language such as `with`,
-`include`, `keep`, `add`, or `want` are required constituents. Once each title is independently
-resolved to one Catalog identity and admitted by the same source-membership boundary, deterministic
-finalization preserves it even when the provider omits it from the final pick list. The combined
-required and provider-selected list remains bounded to eight picks and passes through the unchanged
-surfaced-key, acquisition, policy, and approval checks. Softer examples introduced by `like`, `think`,
-or `example` remain choices for the model rather than mandatory selections.
+Titles supplied through `mustInclude` or bounded direct inclusion clauses such as `with`, `include`,
+`keep`, `add`, or `want` are required picks for both named sets and ordinary themes. Loomarr extracts
+only title-shaped values inside that clause; a following exclusion or a new sentence ends it. Each
+required title is independently exact-searched and retained as a title-to-canonical-key binding.
+Distinct bindings stay distinct, duplicate final picks collapse by key, and a different same-name key
+is rejected rather than substituted. Named-set bindings must additionally pass the same source-
+membership boundary. Deterministic finalization preserves every resolved binding even when the
+provider omits it from the final pick list. The combined required and provider-selected list remains
+bounded to eight picks and passes through the unchanged surfaced-key, acquisition, policy, and
+approval checks. Unresolved or ambiguous required titles remain unproven and are not guessed. Softer
+examples introduced by `like`, `think`, or `example` remain choices for the model rather than
+mandatory selections. If a named-set request has independently grounded every required constituent
+but the provider exhausts or malforms its final response, Loomarr may finish with that thinner exact
+set. This fallback is unavailable to ordinary themes, where required titles alone do not reconstruct
+the requested editorial selection.
 Network, genre, era, adjacent recommendations, and model rationale may help discover a theme, but never
 prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
 rules. A member whose series premiered before a requested decade is not excluded merely by that premiere
@@ -1521,8 +1530,13 @@ supported by each item's Catalog metadata. Matching one fragment never earns com
 Verified named membership remains its own full-support case. Whole normalized words and a small,
 explicit synonym vocabulary handle known equivalences; unrecognized wording is unverified, not a
 literal-word admission rule. No item is silently excluded by this diagnostic, and generated rationale
-cannot support it. Ordinary theme coverage uses overview, genres, keywords and documented country
-evidence; a matching Catalog title plus unrelated metadata cannot establish theme support. Named
+cannot support it. Ordinary theme coverage uses overview, genres, keywords, documented country,
+resolved network, cast, and creator evidence; request grammar such as `written`, `directed`, and `by`
+and direct title include/exclude clauses are not themselves qualifiers. A grounded series name can
+support the subject of an explicit episode-selection request, while its deterministic controls such
+as `classic`, `best`, `episodes`, or `binge` are assessed by the episode policy rather than counted a
+second time as catalog themes. A matching Catalog title plus unrelated metadata cannot otherwise
+establish theme support. Named
 membership uses its separate verified identity evidence. Missing substantive metadata or no requested
 theme leaves coverage unassessed.
 The existing evaluation `MinThemeFit` floor remains enforced against this definition: unassessed
@@ -1534,7 +1548,21 @@ it never presents a fragment as a confident understanding of the whole Intent. A
 named request such as TGIF remains supported. The initial equivalents are cozy/cosy, mystery/mysteries/whodunit(s), sitcom(s)/situation comedy,
 and sci-fi/scifi/science fiction. British origin can use a Catalog GB/UK country. These are lexical equivalences,
 not permission for model-authored rationale to award itself credit. Validated date-anchor spans
-are assessed by the date diagnostic rather than counted again as unsupported theme words.
+are assessed by the date diagnostic rather than counted again as unsupported theme words. If a
+provider over-runs a constraint anchor into adjacent prose, theme assessment masks only the actual
+date expression inside that span. The established compound `murder mystery` is assessed through
+the Mystery genre rather than requiring a second literal `murder` metadata string.
+
+Explicit country and known genre terms also form an admission boundary when Catalog evidence is
+present. A candidate with a known contradictory origin country or a non-empty genre set that omits
+the requested known genre is dropped with relevance evidence; missing metadata remains unknown and
+does not become a contradiction. A thinner accurate Proposal is preferred to padding it with a title
+that the available source facts disprove.
+
+When a provider incorrectly submits a one-word title query for an ordinary theme whose intent itself
+contains both an explicit country and a known genre, Loomarr projects that call onto those exact
+source-backed discovery qualifiers. It does not do so for an exact title or positive title example,
+and it adds no constraint that was not present in the submitted intent.
 
 `scores.eraBalance` now reports requested-date adherence, not decade spread. It is assessed only
 for explicitly constrained axes from the validated DateMeaning, using source-backed movie-release
@@ -1855,6 +1883,14 @@ request.
 `reference-source-v4` broadens bounded source-roster inspection and preserves TV-series
 disambiguators as media-type evidence. It invalidates cached named-set Proposals built from a thin
 alphabetical prefix or an owned namesake of the wrong media type.
+`reference-source-v5` binds exact required-title identities across named and ordinary intents,
+collapses duplicate selected keys, recognizes Unicode-dash and direct-constituent named-block
+punctuation, rejects known
+country/genre contradictions, respects locally negated episode-mode cues, and assesses resolved
+network/person evidence without counting direct-title or episode-policy grammar as themes. It also
+projects a provider's one-word thematic title lookup onto the intent's explicit country/genre
+discovery pair, preserves complete audit facts for synthesized required picks, and permits the
+bounded exact-set fallback above. It invalidates successful cached Proposals produced by the prior behavior.
 Only the configured model is live in this replay; actual source discovery needs separate diagnostic
 and installed-journey evidence. This
 release holdout complements the full active certification corpus; its one-trial canary and

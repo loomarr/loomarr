@@ -192,6 +192,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	// exact membership evidence it adds with the final grounding chokepoint.
 	intent.membershipKeys = make(map[provision.Key]bool)
 	intent.membershipSources = newMembershipSourceState()
+	intent.requiredTitleKeys = make(map[string]provision.Key)
 	allAdjacent := intent.Adjacent
 	var feedback []FeedbackSignal
 	if s.feedback != nil {
@@ -293,6 +294,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 				trace.Terminal = TerminalConstraintsConflict
 				return Proposal{}, NewFailure(FailureCodeNoGroundedTitles, trace, err)
 			}
+			if prop, built, fallbackErr := s.buildRequiredNamedFallback(ctx, intent, surfaced, &trace, acceptedMeaning); built {
+				return prop, fallbackErr
+			}
 			return Proposal{}, err
 		}
 		out, perr := parsePicks(final)
@@ -355,7 +359,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 				sources.presented = true
 				continue
 			}
-			out.Picks = preserveRequiredNamedMembers(intent, out.Picks, surfaced)
+			out.Picks = preserveRequiredTitles(intent, out.Picks, surfaced)
 			if len(surfaced) == 0 && len(out.Picks) > 0 {
 				out.Picks, out.nameGroundingIncomplete, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
 				if err != nil {
@@ -389,6 +393,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 			return prop, nil
 		}
 		if repairs >= maxRepairs {
+			if prop, built, fallbackErr := s.buildRequiredNamedFallback(ctx, intent, surfaced, &trace, acceptedMeaning); built {
+				return prop, fallbackErr
+			}
 			trace.Terminal = TerminalMalformedExhausted
 			return Proposal{}, NewFailure(FailureProvider, trace, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr))
 		}
@@ -398,6 +405,43 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		temp = temp / 2
 		repairs++
 	}
+}
+
+// buildRequiredNamedFallback completes a named-set request when retrieval and
+// independent constituent grounding succeeded but the provider never produced
+// usable final JSON. It is deliberately unavailable to ordinary themes: their
+// required title is not enough to reconstruct the broader editorial selection.
+func (s *Suggester) buildRequiredNamedFallback(
+	ctx context.Context,
+	intent Intent,
+	surfaced map[provision.Key]catalog.Candidate,
+	trace *DecisionTrace,
+	meaning *ValidatedDateMeaning,
+) (Proposal, bool, error) {
+	if ctx.Err() != nil || !requiresMembershipEvidence(intent) || meaning == nil || len(intent.requiredTitleKeys) == 0 {
+		return Proposal{}, false, nil
+	}
+	for _, key := range intent.requiredTitleKeys {
+		if _, found := surfaced[key]; !found || !intent.membershipKeys[key] {
+			return Proposal{}, false, nil
+		}
+	}
+	name := strings.TrimSpace(namedBlockLabel(intent))
+	if name == "" {
+		name = "Named Lineup"
+	} else if len(strings.Fields(name)) == 1 {
+		name += " Lineup"
+	}
+	out := finalOutput{
+		ChannelName: name,
+		Rationale:   "Built from the independently grounded titles you requested.",
+		Picks:       preserveRequiredTitles(intent, nil, surfaced),
+	}
+	prop, err := s.buildProposal(ctx, intent, out, surfaced, trace, *meaning)
+	if err != nil {
+		return Proposal{}, true, NewFailure(FailureProvider, *trace, err)
+	}
+	return prop, true, nil
 }
 
 // generate runs the tool-call loop until the model returns a final (non-tool)

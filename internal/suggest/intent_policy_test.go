@@ -46,6 +46,14 @@ func TestDeriveIntentPolicy(t *testing.T) {
 			},
 		},
 		{
+			name:   "curated intent with negated binge",
+			intent: Intent{Description: "Classic Simpsons: the best episodes, not a full binge."},
+			want: deterministicIntentPolicy{
+				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+				curated:          true,
+			},
+		},
+		{
 			name:   "named holiday intent",
 			intent: Intent{Description: "Christmas Simpsons episodes"},
 			want: deterministicIntentPolicy{

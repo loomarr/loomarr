@@ -104,10 +104,12 @@ func intentRequestsHolidayEpisodes(intent Intent) bool {
 }
 
 func intentMatchesAnyCue(intent Intent, cues ...string) bool {
-	hay := affirmativeIntentText(intent)
-	for _, cue := range cues {
-		if textmatch.ContainsPhrase(hay, cue) {
-			return true
+	fields := append([]string{intent.Description, intent.Tone, intent.Era, intent.RefineText}, intent.MustInclude...)
+	for _, field := range fields {
+		for _, cue := range cues {
+			if textmatch.ContainsPhrase(field, cue) && freeformTitlePolarity(field, cue) >= 0 {
+				return true
+			}
 		}
 	}
 	return false

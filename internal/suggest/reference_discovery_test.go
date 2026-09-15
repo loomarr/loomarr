@@ -129,6 +129,104 @@ func TestSuggestNamedBlockContinuesPastUnresolvedSourceAnchors(t *testing.T) {
 	}
 }
 
+func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t *testing.T) {
+	fullHouse := catalog.Candidate{MediaType: provision.Series, TMDBID: 1001, Name: "Full House", Year: 1987, InLibrary: true}
+	familyMatters := catalog.Candidate{MediaType: provision.Series, TMDBID: 1002, Name: "Family Matters", Year: 1989, InLibrary: true}
+	wrongNamesake := catalog.Candidate{MediaType: provision.Series, TMDBID: 2002, Name: "Family Matters", Year: 2024}
+	stepByStep := catalog.Candidate{MediaType: provision.Series, TMDBID: 1003, Name: "Step by Step", Year: 1991, InLibrary: true}
+	corpus := &catalogfixture.Corpus{
+		SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+			switch query {
+			case fullHouse.Name:
+				return []catalog.Candidate{fullHouse}, nil
+			case familyMatters.Name:
+				return []catalog.Candidate{familyMatters, wrongNamesake}, nil
+			case stepByStep.Name:
+				return []catalog.Candidate{stepByStep}, nil
+			default:
+				return nil, nil
+			}
+		},
+	}
+	references := &testkit.ReferenceResolver{DiscoveryEvidence: reference.Evidence{
+		URL: "https://lineups.example/tgif", Title: "TGIF", Excerpt: "A verified programming block.",
+		TitleAnchors: []string{fullHouse.Name, familyMatters.Name, stepByStep.Name},
+	}}
+	model := testkit.NewLLM(
+		testkit.FinalResponse(`{"channelName":"TGIF","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
+		testkit.FinalResponse(`{"channelName":"TGIF","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
+			{"mediaType":"series","key":"series:tmdb:1001","name":"Full House"},
+			{"mediaType":"series","key":"series:tmdb:1001","name":"Full House"},
+			{"mediaType":"series","key":"series:tmdb:1001","name":"Full House"},
+			{"mediaType":"series","key":"series:tmdb:2002","name":"Family Matters"}
+		],"policy":{}}`),
+	)
+
+	proposal, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+		WithReferences(references).
+		Suggest(context.Background(), suggest.Intent{Description: "TGIF — include Full House, Family Matters, and Step by Step."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	if len(items) != 3 {
+		t.Fatalf("items=%+v searches=%+v trace=%+v, want the three distinct requested titles", items, corpus.Searches(), proposal.Trace)
+	}
+	want := map[int]bool{1001: true, 1002: true, 1003: true}
+	for _, item := range items {
+		if !want[item.TMDBID] {
+			t.Fatalf("unexpected or wrong namesake survived: %+v", items)
+		}
+		delete(want, item.TMDBID)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing requested title ids %v from %+v", want, items)
+	}
+	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
+		t.Fatalf("preserved required-title trace is not persistable: %v; trace=%+v", err, proposal.Trace)
+	}
+}
+
+func TestSuggestNamedBlockFallsBackToGroundedRequiredTitles(t *testing.T) {
+	titles := []catalog.Candidate{
+		{MediaType: provision.Series, TMDBID: 1001, Name: "Full House", InLibrary: true},
+		{MediaType: provision.Series, TMDBID: 1002, Name: "Family Matters", InLibrary: true},
+		{MediaType: provision.Series, TMDBID: 1003, Name: "Step by Step", InLibrary: true},
+	}
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		for _, candidate := range titles {
+			if query == candidate.Name {
+				return []catalog.Candidate{candidate}, nil
+			}
+		}
+		return nil, nil
+	}}
+	references := &testkit.ReferenceResolver{DiscoveryEvidence: reference.Evidence{
+		URL: "https://lineups.example/tgif", Title: "TGIF", Excerpt: "A verified programming block.",
+		TitleAnchors: []string{"Full House", "Family Matters", "Step by Step"},
+	}}
+	unsolicited := testkit.ToolCallResponse("catalog_search", map[string]any{
+		"query": "Full House", "dateMeaning": dateMeaningNone(),
+	})
+	model := testkit.NewLLM(
+		testkit.FinalResponse(`{"channelName":"TGIF","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
+		unsolicited, unsolicited, unsolicited,
+	)
+	proposal, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+		WithReferences(references).
+		Suggest(context.Background(), suggest.Intent{Description: "TGIF — include Full House, Family Matters, and Step by Step."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	if len(items) != 3 {
+		t.Fatalf("fallback items = %+v, want every independently grounded required title", items)
+	}
+	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
+		t.Fatalf("fallback trace is not persistable: %v; trace=%+v", err, proposal.Trace)
+	}
+}
+
 func TestSuggestNamedBlockPreservesSourceMediaType(t *testing.T) {
 	movie := catalog.Candidate{MediaType: "movie", TMDBID: 1001, Name: "Clueless", Year: 1995, InLibrary: true}
 	series := catalog.Candidate{MediaType: "series", TMDBID: 1002, Name: "Clueless", Year: 1996}

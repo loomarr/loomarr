@@ -186,6 +186,7 @@ func TestDecisionRankQueryDoesNotTreatRequestScaffoldingAsEvidence(t *testing.T)
 func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *testing.T) {
 	for _, description := range []string{
 		"TGIF",
+		"TGIF with Family Matters and Step by Step.",
 		"Criterion",
 		"The Criterion Channel",
 		"Criterion Channel",
