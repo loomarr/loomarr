@@ -109,29 +109,31 @@ func TestWorkflowInspectFailedMapsAllowlistedTerminals(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		terminal string
-		reason   FailureReason
-		action   RecoveryAction
+		name          string
+		terminal      string
+		surfacedTotal int
+		reason        FailureReason
+		action        RecoveryAction
 	}{
-		{"retrieval failure", suggest.TerminalRetrievalFailure, FailureReasonRetrievalUnavailable, RecoveryActionRetryLater},
-		{"reference unreadable", suggest.TerminalReferenceUnreadable, FailureReasonReferenceUnreadable, RecoveryActionEditReference},
-		{"retrieval empty", suggest.ReasonRetrievalEmpty, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
-		{"selection empty", suggest.FailureSelectionEmpty, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
-		{"named set", suggest.TerminalNamedSetUnproven, FailureReasonNamedSetUnproven, RecoveryActionProvideExamples},
-		{"constraints", suggest.TerminalConstraintsConflict, FailureReasonConstraintsConflict, RecoveryActionResolveConstraints},
-		{"dates", suggest.TerminalDateSemanticsUnclear, FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates},
-		{"invalid tool", suggest.TerminalInvalidToolCalls, FailureReasonInvalidToolCalls, RecoveryActionRetryLater},
-		{"provider timeout", suggest.TerminalProviderTimeout, FailureReasonProviderTimeout, RecoveryActionRetryLater},
-		{"provider unavailable", suggest.TerminalProviderFailure, FailureReasonProviderUnavailable, RecoveryActionRetryLater},
-		{"malformed final json", suggest.TerminalMalformedExhausted, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
-		{"generation", suggest.TerminalGenerationFailure, FailureReasonGenerationFailed, RecoveryActionRetryLater},
-		{"budget", suggest.FailureBudgetExhausted, FailureReasonDiscoveryBudgetExhausted, RecoveryActionSimplifyRequest},
+		{"retrieval failure", suggest.TerminalRetrievalFailure, 0, FailureReasonRetrievalUnavailable, RecoveryActionRetryLater},
+		{"reference unreadable", suggest.TerminalReferenceUnreadable, 0, FailureReasonReferenceUnreadable, RecoveryActionEditReference},
+		{"retrieval empty", suggest.ReasonRetrievalEmpty, 0, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
+		{"selection empty", suggest.FailureSelectionEmpty, 0, FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest},
+		{"named set", suggest.TerminalNamedSetUnproven, 0, FailureReasonNamedSetUnproven, RecoveryActionProvideExamples},
+		{"constraints", suggest.TerminalConstraintsConflict, 0, FailureReasonConstraintsConflict, RecoveryActionResolveConstraints},
+		{"dates", suggest.TerminalDateSemanticsUnclear, 0, FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates},
+		{"invalid tool", suggest.TerminalInvalidToolCalls, 0, FailureReasonInvalidToolCalls, RecoveryActionRetryLater},
+		{"provider timeout", suggest.TerminalProviderTimeout, 0, FailureReasonProviderTimeout, RecoveryActionRetryLater},
+		{"provider unavailable", suggest.TerminalProviderFailure, 0, FailureReasonProviderUnavailable, RecoveryActionRetryLater},
+		{"malformed final json", suggest.TerminalMalformedExhausted, 0, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
+		{"generation", suggest.TerminalGenerationFailure, 0, FailureReasonGenerationFailed, RecoveryActionRetryLater},
+		{"budget before grounding", suggest.FailureBudgetExhausted, 0, FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater},
+		{"budget after grounding", suggest.FailureBudgetExhausted, 1, FailureReasonProviderResponseInvalid, RecoveryActionRetryLater},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: tt.terminal}
+			trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: tt.terminal, SurfacedTotal: tt.surfacedTotal, RecordedTotal: tt.surfacedTotal}
 			if err := suggest.ValidateDecisionTrace(trace); err != nil {
 				t.Fatalf("trace must be valid: %v", err)
 			}
@@ -455,10 +457,10 @@ func TestWorkflowInspectFailureReturnsSafeGuidanceAndRoleActions(t *testing.T) {
 			wantActions: []Action{ActionEdit, ActionRetry},
 		},
 		{
-			name: "discovery budget asks for a useful edit before retrying", code: FailureBudgetExhausted,
+			name: "discovery budget does not blame the request", code: FailureBudgetExhausted,
 			viewer: Viewer{UserID: "member-1"}, wantCode: FailureBudgetExhausted,
-			wantMessage: "This request exceeded the bounded discovery budget. Try again with narrower constraints.",
-			wantActions: []Action{ActionEdit, ActionRetry},
+			wantMessage: "Loomarr couldn't finish searching for titles.",
+			wantActions: []Action{ActionRetry},
 		},
 		{
 			name: "provider diagnostic is generalized for member", code: FailureGenerationFailed,

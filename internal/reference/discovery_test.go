@@ -24,7 +24,7 @@ func TestDiscoverRequiresExplicitCategoryMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.TitleAnchors, "|") != "Alpha House|Beta Steps" || !strings.Contains(got.URL, "Category:Friday_Club") {
+	if strings.Join(got.TitleAnchors, "|") != "Alpha House|Beta Steps (TV series)" || !strings.Contains(got.URL, "Category:Friday_Club") {
 		t.Fatalf("evidence=%+v", got)
 	}
 	requests := transport.Requests()

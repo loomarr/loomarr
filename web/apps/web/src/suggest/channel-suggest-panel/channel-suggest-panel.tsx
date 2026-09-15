@@ -150,17 +150,16 @@ const ChannelSuggestPanel = ({
     setEdit(undefined);
     run.retry();
   };
+  const discoveryBudgetExhausted = run.failure?.reason === "discovery_budget_exhausted";
   const failureNeedsEdit = run.failure?.recoveryAction !== "retry_later";
-  const failureTitle =
-    run.failure?.recoveryAction === "simplify_request"
-      ? "Try a more specific description"
-      : failureNeedsEdit
-        ? "Adjust your description"
-        : "We couldn't finish this channel";
-  const failureMessage =
-    run.failure?.reason === "discovery_budget_exhausted"
-      ? "Loomarr found too many possible directions. Add a decade, genre, network, or a few example titles."
-      : (run.failure?.message ?? "Something interrupted this channel. Your description is still here.");
+  const failureTitle = discoveryBudgetExhausted
+    ? "We couldn't finish the lineup"
+    : failureNeedsEdit
+      ? "Adjust your description"
+      : "We couldn't finish this channel";
+  const failureMessage = discoveryBudgetExhausted
+    ? "Your description is still here. Try again, or edit it if you want to."
+    : (run.failure?.message ?? "Something interrupted this channel. Your description is still here.");
 
   return (
     <section className={cn("flex flex-col gap-4", className)}>

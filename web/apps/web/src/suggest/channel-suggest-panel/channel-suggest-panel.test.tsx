@@ -592,7 +592,32 @@ describe("ChannelSuggestPanel", () => {
     expect(screen.queryByRole("link", { name: /check ai settings/i })).not.toBeInTheDocument();
   });
 
-  it("turns a bounded-discovery failure into a useful edit-first recovery", async () => {
+  it("does not blame the description when a grounded run cannot finish", async () => {
+    const retry = vi.fn();
+    runOverride = failedRun({
+      retry,
+      failure: {
+        code: "budget_exhausted",
+        message: "Loomarr found titles but couldn't finish the lineup.",
+        reason: "provider_response_invalid",
+        recoveryAction: "retry_later",
+        guidance: "Try again. Your description is still here.",
+      },
+      actions: ["retry"],
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("We couldn't finish this channel");
+    expect(alert).toHaveTextContent("Loomarr found titles but couldn't finish the lineup.");
+    expect(alert).not.toHaveTextContent(/more specific|too many possible directions/i);
+    expect(screen.queryByRole("button", { name: "Edit description" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalled();
+  });
+
+  it("does not expose discovery budgets or blame the description", async () => {
     const reset = vi.fn();
     runOverride = failedRun({
       reset,
@@ -609,9 +634,9 @@ describe("ChannelSuggestPanel", () => {
     renderPanel(() => {});
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Try a more specific description");
-    expect(alert).toHaveTextContent(/Add a decade, genre, network, or a few example titles/);
-    expect(alert).not.toHaveTextContent(/bounded discovery budget/i);
+    expect(alert).toHaveTextContent("We couldn't finish the lineup");
+    expect(alert).toHaveTextContent("Your description is still here. Try again, or edit it if you want to.");
+    expect(alert).not.toHaveTextContent(/budget|more specific|too many possible directions/i);
     await userEvent.click(screen.getByRole("button", { name: "Edit description" }));
     expect(reset).toHaveBeenCalledWith(true);
   });
