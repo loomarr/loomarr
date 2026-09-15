@@ -65,6 +65,7 @@ func TestThemeEvidenceDoesNotConfuseMetadataWithUnderstanding(t *testing.T) {
 		{"title alone is insufficient", "banana", suggest.ProposalItem{Name: "Banana Fish"}, nil, "unassessed"},
 		{"substrings do not prove a theme", "war", suggest.ProposalItem{Name: "Reward", Overview: "A heartwarming drama"}, new(0.0), "partial"},
 		{"known equivalents and country", "cozy British murder mysteries", suggest.ProposalItem{Overview: "A cosy murder whodunit", OriginCountries: []string{"GB"}}, new(1.0), "supported"},
+		{"murder mystery is one compound", "UK murder mystery series", suggest.ProposalItem{Genres: []string{"Mystery"}, OriginCountries: []string{"GB"}}, new(1.0), "supported"},
 		{"science fiction equivalent", "sci-fi", suggest.ProposalItem{Genres: []string{"Science Fiction"}}, new(1.0), "supported"},
 		{"rationale cannot fill metadata gap", "space", suggest.ProposalItem{Name: "Unrelated", Rationale: "Space space space"}, nil, "unassessed"},
 	}
@@ -75,6 +76,61 @@ func TestThemeEvidenceDoesNotConfuseMetadataWithUnderstanding(t *testing.T) {
 				t.Fatalf("assessment = %+v, want %v/%s", s, tc.want, tc.status)
 			}
 		})
+	}
+}
+
+func TestThemeEvidenceUsesDedicatedGroundingFields(t *testing.T) {
+	tests := []struct {
+		name   string
+		intent string
+		item   suggest.ProposalItem
+	}{
+		{
+			name:   "network",
+			intent: "HBO drama series",
+			item:   suggest.ProposalItem{Genres: []string{"Drama"}, Networks: []string{"HBO"}},
+		},
+		{
+			name:   "people",
+			intent: "Tom Hanks movies written or directed by Nora Ephron",
+			item: suggest.ProposalItem{
+				Cast: []string{"Tom Hanks"}, Creators: []string{"Nora Ephron"},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			scores := suggest.ScoreForTest(suggest.Intent{Description: tc.intent}, []suggest.ProposalItem{tc.item}, nil)
+			if scores.ThemeFit == nil || *scores.ThemeFit != 1 || scores.Theme.Status != "supported" {
+				t.Fatalf("dedicated evidence was reported as a loose match: %+v", scores)
+			}
+		})
+	}
+}
+
+func TestThemeEvidenceUsesGroundedSeriesNameForEpisodeSubject(t *testing.T) {
+	scores := suggest.ScoreForTest(
+		suggest.Intent{Description: "Classic Simpsons: the best episodes, not a full binge."},
+		[]suggest.ProposalItem{{MediaType: provision.Series, Name: "The Simpsons", Overview: "A family in Springfield"}}, nil,
+	)
+	if scores.ThemeFit == nil || *scores.ThemeFit != 1 || scores.Theme.Status != "supported" {
+		t.Fatalf("grounded episode subject was reported as a loose match: %+v", scores)
+	}
+	if len(scores.Theme.Qualifiers) != 1 || scores.Theme.Qualifiers[0].Term != "simpsons" {
+		t.Fatalf("editorial controls leaked into theme qualifiers: %+v", scores.Theme.Qualifiers)
+	}
+}
+
+func TestThemeEvidenceIgnoresDirectTitleInstructions(t *testing.T) {
+	scores := suggest.ScoreForTest(
+		suggest.Intent{Description: "family sitcoms; include Boy Meets World and exclude Married... with Children."},
+		[]suggest.ProposalItem{{MediaType: provision.Series, Name: "Boy Meets World", Genres: []string{"Comedy", "Family"}}}, nil,
+	)
+	if scores.ThemeFit == nil || *scores.ThemeFit != 1 || scores.Theme.Status != "supported" {
+		t.Fatalf("direct title instructions polluted theme evidence: %+v", scores)
+	}
+	if len(scores.Theme.Qualifiers) != 2 || scores.Theme.Qualifiers[0].Term != "family" || scores.Theme.Qualifiers[1].Term != "sitcom" {
+		t.Fatalf("direct title instructions leaked into qualifiers: %+v", scores.Theme.Qualifiers)
 	}
 }
 
@@ -100,6 +156,31 @@ func TestScoreDateAnchorsAreNotThemeQualifiers(t *testing.T) {
 	}
 	if intent.MustInclude[0] != "1990s" {
 		t.Fatal("scoring mutated submitted intent")
+	}
+}
+
+func TestScoreOversizedDateAnchorKeepsAdjacentTheme(t *testing.T) {
+	intent := suggest.Intent{Description: "1990s family sitcoms"}
+	meaning, err := suggest.ValidateDateMeaning(intent, &suggest.DateMeaning{
+		Kind: suggest.DateMeaningConstraints,
+		Anchors: []suggest.DateAnchor{
+			{Field: suggest.DateAnchorDescription, Start: 0, End: len("1990s")},
+			{Field: suggest.DateAnchorDescription, Start: 0, End: len([]rune(intent.Description))},
+		},
+		Axes: []suggest.DateAxis{{Kind: suggest.DateAxisSeriesPremiere, Combine: suggest.DateCombineAny,
+			Intervals: []suggest.DateInterval{{Anchor: 0, Start: 1990, End: 1999}, {Anchor: 1, Start: 1990, End: 1999}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scores := suggest.ScoreWithDateForTest(intent, []suggest.ProposalItem{{
+		MediaType: provision.Series, Year: 1993, Genres: []string{"Comedy", "Family"},
+	}}, nil, meaning)
+	if scores.ThemeFit == nil || *scores.ThemeFit != 1 || scores.Theme.Status != "supported" {
+		t.Fatalf("oversized date anchor hid adjacent theme evidence: %+v", scores)
+	}
+	if len(scores.Theme.Qualifiers) != 2 || scores.Theme.Qualifiers[0].Term != "family" || scores.Theme.Qualifiers[1].Term != "sitcom" {
+		t.Fatalf("theme qualifiers = %+v, want family and sitcom", scores.Theme.Qualifiers)
 	}
 }
 

@@ -63,6 +63,10 @@ type Intent struct {
 	// to the named set. It is execution-only evidence, never model data.
 	membershipKeys    map[provision.Key]bool
 	membershipSources *membershipSourceState
+	// requiredTitleKeys retains the independently resolved identity for each
+	// explicit include. The title is only a lookup label; the bound Key is the
+	// authority used for preservation and same-name rejection.
+	requiredTitleKeys map[string]provision.Key
 	curatedTitleKey   provision.Key
 	curatedTitleSet   bool
 	// DiscoveryScopeID is internal execution context for channel-specific explicit

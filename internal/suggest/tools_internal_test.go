@@ -264,6 +264,24 @@ func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testi
 	}
 }
 
+func TestPrepareToolCallProjectsThematicKeywordToExplicitDiscovery(t *testing.T) {
+	intent := Intent{Description: "British murder mysteries: cozy village cases from the UK."}
+	prepared, result, _, valid := prepareToolCall(llm.ToolCall{
+		Name: catalogToolName,
+		Arguments: map[string]any{
+			"query": "village", "media_type": "series",
+			"dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
+		},
+	}, intent, nil)
+	if !valid || result != "" || !prepared.discoveryMode {
+		t.Fatalf("thematic keyword was not projected to discovery: valid=%v result=%q prepared=%+v", valid, result, prepared)
+	}
+	if prepared.discovery.MediaType != provision.Series || prepared.discovery.OriginCountry != "GB" ||
+		len(prepared.discovery.Genres) != 1 || prepared.discovery.Genres[0] != "mystery" {
+		t.Fatalf("projected discovery = %+v, want series/GB/mystery", prepared.discovery)
+	}
+}
+
 func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
 		{MediaType: "series", Name: "Full House", TVDBID: 762},

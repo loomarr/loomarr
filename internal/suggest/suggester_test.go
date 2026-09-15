@@ -1190,7 +1190,8 @@ func TestSuggest_GroundsIndependentToolFreeNamesConcurrently(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prop.Lineup) != 2 || prop.Lineup[0].TVDBID != 762 || prop.Lineup[1].TVDBID != 767 {
+	if len(prop.Lineup) != 2 || !slices.ContainsFunc(prop.Lineup, func(item suggest.ProposalItem) bool { return item.TVDBID == 762 }) ||
+		!slices.ContainsFunc(prop.Lineup, func(item suggest.ProposalItem) bool { return item.TVDBID == 767 }) {
 		t.Fatalf("concurrently grounded lineup = %+v, want both exact identities", prop.Lineup)
 	}
 }
@@ -1293,8 +1294,8 @@ func TestSuggest_ToolFreeNameGroundingIsBoundedAndDeduplicated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prop.Lineup) != 8 {
-		t.Fatalf("bounded lineup has %d picks, want 8: %+v", len(prop.Lineup), prop.Lineup)
+	if len(prop.Lineup) != 7 {
+		t.Fatalf("bounded lineup has %d distinct picks, want 7 after duplicate identity collapse: %+v", len(prop.Lineup), prop.Lineup)
 	}
 	for _, item := range prop.Lineup {
 		if item.Name == "Just the Ten of Us" || item.TMDBID >= 90001 {
@@ -2256,6 +2257,70 @@ func TestSuggest_DiscoveryAppliesExplicitScalarQualifiers(t *testing.T) {
 	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
 	if len(items) != 1 || items[0].TMDBID != 603 {
 		t.Fatalf("qualified discovery proposal = %+v, want only the grounded matching title", proposal)
+	}
+}
+
+func TestSuggest_RejectsKnownCountryAndGenreContradictions(t *testing.T) {
+	midsomer := catalog.Candidate{MediaType: provision.Series, TMDBID: 3001, Name: "Midsomer Murders", InLibrary: true, Genres: []string{"Mystery", "Drama"}, OriginCountries: []string{"GB"}}
+	desperate := catalog.Candidate{MediaType: provision.Series, TMDBID: 3002, Name: "Desperate Housewives", InLibrary: true, Genres: []string{"Mystery", "Drama"}, OriginCountries: []string{"US"}}
+	slowHorses := catalog.Candidate{MediaType: provision.Series, TMDBID: 3003, Name: "Slow Horses", InLibrary: true, Genres: []string{"Drama", "Thriller"}, OriginCountries: []string{"GB"}}
+	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, _ catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+		return []catalog.Candidate{midsomer, desperate, slowHorses}, nil
+	}}
+	llmMock := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"genres": []any{"Mystery"}, "media_type": "series", "origin_country": "gb"}),
+		finalResponseWithNone(`{"picks":[
+			{"mediaType":"series","key":"series:tmdb:3001","name":"Midsomer Murders"},
+			{"mediaType":"series","key":"series:tmdb:3002","name":"Desperate Housewives"},
+			{"mediaType":"series","key":"series:tmdb:3003","name":"Slow Horses"}
+		]}`),
+	)
+	s := suggest.New(llmMock, catalog.New(nil, corpus), nil, 10)
+
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Comforting UK murder mysteries for a rainy late night."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	if len(items) != 1 || items[0].TMDBID != midsomer.TMDBID {
+		t.Fatalf("proposal=%+v, want only the supported British mystery", proposal)
+	}
+	for _, item := range items {
+		if !slices.Contains(item.OriginCountries, "GB") || !slices.Contains(item.Genres, "Mystery") {
+			t.Fatalf("known country/genre contradiction survived: %+v", items)
+		}
+	}
+}
+
+func TestSuggest_PreservesDirectIncludeInOrdinaryTheme(t *testing.T) {
+	description := "1990s family sitcoms; include Boy Meets World and exclude Married... with Children."
+	meaning := fixtureDateMeaning("series_premiere", "description", 0, len("1990s"), 1990, 1999)
+	boyMeetsWorld := catalog.Candidate{MediaType: provision.Series, TMDBID: 2500, Name: "Boy Meets World", Year: 1993, InLibrary: true, Genres: []string{"Family", "Comedy"}}
+	generic := catalog.Candidate{MediaType: provision.Series, TMDBID: 2501, Name: "Kenan & Kel", Year: 1996, InLibrary: true, Genres: []string{"Family", "Comedy"}}
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		switch query {
+		case boyMeetsWorld.Name:
+			return []catalog.Candidate{boyMeetsWorld}, nil
+		default:
+			return []catalog.Candidate{generic}, nil
+		}
+	}}
+	model := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"genres": []any{"Comedy", "Family"}, "media_type": "series", "dateMeaning": meaning}),
+		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"series","key":"series:tmdb:2501","name":"Kenan & Kel"}]}`, meaning),
+	)
+	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	if !slices.ContainsFunc(items, func(item suggest.ProposalItem) bool { return item.TMDBID == boyMeetsWorld.TMDBID }) {
+		t.Fatalf("directly included title was omitted: %+v", items)
+	}
+	if proposal.Scores.ThemeFit == nil || *proposal.Scores.ThemeFit != 1 || proposal.Scores.Theme.Status != "supported" {
+		t.Fatalf("direct title instructions polluted the theme assessment: %+v", proposal.Scores)
 	}
 }
 

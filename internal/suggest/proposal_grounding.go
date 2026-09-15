@@ -46,14 +46,19 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			otherRejection = true
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		}
+		if requiredIdentityConflicts(intent, cand) || titleExplicitlyExcluded(intent, cand.Name) || candidateContradictsExplicitQualifiers(intent, cand) {
+			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
+			otherRejection = true
+			continue
+		}
 		if intent.ReferenceResolved && !intent.referenceKeys[provision.Key(key)] {
-			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
+			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
 			otherRejection = true
 			continue // a resolved reference cannot be padded with an unrelated grounded id
 		}
 		if requiresMembershipEvidence(intent) {
 			if !intent.membershipKeys[provision.Key(key)] || (intent.curatedTitleSet && intent.curatedTitleKey != provision.Key(key)) {
-				traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNoRelevanceEvidence})
+				traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
 				membershipRejected = true
 				continue // identity is real, but it was not explicitly enumerated as a member
 			}
@@ -81,13 +86,13 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 
 		if cand.InLibrary {
 			prop.Lineup = append(prop.Lineup, item)
-			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionSelected, Reason: "selected"})
+			traceGroundedDecision(trace, cand, DispositionSelected, "selected")
 			continue
 		}
 		// Acquisition: re-validate it exists on TMDB (§8) and respect the cap.
 		if acqCount >= maxAcq {
 			prop.Alternates = append(prop.Alternates, item) // over-cap picks become alternates
-			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionAlternate, Reason: ReasonAcquisitionCap})
+			traceGroundedDecision(trace, cand, DispositionAlternate, ReasonAcquisitionCap)
 			continue
 		}
 		exists, err := s.validator.Exists(ctx, cand.MediaType, cand.TMDBID)
@@ -95,7 +100,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			return Proposal{}, fmt.Errorf("validate acquisition %s: %w", cand.Name, err)
 		}
 		if !exists {
-			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonValidationDropped})
+			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonValidationDropped)
 			otherRejection = true
 			continue // fabricated/withdrawn id → drop
 		}
@@ -109,7 +114,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			}
 		}
 		prop.Acquisitions = append(prop.Acquisitions, item)
-		traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionSelected, Reason: "selected"})
+		traceGroundedDecision(trace, cand, DispositionSelected, "selected")
 		acqCount++
 	}
 
@@ -227,6 +232,19 @@ func traceDecision(trace *DecisionTrace, update DecisionCandidate) {
 	}
 	trace.Candidates = append(trace.Candidates, update)
 	trace.RecordedTotal++
+}
+
+func traceGroundedDecision(trace *DecisionTrace, candidate catalog.Candidate, disposition, reason string) {
+	key, err := candidate.Key()
+	if err != nil {
+		traceDecision(trace, DecisionCandidate{Disposition: disposition, Reason: reason})
+		return
+	}
+	traceDecision(trace, DecisionCandidate{
+		Key: string(key), Name: candidate.Name, Source: string(candidate.Source),
+		Ownership: ownership(candidate.InLibrary), Rank: RankTuple{TieKey: string(key)},
+		Disposition: disposition, Reason: reason,
+	})
 }
 
 // refuseUnairable partitions grounded picks against the channel's own final audience policy

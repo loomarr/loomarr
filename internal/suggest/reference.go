@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -44,7 +45,8 @@ var (
 	properNamedSetPattern          = regexp.MustCompile(`\b[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\s+(?i:collection|line-?up|block)\b`)
 	acronymCuePattern              = regexp.MustCompile(`(?i:\b(?:for|from|based\s+on|like)\s+)([A-Z][A-Z0-9&]{2,9})\b`)
 	acronymSetSuffixPattern        = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+(?:lineup|block|channel|like)\b)`)
-	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?,;:]|$)`)
+	acronymDirectMembersPattern    = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b(?i:\s+(?:with|include|including)\b)`)
+	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?,;:\x{2013}\x{2014}-]|$)`)
 	directNetworkRoleBeforePattern = regexp.MustCompile(`(?i:\b(?:the\s+)?network\s+)$`)
 	directNetworkRolePattern       = regexp.MustCompile(`(?i:^\s*[,;:]?\s+(?:the\s+)?network\b)`)
 	bareProperNamePattern          = regexp.MustCompile(`\b(?:The\s+)?[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\b`)
@@ -100,11 +102,11 @@ func (s *Suggester) initializeSources(ctx context.Context, intent *Intent, meani
 	if err != nil {
 		return sourceGroundingResult{}, err
 	}
-	explicit, err := s.groundExplicitMembershipAnchors(ctx, intent)
+	explicit, err := s.groundExplicitRequiredTitles(ctx, intent)
 	if err != nil {
 		return sourceGroundingResult{}, err
 	}
-	if !state.hasReference && len(intent.membershipKeys) == 0 {
+	if !state.hasReference {
 		if finder, ok := s.references.(reference.Discoverer); ok {
 			if label := namedBlockLabel(*intent); label != "" {
 				evidence, discoveryErr := finder.Discover(ctx, label)
@@ -134,29 +136,44 @@ type referenceReadError struct{ err error }
 func (e *referenceReadError) Error() string { return e.err.Error() }
 func (e *referenceReadError) Unwrap() error { return e.err }
 
-// groundExplicitMembershipAnchors accepts user-supplied constituent titles only
-// when Catalog resolves exactly one identity. Model-proposed collection rosters
-// never reach this path: existence is not evidence of membership.
-func (s *Suggester) groundExplicitMembershipAnchors(ctx context.Context, intent *Intent) ([]catalog.Candidate, error) {
-	if !requiresMembershipEvidence(*intent) {
-		return nil, nil
+// groundExplicitRequiredTitles resolves required user titles independently of
+// the model. Named sets additionally record membership; ordinary themes retain
+// the exact binding only for deterministic inclusion and namesake rejection.
+func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *Intent) ([]catalog.Candidate, error) {
+	titles := directIncludedTitles(*intent)
+	type result struct {
+		candidates []catalog.Candidate
+		err        error
 	}
-	anchored := make([]catalog.Candidate, 0, len(intent.MustInclude))
-	for _, title := range boundedReferenceTitles(intent.MustInclude) {
+	results := make([]result, len(titles))
+	var wg sync.WaitGroup
+	for index, title := range titles {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[index].candidates, results[index].err = s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
+		}()
+	}
+	wg.Wait()
+	anchored := make([]catalog.Candidate, 0, len(titles))
+	for index, title := range titles {
 		if titleExplicitlyExcluded(*intent, title) {
 			continue
 		}
-		candidates, err := s.catalog.Search(ctx, title, catalog.ScopeAll, catalogSearchLimit)
-		if err != nil {
-			return nil, fmt.Errorf("search explicit membership title %q: %w", title, err)
+		if results[index].err != nil {
+			return nil, fmt.Errorf("search explicit membership title %q: %w", title, results[index].err)
 		}
+		candidates := results[index].candidates
 		cacheMembershipSourceResolution(*intent, title, candidates)
 		candidate, found := unambiguousMembershipCandidate(candidates, title)
 		if !found {
 			continue // no implicit media/year choice for an ambiguous user anchor
 		}
 		key, _ := candidate.Key()
-		intent.membershipKeys[key] = true
+		intent.requiredTitleKeys[normalizeTitleLabel(candidate.Name)] = key
+		if requiresMembershipEvidence(*intent) {
+			intent.membershipKeys[key] = true
+		}
 		anchored = append(anchored, candidate)
 	}
 	return anchored, nil
@@ -441,22 +458,17 @@ func positiveIntentOrReferenceNamesTitle(intent Intent, title string) bool {
 	return false
 }
 
-// preserveRequiredNamedMembers carries direct inclusion requests through the
+// preserveRequiredTitles carries direct inclusion requests through the
 // provider's final selection. It cannot introduce authority: every synthesized
-// pick must already have both a surfaced Catalog key and membership evidence.
+// pick must already have an independently resolved, surfaced Catalog key. Named
+// sets additionally require membership evidence at the proposal boundary.
 // Softer examples remain optional and therefore stay under model control.
-func preserveRequiredNamedMembers(intent Intent, picks []pick, surfaced map[provision.Key]catalog.Candidate) []pick {
-	if !requiresMembershipEvidence(intent) {
-		return picks
-	}
+func preserveRequiredTitles(intent Intent, picks []pick, surfaced map[provision.Key]catalog.Candidate) []pick {
 	required := make([]catalog.Candidate, 0, min(len(surfaced), maxFinalSelectionPicks))
-	for key, candidate := range surfaced {
-		if intent.membershipKeys[key] && requiredIntentNamesTitle(intent, candidate.Name) {
+	for _, key := range intent.requiredTitleKeys {
+		if candidate, found := surfaced[key]; found {
 			required = append(required, candidate)
 		}
-	}
-	if len(required) == 0 {
-		return picks
 	}
 	sort.Slice(required, func(i, j int) bool {
 		if required[i].Name != required[j].Name {
@@ -504,6 +516,76 @@ func preserveRequiredNamedMembers(intent Intent, picks []pick, surfaced map[prov
 		}
 	}
 	return result
+}
+
+func requiredIdentityConflicts(intent Intent, candidate catalog.Candidate) bool {
+	want, required := intent.requiredTitleKeys[normalizeTitleLabel(candidate.Name)]
+	if !required {
+		return false
+	}
+	got, err := candidate.Key()
+	return err != nil || got != want
+}
+
+func normalizeTitleLabel(title string) string {
+	return strings.ToLower(strings.Join(strings.Fields(title), " "))
+}
+
+var (
+	directIncludePattern = regexp.MustCompile(`(?i:\b(?:include|including|add|adding|keep|want|with)\b)`)
+	directExcludePattern = regexp.MustCompile(`(?i:\b(?:exclude|excluding|avoid|omit|remove|without)\b|\bbut\s+not\b)`)
+	directAndPattern     = regexp.MustCompile(`(?i:\s+and\s+)`)
+)
+
+// directIncludedTitles extracts only the bounded value of an explicit inclusion
+// clause. It is intentionally small grammar, not a general title recognizer;
+// exact Catalog resolution remains the authority and safely drops prose.
+func directIncludedTitles(intent Intent) []string {
+	values := append([]string(nil), intent.MustInclude...)
+	for _, field := range []string{intent.Description, intent.RefineText} {
+		matches := directIncludePattern.FindAllStringIndex(field, -1)
+		for _, match := range matches {
+			if cueHasNearbyExclusion(field[:match[0]]) {
+				continue
+			}
+			clause := field[match[1]:]
+			if stop := directClauseEnd(clause); stop >= 0 {
+				clause = clause[:stop]
+			}
+			clause = directAndPattern.ReplaceAllString(clause, ",")
+			for _, title := range strings.Split(clause, ",") {
+				title = strings.Trim(strings.TrimSpace(title), "-–—:;.!?()[]{}\"'")
+				if title != "" {
+					values = append(values, title)
+				}
+			}
+		}
+	}
+	return boundedReferenceTitles(values)
+}
+
+func cueHasNearbyExclusion(prefix string) bool {
+	words := evidenceWords(prefix)
+	for i := max(0, len(words)-4); i < len(words); i++ {
+		switch words[i] {
+		case "exclude", "excluding", "avoid", "omit", "remove", "without", "not":
+			return true
+		}
+	}
+	return false
+}
+
+func directClauseEnd(clause string) int {
+	end := len(clause)
+	if match := directExcludePattern.FindStringIndex(clause); match != nil {
+		end = min(end, match[0])
+	}
+	for _, delimiter := range []string{";", "\n", ".", "!", "?"} {
+		if index := strings.Index(clause, delimiter); index >= 0 {
+			end = min(end, index)
+		}
+	}
+	return end
 }
 
 func requiredIntentNamesTitle(intent Intent, title string) bool {
@@ -664,7 +746,7 @@ func evidenceWords(text string) []string {
 }
 
 func acronymNamesSet(text string) bool {
-	for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymSentenceEndPattern} {
+	for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymDirectMembersPattern, acronymSentenceEndPattern} {
 		for _, match := range pattern.FindAllStringSubmatchIndex(text, -1) {
 			acronym := text[match[2]:match[3]]
 			if directNetworkRoleBeforePattern.MatchString(text[:match[2]]) ||
@@ -766,7 +848,7 @@ func namedBlockLabel(intent Intent) string {
 		}
 	}
 	for _, field := range []string{intent.Description, intent.RefineText} {
-		for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymDaypartBlockPattern, acronymSentenceEndPattern, acronymCuePattern} {
+		for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymDirectMembersPattern, acronymDaypartBlockPattern, acronymSentenceEndPattern, acronymCuePattern} {
 			for _, match := range pattern.FindAllStringSubmatchIndex(field, -1) {
 				if strings.HasPrefix(field[match[3]:], "'s") || directNetworkRoleBeforePattern.MatchString(field[:match[2]]) || directNetworkRolePattern.MatchString(field[match[3]:]) {
 					continue

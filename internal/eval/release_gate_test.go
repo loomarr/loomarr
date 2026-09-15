@@ -20,7 +20,7 @@ import (
 
 func TestReleaseGateSourceRevisionPreservesCasesAndGates(t *testing.T) {
 	var contracts []map[string]any
-	for _, path := range []string{"testdata/planner-release-gate-v12.json", releaseGateManifestPath} {
+	for _, path := range []string{"testdata/planner-release-gate-v13.json", releaseGateManifestPath} {
 		blob, err := releaseGateFiles.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -100,7 +100,7 @@ func TestReleaseGateCorpusIsFrozenAndReleaseFocused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-release-gate-v13" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
+	if corpus.Version != "planner-release-gate-v14" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
 		corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion || corpus.Fixture.SHA256 == "" || corpus.SourcesFixture.SHA256 == "" {
 		t.Fatalf("release-gate identity = %+v", corpus)
 	}
