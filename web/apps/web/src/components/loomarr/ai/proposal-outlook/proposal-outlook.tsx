@@ -19,63 +19,36 @@ const duration = (milliseconds: number, lowerBound = false) => {
   return `about ${lower}–${upper} hours`;
 };
 
-const mixCopy = (mix: Assessment["mix"]) => {
-  const known = mix.core + mix.adjacent + mix.discovery;
-  if (known === 0) return null;
-  if (mix.core > known / 2 && mix.adjacent + mix.discovery > 0)
-    return "Mostly requested picks, with a few related or discovery choices.";
-  if (mix.core === known) return "Built around your requested or retained picks.";
-  if (mix.adjacent > known / 2) return "Mostly related picks that fit alongside your request.";
-  if (mix.discovery > known / 2) return "Mostly new finds that match your request.";
-  const roles = [
-    mix.core > 0 && "requested",
-    mix.adjacent > 0 && "related",
-    mix.discovery > 0 && "discovery",
-  ].filter(Boolean);
-  return `A mix of ${roles.join(" and ")} picks.`;
-};
-
 const describedDuration = (milliseconds: number, lowerBound = false) =>
   lowerBound ? `at least ${duration(milliseconds, true)}` : duration(milliseconds);
 
 const sentenceCase = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
-const ProposalOutlookDetails = ({ assessment: value }: { assessment: Assessment }) => (
+const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessment }) => (
   <div className="flex flex-col gap-2 text-muted-foreground">
-    <p>
-      {value.scheduledTitles} of {value.titles} titles currently produce {value.programs}{" "}
-      {value.programs === 1 ? "unique program" : "unique programs"} across {value.seasons}{" "}
-      {value.seasons === 1 ? "numbered season" : "numbered seasons"}.
-    </p>
-    {mixCopy(value.mix) && (
-      <p>
-        {mixCopy(value.mix)}
-        {value.mix.unknown > 0 && value.mix.core + value.mix.adjacent + value.mix.discovery > 0
-          ? " Some picks have no recorded role."
-          : ""}
-      </p>
-    )}
-    <p>
-      Core {value.mix.core} · Adjacent {value.mix.adjacent} · Discovery {value.mix.discovery} · Unclassified{" "}
-      {value.mix.unknown}.
-    </p>
-    <p>
-      Core means requested or retained. Adjacent choices come from recorded recommendations, and discovery
-      choices are other grounded matches.
-    </p>
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+      {(
+        [
+          ["Requested or retained", value.mix.core],
+          ["Recorded recommendations", value.mix.adjacent],
+          ["Other matches", value.mix.discovery],
+          ["No recorded role", value.mix.unknown],
+        ] as const
+      )
+        .filter(([, count]) => count > 0)
+        .map(([label, count]) => (
+          <div key={label} className="contents">
+            <dt>{label}</dt>
+            <dd>{count}</dd>
+          </div>
+        ))}
+      <dt>Seasons represented</dt>
+      <dd>{value.seasons}</dd>
+    </dl>
     <p>
       The estimate uses this exact lineup, {value.ordering || "inherited"} ordering, separation, and active
       scheduling rules. Unavailable media and breaks add no programming time.
     </p>
-    {value.missingAcquisitions + value.missingLibrary + value.unknownTitles > 0 && (
-      <p>
-        {value.missingAcquisitions} acquisitions, {value.missingLibrary} other library titles, and{" "}
-        {value.unknownTitles} incomplete observations are excluded from the current estimate.
-      </p>
-    )}
-    {value.windowLimited && (
-      <p>The scheduling window is limited, so additional library programs may extend this estimate.</p>
-    )}
     {value.relaxations.length > 0 && (
       <p>
         The scheduler used {value.relaxations.length} recorded policy{" "}
@@ -92,6 +65,54 @@ const ProposalOutlookDetails = ({ assessment: value }: { assessment: Assessment 
       . Library and policy changes can alter the result.
     </p>
   </div>
+);
+
+const ProposalOutlookDetails = ({
+  assessment: value,
+  showDiagnostics = true,
+}: {
+  assessment: Assessment;
+  showDiagnostics?: boolean;
+}) => (
+  <section aria-label="What can play now" className="flex flex-col gap-2 text-muted-foreground">
+    <h3 className="font-medium text-foreground">What can play now</h3>
+    <p>
+      {value.programs > 0
+        ? `${value.programs} playable ${value.programs === 1 ? "episode or movie" : "episodes or movies"} from ${value.scheduledTitles} ${value.scheduledTitles === 1 ? "title" : "titles"}.`
+        : value.state === "uncertain"
+          ? "We haven't confirmed what's ready to play yet."
+          : "No episodes or movies are ready to play yet."}
+    </p>
+    {value.missingAcquisitions > 0 && (
+      <p>
+        {value.missingAcquisitions}{" "}
+        {value.missingAcquisitions === 1 ? "title still needs" : "titles still need"} adding and{" "}
+        {value.missingAcquisitions === 1 ? "isn't" : "aren't"} included in the estimate yet.
+      </p>
+    )}
+    {value.missingLibrary > 0 && (
+      <p>
+        {value.missingLibrary} library {value.missingLibrary === 1 ? "title isn't" : "titles aren't"} ready to
+        play and {value.missingLibrary === 1 ? "isn't" : "aren't"} included in the estimate.
+      </p>
+    )}
+    {value.unknownTitles > 0 && (
+      <p>
+        Availability hasn't been confirmed for {value.unknownTitles}{" "}
+        {value.unknownTitles === 1 ? "title" : "titles"}.{" "}
+        {value.unknownTitles === 1 ? "It isn't" : "They aren't"} included in the estimate.
+      </p>
+    )}
+    {value.windowLimited && <p>This is a partial preview; more from your library may fit.</p>}
+    {showDiagnostics && (
+      <details className="mt-1">
+        <summary className="w-fit cursor-pointer">Technical details</summary>
+        <div className="mt-3">
+          <ProposalOutlookDiagnostics assessment={value} />
+        </div>
+      </details>
+    )}
+  </section>
 );
 
 const ProposalOutlook = ({
@@ -142,4 +163,4 @@ const ProposalOutlook = ({
   );
 };
 
-export { ProposalOutlook, ProposalOutlookDetails };
+export { ProposalOutlook, ProposalOutlookDetails, ProposalOutlookDiagnostics };

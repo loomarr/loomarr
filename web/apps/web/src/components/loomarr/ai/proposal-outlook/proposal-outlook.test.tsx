@@ -10,10 +10,13 @@ describe("ProposalOutlook", () => {
     render(<ProposalOutlook assessment={outlook()} />);
     expect(screen.getByText("About 4 hours before this lineup repeats.")).toBeInTheDocument();
     expect(screen.queryByText("Ready to start")).not.toBeInTheDocument();
-    expect(screen.getByText(/Mostly requested picks/)).not.toBeVisible();
+    expect(screen.getByText("What can play now")).not.toBeVisible();
     await user.click(screen.getByText("Schedule details"));
-    expect(screen.getByText(/12 unique programs/)).toBeVisible();
-    expect(screen.getByText(/Core 2 · Adjacent 1/)).toBeVisible();
+    expect(screen.getByText("12 playable episodes or movies from 3 titles.")).toBeVisible();
+    expect(screen.getByText("Requested or retained")).not.toBeVisible();
+    await user.click(screen.getByText("Technical details"));
+    expect(screen.getByText("Requested or retained")).toBeVisible();
+    expect(screen.queryByText("Other matches")).not.toBeInTheDocument();
   });
 
   it("does not invent runway while acquisitions are missing", () => {
@@ -62,7 +65,9 @@ describe("ProposalOutlook", () => {
     expect(screen.queryByText(/Starts with the titles already in your library/)).not.toBeInTheDocument();
     expect(screen.queryByText(/selected title is not in your library yet/)).not.toBeInTheDocument();
     await user.click(screen.getByText("Schedule details"));
-    expect(screen.getByText(/A mix of requested and related picks/)).toBeVisible();
+    expect(
+      screen.getByText("1 title still needs adding and isn't included in the estimate yet."),
+    ).toBeVisible();
     expect(screen.queryByText(/Discovery-led/)).not.toBeInTheDocument();
   });
 
@@ -70,5 +75,22 @@ describe("ProposalOutlook", () => {
     render(<ProposalOutlook pending assessment={outlook()} />);
     expect(screen.getByRole("status")).toHaveTextContent("Checking this lineup");
     expect(screen.queryByText("Ready to start")).not.toBeInTheDocument();
+  });
+
+  it("distinguishes missing media from unconfirmed availability and labels a partial preview", async () => {
+    render(
+      <ProposalOutlook assessment={outlook({ missingLibrary: 1, unknownTitles: 2, windowLimited: true })} />,
+    );
+    await userEvent.click(screen.getByText("Schedule details"));
+    expect(
+      screen.getByText("1 library title isn't ready to play and isn't included in the estimate."),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "Availability hasn't been confirmed for 2 titles. They aren't included in the estimate.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("This is a partial preview; more from your library may fit.")).toBeVisible();
+    expect(screen.queryByText(/0 acquisitions/)).not.toBeInTheDocument();
   });
 });
