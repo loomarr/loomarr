@@ -63,6 +63,9 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 		return preparedToolCall{meaning: meaning}, `{"error":"clarify_dates"}`, DecisionTrace{}, true
 	}
 	if rawMode, present := arguments["mode"]; present {
+		if networkStyleRequest(intent) && !requiresMembershipEvidence(intent) {
+			return preparedToolCall{}, `{"error":"network programming identity requires network discovery, not a guessed collection roster"}`, DecisionTrace{}, false
+		}
 		mode, ok := rawMode.(string)
 		if !ok || strings.TrimSpace(mode) != "collection" {
 			return preparedToolCall{}, `{"error":"mode must be collection when provided"}`, DecisionTrace{}, false
@@ -98,9 +101,39 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 	if parseErr != nil {
 		return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, parseErr.Error()), DecisionTrace{}, false
 	}
+	if networkStyleRequest(intent) && !requiresMembershipEvidence(intent) && strings.TrimSpace(discovery.Network) == "" {
+		return preparedToolCall{}, `{"error":"this network programming-identity request requires structured discovery with the catalog-resolved network name and media_type series; title-name matches and generic genres cannot establish network ties"}`, DecisionTrace{}, false
+	}
+	if networkStyleRequest(intent) {
+		for _, qualifier := range []struct {
+			field string
+			value float64
+		}{
+			{"runtime_min", float64(discovery.RuntimeMin)}, {"runtime_max", float64(discovery.RuntimeMax)},
+			{"vote_count_min", float64(discovery.VoteCountMin)}, {"vote_average_min", discovery.VoteAverageMin},
+		} {
+			if qualifier.value > 0 && !networkScalarRequested(intent, qualifier.field) {
+				return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, qualifier.field+" was not requested; omit unrequested runtime/popularity thresholds from network discovery"), DecisionTrace{}, false
+			}
+		}
+	}
 	prepared := preparedToolCall{arguments: arguments, meaning: meaning, discovery: discovery, discoveryMode: discoveryMode}
 	if discoveryMode {
 		prepared.queries = projectDiscoveryWindows(discovery, meaning)
+		if discovery.Network != "" {
+			epochEnd := networkProgrammingEpochEnd(intent)
+			for index := range prepared.queries {
+				prepared.queries[index].EditorialEpochEnd = epochEnd
+			}
+			if epochEnd != 0 && (len(discovery.Keywords) > 0 || len(discovery.Genres) > 0) {
+				// Editorial examples can imply a subject, but they do not define the
+				// whole network epoch. Draw one bounded coverage pool with the same
+				// dates/scalars/entities; admission still honors the submitted intent.
+				coverage := prepared.queries[0]
+				coverage.Keywords, coverage.Genres = nil, nil
+				prepared.queries = append(prepared.queries, coverage)
+			}
+		}
 	}
 	return prepared, "", DecisionTrace{}, true
 }
@@ -771,6 +804,40 @@ func catalogTool() llm.ToolSchema {
 			}},
 		},
 	}
+}
+
+// catalogToolForIntent exposes only operations that can satisfy this request.
+// Narrowing the interface does not replace any producer/source validation.
+func catalogToolForIntent(intent Intent) llm.ToolSchema {
+	tool := catalogTool()
+	if !networkStyleRequest(intent) || requiresMembershipEvidence(intent) {
+		return tool
+	}
+	properties := tool.Parameters["properties"].(map[string]any)
+	for _, field := range []string{"query", "mode", "titles", "cast", "creators"} {
+		delete(properties, field)
+	}
+	for _, field := range []string{"runtime_min", "runtime_max", "vote_count_min", "vote_average_min"} {
+		if !networkScalarRequested(intent, field) {
+			delete(properties, field)
+		}
+	}
+	delete(tool.Parameters, "allOf")
+	tool.Parameters["required"] = []string{"dateMeaning", "network", "media_type"}
+	tool.Parameters["additionalProperties"] = false
+	properties["media_type"] = map[string]any{"type": "string", "enum": []string{"series"}}
+	if networkEpochHasNoPlaybackDates(intent) {
+		properties["dateMeaning"] = map[string]any{
+			"type": "object", "required": []string{"kind", "anchors", "axes"}, "additionalProperties": false,
+			"properties": map[string]any{
+				"kind":    map[string]any{"type": "string", "enum": []string{"none"}},
+				"anchors": map[string]any{"type": "array", "maxItems": 0},
+				"axes":    map[string]any{"type": "array", "maxItems": 0},
+			},
+		}
+	}
+	tool.Description = "Discover real series using the exact catalog network name. Use the returned network ties, overview, genres and year to judge the requested programming identity. Optional thematic narrowing must not turn an example into the entire lineup. Other qualifiers require an explicit user request. This is the only lookup mode for this network-style brief."
+	return tool
 }
 
 func dateMeaningSchema() map[string]any {

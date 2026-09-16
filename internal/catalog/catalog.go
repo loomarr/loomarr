@@ -125,20 +125,23 @@ type TMDBSearcher interface {
 // contribute no filter; validation of model-authored values happens at the
 // catalog-tool boundary before this trusted shape is constructed.
 type DiscoveryQuery struct {
-	MediaType        provision.MediaType
-	Keywords         []string
-	Genres           []string
-	YearFrom         int
-	YearTo           int
-	OriginalLanguage string
-	OriginCountry    string
-	RuntimeMin       int
-	RuntimeMax       int
-	VoteAverageMin   float64
-	VoteCountMin     int
-	Network          string
-	Cast             []string
-	Creators         []string
+	MediaType provision.MediaType
+	Keywords  []string
+	Genres    []string
+	YearFrom  int
+	YearTo    int
+	// EditorialEpochEnd selects an older network-title discovery pool without
+	// creating a scheduling date restriction. Only trusted intent projection sets it.
+	EditorialEpochEnd int
+	OriginalLanguage  string
+	OriginCountry     string
+	RuntimeMin        int
+	RuntimeMax        int
+	VoteAverageMin    float64
+	VoteCountMin      int
+	Network           string
+	Cast              []string
+	Creators          []string
 }
 
 // DiscoveryUnion is the outcome of one semantic discovery retrieval over one or

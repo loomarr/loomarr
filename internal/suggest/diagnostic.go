@@ -14,8 +14,8 @@ import (
 
 const (
 	PlannerSourceVersion             = "reference-source-v6"
-	PlannerPromptVersion             = "suggester-prompt-v13"
-	PlannerToolSchemaVersion         = "catalog-search-v7"
+	PlannerPromptVersion             = "suggester-prompt-v15"
+	PlannerToolSchemaVersion         = "catalog-search-v9"
 	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v3"
 	PlannerDiagnosticToolCallID      = "planner-diagnostic-call-1"
 	plannerDiagnosticSchemaVersion   = 3

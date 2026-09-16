@@ -310,6 +310,16 @@ func validateIntentDateMeaning(intent Intent, raw *DateMeaning) (ValidatedDateMe
 	if meaning.meaning.Kind == DateMeaningNone && intentRequiresDateAcknowledgement(intent) {
 		return ValidatedDateMeaning{}, dateMeaningErr("unacknowledged_date", "kind")
 	}
+	if meaning.meaning.Kind == DateMeaningAmbiguous && networkEpochHasNoPlaybackDates(intent) {
+		return ValidatedDateMeaning{}, dateMeaningErr("network_epoch_is_editorial_context_not_an_ambiguous_date", "kind")
+	}
+	if meaning.meaning.Kind != DateMeaningNone {
+		for _, anchor := range meaning.meaning.Anchors {
+			if networkEpochAnchor(intent, anchor) {
+				return ValidatedDateMeaning{}, dateMeaningErr("network_epoch_is_editorial_context_not_an_episode_date_filter", "anchors")
+			}
+		}
+	}
 	return meaning, nil
 }
 
@@ -317,7 +327,7 @@ func intentRequiresDateAcknowledgement(intent Intent) bool {
 	if strings.TrimSpace(intent.Era) != "" {
 		return true
 	}
-	texts := append([]string{intent.Description, intent.RefineText}, intent.MustInclude...)
+	texts := append([]string{withoutNetworkEpochDates(intent.Description), withoutNetworkEpochDates(intent.RefineText)}, intent.MustInclude...)
 	texts = append(texts, intent.MustExclude...)
 	for _, text := range texts {
 		if explicitDateRequirement.MatchString(text) {

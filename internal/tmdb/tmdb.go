@@ -423,6 +423,9 @@ func (c *Client) discover(
 	if query.YearTo > 0 {
 		q.Set(dateField+".lte", fmt.Sprintf("%04d-12-31", query.YearTo))
 	}
+	if query.EditorialEpochEnd > 0 && (query.YearTo == 0 || query.EditorialEpochEnd < query.YearTo) {
+		q.Set(dateField+".lte", fmt.Sprintf("%04d-12-31", query.EditorialEpochEnd))
+	}
 	if query.OriginalLanguage != "" {
 		q.Set("with_original_language", query.OriginalLanguage)
 	}

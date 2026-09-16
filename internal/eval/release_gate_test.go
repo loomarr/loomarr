@@ -20,7 +20,7 @@ import (
 
 func TestReleaseGateSourceRevisionPreservesCasesAndGates(t *testing.T) {
 	var contracts []map[string]any
-	for _, path := range []string{"testdata/planner-release-gate-v13.json", releaseGateManifestPath} {
+	for _, path := range []string{"testdata/planner-release-gate-v13.json", "testdata/planner-release-gate-v14.json"} {
 		blob, err := releaseGateFiles.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -35,6 +35,27 @@ func TestReleaseGateSourceRevisionPreservesCasesAndGates(t *testing.T) {
 	}
 	if !reflect.DeepEqual(contracts[0], contracts[1]) {
 		t.Fatal("source binding changed release cases, fixtures or gates")
+	}
+}
+
+func TestReleaseGateEpochContractRevisionPreservesCasesAndGates(t *testing.T) {
+	var contracts []map[string]any
+	for _, path := range []string{"testdata/planner-release-gate-v14.json", releaseGateManifestPath} {
+		blob, err := releaseGateFiles.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var contract map[string]any
+		if err := json.Unmarshal(blob, &contract); err != nil {
+			t.Fatal(err)
+		}
+		delete(contract, "version")
+		delete(contract, "promptVersion")
+		delete(contract, "toolSchemaVersion")
+		contracts = append(contracts, contract)
+	}
+	if !reflect.DeepEqual(contracts[0], contracts[1]) {
+		t.Fatal("epoch prompt revision changed release cases, fixtures or gates")
 	}
 }
 
@@ -100,7 +121,7 @@ func TestReleaseGateCorpusIsFrozenAndReleaseFocused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-release-gate-v14" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
+	if corpus.Version != "planner-release-gate-v15" || corpus.PromptVersion != suggest.PlannerPromptVersion ||
 		corpus.ToolSchemaVersion != suggest.PlannerToolSchemaVersion || corpus.Fixture.SHA256 == "" || corpus.SourcesFixture.SHA256 == "" {
 		t.Fatalf("release-gate identity = %+v", corpus)
 	}

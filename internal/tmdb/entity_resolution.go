@@ -38,6 +38,9 @@ type resolvedDiscoveryEntities struct {
 }
 
 func validateEntityQuery(query catalog.DiscoveryQuery) error {
+	if query.EditorialEpochEnd != 0 && (query.MediaType != provision.Series || strings.TrimSpace(query.Network) == "" || query.EditorialEpochEnd < 1900 || query.EditorialEpochEnd > 2099) {
+		return fmt.Errorf("editorial network epoch requires series, a network identity, and an end year between 1900 and 2099")
+	}
 	hasPeople := len(query.Cast) > 0 || len(query.Creators) > 0
 	if query.Network != "" && hasPeople {
 		return fmt.Errorf("tmdb discovery: network and person constraints cannot be combined")
@@ -135,6 +138,22 @@ func (c *Client) resolveNetwork(ctx context.Context, requested, country string) 
 		return matches[0].ID, strings.TrimSpace(matches[0].Name), nil
 	}
 	if len(matches) == 0 {
+		// Offer exact names from the loaded source, never an automatically chosen
+		// alias identity. Familiar branding can differ from Catalog's name.
+		base := strings.TrimSpace(strings.TrimSuffix(strings.ToLower(requested), " channel"))
+		base = strings.TrimPrefix(base, "the ")
+		var suggestions []string
+		seenNames := make(map[string]bool)
+		for _, identity := range identities {
+			name := strings.TrimSpace(identity.Name)
+			if strings.EqualFold(name, base) && !seenNames[strings.ToLower(name)] {
+				suggestions = append(suggestions, name)
+				seenNames[strings.ToLower(name)] = true
+			}
+		}
+		if len(suggestions) > 0 {
+			return 0, "", fmt.Errorf("network name %q resolved to no exact identity; source catalog names to try: %q", requested, suggestions)
+		}
 		return 0, "", fmt.Errorf("network name %q resolved to no exact identity", requested)
 	}
 	country = strings.ToUpper(strings.TrimSpace(country))

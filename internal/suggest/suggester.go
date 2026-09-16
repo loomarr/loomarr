@@ -193,6 +193,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	intent.membershipKeys = make(map[provision.Key]bool)
 	intent.membershipSources = newMembershipSourceState()
 	intent.requiredTitleKeys = make(map[string]provision.Key)
+	intent.networkDiscoveryComplete = false
 	allAdjacent := intent.Adjacent
 	var feedback []FeedbackSignal
 	if s.feedback != nil {
@@ -208,7 +209,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		{Role: llm.System, Content: systemPrompt},
 		{Role: llm.User, Content: userPrompt(intent)},
 	}
-	tools := []llm.ToolSchema{catalogTool()}
+	tools := []llm.ToolSchema{catalogToolForIntent(intent)}
 	if sources.hasReference {
 		tools = nil
 	}
@@ -318,6 +319,16 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 			}
 		}
 		if perr == nil {
+			if networkStyleRequest(intent) && !requiresMembershipEvidence(intent) && !sources.hasReference && !intent.networkDiscoveryComplete {
+				if groundingRetried {
+					trace.Terminal = TerminalInvalidToolCalls
+					return Proposal{}, NewFailure(FailureProvider, trace, errors.New("network programming-identity request requires a usable network discovery"))
+				}
+				groundingRetried = true
+				messages = append(messages, llm.Message{Role: llm.User, Content: "You have not completed network discovery. Call catalog_search now with the exact catalog network name and media_type series; do not substitute a direct-final list of title names. Preserve the accepted dateMeaning unchanged."})
+				sameGenerationNext = true
+				continue
+			}
 			if !sources.initialized {
 				for _, pick := range out.Picks {
 					sources.titleHints = append(sources.titleHints, pick.Name)
@@ -573,6 +584,9 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 					invalidRounds++
 				}
 				mergeDecisionTrace(trace, &rankedTrace)
+				if valid && prepared.discoveryMode && prepared.discovery.Network != "" && len(cands) > 0 {
+					intent.networkDiscoveryComplete = true
+				}
 				for _, c := range cands {
 					if k, err := c.Key(); err == nil {
 						surfaced[k] = c
