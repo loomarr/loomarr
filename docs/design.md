@@ -2260,6 +2260,57 @@ the existing two-empty-retrieval limit. A failed or budget-incomplete window can
 successful partial aggregate. Source failures remain retrieval failures, while exhausted capacity
 reports the existing budget failure without blaming the date request.
 
+**Network programming epochs are editorial references, not implicit episode-date filters.**
+A similarity/recreation phrase such as “like the History Channel from the 1990s” describes
+the network's programming identity during that period. Resolve the network through Catalog
+discovery and judge source-backed network ties, format, overview and examples together; neither
+a title containing the network name nor a generic documentary establishes that identity.
+Do not automatically turn the reference decade into scheduling `series_airing`, a premiere
+scope, or a guessed season window. Catalog's trusted `EditorialEpochEnd` discovery context
+draws the network's older title pool using a premiere upper bound at the end of the referenced
+decade, independently of `YearFrom`/`YearTo` and accepted `dateMeaning`. This is a bounded
+editorial retrieval strategy, not an episode cutoff or proof of historical network membership;
+series beginning earlier remain eligible, and all their episodes remain available unless
+separately restricted. It adds no model-authored tool field. Full decades use their written
+century; shorthand 00s–20s means 2000–2029 and 30s–90s means 1930–1999. Conflicting reference
+decades do not project a single epoch. The brand-neutral clause recognizer exempts only the reference's dated
+span from the date-omission guard and rejects a filter or date-clarification anchored to that
+contextual span. A known editorial epoch alone cannot produce an ambiguous-date failure. A
+separate explicit Era field or dated movie/episode restriction keeps its existing acknowledgment
+and scheduling contract. Ordinary decade requests and named-block membership remain unchanged.
+
+When a network-epoch discovery includes genre/keyword narrowing, complete one additional
+network-and-epoch coverage query in the same semantic retrieval, retaining all scalar and
+entity qualifiers. Union, presence-backfill, rank and truncate once through the existing
+Catalog boundary. This prevents topics inferred from an example from starving the era's
+catalog pool; the submitted description and deterministic admission rules still govern
+selection. The additional query reserves its normal work credit before source dispatch;
+an incomplete or failed union cannot become a partial success.
+
+For a network-style request, reject title-name or generic genre/keyword lookups before
+dispatch unless the structured request includes a network identity. Return a corrective tool
+result within the unchanged attempt budget. Expose an intent-specialized network-only tool
+interface: require network and series, remove title/collection/person modes, and restrict
+dateMeaning to its empty `none` shape only for a known epoch with no separate explicit date
+request. The full anchored-date interface remains for independent airing/release restrictions.
+Potential independent relative-date/season wording conservatively retains the full date
+interface rather than forcing `none`. Runtime and popularity threshold fields are exposed
+only when requested; invented bounds are rejected before dispatch so obscure older titles
+cannot disappear behind a provider-chosen minimum-vote requirement.
+Producer and source validations remain authoritative even if a provider ignores the schema.
+Named-set membership retains its stronger
+reference-based contract. A direct-final model reply cannot substitute title-name grounding
+for this discovery: request the network lookup once, then fail closed if it still does not
+occur. Unmatched branding may receive exact name hints from the loaded network export, but
+hints never automatically select an alias identity. Successful structured discovery still retires tools immediately,
+including across JSON repairs; neither a retry nor an editorial reference expands the budget
+or changes the approval gate. Provider argument wrappers must follow the exposed tool schema.
+
+Planner prompt v15 and tool schema v9 bind this interpretation and retrieval contract
+(prompt v14 and tool v8 were local diagnosis).
+Certification v16 and release gate v15 preserve the prior fixture bytes, case answers, resource
+bounds and qualification thresholds while binding the new prompt; previous manifests stay frozen.
+
 Additional windows spend existing retrieval capacity. A generation has six work credits, and one
 Suggest invocation has the unchanged `ProductionBounds().MaxToolCalls` total (currently 24).
 Every model tool attempt costs its existing one credit; a discovery expanded into N scalar catalog

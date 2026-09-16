@@ -33,7 +33,7 @@ func TestCertificationContextRevisionPreservesQualificationGates(t *testing.T) {
 	}
 	var prior, current map[string]any
 	read("testdata/planner-certification-v14.json", &prior)
-	read(certificationManifestPath, &current)
+	read("testdata/planner-certification-v15.json", &current)
 	for _, key := range []string{"version", "promptVersion", "base"} {
 		delete(prior, key)
 		delete(current, key)
@@ -76,13 +76,34 @@ func TestCertificationContextRevisionPreservesQualificationGates(t *testing.T) {
 	}
 }
 
+func TestCertificationEpochContractRevisionPreservesQualificationGates(t *testing.T) {
+	var contracts []map[string]any
+	for _, path := range []string{"testdata/planner-certification-v15.json", certificationManifestPath} {
+		blob, err := certificationFiles.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var contract map[string]any
+		if err := json.Unmarshal(blob, &contract); err != nil {
+			t.Fatal(err)
+		}
+		delete(contract, "version")
+		delete(contract, "promptVersion")
+		delete(contract, "toolSchemaVersion")
+		contracts = append(contracts, contract)
+	}
+	if !reflect.DeepEqual(contracts[0], contracts[1]) {
+		t.Fatal("epoch prompt revision changed qualification answers, fixtures or gates")
+	}
+}
+
 func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.T) {
 	corpus, err := LoadEmbeddedCertificationCorpus()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v15" {
-		t.Fatalf("corpus version = %q, want planner-certification-v15", corpus.Version)
+	if corpus.Version != "planner-certification-v16" {
+		t.Fatalf("corpus version = %q, want planner-certification-v16", corpus.Version)
 	}
 	if corpus.SchemaVersion != 8 {
 		t.Fatalf("corpus schema version = %d, want 8", corpus.SchemaVersion)
@@ -286,7 +307,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v15" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v16" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)

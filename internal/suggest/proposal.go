@@ -69,6 +69,9 @@ type Intent struct {
 	requiredTitleKeys map[string]provision.Key
 	curatedTitleKey   provision.Key
 	curatedTitleSet   bool
+	// networkDiscoveryComplete is invocation-local evidence that a network-style
+	// request actually retrieved a nonempty network-qualified Catalog pool.
+	networkDiscoveryComplete bool
 	// DiscoveryScopeID is internal execution context for channel-specific explicit
 	// feedback during re-curation. It never enters the API or persisted intent JSON.
 	DiscoveryScopeID string `json:"-"`
