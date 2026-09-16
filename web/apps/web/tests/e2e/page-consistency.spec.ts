@@ -14,7 +14,7 @@ const pages = [
   { path: "/filler", title: "Filler" },
   { path: "/filler/incoming", title: "Filler" },
   { path: "/filler/sources", title: "Filler" },
-  { path: "/filler/settings", title: "Filler settings" },
+  { path: "/filler/settings", title: "Filler" },
   { path: "/people", title: "People" },
   { path: "/settings/connections", title: "Connections" },
   { path: "/settings/ai", title: "AI" },
@@ -92,6 +92,11 @@ test("pages share one navigation and header geometry at desktop and mobile width
 
       await expect(title, `${entry.path} should expose its page title`).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+      if (entry.path === "/filler/settings") {
+        await expect(
+          page.getByRole("heading", { level: 2, name: "Filler settings", exact: true }),
+        ).toBeVisible();
+      }
       await expect(header, `${entry.path} should use PageHeader`).toHaveCount(1);
       if (entry.path === "/account") {
         // The account identity is a rail footer control, not a section of the product's
@@ -158,8 +163,8 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
     { path: "/filler/incoming", current: "Incoming", title: "Filler" },
     { path: "/filler/library", current: "Library", title: "Filler" },
     { path: "/filler/manage", current: "Manage", title: "Filler" },
-    // Compatibility deep link: settings is part of the canonical Manage destination.
-    { path: "/filler/settings", current: "Manage", title: "Filler settings" },
+    // Focused settings retain the same Filler workspace header and Manage destination.
+    { path: "/filler/settings", current: "Manage", title: "Filler" },
   ] as const;
 
   for (const viewport of viewports) {
@@ -174,6 +179,9 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
         page.getByRole("heading", { level: 1, name: destination.title, exact: true }),
       ).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+      if (destination.path === "/filler/settings") {
+        await expect(page.getByRole("heading", { name: "Automatic downloads", exact: true })).toBeVisible();
+      }
       await expect(sections.locator('a[aria-current="page"]')).toHaveCount(1);
       await expect(
         sections.getByRole("link", { name: new RegExp(`^${destination.current}`) }),
