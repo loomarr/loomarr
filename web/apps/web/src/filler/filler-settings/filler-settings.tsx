@@ -5,7 +5,7 @@ import { Link, useSearch } from "@tanstack/react-router";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
-import { type FillerSettingsSection, SETTINGS_SECTIONS } from "./filler-settings-search";
+import { type FillerSettingsSection, SETTINGS_SECTIONS } from "../filler-settings-search";
 
 const settingValue = (entries: SettingEntry[], key: string): string =>
   entries.find((entry) => entry.key === key)?.value ?? "";

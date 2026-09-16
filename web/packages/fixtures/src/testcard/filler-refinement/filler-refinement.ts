@@ -2,7 +2,7 @@ import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ListTaxonomyOutputBody } from "@loomarr/api/models/listTaxonomyOutputBody";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import type { SettingsListOutputBody } from "@loomarr/api/models/settingsListOutputBody";
-import { taggedClip, untaggedClip } from "./testcard";
+import { taggedClip, untaggedClip } from "../testcard";
 
 const fillerRefinementKnownClip: ClipDTO = {
   ...taggedClip,

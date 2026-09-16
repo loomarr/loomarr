@@ -7,7 +7,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { FillerSettingsSection } from "../filler-settings/filler-settings-search";
+import type { FillerSettingsSection } from "../filler-settings-search";
 
 type Action = {
   title: string;

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FillerPage } from "@/filler/filler-page";
-import { validateFillerSettingsSearch } from "@/filler/filler-settings/filler-settings-search";
+import { validateFillerSettingsSearch } from "@/filler/filler-settings-search";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
 import { SettingsSaveBarHost } from "@/settings/settings-save-bar-host";
 
