@@ -109,6 +109,68 @@ queue evidence remain required; scripted passes never imply a provider pass.
 
 ## Next checkpoints, in order
 
+### First executable expansion batch
+
+Authoring checkpoint [#1281](https://github.com/loomarr/loomarr/issues/1281) adds
+`query-expansion-v1.json`: 30 unique authored requests, four minimum, twelve
+invariance and fourteen directional tests. All share one exposed TGIF source
+family; eight case categories do not create eight independent source families.
+Together with the immutable pilot there are 102 authored development requests,
+not 1,000 scenarios or 102 independent truth families.
+
+The reviewed partial roster resolves Family Matters (`series:tmdb:2685`),
+Step by Step (`series:tmdb:2617`), Boy Meets World (`series:tmdb:1777`) and the
+1996 Sabrina sitcom (`series:tmdb:605`). The Philippine Full House adaptation
+(`series:tmdb:31183`) is a nearby identity collision, not an American TGIF member.
+Full House's original American identity is not yet independently resolved in
+this batch; omitting it here does not assert nonmembership or change live lookup.
+The [source note](../research/suggestion-query-source-truth.md) records the roles
+and limitations. Source reviews, observation dates and uncertainty are pinned
+inside the manifest; its digest and separate Catalog/source artifact digests
+are attached to every configured scorecard. The reference excerpt is an authored
+paraphrase of reviewed facts, not a full retrieved-page snapshot. The manifest
+digest binds those exact authored review/excerpt bytes.
+
+The new batch reuses the pilot's validation, production Catalog adapters,
+Suggester and Runner, with no replacement evaluator. Library presence and ratings
+are simulated: two owned titles and two acquisitions, never household facts.
+Cooperative replies have independent literal picks/tool inputs. Exclusions,
+required titles and dates are separately authored expectations. A typo request
+also supplies a canonical MustInclude anchor; scripted success is not evidence
+of real-model spelling correction. The partial pool tests distinct breadth
+within four resolved titles, not completeness of the historical TGIF lineup.
+
+Eight causal controls reject a missing Sabrina, wrong member, duplicate padding,
+sparse results, wrong ownership, an invented playback limit, an outside-Library
+selection and the wrong date axis. Check both per-case deterministic results and
+the strict assessment: date-policy accuracy is enforced by the assessment,
+whereas grounding, membership and ownership failures are deterministic results.
+Every development scorecard remains non-certifying.
+
+The production tests exposed and protect two bounded repairs: source-completed
+members cannot override explicit Library-only wording; named blocks described
+“as it felt in the 1990s” use editorial date context, while separately requested
+airing/release dates and Era still require acknowledgment. Public Suggester tests
+also protect negated Library-only wording from incorrectly dropping acquisitions.
+
+Reproduce with the network-free evaluation command above and the focused public
+Suggester regression group:
+
+```sh
+go test -race ./internal/suggest -run '^TestSuggest_(BlockEpoch|BlockEditorialEpoch|LibraryOnly|NegatedLibraryOnly)'
+make lint PKG=./internal/eval
+```
+
+Explicit eval-package lint is necessary until the tag-only affected-package gap
+in [#1279](https://github.com/loomarr/loomarr/issues/1279) is repaired. Full eval
+tests and tagged lint pass; final affected verification and protected CI remain
+required. No paid provider trial, sealed holdout or new Playwright preview is
+claimed. MCU exact identity/alias mapping and additional History-era membership
+sources remain next authoring prerequisites; the 100-family registry is still
+the broader backlog, not a completed corpus.
+
+### Remaining expansion checkpoints
+
 The source-review checkpoint is tracked in [#1278](https://github.com/loomarr/loomarr/issues/1278).
 Its [evidence note](../research/suggestion-query-source-truth.md) distinguishes
 supported claims from missing or questionable metadata. The

@@ -69,9 +69,33 @@ These are engineering implications of the evidence, not additional historical fa
 - Keep historical association, present streaming licensing and household Library
   availability as different facts. None can substitute for the others.
 
-## Review queue before case authoring
+## First executable identity review
 
-1. Map Sabrina, later TGIF revival titles and the six Phase 1 films to exact
+The first expansion batch independently resolves four positive series Keys:
+Family Matters [2685](https://www.themoviedb.org/tv/2685-family-matters?language=he-IL),
+Step by Step [2617](https://www.themoviedb.org/tv/2617-step-by-step),
+Boy Meets World [1777](https://www.themoviedb.org/tv/1777-boy-meets-world/images/backdrops?language=en-US)
+and Sabrina [605](https://www.themoviedb.org/tv/605-sabrina-the-teenage-witch).
+The final source explicitly identifies the 1996 sitcom; punctuation differences
+are normalized without changing identity. These are current provider identities,
+not proof that every season or episode was broadcast in TGIF.
+
+The negative Full House [31183](https://www.themoviedb.org/tv/31183-full-house)
+is the 2009 Philippine adaptation, not the American sitcom. Attempts to read the
+original American Full House provider page were restricted; its Key is therefore
+not promoted into this batch's independently verified positive pool. This is a
+partial roster, not a claim that Full House was absent from TGIF. Frozen pilot
+IDs are explicitly synthetic and remain untouched.
+
+Reviewed membership and identity records, observation date 2026-09-15, authored
+paraphrased excerpts and uncertainty are recorded in the new digest-bound
+`query-expansion-v1.json` manifest and its source artifact. Simulated Library
+presence/ratings are labeled separately. There is no complete page capture or
+historical season oracle. See the [executable batch evidence](../plans/suggestion-query-evaluation.md#first-executable-expansion-batch).
+
+## Remaining review queue before further case authoring
+
+1. Map original American Full House, later TGIF revival titles and the six Phase 1 films to exact
    provider Keys without replacing synthetic identities in frozen manifests.
 2. Record source URL, observation date, supported role/epoch, excerpt digest and
    uncertainty for each new fixture fact. Keep retrieved page data untrusted.

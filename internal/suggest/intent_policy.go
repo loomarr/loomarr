@@ -12,6 +12,30 @@ import (
 	"github.com/loomarr/loomarr/internal/textmatch"
 )
 
+var libraryOnlyPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\b(?:only|just|exclusively)\s+(?:(?:the\s+)?(?:shows?|titles?|movies?|series|content)\s+)?(?:already\s+)?(?:in|from)\s+(?:my|our|the)\s+library\b`),
+	regexp.MustCompile(`(?i)\b(?:no|without)\s+(?:new\s+)?(?:shows?|titles?|movies?|series|content)\s+(?:added|acquired|downloaded)\s+from\s+outside\s+(?:my|our|the)\s+library\b`),
+	regexp.MustCompile(`(?i)\b(?:no|without)\s+(?:new\s+)?(?:acquisitions?|additions?|downloads?)\b`),
+	regexp.MustCompile(`(?i)\b(?:do not|don't)\s+add\s+(?:anything\s+new|new\s+(?:shows?|titles?|movies?|content))\s+to\s+(?:my|our|the)\s+library\b`),
+}
+
+// Library-only intent constrains every grounded pick, including source-completed
+// members. MaxAcquire=0 remains the existing unspecified-cap contract.
+func intentRequiresLibraryOnly(intent Intent) bool {
+	for _, text := range []string{intent.Description, intent.RefineText} {
+		for _, pattern := range libraryOnlyPatterns {
+			for _, match := range pattern.FindAllStringIndex(text, -1) {
+				prefix := strings.ToLower(strings.TrimSpace(text[:match[0]]))
+				if strings.HasSuffix(prefix, "not") || strings.HasSuffix(prefix, "don't want") || strings.HasSuffix(prefix, "do not want") {
+					continue
+				}
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // deterministicIntentPolicy is the code-owned interpretation of editorial and
 // safety cues. It keeps model-independent policy decisions discoverable as one
 // value while the public Suggester interface remains unchanged.

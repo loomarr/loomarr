@@ -10,6 +10,15 @@ material; none is an untouched holdout. Each example below is a design probe, no
 a passed test or a complete expected-answer set. Family status is `proposed` until
 its source facts, independent oracle and negative controls are reviewed.
 
+The [first executable batch](suggestion-query-evaluation.md#first-executable-expansion-batch)
+now has 30 authored requests from one shared TGIF source family, under #1281.
+It provides partial evidence relevant to BLK-01, IDN-02, OWN-01/02/04, POL-01
+and DAT-03; it does not promote each capability row into a separately reviewed
+ten-request family. All 100 registry rows retain their proposed status pending
+their full source/oracle review and coverage. MCU identity mapping and complete
+History-era source evidence remain pending. The batch is development-only and
+does not multiply family count by its eight case categories.
+
 The authoring target is at least ten distinct reviewed requests per family:
 1,000+ requests total. Do not count a prefix/suffix Cartesian product as semantic
 breadth. Count each unique case ID once under its primary family, even when it

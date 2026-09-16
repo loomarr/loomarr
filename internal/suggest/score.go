@@ -218,6 +218,9 @@ func themeTerms(intent Intent) []string {
 // candidateContradictsExplicitQualifiers distinguishes disproven hard metadata
 // from sparse metadata. Only source-known country/genre facts can reject a pick.
 func candidateContradictsExplicitQualifiers(intent Intent, candidate catalog.Candidate) bool {
+	if intentRequiresLibraryOnly(intent) && !candidate.InLibrary {
+		return true
+	}
 	item := fromCandidate(candidate, "", 0)
 	terms := themeTerms(intent)
 	requestedCountries := explicitOriginCountryCodes(intent)
