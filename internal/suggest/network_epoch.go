@@ -9,7 +9,7 @@ import (
 
 // These clauses identify the role of a dated reference, not a registry of
 // networks, their eras, or their constituent shows. Catalog remains authority.
-var networkStyleClause = regexp.MustCompile(`(?i)\b(?:like|recreate|recreating|resemble|resembling)\s+(?:(?:the|a|an)\s+)?((?:[\p{L}\p{N}&'’-]+\s+){1,6})(?:channel|network)\b(?:\s+(?:from|in|during)\s+(?:the\s+)?((?:19|20)[0-9]0s|[0-9]{2}s)\b)?`)
+var networkStyleClause = regexp.MustCompile(`(?i)\b(?:like|recreate|recreating|resemble|resembling)\s+(?:(?:the|a|an)\s+)?((?:[\p{L}\p{N}&'’-]+\s+){1,6})(?:channel|network)\b(?:\s+(?:from|in|during)\s+(?:the\s+)?((?:19|20)[0-9]0s|[0-9]{2}s|nineties)\b)?`)
 
 type networkReferenceSpan struct {
 	dateStart, dateEnd int
@@ -78,7 +78,13 @@ func networkProgrammingEpochEnd(intent Intent) int {
 			if span.dateStart < 0 {
 				continue
 			}
-			year, err := strconv.Atoi(strings.TrimSuffix(strings.ToLower(text[span.dateStart:span.dateEnd]), "s"))
+			value := strings.ToLower(text[span.dateStart:span.dateEnd])
+			if value == "nineties" {
+				value = "1990"
+			} else {
+				value = strings.TrimSuffix(value, "s")
+			}
+			year, err := strconv.Atoi(value)
 			if err != nil {
 				return 0
 			}

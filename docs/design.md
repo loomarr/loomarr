@@ -2280,7 +2280,8 @@ decade, independently of `YearFrom`/`YearTo` and accepted `dateMeaning`. This is
 editorial retrieval strategy, not an episode cutoff or proof of historical network membership;
 series beginning earlier remain eligible, and all their episodes remain available unless
 separately restricted. It adds no model-authored tool field. Full decades use their written
-century; shorthand 00s–20s means 2000–2029 and 30s–90s means 1930–1999. Conflicting reference
+century; the written word “nineties” means 1990–1999 only inside a recognized network-reference
+span; shorthand 00s–20s means 2000–2029 and 30s–90s means 1930–1999. Conflicting reference
 decades do not project a single epoch. The brand-neutral clause recognizer exempts only the reference's dated
 span from the date-omission guard and rejects a filter or date-clarification anchored to that
 contextual span. A known editorial epoch alone cannot produce an ambiguous-date failure. A
