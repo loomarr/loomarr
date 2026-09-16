@@ -296,7 +296,7 @@ func TestQueryPilotProductionRejectsInventedSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var index int = -1
+	index := -1
 	for i, c := range cases {
 		if c.Name == "history-original" {
 			index = i
