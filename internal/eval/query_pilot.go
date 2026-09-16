@@ -20,7 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json
+//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json
 var queryPilotFiles embed.FS
 
 // QueryPilotCorpus is exposed development evidence, never a release holdout.
@@ -200,6 +200,14 @@ func newQueryDevelopmentGenerator(corpus QueryPilotCorpus, provider llm.Provider
 	references := &testkit.ReferenceResolver{ByURL: make(map[string]reference.Evidence)}
 	if err := json.Unmarshal(sourceBlob, &references.ByLabel); err != nil {
 		return nil, nil, err
+	}
+	// The immutable pilot predates stable acronym-subject extraction and stores
+	// its synthetic source under the qualified label. Keep those bytes runnable
+	// while production discovery uses the canonical acronym.
+	if legacy, found := references.ByLabel["MCU Phase One"]; found {
+		if _, current := references.ByLabel["MCU"]; !current {
+			references.ByLabel["MCU"] = legacy
+		}
 	}
 	bindings := make(map[string]string, len(corpus.Cases))
 	for _, c := range corpus.Cases {

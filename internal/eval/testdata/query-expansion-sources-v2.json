@@ -1,0 +1,26 @@
+{
+  "TGIF": {
+    "url": "https://d23.com/were-going-to-walt-disney-world-sabrina-the-teenage-witch/",
+    "title": "Disney Archives retrospective: Sabrina and TGIF",
+    "excerpt": "Reviewed partial membership: Family Matters, Step by Step, Boy Meets World and the 1996 Sabrina sitcom. This does not establish all members or all episode dates.",
+    "titleAnchors": [
+      "Family Matters",
+      "Step by Step",
+      "Boy Meets World",
+      "Sabrina the Teenage Witch"
+    ]
+  },
+  "MCU": {
+    "url": "https://www.disney.co.uk/movies/avengers-infinity-war/marvel-cinematic-universe",
+    "title": "Disney UK retrospective: Marvel Cinematic Universe phases",
+    "excerpt": "Reviewed Phase 1 membership: Iron Man, The Incredible Hulk, Iron Man 2, Thor, Captain America: The First Avenger and Avengers Assemble. Phase 2 begins separately with Iron Man 3 and Thor: The Dark World.",
+    "titleAnchors": [
+      "Iron Man",
+      "The Incredible Hulk",
+      "Iron Man 2",
+      "Thor",
+      "Captain America: The First Avenger",
+      "Avengers Assemble"
+    ]
+  }
+}

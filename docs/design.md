@@ -1417,6 +1417,10 @@ the connected Library is the actionable
 identity for that request; unavailable namesakes cannot make an owned title ambiguous. No match or
 multiple owned exact identities still fails closed, and model-provided media/year filters cannot
 choose between them.
+For an acronym-led named set with a numbered phase qualifier, source discovery sends the acronym
+subject rather than the entire qualified request (for example, `MCU` from `MCU Phase One`). The
+qualifier remains part of the Intent and constrains selection from the resolved source; it is not
+discarded, promoted into a second source label, or treated as constituent evidence by itself.
 No brand roster, model-authored URL, arbitrary crawler, or new runtime dependency is added.
 The discovery operation has one shared 10-second budget and at most two bounded GET operations
 (search and category members); its result is reused within that Suggest invocation. Keep up to 128
@@ -1490,6 +1494,10 @@ grounded source members. Loomarr keeps the provider-selected members first, then
 eight-pick bound with distinct remaining source members. These are ordinary review rows under the
 existing approval editor: the operator can remove any of them or add another catalog title before
 approval. A source name that is missing, ambiguous, excluded, or not grounded never enters that pool.
+Source completion also cannot restore a movie or series whose known release or premiere year is
+outside an explicit corresponding date axis. Missing title-level dates remain unknown rather than
+being guessed, and episode-airing constraints remain scheduling selectors rather than title-year
+predicates.
 Network, genre, era, adjacent recommendations, and model rationale may help discover a theme, but never
 prove membership or pad a named lineup. Exact title resolution keeps its normal media and year ambiguity
 rules. A member whose series premiered before a requested decade is not excluded merely by that premiere
@@ -11039,6 +11047,10 @@ holdout, and paid trials retain explicit call and monetary authorization.
 
 Executable expansion batches are new, immutable Development Corpus versions,
 loaded through the pilot's shared validation, Catalog adapters and Runner.
+The current expansion version is a cumulative snapshot: it retains every prior
+authored request and reviewed fixture while adding the next source family. Older
+manifest, Catalog and source bytes remain embedded and digest-checked rather than
+being rewritten or hidden behind per-batch public loader methods.
 Source-review records live in the digest-bound manifest and distinguish provider
 identity, historical membership and simulated Library availability. A reviewed
 partial roster is not an exhaustive roster: only independently resolved titles

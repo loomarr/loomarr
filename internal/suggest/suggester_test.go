@@ -1672,11 +1672,11 @@ func TestSuggest_ConstraintConflictStopsBeforeInference(t *testing.T) {
 	}
 
 	model = testkit.NewLLM(finalResponseWithNone(`{"picks":[]}`))
-	_, err = buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{
+	proposal, err = buildSuggester(t, model).Suggest(context.Background(), suggest.Intent{
 		Description: "science fiction", MustInclude: []string{"The Matrix"}, MustExclude: []string{"The Matrix Reloaded"},
 	})
-	if model.Calls == 0 || err == nil {
-		t.Fatalf("distinct constraints should reach ordinary inference: calls=%d err=%v", model.Calls, err)
+	if model.Calls != 1 || err != nil || len(proposal.Lineup) != 0 || len(proposal.Acquisitions) != 1 || proposal.Acquisitions[0].Name != "The Matrix" {
+		t.Fatalf("distinct exact constraints should retain only the required title: calls=%d proposal=%+v err=%v", model.Calls, proposal, err)
 	}
 }
 
