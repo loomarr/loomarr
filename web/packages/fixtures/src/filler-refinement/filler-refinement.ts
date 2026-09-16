@@ -1,9 +1,10 @@
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ListTaxonomyOutputBody } from "@loomarr/api/models/listTaxonomyOutputBody";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import type { SettingsListOutputBody } from "@loomarr/api/models/settingsListOutputBody";
 import { taggedClip, untaggedClip } from "../testcard";
 
-const fillerRefinementKnownClip = {
+const fillerRefinementKnownClip: ClipDTO = {
   ...taggedClip,
   brand: "Sunny D",
   assertedTags: ["soft_drinks"],
@@ -11,9 +12,9 @@ const fillerRefinementKnownClip = {
   source: "classic-ads",
   sourceUrl: "https://archive.org/details/classic-commercials",
 };
-const fillerRefinementUnknownClip = {
+const fillerRefinementUnknownClip: ClipDTO = {
   ...untaggedClip,
-  kind: "unclassified" as const,
+  kind: "unclassified",
   source: "filler-dir",
 };
 
