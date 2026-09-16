@@ -109,6 +109,15 @@ queue evidence remain required; scripted passes never imply a provider pass.
 
 ## Next checkpoints, in order
 
+The source-review checkpoint is tracked in [#1278](https://github.com/loomarr/loomarr/issues/1278).
+Its [evidence note](../research/suggestion-query-source-truth.md) distinguishes
+supported claims from missing or questionable metadata. The
+[100-family registry](suggestion-query-family-registry.md) covers 20 capability
+areas and targets 1,000+ reviewed requests; it is planning evidence, not an
+executable expansion or provider pass. Authoring starts with source-reviewed
+named-reference families, then deterministic constraints, qualitative/scope
+behavior, and ongoing/fault journeys.
+
 1. **Review truth before expansion.** Independently review the pilot's capabilities
    and negatives. Capture actual source URLs, retrieval date, supported membership
    and epoch boundaries for historical/network requests. Record incomplete or

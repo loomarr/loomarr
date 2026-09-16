@@ -11027,6 +11027,16 @@ qualification remains separately owned by #1195; no hypothetical failure earns
 recovery credit. The staged plan and coverage inventory live in
 `docs/engineering/plans/suggestion-query-evaluation.md`.
 
+The expansion family registry is exposed development planning, not executable
+case-count or holdout evidence. Promotion requires source/oracle review,
+independent negative controls and digest-bound fixture facts; questionable or
+missing source fields remain unknown. A current catalog page does not prove
+historical broadcast membership. Exact provider identities must be resolved
+before regional title aliases become expectations. Registry rows, authored
+requests, reviewed cases, scripted outcomes and provider-qualified outcomes are
+reported separately. No exposed registry family is promoted into an untouched
+holdout, and paid trials retain explicit call and monetary authorization.
+
 Request-role extraction must distinguish a movie franchise channel from a
 television network reference. A request verb such as “Recreate” is not part of
 a named lineup's label; possessive network and daypart context must not turn
