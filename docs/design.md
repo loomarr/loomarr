@@ -11027,6 +11027,35 @@ qualification remains separately owned by #1195; no hypothetical failure earns
 recovery credit. The staged plan and coverage inventory live in
 `docs/engineering/plans/suggestion-query-evaluation.md`.
 
+The expansion family registry is exposed development planning, not executable
+case-count or holdout evidence. Promotion requires source/oracle review,
+independent negative controls and digest-bound fixture facts; questionable or
+missing source fields remain unknown. A current catalog page does not prove
+historical broadcast membership. Exact provider identities must be resolved
+before regional title aliases become expectations. Registry rows, authored
+requests, reviewed cases, scripted outcomes and provider-qualified outcomes are
+reported separately. No exposed registry family is promoted into an untouched
+holdout, and paid trials retain explicit call and monetary authorization.
+
+Executable expansion batches are new, immutable Development Corpus versions,
+loaded through the pilot's shared validation, Catalog adapters and Runner.
+Source-review records live in the digest-bound manifest and distinguish provider
+identity, historical membership and simulated Library availability. A reviewed
+partial roster is not an exhaustive roster: only independently resolved titles
+enter its outcome pool. Regional aliases and uncertain first-air dates remain
+unqualified until their identities or date roles are independently established.
+Every authored request carries strict distinct-title, ownership and date-axis
+expectations; independent cooperative replies and deliberately wrong replies
+cross the same production Suggester/Runner interfaces. New batches cannot rewrite
+frozen pilot/certification facts or count scripted success as model qualification.
+
+Explicit Library-only wording is a hard suggestion qualifier, including “no
+shows added from outside my library”; source-pool completion cannot restore
+outside-Library picks as selections or alternates. A named block described “as
+it felt in the 1990s” supplies editorial reference context, not a playback-date
+limit. Explicit episode-airing requests and a separately submitted Era still
+require anchored date interpretation; neither qualifier weakens grounding.
+
 Request-role extraction must distinguish a movie franchise channel from a
 television network reference. A request verb such as “Recreate” is not part of
 a named lineup's label; possessive network and daypart context must not turn

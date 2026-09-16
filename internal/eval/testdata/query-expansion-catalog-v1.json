@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "query-expansion-catalog-v1",
+  "cases": [{
+    "id": "tgif-reviewed",
+    "responses": [{
+      "operation": "title",
+      "candidates": [
+        {"mediaType":"series","tmdbId":2685,"name":"Family Matters","year":1989,"genres":["Comedy","Family"],"networks":["ABC"],"inLibrary":true,"libraryItemId":"simulated-expansion-2685","officialRating":"TV-G","source":"library"},
+        {"mediaType":"series","tmdbId":2617,"name":"Step by Step","year":1991,"genres":["Comedy","Family"],"networks":["ABC"],"inLibrary":true,"libraryItemId":"simulated-expansion-2617","officialRating":"TV-PG","source":"library"},
+        {"mediaType":"series","tmdbId":1777,"name":"Boy Meets World","year":1993,"genres":["Comedy","Family"],"networks":["ABC"],"inLibrary":false,"officialRating":"TV-PG","source":"tmdb"},
+        {"mediaType":"series","tmdbId":605,"name":"Sabrina the Teenage Witch","year":1996,"genres":["Comedy","Family"],"networks":["ABC","The WB"],"inLibrary":false,"officialRating":"TV-G","source":"tmdb"},
+        {"mediaType":"series","tmdbId":31183,"name":"Full House","year":2009,"genres":["Comedy"],"inLibrary":true,"libraryItemId":"simulated-expansion-31183","officialRating":"TV-G","source":"library"}
+      ]
+    }]
+  }]
+}

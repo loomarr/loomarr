@@ -46,6 +46,7 @@ var (
 	properNamedSetPattern          = regexp.MustCompile(`\b[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\s+(?i:collection|line-?up|block)\b`)
 	acronymCuePattern              = regexp.MustCompile(`(?i:\b(?:for|from|based\s+on|like)\s+)([A-Z][A-Z0-9&]{2,9})\b`)
 	acronymSetSuffixPattern        = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+(?:lineup|block|channel|like)\b)`)
+	acronymEditorialBlockPattern   = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+as\s+(?:it|they)\s+(?:felt|was|were)\s+(?:in|during|from)\s+(?:the\s+)?(?:19|20)[0-9]0s\b)`)
 	acronymDirectMembersPattern    = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b(?i:\s+(?:with|include|including)\b)`)
 	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?,;:\x{2013}\x{2014}-]|$)`)
 	directNetworkRoleBeforePattern = regexp.MustCompile(`(?i:\b(?:the\s+)?network\s+)$`)
@@ -795,7 +796,7 @@ func evidenceWords(text string) []string {
 }
 
 func acronymNamesSet(text string) bool {
-	for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymDirectMembersPattern, acronymSentenceEndPattern} {
+	for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymDirectMembersPattern, acronymSentenceEndPattern, acronymEditorialBlockPattern} {
 		for _, match := range pattern.FindAllStringSubmatchIndex(text, -1) {
 			acronym := text[match[2]:match[3]]
 			if directNetworkRoleBeforePattern.MatchString(text[:match[2]]) ||
@@ -913,7 +914,7 @@ func namedBlockLabel(intent Intent) string {
 		}
 	}
 	for _, field := range []string{intent.Description, intent.RefineText} {
-		for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymDirectMembersPattern, acronymDaypartBlockPattern, acronymSentenceEndPattern, acronymCuePattern} {
+		for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymDirectMembersPattern, acronymDaypartBlockPattern, acronymSentenceEndPattern, acronymCuePattern, acronymEditorialBlockPattern} {
 			for _, match := range pattern.FindAllStringSubmatchIndex(field, -1) {
 				if strings.HasPrefix(field[match[3]:], "'s") || directNetworkRoleBeforePattern.MatchString(field[:match[2]]) || directNetworkRolePattern.MatchString(field[match[3]:]) {
 					continue

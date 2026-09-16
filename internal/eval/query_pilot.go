@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -21,7 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json
+//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json
 var queryPilotFiles embed.FS
 
 // QueryPilotCorpus is exposed development evidence, never a release holdout.
@@ -35,6 +34,7 @@ type QueryPilotCorpus struct {
 	CatalogFixture      CertificationFixture `json:"catalogFixture"`
 	SourcesFixture      CertificationFixture `json:"sourcesFixture"`
 	ExtraCatalogFixture CertificationFixture `json:"extraCatalogFixture"`
+	SourceReviews       []QuerySourceReview  `json:"sourceReviews,omitempty"`
 	Cases               []QueryPilotCase     `json:"cases"`
 }
 
@@ -60,7 +60,11 @@ type QueryPilotCase struct {
 // LoadEmbeddedQueryPilotCorpus validates identity and facts before any provider
 // can be constructed by a caller. The manifest is authored, not a paraphrase loop.
 func LoadEmbeddedQueryPilotCorpus() (QueryPilotCorpus, error) {
-	blob, err := queryPilotFiles.ReadFile("testdata/query-pilot-v1.json")
+	return loadQueryDevelopmentCorpus("testdata/query-pilot-v1.json")
+}
+
+func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
+	blob, err := queryPilotFiles.ReadFile(path)
 	if err != nil {
 		return QueryPilotCorpus{}, err
 	}
@@ -156,8 +160,8 @@ func LoadEmbeddedQueryPilotCorpus() (QueryPilotCorpus, error) {
 }
 
 func readQueryPilotFacts(path string) ([]byte, error) {
-	if strings.HasPrefix(path, "testdata/query-pilot-") {
-		return queryPilotFiles.ReadFile(path)
+	if blob, err := queryPilotFiles.ReadFile(path); err == nil {
+		return blob, nil
 	}
 	return releaseGateFiles.ReadFile(path)
 }
@@ -169,6 +173,10 @@ func NewEmbeddedQueryPilotGenerator(provider llm.Provider) (Generator, Observer,
 	if err != nil {
 		return nil, nil, err
 	}
+	return newQueryDevelopmentGenerator(corpus, provider)
+}
+
+func newQueryDevelopmentGenerator(corpus QueryPilotCorpus, provider llm.Provider) (Generator, Observer, error) {
 	var decoded certificationCatalogFixture
 	for _, binding := range []CertificationFixture{corpus.CatalogFixture, corpus.ExtraCatalogFixture} {
 		blob, err := readQueryPilotFacts(binding.Path)
@@ -207,6 +215,10 @@ func QueryPilotCases() ([]Case, error) {
 	if err != nil {
 		return nil, err
 	}
+	return queryDevelopmentCases(corpus), nil
+}
+
+func queryDevelopmentCases(corpus QueryPilotCorpus) []Case {
 	cases := make([]Case, 0, len(corpus.Cases))
 	for _, authored := range corpus.Cases {
 		dates := cloneDateScope(authored.Dates)
@@ -221,18 +233,22 @@ func QueryPilotCases() ([]Case, error) {
 			RequireKeys: authored.RequireKeys, ForbidKeys: authored.ForbidKeys, ExpectedDateScope: dates,
 		})
 	}
-	return withProductionStructuralBounds(cases), nil
+	return withProductionStructuralBounds(cases)
 }
 
 // QueryPilotRunnerConfig makes development status explicit and retains strict
 // policy/schema/completion assessment without modifying any certification bar.
 func QueryPilotRunnerConfig(config RunnerConfig) (RunnerConfig, error) {
-	corpus, err := LoadEmbeddedQueryPilotCorpus()
+	return queryDevelopmentRunnerConfig("testdata/query-pilot-v1.json", "query-pilot-scorer-v1", config)
+}
+
+func queryDevelopmentRunnerConfig(path, scorer string, config RunnerConfig) (RunnerConfig, error) {
+	corpus, err := loadQueryDevelopmentCorpus(path)
 	if err != nil {
 		return RunnerConfig{}, err
 	}
 	config.DevelopmentCorpus = true
-	manifest, err := queryPilotFiles.ReadFile("testdata/query-pilot-v1.json")
+	manifest, err := queryPilotFiles.ReadFile(path)
 	if err != nil {
 		return RunnerConfig{}, err
 	}
@@ -243,7 +259,7 @@ func QueryPilotRunnerConfig(config RunnerConfig) (RunnerConfig, error) {
 		SupplementalCatalogFixtureSHA256: corpus.ExtraCatalogFixture.SHA256,
 		SourceVersion:                    corpus.SourceVersion,
 		CorpusVersion:                    corpus.Version, CatalogFixtureSHA256: corpus.CatalogFixture.SHA256,
-		PromptVersion: corpus.PromptVersion, ToolSchemaVersion: corpus.ToolSchemaVersion, ScorerVersion: "query-pilot-scorer-v1",
+		PromptVersion: corpus.PromptVersion, ToolSchemaVersion: corpus.ToolSchemaVersion, ScorerVersion: scorer,
 		HardMetrics:    []string{"grounding", "required_anchors", "forbidden_matches", "distinct_breadth", "ownership"},
 		QualityMetrics: []string{"policy_accuracy"},
 		Thresholds:     CertificationThresholds{MinGroundedCompletionRate: 1, MinSchemaValidityRate: 1, MinPolicyAccuracyRate: 1, MaxP95ToolCalls: suggest.ProductionBounds().MaxToolCalls},
