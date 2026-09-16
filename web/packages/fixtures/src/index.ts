@@ -3,6 +3,7 @@
 
 export * from "./channel-policy";
 export * from "./client-platform";
+export * from "./filler-refinement";
 export * from "./people";
 export * from "./rule-vocabulary";
 export * from "./testcard";

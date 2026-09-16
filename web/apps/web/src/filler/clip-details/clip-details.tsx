@@ -3,7 +3,7 @@ import { formatClipDuration } from "@loomarr/core/format";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "@/components/loomarr/filler/clip-card";
-import { ClipPreview } from "@/components/loomarr/filler/clip-player";
+import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { Button } from "@/components/ui/button";
 
 // Inspection only. Corrections and Incoming choices are owned by their callers, not playback.

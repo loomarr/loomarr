@@ -1,9 +1,8 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { VideoPlayer } from "@/components/ui/video-player";
 import { cn } from "@/lib/utils";
+import { ClipPreview } from "../clip-preview";
 import type { ClipPlayerProps } from "./clip-player.type";
 
 // ClipPlayer — watch one catalog clip in a modal (V39).
@@ -69,24 +68,4 @@ const ClipPlayer = ({ clip, onClose, onPlaybackStart, className }: ClipPlayerPro
   </DialogPrimitive.Root>
 );
 
-// The same exact-media player inside a Sheet, without a second modal/focus trap.
-const ClipPreview = ({
-  clip,
-  onPlaybackStart,
-  leading,
-}: {
-  clip: NonNullable<ClipPlayerProps["clip"]>;
-  onPlaybackStart?: ClipPlayerProps["onPlaybackStart"];
-  leading?: import("react").ReactNode;
-}) => (
-  <VideoPlayer
-    key={clip.hash}
-    src={clipMediaURL(clip.hash)}
-    title={clip.name}
-    autoPlay
-    onPlaybackStart={onPlaybackStart}
-    leading={leading}
-  />
-);
-
-export { ClipPlayer, ClipPreview };
+export { ClipPlayer };

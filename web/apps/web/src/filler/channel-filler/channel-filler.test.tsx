@@ -156,6 +156,16 @@ const policy = (
 });
 
 describe("ChannelFiller", () => {
+  it("does not turn an empty automatic break into a tagging chore", async () => {
+    stubChannelFiller();
+    server.use(getPreviewDraftChannelPodsMockHandler({ ...previewBody, entries: [], totalMs: 0 }));
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+    const library = await screen.findByRole("link", { name: "browse your filler library" });
+    expect(library).toHaveAttribute("href", "/filler/library");
+    expect(screen.getByText(/Breaks use the bumper card for now/)).toBeInTheDocument();
+    expect(screen.queryByText(/add and tag clips/)).not.toBeInTheDocument();
+  });
+
   it("renders the criteria controls and the live break once a preview lands", async () => {
     stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
