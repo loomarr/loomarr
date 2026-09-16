@@ -331,7 +331,11 @@ test("a fetched arrival becomes playable automatically after its checks complete
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();
-  await expect(page.getByText("No clips match this selection yet.")).toBeVisible();
+  await expect(page.getByText(/No clips match these choices yet\. Breaks use the bumper card/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "browse your filler library" })).toHaveAttribute(
+    "href",
+    "/filler/library",
+  );
   await expect(page.getByText("Trusted Toy Spot", { exact: true })).toHaveCount(0);
   await expect(page.getByText("1 eligible commercial", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /apply filler/i })).toHaveCount(0);
