@@ -1,14 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { FillerPage } from "@/filler/filler-page";
-import { validateFillerSettingsSearch } from "@/filler/filler-settings-search";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
 import { SettingsSaveBarHost } from "@/settings/settings-save-bar-host";
 
-const FillerSettingsScreen = () => (
+const FillerSettingsLayout = () => (
   <SettingsEditsProvider>
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1">
-        <FillerPage tab="settings" />
+        <Outlet />
       </div>
       <SettingsSaveBarHost />
     </div>
@@ -16,8 +14,7 @@ const FillerSettingsScreen = () => (
 );
 
 const Route = createFileRoute("/_authed/filler/settings")({
-  validateSearch: validateFillerSettingsSearch,
-  component: FillerSettingsScreen,
+  component: FillerSettingsLayout,
 });
 
 export { Route };

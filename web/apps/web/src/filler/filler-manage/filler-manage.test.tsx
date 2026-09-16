@@ -115,7 +115,7 @@ describe("FillerManage", () => {
             recovery: {
               action: "adjust_budget",
               mode: "configuration",
-              destination: "/filler/settings",
+              destination: "/filler/settings/limits",
             },
             retryable: false,
             createdAt: "2026-08-25T12:00:00Z",
@@ -127,7 +127,7 @@ describe("FillerManage", () => {
             recovery: {
               action: "update_policy",
               mode: "configuration",
-              destination: "/filler/settings",
+              destination: "/filler/settings/review",
             },
             retryable: false,
             createdAt: "2026-08-25T12:00:00Z",
@@ -153,11 +153,11 @@ describe("FillerManage", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Show issues" }));
     expect(await screen.findByRole("link", { name: "Review limits" })).toHaveAttribute(
       "href",
-      "/filler/settings",
+      "/filler/settings/limits",
     );
     expect(screen.getByRole("link", { name: "Open filler settings" })).toHaveAttribute(
       "href",
-      "/filler/settings",
+      "/filler/settings/review",
     );
     expect(screen.getByRole("link", { name: "Open clip" })).toHaveAttribute(
       "href",

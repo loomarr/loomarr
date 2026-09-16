@@ -230,9 +230,9 @@ func (s *Service) diagnosticRecovery(ctx context.Context, record Record) (Recove
 	case RecoveryConfigureProvider:
 		plan.Mode, plan.Destination = RecoveryModeConfiguration, "/settings/ai"
 	case RecoveryAdjustBudget:
-		plan.Mode, plan.Destination = RecoveryModeConfiguration, "/filler/settings"
+		plan.Mode, plan.Destination = RecoveryModeConfiguration, "/filler/settings/limits"
 	case RecoveryUpdatePolicy:
-		plan.Mode, plan.Destination = RecoveryModeConfiguration, "/filler/settings"
+		plan.Mode, plan.Destination = RecoveryModeConfiguration, "/filler/settings/review"
 	case RecoveryInspectMedia:
 		plan.Mode, plan.Destination = RecoveryModeInspection, "/v1/filler/media/"+url.PathEscape(record.ClipHash)
 	case RecoveryRetryExtraction:

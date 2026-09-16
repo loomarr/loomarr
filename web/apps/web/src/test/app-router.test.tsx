@@ -314,6 +314,18 @@ describe("legacy tab links redirect to their new paths", () => {
     await waitFor(() => expect(at(router)).toBe("/filler/incoming"));
   });
 
+  it("/filler/settings lands on its default path task", async () => {
+    stubAuth(true);
+    const router = renderApp("/filler/settings");
+    await waitFor(() => expect(at(router)).toBe("/filler/settings/downloads"));
+  });
+
+  it("an unknown Filler settings task returns to the default path", async () => {
+    stubAuth(true);
+    const router = renderApp("/filler/settings/not-a-task");
+    await waitFor(() => expect(at(router)).toBe("/filler/settings/downloads"));
+  });
+
   // ⚠ The catalog FILTERS survive the move. They are query params on purpose — a shared link to
   // a searched view has to keep working — so a redirect that dropped them would silently change
   // what the recipient sees.

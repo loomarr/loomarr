@@ -195,7 +195,7 @@ const FillerManage = () => {
                 className="mt-4"
                 size="sm"
                 variant="outline"
-                render={<Link to="/filler/settings" search={{ section: "downloads" }} />}
+                render={<Link to="/filler/settings/$section" params={{ section: "downloads" }} />}
               >
                 Automatic download settings
               </Button>

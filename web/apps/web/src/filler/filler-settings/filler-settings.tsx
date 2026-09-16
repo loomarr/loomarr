@@ -1,11 +1,11 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Link, useSearch } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
-import { type FillerSettingsSection, SETTINGS_SECTIONS } from "../filler-settings-search";
+import { type FillerSettingsSection, SETTINGS_SECTIONS } from "../filler-settings-section";
 
 const settingValue = (entries: SettingEntry[], key: string): string =>
   entries.find((entry) => entry.key === key)?.value ?? "";
@@ -66,9 +66,7 @@ const languageUnavailableReason = (entries: SettingEntry[]): string | undefined 
   return undefined;
 };
 
-const FillerSettings = () => {
-  const search = useSearch({ strict: false }) as { section?: FillerSettingsSection };
-  const section = search.section ?? "downloads";
+const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSection }) => {
   const entries = useSettingsEntries();
   const languageReason = languageUnavailableReason(entries);
   const sourcesQuery = fillerApi.useListFillerSources({ query: { enabled: section === "downloads" } });
@@ -119,7 +117,7 @@ const FillerSettings = () => {
         return (
           <p className="rounded-lg bg-muted/50 px-4 py-3 text-muted-foreground text-sm">
             {cadence} {round}{" "}
-            <Link to="/filler/settings" search={{ section: "storage" }} className="underline">
+            <Link to="/filler/settings/$section" params={{ section: "storage" }} className="underline">
               Storage limits
             </Link>
           </p>
@@ -229,8 +227,8 @@ const FillerSettings = () => {
             {SETTINGS_SECTIONS.filter((item) => item.id !== section).map((item) => (
               <Link
                 key={item.id}
-                to="/filler/settings"
-                search={{ section: item.id }}
+                to="/filler/settings/$section"
+                params={{ section: item.id }}
                 className="text-sm underline underline-offset-4"
               >
                 {item.label}

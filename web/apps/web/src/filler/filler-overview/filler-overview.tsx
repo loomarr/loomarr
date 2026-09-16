@@ -7,15 +7,25 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { FillerSettingsSection } from "../filler-settings-search";
+import type { FillerSettingsSection } from "../filler-settings-section";
 
-type Action = {
+type ActionBase = {
   title: string;
   description: string;
   label: string;
-  to: "/filler/incoming" | "/filler/library" | "/filler/manage" | "/filler/settings" | "/filler/sources";
-  section?: FillerSettingsSection;
 };
+
+type Action = ActionBase &
+  (
+    | {
+        to: "/filler/settings/$section";
+        section: FillerSettingsSection;
+      }
+    | {
+        to: "/filler/incoming" | "/filler/library" | "/filler/manage" | "/filler/sources";
+        section?: never;
+      }
+  );
 
 // This maps the readiness projection's server-owned action enum to presentation only. Priority
 // and whole-workspace health are never reconstructed from subsystem counts in the browser (§10).
@@ -28,7 +38,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
         title: "Turn on automatic sourcing",
         description: "Automatic source checks are off, so Loomarr cannot keep the filler catalog supplied.",
         label: "Review automation",
-        to: "/filler/settings",
+        to: "/filler/settings/$section",
         section: "downloads",
       };
     case "free_catalog_capacity":
@@ -36,7 +46,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
         title: "Make room in the filler catalog",
         description: `Automatic sourcing paused at ${pluralize(readiness.actionCount ?? 0, "catalog clip")}. Remove clips or raise the limit to resume it.`,
         label: "Review limits",
-        to: "/filler/settings",
+        to: "/filler/settings/$section",
         section: "storage",
       };
     case "free_disk_capacity":
@@ -45,7 +55,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
         description:
           "Automatic sourcing paused at its storage limit. Free space or raise the limit to resume it.",
         label: "Review limits",
-        to: "/filler/settings",
+        to: "/filler/settings/$section",
         section: "storage",
       };
     case "retry_acquisition":
@@ -130,7 +140,13 @@ const FillerOverview = () => {
           </div>
           {action ? (
             <Button
-              render={<Link to={action.to} search={action.section ? { section: action.section } : {}} />}
+              render={
+                action.section ? (
+                  <Link to="/filler/settings/$section" params={{ section: action.section }} />
+                ) : (
+                  <Link to={action.to} />
+                )
+              }
             >
               {action.label}
             </Button>

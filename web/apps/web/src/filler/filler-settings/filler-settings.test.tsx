@@ -6,9 +6,10 @@ import { SettingsEditsProvider } from "@/settings/settings-edits";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
+import type { FillerSettingsSection } from "../filler-settings-section";
 import { FillerSettings } from "./filler-settings";
 
-const renderSettings = (section?: string) => {
+const renderSettings = (section: FillerSettingsSection = "downloads") => {
   server.use(
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),
     getSettingsListMockHandler({
@@ -58,10 +59,7 @@ const renderSettings = (section?: string) => {
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <SettingsEditsProvider>
-        <RouterHarness
-          initialPath={section ? `/filler?section=${section}` : "/filler"}
-          content={<FillerSettings />}
-        />
+        <RouterHarness initialPath="/filler" content={<FillerSettings section={section} />} />
       </SettingsEditsProvider>
     </QueryClientProvider>,
   );

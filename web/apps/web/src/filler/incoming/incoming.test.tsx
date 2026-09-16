@@ -144,10 +144,7 @@ describe("Incoming", () => {
     expect(
       screen.getByText(/Added in the last 24 hours\. These clips stay in your Library\./),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Change" })).toHaveAttribute(
-      "href",
-      "/filler/settings?section=incoming",
-    );
+    expect(screen.getByRole("link", { name: "Change" })).toHaveAttribute("href", "/filler/settings/incoming");
     expect(screen.getByRole("link", { name: "Open Library" })).toHaveAttribute("href", "/filler/library");
     expect(screen.queryByText(/shadow|admission|evidence hash|reason code/i)).not.toBeInTheDocument();
   });

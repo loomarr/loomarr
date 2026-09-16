@@ -12,11 +12,8 @@ const SETTINGS_SECTIONS = [
 
 type FillerSettingsSection = (typeof SETTINGS_SECTIONS)[number]["id"];
 
-const validateFillerSettingsSearch = (
-  search: Record<string, unknown>,
-): { section: FillerSettingsSection } => ({
-  section: SETTINGS_SECTIONS.find((item) => item.id === search.section)?.id ?? "downloads",
-});
+const parseFillerSettingsSection = (value: unknown): FillerSettingsSection | undefined =>
+  SETTINGS_SECTIONS.find((item) => item.id === value)?.id;
 
 export type { FillerSettingsSection };
-export { SETTINGS_SECTIONS, validateFillerSettingsSearch };
+export { parseFillerSettingsSection, SETTINGS_SECTIONS };

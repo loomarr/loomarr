@@ -321,8 +321,8 @@ const Incoming = () => {
               <p className="text-muted-foreground text-sm">
                 Added in {readyWindowLabel(view.readyWindowSeconds)}. These clips stay in your Library.{" "}
                 <Link
-                  to="/filler/settings"
-                  search={{ section: "incoming" }}
+                  to="/filler/settings/$section"
+                  params={{ section: "incoming" }}
                   className="underline underline-offset-4"
                 >
                   Change
