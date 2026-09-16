@@ -89,7 +89,9 @@ describe("focused Filler settings", () => {
     renderSettings("incoming");
     expect(await screen.findByRole("heading", { name: "Incoming history" })).toBeInTheDocument();
     expect(screen.getByRole("spinbutton", { name: "Keep ready clips in Incoming" })).toHaveValue(1);
-    expect(screen.getByRole("combobox", { name: "Keep ready clips in Incoming unit" })).toHaveTextContent("days");
+    expect(screen.getByRole("combobox", { name: "Keep ready clips in Incoming unit" })).toHaveTextContent(
+      "days",
+    );
     expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
   });
 });

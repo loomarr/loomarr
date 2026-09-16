@@ -141,7 +141,9 @@ describe("Incoming", () => {
     expect(screen.getByText("Holiday commercial reel")).toBeInTheDocument();
     expect(screen.queryByText("Saturday morning commercial reel")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Ready" })).toBeInTheDocument();
-    expect(screen.getByText(/Added in the last 24 hours\. These clips stay in your Library\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Added in the last 24 hours\. These clips stay in your Library\./),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Change" })).toHaveAttribute(
       "href",
       "/filler/settings?section=incoming",

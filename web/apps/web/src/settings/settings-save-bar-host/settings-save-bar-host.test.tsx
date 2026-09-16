@@ -54,7 +54,9 @@ const StageTwoEdits = () => {
       >
         Stage two edits
       </button>
-      <output aria-label="Save results">{results.map((result) => `${result.key}:${result.status}`).join(",")}</output>
+      <output aria-label="Save results">
+        {results.map((result) => `${result.key}:${result.status}`).join(",")}
+      </output>
     </>
   );
 };
