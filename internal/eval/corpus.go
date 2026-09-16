@@ -38,6 +38,10 @@ const (
 // satisfy. The deterministic checks are hard gates; the judge rubric guides the
 // LLM-judge score (0..1). A field left zero/empty is not asserted.
 type Case struct {
+	// RequireUniqueKeys prevents repeated picks from masquerading as choice.
+	RequireUniqueKeys bool
+	// OnlyAcceptableKeys rejects padding beyond an independently declared pool.
+	OnlyAcceptableKeys bool
 	// AcceptableKeys freezes membership independently of the provider's selections.
 	AcceptableKeys    []provision.Key
 	MinAcceptableKeys int

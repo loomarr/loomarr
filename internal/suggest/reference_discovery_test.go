@@ -38,7 +38,7 @@ func (m *namedSetToolAvailabilityLLM) Chat(_ context.Context, _ []llm.Message, o
 }
 
 func TestSuggestDiscoversNamedBlockSourceOnce(t *testing.T) {
-	for _, request := range []string{"TGIF", "TGIF block", "Make a channel like TGIF", "a channel based on TGIF"} {
+	for _, request := range []string{"TGIF", "TGIF block", "Make a channel like TGIF", "a channel based on TGIF", "Recreate ABC's TGIF Friday-night block."} {
 		t.Run(request, func(t *testing.T) {
 			meaning := dateMeaningNone()
 			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}

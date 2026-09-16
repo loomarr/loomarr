@@ -476,6 +476,31 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	if groundErr != nil {
 		return []string{fmt.Sprintf("grounding failed: %v", groundErr)}
 	}
+	if c.RequireUniqueKeys {
+		seen := make(map[provision.Key]bool)
+		for _, item := range allItems(prop) {
+			key, err := item.Key()
+			if err != nil {
+				f = append(f, "unique choice has no grounded key")
+			} else if seen[key] {
+				f = append(f, fmt.Sprintf("duplicate grounded key %q", key))
+			} else {
+				seen[key] = true
+			}
+		}
+	}
+	if c.OnlyAcceptableKeys {
+		allowed := make(map[provision.Key]bool, len(c.AcceptableKeys))
+		for _, key := range c.AcceptableKeys {
+			allowed[key] = true
+		}
+		for _, item := range allItems(prop) {
+			key, err := item.Key()
+			if err != nil || !allowed[key] {
+				f = append(f, fmt.Sprintf("grounded key %q is outside the acceptable set", key))
+			}
+		}
+	}
 	if len(c.RequireTitles) > 0 || len(c.ForbidTitles) > 0 {
 		switch c.TitleEvidence {
 		case TitleEvidenceGrounded:

@@ -926,7 +926,7 @@ func namedBlockLabel(intent Intent) string {
 		for _, match := range properNamedSetPattern.FindAllString(field, -1) {
 			words := strings.Fields(match)
 			words = words[:len(words)-1]
-			for len(words) > 1 && (words[0] == "Make" || words[0] == "Create" || words[0] == "Build" || words[0] == "A" || words[0] == "An") {
+			for len(words) > 1 && (words[0] == "Make" || words[0] == "Create" || words[0] == "Recreate" || words[0] == "Build" || words[0] == "A" || words[0] == "An") {
 				words = words[1:]
 			}
 			if len(labels) > 0 {

@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	scorecardSchemaVersion = 13
+	scorecardSchemaVersion = 14
 	corpusVersion          = "2026-08-27.8"
 )
 
@@ -32,26 +32,32 @@ type Generator interface {
 // RunnerConfig identifies one reproducible evaluation profile. Credentials and
 // provider payloads never enter it or the scorecard.
 type RunnerConfig struct {
-	Trials         int
-	Profile        string
-	Generator      ModelIdentity
-	Judge          ModelIdentity
-	ResourceBudget ResourceBudget
-	Contract       *CertificationContract
+	// DevelopmentCorpus prevents exposed development evidence from certifying.
+	DevelopmentCorpus bool
+	Trials            int
+	Profile           string
+	Generator         ModelIdentity
+	Judge             ModelIdentity
+	ResourceBudget    ResourceBudget
+	Contract          *CertificationContract
 }
 
 // CertificationContract identifies every versioned input that makes a planner
 // model score comparable and keeps hard gates separate from quality metrics.
 type CertificationContract struct {
-	CorpusVersion        string                  `json:"corpusVersion"`
-	CatalogFixtureSHA256 string                  `json:"catalogFixtureSha256"`
-	PromptVersion        string                  `json:"promptVersion"`
-	ToolSchemaVersion    string                  `json:"toolSchemaVersion"`
-	ScorerVersion        string                  `json:"scorerVersion"`
-	HardMetrics          []string                `json:"hardMetrics"`
-	QualityMetrics       []string                `json:"qualityMetrics"`
-	Thresholds           CertificationThresholds `json:"thresholds"`
-	Selection            CertificationSelection  `json:"selection"`
+	CorpusManifestSHA256             string                  `json:"corpusManifestSha256,omitempty"`
+	SourcesFixtureSHA256             string                  `json:"sourcesFixtureSha256,omitempty"`
+	SupplementalCatalogFixtureSHA256 string                  `json:"supplementalCatalogFixtureSha256,omitempty"`
+	SourceVersion                    string                  `json:"sourceVersion,omitempty"`
+	CorpusVersion                    string                  `json:"corpusVersion"`
+	CatalogFixtureSHA256             string                  `json:"catalogFixtureSha256"`
+	PromptVersion                    string                  `json:"promptVersion"`
+	ToolSchemaVersion                string                  `json:"toolSchemaVersion"`
+	ScorerVersion                    string                  `json:"scorerVersion"`
+	HardMetrics                      []string                `json:"hardMetrics"`
+	QualityMetrics                   []string                `json:"qualityMetrics"`
+	Thresholds                       CertificationThresholds `json:"thresholds"`
+	Selection                        CertificationSelection  `json:"selection"`
 }
 
 type CertificationSelection struct {
@@ -140,21 +146,22 @@ const (
 
 // Scorecard is the versioned machine-readable result of one Runner execution.
 type Scorecard struct {
-	SchemaVersion int                      `json:"schemaVersion"`
-	CorpusVersion string                   `json:"corpusVersion"`
-	GeneratedAt   time.Time                `json:"generatedAt"`
-	Profile       string                   `json:"profile"`
-	Generator     ModelIdentity            `json:"generator"`
-	Judge         ModelIdentity            `json:"judge"`
-	CallBudget    CallBudget               `json:"callBudget"`
-	ResourceUsage ResourceUsage            `json:"resourceUsage"`
-	RunSnapshot   *quality.RunSnapshot     `json:"runSnapshot,omitempty"`
-	Certified     bool                     `json:"certified"`
-	FailureCounts map[FailureStage]int     `json:"failureCounts"`
-	Results       []Result                 `json:"results"`
-	Cases         []CaseSummary            `json:"cases"`
-	Contract      *CertificationContract   `json:"contract,omitempty"`
-	Assessment    *CertificationAssessment `json:"assessment,omitempty"`
+	DevelopmentCorpus bool                     `json:"developmentCorpus,omitempty"`
+	SchemaVersion     int                      `json:"schemaVersion"`
+	CorpusVersion     string                   `json:"corpusVersion"`
+	GeneratedAt       time.Time                `json:"generatedAt"`
+	Profile           string                   `json:"profile"`
+	Generator         ModelIdentity            `json:"generator"`
+	Judge             ModelIdentity            `json:"judge"`
+	CallBudget        CallBudget               `json:"callBudget"`
+	ResourceUsage     ResourceUsage            `json:"resourceUsage"`
+	RunSnapshot       *quality.RunSnapshot     `json:"runSnapshot,omitempty"`
+	Certified         bool                     `json:"certified"`
+	FailureCounts     map[FailureStage]int     `json:"failureCounts"`
+	Results           []Result                 `json:"results"`
+	Cases             []CaseSummary            `json:"cases"`
+	Contract          *CertificationContract   `json:"contract,omitempty"`
+	Assessment        *CertificationAssessment `json:"assessment,omitempty"`
 }
 
 // CaseSummary makes stochastic stability visible rather than collapsing several
@@ -258,15 +265,16 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 		cardCorpusVersion = r.config.Contract.CorpusVersion
 	}
 	card := Scorecard{
-		SchemaVersion: scorecardSchemaVersion,
-		CorpusVersion: cardCorpusVersion,
-		GeneratedAt:   time.Now().UTC(),
-		Profile:       r.config.Profile,
-		Generator:     r.config.Generator,
-		Judge:         r.config.Judge,
-		CallBudget:    callBudget,
-		Contract:      r.config.Contract,
-		Certified:     len(cases) > 0,
+		SchemaVersion:     scorecardSchemaVersion,
+		CorpusVersion:     cardCorpusVersion,
+		GeneratedAt:       time.Now().UTC(),
+		Profile:           r.config.Profile,
+		Generator:         r.config.Generator,
+		Judge:             r.config.Judge,
+		CallBudget:        callBudget,
+		Contract:          r.config.Contract,
+		Certified:         len(cases) > 0 && !r.config.DevelopmentCorpus,
+		DevelopmentCorpus: r.config.DevelopmentCorpus,
 		FailureCounts: map[FailureStage]int{
 			FailureStageRetrieval:        0,
 			FailureStageGeneration:       0,

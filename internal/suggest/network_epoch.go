@@ -22,7 +22,7 @@ func networkReferenceSpans(text string) []networkReferenceSpan {
 		valid := true
 		for _, word := range label {
 			switch word {
-			case "you", "me", "make", "build", "create", "want", "a", "an":
+			case "you", "me", "make", "build", "create", "want", "a", "an", "franchise":
 				valid = false
 			}
 		}

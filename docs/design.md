@@ -11001,6 +11001,38 @@ that module. Its constructor must not widen that interface back to `store.Store`
 when a module is touched; it is not permission to split the shared SQL implementation or duplicate
 repositories per database.
 
+**Semantic query development is not certification.** The authored query pilot is a
+digest-pinned Development Corpus projected onto the existing `Suggester.Suggest` and
+`Runner.Run` interfaces, not a replacement evaluator or a fresh release holdout. Each
+case has a scenario group, a minimum-functionality/invariance/directional test type,
+independent outcome expectations and a named source fixture. Group siblings belong
+to one split; exposed development cases cannot be promoted into untouched holdout
+evidence. The initial pilot reuses existing synthetic Catalog and public-reference
+fixtures and adds explicitly synthetic network-era/ownership controls. These facts
+do not certify a complete historical programming roster or a household Library.
+
+Runner scorecard schema v14 adds `developmentCorpus`. A run configured as development
+always emits `certified: false`, even when every deterministic assertion and quality
+assessment passes; per-case results and the assessment remain useful development
+feedback. The pilot binds its corpus, fixture digests and current prompt/tool/source
+identities using optional manifest, source and supplemental Catalog digests on the
+contract. Model-selection comparison rejects development scorecards even when
+their certification flag is incorrectly set. Scripted model replies establish application/grade behavior only, never
+real-model understanding. Existing frozen certification/release manifests, answers,
+thresholds and production resource ceilings remain unchanged. Deliberately missing
+anchors, forbidden matches, unwanted dates, sparse selections and ownership errors
+must fail the same outcome assertions that accept the independent positive control.
+Provider trials remain explicitly budgeted, opt-in and non-CI. Actual-fault recovery
+qualification remains separately owned by #1195; no hypothetical failure earns
+recovery credit. The staged plan and coverage inventory live in
+`docs/engineering/plans/suggestion-query-evaluation.md`.
+
+Request-role extraction must distinguish a movie franchise channel from a
+television network reference. A request verb such as “Recreate” is not part of
+a named lineup's label; possessive network and daypart context must not turn
+one explicitly named block into conflicting labels. These corrections retain
+the existing membership-evidence requirements and source protocol.
+
 **Semantic certification is explicit, inference-spending, and behavioral through the final
 schedule.** `make eval` remains an exploratory run that may skip when no live library, catalog, or
 model is configured. `make eval-cert` is the release/operator assertion: missing configuration, an
