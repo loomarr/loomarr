@@ -93,10 +93,37 @@ paraphrased excerpts and uncertainty are recorded in the new digest-bound
 presence/ratings are labeled separately. There is no complete page capture or
 historical season oracle. See the [executable batch evidence](../plans/suggestion-query-evaluation.md#first-executable-expansion-batch).
 
+## Second executable identity review
+
+Observed 2026-09-16. Disney UK's phase retrospective remains the membership
+authority: Phase 1 names *Iron Man*, *The Incredible Hulk*, *Iron Man 2*,
+*Thor*, *Captain America: The First Avenger* and the UK title *Avengers
+Assemble*; its Phase 2 section separately begins with *Iron Man 3* and *Thor:
+The Dark World*. Current TMDB identity pages resolve those titles to movie Keys
+[1726](https://www.themoviedb.org/movie/1726-iron-man),
+[1724](https://www.themoviedb.org/movie/1724-the-incredible-hulk),
+[10138](https://www.themoviedb.org/movie/10138-iron-man-2),
+[10195](https://www.themoviedb.org/movie/10195-thor),
+[1771](https://www.themoviedb.org/movie/1771-captain-america-the-first-avenger)
+and [24428](https://www.themoviedb.org/movie/24428-the-avengers). The last
+identity is one film: the source's regional *Avengers Assemble* string does not
+create a second Catalog Key beside *The Avengers*.
+
+Phase 2 controls use *Iron Man 3*
+[68721](https://www.themoviedb.org/movie/68721-iron-man-3) and *Thor: The Dark
+World* [76338](https://www.themoviedb.org/movie/76338-thor-the-dark-world).
+Separate title-collision controls use the documentary *The Avengers: A Visual
+Journey* [448368](https://www.themoviedb.org/movie/448368-the-avengers-a-visual-journey)
+and *Almighty Thor* [63736](https://www.themoviedb.org/movie/63736-almighty-thor).
+Provider pages establish identity and current title/year metadata only; Disney's
+phase list establishes membership. The v2 fixture's Library ownership and
+ratings are simulated and explicitly labeled as such.
+
 ## Remaining review queue before further case authoring
 
-1. Map original American Full House, later TGIF revival titles and the six Phase 1 films to exact
-   provider Keys without replacing synthetic identities in frozen manifests.
+1. Map original American Full House and later TGIF revival titles to exact provider Keys without
+   replacing synthetic identities in frozen manifests. The six Phase One identities are now in the
+   cumulative v2 development corpus.
 2. Record source URL, observation date, supported role/epoch, excerpt digest and
    uncertainty for each new fixture fact. Keep retrieved page data untrusted.
 3. Obtain an independently reviewed historical-network source for each additional

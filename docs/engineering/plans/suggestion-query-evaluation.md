@@ -165,9 +165,49 @@ Explicit eval-package lint is necessary until the tag-only affected-package gap
 in [#1279](https://github.com/loomarr/loomarr/issues/1279) is repaired. Full eval
 tests and tagged lint pass; final affected verification and protected CI remain
 required. No paid provider trial, sealed holdout or new Playwright preview is
-claimed. MCU exact identity/alias mapping and additional History-era membership
-sources remain next authoring prerequisites; the 100-family registry is still
-the broader backlog, not a completed corpus.
+claimed. This batch was accepted through [#1280](https://github.com/loomarr/loomarr/pull/1280).
+
+### Second executable expansion batch
+
+Authoring checkpoint [#1285](https://github.com/loomarr/loomarr/issues/1285)
+advances the current cumulative snapshot to `query-expansion-v2.json`. It keeps
+all 30 v1 requests and adds 30 MCU Phase One requests: three minimum, fourteen
+invariance and thirteen directional tests across ten categories. Together with
+the immutable pilot there are now 132 authored Development Corpus requests,
+not 132 independent truth families and not a completed 1,000-request corpus.
+
+The reviewed MCU source family uses Disney's six-film Phase One roster and exact
+TMDB movie Keys: Iron Man (`movie:tmdb:1726`), The Incredible Hulk
+(`movie:tmdb:1724`), Iron Man 2 (`movie:tmdb:10138`), Thor
+(`movie:tmdb:10195`), Captain America: The First Avenger (`movie:tmdb:1771`)
+and the UK regional title Avengers Assemble, resolved to The Avengers' single
+identity (`movie:tmdb:24428`). Iron Man 3 (`movie:tmdb:68721`) and Thor: The
+Dark World (`movie:tmdb:76338`) are Phase Two negatives. The Avengers: A Visual
+Journey (`movie:tmdb:448368`) and Almighty Thor (`movie:tmdb:63736`) are
+identity-collision negatives. The [source note](../research/suggestion-query-source-truth.md)
+separates membership authority, provider identity and simulated Library facts.
+
+Eight independent MCU causal controls reject a missing regional alias, Phase Two
+padding, a title collision, duplicate padding, sparse output, wrong ownership,
+outside-Library selection and the wrong date axis. The production-path cases
+also exposed and now protect three failures: a numbered phase qualifier no longer
+becomes part of the source label; excluding a longer related title no longer
+removes a shorter valid member; and source completion cannot re-add a title whose
+known release year contradicts an explicit movie-release range. These repairs
+retain the existing membership, grounding and approval boundaries.
+
+The v2 manifest is a cumulative immutable snapshot. V1 manifest, Catalog and
+source bytes remain embedded and are pinned by literal digest tests. V2 binds
+the cumulative Catalog/source artifacts plus the production prompt, tool and
+source versions. Three owned and three missing Phase One films, plus all ratings,
+are simulated controls rather than household or streaming facts. Every one of
+the 60 cumulative requests crosses the production Suggester and Runner with an
+independently authored reply; every result remains non-certifying. No hosted
+provider call, spend, sealed holdout, browser run or release claim is included.
+
+Additional History-era membership sources, audience/scope/refinement families,
+fault journeys and the later sealed holdout remain next. The 100-family registry
+is still the broader backlog, not a completed corpus.
 
 ### Remaining expansion checkpoints
 

@@ -2,6 +2,7 @@ package suggest_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -55,6 +56,34 @@ func TestSuggestDiscoversNamedBlockSourceOnce(t *testing.T) {
 			}
 			if model.Calls != 2 || !strings.Contains(model.LastMessages[1].Content, "UNTRUSTED REFERENCE DATA") {
 				t.Fatalf("calls=%d; discovered source was not supplied to finalization", model.Calls)
+			}
+		})
+	}
+}
+
+func TestSuggestDiscoversAcronymSourceWithoutPhaseQualifier(t *testing.T) {
+	for _, request := range []string{"MCU Phase One.", "Recreate the MCU Phase One lineup.", "The MCU Phase One lineup of films, please."} {
+		t.Run(request, func(t *testing.T) {
+			meaning := dateMeaningNone()
+			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+			references := &testkit.ReferenceResolver{ByLabel: map[string]reference.Evidence{
+				"MCU": {
+					URL: "https://lineups.example/mcu", Title: "Synthetic MCU roster",
+					Excerpt: "The Matrix", TitleAnchors: []string{"The Matrix"},
+				},
+			}}
+			model := testkit.NewLLM(
+				testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
+				testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
+			)
+
+			proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).
+				Suggest(context.Background(), suggest.Intent{Description: request})
+			if got := references.Discoveries(); len(got) != 1 || got[0] != "MCU" {
+				t.Fatalf("discovery=%v, want the stable MCU source label", got)
+			}
+			if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != matrixCandidate().TMDBID {
+				t.Fatalf("proposal=%+v err=%v", proposal, err)
 			}
 		})
 	}
@@ -223,6 +252,76 @@ func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t 
 	}
 	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
 		t.Fatalf("preserved required-title trace is not persistable: %v; trace=%+v", err, proposal.Trace)
+	}
+}
+
+func TestSuggestNamedSetExclusionDoesNotRemoveShorterRelatedTitle(t *testing.T) {
+	ironMan := catalog.Candidate{MediaType: provision.Movie, TMDBID: 1726, Name: "Iron Man", Year: 2008, InLibrary: true}
+	ironMan2 := catalog.Candidate{MediaType: provision.Movie, TMDBID: 10138, Name: "Iron Man 2", Year: 2010}
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		switch query {
+		case ironMan.Name:
+			return []catalog.Candidate{ironMan}, nil
+		case ironMan2.Name:
+			return []catalog.Candidate{ironMan2}, nil
+		default:
+			return nil, nil
+		}
+	}}
+	references := &testkit.ReferenceResolver{ByLabel: map[string]reference.Evidence{
+		"MCU": {URL: "https://lineups.example/mcu", Title: "MCU", Excerpt: "Two reviewed members", TitleAnchors: []string{ironMan.Name, ironMan2.Name}},
+	}}
+	meaning := dateMeaningNone()
+	model := testkit.NewLLM(
+		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:1726"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+	)
+
+	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{
+		Description: "MCU Phase One lineup, but leave out Iron Man 2.",
+		MustExclude: []string{"Iron Man 2"},
+	})
+	if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != ironMan.TMDBID || len(proposal.Acquisitions) != 0 {
+		t.Fatalf("related-title exclusion removed the wrong member: proposal=%+v err=%v", proposal, err)
+	}
+}
+
+func TestSuggestNamedSourceCompletionRespectsKnownMovieReleaseRange(t *testing.T) {
+	oldMovie := catalog.Candidate{MediaType: provision.Movie, TMDBID: 1726, Name: "Iron Man", Year: 2008, InLibrary: true}
+	inRange := catalog.Candidate{MediaType: provision.Movie, TMDBID: 10138, Name: "Iron Man 2", Year: 2010, InLibrary: true}
+	corpus := &catalogfixture.Corpus{SearchFunc: func(_ context.Context, query string, _ int) ([]catalog.Candidate, error) {
+		switch query {
+		case oldMovie.Name:
+			return []catalog.Candidate{oldMovie}, nil
+		case inRange.Name:
+			return []catalog.Candidate{inRange}, nil
+		default:
+			return nil, nil
+		}
+	}}
+	references := &testkit.ReferenceResolver{ByLabel: map[string]reference.Evidence{
+		"MCU": {URL: "https://lineups.example/mcu", Title: "MCU", Excerpt: "Two reviewed members", TitleAnchors: []string{oldMovie.Name, inRange.Name}},
+	}}
+	description := "MCU Phase One lineup, only movies released from 2010 through 2012."
+	marker := "2010 through 2012"
+	start := strings.Index(description, marker)
+	meaning := fixtureDateMeaning("movie_release", "description", start, start+len(marker), 2010, 2012)
+	final, err := json.Marshal(map[string]any{
+		"picks":       []any{map[string]any{"mediaType": "movie", "key": "movie:tmdb:10138"}},
+		"dateMeaning": meaning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := testkit.NewLLM(
+		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
+		testkit.FinalResponse(string(final)),
+	)
+
+	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).
+		Suggest(context.Background(), suggest.Intent{Description: description})
+	if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != inRange.TMDBID || len(proposal.Acquisitions) != 0 {
+		t.Fatalf("source completion restored an out-of-range film: proposal=%+v err=%v", proposal, err)
 	}
 }
 

@@ -46,6 +46,7 @@ var (
 	properNamedSetPattern          = regexp.MustCompile(`\b[A-Z][[:alnum:]&'-]*(?:\s+[A-Z][[:alnum:]&'-]*){0,5}\s+(?i:collection|line-?up|block)\b`)
 	acronymCuePattern              = regexp.MustCompile(`(?i:\b(?:for|from|based\s+on|like)\s+)([A-Z][A-Z0-9&]{2,9})\b`)
 	acronymSetSuffixPattern        = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+(?:lineup|block|channel|like)\b)`)
+	acronymPhasePattern            = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+phase\s+(?:one|two|three|four|five|six|[0-9]+|[ivx]+)\b)`)
 	acronymEditorialBlockPattern   = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})(?i:\s+as\s+(?:it|they)\s+(?:felt|was|were)\s+(?:in|during|from)\s+(?:the\s+)?(?:19|20)[0-9]0s\b)`)
 	acronymDirectMembersPattern    = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b(?i:\s+(?:with|include|including)\b)`)
 	acronymSentenceEndPattern      = regexp.MustCompile(`\b([A-Z][A-Z0-9&]{2,9})\b\s*(?:[.!?,;:\x{2013}\x{2014}-]|$)`)
@@ -525,7 +526,7 @@ func preserveRequiredTitles(intent Intent, picks []pick, surfaced map[provision.
 // completeNamedSourceSelection turns the provider's named-set shortlist into
 // the bounded review pool. The provider's grounded choices remain first; unused
 // members may enter only from the independently resolved source candidates.
-func completeNamedSourceSelection(intent Intent, picks []pick, surfaced map[provision.Key]catalog.Candidate) []pick {
+func completeNamedSourceSelection(intent Intent, picks []pick, surfaced map[provision.Key]catalog.Candidate, meaning ValidatedDateMeaning) []pick {
 	if !requiresMembershipEvidence(intent) || len(intent.referenceCandidates) == 0 {
 		return picks
 	}
@@ -555,7 +556,7 @@ func completeNamedSourceSelection(intent Intent, picks []pick, surfaced map[prov
 			continue
 		}
 		grounded, found := surfaced[key]
-		if !found {
+		if !found || candidateOutsideTitleDateRange(grounded, meaning) {
 			continue
 		}
 		result = append(result, pick{
@@ -566,6 +567,27 @@ func completeNamedSourceSelection(intent Intent, picks []pick, surfaced map[prov
 		groundedCount++
 	}
 	return result
+}
+
+func candidateOutsideTitleDateRange(candidate catalog.Candidate, meaning ValidatedDateMeaning) bool {
+	if candidate.Year <= 0 {
+		return false
+	}
+	for _, axis := range meaning.ExecutionWindows() {
+		applicable := axis.Kind == DateAxisMovieRelease && candidate.MediaType == provision.Movie ||
+			axis.Kind == DateAxisSeriesPremiere && candidate.MediaType == provision.Series
+		if !applicable {
+			continue
+		}
+		matches := false
+		for _, window := range axis.Windows {
+			matches = matches || candidate.Year >= window.Start && candidate.Year <= window.End
+		}
+		if !matches {
+			return true
+		}
+	}
+	return false
 }
 
 func requiredIdentityConflicts(intent Intent, candidate catalog.Candidate) bool {
@@ -739,10 +761,18 @@ func (s *Suggester) resolveMembershipSource(ctx context.Context, intent Intent, 
 }
 
 func titleExplicitlyExcluded(intent Intent, title string) bool {
+	shadowedByLongerTitle := false
 	for _, excluded := range intent.MustExclude {
-		if sameExactTitle(excluded, title) || textmatch.ContainsPhrase(excluded, title) {
+		if sameExactTitle(excluded, title) {
 			return true
 		}
+		shadowedByLongerTitle = shadowedByLongerTitle || textmatch.ContainsPhrase(excluded, title)
+	}
+	// MustExclude contains exact title identities. When one of those titles has
+	// another candidate's whole name as a prefix, the longer binding owns the
+	// nearby negative prose ("leave out Iron Man 2" must not remove Iron Man).
+	if shadowedByLongerTitle {
+		return false
 	}
 	return freeformTitlePolarity(intent.Description, title) < 0 || freeformTitlePolarity(intent.RefineText, title) < 0
 }
@@ -914,7 +944,7 @@ func namedBlockLabel(intent Intent) string {
 		}
 	}
 	for _, field := range []string{intent.Description, intent.RefineText} {
-		for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymDirectMembersPattern, acronymDaypartBlockPattern, acronymSentenceEndPattern, acronymCuePattern, acronymEditorialBlockPattern} {
+		for _, pattern := range []*regexp.Regexp{acronymSetSuffixPattern, acronymPhasePattern, acronymDirectMembersPattern, acronymDaypartBlockPattern, acronymSentenceEndPattern, acronymCuePattern, acronymEditorialBlockPattern} {
 			for _, match := range pattern.FindAllStringSubmatchIndex(field, -1) {
 				if strings.HasPrefix(field[match[3]:], "'s") || directNetworkRoleBeforePattern.MatchString(field[:match[2]]) || directNetworkRolePattern.MatchString(field[match[3]:]) {
 					continue
@@ -927,7 +957,7 @@ func namedBlockLabel(intent Intent) string {
 		for _, match := range properNamedSetPattern.FindAllString(field, -1) {
 			words := strings.Fields(match)
 			words = words[:len(words)-1]
-			for len(words) > 1 && (words[0] == "Make" || words[0] == "Create" || words[0] == "Recreate" || words[0] == "Build" || words[0] == "A" || words[0] == "An") {
+			for len(words) > 1 && (words[0] == "Make" || words[0] == "Create" || words[0] == "Recreate" || words[0] == "Build" || words[0] == "A" || words[0] == "An" || words[0] == "The") {
 				words = words[1:]
 			}
 			if len(labels) > 0 {
@@ -937,13 +967,13 @@ func namedBlockLabel(intent Intent) string {
 						filtered = append(filtered, word)
 					}
 				}
-				if len(filtered) == 1 && labels[strings.ToLower(filtered[0])] != "" {
+				if len(filtered) > 0 && labels[strings.ToLower(filtered[0])] != "" {
 					continue
 				}
 			}
 			add(strings.Join(words, " "))
 		}
-		if bareProperNameNamesSet(field) {
+		if len(labels) == 0 && bareProperNameNamesSet(field) {
 			add(strings.Trim(strings.TrimSpace(field), ".,;:!?()[]{}\"'"))
 		}
 	}
