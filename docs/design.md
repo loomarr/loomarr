@@ -10626,7 +10626,30 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   ⚠ **There is no Discover tab.** Finding clips used to be its own destination; it is now something you do *to a source*, which is the only place the answer differs. ⚠ **Incoming does not replace the split-review route** — `/filler/splits/{proposalId}` remains a **sibling** of `/filler`, because the catalog page renders no `<Outlet/>` and nesting it would make the whole surface unreachable while every unit test stayed green (PROGRESS.md records the near-miss). The tab is an additional door.
 
-  ⚠ **The card's per-channel control is an include-set override, not two flags.** It replaces the pin/block pair: channels are checkboxes with a fit note, and **Back to automatic** returns the clip to being placed by the ladder. Pin-and-block let an operator build a state that reads as contradictory ("pinned *and* blocked") which the assembler had to resolve by rule; one set has no such state.
+  **Clip inspection is one right-side panel (#1272–#1274).** Opening a Library title or thumbnail in
+  either Grid or List, including a compilation segment, opens the existing Sheet with an exact
+  playable preview, status, useful known details, and its original source link when available.
+  Missing optional metadata is not a warning checklist. The panel reuses the clip player; Incoming
+  uses the same inspection content while retaining its own server-owned status and technical history.
+  Opening or playing never edits or assigns a clip. Closing stops playback and returns focus without
+  changing search, view, pagination, selection, or scroll. Optional **Edit details** is a deliberate
+  Save/Cancel task within the panel, with the shared location picker for broadcast corrections.
+  Automatic enrichment remains independent; unknown facts stay unknown.
+  Held media in Incoming is not mounted or revealed until an explicit **Preview clip** gesture;
+  opening status details is not consent to autoplay content that is still being prepared.
+  An exact single-hash catalog read may project `sourceUrl` from the acquisition manifest bound to
+  that hash (or its direct source-recording parent). Ordinary catalog pages do not perform per-tile
+  provenance reads. Missing provenance remains absent; filenames and source IDs are never used to
+  guess an original URL, and private paths or credential-bearing URLs are not exposed.
+
+  **Channel assignment is not a Library chore.** The Library's standalone tagging, scalar cycling,
+  AI-confirmation, and channel-assignment entry points are removed. Ready clips enter automatic
+  selection without those actions. Existing per-channel `pinned` and `excluded` policy remains in
+  advanced channel preferences, not a second Library chooser or an include-set adapter. Exclusion
+  wins; pinning takes priority over normal rotation, bypasses the era/audience/category ladder, and
+  may repeat. It does not bypass geography, playback-role, or duration restrictions. Copy must not
+  promise guaranteed airings or imply that an unchecked automatic clip is excluded. Saved overrides,
+  authorization, grounding, readiness, and server scheduling authority are unchanged.
 - **People** (admin, route `/people`) — imported users, roles, quotas, disable, sync-now (§11). "People" rather than "Users" because the list is households and family members, not system accounts.
 - **Settings** (admin, route `/settings`) — **seven tabs**: *Connections* (media server, requester, Tunarr, TMDB, plus `/readyz` and the re-runnable **connection checklist** of §13 as the troubleshooting console) · *AI* (provider/model, including the in-app **model manager** of §8.1 — probe, catalog, hot-swap, streaming pull) · *Defaults* (only the registry values channels can actually inherit: schedule horizon and break frequency) · *Notifications* (one provider list and **Add provider** flow for SMTP, webhook, Slack, Discord, and every other supported means; choose provider → enter its fields → select events → save → optional test) · *System* — itself sub-tabbed into **Tasks** (the §18.1 job console: cron, last/next run, Run-now) · **Playout** · **Database** · **Backup** · **About** — · *Security* (incl. **secret regeneration**) · *All settings* (every key, searchable). The typed registry, `env > database > default` resolution, runtime lifecycles, the cross-tab save bar, and the secrets lifecycle are `config-design.md`'s domain — **it wins on those mechanics** (§5 carries the page table and inline-commit exceptions); this row records only *where the surfaces are*.
 - **Account** (route `/account`, any authenticated user) — the signed-in user's own credentials: change password and view/revoke active sessions (§11). Distinct from **People**, which is an admin managing *other* accounts; this is the one settings-shaped surface a member can reach, which is why it sits outside the admin-only `/settings` IA above.

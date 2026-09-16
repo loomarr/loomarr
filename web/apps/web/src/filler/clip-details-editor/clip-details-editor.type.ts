@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 
-interface ClipTagDialogProps {
+interface ClipDetailsEditorProps {
   // Undefined while the list is refetching under an open dialog; the dialog renders
   // nothing rather than flashing empty fields.
   clip: ClipDTO | undefined;
@@ -8,4 +8,4 @@ interface ClipTagDialogProps {
   onSaved?: () => void;
 }
 
-export type { ClipTagDialogProps };
+export type { ClipDetailsEditorProps };

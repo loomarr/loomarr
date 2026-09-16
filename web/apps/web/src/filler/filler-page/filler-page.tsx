@@ -3,7 +3,6 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { PoolHealth } from "@/components/loomarr/filler/pool-health";
@@ -13,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { ClipTagDialog } from "../clip-tag-dialog";
 import { FillerCatalog } from "../filler-catalog";
 import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
@@ -22,17 +20,14 @@ import { FillerSettings } from "../filler-settings";
 import { Incoming } from "../incoming";
 import { SourcesTab } from "../sources-tab";
 import { TaxonomyTab } from "../taxonomy-tab";
-import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { FillerPageProps } from "./filler-page.type";
 
 // FillerPage is the route-level composition root. It owns only state shared across destinations:
-// navigation counts, installation readiness, the watch/health summary, and the one tag editor
-// opened by both Library and Incoming. Destination-specific behavior stays in its own module.
+// navigation counts, installation readiness, the watch/health summary. Destination-specific behavior stays in its own module.
 const FillerPage = ({ tab }: FillerPageProps) => {
   useDocumentTitle("Filler");
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const [tagging, setTagging] = useState<string>();
 
   // Preserve Library's deep-linkable state when an operator leaves and returns. The shell only
   // carries the opaque route state; FillerCatalog owns its interpretation and mutations.
@@ -55,15 +50,6 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const watch = unwrap(fillerApi.useFillerWatch().data, (body) => body);
   const poolQuery = fillerApi.useFillerPool({ query: { enabled: tab === "library" } });
   const pool = unwrap(poolQuery.data, (body) => body);
-
-  // Shared exact-identity editor. Always resolving by hash avoids coupling the shell to whichever
-  // Library page happens to be mounted, and includeHeld is required for Incoming clips.
-  const taggingQuery = fillerApi.useListFiller(
-    { hashes: tagging ? [tagging] : [], includeHeld: true, includeComposites: true, limit: 1 },
-    { query: { enabled: Boolean(tagging) } },
-  );
-  const taggingClip = unwrap(taggingQuery.data, (body) => body.clips[0]);
-  const { invalidateLifecycle } = useFillerInvalidate();
 
   if (!fillerConfigured && tab !== "settings") {
     return (
@@ -166,20 +152,8 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         ) : tab === "settings" ? (
           <FillerSettings />
         ) : (
-          <FillerCatalog isAdmin={isAdmin} onEditTags={setTagging} />
+          <FillerCatalog isAdmin={isAdmin} />
         )}
-
-        {taggingClip ? (
-          <ClipTagDialog
-            key={taggingClip.hash}
-            clip={taggingClip}
-            onClose={() => setTagging(undefined)}
-            onSaved={() => {
-              setTagging(undefined);
-              invalidateLifecycle();
-            }}
-          />
-        ) : null}
       </div>
     </div>
   );

@@ -3,14 +3,14 @@ import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ClipGeographyDTO } from "@loomarr/api/models/clipGeographyDTO";
 import type { PatchClipInputBodyKind } from "@loomarr/api/models/patchClipInputBodyKind";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { LocationPicker } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { ClipTagDialogProps } from "./clip-tag-dialog.type";
+import type { ClipDetailsEditorProps } from "./clip-details-editor.type";
 
 // The taxonomy axes, in display order — the independent dimensions a clip is tagged on (§10 V45a).
 // Ordered product-first because it is the deepest and most-used; the labels are the human forms.
@@ -42,14 +42,18 @@ const flattenAxis = (taxa: TaxonDTO[], axis: string): Array<{ taxon: TaxonDTO; d
   return out;
 };
 
-// ClipTagDialog — hand-correct one clip's match tags (§10). Tags are what let the
+// ClipDetailsEditor — hand-correct one clip's match tags (§10). Tags are what let the
 // scheduler place a clip, so getting them right is the difference between a matched pod
 // and the fallback ladder.
 //
 // `kind` is editable here too: detection at sync mis-reads a trailer as a commercial
 // often enough to matter, and kind drives pod ROLE — a bumper bookends a pod while a
 // commercial fills it — so a wrong kind yields structurally wrong pods.
-const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
+const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) => {
+  const editorRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    editorRef.current?.focus();
+  }, []);
   const [kind, setKind] = useState(clip?.kind ?? "commercial");
   const [era, setEra] = useState(clip?.era ? String(clip.era) : "");
   // ClipDTO's audience is optional AND includes "" for unset, so the state is widened to
@@ -87,8 +91,8 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
       data: {
         // The clip is identified by `hash` in the body (§10 V45a) — no {id} URL segment.
         hash: clip.hash,
-        // Unclassified is a held lifecycle state, not a role an operator may assert. Omitting
-        // kind keeps that state intact while still allowing independent metadata corrections.
+        // Unclassified means the optional role is unknown, not that this Ready clip needs approval.
+        // Omit kind rather than asserting a role the operator has not selected.
         ...(kind === "unclassified" ? {} : { kind: kind as PatchClipInputBodyKind }),
         // An empty era means "unset", which the API takes as 0 — not "leave alone".
         era: era ? Number(era) : 0,
@@ -115,90 +119,83 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
     // A labelled REGION, because the page already has a "Kind" and an "Audience" filter
     // with the same visible names. Without this scope, a screen-reader user hears two
     // identical controls and cannot tell which one edits the clip in front of them.
-    <Card>
-      <section aria-label={`Edit tags: ${clip.name}`} className="flex flex-col gap-4 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="truncate font-semibold text-lg">{clip.name}</h2>
-            {clip.aiTagged && (
-              <p className="mt-1 text-muted-foreground text-sm">
-                These tags were guessed by the AI. Saving confirms them as yours.
-              </p>
-            )}
-          </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            Close
-          </Button>
+    <section
+      ref={editorRef}
+      tabIndex={-1}
+      aria-label={`Edit details: ${clip.name}`}
+      className="flex flex-col gap-4 outline-none"
+    >
+      <p className="text-muted-foreground text-sm">
+        Change a detail if it is wrong. You do not need to fill in everything.
+      </p>
+
+      {patch.error != null && <ErrorState error={patch.error} />}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="tag-kind">Type</Label>
+          <Select value={kind} onValueChange={(v) => setKind(v as ClipDTO["kind"])}>
+            <SelectTrigger id="tag-kind">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unclassified" disabled>
+                Not identified yet
+              </SelectItem>
+              <SelectItem value="commercial">Commercial</SelectItem>
+              <SelectItem value="bumper">Bumper</SelectItem>
+              <SelectItem value="station_id">Station ID</SelectItem>
+              <SelectItem value="psa">PSA</SelectItem>
+              <SelectItem value="trailer">Trailer</SelectItem>
+              <SelectItem value="interstitial">Interstitial</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-
-        {patch.error != null && <ErrorState error={patch.error} />}
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="tag-kind">Kind</Label>
-            <Select value={kind} onValueChange={(v) => setKind(v as ClipDTO["kind"])}>
-              <SelectTrigger id="tag-kind">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unclassified" disabled>
-                  Unclassified — choose a role
-                </SelectItem>
-                <SelectItem value="commercial">Commercial</SelectItem>
-                <SelectItem value="bumper">Bumper</SelectItem>
-                <SelectItem value="station_id">Station ID</SelectItem>
-                <SelectItem value="psa">PSA</SelectItem>
-                <SelectItem value="trailer">Trailer</SelectItem>
-                <SelectItem value="interstitial">Interstitial</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="tag-era">Era</Label>
-            <Input
-              id="tag-era"
-              type="number"
-              placeholder="1994"
-              value={era}
-              onChange={(e) => setEra(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="tag-audience">Audience</Label>
-            {/* Radix reserves "" for clearing, so an "unset" sentinel stands in for the
+        <div>
+          <Label htmlFor="tag-era">Year</Label>
+          <Input
+            id="tag-era"
+            type="number"
+            placeholder="e.g. 1977"
+            value={era}
+            onChange={(e) => setEra(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="tag-audience">Audience</Label>
+          {/* Radix reserves "" for clearing, so an "unset" sentinel stands in for the
                 empty audience and maps back to "" in state. */}
-            <Select value={audience || "unset"} onValueChange={(v) => setAudience(v === "unset" ? "" : v)}>
-              <SelectTrigger id="tag-audience">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unset">Unset</SelectItem>
-                <SelectItem value="kids">Kids</SelectItem>
-                <SelectItem value="family">Family</SelectItem>
-                <SelectItem value="general">General</SelectItem>
-                <SelectItem value="late_night">Late night</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="tag-brand">Brand</Label>
-            <Input
-              id="tag-brand"
-              maxLength={120}
-              placeholder="Advertiser or sponsor"
-              value={brand}
-              onChange={(event) => setBrand(event.target.value)}
-            />
-            <p className="mt-1 text-muted-foreground text-xs">
-              Separate from topic tags; clear it if no brand is grounded.
-            </p>
-          </div>
+          <Select value={audience || "unset"} onValueChange={(v) => setAudience(v === "unset" ? "" : v)}>
+            <SelectTrigger id="tag-audience">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unset">Not known</SelectItem>
+              <SelectItem value="kids">Kids</SelectItem>
+              <SelectItem value="family">Family</SelectItem>
+              <SelectItem value="general">General</SelectItem>
+              <SelectItem value="late_night">Late night</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+        <div>
+          <Label htmlFor="tag-brand">Advertiser</Label>
+          <Input
+            id="tag-brand"
+            maxLength={120}
+            placeholder="Advertiser or sponsor"
+            value={brand}
+            onChange={(event) => setBrand(event.target.value)}
+          />
+          <p className="mt-1 text-muted-foreground text-xs">The advertiser or sponsor shown in the clip.</p>
+        </div>
+      </div>
 
-        <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-2">
-          <legend className="px-1 font-medium text-sm">Broadcast geography</legend>
-          <div>
-            <Label htmlFor="tag-geographic-scope">Scope</Label>
+      <details className="rounded-lg border border-border p-3">
+        <summary className="cursor-pointer font-medium text-sm">Location and broadcast details</summary>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Label htmlFor="tag-geographic-scope">Applies to</Label>
             <Select
               value={geoScope}
               onValueChange={(value) => setGeoScope(value as ClipGeographyDTO["scope"])}
@@ -207,33 +204,25 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="unknown">Unknown — review required</SelectItem>
-                <SelectItem value="national">National</SelectItem>
-                <SelectItem value="local">Local market</SelectItem>
+                <SelectItem value="unknown">Not known</SelectItem>
+                <SelectItem value="national">The whole country</SelectItem>
+                <SelectItem value="local">A local area</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label htmlFor="tag-country">Country code</Label>
-            <Input
-              id="tag-country"
-              maxLength={2}
-              className="uppercase"
-              disabled={geoScope === "unknown"}
-              value={country}
-              onChange={(event) => setCountry(event.target.value.toUpperCase())}
-              placeholder="US"
-            />
-          </div>
-          <div>
-            <Label htmlFor="tag-market">Local market</Label>
-            <Input
-              id="tag-market"
-              maxLength={120}
-              disabled={geoScope !== "local"}
-              value={market}
-              onChange={(event) => setMarket(event.target.value)}
-              placeholder="New York"
+          <div className="sm:col-span-2">
+            <LocationPicker
+              value={{
+                country: geoScope === "unknown" ? "" : country,
+                market: geoScope === "local" ? market : undefined,
+              }}
+              allowDetection={false}
+              emptyHint="Leave this unknown if you are not sure."
+              onChange={(location) => {
+                setCountry(location.country);
+                setMarket(location.market ?? "");
+                if (geoScope === "unknown") setGeoScope(location.market ? "local" : "national");
+              }}
             />
           </div>
           <div>
@@ -266,21 +255,20 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
             />
           </div>
           <p className="text-muted-foreground text-xs sm:col-span-2">
-            Country and market control where this clip may air. Loomarr records this save as an operator
-            correction and never infers location from timezone.
+            Use the area this clip was made for, not necessarily your home location. Leave it unknown if you
+            are not sure.
           </p>
-        </fieldset>
+        </div>
+      </details>
 
-        {/* Tags: the taxonomy vocabulary as toggleable chips, grouped by axis (§10 V45a). This
+      {/* Tags: the taxonomy vocabulary as toggleable chips, grouped by axis (§10 V45a). This
             REPLACES the free-text category input — a tag must be a real taxon, so a checklist of the
             actual vocabulary is both easier and impossible to mis-type. The category shadow is derived
             server-side, so it is not edited here. */}
-        <fieldset className="flex flex-col gap-3">
-          <legend className="font-medium text-sm">Observed facts</legend>
-          <p className="text-muted-foreground text-xs">
-            Choose only what this clip actually shows or advertises. Loomarr derives broader matches from the
-            hierarchy; classifier synonyms are managed separately under Advanced.
-          </p>
+      <details className="rounded-lg border border-border p-3">
+        <summary className="cursor-pointer font-medium text-sm">Topics and tags</summary>
+        <div className="mt-3 flex flex-col gap-3">
+          <p className="text-muted-foreground text-xs">Choose what this clip shows or advertises.</p>
           {vocab.error != null && <ErrorState error={vocab.error} />}
           {vocabTaxa == null ? (
             <p className="text-muted-foreground text-sm">Loading the tag vocabulary…</p>
@@ -318,29 +306,29 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
               );
             })
           )}
-        </fieldset>
-
-        {derivedTags.length > 0 ? (
-          <section className="rounded-md border border-border bg-surface/40 p-3" aria-label="Derived matches">
-            <p className="font-medium text-sm">Derived matches — read only</p>
-            <p className="mt-1 text-muted-foreground text-xs">
-              Inherited from the observed facts above and updated automatically when the hierarchy changes.
-            </p>
-            <p className="mt-2 break-words text-sm">{derivedLabels.join(", ")}</p>
-          </section>
-        ) : null}
-
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button size="sm" disabled={patch.isPending} onClick={save}>
-            {patch.isPending ? "Saving…" : "Save tags"}
-          </Button>
         </div>
-      </section>
-    </Card>
+      </details>
+
+      {derivedTags.length > 0 ? (
+        <section className="rounded-md border border-border bg-surface/40 p-3" aria-label="Derived matches">
+          <p className="font-medium text-sm">Derived matches — read only</p>
+          <p className="mt-1 text-muted-foreground text-xs">
+            Inherited from the observed facts above and updated automatically when the hierarchy changes.
+          </p>
+          <p className="mt-2 break-words text-sm">{derivedLabels.join(", ")}</p>
+        </section>
+      ) : null}
+
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button size="sm" disabled={patch.isPending} onClick={save}>
+          {patch.isPending ? "Saving…" : "Save details"}
+        </Button>
+      </div>
+    </section>
   );
 };
 
-export { ClipTagDialog };
+export { ClipDetailsEditor };

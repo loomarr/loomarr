@@ -1,0 +1,79 @@
+import { getListFillerSourcesMockHandler, getSettingsListMockHandler } from "@loomarr/api/msw";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { SettingsEditsProvider } from "@/settings/settings-edits";
+import { setting } from "@/test/fixtures/settings";
+import { server } from "@/test/msw/server";
+import { RouterHarness } from "@/test/story-utils";
+import { FillerSettings } from "./filler-settings";
+
+const renderSettings = (section?: string) => {
+  server.use(
+    getListFillerSourcesMockHandler({ sources: [], total: 0 }),
+    getSettingsListMockHandler({
+      features: { filler: true },
+      settings: [
+        setting({
+          key: "filler.fetch.every",
+          label: "Check frequency",
+          value: "6h",
+          kind: "duration",
+          group: "filler",
+        }),
+        setting({
+          key: "filler.fetch.max_per_run",
+          label: "New clips",
+          value: "10",
+          kind: "int",
+          group: "filler",
+        }),
+        setting({
+          key: "filler.fetch.max_catalog_clips",
+          label: "Catalog limit",
+          value: "500",
+          kind: "int",
+          group: "filler",
+          advanced: true,
+        }),
+        setting({
+          key: "filler.fetch.max_disk_gb",
+          label: "Storage limit",
+          value: "20",
+          kind: "int",
+          group: "filler",
+          advanced: true,
+        }),
+      ],
+    }),
+  );
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <SettingsEditsProvider>
+        <RouterHarness
+          initialPath={section ? `/filler?section=${section}` : "/filler"}
+          content={<FillerSettings />}
+        />
+      </SettingsEditsProvider>
+    </QueryClientProvider>,
+  );
+};
+
+describe("focused Filler settings", () => {
+  it("defaults to downloads without showing unrelated storage fields", async () => {
+    renderSettings();
+    expect(await screen.findByRole("spinbutton", { name: "New clips" })).toHaveValue(10);
+    expect(screen.getByRole("heading", { name: "Automatic downloads" })).toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: "Storage limit" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/No enabled sources are currently downloading automatically/),
+    ).toBeInTheDocument();
+  });
+
+  it("opens the explicitly selected storage task, including its advanced fields", async () => {
+    renderSettings("storage");
+    expect(await screen.findByRole("spinbutton", { name: "Catalog limit" })).toHaveValue(500);
+    expect(screen.getByRole("spinbutton", { name: "Storage limit" })).toHaveValue(20);
+    expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
+  });
+});

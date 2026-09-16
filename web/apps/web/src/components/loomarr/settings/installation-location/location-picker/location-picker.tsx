@@ -30,6 +30,7 @@ const LocationPicker = ({
   value,
   onChange,
   allowDetection = false,
+  emptyHint = "Choose a location before continuing.",
   locked = false,
   lockedLabel,
   error,
@@ -270,9 +271,7 @@ const LocationPicker = ({
           {visibleError}
         </p>
       )}
-      {!value.country && !visibleError && (
-        <p className="mt-2 text-muted-foreground text-sm">Choose a location before continuing.</p>
-      )}
+      {!value.country && !visibleError && <p className="mt-2 text-muted-foreground text-sm">{emptyHint}</p>}
     </div>
   );
 };

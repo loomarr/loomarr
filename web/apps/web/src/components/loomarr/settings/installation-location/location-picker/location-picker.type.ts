@@ -9,6 +9,7 @@ interface LocationPickerProps {
   value: LocationValue;
   onChange: (location: LocationDTO) => void;
   allowDetection?: boolean;
+  emptyHint?: string;
   locked?: boolean;
   lockedLabel?: string;
   error?: string;

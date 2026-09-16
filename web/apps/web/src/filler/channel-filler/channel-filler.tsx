@@ -346,7 +346,7 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
         <div className="flex flex-col gap-4">
           <FillerClipList
             label="Prefer on this channel"
-            hint="Play these clips ahead of automatic rotation when they fit. A recent preference may repeat."
+            hint="Play these clips ahead of automatic rotation, even when year, audience, or topics differ. Location, type, and length restrictions still apply. Preferred clips may repeat."
             ids={pinned}
             onChange={(next) => setDraft({ ...draft, pinned: next })}
             resolve={resolve}

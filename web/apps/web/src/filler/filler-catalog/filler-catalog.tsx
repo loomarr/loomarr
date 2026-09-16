@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ClipCard } from "@/components/loomarr/filler/clip-card";
-import { ClipPlayer } from "@/components/loomarr/filler/clip-player";
 import { ClipRow } from "@/components/loomarr/filler/clip-row";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,28 +17,22 @@ import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLoomarrEventListener } from "@/events/events-provider";
+import { ClipDetails } from "../clip-details";
+import { ClipDetailsEditor } from "../clip-details-editor";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
 import type { FillerSearch } from "../filler-search";
-import { PinClipDialog } from "../pin-clip-dialog";
 import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { FillerCatalogProps } from "./filler-catalog.type";
-
-// One cycled tag. Deliberately the same shape ClipCard's onCycle emits, so the card and the
-// page cannot drift on what a retag carries. ⚠ `category` is GONE (§10 V45a): it is a DERIVED
-// shadow of the taxonomy tags, not a directly-cycled field — the card cycles only era/audience now,
-// and tags are edited in the dialog (which serves the real vocabulary).
-type TagChange = Partial<Pick<ClipDTO, "era" | "audience">>;
 
 // The bulk bar's three dropdowns (V35). ⚠ Each is INDEPENDENT — picking one sends only that
 // field, and the server leaves the other two alone. A single "apply" that posted all three
 // would blank whatever the operator had not touched, which is the failure the BE's per-field
 // optionality exists to prevent.
 //
-// The vocabularies mirror the clip card's chips. ⚠ They deliberately omit the card's trailing
-// "" / 0 entries: those exist there so CYCLING can pass through "unset", which is a different
-// affordance from a menu — an "unset" item in a bulk menu is a one-click way to blank a
-// hundred clips' tags, and nothing in this bar should be that easy.
+// Bulk options omit unknown/unset values: a bulk correction must not accidentally blank
+// optional metadata across a hundred clips. Unknown values remain quiet on ordinary cards.
 // ⚠ Labelled "Set …", not "Era"/"Audience"/"Category". The catalog's FILTER bar already owns
 // those names on this page, and two controls sharing an accessible name is a real ambiguity for
 // anyone driving by keyboard or screen reader — a test caught it as "found multiple elements",
@@ -48,7 +41,7 @@ type TagChange = Partial<Pick<ClipDTO, "era" | "audience">>;
 // ⚠ Bulk "Set category" was REMOVED (§10 V45a). Category is a DERIVED shadow of the taxonomy tags —
 // not a directly-settable field — and a single-value bulk menu cannot express a tag SET without either
 // wiping a clip's other tags or inventing a questionable "add one tag to N clips" affordance. Tag
-// editing is per-clip in the dialog, which serves the real vocabulary. Bulk era/audience stay: those
+// editing is per-clip in the details editor, which serves the real vocabulary. Bulk era/audience stay: those
 // ARE single closed-enum values a menu fits. (The old category options were also a rule violation —
 // hardcoded, and a DIFFERENT 6-value set than every other place used; see the no-hardcode rule.)
 
@@ -69,10 +62,9 @@ const BULK_TAG_FIELDS = [
 // filler is picked by LOOKING at it — a wall of frames is the point; the list is for scanning
 // a large catalog and bulk-selecting, where a thumbnail per row is noise.
 //
-// ⚠ Only the GRID acts on one clip (tag/pin/split). That is the mock's split and it is
-// deliberate: see the note in `clip-row.tsx` on why per-row actions are not added back.
+// Both views open the shared clip panel; bulk selection remains independent.
 const VIEWS = [
-  { id: "grid", label: "Grid", icon: LayoutGrid, title: "Cards with thumbnails and per-clip actions" },
+  { id: "grid", label: "Grid", icon: LayoutGrid, title: "Cards with thumbnails and clip details" },
   { id: "list", label: "List", icon: List, title: "A dense row per clip, for scanning and selecting" },
 ] as const;
 
@@ -95,7 +87,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
   return (
     <div className="flex flex-col gap-2">
       {/* Keep the ordinary clip surface as the parent. A compilation still needs the same
-          preview, tag, era and split controls as every other catalog item; replacing it with a
+          inspection entry point and confirmed split action; replacing it with a
           bespoke group heading made those established actions disappear. The disclosure below
           adds hierarchy without creating a second, weaker representation of the parent. */}
       {renderParent(clip)}
@@ -144,7 +136,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
 // The catalog is mounted only for `/filler/library`. Its filters remain URL-driven, deep-linkable,
 // and scoped to the validated filler route; the page shell merely preserves that opaque search
 // state when it renders the Library navigation link.
-const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
+const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
   const navigate = useNavigate();
   // Filters live in the URL (deep-linkable, shareable, back-button aware) — the route's
   // validateSearch narrows them. setFilters merges a partial change and writes with
@@ -191,7 +183,15 @@ const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
     });
   const viewRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const chooseView = (next: (typeof VIEWS)[number]["id"]) =>
-    setFilters({ view: next === "grid" ? undefined : next });
+    navigate({
+      to: "/filler/library",
+      search: (prev) => ({
+        ...prev,
+        page: page > 1 ? page : undefined,
+        view: next === "grid" ? undefined : next,
+      }),
+      replace: true,
+    });
   const onViewKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let next = index;
     if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % VIEWS.length;
@@ -207,14 +207,21 @@ const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
     if (nextView) chooseView(nextView.id);
   };
 
-  const [pinning, setPinning] = useState<string>();
+  const [inspecting, setInspecting] = useState<string>();
+  const [editing, setEditing] = useState(false);
+  const detailTrigger = useRef<HTMLElement>(null);
+  const openDetails = (hash: string) => {
+    detailTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setEditing(false);
+    setInspecting(hash);
+  };
+  const closeDetails = () => {
+    setInspecting(undefined);
+    setEditing(false);
+  };
   // The clip whose split is awaiting confirmation, by hash (§10 V54 A8). Nothing fires until the
   // operator confirms — see the dialog for why the old first-click behaviour was a hazard.
   const [splitting, setSplitting] = useState<string>();
-  // The clip open in the player (V39), by path. A path rather than the DTO so the dialog always
-  // renders the CURRENT row — retagging a clip while it plays would otherwise leave the player
-  // showing a stale copy.
-  const [playing, setPlaying] = useState<string>();
 
   // One page of the catalog (§10 V51d). ⚠ This was an unbounded read of every clip in the
   // install; the endpoint now caps at 500 and defaults to 100, so an un-paged catalog would
@@ -233,6 +240,14 @@ const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
       ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
     },
     { query: { enabled: true } },
+  );
+  // Exact identity also resolves segments expanded inside a recording, not just the result page.
+  const inspection = fillerApi.useListFiller(
+    { hashes: inspecting ? [inspecting] : [], includeHeld: true, includeComposites: true, limit: 1 },
+    { query: { enabled: Boolean(inspecting) } },
+  );
+  const inspectedClip = unwrap(inspection.data, (body) =>
+    body.clips.find((clip) => clip.hash === inspecting),
   );
   const parent = fillerApi.useListFiller(
     { hashes: parentHash ? [parentHash] : [], includeComposites: true, limit: 1 },
@@ -327,44 +342,6 @@ const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
     },
   });
 
-  // Era-suggestion confirm (§10 V34). ⚠ The PATCH body must carry the clip's CURRENT
-  // audience: UpdateClipClassification writes both scalar fields unconditionally, so a
-  // bare `{era}` would wipe it. Setting era confirms and clears the
-  // suggestion in the same write (the BE's rule).
-  // ⚠ `invalidateLifecycle`, not just the clip list. A retag can move a clip between the queue
-  // and the catalog and changes what the pool can cover, so all three views are now stale —
-  // without the other two keys the row sits in Incoming until a reload.
-  const confirmEra = fillerApi.useTagFillerClip({
-    mutation: {
-      onSuccess: invalidateLifecycle,
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't confirm the era"),
-    },
-  });
-
-  // Curried so the JSX spread stays a plain value — a typed inline arrow inside
-  // `{...(cond ? {...} : {})}` trips the TSX parser on the generic-looking annotation.
-  const cycleFor = (clip: ClipDTO) => (change: TagChange) => retag(clip, change);
-
-  // ⚠ THE ONLY WAY THIS PAGE WRITES ONE SCALAR CLASSIFICATION. `UpdateClipClassification`
-  // overwrites era and audience on every call, so a PATCH carrying just the changed field silently
-  // wipes the other. The taxonomy and its category shadow are a separate transaction.
-  const retag = (clip: ClipDTO, change: TagChange) =>
-    confirmEra.mutate({
-      data: {
-        // ⚠ The clip is identified by `hash` IN THE BODY (§10 V45a) — no {id} URL segment (the
-        // path has slashes a route can't match / a proxy decodes).
-        hash: clip.hash,
-        // Kind is deliberately absent: the BE writes it separately (a shared code path with
-        // the AI tagger), and sending it here would be a second opinion on a field this
-        // interaction never edits. ⚠ `category`/`tags` are absent too (§10 V45a): a cycle only
-        // ever changes era or audience, and omitting tags leaves the clip's taxonomy tags alone —
-        // the derived category shadow rides along unchanged. Tag edits go through the dialog.
-        era: change.era ?? clip.era,
-        audience: (change.audience ?? clip.audience) as never,
-      },
-    });
-
-  // Compilation splitting (§10 V34): POST starts a detection JOB, the terminal
   // `filler_split` SSE frame hands over the proposal id, and we navigate to the review
   // gate. Same shape as the ingest job below — request returns immediately, progress
   // arrives on the bus.
@@ -429,24 +406,18 @@ const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
       clip={clip}
       {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
       selected={selected.has(clip.hash)}
+      onOpen={() => openDetails(clip.hash)}
     />
   );
   const renderCatalogCard = (clip: ClipDTO) => (
     <ClipCard
       key={clip.hash}
       clip={clip}
-      {...(isAdmin ? { onTag: () => onEditTags(clip.hash) } : {})}
-      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => onEditTags(clip.hash) } : {})}
-      {...(isAdmin && !clip.isComposite ? { onPin: () => setPinning(clip.hash) } : {})}
-      {...(isAdmin && clip.suggestedEra
-        ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
-        : {})}
-      {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
       {...(isAdmin && clip.isComposite ? { onSplit: () => setSplitting(clip.hash) } : {})}
       splitPending={Boolean(splitJob) && splitJob?.clipHash === clip.hash && splitJob.status === "running"}
       {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
       selected={selected.has(clip.hash)}
-      onPlay={() => setPlaying(clip.hash)}
+      onOpen={() => openDetails(clip.hash)}
     />
   );
   const renderComposite = (clip: ClipDTO) => (
@@ -455,7 +426,9 @@ const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
       clip={clip}
       onManage={() => setFilters({ parent: clip.hash })}
       renderParent={view === "list" ? renderCatalogRow : renderCatalogCard}
-      renderChild={(child) => <ClipRow key={child.hash} clip={child} />}
+      renderChild={(child) => (
+        <ClipRow key={child.hash} clip={child} onOpen={() => openDetails(child.hash)} />
+      )}
     />
   );
 
@@ -777,10 +750,6 @@ const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
         </>
       )}
 
-      {pinning && rows && (
-        <PinClipDialog clip={rows.find((c) => c.hash === pinning)} onClose={() => setPinning(undefined)} />
-      )}
-
       {/* The split confirmation (§10 V54 A8). Resolved from the CURRENT page like its
               siblings, so a clip that vanishes under a filter closes the dialog rather than
               confirming a hash that is no longer on screen. */}
@@ -798,15 +767,84 @@ const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
         />
       )}
 
-      {/* The player (V39). ⚠ `?? null` rather than a `&&` guard like its siblings above: this
-              dialog takes a NULLABLE clip and derives `open` from it, so handing it `undefined`
-              would be a type error and handing it nothing at all would leave it permanently
-              closed. A row that has vanished under a filter closes the player, which is the
-              honest outcome — the clip it was showing is no longer in the list. */}
-      <ClipPlayer
-        clip={rows?.find((c) => c.hash === playing) ?? null}
-        onClose={() => setPlaying(undefined)}
-      />
+      <Sheet
+        open={Boolean(inspecting)}
+        onOpenChange={(open) => !open && closeDetails()}
+        swipeDirection="right"
+      >
+        {inspecting ? (
+          <SheetContent finalFocus={detailTrigger}>
+            <SheetHeader>
+              <SheetTitle>{inspectedClip?.name ?? "Clip details"}</SheetTitle>
+              <SheetDescription>
+                {editing
+                  ? "Edit details"
+                  : inspectedClip?.held
+                    ? "Preparing"
+                    : inspectedClip?.isComposite
+                      ? "Recording"
+                      : "Ready"}
+              </SheetDescription>
+            </SheetHeader>
+            <div className="space-y-5 p-6">
+              {inspection.error ? (
+                <ErrorState error={inspection.error} onRetry={() => inspection.refetch()} />
+              ) : inspectedClip ? (
+                editing && isAdmin ? (
+                  <ClipDetailsEditor
+                    key={inspectedClip.hash}
+                    clip={inspectedClip}
+                    onClose={() => setEditing(false)}
+                    onSaved={() => {
+                      setEditing(false);
+                      invalidateLifecycle();
+                    }}
+                  />
+                ) : (
+                  <>
+                    <ClipDetails
+                      clip={inspectedClip}
+                      {...(isAdmin ? { onEdit: () => setEditing(true) } : {})}
+                    />
+                    <details className="rounded-lg border border-border p-4 text-sm">
+                      <summary className="cursor-pointer font-medium">Technical details</summary>
+                      <dl className="mt-3 space-y-2">
+                        {inspectedClip.quality ? (
+                          <div>
+                            <dt className="text-muted-foreground">Resolution</dt>
+                            <dd>{inspectedClip.quality}</dd>
+                          </div>
+                        ) : null}
+                        {inspectedClip.language ? (
+                          <div>
+                            <dt className="text-muted-foreground">Language</dt>
+                            <dd>
+                              {inspectedClip.language === "none" ? "No speech" : inspectedClip.language}
+                            </dd>
+                          </div>
+                        ) : null}
+                        {inspectedClip.license ? (
+                          <div>
+                            <dt className="text-muted-foreground">Source license</dt>
+                            <dd className="break-words">{inspectedClip.license}</dd>
+                          </div>
+                        ) : null}
+                        {!inspectedClip.quality && !inspectedClip.language && !inspectedClip.license ? (
+                          <p className="text-muted-foreground">No technical details recorded yet.</p>
+                        ) : null}
+                      </dl>
+                    </details>
+                  </>
+                )
+              ) : (
+                <p role="status" className="text-muted-foreground text-sm">
+                  {inspection.isLoading ? "Loading clip…" : "This clip is no longer available."}
+                </p>
+              )}
+            </div>
+          </SheetContent>
+        ) : null}
+      </Sheet>
     </div>
   );
 };

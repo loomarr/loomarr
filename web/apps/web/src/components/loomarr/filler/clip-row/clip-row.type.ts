@@ -8,6 +8,7 @@ interface ClipRowProps {
   // the same row without a control that would 403. `selected` alone does nothing.
   selected?: boolean;
   onToggleSelect?: () => void;
+  onOpen?: () => void;
   className?: string;
 }
 

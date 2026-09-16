@@ -45,30 +45,34 @@ describe("ClipCard", () => {
     expect(screen.getByText("30s")).toBeInTheDocument();
   });
 
-  it("flags an untagged clip with a Tag action", () => {
+  it("keeps missing optional details quiet for a Ready clip", () => {
     render(
-      <ClipCard clip={{ ...base, tagged: false, era: undefined, audience: undefined }} onTag={() => {}} />,
+      <ClipCard
+        clip={{ ...base, kind: "unclassified", tagged: false, era: undefined, audience: undefined }}
+        onOpen={() => {}}
+      />,
     );
-    expect(screen.getByText("Untagged")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /tag clip/i })).toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.queryByText(/Untagged|Geography unknown|Unclassified/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /tag clip|use in a channel/i })).not.toBeInTheDocument();
   });
-
   // §10 V45a: the "AI-tagged" badge was removed (it told an operator nothing actionable). The
   // confirm-tags affordance for an AI-suggested clip remains — that IS the useful action.
-  it("offers a confirm for AI-suggested tags", () => {
-    render(<ClipCard clip={{ ...base, tagged: false, aiTagged: true }} onConfirmTags={() => {}} />);
-    expect(screen.getByRole("button", { name: /confirm tags/i })).toBeInTheDocument();
+  it("does not turn automatic metadata into a confirmation chore", () => {
+    render(<ClipCard clip={{ ...base, tagged: false, aiTagged: true }} onOpen={() => {}} />);
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /confirm tags/i })).not.toBeInTheDocument();
   });
-
   // A tagged clip must still be editable. §10's likely tagging error is a trailer scanned
   // as a commercial — it arrives with era/audience/category filled in, so it counts as
   // "tagged" while being wrong, and kind drives pod ROLE. Gating the edit on `!tagged`
   // left precisely that clip uncorrectable from the UI.
-  it("offers an edit path for an already-tagged clip", () => {
-    render(<ClipCard clip={{ ...base, tagged: true }} onTag={() => {}} />);
-    expect(screen.getByRole("button", { name: /edit tags/i })).toBeInTheDocument();
+  it("opens inspection for already-tagged clips", () => {
+    const onOpen = vi.fn();
+    render(<ClipCard clip={base} onOpen={onOpen} />);
+    fireEvent.click(screen.getByRole("button", { name: "View details for Sunny D — Dude!" }));
+    expect(onOpen).toHaveBeenCalledOnce();
   });
-
   // ⚠ The important half of V17b. A placeholder for every frameless clip would be the wrong
   // default: on a Tunarr-backed install, or one where ffmpeg never ran, that is the ENTIRE
   // catalog, and a grid of identical grey rectangles reads as a broken page rather than an
@@ -104,20 +108,14 @@ describe("ClipCard", () => {
 
   // §10 era grounding (V34): an ungrounded AI year renders as a QUESTION, never as a tag —
   // and the confirm affordance appears only when the call site offers it (admin).
-  it("renders an ungrounded AI era as a suggestion, not a tag", () => {
+  it("does not display an ungrounded year as a known fact", () => {
     render(<ClipCard clip={{ ...base, era: undefined, suggestedEra: 1985 }} />);
-    expect(screen.getByText("1985s?")).toBeInTheDocument();
-    // No confirm without the handler — a member sees the question but cannot answer it.
-    expect(screen.queryByRole("button", { name: /confirm 1985/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/1985/)).not.toBeInTheDocument();
   });
-
-  it("offers the admin a one-click era confirm", () => {
-    const onConfirmEra = vi.fn();
-    render(<ClipCard clip={{ ...base, era: undefined, suggestedEra: 1985 }} onConfirmEra={onConfirmEra} />);
-    fireEvent.click(screen.getByRole("button", { name: /confirm 1985/i }));
-    expect(onConfirmEra).toHaveBeenCalledOnce();
+  it("does not offer one-click affirmation of an ungrounded year", () => {
+    render(<ClipCard clip={{ ...base, era: undefined, suggestedEra: 1985 }} onOpen={() => {}} />);
+    expect(screen.queryByRole("button", { name: /confirm/i })).not.toBeInTheDocument();
   });
-
   // ⚠ These four pin fields the API has always sent and the card never rendered — a clip
   // that never airs looked identical to one on every break. The last case is the one that
   // matters most: `playsCounted:false` is NOT zero plays.
@@ -163,30 +161,23 @@ describe("ClipCard", () => {
   });
 
   // Inline retag (the v2 mock's cycleEra/cycleAud/cycleCat).
-  it("cycles a tag to the next value on click", () => {
-    const onCycle = vi.fn();
-    render(<ClipCard clip={{ ...base, era: 1990 }} onCycle={onCycle} />);
-    fireEvent.click(screen.getByRole("button", { name: /change the era/i }));
-    expect(onCycle).toHaveBeenCalledWith({ era: 2000 });
+  it("renders the year as a read-only fact", () => {
+    render(<ClipCard clip={{ ...base, era: 1990 }} onOpen={() => {}} />);
+    expect(screen.getByText("1990s")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /change the era/i })).not.toBeInTheDocument();
   });
-
   // ⚠ UNSET must be reachable. Cycling that only advances through values leaves a wrongly
   // tagged clip un-blankable without opening the dialog — and §10 says the likely error IS
   // a mis-tagged clip (a trailer scanned as a commercial).
-  it("cycles through unset rather than trapping a wrong tag", () => {
-    const onCycle = vi.fn();
-    render(<ClipCard clip={{ ...base, era: 2020 }} onCycle={onCycle} />);
-    fireEvent.click(screen.getByRole("button", { name: /change the era/i }));
-    expect(onCycle).toHaveBeenCalledWith({ era: 0 });
+  it("does not invent an unset year control", () => {
+    render(<ClipCard clip={{ ...base, era: 0 }} onOpen={() => {}} />);
+    expect(screen.queryByRole("button", { name: /era/i })).not.toBeInTheDocument();
   });
-
-  it("emits only the field that changed, so the caller supplies the siblings", () => {
-    const onCycle = vi.fn();
-    render(<ClipCard clip={{ ...base, audience: "kids", category: "food" }} onCycle={onCycle} />);
-    fireEvent.click(screen.getByRole("button", { name: /change the audience/i }));
-    expect(onCycle).toHaveBeenCalledWith({ audience: "family" });
+  it("keeps audience facts noninteractive while inspection remains accessible", () => {
+    render(<ClipCard clip={base} onOpen={() => {}} />);
+    expect(screen.getByText("Kids")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /change the audience/i })).not.toBeInTheDocument();
   });
-
   // ⚠ A member gets the tags as plain badges, never as controls: every retag route 403s
   // server-side (§11, §19), and a button that always fails is worse than no button.
   it("renders tags as static badges when retagging is not offered", () => {
@@ -215,9 +206,9 @@ describe("ClipCard", () => {
     // screen reader's element list and unusable by voice control ("click play" — which one?).
     it("names the play button after the clip", () => {
       const onPlay = vi.fn();
-      render(<ClipCard clip={{ ...framed, name: "Frosted Flakes" }} onPlay={onPlay} />);
+      render(<ClipCard clip={{ ...framed, name: "Frosted Flakes" }} onOpen={onPlay} />);
 
-      fireEvent.click(screen.getByRole("button", { name: "Play Frosted Flakes" }));
+      fireEvent.click(screen.getByRole("button", { name: "Preview Frosted Flakes" }));
       expect(onPlay).toHaveBeenCalledOnce();
     });
 
@@ -225,16 +216,16 @@ describe("ClipCard", () => {
     // hover would make it unreachable by Tab — a keyboard user could never play a clip. This is
     // the assertion that catches a "simplification" to conditional rendering.
     it("keeps the play button focusable without a hover", () => {
-      render(<ClipCard clip={framed} onPlay={() => {}} />);
+      render(<ClipCard clip={framed} onOpen={() => {}} />);
       // Queried with no pointer events fired at all.
-      expect(screen.getByRole("button", { name: /^play/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^preview/i })).toBeInTheDocument();
     });
 
     // The animation is NOT fetched on mount. A catalog is hundreds of cards, and mounting every
     // preview would pull the whole grid's worth of webp immediately — the exact cost the still
     // exists to avoid.
     it("loads the animation only once hovered", () => {
-      const { container } = render(<ClipCard clip={{ ...framed, hoverImage }} onPlay={() => {}} />);
+      const { container } = render(<ClipCard clip={{ ...framed, hoverImage }} onOpen={() => {}} />);
 
       expect(container.querySelector('img[src*="bbbb2222"]')).toBeNull();
 
@@ -253,7 +244,7 @@ describe("ClipCard", () => {
     //
     // This is the test that catches a "keep it mounted for caching" optimisation reintroducing it.
     it("unmounts the animation on leave so the next hover starts it again", () => {
-      const { container } = render(<ClipCard clip={{ ...framed, hoverImage }} onPlay={() => {}} />);
+      const { container } = render(<ClipCard clip={{ ...framed, hoverImage }} onOpen={() => {}} />);
       const frame = container.querySelector(".group") as HTMLElement;
 
       fireEvent.mouseEnter(frame);
@@ -271,7 +262,7 @@ describe("ClipCard", () => {
     // that has not re-synced since V39, so a card that asked anyway would 404 once per hover
     // across the whole catalog.
     it("does not request an animation for a clip that has none", () => {
-      const { container } = render(<ClipCard clip={framed} onPlay={() => {}} />);
+      const { container } = render(<ClipCard clip={framed} onOpen={() => {}} />);
       fireEvent.mouseEnter(container.querySelector(".group") as HTMLElement);
 
       expect(container.querySelector('img[src*="bbbb2222"]')).toBeNull();
@@ -282,26 +273,25 @@ describe("ClipCard", () => {
     // ⚠ **Without a frame there is nowhere for the disc to sit** — and on a Tunarr-backed install,
     // or one where ffmpeg never ran, that is the ENTIRE catalog. The action row carries the
     // fallback, or the feature is invisible on exactly those installs.
-    it("falls back to an action-row button when there is no thumbnail", () => {
-      const onPlay = vi.fn();
-      render(<ClipCard clip={{ ...base, thumbImage: undefined }} onPlay={onPlay} />);
-
-      fireEvent.click(screen.getByRole("button", { name: /play/i }));
-      expect(onPlay).toHaveBeenCalledOnce();
+    it("opens a frameless clip through its title without another action row", () => {
+      const onOpen = vi.fn();
+      render(<ClipCard clip={{ ...base, thumbImage: undefined }} onOpen={onOpen} />);
+      fireEvent.click(screen.getByRole("button", { name: "View details for Sunny D — Dude!" }));
+      expect(onOpen).toHaveBeenCalledOnce();
+      expect(screen.queryByRole("button", { name: /preview/i })).not.toBeInTheDocument();
     });
-
     // ...and NOT both at once: two "Play X" buttons on one card is noise on screen and a real
     // problem in a screen reader's element list.
     it("offers exactly one play control when there is a thumbnail", () => {
-      render(<ClipCard clip={framed} onPlay={() => {}} />);
-      expect(screen.getAllByRole("button", { name: /play/i })).toHaveLength(1);
+      render(<ClipCard clip={framed} onOpen={() => {}} />);
+      expect(screen.getAllByRole("button", { name: /preview/i })).toHaveLength(1);
     });
 
     // No handler, no control anywhere — the honest degraded state for a caller with nowhere to
     // open a player.
     it("renders no play control without a handler", () => {
       render(<ClipCard clip={framed} />);
-      expect(screen.queryByRole("button", { name: /play/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /preview/i })).not.toBeInTheDocument();
     });
   });
 });

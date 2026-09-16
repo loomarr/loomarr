@@ -308,6 +308,65 @@ describe("ChannelFiller", () => {
     ).toBe(true);
   });
 
+  it("preserves saved clip exceptions when applying ordinary criteria changes", async () => {
+    const user = userEvent.setup();
+    const { patches } = stubChannelFiller();
+    renderSection(
+      <ChannelFiller
+        channelId="ch-1"
+        revision={7}
+        policy={policy({ audience: "kids", pinned: ["preferred"], excluded: ["blocked"] })}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: /choose products & topics/i }));
+    await user.click(await screen.findByRole("button", { name: "Candy" }));
+    await user.click(await screen.findByRole("button", { name: /apply filler/i }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({
+      revision: 7,
+      policy: {
+        ordering: "shuffle",
+        scope: { era: { from: 1990, to: 1999 } },
+        filler: { pinned: ["preferred"], excluded: ["blocked"], audience: "kids", categories: ["candy"] },
+      },
+    });
+  });
+
+  it.each(["pinned", "excluded"] as const)(
+    "removing a saved %s exception returns only that list to automatic",
+    async (list) => {
+      const user = userEvent.setup();
+      const savedClip: ClipDTO = {
+        hash: "saved-clip",
+        name: "Saved clip",
+        kind: "commercial",
+        durationMs: 30000,
+        aiTagged: false,
+        tagged: true,
+        playCount: 0,
+        playsCounted: true,
+      };
+      const { patches } = stubChannelFiller({ clips: [savedClip] });
+      const other = list === "pinned" ? "excluded" : "pinned";
+      renderSection(
+        <ChannelFiller
+          channelId="ch-1"
+          revision={3}
+          policy={policy({ [list]: ["saved-clip"], [other]: ["other-clip"], audience: "kids" })}
+        />,
+      );
+      await user.click(await screen.findByRole("button", { name: /Clip preferences \(advanced\)/ }));
+      await user.click(await screen.findByRole("button", { name: "Remove Saved clip" }));
+      await user.click(await screen.findByRole("button", { name: /apply filler/i }));
+      await waitFor(() => expect(patches).toHaveLength(1));
+      const payload = patches[0] as { policy: ChannelPolicy };
+      expect(payload.policy.filler?.[list] ?? []).toEqual([]);
+      expect(payload.policy.filler?.[other]).toEqual(["other-clip"]);
+      expect(payload.policy.scope).toEqual({ era: { from: 1990, to: 1999 } });
+      expect(payload.policy.filler?.audience).toBe("kids");
+    },
+  );
+
   it("surfaces a preview failure rather than a silently empty break", async () => {
     // ⚠ Hand-written, and it has to be: the spec declares errors via `default:` (RFC 7807) with
     // no explicit 422, so orval generates no failing handler. The catalog read still comes from

@@ -378,18 +378,19 @@ describe("Filler page", () => {
     renderAt("/filler/library");
     await screen.findByText("Some Trailer");
 
-    await userEvent.click(screen.getByRole("button", { name: /edit tags/i }));
+    await userEvent.click(screen.getByRole("button", { name: /view details for/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^edit details$/i }));
 
     // Scoped to the editor's region: the page's own Kind/Audience FILTERS share those
     // visible names, which is why the editor is a labelled region in the first place.
     // Open the editor's Kind select, then pick "trailer" — the listbox portals to the
     // body (outside the region), so its option is found at the screen level.
-    const editor = await screen.findByRole("region", { name: /edit tags: some trailer/i });
-    await userEvent.click(within(editor).getByLabelText("Kind"));
+    const editor = await screen.findByRole("region", { name: /edit details: some trailer/i });
+    await userEvent.click(within(editor).getByLabelText("Type"));
     await userEvent.click(await screen.findByRole("option", { name: "Trailer" }));
-    await userEvent.clear(within(editor).getByLabelText("Brand"));
-    await userEvent.type(within(editor).getByLabelText("Brand"), "Warner Bros.");
-    await userEvent.click(within(editor).getByRole("button", { name: /save tags/i }));
+    await userEvent.clear(within(editor).getByLabelText("Advertiser"));
+    await userEvent.type(within(editor).getByLabelText("Advertiser"), "Warner Bros.");
+    await userEvent.click(within(editor).getByRole("button", { name: /save details/i }));
 
     // ⚠ Was `find(([, i]) => i?.method === "PATCH")` — "a PATCH, to anything". `tagPatches` is fed
     // only by the resolver bound to `PATCH /v1/filler/tags`.
@@ -423,14 +424,16 @@ describe("Filler page", () => {
     renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
-    await userEvent.click(screen.getByRole("button", { name: /edit tags/i }));
-    const editor = await screen.findByRole("region", { name: /edit tags: frosted flakes/i });
+    await userEvent.click(screen.getByRole("button", { name: /view details for/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^edit details$/i }));
+    const editor = await screen.findByRole("region", { name: /edit details: frosted flakes/i });
+    await userEvent.click(within(editor).getByText("Topics and tags"));
     expect(within(editor).getByRole("button", { name: /cereal$/i })).toHaveAttribute("aria-pressed", "true");
     expect(within(editor).getByRole("button", { name: "Food" })).toHaveAttribute("aria-pressed", "false");
     const derived = within(editor).getByRole("region", { name: "Derived matches" });
     expect(within(derived).getByText("Food")).toBeInTheDocument();
     expect(within(derived).getByText(/read only/i)).toBeInTheDocument();
-    await userEvent.click(within(editor).getByRole("button", { name: /save tags/i }));
+    await userEvent.click(within(editor).getByRole("button", { name: /save details/i }));
 
     await expect.poll(() => tagPatches).toHaveLength(1);
     expect((tagPatches[0] as { tags: string[] }).tags).toEqual(["cereal"]);
@@ -553,47 +556,64 @@ describe("Filler page", () => {
   // BE's UpdateClipClassification writes era and audience unconditionally and a bare {era} would wipe
   // audience. `category` is NOT sent (§10 V45a): it's a derived shadow of the taxonomy tags,
   // and this confirm never touches tags.
-  it("confirms an era suggestion, keeping the clip's other tags", async () => {
+  it("corrects a year explicitly without losing other grounded details", async () => {
     const { tagPatches } = stubFiller({
-      clips: [clip({ era: 0, suggestedEra: 1985, audience: "kids", category: "cereal", tagged: false })],
+      clips: [
+        clip({
+          era: 0,
+          suggestedEra: 1985,
+          audience: "kids",
+          tags: ["cereal", "food"],
+          assertedTags: ["cereal"],
+          category: "cereal",
+          tagged: false,
+        }),
+      ],
     });
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
-    expect(screen.getByText("1985s?")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /confirm 1985/i }));
-
-    // §10 V45a: the clip is identified by `hash` in the body (no {id} URL segment).
-    await expect
-      .poll(() => tagPatches, { message: "the confirm should PATCH the clip" })
-      .toEqual([{ hash: "c1-hash", era: 1985, audience: "kids" }]);
+    await userEvent.click(await screen.findByRole("button", { name: /view details for frosted flakes/i }));
+    expect(screen.queryByText("1985s?")).not.toBeInTheDocument();
+    expect(tagPatches).toEqual([]);
+    await userEvent.click(await screen.findByRole("button", { name: /^edit details$/i }));
+    const editor = await screen.findByRole("region", { name: /edit details: frosted flakes/i });
+    await userEvent.type(within(editor).getByLabelText("Year"), "1985");
+    await userEvent.click(within(editor).getByRole("button", { name: /save details/i }));
+    await expect.poll(() => tagPatches).toHaveLength(1);
+    expect(tagPatches[0]).toMatchObject({ hash: "c1-hash", era: 1985, audience: "kids", tags: ["cereal"] });
+    expect(tagPatches[0]).not.toHaveProperty("category");
   });
-
   // ⚠ THE FOOTGUN, pinned at the page level. `UpdateClipClassification` overwrites era and audience on
   // every call, so a cycle that PATCHed only the clicked field would silently wipe the other —
   // once per click, not once per dialog. This asserts the whole tag row travels with a single
   // cycled chip. `category` is NOT part of the body (§10 V45a): it's a derived shadow, and a
   // cycle never touches the clip's taxonomy tags — omitting `tags` leaves them, and therefore
   // the shadow, unchanged server-side.
-  it("sends the clip's other tags when one is cycled, so none are wiped", async () => {
+  it("saves an audience correction with the unchanged year and direct tag set", async () => {
     const { tagPatches } = stubFiller({
-      clips: [clip({ era: 1990, audience: "kids", category: "cereal", tagged: true })],
+      clips: [
+        clip({
+          era: 1990,
+          audience: "kids",
+          category: "cereal",
+          tags: ["cereal", "food"],
+          assertedTags: ["cereal"],
+          tagged: true,
+        }),
+      ],
     });
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
-
-    await userEvent.click(screen.getByRole("button", { name: /change the audience/i }));
-
-    // era rides along UNCHANGED; only audience advances; category/tags are absent entirely.
-    // §10 V45a: the clip is identified by `hash` in the body.
-    await expect
-      .poll(() => tagPatches, { message: "cycling a chip should PATCH the clip" })
-      .toEqual([{ hash: "c1-hash", era: 1990, audience: "family" }]);
+    await userEvent.click(await screen.findByRole("button", { name: /view details for frosted flakes/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^edit details$/i }));
+    const editor = await screen.findByRole("region", { name: /edit details: frosted flakes/i });
+    await userEvent.click(within(editor).getByLabelText("Audience"));
+    await userEvent.click(await screen.findByRole("option", { name: "Family" }));
+    expect(tagPatches).toEqual([]);
+    await userEvent.click(within(editor).getByRole("button", { name: /save details/i }));
+    await expect.poll(() => tagPatches).toHaveLength(1);
+    expect(tagPatches[0]).toMatchObject({ hash: "c1-hash", era: 1990, audience: "family", tags: ["cereal"] });
   });
-
-  // A member sees the suggestion but NOT its answer — the PATCH is admin-only server-side
-  // (§19), and the UI gate is the courtesy that keeps the console clean.
-  it("shows a member the era question without the confirm action", async () => {
+  // Members can inspect clips, but metadata corrections remain admin-only (§19).
+  it("keeps clip inspection read-only for a member", async () => {
     // ⚠ `isComposite` is deliberate. Since V54 A8 the split action renders only on a compilation,
     // so a member test using the DEFAULT 30s commercial would assert the absence of a button that
     // is absent for everyone — passing whether or not the admin gate exists. The clip must be one
@@ -604,7 +624,10 @@ describe("Filler page", () => {
     });
     renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
-    expect(screen.getByText("1985s?")).toBeInTheDocument();
+    expect(screen.queryByText("1985s?")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /split into clips/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /view details for frosted flakes/i }));
+    expect(screen.queryByRole("button", { name: /^edit details$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /confirm 1985/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /split into clips/i })).not.toBeInTheDocument();
   });
