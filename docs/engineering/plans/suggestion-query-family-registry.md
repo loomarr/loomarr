@@ -10,14 +10,16 @@ material; none is an untouched holdout. Each example below is a design probe, no
 a passed test or a complete expected-answer set. Family status is `proposed` until
 its source facts, independent oracle and negative controls are reviewed.
 
-Three cumulative executable batches now have 75 authored requests across the
-TGIF, MCU Phase One and partial History editorial-era source families. The first
-two provide partial evidence relevant to BLK-01, IDN-02, SET-02, OWN-01/02/04,
-POL-01 and date-axis behavior. EPO-01 now has 15 requests and reviewed controls,
-but remains **partial/single-anchor** because primary sources support Modern
-Marvels only, not a complete 1990s History roster. Case categories do not become
-new truth families. The other registry rows remain proposed until their own
-source/oracle review and coverage. All executable batches are development-only.
+Four cumulative executable batches now have 108 authored requests across the
+TGIF, MCU Phase One, partial History editorial-era and reviewed movie-pool source
+families. The first three provide partial evidence relevant to BLK-01, IDN-02,
+SET-02, EPO-01, OWN-01/02/04, POL-01 and date-axis behavior. The fourth adds
+partial evidence for DAT-01, INT-01/03/04, PPL-01/02 and REF-01/03. Its mood
+rubrics are authored but have no completed reviewers, and its PG ceiling is
+synthetic plumbing rather than audience-source promotion. Case categories do
+not become new truth families. The other registry rows remain proposed until
+their own source/oracle review and coverage. All executable batches are
+development-only.
 
 The authoring target is at least ten distinct reviewed requests per family:
 1,000+ requests total. Do not count a prefix/suffix Cartesian product as semantic
@@ -116,7 +118,8 @@ Source family: `exact-title-identity`. Review status: proposed; fixture-ready: n
 
 ### Meaning of dates
 
-Source family: `date-axis-meaning`. Review status: proposed; fixture-ready: no.
+Source family: `date-axis-meaning`. Review status: DAT-01 partial executable;
+fixture-ready: DAT-01 movie-release cases only.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |
@@ -128,7 +131,9 @@ Source family: `date-axis-meaning`. Review status: proposed; fixture-ready: no.
 
 ### Date interval boundaries
 
-Source family: `date-interval-boundaries`. Review status: proposed; fixture-ready: no.
+Source family: `date-interval-boundaries`. Review status: INT-01/03/04 partial
+executable; fixture-ready: reviewed fixed movie intervals only. INT-02 still lacks
+a sourced 1990--92 positive; INT-05 still needs a bound observation clock.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |
@@ -140,7 +145,8 @@ Source family: `date-interval-boundaries`. Review status: proposed; fixture-read
 
 ### Performer and creator roles
 
-Source family: `person-credit-role`. Review status: proposed; fixture-ready: no.
+Source family: `person-credit-role`. Review status: PPL-01/02 partial executable;
+fixture-ready: reviewed Tom Hanks and Spielberg/Zemeckis movie roles only.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |
@@ -164,7 +170,8 @@ Source family: `genre-intersection`. Review status: proposed; fixture-ready: no.
 
 ### Mood and atmosphere
 
-Source family: `subjective-mood`. Review status: proposed; fixture-ready: no.
+Source family: `subjective-mood`. Review status: ordinal rubric authored;
+fixture-ready: deterministic development projection only, completed reviewers no.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |
@@ -173,6 +180,11 @@ Source family: `subjective-mood`. Review status: proposed; fixture-ready: no.
 | MOD-03 | Suspenseful but not frightening | Directional intensity contrast with calibrated subjective judgment. |
 | MOD-04 | Slow shows I can leave on in the background | Pacing/attention expectations need reviewed evidence. |
 | MOD-05 | Nineties nostalgia, not necessarily nineties episodes | Nostalgia must not silently impose an airing interval. |
+
+The v4 movie cases exercise a small directional comfort/tense/dark slice with
+`movie-mood-ordinal-v1`. They do not promote any MOD row: two independent reviews,
+stored disagreements and threshold adjudication are still required before these
+rubrics become subjective outcome evidence.
 
 ### Audience constraints
 
@@ -185,6 +197,10 @@ Source family: `audience-policy`. Review status: proposed; fixture-ready: no.
 | AUD-03 | Nothing above PG-13 | Explicit ceiling must survive retrieval and final proposal. |
 | AUD-04 | Family shows, including titles with no rating | Unknown rating is not silently equivalent to allowed. |
 | AUD-05 | Keep this channel child-friendly when adding variety | Refine may tighten but never relax the existing audience ceiling. |
+
+The v4 PG case is a synthetic policy-path control only. AFI-reported historical
+MPAA fields and a BBFC classification do not constitute a same-authority rating
+set, so AUD-02/03 remain proposed.
 
 ### Library and acquisition authority
 
@@ -236,7 +252,9 @@ Source family: `input-language-form`. Review status: proposed; fixture-ready: no
 
 ### Region and language roles
 
-Source family: `regional-language-role`. Review status: proposed; fixture-ready: no.
+Source family: `regional-language-role`. Review status: supporting field evidence
+reviewed; fixture-ready: one French-language movie and one South Korean-origin
+movie case, with no registry row yet promoted.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |
@@ -260,7 +278,8 @@ Source family: `catalog-outcome-health`. Review status: proposed; fixture-ready:
 
 ### Refinement and user selections
 
-Source family: `refinement-selection-state`. Review status: proposed; fixture-ready: no.
+Source family: `refinement-selection-state`. Review status: REF-01/03 partial
+executable; fixture-ready: bounded movie retain/add and retain/remove turns only.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |

@@ -11095,6 +11095,21 @@ expectations; independent cooperative replies and deliberately wrong replies
 cross the same production Suggester/Runner interfaces. New batches cannot rewrite
 frozen pilot/certification facts or count scripted success as model qualification.
 
+Movie-query development cases preserve field authority as part of the fixture
+contract: release constraints use `movie_release`; cast, creator and combined
+people calls are counted as distinct operations; original language is not origin
+country; and either field remains absent when its reviewed source does not state
+it. Refinement cases may carry both the free-text change and the current lineup
+through the same production `Suggester.Suggest` seam, while required and forbidden
+Keys independently grade retained, added and removed choices. A development case
+may attach a versioned subjective rubric with directional positive/negative Keys,
+but rubric authorship is not completed human review. That metadata is intentionally
+not projected into `Case.JudgeRubric`, cannot produce a scripted judge pass, and
+does not become certification evidence without the separately recorded reviewers,
+disagreements and adjudication required by its research protocol. Cross-jurisdiction
+or non-board rating facts may exercise synthetic policy plumbing only; they cannot
+promote an audience family to reviewed truth.
+
 Explicit Library-only wording is a hard suggestion qualifier, including “no
 shows added from outside my library”; source-pool completion cannot restore
 outside-Library picks as selections or alternates. A named block described “as

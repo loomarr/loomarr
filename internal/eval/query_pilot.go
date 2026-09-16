@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -20,7 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json
+//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json testdata/query-expansion-v4.json testdata/query-expansion-catalog-v4.json
 var queryPilotFiles embed.FS
 
 // QueryPilotCorpus is exposed development evidence, never a release holdout.
@@ -39,22 +41,41 @@ type QueryPilotCorpus struct {
 }
 
 type QueryPilotCase struct {
-	ID              string              `json:"id"`
-	Group           string              `json:"group"`
-	Category        string              `json:"category"`
-	Type            string              `json:"type"`
-	FixtureCase     string              `json:"fixtureCase"`
-	Description     string              `json:"description"`
-	MustInclude     []string            `json:"mustInclude,omitempty"`
-	MustExclude     []string            `json:"mustExclude,omitempty"`
-	MinGrounded     int                 `json:"minGrounded"`
-	MinLineup       int                 `json:"minLineup,omitempty"`
-	MinAcquisitions int                 `json:"minAcquisitions,omitempty"`
-	AcceptableKeys  []provision.Key     `json:"acceptableKeys"`
-	RequireKeys     []provision.Key     `json:"requireKeys,omitempty"`
-	ForbidKeys      []provision.Key     `json:"forbidKeys,omitempty"`
-	NoDates         bool                `json:"noDates,omitempty"`
-	Dates           *schedule.DateScope `json:"dates,omitempty"`
+	ID                    string                  `json:"id"`
+	Group                 string                  `json:"group"`
+	Category              string                  `json:"category"`
+	Type                  string                  `json:"type"`
+	FixtureCase           string                  `json:"fixtureCase"`
+	Description           string                  `json:"description"`
+	RefineText            string                  `json:"refineText,omitempty"`
+	CurrentLineup         []suggest.LineupContext `json:"currentLineup,omitempty"`
+	MustInclude           []string                `json:"mustInclude,omitempty"`
+	MustExclude           []string                `json:"mustExclude,omitempty"`
+	MinGrounded           int                     `json:"minGrounded"`
+	MinLineup             int                     `json:"minLineup,omitempty"`
+	MinAcquisitions       int                     `json:"minAcquisitions,omitempty"`
+	MinMovies             int                     `json:"minMovies,omitempty"`
+	AllowedMediaTypes     []provision.MediaType   `json:"allowedMediaTypes,omitempty"`
+	ExpectedToolOperation string                  `json:"expectedToolOperation,omitempty"`
+	ExpectCeiling         string                  `json:"expectCeiling,omitempty"`
+	ForbidRatingsAbove    string                  `json:"forbidRatingsAbove,omitempty"`
+	AcceptableKeys        []provision.Key         `json:"acceptableKeys"`
+	RequireKeys           []provision.Key         `json:"requireKeys,omitempty"`
+	ForbidKeys            []provision.Key         `json:"forbidKeys,omitempty"`
+	NoDates               bool                    `json:"noDates,omitempty"`
+	Dates                 *schedule.DateScope     `json:"dates,omitempty"`
+	SubjectiveReview      *QuerySubjectiveReview  `json:"subjectiveReview,omitempty"`
+}
+
+// QuerySubjectiveReview records an exposed human-review protocol separately from
+// deterministic grounding and policy gates. Authored rubric metadata is neither
+// a completed human review nor a model-judge pass.
+type QuerySubjectiveReview struct {
+	Version      string          `json:"version"`
+	Status       string          `json:"status"`
+	Rubric       string          `json:"rubric"`
+	PositiveKeys []provision.Key `json:"positiveKeys"`
+	NegativeKeys []provision.Key `json:"negativeKeys"`
 }
 
 // LoadEmbeddedQueryPilotCorpus validates identity and facts before any provider
@@ -134,6 +155,28 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 		if c.NoDates == (c.Dates != nil) || (c.Dates != nil && !normalizedDateScope(c.Dates)) {
 			return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q must declare none or canonical date axes", c.ID)
 		}
+		if c.ExpectedToolOperation != "" && !slices.Contains([]string{"title", "genre", "keyword", "network", "cast", "creator", "people"}, c.ExpectedToolOperation) {
+			return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has unsupported tool operation", c.ID)
+		}
+		seenMediaTypes := make(map[provision.MediaType]bool)
+		for _, mediaType := range c.AllowedMediaTypes {
+			if !mediaType.Valid() || seenMediaTypes[mediaType] {
+				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has invalid or duplicate allowed media type", c.ID)
+			}
+			seenMediaTypes[mediaType] = true
+		}
+		for _, ceiling := range []string{c.ExpectCeiling, c.ForbidRatingsAbove} {
+			if ceiling != "" && schedule.NormalizeRating(ceiling) == "" {
+				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has an unsupported rating ceiling", c.ID)
+			}
+		}
+		seenCurrent := make(map[string]bool)
+		for _, item := range c.CurrentLineup {
+			if _, _, _, ok := provision.ParseKey(provision.Key(item.Key)); !ok || seenCurrent[item.Key] {
+				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has invalid or duplicate current-lineup identity", c.ID)
+			}
+			seenCurrent[item.Key] = true
+		}
 		known := keysByFixture[c.FixtureCase]
 		if known == nil {
 			return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has no source fixture", c.ID)
@@ -153,6 +196,21 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 		for _, key := range c.ForbidKeys {
 			if !known[key] || allowed[key] {
 				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has absent or conflicting negative evidence", c.ID)
+			}
+		}
+		if review := c.SubjectiveReview; review != nil {
+			if review.Version != "movie-mood-ordinal-v1" || review.Status != "rubric-authored-development" || strings.TrimSpace(review.Rubric) == "" || len(review.PositiveKeys) == 0 || len(review.NegativeKeys) == 0 {
+				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has incomplete subjective review protocol", c.ID)
+			}
+			for _, key := range review.PositiveKeys {
+				if !allowed[key] {
+					return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has a subjective positive outside its acceptable set", c.ID)
+				}
+			}
+			for _, key := range review.NegativeKeys {
+				if !slices.Contains(c.ForbidKeys, key) {
+					return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has a subjective negative outside its forbidden set", c.ID)
+				}
 			}
 		}
 	}
@@ -234,9 +292,11 @@ func queryDevelopmentCases(corpus QueryPilotCorpus) []Case {
 			dates = &schedule.DateScope{}
 		}
 		cases = append(cases, Case{
-			Name: authored.ID, Intent: Intent{Description: authored.Description, MustInclude: authored.MustInclude, MustExclude: authored.MustExclude},
+			Name: authored.ID, Intent: Intent{Description: authored.Description, RefineText: authored.RefineText, CurrentLineup: authored.CurrentLineup, MustInclude: authored.MustInclude, MustExclude: authored.MustExclude},
 			NoFabrication: true, RequireUniqueKeys: true, OnlyAcceptableKeys: true, ExpectGroundedCompletion: true,
 			MinGrounded: authored.MinGrounded, MinLineup: authored.MinLineup, MinAcquisitions: authored.MinAcquisitions,
+			MinMovies: authored.MinMovies, AllowedMediaTypes: authored.AllowedMediaTypes, ExpectedToolOperation: authored.ExpectedToolOperation,
+			ExpectCeiling: authored.ExpectCeiling, ForbidRatingsAbove: authored.ForbidRatingsAbove,
 			AcceptableKeys: authored.AcceptableKeys, MinAcceptableKeys: authored.MinGrounded,
 			RequireKeys: authored.RequireKeys, ForbidKeys: authored.ForbidKeys, ExpectedDateScope: dates,
 		})
@@ -268,9 +328,13 @@ func queryDevelopmentRunnerConfig(path, scorer string, config RunnerConfig) (Run
 		SourceVersion:                    corpus.SourceVersion,
 		CorpusVersion:                    corpus.Version, CatalogFixtureSHA256: corpus.CatalogFixture.SHA256,
 		PromptVersion: corpus.PromptVersion, ToolSchemaVersion: corpus.ToolSchemaVersion, ScorerVersion: scorer,
-		HardMetrics:    []string{"grounding", "required_anchors", "forbidden_matches", "distinct_breadth", "ownership"},
+		HardMetrics:    []string{"grounding", "correct_tool_operation", "required_anchors", "forbidden_matches", "distinct_breadth", "ownership"},
 		QualityMetrics: []string{"policy_accuracy"},
-		Thresholds:     CertificationThresholds{MinGroundedCompletionRate: 1, MinSchemaValidityRate: 1, MinPolicyAccuracyRate: 1, MaxP95ToolCalls: suggest.ProductionBounds().MaxToolCalls},
+		Thresholds: CertificationThresholds{
+			MinGroundedCompletionRate: 1, MinCorrectToolOperationRate: 1,
+			MinSchemaValidityRate: 1, MinPolicyAccuracyRate: 1,
+			MaxP95ToolCalls: suggest.ProductionBounds().MaxToolCalls,
+		},
 	}
 	return config, nil
 }

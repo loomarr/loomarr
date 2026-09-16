@@ -24,6 +24,8 @@ func TestQueryExpansionPriorArtifactsRemainImmutable(t *testing.T) {
 		"testdata/query-expansion-v2.json":         "fc86fec4b51b980a4816263468f38de4a2878e5d9df814e649d4f955f82785d8",
 		"testdata/query-expansion-catalog-v2.json": "ca54b9ae981ed4d8da9409bb6ee876819342435f9ccf825ebb95e06afb43c482",
 		"testdata/query-expansion-sources-v2.json": "c6784c9defa523b8fe147dc280ac31055b047ae5167390172cb8d89e81f9923a",
+		"testdata/query-expansion-v3.json":         "3610462320a2a899d9718a1d8cda9e6d123708060279d173fc89d877c0767123",
+		"testdata/query-expansion-catalog-v3.json": "bb5c884ea3dabbf5c9cb41203cb451a87f647c685348b92e4464c244248d612a",
 	}
 	for path, expected := range want {
 		blob, err := queryPilotFiles.ReadFile(path)
@@ -138,6 +140,148 @@ func TestQueryExpansionReviewedHistoryUsesProductionSuggestion(t *testing.T) {
 	card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), selected)
 	if !card.Results[0].Passed() || !card.Assessment.Passed || card.Certified || !card.DevelopmentCorpus {
 		t.Fatalf("reviewed History development answer: %+v", card.Results[0])
+	}
+}
+
+func TestQueryExpansionReviewedMovieEpochUsesProductionSuggestion(t *testing.T) {
+	corpus, err := LoadEmbeddedQueryExpansionCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := QueryExpansionCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected []Case
+	var authored QueryPilotCase
+	for i, c := range cases {
+		if c.Name == "exp-movie-epoch-1940s" {
+			selected = append(selected, c)
+			authored = corpus.Cases[i]
+		}
+	}
+	if len(selected) != 1 {
+		t.Fatalf("movie epoch tracer cases = %d, want one", len(selected))
+	}
+	config, err := QueryExpansionRunnerConfig(RunnerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+	generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), selected)
+	if !card.Results[0].Passed() || !card.Assessment.Passed || card.Certified || !card.DevelopmentCorpus {
+		t.Fatalf("reviewed movie epoch development answer: %+v", card.Results[0])
+	}
+}
+
+func TestQueryExpansionMovieSubjectiveRubricsRemainSeparateFromDeterministicGate(t *testing.T) {
+	corpus, err := LoadEmbeddedQueryExpansionCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewed := 0
+	for _, authored := range corpus.Cases {
+		if authored.SubjectiveReview == nil {
+			continue
+		}
+		reviewed++
+		if authored.SubjectiveReview.Version != "movie-mood-ordinal-v1" || authored.SubjectiveReview.Status != "rubric-authored-development" || authored.SubjectiveReview.Rubric == "" {
+			t.Fatalf("case %q has incomplete subjective review: %+v", authored.ID, authored.SubjectiveReview)
+		}
+	}
+	if reviewed != 8 {
+		t.Fatalf("movie requests with authored subjective rubrics = %d, want 8", reviewed)
+	}
+	cases, err := QueryExpansionCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if strings.HasPrefix(c.Name, "exp-movie-mood-") && c.JudgeRubric != "" {
+			t.Fatalf("development review for %q was misreported as a live judge pass", c.Name)
+		}
+	}
+}
+
+func TestQueryExpansionMoviePeopleUseRequestedCatalogRoles(t *testing.T) {
+	corpus, err := LoadEmbeddedQueryExpansionCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := QueryExpansionCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"exp-movie-director-spielberg":    true,
+		"exp-movie-cast-tom-hanks":        true,
+		"exp-movie-people-hanks-zemeckis": true,
+	}
+	config, err := QueryExpansionRunnerConfig(RunnerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := 0
+	for i, c := range cases {
+		if !want[c.Name] {
+			continue
+		}
+		run++
+		provider := testkit.NewLLM(queryExpansionResponses(t, corpus.Cases[i])...)
+		generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
+		if err != nil {
+			t.Fatal(err)
+		}
+		card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), []Case{c})
+		if !card.Results[0].Passed() || !card.Results[0].CorrectToolOperation {
+			t.Fatalf("movie role request %q: %+v", c.Name, card.Results[0])
+		}
+	}
+	if run != len(want) {
+		t.Fatalf("movie person-role requests = %d, want %d", run, len(want))
+	}
+}
+
+func TestQueryExpansionMovieIntervalsAndRefinementsUseProductionSuggestion(t *testing.T) {
+	corpus, err := LoadEmbeddedQueryExpansionCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := QueryExpansionCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"exp-movie-epoch-disjoint": true,
+		"exp-movie-refine-add":     true,
+		"exp-movie-refine-remove":  true,
+	}
+	config, err := QueryExpansionRunnerConfig(RunnerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := 0
+	for i, c := range cases {
+		if !want[c.Name] {
+			continue
+		}
+		run++
+		provider := testkit.NewLLM(queryExpansionResponses(t, corpus.Cases[i])...)
+		generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
+		if err != nil {
+			t.Fatal(err)
+		}
+		card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), []Case{c})
+		if !card.Results[0].Passed() || !card.Assessment.Passed {
+			t.Fatalf("movie interval/refine request %q: %+v", c.Name, card.Results[0])
+		}
+	}
+	if run != len(want) {
+		t.Fatalf("movie interval/refine requests = %d, want %d", run, len(want))
 	}
 }
 
@@ -338,13 +482,111 @@ func TestQueryExpansionMCUIndependentCausalOutcomeControls(t *testing.T) {
 	}
 }
 
+func TestQueryExpansionMovieIndependentCausalOutcomeControls(t *testing.T) {
+	cases, err := QueryExpansionCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := QueryExpansionRunnerConfig(RunnerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedAndMissing := func(owned int, keys ...string) suggest.Proposal {
+		proposal := proposalWithKeys(t, keys...)
+		proposal.Acquisitions, proposal.Lineup = proposal.Lineup[owned:], proposal.Lineup[:owned]
+		return proposal
+	}
+	withMovieDates := func(proposal suggest.Proposal, ranges ...schedule.Range) suggest.Proposal {
+		proposal.Policy.Scope.Dates = &schedule.DateScope{MovieRelease: ranges}
+		return proposal
+	}
+	withSeriesDates := func(proposal suggest.Proposal, ranges ...schedule.Range) suggest.Proposal {
+		proposal.Policy.Scope.Dates = &schedule.DateScope{SeriesPremiere: ranges}
+		return proposal
+	}
+	spielberg := ownedAndMissing(2, "movie:tmdb:578", "movie:tmdb:601", "movie:tmdb:329")
+	spielbergWithProducerCredit := ownedAndMissing(3, "movie:tmdb:578", "movie:tmdb:601", "movie:tmdb:329", "movie:tmdb:105")
+	hanks := withMovieDates(ownedAndMissing(1, "movie:tmdb:13", "movie:tmdb:862"), schedule.Range{From: 1990, To: 1999})
+	hanksWithWrongCast := withMovieDates(ownedAndMissing(2, "movie:tmdb:13", "movie:tmdb:862", "movie:tmdb:105"), schedule.Range{From: 1990, To: 1999})
+	comforting := proposalWithKeys(t, "movie:tmdb:346648")
+	comfortingWithJaws := proposalWithKeys(t, "movie:tmdb:346648", "movie:tmdb:578")
+	tense := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:496243")
+	tenseWithPaddington := ownedAndMissing(2, "movie:tmdb:578", "movie:tmdb:496243", "movie:tmdb:346648")
+	pg := proposalWithKeys(t, "movie:tmdb:578", "movie:tmdb:601")
+	pg.Policy.Audience.Ceiling = schedule.Rating("PG")
+	for i := range pg.Lineup {
+		pg.Lineup[i].OfficialRating = "PG"
+	}
+	overPG := proposalWithKeys(t, "movie:tmdb:578", "movie:tmdb:601")
+	overPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	overPG.Lineup[0].OfficialRating = "PG"
+	overPG.Lineup[1].OfficialRating = "PG-13"
+	disjoint := withMovieDates(ownedAndMissing(2, "movie:tmdb:289", "movie:tmdb:346648", "movie:tmdb:496243"),
+		schedule.Range{From: 1940, To: 1949}, schedule.Range{From: 2010, To: 2019})
+	wrongDisjointAxis := withSeriesDates(ownedAndMissing(2, "movie:tmdb:289", "movie:tmdb:346648", "movie:tmdb:496243"),
+		schedule.Range{From: 1940, To: 1949}, schedule.Range{From: 2010, To: 2019})
+	french := withMovieDates(proposalWithKeys(t, "movie:tmdb:194"), schedule.Range{From: 2000, To: 2009})
+	notFrench := withMovieDates(ownedAndMissing(0, "movie:tmdb:129"), schedule.Range{From: 2000, To: 2009})
+	koreanMissing := withMovieDates(ownedAndMissing(0, "movie:tmdb:496243"), schedule.Range{From: 2010, To: 2019})
+	koreanOwned := withMovieDates(proposalWithKeys(t, "movie:tmdb:496243"), schedule.Range{From: 2010, To: 2019})
+	refineAdd := proposalWithKeys(t, "movie:tmdb:578", "movie:tmdb:601")
+	refineDropsAdd := proposalWithKeys(t, "movie:tmdb:578")
+	refineRemove := withMovieDates(proposalWithKeys(t, "movie:tmdb:194"), schedule.Range{From: 2000, To: 2009})
+	refineKeepsRemoved := withMovieDates(ownedAndMissing(1, "movie:tmdb:194", "movie:tmdb:129"), schedule.Range{From: 2000, To: 2009})
+	controls := []struct {
+		name, caseID, failure string
+		positive, negative    suggest.Proposal
+	}{
+		{"disjoint-wrong-date-axis", "exp-movie-epoch-disjoint", "date", disjoint, wrongDisjointAxis},
+		{"director-role-producer-padding", "exp-movie-director-spielberg", "outside the acceptable set", spielberg, spielbergWithProducerCredit},
+		{"cast-role-director-padding", "exp-movie-cast-tom-hanks", "outside the acceptable set", hanks, hanksWithWrongCast},
+		{"language-substitution", "exp-movie-language-french", "outside the acceptable set", french, notFrench},
+		{"comforting-includes-frightening", "exp-movie-mood-comforting", "outside the acceptable set", comforting, comfortingWithJaws},
+		{"tense-includes-comforting", "exp-movie-mood-tense", "outside the acceptable set", tense, tenseWithPaddington},
+		{"rating-above-pg", "exp-movie-director-spielberg-pg", "above the forbidden ceiling", pg, overPG},
+		{"missing-title-marked-owned", "exp-movie-region-south-korean", "acquisitions", koreanMissing, koreanOwned},
+		{"refine-drops-requested-addition", "exp-movie-refine-add", "required grounded key", refineAdd, refineDropsAdd},
+		{"refine-keeps-requested-removal", "exp-movie-refine-remove", "outside the acceptable set", refineRemove, refineKeepsRemoved},
+	}
+	for _, control := range controls {
+		t.Run(control.name, func(t *testing.T) {
+			var selected []Case
+			for _, c := range cases {
+				if c.Name == control.caseID {
+					selected = append(selected, c)
+				}
+			}
+			if len(selected) != 1 {
+				t.Fatal("causal control requires exactly one authored movie request")
+			}
+			// These scripted controls isolate outcome grading. Production-path tests
+			// above independently assert the model's observed Catalog operation.
+			selected[0].ExpectedToolOperation = ""
+			good := NewRunner(scriptedGenerator{proposal: control.positive}, config).Run(context.Background(), selected)
+			if !good.Results[0].Passed() || !good.Assessment.Passed || good.Certified {
+				t.Fatalf("independently valid movie positive failed: %+v", good.Results[0])
+			}
+			bad := NewRunner(scriptedGenerator{proposal: control.negative}, config).Run(context.Background(), selected)
+			if control.failure == "date" {
+				if bad.Results[0].PolicyAccurate || bad.Assessment.Passed || bad.Certified {
+					t.Fatalf("wrong movie date policy escaped strict assessment: %+v", bad)
+				}
+				return
+			}
+			if bad.Results[0].Passed() || !strings.Contains(strings.Join(bad.Results[0].Failures, " "), control.failure) || bad.Certified {
+				t.Fatalf("deliberately wrong movie answer escaped its target: %+v", bad.Results[0])
+			}
+		})
+	}
+}
+
 func TestQueryExpansionEveryAuthoredRequestUsesProductionSuggestion(t *testing.T) {
 	corpus, err := LoadEmbeddedQueryExpansionCorpus()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(corpus.Cases) != 75 {
-		t.Fatalf("cumulative executable corpus has %d requests, want 75", len(corpus.Cases))
+	if len(corpus.Cases) != 108 {
+		t.Fatalf("cumulative executable corpus has %d requests, want 108", len(corpus.Cases))
 	}
 	cases, err := QueryExpansionCases()
 	if err != nil {
@@ -392,6 +634,9 @@ func queryExpansionResponses(t *testing.T, c QueryPilotCase) []llm.Response {
 	}
 	if strings.HasPrefix(c.FixtureCase, "history-era-reviewed") {
 		return queryExpansionHistoryResponses(t, c)
+	}
+	if strings.HasPrefix(c.FixtureCase, "movie-reviewed") {
+		return queryExpansionMovieResponses(t, c)
 	}
 	ids := []int{2685, 2617, 1777, 605}
 	args := map[string]any{"media_type": "series", "mode": "collection", "titles": []any{"Family Matters", "Step by Step", "Boy Meets World", "Sabrina the Teenage Witch"}}
@@ -454,6 +699,140 @@ func queryExpansionResponses(t *testing.T, c QueryPilotCase) []llm.Response {
 		t.Fatal(err)
 	}
 	return []llm.Response{testkit.ToolCallResponse("catalog_search", args), testkit.FinalResponse(string(final))}
+}
+
+func queryExpansionMovieResponses(t *testing.T, c QueryPilotCase) []llm.Response {
+	t.Helper()
+	ids := []int{346648}
+	args := map[string]any{"media_type": "movie", "keywords": []any{"comforting"}}
+	type dateInterval struct {
+		marker   string
+		from, to int
+	}
+	var intervals []dateInterval
+	setInterval := func(marker string, from, to int) {
+		intervals = []dateInterval{{marker: marker, from: from, to: to}}
+	}
+	switch c.ID {
+	case "exp-movie-epoch-1940s":
+		ids, args = []int{289}, map[string]any{"media_type": "movie", "genres": []any{"Romance"}}
+		setInterval("1940s", 1940, 1949)
+	case "exp-movie-epoch-1950s":
+		ids, args = []int{872}, map[string]any{"media_type": "movie", "genres": []any{"Comedy", "Music"}}
+		setInterval("1950s", 1950, 1959)
+	case "exp-movie-epoch-1960s":
+		ids, args = []int{62}, map[string]any{"media_type": "movie", "genres": []any{"Science Fiction"}}
+		setInterval("sixties", 1960, 1969)
+	case "exp-movie-epoch-1980s":
+		ids, args = []int{105}, map[string]any{"media_type": "movie", "genres": []any{"Comedy", "Science Fiction"}}
+		setInterval("eighties", 1980, 1989)
+	case "exp-movie-epoch-inclusive":
+		ids, args = []int{329, 13, 862}, map[string]any{"media_type": "movie", "genres": []any{"Adventure", "Drama", "Animation"}}
+		setInterval("1993 through 1995", 1993, 1995)
+	case "exp-movie-epoch-disjoint":
+		ids, args = []int{289, 346648, 496243}, map[string]any{"media_type": "movie", "genres": []any{"Drama"}}
+		intervals = []dateInterval{{marker: "1940s", from: 1940, to: 1949}, {marker: "2010s", from: 2010, to: 2019}}
+	case "exp-movie-epoch-before-1970":
+		ids, args = []int{289, 872, 62}, map[string]any{"media_type": "movie", "genres": []any{"Drama"}}
+		setInterval("before 1970", 1900, 1969)
+	case "exp-movie-epoch-2000s-international":
+		ids, args = []int{194, 129}, map[string]any{"media_type": "movie", "genres": []any{"Drama"}}
+		setInterval("2000s", 2000, 2009)
+	case "exp-movie-epoch-2010s-international":
+		ids, args = []int{346648, 496243}, map[string]any{"media_type": "movie", "genres": []any{"Drama"}}
+		setInterval("2010s", 2010, 2019)
+	case "exp-movie-epoch-after-2000":
+		ids, args = []int{194, 129, 346648, 496243}, map[string]any{"media_type": "movie", "genres": []any{"Drama"}}
+		setInterval("after 2000", 2001, 2099)
+	case "exp-movie-epoch-1990s-not-1980s":
+		ids, args = []int{329, 13, 862}, map[string]any{"media_type": "movie", "genres": []any{"Drama"}}
+		setInterval("1990s", 1990, 1999)
+	case "exp-movie-language-french":
+		ids, args = []int{194}, map[string]any{"media_type": "movie", "genres": []any{"Comedy", "Romance"}, "original_language": "fr"}
+		setInterval("2000s", 2000, 2009)
+	case "exp-movie-region-south-korean":
+		ids, args = []int{496243}, map[string]any{"media_type": "movie", "genres": []any{"Drama", "Thriller"}, "origin_country": "KR"}
+		setInterval("2010s", 2010, 2019)
+	case "exp-movie-refine-add":
+		ids, args = []int{578, 601}, map[string]any{"media_type": "movie", "creators": []any{"Steven Spielberg"}}
+	case "exp-movie-refine-remove":
+		ids, args = []int{194}, map[string]any{"media_type": "movie", "genres": []any{"Comedy"}}
+		setInterval("2000s", 2000, 2009)
+	case "exp-movie-mood-tense":
+		ids, args = []int{578, 496243}, map[string]any{"media_type": "movie", "keywords": []any{"tense", "threatening"}}
+	case "exp-movie-mood-dark-satire":
+		ids, args = []int{496243}, map[string]any{"media_type": "movie", "keywords": []any{"dark", "satirical", "thriller"}}
+	case "exp-movie-mood-tense-1970s":
+		ids, args = []int{578}, map[string]any{"media_type": "movie", "keywords": []any{"tense", "frightening"}}
+		setInterval("1970s", 1970, 1979)
+	case "exp-movie-mood-dark-korean-2010s":
+		ids, args = []int{496243}, map[string]any{"media_type": "movie", "keywords": []any{"dark"}, "genres": []any{"Thriller"}, "origin_country": "KR"}
+		setInterval("2010s", 2010, 2019)
+	case "exp-movie-mood-comforting-british-2010s":
+		ids, args = []int{346648}, map[string]any{"media_type": "movie", "keywords": []any{"comforting"}, "genres": []any{"Family", "Comedy"}, "origin_country": "GB"}
+		setInterval("2010s", 2010, 2019)
+	case "exp-movie-director-spielberg", "exp-movie-director-spielberg-not-produced":
+		ids, args = []int{578, 601, 329}, map[string]any{"media_type": "movie", "creators": []any{"Steven Spielberg"}}
+	case "exp-movie-director-spielberg-1980s":
+		ids, args = []int{601}, map[string]any{"media_type": "movie", "creators": []any{"Steven Spielberg"}}
+		setInterval("1980s", 1980, 1989)
+	case "exp-movie-director-spielberg-1990s":
+		ids, args = []int{329}, map[string]any{"media_type": "movie", "creators": []any{"Steven Spielberg"}, "genres": []any{"Science Fiction"}}
+		setInterval("1990s", 1990, 1999)
+	case "exp-movie-director-zemeckis":
+		ids, args = []int{105, 13}, map[string]any{"media_type": "movie", "creators": []any{"Robert Zemeckis"}}
+	case "exp-movie-director-zemeckis-1980s":
+		ids, args = []int{105}, map[string]any{"media_type": "movie", "creators": []any{"Robert Zemeckis"}}
+		setInterval("eighties", 1980, 1989)
+	case "exp-movie-cast-tom-hanks":
+		ids, args = []int{13, 862}, map[string]any{"media_type": "movie", "cast": []any{"Tom Hanks"}}
+		setInterval("1990s", 1990, 1999)
+	case "exp-movie-cast-tom-hanks-animation":
+		ids, args = []int{862}, map[string]any{"media_type": "movie", "cast": []any{"Tom Hanks"}, "genres": []any{"Animation"}}
+	case "exp-movie-people-hanks-zemeckis":
+		ids, args = []int{13}, map[string]any{"media_type": "movie", "cast": []any{"Tom Hanks"}, "creators": []any{"Robert Zemeckis"}}
+	case "exp-movie-director-spielberg-pg":
+		ids, args = []int{578, 601}, map[string]any{"media_type": "movie", "creators": []any{"Steven Spielberg"}}
+	}
+	meaning := map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}
+	if len(intervals) > 0 {
+		anchors := make([]any, 0, len(intervals))
+		wireIntervals := make([]any, 0, len(intervals))
+		for i, interval := range intervals {
+			start := strings.Index(c.Description, interval.marker)
+			if start < 0 {
+				t.Fatalf("independent movie provider script has no date span %q", interval.marker)
+			}
+			anchors = append(anchors, map[string]any{"field": "description", "start": start, "end": start + len(interval.marker)})
+			wireIntervals = append(wireIntervals, map[string]any{"anchor": i, "start": interval.from, "end": interval.to})
+		}
+		meaning = map[string]any{
+			"kind":    "constraints",
+			"anchors": anchors,
+			"axes": []any{map[string]any{
+				"kind": "movie_release", "combine": "any",
+				"intervals": wireIntervals,
+			}},
+		}
+	}
+	args["dateMeaning"] = meaning
+	picks := make([]map[string]any, 0, len(ids))
+	for _, id := range ids {
+		picks = append(picks, map[string]any{"mediaType": "movie", "key": fmt.Sprintf("movie:tmdb:%d", id)})
+	}
+	return []llm.Response{
+		testkit.ToolCallResponse("catalog_search", args),
+		testkit.FinalResponse(fmt.Sprintf(`{"picks":%s,"dateMeaning":%s}`, mustJSON(t, picks), mustJSON(t, meaning))),
+	}
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	blob, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(blob)
 }
 
 func queryExpansionHistoryResponses(t *testing.T, c QueryPilotCase) []llm.Response {

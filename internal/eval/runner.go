@@ -769,6 +769,8 @@ func expectedToolOperationFailure(expected string, observation Observation) stri
 		calls = observation.CastCalls
 	case "creator":
 		calls = observation.CreatorCalls
+	case "people":
+		calls = observation.PeopleCalls
 	default:
 		return fmt.Sprintf("unknown expected tool operation %q", expected)
 	}

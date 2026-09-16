@@ -150,13 +150,15 @@ type Case struct {
 // Intent mirrors suggest.Intent's fields (kept local so the corpus is pure data;
 // the harness maps it onto suggest.Intent).
 type Intent struct {
-	Description string
-	Era         string
-	Tone        string
-	RuntimeTgt  int
-	MustInclude []string
-	MustExclude []string
-	MaxAcquire  int
+	Description   string
+	Era           string
+	Tone          string
+	RuntimeTgt    int
+	RefineText    string
+	CurrentLineup []suggest.LineupContext
+	MustInclude   []string
+	MustExclude   []string
+	MaxAcquire    int
 }
 
 // Corpus is the durable set of evaluation cases. It spans the axes the suggester +
