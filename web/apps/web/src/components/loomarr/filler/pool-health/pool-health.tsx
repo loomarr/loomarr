@@ -1,17 +1,11 @@
 import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import { pluralize } from "@loomarr/core/format";
-import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
 import { cn } from "@/lib/utils";
 import type { PoolHealthProps } from "./pool-health.type";
 
-// PoolHealth — catalog-wide filler health, above every tab on the Filler page (V35).
-//
-// ⚠ **A strip, not a tab, and that is the design rather than a layout preference.** Catalog
-// health is the context the other three tabs are read in: what the catalog holds decides whether
-// the clips you are tagging matter and whether a pull is worth proposing. As its own tab it was
-// the thing nobody clicked, which is how an install ends up with four hundred clips and channels
-// still falling back to the bumper card.
+// Library-local coverage context, below the stable workspace navigation. Acquisition belongs
+// to Sources, not to this read-only summary.
 //
 // ⚠ **Every per-channel number here is the SAME answer the channel page's coverage meter gives** —
 // the server computes it by calling `Coverage` once per live channel, so there is no aggregate
@@ -47,7 +41,7 @@ const Stat = ({
   </div>
 );
 
-const PoolHealth = ({ pool, onProposePull, proposing, className }: PoolHealthProps) => {
+const PoolHealth = ({ pool, className }: PoolHealthProps) => {
   // ⚠ `?? []` because huma types every Go slice as nullable, so the generated DTO says
   // `PoolChannelDTO[] | null` even though the handler always sends `[]`. Same unwrap the
   // coverage meter and channel-filler use.
@@ -127,12 +121,6 @@ const PoolHealth = ({ pool, onProposePull, proposing, className }: PoolHealthPro
           note={`breaks fall back to ${LEVEL_LABEL[weakest.level] ?? weakest.level}`}
           tone="warn"
         />
-      )}
-
-      {onProposePull && (
-        <Button className="ml-auto" onClick={onProposePull} disabled={proposing}>
-          {proposing ? "Planning…" : "Propose a pull"}
-        </Button>
       )}
     </section>
   );

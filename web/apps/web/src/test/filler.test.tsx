@@ -542,7 +542,10 @@ describe("Filler page", () => {
 
     expect(await screen.findByText("Automatic fetching is paused")).toBeInTheDocument();
     expect(screen.getByText(/2,000 of 2,000 catalog clips/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Review limits" })).toHaveAttribute("href", "/filler/settings");
+    expect(screen.getByRole("link", { name: "Review limits" })).toHaveAttribute(
+      "href",
+      "/filler/settings?section=storage",
+    );
   });
 
   // §10 era grounding (V34): the ungrounded AI year is a QUESTION on the card, and the

@@ -253,6 +253,7 @@ RETIRED=(
   'IncomingTab|#1249: Incoming has one bounded server-backed screen'
   'IncomingPanel|#1249: Incoming has one bounded server-backed screen'
   'admission-summary-heading|#1249: Overview uses household readiness, not audit-only admission counts'
+  'onProposePull|#1112: Library coverage is read-only; acquisition belongs to the Sources workflow'
   'ConveyorOnly|#1249: read models select exact pipeline dispositions'
   'RejectedOnly|#1249: rejected history is not part of Incoming'
   '"reconcile.every"|V55: superseded by the active channel and library schedules'

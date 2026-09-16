@@ -29,8 +29,9 @@ const SettingsFields = ({
   disabledReasons,
   descriptionIds,
   className,
+  initialAdvanced = false,
 }: SettingsFieldsProps) => {
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(initialAdvanced);
   const resultFor = (key: string) => results?.find((r) => r.key === key);
 
   // The live value of a key, honoring an unsaved edit (values) over the resolved value —

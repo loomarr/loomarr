@@ -41,7 +41,7 @@ describe("FillerCatalog", () => {
     render(
       <RouterHarness
         initialPath="/filler/library"
-        content={<FillerCatalog isAdmin onEditTags={onEditTags} onProposePull={vi.fn()} />}
+        content={<FillerCatalog isAdmin onEditTags={onEditTags} />}
       />,
       { wrapper: Wrapper },
     );
@@ -64,7 +64,7 @@ describe("FillerCatalog", () => {
     render(
       <RouterHarness
         initialPath="/filler/library"
-        content={<FillerCatalog isAdmin onEditTags={vi.fn()} onProposePull={vi.fn()} />}
+        content={<FillerCatalog isAdmin onEditTags={vi.fn()} />}
       />,
       { wrapper: Wrapper },
     );
@@ -90,7 +90,7 @@ describe("FillerCatalog", () => {
     render(
       <RouterHarness
         initialPath="/filler/library"
-        content={<FillerCatalog isAdmin onEditTags={vi.fn()} onProposePull={vi.fn()} />}
+        content={<FillerCatalog isAdmin onEditTags={vi.fn()} />}
       />,
       { wrapper: Wrapper },
     );

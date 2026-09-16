@@ -6,11 +6,6 @@ interface PoolHealthProps {
   // ladder computed, and a hand-mirrored shape is the first step toward reporting something
   // else (contract 1:1).
   pool: PoolDTO;
-  // Called when the operator asks Loomarr to plan a pull. Absent for a non-admin, who can read
-  // catalog health but cannot start an acquisition.
-  onProposePull?: () => void;
-  // Whether a pull proposal is in flight, so the button can say so rather than looking inert.
-  proposing?: boolean;
   className?: string;
 }
 

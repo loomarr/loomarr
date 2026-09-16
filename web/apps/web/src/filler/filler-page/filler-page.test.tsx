@@ -185,6 +185,24 @@ describe("FillerPage shell", () => {
     expect(await screen.findByLabelText("Catalog health")).toBeInTheDocument();
   });
 
+  it("keeps section navigation before Library summaries and intake out of the health strip", async () => {
+    stubFillerPage();
+    renderPage("library");
+    const health = await screen.findByLabelText("Catalog health");
+    const navigation = screen.getByRole("navigation", { name: "Filler sections" });
+    expect(navigation.compareDocumentPosition(health) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(health).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("takes an empty Library back to Sources rather than requesting an acquisition", async () => {
+    stubFillerPage({ clips: [], total: 0 });
+    renderPage("library");
+    await userEvent.click(await screen.findByRole("button", { name: "Open sources" }));
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: /^sources$/i })).toHaveAttribute("aria-current", "page"),
+    );
+  });
+
   it("hides the pool strip on Sources", async () => {
     stubFillerPage();
     renderPage("sources");

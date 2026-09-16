@@ -42,6 +42,8 @@ interface SettingsBlock {
   // A bordered surface for a focused workflow decision. Most settings pages remain flat; pages
   // such as Notifications use cards to separate outcomes rather than presenting one field wall.
   surface?: "plain" | "card";
+  // An explicitly chosen expert task can start with its advanced fields visible.
+  initialAdvanced?: boolean;
 }
 
 interface SettingsPageProps {
@@ -49,6 +51,8 @@ interface SettingsPageProps {
   description?: string;
   blocks: SettingsBlock[];
   entries: SettingEntry[];
+  // Contextual settings reuse the workflow's heading and scrolling shell.
+  embedded?: boolean;
   // A deep link from a blocked workflow opens the exact connection it can fix,
   // even when another failing connection would otherwise win first-failure triage.
   initialOpenGroup?: string;

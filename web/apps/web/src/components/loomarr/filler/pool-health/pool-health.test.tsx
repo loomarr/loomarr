@@ -1,7 +1,6 @@
 import type { PoolDTO } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { PoolHealth } from "./pool-health";
 
 const pool = (over: Partial<PoolDTO> = {}): PoolDTO => ({
@@ -166,21 +165,9 @@ describe("PoolHealth", () => {
     expect(screen.getByText("61")).toBeInTheDocument();
   });
 
-  it("offers the pull only to a caller that passed a handler", async () => {
-    const onProposePull = vi.fn();
-    const { rerender } = render(<PoolHealth pool={pool()} onProposePull={onProposePull} />);
-
-    await userEvent.click(screen.getByRole("button", { name: "Propose a pull" }));
-    expect(onProposePull).toHaveBeenCalledOnce();
-
-    // A member reads catalog health but cannot start an acquisition.
-    rerender(<PoolHealth pool={pool()} />);
-    expect(screen.queryByRole("button", { name: "Propose a pull" })).not.toBeInTheDocument();
-  });
-
-  it("says a pull is being planned rather than looking inert", () => {
-    render(<PoolHealth pool={pool()} onProposePull={() => {}} proposing />);
-
-    expect(screen.getByRole("button", { name: "Planning…" })).toBeDisabled();
+  it("is a read-only coverage summary rather than an acquisition control", () => {
+    render(<PoolHealth pool={pool()} />);
+    expect(screen.getByRole("region", { name: "Catalog health" })).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

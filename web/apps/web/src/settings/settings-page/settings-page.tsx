@@ -31,6 +31,7 @@ const SettingsPage = ({
   description,
   blocks,
   entries,
+  embedded = false,
   initialOpenGroup,
   children,
   footer,
@@ -176,10 +177,17 @@ const SettingsPage = ({
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader title={title} description={description} />
+    <div className={cn("flex flex-col", !embedded && "h-full")}>
+      {embedded ? (
+        <div>
+          <h2 className="font-semibold text-xl">{title}</h2>
+          {description && <p className="mt-1 text-muted-foreground text-sm">{description}</p>}
+        </div>
+      ) : (
+        <PageHeader title={title} description={description} />
+      )}
 
-      <div className="flex flex-1 flex-col gap-8 overflow-auto p-6">
+      <div className={cn("flex flex-col gap-8", embedded ? "mt-6" : "flex-1 overflow-auto p-6")}>
         {typeof children === "function" ? children({ liveValue, setEdit }) : children}
 
         {/* Preserve the declared information hierarchy. A prior two-pass renderer moved every
@@ -253,6 +261,7 @@ const SettingsPage = ({
               </div>
               <SettingsFields
                 entries={blockEntries}
+                initialAdvanced={block.initialAdvanced}
                 values={edits}
                 onChange={setEdit}
                 results={results}

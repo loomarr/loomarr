@@ -21,6 +21,7 @@ interface SettingsFieldsProps {
   // supplied id to aria-describedby without duplicating that prose in the registry.
   descriptionIds?: Record<string, string>;
   className?: string;
+  initialAdvanced?: boolean;
 }
 
 export type { SettingsFieldsProps };

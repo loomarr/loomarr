@@ -10576,6 +10576,16 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   playable Clips. Automatic outcomes, human exceptions, operational failures, and Ready Clips
   stay visibly distinct.
 
+  **Stable workspace, focused settings (#1112).** The heading and five-destination navigation
+  occupy the same position on every Filler surface, including contextual settings. Library's
+  local coverage summary appears below navigation and does not advertise acquisition as its
+  primary task. Finding more content starts in Sources; any existing acquisition proposal still
+  requires its normal approval. Settings open one named task at a time: automatic downloads by
+  default, or folders, storage, breaks, review, playback, processing limits, or tools when explicitly
+  requested. Other settings remain available through progressive disclosure. A settings section
+  is deep-linkable and keeps one edit buffer and explicit save bar; changing sections never saves
+  silently or drops staged edits. Mobile Library uses compact filters so browsing is not buried.
+
   **Hands-off shell contract.** Backend-owned lifecycle complexity must present one simple, hands-off
   normal experience: automatic preparation and routine recovery do not become operator chores.
   Human work is reserved for a genuine authority ambiguity, never an inferred question assembled

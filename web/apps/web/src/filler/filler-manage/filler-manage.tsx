@@ -191,7 +191,12 @@ const FillerManage = () => {
               Choose how often Loomarr looks for new clips and how many each source may add.
             </p>
             {isAdmin ? (
-              <Button className="mt-4" size="sm" variant="outline" render={<Link to="/filler/settings" />}>
+              <Button
+                className="mt-4"
+                size="sm"
+                variant="outline"
+                render={<Link to="/filler/settings" search={{ section: "downloads" }} />}
+              >
                 Automatic download settings
               </Button>
             ) : null}

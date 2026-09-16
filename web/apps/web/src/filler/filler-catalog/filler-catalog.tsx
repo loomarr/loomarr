@@ -144,7 +144,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
 // The catalog is mounted only for `/filler/library`. Its filters remain URL-driven, deep-linkable,
 // and scoped to the validated filler route; the page shell merely preserves that opaque search
 // state when it renders the Library navigation link.
-const FillerCatalog = ({ isAdmin, onEditTags, onProposePull }: FillerCatalogProps) => {
+const FillerCatalog = ({ isAdmin, onEditTags }: FillerCatalogProps) => {
   const navigate = useNavigate();
   // Filters live in the URL (deep-linkable, shareable, back-button aware) — the route's
   // validateSearch narrows them. setFilters merges a partial change and writes with
@@ -572,12 +572,12 @@ const FillerCatalog = ({ isAdmin, onEditTags, onProposePull }: FillerCatalogProp
               it or how to produce it again. Per-source outcomes belong on the Sources row that
               did the work. */}
 
-      <Card className="flex flex-wrap items-end gap-3 p-4">
+      <Card className="grid grid-cols-2 items-end gap-3 p-3 sm:flex sm:flex-wrap sm:p-4">
         {/* ⚠ Capped. `flex-1` alone stretched a clip-name box to ~900px on a 1440
                 viewport — a text field far wider than anything typed into it, which reads
                 as a layout bug rather than a generous input. It still grows on narrow
                 screens (min-w-48) and stops being silly on wide ones. */}
-        <div className="min-w-48 max-w-md flex-1">
+        <div className="col-span-2 min-w-0 flex-1 sm:min-w-48 sm:max-w-md">
           <Label htmlFor="clip-search">Search</Label>
           <Input
             id="clip-search"
@@ -651,6 +651,7 @@ const FillerCatalog = ({ isAdmin, onEditTags, onProposePull }: FillerCatalogProp
               variant={view === v.id ? "default" : "outline"}
               size="sm"
               role="radio"
+              aria-label={v.label}
               aria-checked={view === v.id}
               tabIndex={view === v.id ? 0 : -1}
               title={v.title}
@@ -658,7 +659,7 @@ const FillerCatalog = ({ isAdmin, onEditTags, onProposePull }: FillerCatalogProp
               onKeyDown={(event) => onViewKeyDown(event, index)}
             >
               <v.icon className="size-4" aria-hidden />
-              {v.label}
+              <span className="hidden sm:inline">{v.label}</span>
             </Button>
           ))}
         </div>
@@ -672,7 +673,7 @@ const FillerCatalog = ({ isAdmin, onEditTags, onProposePull }: FillerCatalogProp
           description={
             filtered
               ? "Try a wider filter, or clear the search."
-              : "Anything that lands in the filler folder shows up here on its own. Drop files in, or ask Loomarr to pull some."
+              : "Add a source or use your own files. Loomarr prepares clips automatically and adds them here when they are ready."
           }
           {...(filtered
             ? {
@@ -690,20 +691,11 @@ const FillerCatalog = ({ isAdmin, onEditTags, onProposePull }: FillerCatalogProp
                     }),
                 },
               }
-            : // An empty catalog is exactly when an operator needs the way OUT of it, so the
-              // empty state carries the same action the health strip does.
-              //
-              // ⚠ It used to read "Find clips" and navigate to `tab: "discover"` — a tab this
-              // phase RETIRED. `validateSearch` drops the unknown value, so the button landed
-              // back on the empty catalog it was offered from: a control that looked like the
-              // way out and did nothing. Two independent reviewers found it, which is the
-              // useful lesson — deleting a destination is not done until every route TO it is
-              // gone, and a nav target is not type-checked.
-              isAdmin
+            : isAdmin
               ? {
                   action: {
-                    label: "Propose a pull",
-                    onClick: onProposePull,
+                    label: "Open sources",
+                    onClick: () => navigate({ to: "/filler/sources" }),
                   },
                 }
               : {})}
