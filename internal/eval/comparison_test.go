@@ -106,6 +106,17 @@ func TestComparePlannerModelsRejectsDifferentMetricContracts(t *testing.T) {
 		}
 	}
 	first, second := card("gemma"), card("qwen")
+	first.DevelopmentCorpus, second.DevelopmentCorpus = true, true
+	first.Certified, second.Certified = true, true
+	first.Assessment.Passed, second.Assessment.Passed = true, true
+	if _, err := ComparePlannerModels([]Scorecard{first, second}); err == nil || !strings.Contains(err.Error(), "development") {
+		t.Fatalf("development evidence entered certification comparison: %v", err)
+	}
+	first.DevelopmentCorpus = false
+	if _, err := ComparePlannerModels([]Scorecard{first, second}); err == nil || !strings.Contains(err.Error(), "development") {
+		t.Fatalf("mixed development evidence entered certification comparison: %v", err)
+	}
+	first, second = card("gemma"), card("qwen")
 	second.Contract.Thresholds.MinProposalQualityRate = 0.8
 	if _, err := ComparePlannerModels([]Scorecard{first, second}); err == nil || !strings.Contains(err.Error(), "frozen certification identity") {
 		t.Fatalf("different threshold contract error = %v", err)
@@ -133,9 +144,9 @@ func TestComparePlannerModelsRejectsDifferentMetricContracts(t *testing.T) {
 	if _, err := ComparePlannerModels([]Scorecard{first, second}); err == nil || !strings.Contains(err.Error(), "unsupported scorecard schema 12") {
 		t.Fatalf("old transcript-accounting schema error = %v", err)
 	}
-	first.SchemaVersion, second.SchemaVersion = 13, 13
+	first.SchemaVersion, second.SchemaVersion = 14, 14
 	if _, err := ComparePlannerModels([]Scorecard{first, second}); err == nil || !strings.Contains(err.Error(), "lacks its run snapshot") {
-		t.Fatalf("missing schema-v13 snapshot error = %v", err)
+		t.Fatalf("missing schema-v14 snapshot error = %v", err)
 	}
 }
 

@@ -51,6 +51,9 @@ func ComparePlannerModels(cards []Scorecard) (PlannerModelComparison, error) {
 		QualityMargin: selection.QualityMargin,
 	}
 	for index, card := range cards {
+		if card.DevelopmentCorpus {
+			return PlannerModelComparison{}, fmt.Errorf("planner scorecard %d is development evidence, not certification", index)
+		}
 		if card.Contract == nil || card.Assessment == nil {
 			return PlannerModelComparison{}, fmt.Errorf("planner scorecard %d lacks its certification contract or assessment", index)
 		}
@@ -155,6 +158,10 @@ func validateQualityAssessment(assessment CertificationAssessment) error {
 
 func comparableCertification(first, candidate Scorecard) bool {
 	return first.SchemaVersion == candidate.SchemaVersion && first.CorpusVersion == candidate.CorpusVersion &&
+		first.Contract.CorpusManifestSHA256 == candidate.Contract.CorpusManifestSHA256 &&
+		first.Contract.SourcesFixtureSHA256 == candidate.Contract.SourcesFixtureSHA256 &&
+		first.Contract.SupplementalCatalogFixtureSHA256 == candidate.Contract.SupplementalCatalogFixtureSHA256 &&
+		first.Contract.SourceVersion == candidate.Contract.SourceVersion &&
 		first.Profile == candidate.Profile &&
 		first.CallBudget.Cases == candidate.CallBudget.Cases && first.CallBudget.Trials == candidate.CallBudget.Trials &&
 		first.CallBudget.MaxGeneratorCalls == candidate.CallBudget.MaxGeneratorCalls &&

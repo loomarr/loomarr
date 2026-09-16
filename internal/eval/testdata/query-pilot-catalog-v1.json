@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "query-pilot-catalog-v1",
+  "cases": [
+    {
+      "id": "history-era",
+      "responses": [
+        {
+          "operation": "network",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 50001,
+              "name": "Modern Marvels",
+              "year": 1993,
+              "inLibrary": true,
+              "libraryItemId": "pilot-50001",
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "History"
+              ],
+              "officialRating": "TV-G",
+              "overview": "History network engineering documentaries.",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 50002,
+              "name": "Weapons at War",
+              "year": 1991,
+              "inLibrary": true,
+              "libraryItemId": "pilot-50002",
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "History"
+              ],
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 50003,
+              "name": "History's Mysteries",
+              "year": 1998,
+              "inLibrary": true,
+              "libraryItemId": "pilot-50003",
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "History"
+              ],
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 50004,
+              "name": "In Search of History",
+              "year": 1996,
+              "inLibrary": false,
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "History"
+              ],
+              "officialRating": "TV-G",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 50005,
+              "name": "Tales of the Gun",
+              "year": 1998,
+              "inLibrary": false,
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "History"
+              ],
+              "officialRating": "TV-PG",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 50006,
+              "name": "The Great Ships",
+              "year": 1996,
+              "inLibrary": false,
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "History"
+              ],
+              "officialRating": "TV-G",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 50007,
+              "name": "Ancient Aliens",
+              "year": 2009,
+              "inLibrary": true,
+              "libraryItemId": "pilot-50007",
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "History"
+              ],
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 50008,
+              "name": "Synthetic PBS History Neighbor",
+              "year": 1999,
+              "inLibrary": true,
+              "libraryItemId": "pilot-50008",
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "PBS"
+              ],
+              "officialRating": "TV-G",
+              "source": "library"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ownership-control",
+      "responses": [
+        {
+          "operation": "keyword",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 51001,
+              "name": "Synthetic Owned Mystery One",
+              "year": 1993,
+              "inLibrary": true,
+              "libraryItemId": "pilot-51001",
+              "genres": [
+                "Mystery"
+              ],
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 51002,
+              "name": "Synthetic Owned Mystery Two",
+              "year": 1995,
+              "inLibrary": true,
+              "libraryItemId": "pilot-51002",
+              "genres": [
+                "Mystery"
+              ],
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 51003,
+              "name": "Synthetic Outside Mystery",
+              "year": 1997,
+              "inLibrary": false,
+              "genres": [
+                "Mystery"
+              ],
+              "officialRating": "TV-G",
+              "source": "tmdb"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "two-known-shows",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 20101,
+              "name": "Full House",
+              "year": 1987,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20101",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20106,
+              "name": "Sabrina the Teenage Witch",
+              "year": 1996,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20106",
+              "genres": [
+                "Comedy",
+                "Family",
+                "Fantasy"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "officialRating": "TV-G",
+              "source": "library"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

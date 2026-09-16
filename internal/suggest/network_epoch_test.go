@@ -47,6 +47,18 @@ func TestSuggest_NetworkEpochAllowsEditorialDecadeWithoutEpisodeCutoff(t *testin
 	}
 }
 
+func TestSuggest_FranchiseChannelIsNotNetworkProgramming(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"The Matrix"}, "dateMeaning": dateMeaningNone()}),
+		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
+	)
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "I'd like a Matrix franchise channel."})
+	if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != matrixCandidate().TMDBID {
+		t.Fatalf("franchise was forced through network discovery: proposal=%+v err=%v", proposal, err)
+	}
+}
+
 func TestSuggest_NetworkEpochRepairsMistakenEpisodeAiringConstraintBeforeDiscovery(t *testing.T) {
 	const description = "A channel like the History Channel from the 1990s"
 	start := strings.Index(description, "1990s")

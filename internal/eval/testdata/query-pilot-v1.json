@@ -1,0 +1,1628 @@
+{
+  "schemaVersion": 1,
+  "version": "query-pilot-development-v1",
+  "split": "development",
+  "promptVersion": "suggester-prompt-v15",
+  "toolSchemaVersion": "catalog-search-v9",
+  "sourceVersion": "reference-source-v6",
+  "catalogFixture": {
+    "path": "testdata/planner-release-catalog-v1.json",
+    "sha256": "f9359386413a28a382c97a5ca3a32aba3a7343fa0f973e9204302c9d64e91077"
+  },
+  "sourcesFixture": {
+    "path": "testdata/query-pilot-sources-v1.json",
+    "sha256": "cd181bb4652fcae3f384beb38c6360146e903e4e29c5f9a3186aa671fae15e48"
+  },
+  "cases": [
+    {
+      "id": "tgif-terse",
+      "group": "tgif-membership",
+      "category": "named-block",
+      "type": "minimum",
+      "fixtureCase": "tgif",
+      "description": "TGIF",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "tgif-conversational",
+      "group": "tgif-membership",
+      "category": "named-block",
+      "type": "invariance",
+      "fixtureCase": "tgif",
+      "description": "I want a TGIF channel.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "tgif-friday",
+      "group": "tgif-membership",
+      "category": "named-block",
+      "type": "invariance",
+      "fixtureCase": "tgif",
+      "description": "Recreate ABC's TGIF Friday-night block.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "tgif-casual",
+      "group": "tgif-membership",
+      "category": "named-block",
+      "type": "invariance",
+      "fixtureCase": "tgif",
+      "description": "Can you find shows from TGIF?",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "tgif-sabrina",
+      "group": "tgif-membership",
+      "category": "named-block",
+      "type": "directional",
+      "fixtureCase": "tgif",
+      "description": "TGIF, including Sabrina the Teenage Witch.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208"
+      ],
+      "noDates": true,
+      "mustInclude": [
+        "Sabrina the Teenage Witch"
+      ],
+      "requireKeys": [
+        "series:tmdb:20106"
+      ]
+    },
+    {
+      "id": "tgif-exclude",
+      "group": "tgif-membership",
+      "category": "named-block",
+      "type": "directional",
+      "fixtureCase": "tgif",
+      "description": "TGIF, but leave out Full House.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:20102",
+        "series:tmdb:20103",
+        "series:tmdb:20104",
+        "series:tmdb:20105",
+        "series:tmdb:20106"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20201",
+        "series:tmdb:20202",
+        "series:tmdb:20203",
+        "series:tmdb:20204",
+        "series:tmdb:20205",
+        "series:tmdb:20206",
+        "series:tmdb:20207",
+        "series:tmdb:20208",
+        "series:tmdb:20101"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "Full House"
+      ]
+    },
+    {
+      "id": "history-original",
+      "group": "history-editorial-epoch",
+      "category": "network-era",
+      "type": "minimum",
+      "fixtureCase": "history-era",
+      "description": "A channel like the history channel from the 90s",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:50001",
+        "series:tmdb:50002",
+        "series:tmdb:50003",
+        "series:tmdb:50004",
+        "series:tmdb:50005",
+        "series:tmdb:50006"
+      ],
+      "requireKeys": [
+        "series:tmdb:50001"
+      ],
+      "forbidKeys": [
+        "series:tmdb:50007",
+        "series:tmdb:50008"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "history-full-decade",
+      "group": "history-editorial-epoch",
+      "category": "network-era",
+      "type": "invariance",
+      "fixtureCase": "history-era",
+      "description": "A channel like the History Channel from the 1990s",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:50001",
+        "series:tmdb:50002",
+        "series:tmdb:50003",
+        "series:tmdb:50004",
+        "series:tmdb:50005",
+        "series:tmdb:50006"
+      ],
+      "requireKeys": [
+        "series:tmdb:50001"
+      ],
+      "forbidKeys": [
+        "series:tmdb:50007",
+        "series:tmdb:50008"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "history-exemplar",
+      "group": "history-editorial-epoch",
+      "category": "network-era",
+      "type": "invariance",
+      "fixtureCase": "history-era",
+      "description": "A channel like the History Channel from the 1990s, when Modern Marvels was around",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:50001",
+        "series:tmdb:50002",
+        "series:tmdb:50003",
+        "series:tmdb:50004",
+        "series:tmdb:50005",
+        "series:tmdb:50006"
+      ],
+      "requireKeys": [
+        "series:tmdb:50001"
+      ],
+      "forbidKeys": [
+        "series:tmdb:50007",
+        "series:tmdb:50008"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "history-recreate",
+      "group": "history-editorial-epoch",
+      "category": "network-era",
+      "type": "invariance",
+      "fixtureCase": "history-era",
+      "description": "Recreate the History Channel from the 1990s.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:50001",
+        "series:tmdb:50002",
+        "series:tmdb:50003",
+        "series:tmdb:50004",
+        "series:tmdb:50005",
+        "series:tmdb:50006"
+      ],
+      "requireKeys": [
+        "series:tmdb:50001"
+      ],
+      "forbidKeys": [
+        "series:tmdb:50007",
+        "series:tmdb:50008"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "history-casual",
+      "group": "history-editorial-epoch",
+      "category": "network-era",
+      "type": "invariance",
+      "fixtureCase": "history-era",
+      "description": "I'd like a channel like the History Channel from the 90s.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:50001",
+        "series:tmdb:50002",
+        "series:tmdb:50003",
+        "series:tmdb:50004",
+        "series:tmdb:50005",
+        "series:tmdb:50006"
+      ],
+      "requireKeys": [
+        "series:tmdb:50001"
+      ],
+      "forbidKeys": [
+        "series:tmdb:50007",
+        "series:tmdb:50008"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "history-explicit-airing",
+      "group": "history-editorial-epoch",
+      "category": "network-era",
+      "type": "directional",
+      "fixtureCase": "history-era",
+      "description": "A channel like the History Channel from the 1990s. Only episodes aired during the 2000s.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "series:tmdb:50001",
+        "series:tmdb:50002",
+        "series:tmdb:50003",
+        "series:tmdb:50004",
+        "series:tmdb:50005",
+        "series:tmdb:50006"
+      ],
+      "requireKeys": [
+        "series:tmdb:50001"
+      ],
+      "forbidKeys": [
+        "series:tmdb:50007",
+        "series:tmdb:50008"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 2000,
+            "to": 2009
+          }
+        ]
+      }
+    },
+    {
+      "id": "comedy-1",
+      "group": "broad-comedy",
+      "category": "genre",
+      "type": "minimum",
+      "fixtureCase": "broad-comedy",
+      "description": "1990s comedy shows.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:20102",
+        "series:tmdb:20301",
+        "series:tmdb:20302",
+        "series:tmdb:20303"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "comedy-2",
+      "group": "broad-comedy",
+      "category": "genre",
+      "type": "invariance",
+      "fixtureCase": "broad-comedy",
+      "description": "A channel of comedy shows from the 1990s.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:20102",
+        "series:tmdb:20301",
+        "series:tmdb:20302",
+        "series:tmdb:20303"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "comedy-3",
+      "group": "broad-comedy",
+      "category": "genre",
+      "type": "invariance",
+      "fixtureCase": "broad-comedy",
+      "description": "Find a mix of 1990s television comedies.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:20102",
+        "series:tmdb:20301",
+        "series:tmdb:20302",
+        "series:tmdb:20303"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "comedy-4",
+      "group": "broad-comedy",
+      "category": "genre",
+      "type": "invariance",
+      "fixtureCase": "broad-comedy",
+      "description": "Comedy series with episodes aired in the 1990s.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:20102",
+        "series:tmdb:20301",
+        "series:tmdb:20302",
+        "series:tmdb:20303"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "comedy-5",
+      "group": "broad-comedy",
+      "category": "genre",
+      "type": "invariance",
+      "fixtureCase": "broad-comedy",
+      "description": "I'd like 1990s sitcoms, with a good selection.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:20102",
+        "series:tmdb:20301",
+        "series:tmdb:20302",
+        "series:tmdb:20303"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "comedy-6",
+      "group": "broad-comedy",
+      "category": "genre",
+      "type": "directional",
+      "fixtureCase": "broad-comedy",
+      "description": "1990s comedies, but not Seinfeld.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:20102",
+        "series:tmdb:20302",
+        "series:tmdb:20303"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      },
+      "mustExclude": [
+        "Seinfeld"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20301"
+      ]
+    },
+    {
+      "id": "action-1",
+      "group": "movie-release-era",
+      "category": "genre-date",
+      "type": "minimum",
+      "fixtureCase": "genre-era",
+      "description": "Action movies released in the 1990s.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:20401",
+        "movie:tmdb:20402",
+        "movie:tmdb:20403"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "action-2",
+      "group": "movie-release-era",
+      "category": "genre-date",
+      "type": "invariance",
+      "fixtureCase": "genre-era",
+      "description": "A channel of action films from the 1990s.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:20401",
+        "movie:tmdb:20402",
+        "movie:tmdb:20403"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "action-3",
+      "group": "movie-release-era",
+      "category": "genre-date",
+      "type": "invariance",
+      "fixtureCase": "genre-era",
+      "description": "Find 1990s action movies.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:20401",
+        "movie:tmdb:20402",
+        "movie:tmdb:20403"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "action-4",
+      "group": "movie-release-era",
+      "category": "genre-date",
+      "type": "invariance",
+      "fixtureCase": "genre-era",
+      "description": "I'd like action movies made in the 1990s.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:20401",
+        "movie:tmdb:20402",
+        "movie:tmdb:20403"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "action-5",
+      "group": "movie-release-era",
+      "category": "genre-date",
+      "type": "invariance",
+      "fixtureCase": "genre-era",
+      "description": "Action films with a 1990s release date.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:20401",
+        "movie:tmdb:20402",
+        "movie:tmdb:20403"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "action-6",
+      "group": "movie-release-era",
+      "category": "genre-date",
+      "type": "directional",
+      "fixtureCase": "genre-era",
+      "description": "Action movies released in the 1990s, including Synthetic 90s Action Three.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:20401",
+        "movie:tmdb:20402",
+        "movie:tmdb:20403"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      },
+      "mustInclude": [
+        "Synthetic 90s Action Three"
+      ],
+      "requireKeys": [
+        "movie:tmdb:20403"
+      ]
+    },
+    {
+      "id": "matrix-1",
+      "group": "matrix-franchise",
+      "category": "franchise",
+      "type": "minimum",
+      "fixtureCase": "known-franchise",
+      "description": "A channel built around The Matrix franchise.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21201",
+        "movie:tmdb:21202",
+        "movie:tmdb:21203",
+        "movie:tmdb:21204"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21205"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "matrix-2",
+      "group": "matrix-franchise",
+      "category": "franchise",
+      "type": "invariance",
+      "fixtureCase": "known-franchise",
+      "description": "The Matrix movies and their franchise companions.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21201",
+        "movie:tmdb:21202",
+        "movie:tmdb:21203",
+        "movie:tmdb:21204"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21205"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "matrix-3",
+      "group": "matrix-franchise",
+      "category": "franchise",
+      "type": "invariance",
+      "fixtureCase": "known-franchise",
+      "description": "Find titles in The Matrix franchise.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21201",
+        "movie:tmdb:21202",
+        "movie:tmdb:21203",
+        "movie:tmdb:21204"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21205"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "matrix-4",
+      "group": "matrix-franchise",
+      "category": "franchise",
+      "type": "invariance",
+      "fixtureCase": "known-franchise",
+      "description": "I'd like a Matrix franchise channel.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21201",
+        "movie:tmdb:21202",
+        "movie:tmdb:21203",
+        "movie:tmdb:21204"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21205"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "matrix-5",
+      "group": "matrix-franchise",
+      "category": "franchise",
+      "type": "invariance",
+      "fixtureCase": "known-franchise",
+      "description": "Make a channel for The Matrix film franchise.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21201",
+        "movie:tmdb:21202",
+        "movie:tmdb:21203",
+        "movie:tmdb:21204"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21205"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "matrix-6",
+      "group": "matrix-franchise",
+      "category": "franchise",
+      "type": "directional",
+      "fixtureCase": "known-franchise",
+      "description": "The Matrix franchise, but leave out The Animatrix.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21201",
+        "movie:tmdb:21202",
+        "movie:tmdb:21203"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21205",
+        "movie:tmdb:21204"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "The Animatrix"
+      ]
+    },
+    {
+      "id": "mcu-1",
+      "group": "mcu-phase-one",
+      "category": "named-collection",
+      "type": "minimum",
+      "fixtureCase": "named-collection",
+      "description": "MCU Phase One.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "movie:tmdb:21101",
+        "movie:tmdb:21102",
+        "movie:tmdb:21103",
+        "movie:tmdb:21104",
+        "movie:tmdb:21105",
+        "movie:tmdb:21106"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21107"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "mcu-2",
+      "group": "mcu-phase-one",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "named-collection",
+      "description": "A channel with Marvel Cinematic Universe Phase One movies.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "movie:tmdb:21101",
+        "movie:tmdb:21102",
+        "movie:tmdb:21103",
+        "movie:tmdb:21104",
+        "movie:tmdb:21105",
+        "movie:tmdb:21106"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21107"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "mcu-3",
+      "group": "mcu-phase-one",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "named-collection",
+      "description": "Find the films in MCU Phase One.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "movie:tmdb:21101",
+        "movie:tmdb:21102",
+        "movie:tmdb:21103",
+        "movie:tmdb:21104",
+        "movie:tmdb:21105",
+        "movie:tmdb:21106"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21107"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "mcu-4",
+      "group": "mcu-phase-one",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "named-collection",
+      "description": "I'd like Marvel's Phase One film lineup.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "movie:tmdb:21101",
+        "movie:tmdb:21102",
+        "movie:tmdb:21103",
+        "movie:tmdb:21104",
+        "movie:tmdb:21105",
+        "movie:tmdb:21106"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21107"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "mcu-5",
+      "group": "mcu-phase-one",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "named-collection",
+      "description": "Build a channel around MCU Phase One.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "movie:tmdb:21101",
+        "movie:tmdb:21102",
+        "movie:tmdb:21103",
+        "movie:tmdb:21104",
+        "movie:tmdb:21105",
+        "movie:tmdb:21106"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21107"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "mcu-6",
+      "group": "mcu-phase-one",
+      "category": "named-collection",
+      "type": "directional",
+      "fixtureCase": "named-collection",
+      "description": "MCU Phase One, but skip The Incredible Hulk.",
+      "minGrounded": 5,
+      "acceptableKeys": [
+        "movie:tmdb:21101",
+        "movie:tmdb:21103",
+        "movie:tmdb:21104",
+        "movie:tmdb:21105",
+        "movie:tmdb:21106"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21107",
+        "movie:tmdb:21102"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "The Incredible Hulk"
+      ]
+    },
+    {
+      "id": "hanks-1",
+      "group": "tom-hanks-era",
+      "category": "person-date",
+      "type": "minimum",
+      "fixtureCase": "movie-person",
+      "description": "Tom Hanks movies from the 1990s.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21301",
+        "movie:tmdb:21302",
+        "movie:tmdb:21303",
+        "movie:tmdb:21304"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "hanks-2",
+      "group": "tom-hanks-era",
+      "category": "person-date",
+      "type": "invariance",
+      "fixtureCase": "movie-person",
+      "description": "A channel of films starring Tom Hanks, released in the 1990s.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21301",
+        "movie:tmdb:21302",
+        "movie:tmdb:21303",
+        "movie:tmdb:21304"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "hanks-3",
+      "group": "tom-hanks-era",
+      "category": "person-date",
+      "type": "invariance",
+      "fixtureCase": "movie-person",
+      "description": "Find Tom Hanks films made in the 1990s.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21301",
+        "movie:tmdb:21302",
+        "movie:tmdb:21303",
+        "movie:tmdb:21304"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "hanks-4",
+      "group": "tom-hanks-era",
+      "category": "person-date",
+      "type": "invariance",
+      "fixtureCase": "movie-person",
+      "description": "I'd like movies with Tom Hanks from the 1990s.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21301",
+        "movie:tmdb:21302",
+        "movie:tmdb:21303",
+        "movie:tmdb:21304"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "hanks-5",
+      "group": "tom-hanks-era",
+      "category": "person-date",
+      "type": "invariance",
+      "fixtureCase": "movie-person",
+      "description": "Films starring Tom Hanks with a 1990s release date.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21301",
+        "movie:tmdb:21302",
+        "movie:tmdb:21303",
+        "movie:tmdb:21304"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "hanks-6",
+      "group": "tom-hanks-era",
+      "category": "person-date",
+      "type": "directional",
+      "fixtureCase": "movie-person",
+      "description": "Tom Hanks movies from the 1990s, but not Saving Private Ryan.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "movie:tmdb:21301",
+        "movie:tmdb:21302",
+        "movie:tmdb:21303"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      },
+      "mustExclude": [
+        "Saving Private Ryan"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:21304"
+      ]
+    },
+    {
+      "id": "cozy-1",
+      "group": "cozy-mysteries",
+      "category": "mood",
+      "type": "minimum",
+      "fixtureCase": "mood-theme",
+      "description": "Cozy mystery shows.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "cozy-2",
+      "group": "cozy-mysteries",
+      "category": "mood",
+      "type": "invariance",
+      "fixtureCase": "mood-theme",
+      "description": "A channel of gentle cozy mystery series.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "cozy-3",
+      "group": "cozy-mysteries",
+      "category": "mood",
+      "type": "invariance",
+      "fixtureCase": "mood-theme",
+      "description": "Find cozy mysteries for a quiet evening.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "cozy-4",
+      "group": "cozy-mysteries",
+      "category": "mood",
+      "type": "invariance",
+      "fixtureCase": "mood-theme",
+      "description": "I'd like light mystery shows that feel cozy.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "cozy-5",
+      "group": "cozy-mysteries",
+      "category": "mood",
+      "type": "invariance",
+      "fixtureCase": "mood-theme",
+      "description": "Cozy television mysteries with a relaxed feel.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "cozy-6",
+      "group": "cozy-mysteries",
+      "category": "mood",
+      "type": "directional",
+      "fixtureCase": "mood-theme",
+      "description": "Cozy mystery shows, including Father Brown.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21504"
+      ],
+      "noDates": true,
+      "mustInclude": [
+        "Father Brown"
+      ],
+      "requireKeys": [
+        "series:tmdb:21502"
+      ]
+    },
+    {
+      "id": "apple-1",
+      "group": "apple-science-fiction",
+      "category": "network-genre",
+      "type": "minimum",
+      "fixtureCase": "tv-network-genre",
+      "description": "Science fiction series on Apple TV+.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21701",
+        "series:tmdb:21702",
+        "series:tmdb:21703",
+        "series:tmdb:21704"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21705"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "apple-2",
+      "group": "apple-science-fiction",
+      "category": "network-genre",
+      "type": "invariance",
+      "fixtureCase": "tv-network-genre",
+      "description": "Find Apple TV+ science-fiction shows.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21701",
+        "series:tmdb:21702",
+        "series:tmdb:21703",
+        "series:tmdb:21704"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21705"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "apple-3",
+      "group": "apple-science-fiction",
+      "category": "network-genre",
+      "type": "invariance",
+      "fixtureCase": "tv-network-genre",
+      "description": "I'd like sci-fi shows from Apple TV+.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21701",
+        "series:tmdb:21702",
+        "series:tmdb:21703",
+        "series:tmdb:21704"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21705"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "apple-4",
+      "group": "apple-science-fiction",
+      "category": "network-genre",
+      "type": "invariance",
+      "fixtureCase": "tv-network-genre",
+      "description": "A channel of Apple TV+ science fiction series.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21701",
+        "series:tmdb:21702",
+        "series:tmdb:21703",
+        "series:tmdb:21704"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21705"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "apple-5",
+      "group": "apple-science-fiction",
+      "category": "network-genre",
+      "type": "invariance",
+      "fixtureCase": "tv-network-genre",
+      "description": "Apple TV+ sci-fi television, with a good selection.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21701",
+        "series:tmdb:21702",
+        "series:tmdb:21703",
+        "series:tmdb:21704"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21705"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "apple-6",
+      "group": "apple-science-fiction",
+      "category": "network-genre",
+      "type": "directional",
+      "fixtureCase": "tv-network-genre",
+      "description": "Science fiction on Apple TV+, but no Severance.",
+      "minGrounded": 3,
+      "acceptableKeys": [
+        "series:tmdb:21701",
+        "series:tmdb:21702",
+        "series:tmdb:21703"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21705",
+        "series:tmdb:21704"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "Severance"
+      ]
+    },
+    {
+      "id": "exclude-1",
+      "group": "explicit-title-exclusion",
+      "category": "exclusion",
+      "type": "minimum",
+      "fixtureCase": "mood-theme",
+      "description": "Cozy mysteries, but not Murder, She Wrote.",
+      "mustExclude": [
+        "Murder, She Wrote"
+      ],
+      "minGrounded": 2,
+      "acceptableKeys": [
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exclude-2",
+      "group": "explicit-title-exclusion",
+      "category": "exclusion",
+      "type": "invariance",
+      "fixtureCase": "mood-theme",
+      "description": "A cozy mystery channel without Murder, She Wrote.",
+      "mustExclude": [
+        "Murder, She Wrote"
+      ],
+      "minGrounded": 2,
+      "acceptableKeys": [
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exclude-3",
+      "group": "explicit-title-exclusion",
+      "category": "exclusion",
+      "type": "invariance",
+      "fixtureCase": "mood-theme",
+      "description": "Find cozy mystery series; leave out Murder, She Wrote.",
+      "mustExclude": [
+        "Murder, She Wrote"
+      ],
+      "minGrounded": 2,
+      "acceptableKeys": [
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exclude-4",
+      "group": "explicit-title-exclusion",
+      "category": "exclusion",
+      "type": "invariance",
+      "fixtureCase": "mood-theme",
+      "description": "I'd like cozy mysteries, excluding Murder, She Wrote.",
+      "mustExclude": [
+        "Murder, She Wrote"
+      ],
+      "minGrounded": 2,
+      "acceptableKeys": [
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exclude-5",
+      "group": "explicit-title-exclusion",
+      "category": "exclusion",
+      "type": "invariance",
+      "fixtureCase": "mood-theme",
+      "description": "Cozy mystery shows. Please skip Murder, She Wrote.",
+      "mustExclude": [
+        "Murder, She Wrote"
+      ],
+      "minGrounded": 2,
+      "acceptableKeys": [
+        "series:tmdb:21502",
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21504"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exclude-6",
+      "group": "explicit-title-exclusion",
+      "category": "exclusion",
+      "type": "directional",
+      "fixtureCase": "mood-theme",
+      "description": "Cozy mysteries, but skip both Murder, She Wrote and Father Brown.",
+      "mustExclude": [
+        "Murder, She Wrote",
+        "Father Brown"
+      ],
+      "minGrounded": 1,
+      "acceptableKeys": [
+        "series:tmdb:21503"
+      ],
+      "forbidKeys": [
+        "series:tmdb:21501",
+        "series:tmdb:21502",
+        "series:tmdb:21504"
+      ],
+      "noDates": true,
+      "requireKeys": [
+        "series:tmdb:21503"
+      ]
+    },
+    {
+      "id": "owned-1",
+      "group": "library-ownership",
+      "category": "ownership",
+      "type": "minimum",
+      "fixtureCase": "ownership-control",
+      "description": "Cozy mystery shows from my library, plus something new.",
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:51001",
+        "series:tmdb:51002",
+        "series:tmdb:51003"
+      ],
+      "requireKeys": [
+        "series:tmdb:51003"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "owned-2",
+      "group": "library-ownership",
+      "category": "ownership",
+      "type": "invariance",
+      "fixtureCase": "ownership-control",
+      "description": "Find library mysteries and one new mystery show.",
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:51001",
+        "series:tmdb:51002",
+        "series:tmdb:51003"
+      ],
+      "requireKeys": [
+        "series:tmdb:51003"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "owned-3",
+      "group": "library-ownership",
+      "category": "ownership",
+      "type": "invariance",
+      "fixtureCase": "ownership-control",
+      "description": "A mystery channel that mixes my shows with a new find.",
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:51001",
+        "series:tmdb:51002",
+        "series:tmdb:51003"
+      ],
+      "requireKeys": [
+        "series:tmdb:51003"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "owned-4",
+      "group": "library-ownership",
+      "category": "ownership",
+      "type": "invariance",
+      "fixtureCase": "ownership-control",
+      "description": "I'd like my library's mystery shows and an outside choice.",
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:51001",
+        "series:tmdb:51002",
+        "series:tmdb:51003"
+      ],
+      "requireKeys": [
+        "series:tmdb:51003"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "owned-5",
+      "group": "library-ownership",
+      "category": "ownership",
+      "type": "invariance",
+      "fixtureCase": "ownership-control",
+      "description": "Mystery series: use my library and suggest one new show.",
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:51001",
+        "series:tmdb:51002",
+        "series:tmdb:51003"
+      ],
+      "requireKeys": [
+        "series:tmdb:51003"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "owned-6",
+      "group": "library-ownership",
+      "category": "ownership",
+      "type": "directional",
+      "fixtureCase": "ownership-control",
+      "description": "Mystery shows using only what I already own.",
+      "minGrounded": 2,
+      "minLineup": 2,
+      "minAcquisitions": 0,
+      "acceptableKeys": [
+        "series:tmdb:51001",
+        "series:tmdb:51002"
+      ],
+      "requireKeys": [
+        "series:tmdb:51001",
+        "series:tmdb:51002"
+      ],
+      "noDates": true,
+      "forbidKeys": [
+        "series:tmdb:51003"
+      ]
+    },
+    {
+      "id": "named-1",
+      "group": "exact-named-shows",
+      "category": "known-title",
+      "type": "minimum",
+      "fixtureCase": "two-known-shows",
+      "description": "A Full House channel.",
+      "minGrounded": 1,
+      "acceptableKeys": [
+        "series:tmdb:20101"
+      ],
+      "requireKeys": [
+        "series:tmdb:20101"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20106"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "named-2",
+      "group": "exact-named-shows",
+      "category": "known-title",
+      "type": "invariance",
+      "fixtureCase": "two-known-shows",
+      "description": "I'd like Full House.",
+      "minGrounded": 1,
+      "acceptableKeys": [
+        "series:tmdb:20101"
+      ],
+      "requireKeys": [
+        "series:tmdb:20101"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20106"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "named-3",
+      "group": "exact-named-shows",
+      "category": "known-title",
+      "type": "invariance",
+      "fixtureCase": "two-known-shows",
+      "description": "Find Full House for a channel.",
+      "minGrounded": 1,
+      "acceptableKeys": [
+        "series:tmdb:20101"
+      ],
+      "requireKeys": [
+        "series:tmdb:20101"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20106"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "named-4",
+      "group": "exact-named-shows",
+      "category": "known-title",
+      "type": "invariance",
+      "fixtureCase": "two-known-shows",
+      "description": "Make a channel around Full House.",
+      "minGrounded": 1,
+      "acceptableKeys": [
+        "series:tmdb:20101"
+      ],
+      "requireKeys": [
+        "series:tmdb:20101"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20106"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "named-5",
+      "group": "exact-named-shows",
+      "category": "known-title",
+      "type": "invariance",
+      "fixtureCase": "two-known-shows",
+      "description": "Just Full House; no other shows.",
+      "minGrounded": 1,
+      "acceptableKeys": [
+        "series:tmdb:20101"
+      ],
+      "requireKeys": [
+        "series:tmdb:20101"
+      ],
+      "forbidKeys": [
+        "series:tmdb:20106"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "named-6",
+      "group": "exact-named-shows",
+      "category": "known-title",
+      "type": "directional",
+      "fixtureCase": "two-known-shows",
+      "description": "A channel with Full House and Sabrina the Teenage Witch.",
+      "minGrounded": 2,
+      "acceptableKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20106"
+      ],
+      "requireKeys": [
+        "series:tmdb:20101",
+        "series:tmdb:20106"
+      ],
+      "forbidKeys": [],
+      "noDates": true,
+      "mustInclude": [
+        "Full House",
+        "Sabrina the Teenage Witch"
+      ]
+    }
+  ],
+  "extraCatalogFixture": {
+    "path": "testdata/query-pilot-catalog-v1.json",
+    "sha256": "3c9dd25d40865c79a0e1c608183c691f6963a8f73482a8de4e92407b67c5f867"
+  }
+}
