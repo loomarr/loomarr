@@ -1,0 +1,78 @@
+import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import { ClipDetails } from "./clip-details";
+
+const clip: ClipDTO = {
+  hash: "detail-clip",
+  name: "Candy commercial",
+  kind: "commercial",
+  durationMs: 30000,
+  aiTagged: false,
+  tagged: false,
+  playCount: 0,
+  playsCounted: true,
+};
+
+describe("ClipDetails", () => {
+  it("does not load or reveal held media until an explicit preview gesture", async () => {
+    const { container, rerender } = render(<ClipDetails clip={{ ...clip, held: true }} />);
+    expect(container.querySelector("video")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Preview clip" }));
+    expect(container.querySelector("video")).toBeInTheDocument();
+    rerender(<ClipDetails clip={{ ...clip, held: true, hash: "another-held-clip" }} />);
+    expect(container.querySelector("video")).toBeNull();
+    expect(screen.queryByText(/Channels choose clips/)).not.toBeInTheDocument();
+  });
+
+  it("shows known facts and the exact original item, not a guessed source URL", () => {
+    render(
+      <ClipDetails
+        clip={{
+          ...clip,
+          era: 1977,
+          audience: "kids",
+          brand: "Tootsie Pop",
+          assertedTags: ["candy"],
+          source: "classic-ads",
+          sourceUrl: "https://archive.org/details/exact-item",
+        }}
+      />,
+    );
+    expect(screen.getByText("1977")).toBeInTheDocument();
+    expect(screen.getByText("Tootsie Pop")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View original" })).toHaveAttribute(
+      "href",
+      "https://archive.org/details/exact-item",
+    );
+    expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
+  });
+
+  it("keeps unknown optional facts quiet and does not infer home location", () => {
+    render(<ClipDetails clip={{ ...clip, kind: "unclassified", source: "filler-dir" }} />);
+    expect(screen.getByText("Your clip folder")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Unclassified|Untagged|Geography unknown|review required/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Location")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "https://secret:password@archive.org/details/reel",
+    "file:///private/movie",
+    "not-a-url",
+  ])("does not link an unsafe or absent source: %s", (sourceUrl) => {
+    render(<ClipDetails clip={{ ...clip, source: "classic", sourceUrl }} />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByText("classic")).toBeInTheDocument();
+  });
+
+  it("does not describe preview playback as an airing", () => {
+    render(<ClipDetails clip={{ ...clip, playsCounted: false }} />);
+    expect(screen.getByText("Airings aren't counted on this setup")).toBeInTheDocument();
+    expect(screen.queryByText("Never aired")).not.toBeInTheDocument();
+  });
+});

@@ -715,9 +715,7 @@ describe("Settings honesty", () => {
       ...appHandlers(),
     );
 
-    renderAt("/filler/settings");
-    const advancedButtons = await screen.findAllByRole("button", { name: /show advanced/i });
-    for (const button of advancedButtons) await userEvent.click(button);
+    renderAt("/filler/settings?section=playback");
 
     expect(await screen.findByLabelText("Expected spoken language")).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(
@@ -749,9 +747,7 @@ describe("Settings honesty", () => {
       ...appHandlers(),
     );
 
-    renderAt("/filler/settings");
-    const advancedButtons = await screen.findAllByRole("button", { name: /show advanced/i });
-    for (const button of advancedButtons) await userEvent.click(button);
+    renderAt("/filler/settings?section=playback");
 
     expect(await screen.findByLabelText("Expected spoken language")).toBeEnabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

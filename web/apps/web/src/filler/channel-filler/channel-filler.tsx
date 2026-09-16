@@ -346,7 +346,7 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
         <div className="flex flex-col gap-4">
           <FillerClipList
             label="Prefer on this channel"
-            hint="Play these clips ahead of automatic rotation when they fit. A recent preference may repeat."
+            hint="Play these clips ahead of automatic rotation, even when year, audience, or topics differ. Location, type, and length restrictions still apply. Preferred clips may repeat."
             ids={pinned}
             onChange={(next) => setDraft({ ...draft, pinned: next })}
             resolve={resolve}
@@ -380,12 +380,12 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
               "Assembling preview…"
             ) : (
               <>
-                No clips match this selection yet. Breaks fall back to the bumper card. Loosen the theme
+                No clips match these choices yet. Breaks use the bumper card for now. Adjust the choices
                 above, or{" "}
                 <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
-                  add and tag clips
-                </Link>{" "}
-                in your filler catalog.
+                  browse your filler library
+                </Link>
+                .
               </>
             )}
           </p>

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -400,7 +401,8 @@ type ClipDTO struct {
 	// ⚠ Deliberately NOT the transcript itself: it is kilobytes per clip that no grid renders, so
 	// at a 100-row page it would be roughly ten times the rest of the payload. The detail surface
 	// fetches the text; the listing only needs to know there is some.
-	HasTranscript bool `json:"hasTranscript,omitempty" doc:"Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders."`
+	HasTranscript bool   `json:"hasTranscript,omitempty" doc:"Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders."`
+	SourceURL     string `json:"sourceUrl,omitempty" doc:"Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID."`
 }
 
 // playsCounted reports whether THIS install can observe a filler clip airing.
@@ -608,7 +610,27 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 	// inside the loop would be two queries per tile.
 	img := s.clipArtworkResolver(ctx, clips)
 	for _, c := range clips {
-		out.Body.Clips = append(out.Body.Clips, clipToDTO(c, s.playsCounted(), img))
+		d := clipToDTO(c, s.playsCounted(), img)
+		if len(in.Hashes) == 1 {
+			provenanceClip := c
+			if c.ParentHash != "" {
+				parent, err := s.store.GetClip(ctx, c.ParentHash)
+				if err == nil {
+					provenanceClip = parent
+				}
+			}
+			artifact, found, err := s.store.AcquisitionArtifactForClip(ctx, provenanceClip.Path, provenanceClip.Hash)
+			if err != nil {
+				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read clip source", "The recorded source could not be read. Try again.", err)
+			}
+			// A reused filename does not prove this clip came from the newer acquisition.
+			if found && artifact.ClipHash == provenanceClip.Hash {
+				if u, err := url.Parse(artifact.SourceURL); err == nil && u.User == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") {
+					d.SourceURL = u.String()
+				}
+			}
+		}
+		out.Body.Clips = append(out.Body.Clips, d)
 	}
 	return out, nil
 }

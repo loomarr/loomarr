@@ -1,10 +1,10 @@
 import type { ClipDTO } from "@loomarr/api";
-import { getListFillerMockHandler } from "@loomarr/api/msw";
+import { getListFillerMockHandler, getListTaxonomyMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { FillerCatalog } from "./filler-catalog";
@@ -34,21 +34,33 @@ const Wrapper = ({ children }: { children: ReactNode }) => (
 );
 
 describe("FillerCatalog", () => {
-  it("owns catalog rendering while delegating the shared exact-clip editor", async () => {
-    server.use(getListFillerMockHandler({ clips: [clip], total: 1 }));
-    const onEditTags = vi.fn();
-
-    render(
-      <RouterHarness
-        initialPath="/filler/library"
-        content={<FillerCatalog isAdmin onEditTags={onEditTags} onProposePull={vi.fn()} />}
-      />,
-      { wrapper: Wrapper },
+  it("opens the exact clip panel before optional editing", async () => {
+    server.use(
+      getListFillerMockHandler({ clips: [clip], total: 1 }),
+      getListTaxonomyMockHandler({
+        taxa: [],
+        totalClips: 1,
+        taggedClips: 1,
+        unclassifiedClips: 0,
+        axisCoverage: [],
+      }),
     );
 
+    render(<RouterHarness initialPath="/filler/library" content={<FillerCatalog isAdmin />} />, {
+      wrapper: Wrapper,
+    });
+
     expect(await screen.findByText("Local soda commercial")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Edit tags" }));
-    expect(onEditTags).toHaveBeenCalledWith("catalog-hash");
+    await userEvent.click(screen.getByRole("button", { name: "View details for Local soda commercial" }));
+    const panel = await screen.findByRole("dialog", { name: "Local soda commercial" });
+    expect(within(panel).getByRole("button", { name: "Edit details" })).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Edit details" }));
+    expect(
+      await screen.findByRole("region", { name: "Edit details: Local soda commercial" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("clears a selected clip when a search removes it from the rendered result set", async () => {
@@ -61,13 +73,9 @@ describe("FillerCatalog", () => {
     );
 
     const user = userEvent.setup();
-    render(
-      <RouterHarness
-        initialPath="/filler/library"
-        content={<FillerCatalog isAdmin onEditTags={vi.fn()} onProposePull={vi.fn()} />}
-      />,
-      { wrapper: Wrapper },
-    );
+    render(<RouterHarness initialPath="/filler/library" content={<FillerCatalog isAdmin />} />, {
+      wrapper: Wrapper,
+    });
 
     await screen.findByText("Local soda commercial");
     await user.click(screen.getByRole("checkbox", { name: "Select Local soda commercial" }));
@@ -87,13 +95,9 @@ describe("FillerCatalog", () => {
     server.use(getListFillerMockHandler({ clips: [clip], total: 1 }));
 
     const user = userEvent.setup();
-    render(
-      <RouterHarness
-        initialPath="/filler/library"
-        content={<FillerCatalog isAdmin onEditTags={vi.fn()} onProposePull={vi.fn()} />}
-      />,
-      { wrapper: Wrapper },
-    );
+    render(<RouterHarness initialPath="/filler/library" content={<FillerCatalog isAdmin />} />, {
+      wrapper: Wrapper,
+    });
 
     await screen.findByText("Local soda commercial");
     await user.click(screen.getByRole("checkbox", { name: "Select Local soda commercial" }));
@@ -101,5 +105,60 @@ describe("FillerCatalog", () => {
 
     expect(await screen.findByText("1 clip selected")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove from catalog" })).toBeInTheDocument();
+  });
+  it("List inspection preserves view, filters, page, selection and return focus", async () => {
+    server.use(getListFillerMockHandler({ clips: [clip], total: 121 }));
+    const user = userEvent.setup();
+    render(
+      <RouterHarness
+        initialPath="/filler/library?view=list&q=soda&page=2"
+        content={<FillerCatalog isAdmin />}
+      />,
+      { wrapper: Wrapper },
+    );
+    const title = await screen.findByRole("button", { name: "View details for Local soda commercial" });
+    await user.click(screen.getByRole("checkbox", { name: "Select Local soda commercial" }));
+    await user.click(title);
+    const panel = await screen.findByRole("dialog", { name: "Local soda commercial" });
+    expect(within(panel).getByText("1990s")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(title).toHaveFocus());
+    expect(screen.getByRole("radio", { name: "List" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByLabelText("Search")).toHaveValue("soda");
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText("1 clip selected")).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "Grid" }));
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText("1 clip selected")).toBeInTheDocument();
+  });
+
+  it("opens a nested recording segment by exact hash rather than the current result page", async () => {
+    const recording: ClipDTO = { ...clip, hash: "recording", name: "Source recording", isComposite: true };
+    const child: ClipDTO = { ...clip, hash: "child", name: "Nested clip", parentHash: "recording" };
+    const queries: string[] = [];
+    server.use(
+      getListFillerMockHandler(({ request }) => {
+        const params = new URL(request.url).searchParams;
+        queries.push(params.toString());
+        return {
+          clips:
+            params.get("hashes") === "child" || params.get("parentHash") === "recording"
+              ? [child]
+              : [recording],
+          total: 1,
+        };
+      }),
+    );
+    const user = userEvent.setup();
+    render(<RouterHarness initialPath="/filler/library?view=list" content={<FillerCatalog isAdmin />} />, {
+      wrapper: Wrapper,
+    });
+    await user.click(await screen.findByRole("button", { name: "Show segments from Source recording" }));
+    await user.click(await screen.findByRole("button", { name: "View details for Nested clip" }));
+    expect(await screen.findByRole("dialog", { name: "Nested clip" })).toBeInTheDocument();
+    expect(queries.some((query) => new URLSearchParams(query).get("hashes") === "child")).toBe(true);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 });

@@ -67,7 +67,6 @@ const KNOWN_GAPS = new Set([
   // would re-exempt a module that now has tests, and the third assertion below is what catches
   // that rather than leaving the register quietly wrong.
   "filler/channel-filler/use-filler-catalog/use-filler-catalog.ts",
-  "filler/clip-tag-dialog/clip-tag-dialog.tsx",
   "help/help-page/help-page.tsx",
   "help/search-docs/search-docs.ts",
   "lib/use-document-title/use-document-title.ts",

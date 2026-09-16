@@ -453,10 +453,6 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V34: the split review route exists, but if no card offers the entry point the
     // operator can never reach it. The action lives on each clip card (admin).
     ["/filler/library", /split into clips/i, "the compilation-split entry point"],
-    // V35 item 1.7: the per-channel override picker. Its entry point is on each clip card
-    // (admin) — the picker itself is behind a click, so this asserts the DOOR, which is the
-    // half that has gone missing eight times before.
-    ["/filler/library", /use in a channel/i, "the channel-override entry point"],
     // V35: per-source search, on the Sources tab. ⚠ `GET /v1/filler/discover` was API-ONLY for
     // a whole phase — the route shipped, `DiscoverPanel` was deleted rather than left orphaned,
     // and nothing called it. This is the assertion that stops it going back to that state.
@@ -479,6 +475,17 @@ describe("feature-gated panels mount when their flag is on", () => {
     // heading plus a row label). Presence is the assertion here, not uniqueness.
     const found = await screen.findAllByText(pattern, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
+  });
+
+  // The old channel-assignment action was deliberately retired. The permanent Library door is
+  // now the shared exact-clip inspector, so reachability must guard that approved interaction
+  // instead of requiring removed copy to return.
+  it("/filler/library reaches exact-clip inspection", async () => {
+    stubReachable();
+    renderAt("/filler/library");
+    expect(
+      await screen.findByRole("button", { name: "View details for 80s cereal advert" }),
+    ).toBeInTheDocument();
   });
 
   // The row above proves the source-workspace door exists; this proves its optional search opens.

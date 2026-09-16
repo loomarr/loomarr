@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
-import { Pin, Play, Scissors, Tag } from "lucide-react";
+import { Play, Scissors } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,14 +32,6 @@ const AUDIENCE_LABEL: Record<string, string> = {
   late_night: "Late night",
 };
 
-// The cycle orders. Each ends at "" / 0 — UNSET is a reachable step, not a trap: a chip you
-// can only advance through would make a wrongly-tagged clip impossible to blank without
-// opening the dialog, and §10's likely error is exactly a mis-tagged clip.
-const AUDIENCES = ["kids", "family", "general", "late_night", ""] as const;
-// The CYCLE steps by decade (cycling by 1 would be 10 clicks per useful step), bounded to the span
-// of TV advertising the catalog holds, then back to unset.
-const ERAS = [1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020, 0] as const;
-
 // eraLabel renders an era for display. ⚠ The tagger grounds a LITERAL YEAR from the clip's text
 // (§8), so `era` is often a specific year (1996), NOT a decade — and "1996s" is nonsense. Append the
 // decade "s" ONLY when the value is a decade boundary (divisible by 10); a specific year renders
@@ -52,8 +44,6 @@ const eraLabel = (era: number | undefined): string => {
 // of the taxonomy tags, not a directly-editable free string — there is nothing to cycle. Tags are
 // shown as read-only badges and edited in the tag dialog, which serves the real vocabulary. (The list
 // was also a rule violation: operator-editable data hardcoded on the FE — see the no-hardcode rule.)
-
-const next = <T,>(list: readonly T[], current: T): T => list[(list.indexOf(current) + 1) % list.length] as T;
 
 // How much this clip has actually AIRED — the mock's `usedLine`.
 //
@@ -73,49 +63,6 @@ const playsLine = (clip: ClipDTO): string => {
   const airings = `${clip.playCount} ${clip.playCount === 1 ? "airing" : "airings"}`;
   return clip.lastPlayedAt ? `${airings} · last ${formatRelative(clip.lastPlayedAt)}` : airings;
 };
-
-// A tag chip you can click to advance. Styled to match Badge (mono/uppercase, §2.2) rather
-// than composing it, because a <button> inside a <span>-shaped Badge would nest interactive
-// content in a label. The hover border is the affordance: a chip that looks identical to a
-// static badge would never invite the click.
-const CycleChip = ({
-  label,
-  title,
-  unset,
-  onClick,
-}: {
-  label: string;
-  title: string;
-  unset?: boolean;
-  onClick: () => void;
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    title={title}
-    // The title doubles as the accessible name: "1990s" alone does not say it is editable.
-    aria-label={title}
-    className={cn(
-      // ⚠ cursor-pointer: Tailwind v4's Preflight no longer sets it on <button> (v3 did), so this
-      // chip showed an ARROW — while the comment above claimed "the hover border is the
-      // affordance", which was written when the cursor changed too. A chip that looks like a
-      // static badge and does not even change the pointer invites nothing.
-      "inline-flex w-fit cursor-pointer items-center rounded-sm border border-border px-1.5 py-0.5 font-medium font-mono text-2xs uppercase tracking-wide transition-colors hover:border-static-400 hover:text-static-200",
-      // ⚠ An UNSET chip is a quiet invitation, not an alarm. Three chips shouting
-      // "AUDIENCE?" beside a "Untagged" badge says the same thing four times and makes an
-      // untagged clip look broken rather than merely unfinished — the badge is the signal,
-      // these are the controls.
-      //
-      // ⚠ static-400, NOT static-500. The token file marks 500 "DISABLED-only + decorative
-      // glyphs (2.94:1 — fails for info text)", and the a11y gate caught exactly that: this
-      // is interactive TEXT, so it needs AA. The dashed border carries the "unset" signal
-      // instead, which colour alone should not have been doing anyway.
-      unset && "border-dashed text-static-400",
-    )}
-  >
-    {label}
-  </button>
-);
 
 // ClipFrame — the thumbnail, its overlays, and the hover preview (V39).
 //
@@ -241,7 +188,7 @@ const ClipFrame = ({
         <Checkbox
           checked={Boolean(selected)}
           onChange={onToggleSelect}
-          className="absolute top-1.5 left-1.5 size-4 accent-signal"
+          className="absolute top-1.5 left-1.5 z-10 size-4 accent-signal"
           aria-label={`Select ${clip.name}`}
         />
       )}
@@ -267,10 +214,10 @@ const ClipFrame = ({
             onClick={onPlay}
             // The name says WHICH clip: a grid of buttons all called "Play" is unusable by voice
             // control and meaningless in a screen reader's element list.
-            aria-label={`Play ${clip.name}`}
-            title={`Play ${clip.name}`}
+            aria-label={`Preview ${clip.name}`}
+            title={`Preview ${clip.name}`}
             className={cn(
-              "pointer-events-auto size-11 rounded-full bg-signal/90 text-static-950 opacity-0 shadow-lg transition-opacity hover:bg-signal",
+              "pointer-events-auto h-full w-full rounded-none bg-transparent text-static-950 hover:bg-transparent",
               "focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100",
               // Visible focus ring against arbitrary video underneath.
               "focus-visible:ring-static-100 focus-visible:ring-offset-0",
@@ -279,7 +226,9 @@ const ClipFrame = ({
             {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
                 box, so a mathematically centred play glyph reads as sitting too far left. The
                 mock does the same thing with `padding-left:4px`. */}
-            <Play className="ml-0.5 size-5 fill-current" aria-hidden />
+            <span className="flex size-11 items-center justify-center rounded-full bg-signal/90 opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+              <Play className="ml-0.5 size-5 fill-current" aria-hidden />
+            </span>
           </Button>
         </div>
       )}
@@ -289,231 +238,78 @@ const ClipFrame = ({
 
 const ClipCard = ({
   clip,
-  onConfirmTags,
-  onConfirmEra,
-  onTag,
-  onPin,
-  onCycle,
+  onOpen,
   onSplit,
   splitPending,
   selected,
   onToggleSelect,
-  onPlay,
   className,
 }: ClipCardProps) => (
-  <Card
-    className={cn(
-      "flex flex-col gap-2.5 p-3",
-      // A selected card is outlined rather than tinted: the grid is thumbnails, and a wash over
-      // them changes what the frame looks like, which is the one thing an operator is scanning.
-      selected && "ring-1 ring-signal",
-      className,
-    )}
-  >
-    {/* The extracted frame (V17b), served by V30. Rendered ONLY when one exists.
-        ⚠ A placeholder box for every clip without a thumbnail would be the wrong default: on a
-        Tunarr-backed install, or one where ffmpeg never ran, that is the ENTIRE catalog, and a
-        grid of identical grey rectangles reads as a broken page rather than an absent nicety.
-        Absence is the honest rendering — the card without a frame is exactly what shipped
-        before this phase, which is a design that already works. */}
-    {clip.thumbImage && (
+  <Card className={cn("flex flex-col gap-2.5 p-3", selected && "ring-1 ring-signal", className)}>
+    {clip.thumbImage ? (
       <ClipFrame
         clip={{ ...clip, thumbImage: clip.thumbImage }}
         selected={selected}
         onToggleSelect={onToggleSelect}
-        onPlay={onPlay}
+        onPlay={onOpen}
       />
-    )}
-
-    <div className="flex items-start justify-between gap-2">
-      {/* ⚠ The checkbox and duration move ONTO the thumbnail above — but only when there is
-          one. A clip with no extracted frame renders no image, so without this fallback the
-          overlays would have nowhere to sit and the clip would become unselectable. On a
-          Tunarr-backed install that is the entire catalog (see the thumbnail note above). */}
-      {!clip.thumbImage && onToggleSelect && (
+    ) : null}
+    <div className="flex items-start gap-2">
+      {!clip.thumbImage && onToggleSelect ? (
         <Checkbox
           checked={Boolean(selected)}
           onChange={onToggleSelect}
           className="mt-0.5 size-4 shrink-0 accent-signal"
           aria-label={`Select ${clip.name}`}
         />
+      ) : null}
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`View details for ${clip.name}`}
+          title={clip.name}
+          className="min-w-0 flex-1 truncate rounded-sm text-left font-medium text-sm hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {clip.name}
+        </button>
+      ) : (
+        <p className="min-w-0 flex-1 truncate font-medium text-sm">{clip.name}</p>
       )}
-      <p className="min-w-0 flex-1 truncate font-medium text-sm">{clip.name}</p>
-      {!clip.thumbImage && (
-        <span className="shrink-0 font-mono text-static-400 text-xs tabular-nums">
+      {!clip.thumbImage ? (
+        <span className="shrink-0 font-mono text-muted-foreground text-xs tabular-nums">
           {formatClipDuration(clip.durationMs)}
         </span>
-      )}
+      ) : null}
     </div>
-    {clip.brand ? (
-      <p className="truncate text-muted-foreground text-xs" title={`Brand: ${clip.brand}`}>
-        Brand: <span className="text-foreground">{clip.brand}</span>
-      </p>
-    ) : null}
-
+    {clip.brand ? <p className="truncate text-muted-foreground text-xs">{clip.brand}</p> : null}
     <div className="flex flex-wrap gap-1.5">
-      <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge>
-      {/* ⚠ Era, audience and category render as BUTTONS when the caller can retag and as
-          plain badges otherwise — a member sees the same tags without a control that would
-          403. Clicking advances to the next value (the mock's cycleEra/cycleAud/cycleCat);
-          the dialog stays for anything the cycle cannot reach, e.g. a typed category. */}
-      {onCycle ? (
-        <CycleChip
-          label={clip.era ? eraLabel(clip.era) : "era"}
-          unset={!clip.era}
-          title={`Click to change the era (now ${clip.era ? eraLabel(clip.era) : "unset"})`}
-          onClick={() => onCycle({ era: next(ERAS, (clip.era ?? 0) as (typeof ERAS)[number]) })}
-        />
-      ) : clip.era ? (
-        <Badge variant="neutral">{eraLabel(clip.era)}</Badge>
-      ) : null}
-      {/* An UNCONFIRMED era (§10 V34): the year is in none of the clip's text signals, so
-          the grounding validator refused to persist it. It renders as a question — suggest
-          magenta, with a "?" — never as a tag, and pod matching never reads it. */}
-      {clip.suggestedEra ? (
-        <Badge
-          variant="suggest"
-          title="AI guess. The year isn't in the source text, so confirm it only if you know it's right."
-          aria-label={`Suggested era ${clip.suggestedEra}, unconfirmed AI guess`}
-        >
-          {`${clip.suggestedEra}s?`}
-        </Badge>
-      ) : null}
-      {onCycle ? (
-        <CycleChip
-          label={(clip.audience && AUDIENCE_LABEL[clip.audience]) || "audience"}
-          unset={!clip.audience}
-          title={`Click to change the audience (now ${clip.audience ? AUDIENCE_LABEL[clip.audience] : "unset"})`}
-          onClick={() =>
-            onCycle({ audience: next(AUDIENCES, (clip.audience ?? "") as (typeof AUDIENCES)[number]) })
-          }
-        />
-      ) : clip.audience ? (
-        <Badge variant="neutral">{AUDIENCE_LABEL[clip.audience]}</Badge>
-      ) : null}
-      {/* Tags (§10 V45a): read-only badges from the taxonomy tag set. No inline "cycle" — a tag must
-          be a real taxon, so editing routes to the tag dialog (which serves the vocabulary). The
-          headline badge is the primary product leaf (`category`, derived); a "+N" chip signals the
-          clip carries more tags without cluttering the card with the full rollup set (beer implies
-          alcohol, drinks — matched on, not shown). The dialog shows them all. */}
+      <Badge variant={clip.held ? "neutral" : clip.isComposite ? "neutral" : "signal"}>
+        {clip.held ? "Preparing" : clip.isComposite ? "Recording" : "Ready"}
+      </Badge>
+      {clip.kind !== "unclassified" ? <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge> : null}
+      {clip.era ? <Badge variant="neutral">{eraLabel(clip.era)}</Badge> : null}
+      {clip.audience ? <Badge variant="neutral">{AUDIENCE_LABEL[clip.audience]}</Badge> : null}
       {clip.category ? <Badge variant="neutral">{clip.category}</Badge> : null}
-      {(() => {
-        // Count only direct assertions. `tags` also contains inherited parents (cereal → food),
-        // which made one choice look like three and hid the distinction the taxonomy depends on.
-        const extra = (clip.assertedTags ?? []).filter((t) => t !== clip.category).length;
-        return extra > 0 ? (
-          <Badge variant="neutral" title="This clip has more tags — open it to see them all">
-            +{extra}
-          </Badge>
-        ) : null;
-      })()}
-      {!clip.tagged && <Badge variant="caution">Untagged</Badge>}
-      {clip.geographicScope !== "national" && clip.geographicScope !== "local" ? (
-        <Badge
-          variant="caution"
-          title="This clip cannot air on a geographically constrained channel until reviewed"
-        >
-          Geography unknown
-        </Badge>
-      ) : (
-        <Badge variant="neutral">
-          {[clip.country, clip.geographicScope === "local" ? clip.market : "National"]
-            .filter(Boolean)
-            .join(" · ")}
-        </Badge>
-      )}
-      {/* Resolution, from the probed video height. Display-only unless an operator sets the
-          filler.min_quality floor (off by default), so it is a neutral fact here — NOT a
-          warning. Colouring a 480p clip as a problem would invent a policy the install has
-          not opted into.
-          ⚠ Only when there is NO thumbnail — with one, quality renders as an overlay on the
-          frame (V35b, the mock). Dropping this branch entirely would hide the resolution on
-          exactly the installs that extract no frames, which is the whole catalog on some. */}
       {!clip.thumbImage && clip.quality ? (
-        // aria-label per frontend-design §219: the badge renders mono/uppercase by house
-        // style, so a screen reader would otherwise announce letter-spaced shouting.
-        <Badge
-          variant="neutral"
-          title="Resolution, from the clip's video height"
-          aria-label={`Resolution ${clip.quality}`}
-        >
+        <Badge variant="neutral" aria-label={`Resolution ${clip.quality}`}>
           {clip.quality}
         </Badge>
       ) : null}
     </div>
-
-    {/* How much this clip has actually aired — the mock's `usedLine`. The API has sent
-        playCount/playsCounted/lastPlayedAt since the catalog shipped and nothing rendered
-        them, which is why a clip that never plays looked identical to one on every break.
-        The wording (and the playsCounted trap) lives in `playsLine`, shared with the list row. */}
-    <p className="text-static-400 text-xs">{playsLine(clip)}</p>
-
-    {(onConfirmTags || onConfirmEra || onTag || onPin || onSplit || (onPlay && !clip.thumbImage)) && (
-      <div className="flex flex-wrap gap-2">
-        {/* ⚠ **Only when there is NO frame to overlay.** With a thumbnail the play control is the
-            disc centred on it; duplicating it here would put two "Play X" buttons on one card,
-            which is noise on screen and a genuine problem in a screen reader's element list.
-
-            Without a thumbnail there is nowhere for the disc to sit — and on a Tunarr-backed
-            install, or one where ffmpeg never ran, that is the ENTIRE catalog. Dropping this
-            branch would make the whole feature invisible on exactly those installs. */}
-        {onPlay && !clip.thumbImage && (
-          <Button variant="outline" size="sm" onClick={onPlay} title={`Play ${clip.name}`}>
-            <Play aria-hidden />
-            Play
-          </Button>
-        )}
-        {clip.aiTagged && onConfirmTags && (
-          <Button variant="outline" size="sm" onClick={onConfirmTags}>
-            Confirm tags
-          </Button>
-        )}
-        {/* The era suggestion's confirm door. One click, PATCHes the year as fact — the
-            human, not the model, grounds the tag (§10). */}
-        {clip.suggestedEra != null && clip.suggestedEra > 0 && onConfirmEra && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onConfirmEra}
-            title={`Save ${clip.suggestedEra} as this clip's era`}
-          >
-            {`Confirm ${clip.suggestedEra}`}
-          </Button>
-        )}
-        {/* Offered for EVERY clip, not just untagged ones. A fully-tagged clip can still be
-            wrong — §10's likely error is a trailer scanned as a commercial, which arrives
-            with era/audience/category filled in and therefore counts as "tagged". Gating the
-            edit on `!tagged` left exactly that clip uncorrectable, and kind drives pod role,
-            so a wrong one yields structurally wrong pods. */}
-        {!clip.aiTagged && onTag && (
-          <Button variant="outline" size="sm" onClick={onTag}>
-            <Tag aria-hidden />
-            {clip.tagged ? "Edit tags" : "Tag clip"}
-          </Button>
-        )}
-        {/* Pin into a channel's filler (P3 cohesion) — the catalog → channel bridge. */}
-        {onPin && (
-          <Button variant="ghost" size="sm" onClick={onPin}>
-            <Pin aria-hidden />
-            Use in a channel
-          </Button>
-        )}
-        {/* Compilation splitting (§10 V34): detection runs as a job, then the operator
-            REVIEWS the proposed cuts before anything enters the catalog. */}
-        {onSplit && (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={splitPending}
-            onClick={onSplit}
-            title="Detect commercials inside this compilation and review the cuts"
-          >
-            <Scissors aria-hidden />
-            {splitPending ? "Splitting…" : "Split into clips"}
-          </Button>
-        )}
-      </div>
-    )}
+    <p className="text-muted-foreground text-xs">{playsLine(clip)}</p>
+    {onSplit ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={splitPending}
+        onClick={onSplit}
+        title="Detect commercials inside this compilation and review the cuts"
+      >
+        <Scissors aria-hidden />
+        {splitPending ? "Splitting…" : "Split into clips"}
+      </Button>
+    ) : null}
   </Card>
 );
 

@@ -48,6 +48,13 @@ const show = (coverage: FillerReadinessDTO = readiness()) => {
 
 describe("FillerOverview", () => {
   it.each([
+    ["enable_fetch", "downloads"],
+    ["free_catalog_capacity", "storage"],
+    ["free_disk_capacity", "storage"],
+  ] as const)("opens the exact settings task for %s", (nextAction, section) => {
+    expect(readinessAction(readiness({ ready: false, nextAction }))).toMatchObject({ section });
+  });
+  it.each([
     ["enable_fetch", "Turn on automatic sourcing", "Review automation", "/filler/settings"],
     ["free_catalog_capacity", "Make room in the filler catalog", "Review limits", "/filler/settings"],
     ["free_disk_capacity", "Make room for more filler", "Review limits", "/filler/settings"],

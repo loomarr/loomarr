@@ -22,25 +22,25 @@ type Story = StoryObj<typeof meta>;
 
 // Everything tagged, every channel matching exactly, so no diagnosis callout.
 const Healthy: Story = {
-  args: { pool: healthyPool, onProposePull: () => {} },
+  args: { pool: healthyPool },
 };
 
 // The case this component exists for: a channel whose breaks fall all the way through to the
 // built-in card, named so an operator can act on it.
 const ChannelWithNothingToPlay: Story = {
-  args: { pool: thinPool, onProposePull: () => {} },
+  args: { pool: thinPool },
 };
 
 // ⚠ The number that surprises people: a catalog of compilations reads as healthy by clip count
 // and can fill nothing, because none of it is short enough for a break.
 const NothingFitsABreak: Story = {
-  args: { pool: unplaceablePool, onProposePull: () => {} },
+  args: { pool: unplaceablePool },
 };
 
 // A fresh install: nothing downloaded, no channels yet. This is the state the pull button exists
 // for, and the channel stats are omitted entirely rather than claiming "0/0 covered".
 const FreshInstall: Story = {
-  args: { pool: emptyPool, onProposePull: () => {} },
+  args: { pool: emptyPool },
 };
 
 // A member reads catalog health but cannot start an acquisition, so no button.

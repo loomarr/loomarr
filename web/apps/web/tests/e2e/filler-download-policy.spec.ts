@@ -20,21 +20,21 @@ test("automatic downloads expose simple defaults with optional per-source contro
   });
   await expect(
     page.getByText(
-      "Every 6 hours, each source using these defaults can add up to 10 clips. Across 1 enabled source, one full check can add up to 10 clips. Storage limits are under Advanced.",
+      "Every 6 hours, each source using these defaults can add up to 10 clips. Across 1 enabled source, one full check can add up to 10 clips.",
     ),
   ).toBeVisible({ timeout: 10_000 });
   const globalSchedule = page.getByRole("combobox", { name: "Look for new clips" });
   const globalLimit = page.getByRole("spinbutton", { name: "Add up to" });
   await expect(globalSchedule).toContainText("Every 6 hours");
   await expect(globalLimit).toHaveValue("10");
-  await expect(page.getByRole("button", { name: "Show advanced (2)" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Storage limits", exact: true })).toBeVisible();
 
   await globalSchedule.click();
   await page.getByRole("option", { name: "Every 12 hours" }).click();
   await globalLimit.fill("4");
   await expect(
     page.getByText(
-      "Every 12 hours, each source using these defaults can add up to 4 clips. Across 1 enabled source, one full check can add up to 4 clips. Storage limits are under Advanced.",
+      "Every 12 hours, each source using these defaults can add up to 4 clips. Across 1 enabled source, one full check can add up to 4 clips.",
     ),
   ).toBeVisible();
   await page.getByRole("button", { name: "Save changes" }).click();
@@ -95,7 +95,7 @@ test("automatic downloads expose simple defaults with optional per-source contro
   await page.getByRole("option", { name: "Never" }).click();
   await expect(
     page.getByText(
-      "Automatic downloads are off for sources using these defaults. No enabled sources are currently downloading automatically. Storage limits are under Advanced.",
+      "Automatic downloads are off for sources using these defaults. No enabled sources are currently downloading automatically.",
     ),
   ).toBeVisible();
 });

@@ -1517,6 +1517,9 @@ components:
           type: string
         source:
           type: string
+        sourceUrl:
+          description: Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID.
+          type: string
         station:
           type: string
         suggestedEra:

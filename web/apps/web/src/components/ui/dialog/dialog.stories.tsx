@@ -11,7 +11,7 @@ import { Dialog, DialogTrigger } from "./dialog";
 // happened when this story first shipped with `<Dialog open>`.
 //
 // The dialog's own surface is covered where it really appears: ChannelDangerZone and
-// PinClipDialog have their own stories. Reproducing the content here with unportalled markup
+// channel preferences have their own stories. Reproducing the content here with unportalled markup
 // would snapshot a lookalike rather than the component, which is worse than not snapshotting it.
 const meta = {
   title: "Primitives/Dialog",

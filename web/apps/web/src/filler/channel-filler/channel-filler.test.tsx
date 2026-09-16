@@ -156,6 +156,16 @@ const policy = (
 });
 
 describe("ChannelFiller", () => {
+  it("does not turn an empty automatic break into a tagging chore", async () => {
+    stubChannelFiller();
+    server.use(getPreviewDraftChannelPodsMockHandler({ ...previewBody, entries: [], totalMs: 0 }));
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+    const library = await screen.findByRole("link", { name: "browse your filler library" });
+    expect(library).toHaveAttribute("href", "/filler/library");
+    expect(screen.getByText(/Breaks use the bumper card for now/)).toBeInTheDocument();
+    expect(screen.queryByText(/add and tag clips/)).not.toBeInTheDocument();
+  });
+
   it("renders the criteria controls and the live break once a preview lands", async () => {
     stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
@@ -307,6 +317,65 @@ describe("ChannelFiller", () => {
       "every resolve must name the hashes it wants — an unfiltered listing is a catalog read",
     ).toBe(true);
   });
+
+  it("preserves saved clip exceptions when applying ordinary criteria changes", async () => {
+    const user = userEvent.setup();
+    const { patches } = stubChannelFiller();
+    renderSection(
+      <ChannelFiller
+        channelId="ch-1"
+        revision={7}
+        policy={policy({ audience: "kids", pinned: ["preferred"], excluded: ["blocked"] })}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: /choose products & topics/i }));
+    await user.click(await screen.findByRole("button", { name: "Candy" }));
+    await user.click(await screen.findByRole("button", { name: /apply filler/i }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({
+      revision: 7,
+      policy: {
+        ordering: "shuffle",
+        scope: { era: { from: 1990, to: 1999 } },
+        filler: { pinned: ["preferred"], excluded: ["blocked"], audience: "kids", categories: ["candy"] },
+      },
+    });
+  });
+
+  it.each(["pinned", "excluded"] as const)(
+    "removing a saved %s exception returns only that list to automatic",
+    async (list) => {
+      const user = userEvent.setup();
+      const savedClip: ClipDTO = {
+        hash: "saved-clip",
+        name: "Saved clip",
+        kind: "commercial",
+        durationMs: 30000,
+        aiTagged: false,
+        tagged: true,
+        playCount: 0,
+        playsCounted: true,
+      };
+      const { patches } = stubChannelFiller({ clips: [savedClip] });
+      const other = list === "pinned" ? "excluded" : "pinned";
+      renderSection(
+        <ChannelFiller
+          channelId="ch-1"
+          revision={3}
+          policy={policy({ [list]: ["saved-clip"], [other]: ["other-clip"], audience: "kids" })}
+        />,
+      );
+      await user.click(await screen.findByRole("button", { name: /Clip preferences \(advanced\)/ }));
+      await user.click(await screen.findByRole("button", { name: "Remove Saved clip" }));
+      await user.click(await screen.findByRole("button", { name: /apply filler/i }));
+      await waitFor(() => expect(patches).toHaveLength(1));
+      const payload = patches[0] as { policy: ChannelPolicy };
+      expect(payload.policy.filler?.[list] ?? []).toEqual([]);
+      expect(payload.policy.filler?.[other]).toEqual(["other-clip"]);
+      expect(payload.policy.scope).toEqual({ era: { from: 1990, to: 1999 } });
+      expect(payload.policy.filler?.audience).toBe("kids");
+    },
+  );
 
   it("surfaces a preview failure rather than a silently empty break", async () => {
     // ⚠ Hand-written, and it has to be: the spec declares errors via `default:` (RFC 7807) with

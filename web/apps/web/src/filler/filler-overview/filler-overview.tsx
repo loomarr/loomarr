@@ -7,12 +7,14 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import type { FillerSettingsSection } from "../filler-settings-search";
 
 type Action = {
   title: string;
   description: string;
   label: string;
   to: "/filler/incoming" | "/filler/library" | "/filler/manage" | "/filler/settings" | "/filler/sources";
+  section?: FillerSettingsSection;
 };
 
 // This maps the readiness projection's server-owned action enum to presentation only. Priority
@@ -27,6 +29,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
         description: "Automatic source checks are off, so Loomarr cannot keep the filler catalog supplied.",
         label: "Review automation",
         to: "/filler/settings",
+        section: "downloads",
       };
     case "free_catalog_capacity":
       return {
@@ -34,6 +37,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
         description: `Automatic sourcing paused at ${pluralize(readiness.actionCount ?? 0, "catalog clip")}. Remove clips or raise the limit to resume it.`,
         label: "Review limits",
         to: "/filler/settings",
+        section: "storage",
       };
     case "free_disk_capacity":
       return {
@@ -42,6 +46,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
           "Automatic sourcing paused at its storage limit. Free space or raise the limit to resume it.",
         label: "Review limits",
         to: "/filler/settings",
+        section: "storage",
       };
     case "retry_acquisition":
       return {
@@ -123,7 +128,13 @@ const FillerOverview = () => {
                 "Loomarr is preparing clips automatically. Nothing needs your attention."}
             </p>
           </div>
-          {action ? <Button render={<Link to={action.to} />}>{action.label}</Button> : null}
+          {action ? (
+            <Button
+              render={<Link to={action.to} search={action.section ? { section: action.section } : {}} />}
+            >
+              {action.label}
+            </Button>
+          ) : null}
         </div>
       </Card>
 

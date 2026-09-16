@@ -14,10 +14,8 @@ import type { ClipRowProps } from "./clip-row.type";
 // `md:`/`lg:` steps below do. The row is a list item semantically because it carries no
 // column headers to associate cells with — the labels are in the values themselves.
 //
-// ⚠ **No per-row actions, and that is the mock's design rather than an omission.** List view
-// is for scanning and bulk-selecting; acting on ONE clip is what the card is for. Adding a
-// tag/pin/split button per row would rebuild the card badly in 46px of width.
-const ClipRow = ({ clip, selected, onToggleSelect, className }: ClipRowProps) => (
+// Titles and thumbnails open the same inspection panel as Grid, without extra action rows.
+const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowProps) => (
   <div
     className={cn(
       "grid grid-cols-[auto_54px_1fr_auto] items-center gap-3 border-border border-b px-3 py-2 last:border-b-0",
@@ -44,14 +42,20 @@ const ClipRow = ({ clip, selected, onToggleSelect, className }: ClipRowProps) =>
     {/* ⚠ Fixed 54×30 box whether or not a frame exists, unlike the card. In a LIST the
         thumbnail is a column: omitting the element for clips without one would ragged the
         name column against its neighbours. An empty box is the honest "no frame" here. */}
-    <div className="h-[30px] w-[54px] overflow-hidden rounded-sm bg-static-800">
+    <button
+      type="button"
+      disabled={!onOpen}
+      onClick={onOpen}
+      aria-label={`Preview ${clip.name}`}
+      className="h-[30px] w-[54px] overflow-hidden rounded-sm bg-static-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       {/* ⚠ ONE path since V52 phase 8 — the legacy `/v1/filler/thumb/{hash}` fallback retired with
           its route. A clip whose artwork the adoption job has not reached yet renders the empty
           box above, which is the same honest "no frame" state as a clip that never had one. */}
       {clip.thumbImage && (
         <Image image={clip.thumbImage} alt="" sizes="54px" className="size-full object-cover" />
       )}
-    </div>
+    </button>
 
     {/* ⚠ `min-w-0` is what makes the truncate work. A grid item's default `min-width:auto`
         refuses to shrink below its content, so a long clip name pushes the tag columns off
@@ -59,9 +63,21 @@ const ClipRow = ({ clip, selected, onToggleSelect, className }: ClipRowProps) =>
         thing that gets squeezed out. Caught by reading the baseline image, not by a test:
         every assertion still passed while the name was being crushed. */}
     <div className="min-w-0">
-      <p className="truncate text-sm" title={clip.name}>
-        {clip.name}
-      </p>
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`View details for ${clip.name}`}
+          className="block w-full truncate rounded-sm text-left text-sm hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          title={clip.name}
+        >
+          {clip.name}
+        </button>
+      ) : (
+        <p className="truncate text-sm" title={clip.name}>
+          {clip.name}
+        </p>
+      )}
       {clip.brand ? (
         <p className="truncate text-muted-foreground text-xs" title={`Brand: ${clip.brand}`}>
           {clip.brand}
@@ -69,9 +85,11 @@ const ClipRow = ({ clip, selected, onToggleSelect, className }: ClipRowProps) =>
       ) : null}
     </div>
 
-    <span className="hidden font-mono text-static-400 text-xs md:inline">{KIND_LABEL[clip.kind]}</span>
+    <span className="hidden font-mono text-static-400 text-xs md:inline">
+      {clip.kind === "unclassified" ? "" : KIND_LABEL[clip.kind]}
+    </span>
     <span className="hidden font-mono text-static-400 text-xs tabular-nums md:inline">
-      {clip.era ? `${clip.era}s` : "—"}
+      {clip.era ? (clip.era % 10 === 0 ? `${clip.era}s` : String(clip.era)) : "—"}
     </span>
     <span className="hidden font-mono text-static-400 text-xs lg:inline">
       {(clip.audience && AUDIENCE_LABEL[clip.audience]) || "—"}

@@ -11,12 +11,12 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { ClipPlayer } from "@/components/loomarr/filler/clip-player";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Image } from "@/components/ui/image";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLoomarrEventListener } from "@/events/events-provider";
+import { ClipDetails } from "../clip-details";
 
 type IncomingView = Pick<FillerIncomingOutputBody, "preparing" | "needsHelp" | "recentlyReady">;
 type GroupName = keyof IncomingView;
@@ -82,7 +82,6 @@ const Incoming = () => {
   const [selected, setSelected] = useState<IncomingStatusDTO>();
   const [helpIndex, setHelpIndex] = useState(0);
   const detailTrigger = useRef<HTMLElement>(null);
-  const [playing, setPlaying] = useState(false);
 
   // Events are a wake-up hint only. Refetching the bounded server projection keeps reconnects,
   // missed frames, terminal moves, totals, and group membership on one source of truth.
@@ -323,24 +322,18 @@ const Incoming = () => {
               <SheetDescription>{selected.statusLabel}</SheetDescription>
             </SheetHeader>
             <div className="space-y-5 p-6">
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                <dt className="text-muted-foreground">Length</dt>
-                <dd>{formatClipDuration(selected.durationMs)}</dd>
-                {selected.from ? (
-                  <>
-                    <dt className="text-muted-foreground">Source</dt>
-                    <dd>{selected.from}</dd>
-                  </>
-                ) : null}
-                <dt className="text-muted-foreground">Updated</dt>
-                <dd>{formatRelative(selected.updatedAt)}</dd>
-              </dl>
-              <Button
-                disabled={!selectedClip || selectedClipQuery.isLoading}
-                onClick={() => setPlaying(true)}
-              >
-                {selectedClipQuery.isLoading ? "Loading preview…" : "Preview clip"}
-              </Button>
+              {selectedClip ? (
+                <ClipDetails clip={selectedClip} />
+              ) : (
+                <p role="status" className="text-muted-foreground text-sm">
+                  {selectedClipQuery.isLoading
+                    ? "Loading preview…"
+                    : selectedClipQuery.error
+                      ? "Preview could not be loaded."
+                      : "Preview is not available yet."}
+                </p>
+              )}
+              <p className="text-muted-foreground text-xs">Updated {formatRelative(selected.updatedAt)}</p>
               <details className="rounded-lg border border-border p-4 text-sm">
                 <summary className="cursor-pointer font-medium">Technical details</summary>
                 <div className="mt-4 space-y-4">
@@ -380,7 +373,6 @@ const Incoming = () => {
           </SheetContent>
         ) : null}
       </Sheet>
-      <ClipPlayer clip={playing && selectedClip ? selectedClip : null} onClose={() => setPlaying(false)} />
     </section>
   );
 };

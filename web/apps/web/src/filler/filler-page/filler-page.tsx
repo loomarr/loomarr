@@ -1,11 +1,8 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
-import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
-import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { PoolHealth } from "@/components/loomarr/filler/pool-health";
@@ -15,25 +12,22 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { ClipTagDialog } from "../clip-tag-dialog";
 import { FillerCatalog } from "../filler-catalog";
 import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
 import type { FillerSearch } from "../filler-search";
+import { FillerSettings } from "../filler-settings";
 import { Incoming } from "../incoming";
 import { SourcesTab } from "../sources-tab";
 import { TaxonomyTab } from "../taxonomy-tab";
-import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { FillerPageProps } from "./filler-page.type";
 
 // FillerPage is the route-level composition root. It owns only state shared across destinations:
-// navigation counts, installation readiness, the watch/health summary, and the one tag editor
-// opened by both Library and Incoming. Destination-specific behavior stays in its own module.
+// navigation counts, installation readiness, the watch/health summary. Destination-specific behavior stays in its own module.
 const FillerPage = ({ tab }: FillerPageProps) => {
   useDocumentTitle("Filler");
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const [tagging, setTagging] = useState<string>();
 
   // Preserve Library's deep-linkable state when an operator leaves and returns. The shell only
   // carries the opaque route state; FillerCatalog owns its interpretation and mutations.
@@ -57,32 +51,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const poolQuery = fillerApi.useFillerPool({ query: { enabled: tab === "library" } });
   const pool = unwrap(poolQuery.data, (body) => body);
 
-  // Shared exact-identity editor. Always resolving by hash avoids coupling the shell to whichever
-  // Library page happens to be mounted, and includeHeld is required for Incoming clips.
-  const taggingQuery = fillerApi.useListFiller(
-    { hashes: tagging ? [tagging] : [], includeHeld: true, includeComposites: true, limit: 1 },
-    { query: { enabled: Boolean(tagging) } },
-  );
-  const taggingClip = unwrap(taggingQuery.data, (body) => body.clips[0]);
-  const { invalidateLifecycle } = useFillerInvalidate();
-
-  const proposePull = fillerApi.useProposeFillerPull({
-    mutation: {
-      onSuccess: () => {
-        toast.success("Pull proposed", {
-          description: "Nothing is downloading yet. Approve it in the queue to start.",
-        });
-      },
-      onError: (error) => {
-        const problem = toProblem(error);
-        toast.error(problem.title ?? "Couldn't plan a pull", {
-          ...(problem.detail ? { description: problem.detail } : {}),
-        });
-      },
-    },
-  });
-
-  if (!fillerConfigured) {
+  if (!fillerConfigured && tab !== "settings") {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <PageHeader title="Filler" description={<FillerDescription />} />
@@ -94,7 +63,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               ? {
                   action: {
                     label: "Open filler defaults",
-                    onClick: () => navigate({ to: "/filler/settings" }),
+                    onClick: () => navigate({ to: "/filler/settings", search: { section: "folders" } }),
                   },
                 }
               : {})}
@@ -121,34 +90,6 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         actions={watch && <WatchPill status={statusLine} health={watch.health} />}
       />
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
-        {pool && tab === "library" ? (
-          <PoolHealth
-            pool={pool}
-            {...(isAdmin ? { onProposePull: () => proposePull.mutate({ data: {} }) } : {})}
-            proposing={proposePull.isPending}
-          />
-        ) : null}
-
-        {watch?.autoFetch?.stoppedBy && tab === "library" ? (
-          <Card className="flex flex-wrap items-center gap-3 border-caution/40 bg-caution/5 p-4">
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm">Automatic fetching is paused</p>
-              <p className="mt-0.5 text-muted-foreground text-sm">
-                {watch.autoFetch.stoppedBy === "catalog"
-                  ? `${watch.autoFetch.catalogClips.toLocaleString()} of ${(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use.`
-                  : `${formatBytes(watch.autoFetch.diskBytes ?? 0)} of ${formatBytes(watch.autoFetch.maxDiskBytes ?? 0)} filler storage is in use.`}{" "}
-                Manual queueing still works; curate the library or raise this ceiling to resume unattended
-                fetching.
-              </p>
-            </div>
-            {isAdmin ? (
-              <Button variant="outline" size="sm" render={<Link to="/filler/settings" />}>
-                Review limits
-              </Button>
-            ) : null}
-          </Card>
-        ) : null}
-
         <NavTabs
           label="Filler sections"
           linkComponent={Link}
@@ -169,8 +110,34 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             },
             { id: "manage", label: "Manage", to: "/filler/manage" },
           ]}
-          activeId={tab === "taxonomy" ? "manage" : tab}
+          activeId={tab === "taxonomy" || tab === "settings" ? "manage" : tab}
         />
+
+        {pool && tab === "library" ? <PoolHealth pool={pool} /> : null}
+
+        {watch?.autoFetch?.stoppedBy && tab === "library" ? (
+          <Card className="flex flex-wrap items-center gap-3 border-caution/40 bg-caution/5 p-4">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm">Automatic fetching is paused</p>
+              <p className="mt-0.5 text-muted-foreground text-sm">
+                {watch.autoFetch.stoppedBy === "catalog"
+                  ? `${watch.autoFetch.catalogClips.toLocaleString()} of ${(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use.`
+                  : `${formatBytes(watch.autoFetch.diskBytes ?? 0)} of ${formatBytes(watch.autoFetch.maxDiskBytes ?? 0)} filler storage is in use.`}{" "}
+                Manual queueing still works; curate the library or raise this ceiling to resume unattended
+                fetching.
+              </p>
+            </div>
+            {isAdmin ? (
+              <Button
+                variant="outline"
+                size="sm"
+                render={<Link to="/filler/settings" search={{ section: "storage" }} />}
+              >
+                Review limits
+              </Button>
+            ) : null}
+          </Card>
+        ) : null}
 
         {tab === "overview" ? (
           <FillerOverview />
@@ -182,25 +149,11 @@ const FillerPage = ({ tab }: FillerPageProps) => {
           <SourcesTab />
         ) : tab === "taxonomy" ? (
           <TaxonomyTab isAdmin={isAdmin} />
+        ) : tab === "settings" ? (
+          <FillerSettings />
         ) : (
-          <FillerCatalog
-            isAdmin={isAdmin}
-            onEditTags={setTagging}
-            onProposePull={() => proposePull.mutate({ data: {} })}
-          />
+          <FillerCatalog isAdmin={isAdmin} />
         )}
-
-        {taggingClip ? (
-          <ClipTagDialog
-            key={taggingClip.hash}
-            clip={taggingClip}
-            onClose={() => setTagging(undefined)}
-            onSaved={() => {
-              setTagging(undefined);
-              invalidateLifecycle();
-            }}
-          />
-        ) : null}
       </div>
     </div>
   );
