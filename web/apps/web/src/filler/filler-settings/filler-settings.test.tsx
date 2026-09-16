@@ -44,6 +44,14 @@ const renderSettings = (section?: string) => {
           group: "filler",
           advanced: true,
         }),
+        setting({
+          key: "filler.incoming.ready_window",
+          label: "Keep ready clips in Incoming",
+          value: "24h",
+          kind: "duration",
+          group: "filler",
+          advanced: true,
+        }),
       ],
     }),
   );
@@ -74,6 +82,14 @@ describe("focused Filler settings", () => {
     renderSettings("storage");
     expect(await screen.findByRole("spinbutton", { name: "Catalog limit" })).toHaveValue(500);
     expect(screen.getByRole("spinbutton", { name: "Storage limit" })).toHaveValue(20);
+    expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
+  });
+
+  it("opens the Incoming history task with one human duration control", async () => {
+    renderSettings("incoming");
+    expect(await screen.findByRole("heading", { name: "Incoming history" })).toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "Keep ready clips in Incoming" })).toHaveValue(1);
+    expect(screen.getByRole("combobox", { name: "Keep ready clips in Incoming unit" })).toHaveTextContent("days");
     expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
   });
 });

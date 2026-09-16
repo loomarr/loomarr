@@ -132,6 +132,17 @@ func fillerFetchInterval(v any) error {
 	return nil
 }
 
+func fillerIncomingReadyWindow(v any) error {
+	d, ok := v.(time.Duration)
+	if !ok {
+		return fmt.Errorf("want a duration")
+	}
+	if d < time.Hour || d > 30*24*time.Hour {
+		return fmt.Errorf("want a duration from 1 hour through 30 days (got %s)", d)
+	}
+	return nil
+}
+
 func nonNegativeWholeNumber(v any) error {
 	n, ok := v.(int)
 	if !ok {
@@ -926,6 +937,11 @@ func declared() []Setting {
 			Key: "filler.fetch.max_disk_gb", Label: "Automatic-download storage limit (GB)", EnvVar: "FILLER_FETCH_MAX_DISK_GB", Group: GroupFiller,
 			Kind: KindInt, Default: 20, Advanced: true, Validate: positiveLimit,
 			Doc: "Stop fetching automatically once the filler folder reaches this size in GB.",
+		},
+		{
+			Key: "filler.incoming.ready_window", Label: "Keep ready clips in Incoming", EnvVar: "FILLER_INCOMING_READY_WINDOW", Group: GroupFiller,
+			Kind: KindDuration, Default: "24h", Advanced: true, Validate: fillerIncomingReadyWindow,
+			Doc: "How long clips stay under Ready in Incoming. They remain in your Library after they leave this view.",
 		},
 		{
 			Key: "filler.breaks_per_hour", Label: "Breaks per program hour", EnvVar: "FILLER_BREAKS_PER_HOUR", Group: GroupFiller,

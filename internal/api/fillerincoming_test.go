@@ -16,7 +16,8 @@ import (
 )
 
 type calmIncomingBody struct {
-	Preparing struct {
+	ReadyWindowSeconds int64 `json:"readyWindowSeconds"`
+	Preparing          struct {
 		Rows []struct {
 			ClipHash, Name, StatusLabel string
 			Technical                   struct {
@@ -84,7 +85,7 @@ func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWo
 		{ClipHash: "preparing", Stage: filler.StageTranscode, Status: filler.StatusRunning, Disposition: filler.DispositionRunning, UpdatedAt: now,
 			Stages: []filler.StageRecord{{Stage: filler.StageProbe, Status: filler.StatusDone, At: now.Add(-time.Minute)}}},
 		{ClipHash: "ready", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-time.Hour)},
-		{ClipHash: "old-ready", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-8 * 24 * time.Hour)},
+		{ClipHash: "old-ready", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-25 * time.Hour)},
 		{ClipHash: "audit-review", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReview, UpdatedAt: now.Add(-2 * time.Hour)},
 	} {
 		if err := st.UpsertClipPipeline(t.Context(), row); err != nil {
@@ -108,8 +109,52 @@ func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWo
 		body.RecentlyReady.Rows[0].ClipHash != "ready" || body.RecentlyReady.Rows[0].StatusLabel != "Ready" {
 		t.Fatalf("recently ready = %+v, want only the recent Ready clip", body.RecentlyReady)
 	}
+	if body.ReadyWindowSeconds != int64((24*time.Hour)/time.Second) {
+		t.Fatalf("ready window = %ds, want 24h", body.ReadyWindowSeconds)
+	}
 	if body.NeedsHelp.Total != 0 || len(body.NeedsHelp.Rows) != 0 {
 		t.Fatalf("needs help = %+v; an audit-only review must not become household work", body.NeedsHelp)
+	}
+}
+
+func TestFillerIncoming_UsesTheLiveReadyWindowForRowsAndTotals(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		window time.Duration
+	}{
+		{name: "minimum", window: time.Hour},
+		{name: "maximum", window: 30 * 24 * time.Hour},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Date(2026, time.September, 16, 12, 0, 0, 0, time.UTC)
+			srv, st, _ := newFillerServerWithIncomingConfig(t, tc.window, now)
+			for _, clip := range []filler.Clip{
+				{Hash: "at-cutoff", Path: "at-cutoff.mp4", Name: "At cutoff"},
+				{Hash: "before-cutoff", Path: "before-cutoff.mp4", Name: "Before cutoff"},
+			} {
+				putClip(t, st, clip)
+			}
+			for _, row := range []filler.ClipPipeline{
+				{ClipHash: "at-cutoff", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-tc.window)},
+				{ClipHash: "before-cutoff", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-tc.window - time.Second)},
+			} {
+				if err := st.UpsertClipPipeline(t.Context(), row); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			res, body := readIncoming(t, srv.URL, "/v1/filler/incoming", adminToken)
+			defer func() { _ = res.Body.Close() }()
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want 200", res.StatusCode)
+			}
+			if body.ReadyWindowSeconds != int64(tc.window/time.Second) {
+				t.Fatalf("ready window = %ds, want %s", body.ReadyWindowSeconds, tc.window)
+			}
+			if body.RecentlyReady.Total != 1 || len(body.RecentlyReady.Rows) != 1 || body.RecentlyReady.Rows[0].ClipHash != "at-cutoff" {
+				t.Fatalf("recently ready = %+v, want inclusive cutoff only", body.RecentlyReady)
+			}
+		})
 	}
 }
 

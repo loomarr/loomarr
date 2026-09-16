@@ -118,6 +118,9 @@ type Server struct {
 	// freshly restarted instance. Exactly the silent package-level-state hazard §9.2
 	// warns about — no panic, no log line, just a number quietly lying in a bug report.
 	startedAt time.Time
+	// now is an optional request-clock seam for projections whose membership is time-bounded.
+	// Production leaves it nil and uses time.Now; tests pin it to prove exact cutoff behaviour.
+	now func() time.Time
 	// sso wires /v1/auth/sso/* — the OIDC credential path (§11, V8). nil ⇒ the routes are
 	// NOT MOUNTED, which is the honest posture for an unconfigured provider: a
 	// sign-in-with button that 501s is worse than one that is not offered.
@@ -952,6 +955,7 @@ type Options struct {
 	Metrics              *metrics.Recorder
 	BackupSQLite         BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ready                ReadyFunc
+	Now                  func() time.Time            // optional deterministic request clock for tests
 	Login                LoginService                // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
 	Passwords            PasswordService             // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
 	Sessions             SessionManager              // /v1/auth/logout (Phase 9)

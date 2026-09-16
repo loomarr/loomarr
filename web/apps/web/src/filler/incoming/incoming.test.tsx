@@ -25,6 +25,7 @@ const incoming = (over: Partial<FillerIncomingOutputBody> = {}): FillerIncomingO
     preparing: { rows: [], total: 0 },
     needsHelp: { rows: [], total: 0 },
     recentlyReady: { rows: [], total: 0 },
+    readyWindowSeconds: 86400,
     ...over,
   }) as FillerIncomingOutputBody;
 
@@ -139,6 +140,11 @@ describe("Incoming", () => {
     expect(screen.getByText("Holiday commercial reel")).toBeInTheDocument();
     expect(screen.queryByText("Saturday morning commercial reel")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Ready" })).toBeInTheDocument();
+    expect(screen.getByText(/Added in the last 24 hours\. These clips stay in your Library\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Change" })).toHaveAttribute(
+      "href",
+      "/filler/settings?section=incoming",
+    );
     expect(screen.getByRole("link", { name: "Open Library" })).toHaveAttribute("href", "/filler/library");
     expect(screen.queryByText(/shadow|admission|evidence hash|reason code/i)).not.toBeInTheDocument();
   });

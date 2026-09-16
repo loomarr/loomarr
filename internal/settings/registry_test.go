@@ -220,6 +220,23 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 			t.Errorf("filler.fetch.every accepted out-of-range value %q", invalid)
 		}
 	}
+	recentReady, ok := r.Get("filler.incoming.ready_window")
+	if !ok {
+		t.Fatal("filler.incoming.ready_window not declared")
+	}
+	if recentReady.Default != "24h" || !recentReady.Advanced || recentReady.Apply != "" {
+		t.Errorf("filler.incoming.ready_window = default %v advanced %v apply %q, want live advanced 24h", recentReady.Default, recentReady.Advanced, recentReady.Apply)
+	}
+	for _, valid := range []string{"1h", "24h", "720h"} {
+		if _, err := recentReady.parse(valid); err != nil {
+			t.Errorf("filler.incoming.ready_window rejected bounded value %q: %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{"59m", "721h", "0"} {
+		if _, err := recentReady.parse(invalid); err == nil {
+			t.Errorf("filler.incoming.ready_window accepted out-of-range value %q", invalid)
+		}
+	}
 	perCheck, ok := r.Get("filler.fetch.max_per_run")
 	if !ok {
 		t.Fatal("filler.fetch.max_per_run not declared")

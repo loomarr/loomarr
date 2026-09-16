@@ -481,10 +481,13 @@ action. Being closer to the affected clips is not permission to introduce an unc
 
 Filler settings use the same workspace heading and navigation as Sources, Incoming, and Library.
 `/filler/settings` opens Automatic downloads; a validated `section` query opens the requested
-folders, storage, breaks, review, playback, limits, or tools task. One task is visible at a time,
-with other tasks available under More settings. Expert-only tasks expose their fields after the
-operator explicitly chooses that task. Section changes preserve the shared staged edits and
-single save bar. Settings remain reachable before Filler is configured so setup is not a dead end.
+folders, storage, Incoming history, breaks, review, playback, limits, or tools task. One task is
+visible at a time, with other tasks available under More settings. Expert-only tasks expose their
+fields after the operator explicitly chooses that task. Incoming itself explains how long Ready
+clips remain visible and links quietly to Incoming history; changing that live duration affects the
+next read only, never removes a clip from the Library or changes playback eligibility. Section
+changes preserve the shared staged edits and single save bar. Settings remain reachable before
+Filler is configured so setup is not a dead end.
 
 **Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). Each block says what the service enables, whether it is optional for the current path, and what saving wires automatically. When several checks fail, **only the first failing block opens** while every other failure remains labelled `needs attention` in its collapsed header. Connection blocks behave as an accordion after that — opening one closes the prior block — because several simultaneous service forms recreate the same wall of controls the initial triage avoids. A fully set-up install shows quiet collapsed blocks with nothing to worry about.
 

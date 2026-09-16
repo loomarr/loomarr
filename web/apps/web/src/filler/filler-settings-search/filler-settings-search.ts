@@ -2,6 +2,7 @@ const SETTINGS_SECTIONS = [
   { id: "downloads", label: "Automatic downloads" },
   { id: "folders", label: "Clip folders" },
   { id: "storage", label: "Storage limits" },
+  { id: "incoming", label: "Incoming history" },
   { id: "breaks", label: "Commercial breaks" },
   { id: "review", label: "Clip review" },
   { id: "playback", label: "Clip eligibility and sound" },

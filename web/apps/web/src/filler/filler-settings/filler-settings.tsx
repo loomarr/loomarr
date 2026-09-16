@@ -135,6 +135,14 @@ const FillerSettings = () => {
       initialAdvanced: true,
     },
     {
+      section: "incoming",
+      group: "filler",
+      title: "Incoming history",
+      description: "Choose how long newly ready clips stay visible in Incoming.",
+      keys: ["filler.incoming.ready_window"],
+      initialAdvanced: true,
+    },
+    {
       section: "breaks",
       group: "filler",
       title: "Break assembly",

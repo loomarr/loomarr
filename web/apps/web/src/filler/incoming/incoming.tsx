@@ -18,8 +18,19 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { ClipDetails } from "../clip-details";
 
-type IncomingView = Pick<FillerIncomingOutputBody, "preparing" | "needsHelp" | "recentlyReady">;
-type GroupName = keyof IncomingView;
+type IncomingView = Pick<
+  FillerIncomingOutputBody,
+  "preparing" | "needsHelp" | "recentlyReady" | "readyWindowSeconds"
+>;
+type GroupName = "preparing" | "needsHelp" | "recentlyReady";
+
+const readyWindowLabel = (seconds: number): string => {
+  if (seconds === 3600) return "the last hour";
+  if (seconds === 86400) return "the last 24 hours";
+  if (seconds % 86400 === 0) return `the last ${seconds / 86400} days`;
+  if (seconds % 3600 === 0) return `the last ${seconds / 3600} hours`;
+  return `the last ${Math.max(1, Math.round(seconds / 3600))} hours`;
+};
 
 const mergeRows = <T extends { clipHash: string }>(current: T[], next: T[]) => {
   const seen = new Set(current.map((row) => row.clipHash));
@@ -93,7 +104,12 @@ const Incoming = () => {
 
   useEffect(() => {
     if (body) {
-      setView({ preparing: body.preparing, needsHelp: body.needsHelp, recentlyReady: body.recentlyReady });
+      setView({
+        preparing: body.preparing,
+        needsHelp: body.needsHelp,
+        recentlyReady: body.recentlyReady,
+        readyWindowSeconds: body.readyWindowSeconds,
+      });
       setHelpIndex(0);
     }
   }, [body]);
@@ -296,7 +312,12 @@ const Incoming = () => {
               <h3 id="ready-heading" className="font-semibold text-lg">
                 Ready
               </h3>
-              <p className="text-muted-foreground text-sm">Recently added and ready to use.</p>
+              <p className="text-muted-foreground text-sm">
+                Added in {readyWindowLabel(view.readyWindowSeconds)}. These clips stay in your Library.{" "}
+                <Link to="/filler/settings" search={{ section: "incoming" }} className="underline underline-offset-4">
+                  Change
+                </Link>
+              </p>
             </div>
             <Button render={<Link to="/filler/library" />} variant="outline" size="sm">
               Open Library
