@@ -42,17 +42,20 @@ const StageEdit = () => {
 };
 
 const StageTwoEdits = () => {
-  const { setEdit } = useSettingsEdits();
+  const { results, setEdit } = useSettingsEdits();
   return (
-    <button
-      type="button"
-      onClick={() => {
-        setEdit("filler.home_country", "US");
-        setEdit("filler.home_market", "New York City");
-      }}
-    >
-      Stage two edits
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setEdit("filler.home_country", "US");
+          setEdit("filler.home_market", "New York City");
+        }}
+      >
+        Stage two edits
+      </button>
+      <output aria-label="Save results">{results.map((result) => `${result.key}:${result.status}`).join(",")}</output>
+    </>
   );
 };
 
@@ -109,5 +112,6 @@ describe("SettingsSaveBarHost", () => {
     });
 
     expect(screen.getByText("1 unsaved change")).toBeInTheDocument();
+    expect(screen.getByLabelText("Save results")).toHaveTextContent("filler.home_market:pinned");
   });
 });

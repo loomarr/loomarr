@@ -215,6 +215,14 @@ const Incoming = () => {
       : view.needsHelp.total > 0
         ? `${pluralize(view.needsHelp.total, "clip")} ${view.needsHelp.total === 1 ? "needs" : "need"} your help`
         : `${pluralize(view.recentlyReady.total, "clip")} added to your Library`;
+  const summaryDescription =
+    view.preparing.total > 0
+      ? "Loomarr is taking care of these in the background."
+      : view.needsHelp.total > 0
+        ? "Loomarr needs one choice from you before it can continue."
+        : view.recentlyReady.total === 1
+          ? "This clip is ready whenever a channel needs it."
+          : "These clips are ready whenever a channel needs them.";
 
   const openDetails = (row: IncomingStatusDTO, trigger: HTMLElement) => {
     detailTrigger.current = trigger;
@@ -228,9 +236,7 @@ const Incoming = () => {
         <h2 id="incoming-heading" className="font-semibold text-2xl">
           {summary}
         </h2>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Loomarr is taking care of these in the background.
-        </p>
+        <p className="mt-1 text-muted-foreground text-sm">{summaryDescription}</p>
       </div>
 
       {view.preparing.total > 0 ? (

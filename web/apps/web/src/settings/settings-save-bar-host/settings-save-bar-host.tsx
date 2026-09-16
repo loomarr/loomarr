@@ -11,10 +11,11 @@ import { useSettingsEdits } from "../settings-edits";
 // save protocol.
 const SettingsSaveBarHost = () => {
   const queryClient = useQueryClient();
-  const { edits, clearEdits, resetEdits } = useSettingsEdits();
+  const { edits, setResults, clearEdits, resetEdits } = useSettingsEdits();
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async (response) => {
+        setResults(response.status === 200 ? (response.data.results ?? []) : []);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
           queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),

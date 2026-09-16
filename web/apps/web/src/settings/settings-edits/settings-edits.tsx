@@ -1,3 +1,4 @@
+import type { SettingResult } from "@loomarr/api/models/settingResult";
 import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
@@ -15,7 +16,9 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 
 type SettingsEditsValue = {
   edits: Record<string, string>;
+  results: SettingResult[];
   setEdit: (key: string, value: string) => void;
+  setResults: (results: SettingResult[]) => void;
   clearEdits: (keys: readonly string[]) => void;
   // Replaces the whole buffer. Used by Discard (clear) and after a successful Save, where the
   // saved values become the new baseline.
@@ -26,20 +29,25 @@ const SettingsEditsContext = createContext<SettingsEditsValue | undefined>(undef
 
 const SettingsEditsProvider = ({ children }: { children: ReactNode }) => {
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [results, setResults] = useState<SettingResult[]>([]);
 
   const setEdit = useCallback((key: string, value: string) => {
     setEdits((prev) => ({ ...prev, [key]: value }));
+    setResults((previous) => previous.filter((result) => result.key !== key));
   }, []);
 
-  const resetEdits = useCallback(() => setEdits({}), []);
+  const resetEdits = useCallback(() => {
+    setEdits({});
+    setResults([]);
+  }, []);
   const clearEdits = useCallback((keys: readonly string[]) => {
     const cleared = new Set(keys);
     setEdits((previous) => Object.fromEntries(Object.entries(previous).filter(([key]) => !cleared.has(key))));
   }, []);
 
   const value = useMemo(
-    () => ({ edits, setEdit, clearEdits, resetEdits }),
-    [edits, setEdit, clearEdits, resetEdits],
+    () => ({ edits, results, setEdit, setResults, clearEdits, resetEdits }),
+    [edits, results, setEdit, clearEdits, resetEdits],
   );
   return <SettingsEditsContext.Provider value={value}>{children}</SettingsEditsContext.Provider>;
 };

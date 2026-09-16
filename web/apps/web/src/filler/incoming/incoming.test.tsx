@@ -67,6 +67,7 @@ describe("Incoming", () => {
     );
     try {
       render(<Incoming />, { wrapper });
+      expect(await screen.findByText("This clip is ready whenever a channel needs it.")).toBeInTheDocument();
       await userEvent.click(await screen.findByRole("button", { name: /view details for tootsie pop/i }));
       await userEvent.click(screen.getByText("Technical details"));
       const rows = within(screen.getByRole("dialog")).getAllByRole("listitem");
