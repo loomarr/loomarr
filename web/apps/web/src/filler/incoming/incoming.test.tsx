@@ -1,11 +1,11 @@
 import type { FillerIncomingOutputBody, IncomingStatusDTO } from "@loomarr/api";
 import { getFillerIncomingMockHandler, getListFillerMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { Incoming } from "./incoming";
@@ -38,6 +38,49 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 describe("Incoming", () => {
+  it("preserves simultaneous repeated processing steps without identity warnings", async () => {
+    const error = vi.spyOn(console, "error");
+    const stage = {
+      label: "Adding details",
+      status: "Not needed",
+      at: "2026-09-14T20:00:00Z",
+      note: "No model is configured.",
+    };
+    server.use(
+      getFillerIncomingMockHandler(
+        incoming({
+          recentlyReady: {
+            rows: [
+              status({
+                statusLabel: "Ready",
+                technical: {
+                  stages: [stage, { ...stage }, { ...stage, note: "Optional enrichment is disabled." }],
+                },
+              }),
+            ],
+            total: 1,
+          },
+        }),
+      ),
+      getListFillerMockHandler({ clips: [], total: 0 }),
+    );
+    try {
+      render(<Incoming />, { wrapper });
+      await userEvent.click(await screen.findByRole("button", { name: /view details for tootsie pop/i }));
+      await userEvent.click(screen.getByText("Technical details"));
+      const rows = within(screen.getByRole("dialog")).getAllByRole("listitem");
+      expect(rows).toHaveLength(3);
+      expect(rows.map((row) => row.textContent)).toEqual([
+        "Adding detailsNot neededNo model is configured.",
+        "Adding detailsNot neededNo model is configured.",
+        "Adding detailsNot neededOptional enrichment is disabled.",
+      ]);
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("leads with automatic progress and keeps a real choice distinct", async () => {
     server.use(
       getFillerIncomingMockHandler(
