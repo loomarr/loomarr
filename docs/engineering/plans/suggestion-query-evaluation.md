@@ -209,6 +209,51 @@ Additional History-era membership sources, audience/scope/refinement families,
 fault journeys and the later sealed holdout remain next. The 100-family registry
 is still the broader backlog, not a completed corpus.
 
+### Third executable expansion batch
+
+Authoring checkpoint [#1289](https://github.com/loomarr/loomarr/issues/1289)
+advances the cumulative snapshot to `query-expansion-v3.json`. It retains the 60
+TGIF and MCU requests and adds 15 History editorial-era requests: two minimum,
+six invariance and seven directional tests across six categories. Together with
+the immutable 72-request pilot, there are now 147 authored Development Corpus
+requests. This is still three exposed source families, not 147 independent truth
+families or model qualification.
+
+Primary-source review supports one positive series anchor only: *Modern Marvels*
+(`series:tmdb:6145`). Official HISTORY episode pages provide a bounded 1996–99
+evidence slice, and a Library of Congress catalog record independently associates
+one 1999 *Modern Marvels* work with History Channel. *Ancient Aliens*
+(`series:tmdb:32608`) and *The Curse of Oak Island* (`series:tmdb:60603`) have
+official post-1999 episode dates and serve only as later-era negatives. The
+[source note](../research/suggestion-query-source-truth.md#history-editorial-era-source-review)
+records the sources and nonclaims. The batch does not call Modern Marvels a
+complete or network-defining roster and does not invent other positive titles.
+
+The 15 requests exercise numeric, shorthand and written-decade language,
+conversational and terse phrasing, requests with and without the exemplar,
+technology/engineering emphasis, later-era exclusions, Library-only selection,
+outside-Library acquisition, and explicit 1996–99 or 2000s episode-airing axes.
+The editorial decade remains context rather than an implicit playback cutoff.
+Eight independent causal controls reject a missing anchor, each later-era title,
+duplicate padding, an invented date restriction, swapped ownership on both sides,
+and the wrong date axis. The production path also now recognizes “nineties” in a
+network-reference span; the word does not become a general-purpose date guess.
+
+V1 and v2 manifest, Catalog and source bytes remain immutable and pinned by
+literal digest tests. V3 binds a cumulative Catalog fixture and the unchanged
+source fixture; Library presence, ratings and the Catalog's 1993 series year are
+simulated test facts rather than household or source claims. All 75 cumulative
+expansion requests cross the production Suggester and Runner with independently
+authored replies, and all scorecards remain non-certifying. No hosted-provider
+call, spend, sealed holdout, UI change or Playwright acceptance is claimed.
+
+Movie breadth is the next separately tracked expansion in
+[#1290](https://github.com/loomarr/loomarr/issues/1290): release epochs,
+mood/sentiment, genre intersections, people, regions/languages, audience,
+exclusions, Library/acquisition state and thin-result behavior. Its subjective
+expectations require calibrated rubrics and reviewed fixtures; this History batch
+does not pre-author those answers.
+
 ### Remaining expansion checkpoints
 
 The source-review checkpoint is tracked in [#1278](https://github.com/loomarr/loomarr/issues/1278).

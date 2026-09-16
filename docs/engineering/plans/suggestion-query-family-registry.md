@@ -10,14 +10,14 @@ material; none is an untouched holdout. Each example below is a design probe, no
 a passed test or a complete expected-answer set. Family status is `proposed` until
 its source facts, independent oracle and negative controls are reviewed.
 
-The [first executable batch](suggestion-query-evaluation.md#first-executable-expansion-batch)
-now has 30 authored requests from one shared TGIF source family, under #1281.
-It provides partial evidence relevant to BLK-01, IDN-02, OWN-01/02/04, POL-01
-and DAT-03; it does not promote each capability row into a separately reviewed
-ten-request family. All 100 registry rows retain their proposed status pending
-their full source/oracle review and coverage. MCU identity mapping and complete
-History-era source evidence remain pending. The batch is development-only and
-does not multiply family count by its eight case categories.
+Three cumulative executable batches now have 75 authored requests across the
+TGIF, MCU Phase One and partial History editorial-era source families. The first
+two provide partial evidence relevant to BLK-01, IDN-02, SET-02, OWN-01/02/04,
+POL-01 and date-axis behavior. EPO-01 now has 15 requests and reviewed controls,
+but remains **partial/single-anchor** because primary sources support Modern
+Marvels only, not a complete 1990s History roster. Case categories do not become
+new truth families. The other registry rows remain proposed until their own
+source/oracle review and coverage. All executable batches are development-only.
 
 The authoring target is at least ten distinct reviewed requests per family:
 1,000+ requests total. Do not count a prefix/suffix Cartesian product as semantic
@@ -63,7 +63,8 @@ Source family: `historical-block-membership`. Review status: proposed; fixture-r
 
 ### Network editorial epochs
 
-Source family: `network-editorial-epoch`. Review status: proposed; fixture-ready: no.
+Source family: `network-editorial-epoch`. Review status: EPO-01 partial executable;
+fixture-ready: EPO-01 only, with one positive anchor and explicit nonclaims.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |
@@ -72,6 +73,10 @@ Source family: `network-editorial-epoch`. Review status: proposed; fixture-ready
 | EPO-03 | Old Discovery Channel science programming | Require epoch-specific evidence, not current network popularity. |
 | EPO-04 | TLC when it was The Learning Channel | Separate historical educational programming from current reality identity. |
 | EPO-05 | Cartoon Network before the modern reboots | Resolve epoch intent without guessing a hard calendar cutoff. |
+
+EPO-01's 15 executable requests cover wording, date-axis, exclusion and
+ownership/acquisition behavior around the reviewed Modern Marvels anchor. They
+must not be cited as evidence of a complete or diverse historical lineup.
 
 ### Network versus platform
 
@@ -300,6 +305,10 @@ Source family: `request-role-collision`. Review status: proposed; fixture-ready:
    subjective expectations; unknown media or regional evidence stays unknown.
 4. **Results and ongoing journeys:** RES, REF and FLT. Preserve user selections
    through review/refinement; actual faults and recovery qualification stay #1195.
+5. **Movie epoch and mood breadth:** continue through
+   [#1290](https://github.com/loomarr/loomarr/issues/1290), spanning release eras,
+   sentiment, intersections, exclusions, people, regions/languages, audience and
+   ownership. Subjective families need calibrated review, not exact invented lists.
 
 Per batch, use the existing production Suggester and Runner with shared testkit
 adapters. Review the source/oracle first, run a minimal vertical red/green slice,

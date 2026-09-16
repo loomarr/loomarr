@@ -16,11 +16,14 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func TestQueryExpansionV1ArtifactsRemainImmutable(t *testing.T) {
+func TestQueryExpansionPriorArtifactsRemainImmutable(t *testing.T) {
 	want := map[string]string{
 		"testdata/query-expansion-v1.json":         "1b78d1c288c1bf913b5391705a2f2054895bb8e07770b58102f911ce6fa36a83",
 		"testdata/query-expansion-catalog-v1.json": "42fe1981f6d38256e08219044e17ca688436325bf012ba69db50a15a1f55d611",
 		"testdata/query-expansion-sources-v1.json": "9f7a590b5db976d064f33d8e5a01bf33be0951548726a11f1ce79be1883ae849",
+		"testdata/query-expansion-v2.json":         "fc86fec4b51b980a4816263468f38de4a2878e5d9df814e649d4f955f82785d8",
+		"testdata/query-expansion-catalog-v2.json": "ca54b9ae981ed4d8da9409bb6ee876819342435f9ccf825ebb95e06afb43c482",
+		"testdata/query-expansion-sources-v2.json": "c6784c9defa523b8fe147dc280ac31055b047ae5167390172cb8d89e81f9923a",
 	}
 	for path, expected := range want {
 		blob, err := queryPilotFiles.ReadFile(path)
@@ -99,6 +102,45 @@ func TestQueryExpansionReviewedMCUUsesProductionSuggestion(t *testing.T) {
 	}
 }
 
+func TestQueryExpansionReviewedHistoryUsesProductionSuggestion(t *testing.T) {
+	corpus, err := LoadEmbeddedQueryExpansionCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := QueryExpansionCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected []Case
+	for _, c := range cases {
+		if c.Name == "exp-history-minimum" {
+			selected = append(selected, c)
+		}
+	}
+	if len(selected) != 1 {
+		t.Fatalf("History tracer cases = %d, want one", len(selected))
+	}
+	config, err := QueryExpansionRunnerConfig(RunnerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var authored QueryPilotCase
+	for _, c := range corpus.Cases {
+		if c.ID == "exp-history-minimum" {
+			authored = c
+		}
+	}
+	provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+	generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), selected)
+	if !card.Results[0].Passed() || !card.Assessment.Passed || card.Certified || !card.DevelopmentCorpus {
+		t.Fatalf("reviewed History development answer: %+v", card.Results[0])
+	}
+}
+
 func TestQueryExpansionIndependentCausalOutcomeControls(t *testing.T) {
 	cases, err := QueryExpansionCases()
 	if err != nil {
@@ -161,6 +203,69 @@ func TestQueryExpansionIndependentCausalOutcomeControls(t *testing.T) {
 			}
 			if bad.Results[0].Passed() || !strings.Contains(strings.Join(bad.Results[0].Failures, " "), control.failure) || bad.Certified {
 				t.Fatalf("deliberately wrong answer escaped its target: %+v", bad.Results[0])
+			}
+		})
+	}
+}
+
+func TestQueryExpansionHistoryIndependentCausalOutcomeControls(t *testing.T) {
+	cases, err := QueryExpansionCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := QueryExpansionRunnerConfig(RunnerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned := proposalWithKeys(t, "series:tmdb:6145")
+	missing := proposalWithKeys(t, "series:tmdb:6145")
+	missing.Acquisitions, missing.Lineup = missing.Lineup, nil
+	laterAncient := proposalWithKeys(t, "series:tmdb:6145", "series:tmdb:32608")
+	laterOak := proposalWithKeys(t, "series:tmdb:6145", "series:tmdb:60603")
+	duplicate := proposalWithKeys(t, "series:tmdb:6145", "series:tmdb:6145")
+	inventedPlayback := owned
+	inventedPlayback.Policy.Scope.Dates = &schedule.DateScope{SeriesAiring: []schedule.Range{{From: 1990, To: 1999}}}
+	airing := owned
+	airing.Policy.Scope.Dates = &schedule.DateScope{SeriesAiring: []schedule.Range{{From: 1996, To: 1999}}}
+	wrongAxis := owned
+	wrongAxis.Policy.Scope.Dates = &schedule.DateScope{SeriesPremiere: []schedule.Range{{From: 1996, To: 1999}}}
+	controls := []struct {
+		name, caseID, failure string
+		positive, negative    suggest.Proposal
+	}{
+		{"missing-anchor", "exp-history-minimum", "grounded titles", owned, proposalWithKeys(t)},
+		{"later-era-ancient-aliens", "exp-history-minimum", "outside the acceptable set", owned, laterAncient},
+		{"later-era-oak-island", "exp-history-minimum", "outside the acceptable set", owned, laterOak},
+		{"duplicate-padding", "exp-history-minimum", "duplicate", owned, duplicate},
+		{"invented-playback-limit", "exp-history-minimum", "date", owned, inventedPlayback},
+		{"owned-title-as-acquisition", "exp-history-owned", "lineup", owned, missing},
+		{"missing-title-as-owned", "exp-history-acquisition", "acquisitions", missing, owned},
+		{"wrong-date-axis", "exp-history-airing-1996-1999", "date", airing, wrongAxis},
+	}
+	for _, control := range controls {
+		t.Run(control.name, func(t *testing.T) {
+			var selected []Case
+			for _, c := range cases {
+				if c.Name == control.caseID {
+					selected = append(selected, c)
+				}
+			}
+			if len(selected) != 1 {
+				t.Fatal("causal control requires exactly one authored History request")
+			}
+			good := NewRunner(scriptedGenerator{proposal: control.positive}, config).Run(context.Background(), selected)
+			if !good.Results[0].Passed() || !good.Assessment.Passed || good.Certified {
+				t.Fatalf("independently valid positive failed: %+v", good.Results[0])
+			}
+			bad := NewRunner(scriptedGenerator{proposal: control.negative}, config).Run(context.Background(), selected)
+			if control.failure == "date" {
+				if bad.Results[0].PolicyAccurate || bad.Assessment.Passed || bad.Certified {
+					t.Fatalf("wrong History date policy escaped strict assessment: %+v", bad)
+				}
+				return
+			}
+			if bad.Results[0].Passed() || !strings.Contains(strings.Join(bad.Results[0].Failures, " "), control.failure) || bad.Certified {
+				t.Fatalf("deliberately wrong History answer escaped its target: %+v", bad.Results[0])
 			}
 		})
 	}
@@ -238,8 +343,8 @@ func TestQueryExpansionEveryAuthoredRequestUsesProductionSuggestion(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(corpus.Cases) != 60 {
-		t.Fatalf("cumulative executable corpus has %d requests, want 60", len(corpus.Cases))
+	if len(corpus.Cases) != 75 {
+		t.Fatalf("cumulative executable corpus has %d requests, want 75", len(corpus.Cases))
 	}
 	cases, err := QueryExpansionCases()
 	if err != nil {
@@ -258,7 +363,11 @@ func TestQueryExpansionEveryAuthoredRequestUsesProductionSuggestion(t *testing.T
 			}
 			card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), []Case{c})
 			if !card.Results[0].Passed() || !card.Assessment.Passed || card.Certified || !card.DevelopmentCorpus {
-				t.Fatalf("authored request: stage=%s failures=%v assessment=%v selected=%d", card.Results[0].FailureStage, card.Results[0].Failures, card.Assessment.Failures, card.Results[0].SelectedCount)
+				last := ""
+				if len(provider.LastMessages) > 0 {
+					last = provider.LastMessages[len(provider.LastMessages)-1].Content
+				}
+				t.Fatalf("authored request: stage=%s failures=%v assessment=%v selected=%d providerCalls=%d last=%q", card.Results[0].FailureStage, card.Results[0].Failures, card.Assessment.Failures, card.Results[0].SelectedCount, provider.Calls, last)
 			}
 			if corpus.Cases[i].FixtureCase == "mcu-reviewed" {
 				sourcePresented := false
@@ -280,6 +389,9 @@ func queryExpansionResponses(t *testing.T, c QueryPilotCase) []llm.Response {
 	t.Helper()
 	if c.FixtureCase == "mcu-reviewed" {
 		return queryExpansionMCUResponses(t, c)
+	}
+	if strings.HasPrefix(c.FixtureCase, "history-era-reviewed") {
+		return queryExpansionHistoryResponses(t, c)
 	}
 	ids := []int{2685, 2617, 1777, 605}
 	args := map[string]any{"media_type": "series", "mode": "collection", "titles": []any{"Family Matters", "Step by Step", "Boy Meets World", "Sabrina the Teenage Witch"}}
@@ -342,6 +454,42 @@ func queryExpansionResponses(t *testing.T, c QueryPilotCase) []llm.Response {
 		t.Fatal(err)
 	}
 	return []llm.Response{testkit.ToolCallResponse("catalog_search", args), testkit.FinalResponse(string(final))}
+}
+
+func queryExpansionHistoryResponses(t *testing.T, c QueryPilotCase) []llm.Response {
+	t.Helper()
+	meaning := map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}
+	if c.ID == "exp-history-airing-2000s" || c.ID == "exp-history-airing-1996-1999" {
+		marker, from, to := "2000s", 2000, 2009
+		if c.ID == "exp-history-airing-1996-1999" {
+			marker, from, to = "1996-1999", 1996, 1999
+		}
+		start := strings.Index(c.Description, marker)
+		if start < 0 {
+			t.Fatal("independent History provider script has no date span")
+		}
+		meaning = map[string]any{
+			"kind":    "constraints",
+			"anchors": []any{map[string]any{"field": "description", "start": start, "end": start + len(marker)}},
+			"axes": []any{map[string]any{
+				"kind": "series_airing", "combine": "any",
+				"intervals": []any{map[string]any{"anchor": 0, "start": from, "end": to}},
+			}},
+		}
+	}
+	final, err := json.Marshal(map[string]any{
+		"picks":       []any{map[string]any{"mediaType": "series", "key": "series:tmdb:6145"}},
+		"dateMeaning": meaning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []llm.Response{
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"media_type": "series", "network": "History", "dateMeaning": meaning,
+		}),
+		testkit.FinalResponse(string(final)),
+	}
 }
 
 func queryExpansionMCUResponses(t *testing.T, c QueryPilotCase) []llm.Response {

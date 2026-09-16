@@ -30,20 +30,33 @@ func epochFinal(t *testing.T, meaning map[string]any) string {
 }
 
 func TestSuggest_NetworkEpochAllowsEditorialDecadeWithoutEpisodeCutoff(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
-	model := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "History", "genres": []any{"Documentary"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
-		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
-	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the History Channel from the 1990s"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(proposal.Lineup) != 1 || proposal.Lineup[0].Name != "Modern Marvels" || proposal.Policy.Scope.Dates != nil {
-		t.Fatalf("network epoch became a calendar cutoff: %+v", proposal)
-	}
-	if !strings.Contains(model.Prompt(), "NETWORK PROGRAMMING EPOCH") {
-		t.Fatal("provider was not instructed to interpret the network's programming identity")
+	for _, description := range []string{
+		"A channel like the History Channel from the 1990s",
+		"A channel like the History Channel from the nineties",
+	} {
+		t.Run(description, func(t *testing.T) {
+			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
+			model := testkit.NewLLM(
+				testkit.ToolCallResponse("catalog_search", map[string]any{"network": "History", "genres": []any{"Documentary"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
+				testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
+			)
+			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: description})
+			if err != nil {
+				t.Fatal(err)
+			}
+			discoveries := corpus.Discoveries()
+			if len(proposal.Lineup) != 1 || proposal.Lineup[0].Name != "Modern Marvels" || proposal.Policy.Scope.Dates != nil || len(discoveries) == 0 {
+				t.Fatalf("network epoch became a calendar cutoff or lost its editorial window: proposal=%+v discoveries=%+v", proposal, discoveries)
+			}
+			for _, discovery := range discoveries {
+				if discovery.Query.EditorialEpochEnd != 1999 {
+					t.Fatalf("network epoch lost its editorial window: %+v", discoveries)
+				}
+			}
+			if !strings.Contains(model.Prompt(), "NETWORK PROGRAMMING EPOCH") {
+				t.Fatal("provider was not instructed to interpret the network's programming identity")
+			}
+		})
 	}
 }
 
