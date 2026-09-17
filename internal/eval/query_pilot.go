@@ -24,7 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json testdata/query-expansion-v4.json testdata/query-expansion-catalog-v4.json testdata/query-expansion-v5.json testdata/query-expansion-catalog-v5.json testdata/query-expansion-v6.json testdata/query-mood-review-packet-v1.json testdata/query-mood-review-map-v1.json testdata/query-mood-review-submission-qwen-v1.json testdata/query-mood-review-submission-gemini-v1.json testdata/query-mood-review-submission-gemma-v1.json testdata/query-mood-review-authority-v1.json testdata/query-mood-review-openrouter-snapshot-v1.json
+//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json testdata/query-expansion-v4.json testdata/query-expansion-catalog-v4.json testdata/query-expansion-v5.json testdata/query-expansion-catalog-v5.json testdata/query-expansion-v6.json testdata/query-expansion-v7.json testdata/query-expansion-catalog-v7.json testdata/query-mood-review-packet-v1.json testdata/query-mood-review-map-v1.json testdata/query-mood-review-submission-qwen-v1.json testdata/query-mood-review-submission-gemini-v1.json testdata/query-mood-review-submission-gemma-v1.json testdata/query-mood-review-authority-v1.json testdata/query-mood-review-openrouter-snapshot-v1.json testdata/query-mood-review-packet-v2.json testdata/query-mood-review-map-v2.json testdata/query-mood-review-submission-qwen-v2.json testdata/query-mood-review-submission-gemini-v2.json testdata/query-mood-review-submission-gemma-v2.json testdata/query-mood-review-authority-v2.json
 var queryPilotFiles embed.FS
 
 // QueryPilotCorpus is exposed development evidence, never a release holdout.
@@ -227,7 +227,7 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 			}
 		}
 		if review := c.SubjectiveReview; review != nil {
-			if review.Version != MoodReviewRubricVersion || strings.TrimSpace(review.Rubric) == "" || len(review.PositiveKeys) == 0 || len(review.NegativeKeys) == 0 {
+			if strings.TrimSpace(review.Rubric) == "" || len(review.PositiveKeys) == 0 || len(review.NegativeKeys) == 0 {
 				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has incomplete subjective review protocol", c.ID)
 			}
 			for _, key := range review.PositiveKeys {
@@ -248,6 +248,10 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 			case MoodReviewStatusModelAttested:
 				if moodAuthority == nil || review.AuthoritySHA256 != corpus.MoodReviewAuthority.SHA256 {
 					return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q is not bound to the corpus mood authority", c.ID)
+				}
+				rubric, ok := moodReviewRubricForAuthority(*moodAuthority)
+				if !ok || review.Version != rubric.RubricVersion {
+					return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q differs from its mood authority rubric", c.ID)
 				}
 				if err := validateQueryMoodProjection(*review, *moodAuthority); err != nil {
 					return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q: %w", c.ID, err)
@@ -355,12 +359,16 @@ func readBoundQueryMoodArtifact(binding CertificationFixture) ([]byte, error) {
 }
 
 func validateQueryMoodProjection(review QuerySubjectiveReview, authority MoodReviewAuthority) error {
-	if len(review.Rules) == 0 || len(review.Rules) > len(moodAxisNames) {
+	rubric, ok := moodReviewRubricForAuthority(authority)
+	if !ok {
+		return fmt.Errorf("subjective projection uses an unknown authority rubric")
+	}
+	if len(review.Rules) == 0 || len(review.Rules) > len(rubric.Axes) {
 		return fmt.Errorf("subjective projection has no bounded ordinal rules")
 	}
 	seenAxes := make(map[string]bool)
 	for _, rule := range review.Rules {
-		if !slices.Contains(moodAxisNames, rule.Axis) || seenAxes[rule.Axis] || (rule.Min == nil && rule.Max == nil) || (rule.Min != nil && (*rule.Min < 0 || *rule.Min > 3)) || (rule.Max != nil && (*rule.Max < 0 || *rule.Max > 3)) || (rule.Min != nil && rule.Max != nil && *rule.Min > *rule.Max) {
+		if !slices.Contains(rubric.Axes, rule.Axis) || seenAxes[rule.Axis] || (rule.Min == nil && rule.Max == nil) || (rule.Min != nil && (*rule.Min < 0 || *rule.Min > 3)) || (rule.Max != nil && (*rule.Max < 0 || *rule.Max > 3)) || (rule.Min != nil && rule.Max != nil && *rule.Min > *rule.Max) {
 			return fmt.Errorf("subjective projection has an invalid rule for %q", rule.Axis)
 		}
 		seenAxes[rule.Axis] = true
@@ -415,20 +423,17 @@ func queryMoodDecisionMatches(decision MoodReviewDecision, rules []QueryMoodRule
 }
 
 func moodScoreForAxis(scores MoodAxisScores, axis string) (int, bool) {
-	switch axis {
-	case "valence":
-		return scores.Valence, true
-	case "arousal":
-		return scores.Arousal, true
-	case "threatFear":
-		return scores.ThreatFear, true
-	case "comedicWarmth":
-		return scores.ComedicWarmth, true
-	case "attentionalDemand":
-		return scores.AttentionalDemand, true
-	default:
-		return 0, false
+	value, ok := scores[axis]
+	return value, ok
+}
+
+func moodReviewRubricForAuthority(authority MoodReviewAuthority) (moodReviewRubric, bool) {
+	for _, rubric := range moodReviewRubrics {
+		if authority.ContractVersion == rubric.ContractVersion {
+			return rubric, true
+		}
 	}
+	return moodReviewRubric{}, false
 }
 
 // NewEmbeddedQueryPilotGenerator reuses the production Suggester, observed

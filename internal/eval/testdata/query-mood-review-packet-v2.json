@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v2",
+  "rubricVersion": "movie-mood-ordinal-v2",
+  "promptVersion": "query-mood-blind-review-v2",
+  "packetId": "movie-mood-review-2026-09-16-b",
+  "preparedAt": "2026-09-17T02:50:12Z",
+  "evidence": [
+    {
+      "id": "mood2-e01",
+      "url": "https://www.bbfc.co.uk/release/paddington-2-q29sbgvjdglvbjpwwc0zotc2nzq",
+      "observed": "2026-09-16",
+      "summary": "The BBFC records Paddington 2 as a 2017 English-language Adventure, Comedy and Children film with mild threat and reassuring outcomes.",
+      "uncertainty": "BBFC content advice is jurisdiction-specific reviewer evidence, not a universal mood label.",
+      "sha256": "db60e35f07adaca2e8c3a373502744c03c65196034d32ad1e106dce591dc163c"
+    },
+    {
+      "id": "mood2-e02",
+      "url": "https://whatson.bfi.org.uk/online/default.asp?BOparam%3A%3AWScontent%3A%3AloadArticle%3A%3Apermalink=paddington-2",
+      "observed": "2026-09-16",
+      "summary": "The BFI describes Paddington 2 using family-fun and kindness language.",
+      "uncertainty": "The page returned 403 during recheck; this reviewed paraphrase is evidence input, not an objective mood label.",
+      "sha256": "509a16a9ec460a20dc9485ed63ac04948cfde7e5891861ac1c0e99237e567a34"
+    },
+    {
+      "id": "mood2-e03",
+      "url": "https://catalog.afi.com/Film/55193-JAWS",
+      "observed": "2026-09-16",
+      "summary": "The AFI Catalog synopsis and production history for Jaws describe a threatening shark and sustained suspense around swimmers and the hunt.",
+      "uncertainty": "A catalog synopsis and history can inform ordinal review but do not certify fear, valence or suitability.",
+      "sha256": "e556347978edc2017de72c5cc0a3109cf8a54edd9e3d6e8089645bf2b3c90c13"
+    },
+    {
+      "id": "mood2-e04",
+      "url": "https://www.koreanfilm.or.kr/mobile3/news/featuresView.jsp?seq=474",
+      "observed": "2026-09-16",
+      "summary": "The Korean Film Council describes Parasite as a darkly satirical thriller with wickedly comic elements.",
+      "uncertainty": "Institutional editorial prose informs ordinal review but does not create a universal sentiment label.",
+      "sha256": "75e1baa4528e5723e9a781eb5a87b851704eea3c0f6f57da2466dce06c2f17bd"
+    },
+    {
+      "id": "mood2-e05",
+      "url": "https://www.pixar.com/toy-story",
+      "observed": "2026-09-16",
+      "summary": "Pixar describes Toy Story as a fun-filled journey: Woody fears losing his place, but the comically mismatched rivals ultimately form an alliance during a hilarious adventure-filled mission.",
+      "uncertainty": "Rights-holder promotional prose supplies tonal evidence but is not an objective warmth or threat score.",
+      "sha256": "67c95384367aa37e310b05edce09944922cdbc8051d72d0395c45d709a279896"
+    },
+    {
+      "id": "mood2-e06",
+      "url": "https://www.filmratings.com/search-results/?cn=32451",
+      "observed": "2026-09-16",
+      "summary": "The MPA record classifies Jurassic Park PG-13 and gives intense science-fiction terror as its content descriptor.",
+      "uncertainty": "The U.S. classification descriptor is direct threat evidence, not a complete mood or international suitability judgment.",
+      "sha256": "b067d76c1d94cdc4a2e01568e692c8ca4bda104ac7b2c8b24a4e46b0fda87bc5"
+    },
+    {
+      "id": "mood2-e07",
+      "url": "https://en.unifrance.org/movie/20864/amelie-from-montmartre",
+      "observed": "2026-09-16",
+      "summary": "Unifrance describes Amelie as a shy Parisian waitress who decides to improve other people's lives while confronting her own isolation and search for love.",
+      "uncertainty": "An institutional synopsis supports story and tonal review but does not certify universal comfort, romance or warmth.",
+      "sha256": "4f790aa81cea1f11557f2b45ecdf6477af7cbe8ea195443c0c5bc6d3dc22f8aa"
+    },
+    {
+      "id": "mood2-e08",
+      "url": "https://gkids.com/films/spirited-away/",
+      "observed": "2026-09-16",
+      "summary": "GKIDS describes Spirited Away as a wondrous fantasy adventure in which Chihiro's parents are transformed and she must survive among spirits and demons, free them and return home; it calls the storytelling thrilling.",
+      "uncertainty": "Distributor prose supports mixed wonder and threat evidence but not a universal emotional or audience judgment.",
+      "sha256": "0311df86b66d1f92d88c8fd6fcd123ea48f05186b23f6e335b93cd7ae645300c"
+    },
+    {
+      "id": "mood2-e09",
+      "url": "https://catalog.afi.com/Film/50652-SINGIN-INTHERAIN",
+      "observed": "2026-09-16",
+      "summary": "The AFI Catalog identifies Singin' in the Rain as a musical comedy and its synopsis follows romance and comic complications as performers adapt to talking pictures.",
+      "uncertainty": "Genre and synopsis can inform review but do not make cheerfulness or warmth deterministic catalog facts.",
+      "sha256": "d960dbe9679672fa41217b36fdde5ce1bd97190a9c6e69c7b60da811f3fc78c5"
+    },
+    {
+      "id": "mood2-e10",
+      "url": "https://catalog.afi.com/Catalog/moviedetails/23399",
+      "observed": "2026-09-16",
+      "summary": "The AFI Catalog synopsis for 2001: A Space Odyssey links monolith discoveries across eras, a Jupiter mission, HAL's malfunction and escalating danger to the crew.",
+      "uncertainty": "The detailed synopsis supports tonal review but does not by itself satisfy the two-source structural gate for continuity dependence.",
+      "sha256": "22d1128db00614a1c59a9e778325a4baf8137d4b07bd577c921b4083b9527a75"
+    }
+  ],
+  "cases": [
+    {
+      "alias": "candidate-v2-a17c",
+      "displayTitle": "Singin' in the Rain",
+      "evidenceIds": ["mood2-e09"]
+    },
+    {
+      "alias": "candidate-v2-b402",
+      "displayTitle": "2001: A Space Odyssey",
+      "evidenceIds": ["mood2-e10"]
+    },
+    {
+      "alias": "candidate-v2-c8d1",
+      "displayTitle": "Jaws",
+      "evidenceIds": ["mood2-e03"]
+    },
+    {
+      "alias": "candidate-v2-d593",
+      "displayTitle": "Toy Story",
+      "evidenceIds": ["mood2-e05"]
+    },
+    {
+      "alias": "candidate-v2-e06f",
+      "displayTitle": "Jurassic Park",
+      "evidenceIds": ["mood2-e06"]
+    },
+    {
+      "alias": "candidate-v2-f741",
+      "displayTitle": "Amelie",
+      "evidenceIds": ["mood2-e07"]
+    },
+    {
+      "alias": "candidate-v2-g32a",
+      "displayTitle": "Spirited Away",
+      "evidenceIds": ["mood2-e08"]
+    },
+    {
+      "alias": "candidate-v2-h9be",
+      "displayTitle": "Paddington 2",
+      "evidenceIds": ["mood2-e01", "mood2-e02"]
+    },
+    {
+      "alias": "candidate-v2-i251",
+      "displayTitle": "Parasite",
+      "evidenceIds": ["mood2-e04"]
+    }
+  ]
+}

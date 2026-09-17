@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,36 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+func TestCompileMoodReviewAuthorityPreservesFrozenV1Evidence(t *testing.T) {
+	t.Parallel()
+
+	read := func(path string) []byte {
+		t.Helper()
+		blob, err := queryPilotFiles.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return blob
+	}
+	compiled, err := CompileMoodReviewAuthority(
+		read("testdata/query-mood-review-packet-v1.json"),
+		read("testdata/query-mood-review-map-v1.json"),
+		read("testdata/query-mood-review-submission-qwen-v1.json"),
+		read("testdata/query-mood-review-submission-gemini-v1.json"),
+		read("testdata/query-mood-review-submission-gemma-v1.json"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frozen MoodReviewAuthority
+	if err := json.Unmarshal(read("testdata/query-mood-review-authority-v1.json"), &frozen); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(compiled, frozen) {
+		t.Fatalf("compiled v1 authority changed:\ncompiled=%+v\nfrozen=%+v", compiled, frozen)
+	}
+}
 
 func TestCompileMoodReviewAuthorityAcceptsIndependentAgreement(t *testing.T) {
 	t.Parallel()
@@ -32,7 +64,7 @@ func TestCompileMoodReviewAuthorityAcceptsIndependentAgreement(t *testing.T) {
 	if authority.Status != MoodReviewStatusModelAttested || authority.Completeness != MoodReviewCompletenessComplete || authority.PacketSHA256 != packetSHA || authority.PrivateMapSHA256 != testSHA256(mapBlob) {
 		t.Fatalf("unexpected authority identity: %+v", authority)
 	}
-	if len(authority.Decisions) != 1 || authority.Decisions[0].Key != provision.Key("movie:tmdb:346648") || authority.Decisions[0].Scores != testMoodScores(3, 1, 0, 3, 1) || len(authority.Decisions[0].UncertainAxes) != 0 {
+	if len(authority.Decisions) != 1 || authority.Decisions[0].Key != provision.Key("movie:tmdb:346648") || !maps.Equal(authority.Decisions[0].Scores, testMoodScores(3, 1, 0, 3, 1)) || len(authority.Decisions[0].UncertainAxes) != 0 {
 		t.Fatalf("unexpected authority decision: %+v", authority.Decisions)
 	}
 	if len(authority.SubmissionSHA256) != 2 || authority.SubmissionSHA256[0] != testSHA256(first) || authority.SubmissionSHA256[1] != testSHA256(second) {
@@ -145,7 +177,7 @@ func TestCompileMoodReviewAuthorityUsesThirdFamilyOnlyToResolveDisagreement(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Status != MoodReviewStatusModelAttested || resolved.Completeness != MoodReviewCompletenessComplete || resolved.Decisions[0].Scores.Valence != 3 || len(resolved.Decisions[0].UncertainAxes) != 0 {
+	if resolved.Status != MoodReviewStatusModelAttested || resolved.Completeness != MoodReviewCompletenessComplete || resolved.Decisions[0].Scores["valence"] != 3 || len(resolved.Decisions[0].UncertainAxes) != 0 {
 		t.Fatalf("third-family adjudication did not resolve the disagreement: %+v", resolved)
 	}
 
@@ -156,6 +188,99 @@ func TestCompileMoodReviewAuthorityUsesThirdFamilyOnlyToResolveDisagreement(t *t
 	}
 	if stillUncertain.Status != MoodReviewStatusModelAttested || stillUncertain.Completeness != MoodReviewCompletenessPartial || !slicesEqual(stillUncertain.Decisions[0].UncertainAxes, []string{"valence"}) {
 		t.Fatalf("three-way disagreement was not preserved: %+v", stillUncertain)
+	}
+}
+
+func TestCompileMoodReviewAuthorityQuarantinesOnlyTheDisputedOperationalAxis(t *testing.T) {
+	t.Parallel()
+
+	packet := testOperationalMoodPacket(t)
+	packetSHA := testSHA256(packet)
+	privateMap := testOperationalMoodMap(t, packetSHA)
+	first := testOperationalMoodSubmission(t, packetSHA, "reviewer-a", "qwen3.5", "qwen3.5:9b", "a", 2)
+	second := testOperationalMoodSubmission(t, packetSHA, "reviewer-b", "gemma4", "gemma4:12b", "b", 3)
+
+	authority, err := CompileMoodReviewAuthority(packet, privateMap, first, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authority.Completeness != MoodReviewCompletenessPartial || len(authority.Decisions) != 1 {
+		t.Fatalf("operational authority = %+v", authority)
+	}
+	decision := authority.Decisions[0]
+	if !slicesEqual(decision.UncertainAxes, []string{"narrativeContinuityDependence"}) {
+		t.Fatalf("uncertain axes = %v, want only narrative continuity", decision.UncertainAxes)
+	}
+	scores := testMoodScoreMap(t, decision.Scores)
+	if scores["valence"] != 3 || scores["arousal"] != 1 || scores["threatFear"] != 0 || scores["comedicWarmth"] != 3 {
+		t.Fatalf("resolved mood scores = %v", scores)
+	}
+	if _, present := scores["attentionalDemand"]; present {
+		t.Fatalf("successor rubric retained the composite attention score: %v", scores)
+	}
+}
+
+func TestCompileMoodReviewAuthorityQuarantinesUnsupportedContinuityConsensus(t *testing.T) {
+	t.Parallel()
+
+	packet := testOperationalMoodPacket(t)
+	packetSHA := testSHA256(packet)
+	privateMap := testOperationalMoodMap(t, packetSHA)
+	first := testOperationalMoodSubmission(t, packetSHA, "reviewer-a", "qwen3.5", "qwen3.5:9b", "a", 2)
+	second := testOperationalMoodSubmission(t, packetSHA, "reviewer-b", "gemma4", "gemma4:12b", "b", 2)
+
+	authority, err := CompileMoodReviewAuthority(packet, privateMap, first, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authority.Completeness != MoodReviewCompletenessPartial || len(authority.Decisions) != 1 || !slicesEqual(authority.Decisions[0].UncertainAxes, []string{"narrativeContinuityDependence"}) {
+		t.Fatalf("unsupported model consensus escaped the evidence gate: %+v", authority)
+	}
+}
+
+func TestCompileMoodReviewAuthorityRejectsCrossVersionPrivateMap(t *testing.T) {
+	t.Parallel()
+
+	packet := testOperationalMoodPacket(t)
+	packetSHA := testSHA256(packet)
+	legacyMap := testMoodMap(t, packetSHA)
+	first := testOperationalMoodSubmission(t, packetSHA, "reviewer-a", "qwen3.5", "qwen3.5:9b", "a", 2)
+	second := testOperationalMoodSubmission(t, packetSHA, "reviewer-b", "gemma4", "gemma4:12b", "b", 2)
+
+	authority, err := CompileMoodReviewAuthority(packet, legacyMap, first, second)
+	if err == nil || !strings.Contains(err.Error(), "private map does not bind") {
+		t.Fatalf("cross-version map error = %v", err)
+	}
+	if authority.Status != "" || len(authority.Decisions) != 0 {
+		t.Fatalf("cross-version map exposed authority: %+v", authority)
+	}
+}
+
+func TestCompileMoodReviewAuthorityRequiresEachReviewerToCiteContinuityEvidence(t *testing.T) {
+	t.Parallel()
+
+	packet := testOperationalMoodPacketWithContinuityEvidence(t)
+	packetSHA := testSHA256(packet)
+	privateMap := testOperationalMoodMap(t, packetSHA)
+	first := testOperationalMoodSubmission(t, packetSHA, "reviewer-a", "qwen3.5", "qwen3.5:9b", "a", 2)
+	second := testOperationalMoodSubmission(t, packetSHA, "reviewer-b", "gemma4", "gemma4:12b", "b", 2)
+
+	insufficient, err := CompileMoodReviewAuthority(packet, privateMap, first, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if insufficient.Completeness != MoodReviewCompletenessPartial || !slicesEqual(insufficient.Decisions[0].UncertainAxes, []string{"narrativeContinuityDependence"}) {
+		t.Fatalf("uncited continuity evidence escaped quarantine: %+v", insufficient)
+	}
+
+	first = testOperationalMoodSubmissionWithEvidence(t, packetSHA, "reviewer-a", "qwen3.5", "qwen3.5:9b", "a", 2, []string{"evidence-1", "evidence-2"})
+	second = testOperationalMoodSubmissionWithEvidence(t, packetSHA, "reviewer-b", "gemma4", "gemma4:12b", "b", 2, []string{"evidence-1", "evidence-2"})
+	supported, err := CompileMoodReviewAuthority(packet, privateMap, first, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if supported.Completeness != MoodReviewCompletenessComplete || len(supported.Decisions[0].UncertainAxes) != 0 || supported.Decisions[0].Scores["narrativeContinuityDependence"] != 2 {
+		t.Fatalf("fully cited continuity consensus was not resolved: %+v", supported)
 	}
 }
 
@@ -176,6 +301,85 @@ func testMoodPacket(t *testing.T) []byte {
 	})
 }
 
+func testOperationalMoodPacket(t *testing.T) []byte {
+	t.Helper()
+	var packet MoodReviewPacket
+	if err := json.Unmarshal(testMoodPacket(t), &packet); err != nil {
+		t.Fatal(err)
+	}
+	packet.ContractVersion = "query-mood-model-review-v2"
+	packet.RubricVersion = "movie-mood-ordinal-v2"
+	packet.PromptVersion = "query-mood-blind-review-v2"
+	return testJSON(t, packet)
+}
+
+func testOperationalMoodPacketWithContinuityEvidence(t *testing.T) []byte {
+	t.Helper()
+	var packet MoodReviewPacket
+	if err := json.Unmarshal(testOperationalMoodPacket(t), &packet); err != nil {
+		t.Fatal(err)
+	}
+	packet.Evidence[0].SourceAuthority = "example-studio"
+	packet.Evidence[0].SourceRole = "direct-work"
+	packet.Evidence[0].SupportsAxes = []string{"narrativeContinuityDependence"}
+	packet.Evidence[0].SHA256 = MoodReviewEvidenceSHA256(packet.Evidence[0])
+	second := MoodReviewEvidence{
+		ID: "evidence-2", URL: "https://archive.example.test/structure", Observed: "2026-09-16",
+		Summary:         "The independent structural source describes the continuing causal thread and state changes.",
+		Uncertainty:     "The source supports structure only, not a universal viewer response.",
+		SourceAuthority: "example-archive", SourceRole: "independent-structural",
+		SupportsAxes: []string{"narrativeContinuityDependence"},
+	}
+	second.SHA256 = MoodReviewEvidenceSHA256(second)
+	packet.Evidence = append(packet.Evidence, second)
+	packet.Cases[0].EvidenceIDs = append(packet.Cases[0].EvidenceIDs, second.ID)
+	return testJSON(t, packet)
+}
+
+func testOperationalMoodSubmission(t *testing.T, packetSHA, reviewerID, family, model, digestSeed string, continuity int) []byte {
+	return testOperationalMoodSubmissionWithEvidence(t, packetSHA, reviewerID, family, model, digestSeed, continuity, []string{"evidence-1"})
+}
+
+func testOperationalMoodSubmissionWithEvidence(t *testing.T, packetSHA, reviewerID, family, model, digestSeed string, continuity int, evidenceIDs []string) []byte {
+	t.Helper()
+	output := testJSON(t, map[string]any{"assessments": []any{map[string]any{
+		"alias": "candidate-a",
+		"scores": map[string]int{
+			"valence": 3, "arousal": 1, "threatFear": 0, "comedicWarmth": 3,
+			"narrativeContinuityDependence": continuity,
+		},
+		"evidenceIds": evidenceIDs,
+		"rationale":   "The cited evidence supports the resolved mood dimensions.",
+	}}})
+	return testJSON(t, MoodReviewSubmission{
+		SchemaVersion: MoodReviewSchemaVersion, ContractVersion: "query-mood-model-review-v2",
+		PacketSHA256: packetSHA,
+		Reviewer: MoodReviewerIdentity{
+			ID: reviewerID, Provider: "ollama", Route: "loopback", Model: model,
+			ResolvedModel: model, ModelFamily: family, IdentityKind: "ollama-model-digest",
+			IdentitySHA256: testDigest(digestSeed), PromptVersion: "query-mood-blind-review-v2",
+		},
+		Output: string(output), OutputSHA256: testSHA256(output),
+		Inference: MoodReviewInference{
+			CompletedAt: time.Date(2026, 9, 16, 12, 5, 0, 0, time.UTC), Attempts: 1,
+			PromptTokens: 100, CompletionTokens: 50, LatencyMS: 1200, CostBasis: "local-unmetered",
+		},
+	})
+}
+
+func testMoodScoreMap(t *testing.T, scores MoodAxisScores) map[string]int {
+	t.Helper()
+	blob, err := json.Marshal(scores)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(map[string]int)
+	if err := json.Unmarshal(blob, &result); err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
 func testMoodMap(t *testing.T, packetSHA string) []byte {
 	t.Helper()
 	return testJSON(t, MoodReviewPrivateMap{
@@ -183,6 +387,16 @@ func testMoodMap(t *testing.T, packetSHA string) []byte {
 		PacketID: "movie-mood-review-test", PacketSHA256: packetSHA,
 		Entries: []MoodReviewMapEntry{{Alias: "candidate-a", Key: provision.Key("movie:tmdb:346648")}},
 	})
+}
+
+func testOperationalMoodMap(t *testing.T, packetSHA string) []byte {
+	t.Helper()
+	var privateMap MoodReviewPrivateMap
+	if err := json.Unmarshal(testMoodMap(t, packetSHA), &privateMap); err != nil {
+		t.Fatal(err)
+	}
+	privateMap.ContractVersion = MoodReviewContractVersionV2
+	return testJSON(t, privateMap)
 }
 
 func testMoodSubmission(t *testing.T, packetSHA, reviewerID, family, model, digestSeed string, scores MoodAxisScores) []byte {
@@ -245,7 +459,10 @@ func slicesEqual[T comparable](left, right []T) bool {
 }
 
 func testMoodScores(valence, arousal, threatFear, comedicWarmth, attentionalDemand int) MoodAxisScores {
-	return MoodAxisScores{Valence: valence, Arousal: arousal, ThreatFear: threatFear, ComedicWarmth: comedicWarmth, AttentionalDemand: attentionalDemand}
+	return MoodAxisScores{
+		"valence": valence, "arousal": arousal, "threatFear": threatFear,
+		"comedicWarmth": comedicWarmth, "attentionalDemand": attentionalDemand,
+	}
 }
 
 func testJSON(t *testing.T, value any) []byte {

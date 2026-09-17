@@ -383,6 +383,53 @@ snapshot, resolved route, generation ID, usage and charge. Qwen and Gemma ran
 locally against exact Ollama model digests. These facts cannot set `certified:
 true` and do not establish a human-reviewed or provider-qualified mood family.
 
+### Seventh executable expansion batch
+
+Follow-on checkpoint [#1299](https://github.com/loomarr/loomarr/issues/1299)
+advances the cumulative snapshot to `query-expansion-v7.json`. It retains the
+119 v6 requests and adds eleven complete movie requests, for 130 cumulative
+expansion requests and 202 exposed Development Corpus requests when the immutable
+72-request pilot is counted separately. The new cases cover warm animation,
+intense adventure, low-key comedy, dark comic pressure, positive low-threat and
+dark high-pressure sets, international mood, one and two release-era
+intersections, and two U.S. MPA PG-ceiling intersections. They expand the
+model-attested slice from three to nine titles and from eight to nineteen
+complete subjective requests; they do not create independent truth families.
+
+`movie-mood-ordinal-v2` removes `attentionalDemand` from new calibration. The
+replacement research found no defensible single title-level score for whether a
+viewer can leave a work in the background: pacing, dialogue, subtitle and visual
+dependence are representation- or source-specific observations, while background
+friendliness depends on the viewer and context. V2 retains the four bounded mood
+axes and introduces only `narrativeContinuityDependence`, with a fail-closed
+requirement that every reviewer cite both a direct-work structural source and an
+independent structural source. The current packet has no such paired structural
+evidence, so the compiler quarantines that axis for every title even when models
+emit matching numbers. No v7 request depends on either the retired v1 axis or the
+quarantined v2 axis.
+
+Qwen 3.5 9B and Gemini 3.7 Flash independently reviewed the same nine-title
+packet; local Gemma 4 8B supplied the third family. The compiler resolves each
+axis independently by exact initial agreement or a two-of-three exact value, and
+records every other axis as uncertain. A failed Gemma 4 12B schema attempt and a
+failed Llama 3.2 Vision 11B local request produced no submission artifacts and no
+authority. The single additional OpenRouter inference used the already-bound
+Google AI Studio route and public-only packet, cost USD 0.01512075, and brought
+the authorized run's cumulative provider-reported spend to USD 0.021978. The
+non-ZDR limitation remains explicit.
+
+The loader reconstructs the v2 authority from exact packet, private map, three
+submissions and provider snapshot; rejects cross-version bindings and incomplete
+axis sets; applies the evidence requirement per axis; and verifies every positive
+and subjective negative against the resolved rules. Three new causal controls
+reject a low-warmth animated substitution, a comforting title in an intense
+adventure request, and a tense PG title in a warm PG request. The latter preserves
+the valid MPA ceiling while proving the subjective direction remains independently
+graded. Deterministic dates, ratings, origin, ownership and Catalog grounding stay
+authoritative and cannot be overridden by model scores. All 130 requests cross
+the production Suggester and Runner with independently authored replies, remain
+non-certifying, and use no live model judge.
+
 ### Remaining expansion checkpoints
 
 The source-review checkpoint is tracked in [#1278](https://github.com/loomarr/loomarr/issues/1278).

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v2",
+  "packetSha256": "c9f4fb136ff450ea4516235972588f961022eec57a43b17a5301bdbd40df8872",
+  "reviewer": {
+    "id": "gemma4-local-v2-adjudicator",
+    "provider": "ollama",
+    "route": "loopback",
+    "model": "gemma4:8b-q4_k_m",
+    "resolvedModel": "gemma4:8b-q4_k_m",
+    "modelFamily": "gemma4",
+    "identityKind": "ollama-model-digest",
+    "identitySha256": "c6eb396dbd5992bbe3f5cdb947e8bbc0ee413d7c17e2beaae69f5d569cf982eb",
+    "zeroDataRetention": false,
+    "promptVersion": "query-mood-blind-review-v2"
+  },
+  "output": "{\"assessments\": [{\"alias\": \"candidate-v2-a17c\", \"scores\": {\"valence\": 2, \"arousal\": 2, \"threatFear\": 0, \"comedicWarmth\": 2, \"narrativeContinuityDependence\": 0}, \"uncertainAxes\": [], \"evidenceIds\": [\"mood2-e09\"], \"rationale\": \"The evidence describes the film as a 'musical comedy' with 'romance and comic complications,' suggesting a positive and lighthearted mood.\"}, {\"alias\": \"candidate-v2-b402\", \"scores\": {\"valence\": 1, \"arousal\": 2, \"threatFear\": 2, \"comedicWarmth\": 0, \"narrativeContinuityDependence\": 0}, \"uncertainAxes\": [], \"evidenceIds\": [\"mood2-e10\"], \"rationale\": \"The synopsis mentions 'escalating danger' and 'HAL's malfunction,' suggesting tension and threat, while the overall tone is more serious than comedic.\"}, {\"alias\": \"candidate-v2-c8d1\", \"scores\": {\"valence\": 0, \"arousal\": 2, \"threatFear\": 2, \"comedicWarmth\": 0, \"narrativeContinuityDependence\": 0}, \"uncertainAxes\": [], \"evidenceIds\": [\"mood2-e03\"], \"rationale\": \"The evidence explicitly mentions a 'threatening shark' and 'sustained suspense,' indicating high threat and tension.\"}, {\"alias\": \"candidate-v2-d593\", \"scores\": {\"valence\": 2, \"arousal\": 2, \"threatFear\": 1, \"comedicWarmth\": 2, \"narrativeContinuityDependence\": 0}, \"uncertainAxes\": [], \"evidenceIds\": [\"mood2-e05\"], \"rationale\": \"The evidence describes a 'hilarious adventure-filled mission' and 'comically mismatched rivals,' suggesting warmth and moderate arousal, with mild threat from losing one's place.\"}, {\"alias\": \"candidate-v2-e06f\", \"scores\": {\"valence\": 0, \"arousal\": 3, \"threatFear\": 2, \"comedicWarmth\": 0, \"narrativeContinuityDependence\": 0}, \"uncertainAxes\": [], \"evidenceIds\": [\"mood2-e06\"], \"rationale\": \"The evidence cites 'intense science-fiction terror' as a content descriptor, pointing to high arousal and substantial threat.\"}, {\"alias\": \"candidate-v2-f741\", \"scores\": {\"valence\": 2, \"arousal\": 1, \"threatFear\": 0, \"comedicWarmth\": 2, \"narrativeContinuityDependence\": 0}, \"uncertainAxes\": [], \"evidenceIds\": [\"mood2-e07\"], \"rationale\": \"The summary describes improving lives and searching for love, suggesting a generally positive and warm, though perhaps calm, emotional tone.\"}, {\"alias\": \"candidate-v2-g32a\", \"scores\": {\"valence\": 2, \"arousal\": 2, \"threatFear\": 1, \"comedicWarmth\": 1, \"narrativeContinuityDependence\": 0}, \"uncertainAxes\": [], \"evidenceIds\": [\"mood2-e08\"], \"rationale\": \"The evidence mentions 'wondrous fantasy adventure' and 'thrilling' storytelling, suggesting wonder and moderate excitement, with some peril (demons/spirits).\"}, {\"alias\": \"candidate-v2-h9be\", \"scores\": {\"valence\": 2, \"arousal\": 2, \"threatFear\": 1, \"comedicWarmth\": 2, \"narrativeContinuityDependence\": 2}, \"uncertainAxes\": [], \"evidenceIds\": [\"mood2-e01\", \"mood2-e02\"], \"rationale\": \"The evidence cites 'mild threat and reassuring outcomes' (mood2-e01) and 'family-fun and kindness language' (mood2-e02), indicating a positive, warm, and reassuring mood.\"}, {\"alias\": \"candidate-v2-i251\", \"scores\": {\"valence\": 1, \"arousal\": 2, \"threatFear\": 2, \"comedicWarmth\": 1, \"narrativeContinuityDependence\": 0}, \"uncertainAxes\": [], \"evidenceIds\": [\"mood2-e04\"], \"rationale\": \"The evidence describes the film as a 'darkly satirical thriller' with 'wickedly comic elements,' suggesting a mix of dark themes, tension, and dark humor.\"}]\n}",
+  "outputSha256": "9612f337e59038dcf48a5855814d9c7c175ca328e10fd2dfd3212e428a61494c",
+  "inference": {
+    "completedAt": "2026-09-17T02:57:10.717983Z",
+    "attempts": 1,
+    "promptTokens": 2888,
+    "completionTokens": 999,
+    "latencyMs": 23675,
+    "costBasis": "local-unmetered"
+  }
+}

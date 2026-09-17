@@ -18,18 +18,26 @@ import (
 
 func TestQueryExpansionPriorArtifactsRemainImmutable(t *testing.T) {
 	want := map[string]string{
-		"testdata/query-expansion-v1.json":         "1b78d1c288c1bf913b5391705a2f2054895bb8e07770b58102f911ce6fa36a83",
-		"testdata/query-expansion-catalog-v1.json": "42fe1981f6d38256e08219044e17ca688436325bf012ba69db50a15a1f55d611",
-		"testdata/query-expansion-sources-v1.json": "9f7a590b5db976d064f33d8e5a01bf33be0951548726a11f1ce79be1883ae849",
-		"testdata/query-expansion-v2.json":         "fc86fec4b51b980a4816263468f38de4a2878e5d9df814e649d4f955f82785d8",
-		"testdata/query-expansion-catalog-v2.json": "ca54b9ae981ed4d8da9409bb6ee876819342435f9ccf825ebb95e06afb43c482",
-		"testdata/query-expansion-sources-v2.json": "c6784c9defa523b8fe147dc280ac31055b047ae5167390172cb8d89e81f9923a",
-		"testdata/query-expansion-v3.json":         "3610462320a2a899d9718a1d8cda9e6d123708060279d173fc89d877c0767123",
-		"testdata/query-expansion-catalog-v3.json": "bb5c884ea3dabbf5c9cb41203cb451a87f647c685348b92e4464c244248d612a",
-		"testdata/query-expansion-v4.json":         "89fd0375a099ec52f5ae60f684724aed6c3a2ed8fb4b1d683717b2f805e92e7c",
-		"testdata/query-expansion-catalog-v4.json": "f99b4b6dfbdd2ca54a7a0db0a4aeb859fdfe4d5ce9ee7a52aeff2bffaa4d47ce",
-		"testdata/query-expansion-v5.json":         "e231deba1436bfa07b50e2d2632adf8d1b1b0e0f46828bf3d4d5bb39e2f46166",
-		"testdata/query-expansion-catalog-v5.json": "96bb8a7bf3c2011e6124e238f2b3d0e0bfa5788db9361dfc5ca9ee1cad285589",
+		"testdata/query-expansion-v1.json":                       "1b78d1c288c1bf913b5391705a2f2054895bb8e07770b58102f911ce6fa36a83",
+		"testdata/query-expansion-catalog-v1.json":               "42fe1981f6d38256e08219044e17ca688436325bf012ba69db50a15a1f55d611",
+		"testdata/query-expansion-sources-v1.json":               "9f7a590b5db976d064f33d8e5a01bf33be0951548726a11f1ce79be1883ae849",
+		"testdata/query-expansion-v2.json":                       "fc86fec4b51b980a4816263468f38de4a2878e5d9df814e649d4f955f82785d8",
+		"testdata/query-expansion-catalog-v2.json":               "ca54b9ae981ed4d8da9409bb6ee876819342435f9ccf825ebb95e06afb43c482",
+		"testdata/query-expansion-sources-v2.json":               "c6784c9defa523b8fe147dc280ac31055b047ae5167390172cb8d89e81f9923a",
+		"testdata/query-expansion-v3.json":                       "3610462320a2a899d9718a1d8cda9e6d123708060279d173fc89d877c0767123",
+		"testdata/query-expansion-catalog-v3.json":               "bb5c884ea3dabbf5c9cb41203cb451a87f647c685348b92e4464c244248d612a",
+		"testdata/query-expansion-v4.json":                       "89fd0375a099ec52f5ae60f684724aed6c3a2ed8fb4b1d683717b2f805e92e7c",
+		"testdata/query-expansion-catalog-v4.json":               "f99b4b6dfbdd2ca54a7a0db0a4aeb859fdfe4d5ce9ee7a52aeff2bffaa4d47ce",
+		"testdata/query-expansion-v5.json":                       "e231deba1436bfa07b50e2d2632adf8d1b1b0e0f46828bf3d4d5bb39e2f46166",
+		"testdata/query-expansion-catalog-v5.json":               "96bb8a7bf3c2011e6124e238f2b3d0e0bfa5788db9361dfc5ca9ee1cad285589",
+		"testdata/query-expansion-v6.json":                       "bf993d80eba5e99558cca85a32cbf1f2aa2437a9046c87321014fa4c8a8287a2",
+		"testdata/query-mood-review-packet-v1.json":              "7247bc8930c5b7f5d16014c4c651bd8745eb6fe68a927936628f755fdc22f88f",
+		"testdata/query-mood-review-map-v1.json":                 "8ff878e16a3cbbb1b22c949feef50df59c7c561b738a8b44b857ab4d6346b433",
+		"testdata/query-mood-review-submission-qwen-v1.json":     "f506ba3ac2dff8e93565089b4cf173261e2a9c09b1f322299febba28995224a8",
+		"testdata/query-mood-review-submission-gemini-v1.json":   "4d34cfa7c0286c0deaa43ca57d858060acf860c5bc3b682ff0316f1ed092e033",
+		"testdata/query-mood-review-submission-gemma-v1.json":    "56165d31201da5f0ce04296b02299dd77b096a131316dc00de749f962085c4b2",
+		"testdata/query-mood-review-authority-v1.json":           "7e763f965b84f59af7b41931e01cc7921c0f03f6c06cfb8e5b9bb401252d02d3",
+		"testdata/query-mood-review-openrouter-snapshot-v1.json": "0ba24ce9f4a485d7e436a8d2cb3169ad86c1c250041a06453c1c1084c2dc393b",
 	}
 	for path, expected := range want {
 		blob, err := queryPilotFiles.ReadFile(path)
@@ -187,7 +195,7 @@ func TestQueryExpansionMovieSubjectiveRubricsAreBoundToModelAttestedAuthority(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.MoodReviewAuthority.Path != "testdata/query-mood-review-authority-v1.json" || corpus.MoodReviewAuthority.SHA256 != "7e763f965b84f59af7b41931e01cc7921c0f03f6c06cfb8e5b9bb401252d02d3" {
+	if corpus.MoodReviewAuthority.Path != "testdata/query-mood-review-authority-v2.json" || corpus.MoodReviewAuthority.SHA256 != "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f" {
 		t.Fatalf("mood authority binding = %+v", corpus.MoodReviewAuthority)
 	}
 	reviewed := 0
@@ -196,17 +204,17 @@ func TestQueryExpansionMovieSubjectiveRubricsAreBoundToModelAttestedAuthority(t 
 			continue
 		}
 		reviewed++
-		if authored.SubjectiveReview.Version != "movie-mood-ordinal-v1" || authored.SubjectiveReview.Status != MoodReviewStatusModelAttested || authored.SubjectiveReview.Rubric == "" || authored.SubjectiveReview.AuthoritySHA256 != corpus.MoodReviewAuthority.SHA256 || len(authored.SubjectiveReview.Rules) == 0 {
+		if authored.SubjectiveReview.Version != MoodReviewRubricVersionV2 || authored.SubjectiveReview.Status != MoodReviewStatusModelAttested || authored.SubjectiveReview.Rubric == "" || authored.SubjectiveReview.AuthoritySHA256 != corpus.MoodReviewAuthority.SHA256 || len(authored.SubjectiveReview.Rules) == 0 {
 			t.Fatalf("case %q has incomplete subjective review: %+v", authored.ID, authored.SubjectiveReview)
 		}
 		for _, rule := range authored.SubjectiveReview.Rules {
-			if rule.Axis == "attentionalDemand" {
+			if rule.Axis == "attentionalDemand" || rule.Axis == "narrativeContinuityDependence" {
 				t.Fatalf("case %q depends on an unresolved mood axis", authored.ID)
 			}
 		}
 	}
-	if reviewed != 8 {
-		t.Fatalf("movie requests with authored subjective rubrics = %d, want 8", reviewed)
+	if reviewed != 19 {
+		t.Fatalf("movie requests with authored subjective rubrics = %d, want 19", reviewed)
 	}
 	cases, err := QueryExpansionCases()
 	if err != nil {
@@ -216,6 +224,78 @@ func TestQueryExpansionMovieSubjectiveRubricsAreBoundToModelAttestedAuthority(t 
 		if strings.HasPrefix(c.Name, "exp-movie-mood-") && c.JudgeRubric != "" {
 			t.Fatalf("development review for %q was misreported as a live judge pass", c.Name)
 		}
+	}
+}
+
+func TestQueryExpansionOperationalMoodEvidenceIsBroadAndQuarantinesContinuity(t *testing.T) {
+	corpus, err := LoadEmbeddedQueryExpansionCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if corpus.Version != "query-expansion-development-v7" {
+		t.Fatalf("corpus version = %q, want v7", corpus.Version)
+	}
+	if corpus.MoodReviewAuthority.Path != "testdata/query-mood-review-authority-v2.json" {
+		t.Fatalf("mood authority = %+v", corpus.MoodReviewAuthority)
+	}
+	reviewed := 0
+	positiveKeys := make(map[string]bool)
+	for _, authored := range corpus.Cases {
+		if authored.SubjectiveReview == nil {
+			continue
+		}
+		reviewed++
+		if authored.SubjectiveReview.Version != MoodReviewRubricVersionV2 {
+			t.Fatalf("case %q rubric version = %q", authored.ID, authored.SubjectiveReview.Version)
+		}
+		for _, rule := range authored.SubjectiveReview.Rules {
+			if rule.Axis == "attentionalDemand" || rule.Axis == "narrativeContinuityDependence" {
+				t.Fatalf("case %q depends on quarantined axis %q", authored.ID, rule.Axis)
+			}
+		}
+		for _, key := range authored.SubjectiveReview.PositiveKeys {
+			positiveKeys[string(key)] = true
+		}
+	}
+	if reviewed != 19 {
+		t.Fatalf("subjective complete requests = %d, want 19", reviewed)
+	}
+	if len(positiveKeys) != 9 {
+		t.Fatalf("subjective calibration positives cover %d titles, want 9: %v", len(positiveKeys), positiveKeys)
+	}
+}
+
+func TestQueryExpansionOperationalMovieRequestsUseProductionSuggestion(t *testing.T) {
+	corpus, err := LoadEmbeddedQueryExpansionCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := QueryExpansionCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := QueryExpansionRunnerConfig(RunnerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := 0
+	for i, authored := range corpus.Cases {
+		if authored.Group != "movie-mood-operational-model-attested" {
+			continue
+		}
+		run++
+		provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+		generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
+		if err != nil {
+			t.Fatal(err)
+		}
+		card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), []Case{cases[i]})
+		if !card.Results[0].Passed() || !card.Assessment.Passed || card.Certified || !card.DevelopmentCorpus {
+			t.Fatalf("operational movie request %q: %+v", authored.ID, card.Results[0])
+		}
+	}
+	if run != 11 {
+		t.Fatalf("operational movie requests = %d, want 11", run)
 	}
 }
 
@@ -368,8 +448,8 @@ func TestQueryExpansionMovieAudienceCeilingsUseOneRatingAuthority(t *testing.T) 
 			t.Fatalf("movie audience request %q: %+v", authored.ID, card.Results[0])
 		}
 	}
-	if run != 3 {
-		t.Fatalf("US-MPA audience requests = %d, want 3", run)
+	if run != 5 {
+		t.Fatalf("US-MPA audience requests = %d, want 5", run)
 	}
 }
 
@@ -635,6 +715,17 @@ func TestQueryExpansionMovieIndependentCausalOutcomeControls(t *testing.T) {
 	comfortingWithJaws := proposalWithKeys(t, "movie:tmdb:346648", "movie:tmdb:578")
 	tense := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:496243")
 	tenseWithPaddington := ownedAndMissing(2, "movie:tmdb:578", "movie:tmdb:496243", "movie:tmdb:346648")
+	warmAnimated := ownedAndMissing(0, "movie:tmdb:862")
+	warmAnimatedWithSpiritedAway := ownedAndMissing(0, "movie:tmdb:862", "movie:tmdb:129")
+	intenseAdventure := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:329")
+	intenseAdventureWithPaddington := ownedAndMissing(2, "movie:tmdb:578", "movie:tmdb:346648", "movie:tmdb:329")
+	warmPG := ownedAndMissing(0, "movie:tmdb:862")
+	warmPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	warmPG.Acquisitions[0].OfficialRating = "G"
+	warmPGWithJaws := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:862")
+	warmPGWithJaws.Policy.Audience.Ceiling = schedule.Rating("PG")
+	warmPGWithJaws.Lineup[0].OfficialRating = "PG"
+	warmPGWithJaws.Acquisitions[0].OfficialRating = "G"
 	pg := proposalWithKeys(t, "movie:tmdb:578", "movie:tmdb:601")
 	pg.Policy.Audience.Ceiling = schedule.Rating("PG")
 	for i := range pg.Lineup {
@@ -677,6 +768,9 @@ func TestQueryExpansionMovieIndependentCausalOutcomeControls(t *testing.T) {
 		{"language-substitution", "exp-movie-language-french", "outside the acceptable set", french, notFrench},
 		{"comforting-includes-frightening", "exp-movie-mood-comforting", "outside the acceptable set", comforting, comfortingWithJaws},
 		{"tense-includes-comforting", "exp-movie-mood-tense", "outside the acceptable set", tense, tenseWithPaddington},
+		{"warm-animation-includes-low-warmth", "exp-movie-mood-warm-animated", "outside the acceptable set", warmAnimated, warmAnimatedWithSpiritedAway},
+		{"intense-adventure-includes-comforting", "exp-movie-mood-intense-adventure", "outside the acceptable set", intenseAdventure, intenseAdventureWithPaddington},
+		{"warm-pg-includes-tense-pg", "exp-movie-mood-warm-pg", "outside the acceptable set", warmPG, warmPGWithJaws},
 		{"rating-above-pg", "exp-movie-director-spielberg-pg", "above the forbidden ceiling", pg, overPG},
 		{"mpa-rating-above-pg", "exp-movie-audience-pg-or-lower", "above the forbidden ceiling", mpaPG, mpaOverPG},
 		{"multiple-exclusions-padded", "exp-movie-exclude-modern-two", "outside the acceptable set", excludedModern, excludedModernPadded},
@@ -721,8 +815,8 @@ func TestQueryExpansionEveryAuthoredRequestUsesProductionSuggestion(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(corpus.Cases) != 119 {
-		t.Fatalf("cumulative executable corpus has %d requests, want 119", len(corpus.Cases))
+	if len(corpus.Cases) != 130 {
+		t.Fatalf("cumulative executable corpus has %d requests, want 130", len(corpus.Cases))
 	}
 	cases, err := QueryExpansionCases()
 	if err != nil {
@@ -923,6 +1017,30 @@ func queryExpansionMovieResponses(t *testing.T, c QueryPilotCase) []llm.Response
 	case "exp-movie-mood-comforting-british-2010s":
 		ids, args = []int{346648}, map[string]any{"media_type": "movie", "keywords": []any{"comforting"}, "genres": []any{"Family", "Comedy"}, "origin_country": "GB"}
 		setInterval("2010s", 2010, 2019)
+	case "exp-movie-mood-warm-animated":
+		ids, args = []int{862}, map[string]any{"media_type": "movie", "keywords": []any{"warm", "playful", "funny"}, "genres": []any{"Animation"}}
+	case "exp-movie-mood-intense-adventure":
+		ids, args = []int{578, 329}, map[string]any{"media_type": "movie", "keywords": []any{"intense", "frightening", "adventure"}}
+	case "exp-movie-mood-low-key-comedy":
+		ids, args = []int{194}, map[string]any{"media_type": "movie", "keywords": []any{"low-key", "warm", "low threat"}, "genres": []any{"Comedy"}}
+	case "exp-movie-mood-dark-comic-thriller":
+		ids, args = []int{496243}, map[string]any{"media_type": "movie", "keywords": []any{"dark", "high pressure", "wicked humor"}, "genres": []any{"Thriller"}}
+	case "exp-movie-mood-positive-adventure":
+		ids, args = []int{862, 194, 129, 346648}, map[string]any{"media_type": "movie", "keywords": []any{"positive", "adventure", "low threat"}}
+	case "exp-movie-mood-dark-high-pressure":
+		ids, args = []int{62, 578, 329, 496243}, map[string]any{"media_type": "movie", "keywords": []any{"dark", "high pressure", "danger"}}
+	case "exp-movie-mood-warm-international":
+		ids, args = []int{194, 346648}, map[string]any{"media_type": "movie", "keywords": []any{"warm", "low threat", "international"}}
+	case "exp-movie-mood-positive-1990s":
+		ids, args = []int{862}, map[string]any{"media_type": "movie", "keywords": []any{"positive", "funny"}}
+		setInterval("1990s", 1990, 1999)
+	case "exp-movie-mood-warm-two-epochs":
+		ids, args = []int{872, 862}, map[string]any{"media_type": "movie", "keywords": []any{"warm", "funny"}}
+		intervals = []dateInterval{{marker: "1950s", from: 1950, to: 1959}, {marker: "1990s", from: 1990, to: 1999}}
+	case "exp-movie-mood-warm-pg":
+		ids, args = []int{862}, map[string]any{"media_type": "movie", "keywords": []any{"warm", "low threat"}, "origin_country": "US"}
+	case "exp-movie-mood-tense-pg":
+		ids, args = []int{578}, map[string]any{"media_type": "movie", "keywords": []any{"tense", "threatening"}, "origin_country": "US"}
 	case "exp-movie-director-spielberg", "exp-movie-director-spielberg-not-produced":
 		ids, args = []int{578, 601, 329}, map[string]any{"media_type": "movie", "creators": []any{"Steven Spielberg"}}
 	case "exp-movie-director-spielberg-1980s":

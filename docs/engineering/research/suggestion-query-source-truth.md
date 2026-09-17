@@ -685,3 +685,78 @@ mood-negative fails at least one. Date- and region-only exclusions remain
 deterministic negatives rather than being relabelled as mood judgments. The
 generic lineup `modelJudge` remains unrelated, and no certification or human
 review claim is produced.
+
+### Executed v7 operational-signal expansion
+
+Checkpoint [#1299](https://github.com/loomarr/loomarr/issues/1299) follows the
+[operational-signal research](subjective-movie-query-operational-signals.md).
+That review rejects `attentionalDemand` as a stable title property and does not
+replace it with another convenience score. `backgroundFriendliness` depends on
+the viewer, task and presentation context. Pacing, dialogue reliance, subtitle
+reliance, audio-description reliance and visual dependence may be recorded only
+as source- and representation-specific observations. The frozen v1 artifacts
+remain loadable and immutable, but no v7 request or new review may depend on their
+attentional-demand values.
+
+The v2 rubric retains `valence`, `arousal`, `threatFear` and `comedicWarmth` and
+adds the narrower title-level axis `narrativeContinuityDependence`. That axis can
+resolve only when every contributing reviewer cites at least two structural facts
+from distinct authorities: one direct-work source and one independent structural
+source. The public v2 packet deliberately contains no evidence with those roles.
+The compiler therefore marks continuity uncertain for all nine titles, including
+where two reviewers happened to return the same number. This is evidence-gated
+per-axis quarantine, not a model-confidence heuristic.
+
+The executed family-distinct routes were:
+
+| Role | Family and route | Bound identity and accounting |
+| --- | --- | --- |
+| Initial A | Qwen 3.5, local Ollama `qwen3.5:9b` | Ollama digest `6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7`; 2,882 prompt and 1,810 completion tokens; local unmetered. |
+| Initial B | Gemini, OpenRouter `google/gemini-3.7-flash` via `Google AI Studio` | Capability identity `d11b2f380812c4ddbf6c1e9f4f836a709136e8f206573525e3b05b3d14159e72`; snapshot `0ba24ce9f4a485d7e436a8d2cb3169ad86c1c250041a06453c1c1084c2dc393b`; generation `gen-1789613762-WMO5TVLi2VUfNSksNl0Y`; 2,876 prompt and 3,457 completion tokens; USD 0.01512075. |
+| Adjudicator | Gemma 4, local Ollama `gemma4:8b-q4_k_m` | Ollama digest `c6eb396dbd5992bbe3f5cdb947e8bbc0ee413d7c17e2beaae69f5d569cf982eb`; 2,888 prompt and 999 completion tokens; local unmetered. |
+
+The same ten-call/USD 1.00 hosted envelope authorized for v6 covered this one
+additional public-only inference. Across v1 and v2, six hosted calls were made
+and successful provider-reported inference charges total USD 0.021978. The v2
+Gemini call reused the frozen route snapshot, denied fallback and provider data
+collection, and used the explicitly authorized non-ZDR Google AI Studio route;
+possible temporary retention remains recorded. A local Gemma 4 12B attempt
+returned an invalid schema partway through the packet and a local Llama 3.2
+Vision 11B text request returned an Ollama error. Neither failed attempt created
+a submission, participated in resolution or consumed hosted budget.
+
+The compiled `partial-uncertain` authority is:
+
+| Title | Valence | Arousal | Threat/fear | Comedic warmth | Narrative continuity dependence |
+| --- | ---: | ---: | ---: | ---: | --- |
+| *Singin' in the Rain* | 2 | 2 | 0 | 3 | uncertain |
+| *2001: A Space Odyssey* | 1 | 2 | 2 | 0 | uncertain |
+| *Jaws* | 1 | 3 | 3 | 0 | uncertain |
+| *Toy Story* | 2 | 2 | 1 | 2 | uncertain |
+| *Jurassic Park* | 1 | 3 | 3 | 0 | uncertain |
+| *Amelie* | 2 | 1 | 0 | 2 | uncertain |
+| *Spirited Away* | 2 | 2 | 1 | 1 | uncertain |
+| *Paddington 2* | 3 | 2 | 1 | 2 | uncertain |
+| *Parasite* | 1 | 2 | 2 | 1 | uncertain |
+
+The packet digest is
+`c9f4fb136ff450ea4516235972588f961022eec57a43b17a5301bdbd40df8872`,
+the private map digest is
+`5b07ebe963f5b007d4c2fb87fdf4fa3a6ab7d99b9fe0bd555303084457af685b`,
+and the compiled authority digest is
+`fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f`.
+The loader re-compiles that authority from exact bytes, verifies family and route
+identity plus accounting, rejects cross-version bindings and extra or missing
+axis keys, and applies structural-evidence eligibility before resolving each
+axis.
+
+V7 adds eleven complete requests over those scores: warm animation, intense
+adventure, low-key comedy, dark comic pressure, positive low-threat and dark
+high-pressure groupings, warm international movies, a 1990s intersection, a
+disjoint 1950s-or-1990s intersection, and warm-versus-tense U.S. MPA PG-ceiling
+contrasts. The resulting nineteen subjective requests never use the quarantined
+continuity axis. Their date, rating, origin, ownership and grounded Catalog
+constraints are graded first from their existing deterministic authorities; a
+model score cannot admit a PG-13 title into a PG-ceiling result or rewrite a
+release interval. Every scorecard remains exposed development evidence with
+`certified: false` and no human-review, holdout or provider-qualification claim.
