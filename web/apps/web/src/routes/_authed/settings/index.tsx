@@ -120,8 +120,7 @@ const SettingsHome = () => {
                 }}
                 placeholder="Try “Jellyfin”, “backups”, or FILLER_FETCH_EVERY"
                 aria-label="Find a setting"
-                aria-controls="settings-finder-results"
-                aria-expanded={hasQuery}
+                {...(hasQuery ? { "aria-controls": "settings-finder-results" } : {})}
                 className="h-11 pr-10 pl-9"
               />
               {hasQuery && (
