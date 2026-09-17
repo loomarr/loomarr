@@ -243,7 +243,7 @@ subset. Both adapters enter the same pure `schedule.ComputeDesiredAt` projection
 
 `make planner-reference-host` is the provider-free evidence-publication step for the stock-model
 bake-off tracked in #831. It does not run `ollama`, pull or load a model, start inference, contact a
-provider, or spend. It accepts the exact planner scorecard bytes, one normalized schema-v1 capture,
+provider, or spend. It accepts the exact planner scorecard bytes, one normalized schema-v2 capture,
 and one directory containing these fourteen bounded raw captures:
 
 - `huggingface-model.json` retained during the authorized model acquisition and
@@ -254,11 +254,11 @@ and one directory containing these fourteen bounded raw captures:
   `ollama-ps-warm-before.json`, and `ollama-ps-after.json`;
 - `sw-vers.txt`, `uname.txt`, `sysctl-hw-memsize.txt`, and `system-profiler.json`.
 
-The normalized capture declares `planner-reference-host-v1`, its run id and times, the exact
+The normalized capture declares `planner-reference-host-v2`, its run id and times, the exact
 scorecard digest/size, model artifact and source identities, runtime/host facts, benchmark protocol,
 selected-model residency, and a digest/size for each raw file. The model block requires an explicit
 tag plus Ollama digest; pinned source repository/revision; GGUF filename/digest; quantization and the
-production 8K context; and template, Modelfile, and license identities. The runtime block requires native
+production 8K context; and template and Modelfile identities. The runtime block requires native
 `arm64` macOS, exact Ollama/macOS/hardware/chip facts, and at least 64 GiB physical unified memory.
 The protocol records profile, production context/output limits, temperature, an explicitly unset seed,
 one cold start, one empty-prompt warm-up load, and one to ten measured warm trials. Every scorecard
@@ -343,7 +343,6 @@ SOURCE_REPOSITORY="$(jq -er .id "$EVIDENCE_DIR/huggingface-model.json")"
 SOURCE_REVISION="$(jq -er .sha "$EVIDENCE_DIR/huggingface-model.json")"
 GGUF_FILE="$(basename "$GGUF")"
 GGUF_SHA256="$(awk 'NR==1 {print $1}' "$EVIDENCE_DIR/gguf-sha256.txt")"
-LICENSE_ID="$(jq -er .cardData.license "$EVIDENCE_DIR/huggingface-model.json")"
 OLLAMA_DIGEST="$(jq -er --arg model "$MODEL" \
   '[.models[] | select(.name==$model and .model==$model)] | if length==1 then .[0].digest else error("model count") end' \
   "$EVIDENCE_DIR/ollama-list.json")"
@@ -352,7 +351,6 @@ QUANTIZATION="$(jq -er --arg model "$MODEL" \
   "$EVIDENCE_DIR/ollama-list.json")"
 TEMPLATE_SHA256="$(jq -rj .template "$EVIDENCE_DIR/ollama-show.json" | shasum -a 256 | awk '{print $1}')"
 MODELFILE_SHA256="$(jq -rj .modelfile "$EVIDENCE_DIR/ollama-show.json" | shasum -a 256 | awk '{print $1}')"
-LICENSE_SHA256="$(jq -rj .license "$EVIDENCE_DIR/ollama-show.json" | shasum -a 256 | awk '{print $1}')"
 OLLAMA_VERSION="$(jq -er .version "$EVIDENCE_DIR/ollama-version.json")"
 MACOS_VERSION="$(awk -F: '$1=="ProductVersion" {gsub(/^[[:space:]]+/,"",$2); print $2}' "$EVIDENCE_DIR/sw-vers.txt")"
 MACOS_BUILD="$(awk -F: '$1=="BuildVersion" {gsub(/^[[:space:]]+/,"",$2); print $2}' "$EVIDENCE_DIR/sw-vers.txt")"
@@ -375,18 +373,17 @@ jq -n --arg runId "$RUN_ID" --arg startedAt "$STARTED_AT" --arg completedAt "$CO
   --arg tag "$MODEL" --arg digest "$OLLAMA_DIGEST" --arg sourceRepository "$SOURCE_REPOSITORY" \
   --arg sourceRevision "$SOURCE_REVISION" --arg ggufFile "$GGUF_FILE" --arg ggufSha256 "$GGUF_SHA256" \
   --arg quantization "$QUANTIZATION" --arg templateSha256 "$TEMPLATE_SHA256" \
-  --arg modelfileSha256 "$MODELFILE_SHA256" --arg licenseId "$LICENSE_ID" \
-  --arg licenseSha256 "$LICENSE_SHA256" --arg ollamaVersion "$OLLAMA_VERSION" \
+  --arg modelfileSha256 "$MODELFILE_SHA256" --arg ollamaVersion "$OLLAMA_VERSION" \
   --arg macosVersion "$MACOS_VERSION" --arg macosBuild "$MACOS_BUILD" \
   --arg architecture "$ARCHITECTURE" --arg hardwareModel "$HARDWARE_MODEL" --arg chip "$CHIP" \
   --arg profile "$PROFILE" --argjson memory "$MEMORY_BYTES" --argjson trials "$TRIALS" \
   --argjson ram "$AFTER_RAM" --argjson vram "$AFTER_VRAM" --argjson evidence "$EVIDENCE_JSON" \
-  '{schemaVersion:1,contract:"planner-reference-host-v1",runId:$runId,startedAt:$startedAt,
+  '{schemaVersion:2,contract:"planner-reference-host-v2",runId:$runId,startedAt:$startedAt,
     completedAt:$completedAt,scorecardSha256:$scorecardSha256,scorecardBytes:$scorecardBytes,
     model:{tag:$tag,ollamaDigest:$digest,sourceRepository:$sourceRepository,
       sourceRevision:$sourceRevision,ggufFile:$ggufFile,ggufSha256:$ggufSha256,
       quantization:$quantization,contextLength:8192,templateSha256:$templateSha256,
-      modelfileSha256:$modelfileSha256,licenseId:$licenseId,licenseSha256:$licenseSha256},
+      modelfileSha256:$modelfileSha256},
     runtime:{ollamaVersion:$ollamaVersion,macosVersion:$macosVersion,macosBuild:$macosBuild,
       architecture:$architecture,hardwareModel:$hardwareModel,chip:$chip,
       physicalUnifiedMemoryBytes:$memory},

@@ -27,7 +27,7 @@ func TestRunPublishesOneImmutableProviderFreeManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(raw, []byte(`"contract": "planner-reference-host-v1"`)) ||
+	if !bytes.Contains(raw, []byte(`"contract": "planner-reference-host-v2"`)) ||
 		!strings.Contains(stdout.String(), "sha256=") {
 		t.Fatalf("output = %s, stdout = %s", raw, stdout.String())
 	}
@@ -64,18 +64,16 @@ func TestReadEvidenceDirectoryRejectsSymlink(t *testing.T) {
 func writeFixture(t *testing.T, root string) (string, string, string) {
 	t.Helper()
 	const (
-		model       = "hf.co/loomarr/gemma:Q4_K_M"
-		sourceRepo  = "loomarr/gemma-gguf"
-		ggufFile    = "gemma-Q4_K_M.gguf"
-		quant       = "Q4_K_M"
-		ollama      = "0.15.1"
-		macOS       = "27.0"
-		macOSBuild  = "26A123"
-		hardware    = "Macmini11,1"
-		chip        = "Apple M5 Pro"
-		licenseID   = "Gemma"
-		template    = "template"
-		licenseText = "Gemma"
+		model      = "hf.co/loomarr/gemma:Q4_K_M"
+		sourceRepo = "loomarr/gemma-gguf"
+		ggufFile   = "gemma-Q4_K_M.gguf"
+		quant      = "Q4_K_M"
+		ollama     = "0.15.1"
+		macOS      = "27.0"
+		macOSBuild = "26A123"
+		hardware   = "Macmini11,1"
+		chip       = "Apple M5 Pro"
+		template   = "template"
 	)
 	modelDigest := strings.Repeat("a", 64)
 	sourceRevision := strings.Repeat("b", 40)
@@ -91,13 +89,13 @@ func writeFixture(t *testing.T, root string) (string, string, string) {
 		t.Fatal(err)
 	}
 	evidence := map[string][]byte{
-		"huggingface-model.json":     []byte(`{"id":"` + sourceRepo + `","sha":"` + sourceRevision + `","cardData":{"license":"` + licenseID + `"},"siblings":[{"rfilename":"` + ggufFile + `","lfs":{"sha256":"` + ggufDigest + `"}}]}`),
+		"huggingface-model.json":     []byte(`{"id":"` + sourceRepo + `","sha":"` + sourceRevision + `","siblings":[{"rfilename":"` + ggufFile + `","lfs":{"sha256":"` + ggufDigest + `"}}]}`),
 		"gguf-sha256.txt":            []byte(ggufDigest + "  /Users/test/" + ggufFile + "\n"),
 		"ollama-version.json":        []byte(`{"version":"` + ollama + `"}`),
 		"ollama-list.json":           []byte(`{"models":[{"name":"` + model + `","model":"` + model + `","digest":"` + modelDigest + `","details":{"quantization_level":"` + quant + `"}}]}`),
 		"ollama-load-request.json":   []byte(`{"model":"` + model + `","prompt":"","stream":false,"keep_alive":"30m","options":{"num_ctx":8192}}`),
 		"ollama-show-request.json":   []byte(`{"model":"` + model + `"}`),
-		"ollama-show.json":           []byte(`{"license":"` + licenseText + `","modelfile":"FROM /Users/test/sha256-` + ggufDigest + `\nPARAMETER num_ctx 8192\n","template":"` + template + `","details":{"quantization_level":"` + quant + `"}}`),
+		"ollama-show.json":           []byte(`{"modelfile":"FROM /Users/test/sha256-` + ggufDigest + `\nPARAMETER num_ctx 8192\n","template":"` + template + `","details":{"quantization_level":"` + quant + `"}}`),
 		"ollama-ps-cold-before.json": []byte(`{"models":[]}`),
 		"ollama-ps-warm-before.json": []byte(`{"models":[{"name":"` + model + `","model":"` + model + `","digest":"` + modelDigest + `","size":12884901888,"size_vram":10737418240,"context_length":8192}]}`),
 		"ollama-ps-after.json":       []byte(`{"models":[{"name":"` + model + `","model":"` + model + `","digest":"` + modelDigest + `","size":12884901888,"size_vram":10737418240,"context_length":8192}]}`),
@@ -116,7 +114,7 @@ func writeFixture(t *testing.T, root string) (string, string, string) {
 	}
 	cardSum := sha256.Sum256(card)
 	capture := map[string]any{
-		"schemaVersion": 1, "contract": "planner-reference-host-v1", "runId": "m5-pro-gemma-q4",
+		"schemaVersion": 2, "contract": "planner-reference-host-v2", "runId": "m5-pro-gemma-q4",
 		"startedAt": "2026-10-15T14:00:00Z", "completedAt": "2026-10-15T15:00:00Z",
 		"scorecardSha256": hex.EncodeToString(cardSum[:]), "scorecardBytes": len(card),
 		"model": map[string]any{
@@ -125,7 +123,6 @@ func writeFixture(t *testing.T, root string) (string, string, string) {
 			"ggufFile": ggufFile, "ggufSha256": ggufDigest,
 			"quantization": quant, "contextLength": 8192,
 			"templateSha256": hashText(template), "modelfileSha256": hashText(modelfile),
-			"licenseId": licenseID, "licenseSha256": hashText(licenseText),
 		},
 		"runtime": map[string]any{
 			"ollamaVersion": ollama, "macosVersion": macOS, "macosBuild": macOSBuild,

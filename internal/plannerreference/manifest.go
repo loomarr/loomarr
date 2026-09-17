@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	manifestSchemaVersion = 1
-	contractVersion       = "planner-reference-host-v1"
+	manifestSchemaVersion = 2
+	contractVersion       = "planner-reference-host-v2"
 	maxScorecardBytes     = 16 << 20
 	maxCaptureBytes       = 1 << 20
 	maxEvidenceBytes      = 1 << 20
@@ -36,7 +36,6 @@ var (
 	slugToken      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	repositoryID   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	quantizationID = regexp.MustCompile(`^[A-Z0-9][A-Z0-9_]{1,31}$`)
-	licenseID      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+-]{0,79}$`)
 )
 
 var requiredEvidenceKinds = []string{
@@ -97,8 +96,6 @@ type modelCapture struct {
 	ContextLength    int    `json:"contextLength"`
 	TemplateSHA256   string `json:"templateSha256"`
 	ModelfileSHA256  string `json:"modelfileSha256"`
-	LicenseID        string `json:"licenseId"`
-	LicenseSHA256    string `json:"licenseSha256"`
 }
 
 type runtimeCapture struct {
@@ -280,8 +277,8 @@ func BuildManifest(in RawInputs) (Artifact, error) {
 }
 
 func validateCapture(c capture, generatedAt time.Time) error {
-	if c.SchemaVersion != 1 || c.Contract != contractVersion {
-		return fmt.Errorf("capture schema/contract = %d/%q, want 1/%q", c.SchemaVersion, c.Contract, contractVersion)
+	if c.SchemaVersion != manifestSchemaVersion || c.Contract != contractVersion {
+		return fmt.Errorf("capture schema/contract = %d/%q, want %d/%q", c.SchemaVersion, c.Contract, manifestSchemaVersion, contractVersion)
 	}
 	if err := validText("runId", c.RunID, 128, slugToken); err != nil {
 		return err
@@ -312,8 +309,8 @@ func validateModel(m modelCapture) error {
 		return errors.New("model.tag must include an explicit immutable tag")
 	}
 	if !isSHA256(m.OllamaDigest) || !isSHA256(m.GGUFSHA256) || !isSHA256(m.TemplateSHA256) ||
-		!isSHA256(m.ModelfileSHA256) || !isSHA256(m.LicenseSHA256) {
-		return errors.New("model artifact, GGUF, template, Modelfile, and license identities must be lowercase SHA-256")
+		!isSHA256(m.ModelfileSHA256) {
+		return errors.New("model artifact, GGUF, template, and Modelfile identities must be lowercase SHA-256")
 	}
 	if !repositoryID.MatchString(m.SourceRepository) || strings.Contains(m.SourceRepository, "..") {
 		return errors.New("model.sourceRepository must be an owner/repository id")
@@ -329,9 +326,6 @@ func validateModel(m modelCapture) error {
 	}
 	if m.ContextLength != 8192 {
 		return errors.New("model.contextLength must match the production 8192-token context")
-	}
-	if !licenseID.MatchString(m.LicenseID) {
-		return errors.New("model.licenseId is invalid")
 	}
 	return nil
 }
@@ -494,9 +488,6 @@ func validateEvidence(declared []evidenceReference, raw map[string][]byte) ([]ev
 type huggingFaceEvidence struct {
 	ID       string `json:"id"`
 	SHA      string `json:"sha"`
-	CardData struct {
-		License string `json:"license"`
-	} `json:"cardData"`
 	Siblings []struct {
 		Filename string `json:"rfilename"`
 		LFS      *struct {
@@ -522,7 +513,6 @@ type ollamaModelsEvidence struct {
 }
 
 type ollamaShowEvidence struct {
-	License   string `json:"license"`
 	Modelfile string `json:"modelfile"`
 	Template  string `json:"template"`
 	Details   struct {
@@ -565,9 +555,8 @@ func validateHuggingFace(raw []byte, model modelCapture) error {
 	if err := decodeEvidence(raw, &evidence); err != nil {
 		return err
 	}
-	if evidence.ID != model.SourceRepository || evidence.SHA != model.SourceRevision ||
-		!strings.EqualFold(evidence.CardData.License, model.LicenseID) {
-		return errors.New("source repository, revision, or license does not match capture")
+	if evidence.ID != model.SourceRepository || evidence.SHA != model.SourceRevision {
+		return errors.New("source repository or revision does not match capture")
 	}
 	matches := 0
 	for _, sibling := range evidence.Siblings {
@@ -671,8 +660,8 @@ func validateOllamaShow(raw []byte, model modelCapture) error {
 		return err
 	}
 	if evidence.Details.Quantization != model.Quantization || sha256String(evidence.Template) != model.TemplateSHA256 ||
-		sha256String(evidence.Modelfile) != model.ModelfileSHA256 || sha256String(evidence.License) != model.LicenseSHA256 {
-		return errors.New("quantization, template, Modelfile, or license digest does not match capture")
+		sha256String(evidence.Modelfile) != model.ModelfileSHA256 {
+		return errors.New("quantization, template, or Modelfile digest does not match capture")
 	}
 	if !strings.Contains(evidence.Modelfile, model.GGUFSHA256) {
 		return errors.New("modelfile does not bind the selected local GGUF digest")
