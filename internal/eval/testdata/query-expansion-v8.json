@@ -1,0 +1,4834 @@
+{
+  "schemaVersion": 1,
+  "version": "query-expansion-development-v8",
+  "split": "development",
+  "promptVersion": "suggester-prompt-v15",
+  "toolSchemaVersion": "catalog-search-v9",
+  "sourceVersion": "reference-source-v6",
+  "catalogFixture": {
+    "path": "testdata/planner-release-catalog-v1.json",
+    "sha256": "f9359386413a28a382c97a5ca3a32aba3a7343fa0f973e9204302c9d64e91077"
+  },
+  "extraCatalogFixture": {
+    "path": "testdata/query-expansion-catalog-v8.json",
+    "sha256": "7e4543ab24df6b41c843580846d84d7b0b5baa29042d11382158687cfd759497"
+  },
+  "sourcesFixture": {
+    "path": "testdata/query-expansion-sources-v2.json",
+    "sha256": "c6784c9defa523b8fe147dc280ac31055b047ae5167390172cb8d89e81f9923a"
+  },
+  "moodReviewPacket": {
+    "path": "testdata/query-mood-review-packet-v2.json",
+    "sha256": "c9f4fb136ff450ea4516235972588f961022eec57a43b17a5301bdbd40df8872"
+  },
+  "moodReviewPrivateMap": {
+    "path": "testdata/query-mood-review-map-v2.json",
+    "sha256": "5b07ebe963f5b007d4c2fb87fdf4fa3a6ab7d99b9fe0bd555303084457af685b"
+  },
+  "moodReviewSubmissions": [
+    {
+      "path": "testdata/query-mood-review-submission-qwen-v2.json",
+      "sha256": "efdf8bd4ddfd6b00ae656d5cd20885f96b66ecad8e59bf5e010b25f9dd6c32f4"
+    },
+    {
+      "path": "testdata/query-mood-review-submission-gemini-v2.json",
+      "sha256": "05a9b9ce5eb5cf43294c698903a5dc3349b732af832776ccd65e0611a205fc11"
+    },
+    {
+      "path": "testdata/query-mood-review-submission-gemma-v2.json",
+      "sha256": "47f54f921d513aa8c654e3a50d2a4882976fe225b53f2881c4a04c2cb8c30f7e"
+    }
+  ],
+  "moodReviewAuthority": {
+    "path": "testdata/query-mood-review-authority-v2.json",
+    "sha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f"
+  },
+  "moodReviewSnapshots": [
+    {
+      "path": "testdata/query-mood-review-openrouter-snapshot-v1.json",
+      "sha256": "0ba24ce9f4a485d7e436a8d2cb3169ad86c1c250041a06453c1c1084c2dc393b"
+    }
+  ],
+  "sourceReviews": [
+    {
+      "url": "https://d23.com/were-going-to-walt-disney-world-sabrina-the-teenage-witch/",
+      "observed": "2026-09-15",
+      "role": "historical-membership",
+      "summary": "Disney Archives places four resolved sitcoms in TGIF and Sabrina joining in 1996.",
+      "uncertainty": "Partial roster only; no complete season membership. Full House is mentioned but not yet independently identity-resolved for this batch."
+    },
+    {
+      "url": "https://www.themoviedb.org/tv/2685-family-matters?language=he-IL",
+      "observed": "2026-09-15",
+      "role": "provider-identity",
+      "summary": "Original title Family Matters; series identity 2685; 1989.",
+      "uncertainty": "Current metadata is not a historical airing record."
+    },
+    {
+      "url": "https://www.themoviedb.org/tv/2617-step-by-step",
+      "observed": "2026-09-15",
+      "role": "provider-identity",
+      "summary": "Step by Step; series identity 2617; 1991.",
+      "uncertainty": "Current metadata is not a historical airing record."
+    },
+    {
+      "url": "https://www.themoviedb.org/tv/1777-boy-meets-world/images/backdrops?language=en-US",
+      "observed": "2026-09-15",
+      "role": "provider-identity",
+      "summary": "Boy Meets World; series identity 1777; 1993.",
+      "uncertainty": "Artwork page resolves identity, not season membership."
+    },
+    {
+      "url": "https://www.themoviedb.org/tv/605-sabrina-the-teenage-witch",
+      "observed": "2026-09-15",
+      "role": "provider-identity",
+      "summary": "The 1996 sitcom is series 605; punctuation-normalized to Sabrina the Teenage Witch.",
+      "uncertainty": "No inference that all ABC and WB episodes belong to TGIF."
+    },
+    {
+      "url": "https://www.themoviedb.org/tv/31183-full-house",
+      "observed": "2026-09-15",
+      "role": "negative-provider-identity",
+      "summary": "Full House series 31183 is the 2009 Philippine adaptation, not the American TGIF sitcom.",
+      "uncertainty": "This identity is a collision control, not an exhaustive nonmembership list."
+    },
+    {
+      "url": "https://example.test/query-expansion/library-presence",
+      "observed": "2026-09-15",
+      "role": "synthetic-library",
+      "summary": "Family Matters and Step by Step are owned; Boy Meets World and Sabrina are acquisitions. Ratings and inventory are simulated control facts.",
+      "uncertainty": "Not a household Library, historical broadcast archive or verified rating observation."
+    },
+    {
+      "url": "https://www.disney.co.uk/movies/avengers-infinity-war/marvel-cinematic-universe",
+      "observed": "2026-09-16",
+      "role": "historical-membership",
+      "summary": "Disney UK's Phase 1 section lists six films through Avengers Assemble; its Phase 2 section separately begins with Iron Man 3 and Thor: The Dark World.",
+      "uncertainty": "The UK regional title Avengers Assemble requires an independently resolved provider identity. This source does not establish current streaming availability."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/1726-iron-man",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Iron Man (2008) resolves to movie identity 1726.",
+      "uncertainty": "Current provider identity is not phase-membership authority or Library presence."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/1724-the-incredible-hulk",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "The Incredible Hulk (2008) resolves to movie identity 1724.",
+      "uncertainty": "Current provider identity is not phase-membership authority or Library presence."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/10138-iron-man-2",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Iron Man 2 (2010) resolves to movie identity 10138.",
+      "uncertainty": "Current provider identity is not phase-membership authority or Library presence."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/10195-thor",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Thor (2011) resolves to movie identity 10195.",
+      "uncertainty": "Namesake controls remain necessary; current provider identity is not membership authority."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/1771-captain-america-the-first-avenger",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Captain America: The First Avenger (2011) resolves to movie identity 1771.",
+      "uncertainty": "Current provider identity is not phase-membership authority or Library presence."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/24428-the-avengers",
+      "observed": "2026-09-16",
+      "role": "regional-alias-identity",
+      "summary": "The 2012 film sold as Avengers Assemble in the UK resolves to The Avengers movie identity 24428.",
+      "uncertainty": "The frozen fixture retains the reviewed UK title string while asserting the single canonical Key; it does not create a second title."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/68721-iron-man-3",
+      "observed": "2026-09-16",
+      "role": "negative-provider-identity",
+      "summary": "Iron Man 3 (2013) resolves to movie identity 68721 and is a Disney-listed Phase 2 contrast.",
+      "uncertainty": "Negative here means outside Phase One, not outside the MCU."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/76338-thor-the-dark-world",
+      "observed": "2026-09-16",
+      "role": "negative-provider-identity",
+      "summary": "Thor: The Dark World (2013) resolves to movie identity 76338 and is a Disney-listed Phase 2 contrast.",
+      "uncertainty": "Negative here means outside Phase One, not outside the MCU."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/448368-the-avengers-a-visual-journey",
+      "observed": "2026-09-16",
+      "role": "negative-provider-identity",
+      "summary": "The Avengers: A Visual Journey is a distinct documentary identity 448368, not the Phase One feature.",
+      "uncertainty": "Used only as a title-collision control."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/63736-almighty-thor",
+      "observed": "2026-09-16",
+      "role": "negative-provider-identity",
+      "summary": "Almighty Thor is a distinct 2011 movie identity 63736, not the MCU Phase One film.",
+      "uncertainty": "Used only as a title-collision control."
+    },
+    {
+      "url": "https://example.test/query-expansion/mcu-library-presence",
+      "observed": "2026-09-16",
+      "role": "synthetic-library",
+      "summary": "Iron Man, Iron Man 2 and Thor are owned; the other reviewed Phase One films are acquisitions. Ratings and inventory are simulated control facts.",
+      "uncertainty": "Not a household Library, streaming license, historical archive or verified rating observation."
+    },
+    {
+      "url": "https://www.history.com/shows/modern-marvels",
+      "observed": "2026-09-16",
+      "role": "editorial-anchor",
+      "summary": "HISTORY's current catalog carries Modern Marvels and describes its technology-history subject.",
+      "uncertainty": "Current catalog presence does not establish a complete 1990s network roster or the original transmission of every episode."
+    },
+    {
+      "url": "https://www.history.com/shows/modern-marvels/season-2",
+      "observed": "2026-09-16",
+      "role": "historical-episode-dates",
+      "summary": "HISTORY records multiple Modern Marvels technology and infrastructure episodes with 1996 dates.",
+      "uncertainty": "Episode dates are not a series premiere, a complete chronology or an implicit playback restriction."
+    },
+    {
+      "url": "https://wwws.loc.gov/rr/mopic/findaid/BASEBALL.pdf",
+      "observed": "2026-09-16",
+      "role": "institutional-network-corroboration",
+      "summary": "The Library of Congress catalog identifies Modern Marvels: Baseball Parks as a 1999 Arts and Entertainment Network work and names History Channel.",
+      "uncertainty": "One collection record is not a complete schedule or lineup."
+    },
+    {
+      "url": "https://www.themoviedb.org/tv/6145-modern-marvels",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Modern Marvels resolves to series identity 6145; current provider metadata reports 1993.",
+      "uncertainty": "Provider identity/year metadata is not authority for the original network or a 1990s History roster."
+    },
+    {
+      "url": "https://www.history.com/shows/ancient-aliens/season-1",
+      "observed": "2026-09-16",
+      "role": "post-epoch-negative",
+      "summary": "HISTORY records an Ancient Aliens episode dated April 20, 2010.",
+      "uncertainty": "This is a post-1999 contrast, not evidence that the title is unsuitable for every History request."
+    },
+    {
+      "url": "https://www.themoviedb.org/tv/32608-ancient-aliens",
+      "observed": "2026-09-16",
+      "role": "negative-provider-identity",
+      "summary": "Ancient Aliens resolves to series identity 32608 with current provider year 2010.",
+      "uncertainty": "Negative here means outside the reviewed 1990s editorial slice, not outside HISTORY."
+    },
+    {
+      "url": "https://www.history.com/shows/the-curse-of-oak-island/season-1",
+      "observed": "2026-09-16",
+      "role": "post-epoch-negative",
+      "summary": "HISTORY records a Curse of Oak Island episode dated January 5, 2014.",
+      "uncertainty": "This is a post-1999 contrast, not a channel-wide format-transition claim."
+    },
+    {
+      "url": "https://www.themoviedb.org/tv/60603-the-curse-of-oak-island",
+      "observed": "2026-09-16",
+      "role": "negative-provider-identity",
+      "summary": "The Curse of Oak Island resolves to series identity 60603 with current provider year 2014.",
+      "uncertainty": "Negative here means outside the reviewed 1990s editorial slice, not outside HISTORY."
+    },
+    {
+      "url": "https://example.test/query-expansion/history-library-presence",
+      "observed": "2026-09-16",
+      "role": "synthetic-library",
+      "summary": "Modern Marvels and Ancient Aliens are owned; The Curse of Oak Island is an acquisition. Ratings and inventory are simulated controls.",
+      "uncertainty": "Not a household Library, historical schedule, streaming license or audience-rating observation."
+    },
+    {
+      "url": "https://catalog.afi.com/Film/27175-CASABLANCA",
+      "observed": "2026-09-16",
+      "role": "release-credit-genre",
+      "summary": "The AFI Catalog records Casablanca's 1942 release, Romance classification, U.S. production, English language and Michael Curtiz direction.",
+      "uncertainty": "A catalog genre is not a mood judgment, and release year is not production year."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/289-casablanca",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Casablanca resolves to movie identity 289.",
+      "uncertainty": "Current provider identity is not authority for historical credits, release facts or Library presence."
+    },
+    {
+      "url": "https://catalog.afi.com/Film/55193-JAWS",
+      "observed": "2026-09-16",
+      "role": "release-credit-rating",
+      "summary": "The AFI Catalog records Jaws as a 1975 U.S. English-language film directed by Steven Spielberg and carrying a U.S. PG rating.",
+      "uncertainty": "Its synopsis can inform human threat review but its genre and rating do not certify mood."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/578-jaws",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Jaws resolves to movie identity 578.",
+      "uncertainty": "Current provider identity is not mood, credit, rating or release authority."
+    },
+    {
+      "url": "https://www.bbfc.co.uk/release/paddington-2-q29sbgvjdglvbjpwwc0zotc2nzq",
+      "observed": "2026-09-16",
+      "role": "content-advice",
+      "summary": "The BBFC records Paddington 2 as a 2017 English-language Adventure, Comedy and Children film with mild threat and reassuring outcomes.",
+      "uncertainty": "BBFC classification is not a U.S. MPA rating and does not by itself certify comfort."
+    },
+    {
+      "url": "https://whatson.bfi.org.uk/online/default.asp?BOparam%3A%3AWScontent%3A%3AloadArticle%3A%3Apermalink=paddington-2",
+      "observed": "2026-09-16",
+      "role": "editorial-mood-input",
+      "summary": "The BFI describes Paddington 2 using family-fun and kindness language and records its France, UK and Luxembourg production countries.",
+      "uncertainty": "Editorial prose is reviewer input, not an objective mood label; the page returned 403 during recheck and must be captured before later promotion."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/346648-paddington-2",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Paddington 2 resolves to movie identity 346648.",
+      "uncertainty": "Current provider identity is not mood, origin, language or rating authority."
+    },
+    {
+      "url": "https://www.koreanfilm.or.kr/mobile3/news/featuresView.jsp?seq=474",
+      "observed": "2026-09-16",
+      "role": "editorial-mood-input",
+      "summary": "The Korean Film Council describes Parasite as a darkly satirical thriller with wickedly comic elements.",
+      "uncertainty": "Editorial prose informs directional human review; it does not create a universal sentiment label."
+    },
+    {
+      "url": "https://www.koreanfilm.or.kr/eng/films/index/filmsView.jsp?category=ALL&mode=INDEX_FILMS_LIST&movieCd=20183782&pageIndex=1&pageRowSize=10&searchKeyword=parasite",
+      "observed": "2026-09-16",
+      "role": "release-credit-origin",
+      "summary": "The Korean Film Council records Parasite as a 2019 South Korean drama directed by Bong Joon-ho.",
+      "uncertainty": "Its Korean age classification is not mapped into Loomarr's U.S.-style audience ladder."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/496243",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Parasite resolves to movie identity 496243.",
+      "uncertainty": "Current provider identity is not mood, credit, origin or release authority."
+    },
+    {
+      "url": "https://catalog.afi.com/Film/50652-SINGIN-INTHERAIN",
+      "observed": "2026-09-16",
+      "role": "release-credit-genre",
+      "summary": "The AFI Catalog records Singin' in the Rain as a 1952 musical comedy directed by Gene Kelly and Stanley Donen.",
+      "uncertainty": "Genre and musical form do not establish a cheerful or warm mood score."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/872-singin-in-the-rain",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Singin' in the Rain resolves to movie identity 872.",
+      "uncertainty": "Current provider identity is not historical release, credit or mood authority."
+    },
+    {
+      "url": "https://catalog.afi.com/Catalog/moviedetails/23399",
+      "observed": "2026-09-16",
+      "role": "release-credit-origin-language",
+      "summary": "The AFI Catalog records 2001: A Space Odyssey as a 1968 English-language science-fiction film directed by Stanley Kubrick and produced by the United Kingdom and United States.",
+      "uncertainty": "Mixed production origin remains mixed; setting in space supplies no origin fact."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/62-2001-a-space-odyssey",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "2001: A Space Odyssey resolves to movie identity 62.",
+      "uncertainty": "Current provider identity is not historical release, origin or language authority."
+    },
+    {
+      "url": "https://catalog.afi.com/Catalog/moviedetails/67140",
+      "observed": "2026-09-16",
+      "role": "release-credit-genre-rating",
+      "summary": "The AFI Catalog records E.T. the Extra-Terrestrial as a 1982 U.S. English-language fantasy/science-fiction film directed by Steven Spielberg with a reported MPAA PG field.",
+      "uncertainty": "The catalogued classification is not rating-board evidence and does not establish current audience suitability."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/601-e-t-the-extra-terrestrial?language=en-US",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "E.T. the Extra-Terrestrial resolves to movie identity 601.",
+      "uncertainty": "Current provider identity is not historical credit, rating or release authority."
+    },
+    {
+      "url": "https://catalog.afi.com/Film/55763-",
+      "observed": "2026-09-16",
+      "role": "release-credit-role-negative",
+      "summary": "The AFI Catalog records Back to the Future as a 1985 comedy/science-fiction film directed by Robert Zemeckis and credits Steven Spielberg as executive producer.",
+      "uncertainty": "The producer credit must not satisfy a directed-by-Spielberg request."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/105-back-to-the-future",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Back to the Future resolves to movie identity 105.",
+      "uncertainty": "Current provider identity is not historical release or credit authority."
+    },
+    {
+      "url": "https://catalog.afi.com/Film/67200-JURASSIC-PARK",
+      "observed": "2026-09-16",
+      "role": "release-credit-genre-rating",
+      "summary": "The AFI Catalog records Jurassic Park as a 1993 adventure/science-fiction film directed by Steven Spielberg with a reported MPAA PG-13 field.",
+      "uncertainty": "The catalogued classification is not rating-board evidence."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/329-jurassic-park",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Jurassic Park resolves to movie identity 329.",
+      "uncertainty": "Current provider identity is not historical credit, rating or release authority."
+    },
+    {
+      "url": "https://catalog.afi.com/Film/55201-FORREST-GUMP",
+      "observed": "2026-09-16",
+      "role": "release-credit-origin-language-rating",
+      "summary": "The AFI Catalog records Forrest Gump as a 1994 U.S. English-language film starring Tom Hanks and directed by Robert Zemeckis, with a reported MPAA PG-13 field.",
+      "uncertainty": "Cast and director are separate roles; the catalogued classification is not rating-board evidence."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/13-forrest-gump",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Forrest Gump resolves to movie identity 13.",
+      "uncertainty": "Current provider identity is not historical credit, rating or release authority."
+    },
+    {
+      "url": "https://catalog.afi.com/Film/55210-TOY-STORY",
+      "observed": "2026-09-16",
+      "role": "release-cast-origin-language-rating",
+      "summary": "AFI's title record reports Toy Story as a 1995 U.S. English-language animated comedy with Tom Hanks voicing Woody and a reported MPAA G field.",
+      "uncertainty": "AFI marks the title outside its 1893-1993 feature-film catalog; voice performance remains distinct from live-action acting."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/862-toy-story?language=en-US",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Toy Story resolves to movie identity 862.",
+      "uncertainty": "Current provider identity is not historical credit, rating or release authority."
+    },
+    {
+      "url": "https://www.filmratings.com/ratings-guide/",
+      "observed": "2026-09-16",
+      "role": "audience-rating-authority",
+      "summary": "The MPA guide defines the U.S. G, PG, PG-13, R and NC-17 film-rating scale used by this bounded audience-control slice.",
+      "uncertainty": "The ordinal ceiling is a fixture policy over one U.S. authority, not an age recommendation or a cross-national conversion."
+    },
+    {
+      "url": "https://www.filmratings.com/search-results/?cn=34132",
+      "observed": "2026-09-16",
+      "role": "audience-rating-record",
+      "summary": "MPA/CARA certificate 34132 identifies Toy Story, Buena Vista Pictures Distribution, 1995, as G.",
+      "uncertainty": "The rating establishes a U.S. classification only; it does not establish mood, current availability or household suitability."
+    },
+    {
+      "url": "https://www.filmratings.com/search-results/?cn=24175",
+      "observed": "2026-09-16",
+      "role": "audience-rating-record",
+      "summary": "MPA/CARA certificate 24175 identifies Jaws, Universal City Studios, 1975, as PG.",
+      "uncertainty": "The rating establishes a U.S. classification only; it is not a fear score or household recommendation."
+    },
+    {
+      "url": "https://www.filmratings.com/search-results/?cn=32451",
+      "observed": "2026-09-16",
+      "role": "audience-rating-negative",
+      "summary": "MPA/CARA certificate 32451 identifies Jurassic Park, Universal City Studios, 1993, as PG-13.",
+      "uncertainty": "The above-ceiling negative is specific to the U.S. MPA scale and does not establish a mood label."
+    },
+    {
+      "url": "https://en.unifrance.org/movie/20864/amelie-from-montmartre",
+      "observed": "2026-09-16",
+      "role": "release-credit-origin-language",
+      "summary": "Unifrance records Amelie as a 2001 French-language film directed by Jean-Pierre Jeunet and a majority-French France/Germany production.",
+      "uncertainty": "Majority French does not mean France-only; the page returned 403 during recheck and must be captured before later promotion."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/194-le-fabuleux-destin-d-amelie-poulain",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Amelie resolves to movie identity 194.",
+      "uncertainty": "Current provider identity is not historical language, origin or release authority."
+    },
+    {
+      "url": "https://www.ghibli.jp/works/chihiro/",
+      "observed": "2026-09-16",
+      "role": "release-credit",
+      "summary": "Studio Ghibli records Spirited Away as a 2001 work by Hayao Miyazaki released on 20 July 2001.",
+      "uncertainty": "The reviewed page does not independently establish the film's country, original language or English mood labels."
+    },
+    {
+      "url": "https://www.themoviedb.org/movie/129/",
+      "observed": "2026-09-16",
+      "role": "provider-identity",
+      "summary": "Spirited Away resolves to movie identity 129.",
+      "uncertainty": "Current provider identity is not historical release, country or language authority."
+    },
+    {
+      "url": "https://example.test/query-expansion/movie-library-presence",
+      "observed": "2026-09-16",
+      "role": "synthetic-library",
+      "summary": "Movie ownership and acquisition state are simulated controls across the reviewed movie pool; audience checks exercise source-reported metadata as development plumbing only.",
+      "uncertainty": "Not a household Library, streaming license, current availability claim, rating-board source or audience certification."
+    }
+  ],
+  "cases": [
+    {
+      "id": "exp-tgif-minimum",
+      "group": "tgif-reviewed-source",
+      "category": "named-block",
+      "type": "minimum",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Build me a TGIF channel.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-original",
+      "group": "tgif-reviewed-source",
+      "category": "named-block",
+      "type": "minimum",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Recreate the original TGIF Friday-night block.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-nostalgia",
+      "group": "tgif-reviewed-source",
+      "category": "named-block",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "I miss watching TGIF with my family. Make a channel like that.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-friday",
+      "group": "tgif-reviewed-source",
+      "category": "named-block",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "A Friday-night TGIF lineup, please.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-abc",
+      "group": "tgif-reviewed-source",
+      "category": "named-block",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Recreate ABC's TGIF Friday-night block.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-sabrina-anchor",
+      "group": "tgif-reviewed-source",
+      "category": "required-title",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF, including Sabrina the Teenage Witch.",
+      "mustInclude": [
+        "Sabrina the Teenage Witch"
+      ],
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-without-sabrina",
+      "group": "tgif-reviewed-source",
+      "category": "excluded-title",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF without Sabrina the Teenage Witch.",
+      "mustExclude": [
+        "Sabrina the Teenage Witch"
+      ],
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777"
+      ],
+      "requireKeys": [
+        "series:tmdb:2685"
+      ],
+      "forbidKeys": [
+        "series:tmdb:605",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-without-family",
+      "group": "tgif-reviewed-source",
+      "category": "excluded-title",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "A TGIF channel, but leave out Family Matters.",
+      "mustExclude": [
+        "Family Matters"
+      ],
+      "minGrounded": 3,
+      "minLineup": 1,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-require-sabrina",
+      "group": "tgif-reviewed-source",
+      "category": "required-title",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Make TGIF and be sure to include Sabrina the Teenage Witch.",
+      "mustInclude": [
+        "Sabrina the Teenage Witch"
+      ],
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-owned",
+      "group": "tgif-reviewed-source",
+      "category": "library-ownership",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF using only shows already in my library.",
+      "minGrounded": 2,
+      "minLineup": 2,
+      "minAcquisitions": 0,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617"
+      ],
+      "requireKeys": [
+        "series:tmdb:2685"
+      ],
+      "forbidKeys": [
+        "series:tmdb:1777",
+        "series:tmdb:605",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-library-first",
+      "group": "tgif-reviewed-source",
+      "category": "library-ownership",
+      "type": "minimum",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF: start with what I own and suggest missing shows too.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-approval",
+      "group": "tgif-reviewed-source",
+      "category": "library-ownership",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "A TGIF channel. Let me review missing shows before adding them.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-sabrina-minimum",
+      "group": "tgif-reviewed-source",
+      "category": "exact-identity",
+      "type": "minimum",
+      "fixtureCase": "tgif-reviewed",
+      "description": "A channel with just Sabrina the Teenage Witch.",
+      "mustInclude": [
+        "Sabrina the Teenage Witch"
+      ],
+      "minGrounded": 1,
+      "minLineup": 0,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-sabrina-conversation",
+      "group": "tgif-reviewed-source",
+      "category": "exact-identity",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "I only want Sabrina the Teenage Witch on this channel.",
+      "mustInclude": [
+        "Sabrina the Teenage Witch"
+      ],
+      "minGrounded": 1,
+      "minLineup": 0,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-sabrina-sitcom",
+      "group": "tgif-reviewed-source",
+      "category": "exact-identity",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "The Melissa Joan Hart Sabrina sitcom, and nothing else.",
+      "mustInclude": [
+        "Sabrina the Teenage Witch"
+      ],
+      "minGrounded": 1,
+      "minLineup": 0,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-sabrina-typo",
+      "group": "tgif-reviewed-source",
+      "category": "exact-identity",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Only Sabrina the Tennage Witch, please.",
+      "mustInclude": [
+        "Sabrina the Teenage Witch"
+      ],
+      "minGrounded": 1,
+      "minLineup": 0,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-sabrina-and-boy",
+      "group": "tgif-reviewed-source",
+      "category": "required-title",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Just Sabrina the Teenage Witch and Boy Meets World.",
+      "mustInclude": [
+        "Sabrina the Teenage Witch",
+        "Boy Meets World"
+      ],
+      "minGrounded": 2,
+      "minLineup": 0,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:605",
+        "series:tmdb:1777"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-family-only",
+      "group": "tgif-reviewed-source",
+      "category": "exact-identity",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Only the American sitcom Family Matters, please.",
+      "mustInclude": [
+        "Family Matters"
+      ],
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minAcquisitions": 0,
+      "acceptableKeys": [
+        "series:tmdb:2685"
+      ],
+      "requireKeys": [
+        "series:tmdb:2685"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-family-and-sabrina",
+      "group": "tgif-reviewed-source",
+      "category": "library-ownership",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Only Family Matters and Sabrina the Teenage Witch.",
+      "mustInclude": [
+        "Family Matters",
+        "Sabrina the Teenage Witch"
+      ],
+      "minGrounded": 2,
+      "minLineup": 1,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-without-step",
+      "group": "tgif-reviewed-source",
+      "category": "excluded-title",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF, but no Step by Step.",
+      "mustExclude": [
+        "Step by Step"
+      ],
+      "minGrounded": 3,
+      "minLineup": 1,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2617",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-airing",
+      "group": "tgif-reviewed-source",
+      "category": "episode-dates",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF, only episodes aired in the 1990s.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-tgif-airing-conversation",
+      "group": "tgif-reviewed-source",
+      "category": "episode-dates",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "I'd like TGIF, but keep episodes to ones aired in the 1990s.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-tgif-editorial-epoch",
+      "group": "tgif-reviewed-source",
+      "category": "editorial-epoch",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF as it felt in the 1990s, without restricting episode dates.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-airing-narrow",
+      "group": "tgif-reviewed-source",
+      "category": "episode-dates",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF, only episodes aired in 1996-1999.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1996,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-tgif-airing-inclusive",
+      "group": "tgif-reviewed-source",
+      "category": "episode-dates",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF, only episodes aired in 1989-2000, including both end years.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1989,
+            "to": 2000
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-sabrina-airing",
+      "group": "tgif-reviewed-source",
+      "category": "episode-dates",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Just Sabrina the Teenage Witch, only episodes aired in 1996-2000.",
+      "mustInclude": [
+        "Sabrina the Teenage Witch"
+      ],
+      "minGrounded": 1,
+      "minLineup": 0,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:31183"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1996,
+            "to": 2000
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-tgif-collision",
+      "group": "tgif-reviewed-source",
+      "category": "identity-collision",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "The American TGIF sitcom block, not a show whose title merely matches.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-no-additions",
+      "group": "tgif-reviewed-source",
+      "category": "library-ownership",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "A TGIF channel, with no shows added from outside my library.",
+      "minGrounded": 2,
+      "minLineup": 2,
+      "minAcquisitions": 0,
+      "acceptableKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617"
+      ],
+      "requireKeys": [
+        "series:tmdb:2685"
+      ],
+      "forbidKeys": [
+        "series:tmdb:1777",
+        "series:tmdb:605",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-without-two",
+      "group": "tgif-reviewed-source",
+      "category": "excluded-title",
+      "type": "directional",
+      "fixtureCase": "tgif-reviewed",
+      "description": "TGIF without Family Matters or Step by Step.",
+      "mustExclude": [
+        "Family Matters",
+        "Step by Step"
+      ],
+      "minGrounded": 2,
+      "minLineup": 0,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:2617",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-tgif-without-family-text",
+      "group": "tgif-reviewed-source",
+      "category": "excluded-title",
+      "type": "invariance",
+      "fixtureCase": "tgif-reviewed",
+      "description": "Leave Family Matters out of my TGIF lineup.",
+      "mustExclude": [
+        "Family Matters"
+      ],
+      "minGrounded": 3,
+      "minLineup": 1,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "series:tmdb:2617",
+        "series:tmdb:1777",
+        "series:tmdb:605"
+      ],
+      "requireKeys": [
+        "series:tmdb:605"
+      ],
+      "forbidKeys": [
+        "series:tmdb:2685",
+        "series:tmdb:31183"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-minimum",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "named-collection",
+      "type": "minimum",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-channel",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "named-collection",
+      "type": "minimum",
+      "fixtureCase": "mcu-reviewed",
+      "description": "Build me an MCU Phase One lineup.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-based-on",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "A channel based on MCU Phase One.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-lineup",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "Recreate the MCU Phase One lineup.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-movies",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "I want movies from MCU Phase One.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-movie-night",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "Please make an MCU Phase One lineup for movie night.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-films",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "The MCU Phase One lineup of films, please.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-find",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "named-collection",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "Can you find the MCU Phase One lineup?",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-alias-include",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "regional-alias",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup, including Avengers Assemble.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustInclude": [
+        "Avengers Assemble"
+      ]
+    },
+    {
+      "id": "exp-mcu-alias-with",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "regional-alias",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup with Avengers Assemble.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustInclude": [
+        "Avengers Assemble"
+      ]
+    },
+    {
+      "id": "exp-mcu-alias-from",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "regional-alias",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "Avengers Assemble from MCU Phase One.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustInclude": [
+        "Avengers Assemble"
+      ]
+    },
+    {
+      "id": "exp-mcu-alias-uk",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "regional-alias",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "Use the UK name Avengers Assemble in my MCU Phase One lineup.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustInclude": [
+        "Avengers Assemble"
+      ]
+    },
+    {
+      "id": "exp-mcu-require-iron-man",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "required-title",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup, and be sure to include Iron Man.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustInclude": [
+        "Iron Man"
+      ]
+    },
+    {
+      "id": "exp-mcu-require-captain",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "required-title",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup including Captain America: The First Avenger.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustInclude": [
+        "Captain America: The First Avenger"
+      ]
+    },
+    {
+      "id": "exp-mcu-require-two",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "required-title",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup with Iron Man and Avengers Assemble.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustInclude": [
+        "Iron Man",
+        "Avengers Assemble"
+      ]
+    },
+    {
+      "id": "exp-mcu-without-hulk",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "excluded-title",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup, but skip The Incredible Hulk.",
+      "minGrounded": 5,
+      "minLineup": 3,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:1724",
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "The Incredible Hulk"
+      ]
+    },
+    {
+      "id": "exp-mcu-without-iron-man-2",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "excluded-title",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup, but leave out Iron Man 2.",
+      "minGrounded": 5,
+      "minLineup": 2,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:10138",
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "Iron Man 2"
+      ]
+    },
+    {
+      "id": "exp-mcu-without-thor",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "excluded-title",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup without Thor.",
+      "minGrounded": 5,
+      "minLineup": 2,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:10195",
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "Thor"
+      ]
+    },
+    {
+      "id": "exp-mcu-without-avengers",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "excluded-title",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup, excluding Avengers Assemble.",
+      "minGrounded": 5,
+      "minLineup": 3,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771"
+      ],
+      "requireKeys": [
+        "movie:tmdb:1726"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:24428",
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "Avengers Assemble"
+      ]
+    },
+    {
+      "id": "exp-mcu-owned",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "library-ownership",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup using only movies already in my library.",
+      "minGrounded": 3,
+      "minLineup": 3,
+      "minAcquisitions": 0,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195"
+      ],
+      "requireKeys": [
+        "movie:tmdb:1726"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:1724",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428",
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-library-first",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "library-ownership",
+      "type": "minimum",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup: start with movies I own and suggest the missing films too.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-no-acquisitions",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "library-ownership",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup with no new acquisitions.",
+      "minGrounded": 3,
+      "minLineup": 3,
+      "minAcquisitions": 0,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195"
+      ],
+      "requireKeys": [
+        "movie:tmdb:1726"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:1724",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428",
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-review-missing",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "library-ownership",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup. Let me review missing movies before adding them.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-release-years",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "movie-release-dates",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup, only movies released from 2008 through 2012.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2008,
+            "to": 2012
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-mcu-release-years-conversation",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "movie-release-dates",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "I'd like an MCU Phase One lineup, keeping releases between 2008 and 2012.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2008,
+            "to": 2012
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-mcu-no-release-filter",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "editorial-phase",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup as a franchise phase, without restricting movie release dates.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-release-2010s",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "movie-release-dates",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup, only movies released from 2010 through 2012.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "acceptableKeys": [
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2010,
+            "to": 2012
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-mcu-movies-only",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "media-scope",
+      "type": "invariance",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup of movies only, not television series.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-mcu-not-phase-two",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "phase-boundary",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup, not Iron Man 3 or Thor: The Dark World.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "Iron Man 3",
+        "Thor: The Dark World"
+      ]
+    },
+    {
+      "id": "exp-mcu-no-lookalikes",
+      "group": "mcu-phase-one-reviewed-source",
+      "category": "identity-collision",
+      "type": "directional",
+      "fixtureCase": "mcu-reviewed",
+      "description": "MCU Phase One lineup, not The Avengers: A Visual Journey or Almighty Thor.",
+      "minGrounded": 6,
+      "minLineup": 3,
+      "minAcquisitions": 3,
+      "acceptableKeys": [
+        "movie:tmdb:1726",
+        "movie:tmdb:1724",
+        "movie:tmdb:10138",
+        "movie:tmdb:10195",
+        "movie:tmdb:1771",
+        "movie:tmdb:24428"
+      ],
+      "requireKeys": [
+        "movie:tmdb:24428"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:68721",
+        "movie:tmdb:76338",
+        "movie:tmdb:448368",
+        "movie:tmdb:63736"
+      ],
+      "noDates": true,
+      "mustExclude": [
+        "The Avengers: A Visual Journey",
+        "Almighty Thor"
+      ]
+    },
+    {
+      "id": "exp-history-minimum",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "network-editorial-epoch",
+      "type": "minimum",
+      "fixtureCase": "history-era-reviewed",
+      "description": "A channel like the History Channel from the 1990s, when Modern Marvels was around.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-nineties",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "network-editorial-epoch",
+      "type": "invariance",
+      "fixtureCase": "history-era-reviewed",
+      "description": "A channel like the History Channel from the nineties, with Modern Marvels as the touchstone.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-airing-2000s",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "independent-episode-airing",
+      "type": "directional",
+      "fixtureCase": "history-era-reviewed",
+      "description": "A channel like the History Channel from the 1990s. Only use episodes aired during the 2000s.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 2000,
+            "to": 2009
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-history-owned",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "library-only",
+      "type": "directional",
+      "fixtureCase": "history-era-reviewed",
+      "description": "A channel like the History Channel from the 1990s, using only shows already in my library.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-acquisition",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "missing-library-title",
+      "type": "directional",
+      "fixtureCase": "history-era-reviewed-missing",
+      "description": "Please make a channel like the History Channel from the 1990s, when Modern Marvels was around.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-90s-short",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "network-editorial-epoch",
+      "type": "invariance",
+      "fixtureCase": "history-era-reviewed",
+      "description": "Recreate the History Channel from the 90s, with Modern Marvels.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-during-nineties",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "network-editorial-epoch",
+      "type": "invariance",
+      "fixtureCase": "history-era-reviewed",
+      "description": "Make something resembling the History Channel during the nineties, with Modern Marvels.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-no-example",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "network-editorial-epoch",
+      "type": "minimum",
+      "fixtureCase": "history-era-reviewed",
+      "description": "Build a lineup like the History Channel from the 1990s.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-engineering",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "network-topic-intersection",
+      "type": "directional",
+      "fixtureCase": "history-era-reviewed",
+      "description": "Make a channel like the History Channel from the 1990s, focused on engineering and technology like Modern Marvels.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-not-later-era",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "later-era-exclusion",
+      "type": "directional",
+      "fixtureCase": "history-era-reviewed",
+      "description": "A channel like the History Channel from the 1990s, not Ancient Aliens or The Curse of Oak Island.",
+      "mustExclude": [
+        "Ancient Aliens",
+        "The Curse of Oak Island"
+      ],
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-airing-1996-1999",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "independent-episode-airing",
+      "type": "directional",
+      "fixtureCase": "history-era-reviewed",
+      "description": "A channel like the History Channel from the 1990s, but only use episodes aired from 1996-1999.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "dates": {
+        "seriesAiring": [
+          {
+            "from": 1996,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-history-owned-conversation",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "library-only",
+      "type": "invariance",
+      "fixtureCase": "history-era-reviewed",
+      "description": "Could you recreate the History Channel from the 1990s with what I already have? Modern Marvels is the feel I want.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-acquisition-conversation",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "missing-library-title",
+      "type": "invariance",
+      "fixtureCase": "history-era-reviewed-missing",
+      "description": "Could you recreate the History Channel from the nineties? Please include Modern Marvels even though it is not in my library yet.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-resemble",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "network-editorial-epoch",
+      "type": "invariance",
+      "fixtureCase": "history-era-reviewed",
+      "description": "I want something to resemble the History Channel in the 1990s, centered on Modern Marvels.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-history-no-modern-reality",
+      "group": "history-editorial-epoch-reviewed-source",
+      "category": "later-era-exclusion",
+      "type": "directional",
+      "fixtureCase": "history-era-reviewed",
+      "description": "Recreate the History Channel from the nineties with Modern Marvels, and leave out its later paranormal and reality era.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "series:tmdb:6145"
+      ],
+      "requireKeys": [
+        "series:tmdb:6145"
+      ],
+      "forbidKeys": [
+        "series:tmdb:32608",
+        "series:tmdb:60603"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-epoch-1940s",
+      "group": "movie-epoch-reviewed-source",
+      "category": "movie-release-decade",
+      "type": "minimum",
+      "fixtureCase": "movie-reviewed",
+      "description": "Romance movies released in the 1940s.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "movie:tmdb:289"
+      ],
+      "requireKeys": [
+        "movie:tmdb:289"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1940,
+            "to": 1949
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-comforting",
+      "group": "movie-mood-model-attested",
+      "category": "comfort-low-threat",
+      "type": "minimum",
+      "fixtureCase": "movie-reviewed",
+      "description": "Comforting, low-threat family movies for a quiet evening.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "movie:tmdb:346648"
+      ],
+      "requireKeys": [
+        "movie:tmdb:346648"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:496243"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require low threat/fear (0-1 of 3), positive valence and comedic warmth (2-3), without using rating as a proxy for comfort.",
+        "positiveKeys": [
+          "movie:tmdb:346648"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:578",
+          "movie:tmdb:496243"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "threatFear",
+            "max": 1
+          },
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-kind-family",
+      "group": "movie-mood-model-attested",
+      "category": "comfort-low-threat",
+      "type": "invariance",
+      "fixtureCase": "movie-reviewed",
+      "description": "Warm, kind-hearted family comedies.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "movie:tmdb:346648"
+      ],
+      "requireKeys": [
+        "movie:tmdb:346648"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:496243"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require positive valence and comedic warmth (2-3 of 3) with low threat (0-1); family classification alone is insufficient.",
+        "positiveKeys": [
+          "movie:tmdb:346648"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:578",
+          "movie:tmdb:496243"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-not-frightening",
+      "group": "movie-mood-model-attested",
+      "category": "comfort-low-threat",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Gentle movies that are reassuring rather than frightening.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "movie:tmdb:346648"
+      ],
+      "requireKeys": [
+        "movie:tmdb:346648"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:496243"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require threat/fear no higher than 1 of 3 and reassuring resolution evidence; reject high-threat and dark-pressure contrasts.",
+        "positiveKeys": [
+          "movie:tmdb:346648"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:578",
+          "movie:tmdb:496243"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "threatFear",
+            "max": 1
+          },
+          {
+            "axis": "valence",
+            "min": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-tense",
+      "group": "movie-mood-model-attested",
+      "category": "tense-dark",
+      "type": "minimum",
+      "fixtureCase": "movie-reviewed",
+      "description": "Tense, threatening movies that keep the pressure on.",
+      "minGrounded": 2,
+      "minLineup": 1,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:346648"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require arousal and threat/fear at 2-3 of 3; positive warmth must not substitute for sustained pressure.",
+        "positiveKeys": [
+          "movie:tmdb:578",
+          "movie:tmdb:496243"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:346648"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "arousal",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "min": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-dark-satire",
+      "group": "movie-mood-model-attested",
+      "category": "tense-dark",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Dark, satirical thrillers with wicked humor.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:346648"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require negative/dark valence, elevated arousal and satirical comedic evidence; ordinary warmth is a directional mismatch.",
+        "positiveKeys": [
+          "movie:tmdb:496243"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:346648"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "max": 1
+          },
+          {
+            "axis": "arousal",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-tense-1970s",
+      "group": "movie-mood-model-attested",
+      "category": "mood-date-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Tense, frightening movies released in the 1970s.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "movie:tmdb:578"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1970,
+            "to": 1979
+          }
+        ]
+      },
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require threat/fear and arousal at 2-3 of 3 after applying the independent 1970-1979 movie-release filter.",
+        "positiveKeys": [
+          "movie:tmdb:578"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:346648"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "threatFear",
+            "min": 2
+          },
+          {
+            "axis": "arousal",
+            "min": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-dark-korean-2010s",
+      "group": "movie-mood-model-attested",
+      "category": "mood-region-date-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Dark Korean thrillers released in the 2010s.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "acceptableKeys": [
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:346648",
+        "movie:tmdb:578"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2010,
+            "to": 2019
+          }
+        ]
+      },
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require dark valence and elevated arousal after independent Korean-origin and 2010-2019 release constraints.",
+        "positiveKeys": [
+          "movie:tmdb:496243"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:346648"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "max": 1
+          },
+          {
+            "axis": "arousal",
+            "min": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-comforting-british-2010s",
+      "group": "movie-mood-model-attested",
+      "category": "mood-region-date-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Comforting British family comedies released in the 2010s.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "acceptableKeys": [
+        "movie:tmdb:346648"
+      ],
+      "requireKeys": [
+        "movie:tmdb:346648"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:496243"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2010,
+            "to": 2019
+          }
+        ]
+      },
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require positive valence, warmth and low threat after independent British-origin, family-comedy and 2010-2019 release constraints.",
+        "positiveKeys": [
+          "movie:tmdb:346648"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:578",
+          "movie:tmdb:496243"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-director-spielberg",
+      "group": "movie-person-role-reviewed-source",
+      "category": "director-role",
+      "type": "minimum",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies directed by Steven Spielberg.",
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "minMovies": 3,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "acceptableKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601",
+        "movie:tmdb:329"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601",
+        "movie:tmdb:329"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:105"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-director-spielberg-1980s",
+      "group": "movie-person-role-reviewed-source",
+      "category": "director-date-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies directed by Steven Spielberg and released in the 1980s.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "acceptableKeys": [
+        "movie:tmdb:601"
+      ],
+      "requireKeys": [
+        "movie:tmdb:601"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:105",
+        "movie:tmdb:578",
+        "movie:tmdb:329"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1980,
+            "to": 1989
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-director-spielberg-1990s",
+      "group": "movie-person-role-reviewed-source",
+      "category": "director-date-genre-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Science-fiction movies directed by Steven Spielberg and released in the 1990s.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "acceptableKeys": [
+        "movie:tmdb:329"
+      ],
+      "requireKeys": [
+        "movie:tmdb:329"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:105",
+        "movie:tmdb:578",
+        "movie:tmdb:601"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-director-spielberg-not-produced",
+      "group": "movie-person-role-reviewed-source",
+      "category": "director-role-exclusion",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Steven Spielberg-directed movies, not Back to the Future.",
+      "mustExclude": [
+        "Back to the Future"
+      ],
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "minMovies": 3,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "acceptableKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601",
+        "movie:tmdb:329"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601",
+        "movie:tmdb:329"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:105"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-director-zemeckis",
+      "group": "movie-person-role-reviewed-source",
+      "category": "director-role",
+      "type": "invariance",
+      "fixtureCase": "movie-reviewed",
+      "description": "A movie channel directed by Robert Zemeckis.",
+      "minGrounded": 2,
+      "minLineup": 2,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "acceptableKeys": [
+        "movie:tmdb:105",
+        "movie:tmdb:13"
+      ],
+      "requireKeys": [
+        "movie:tmdb:105",
+        "movie:tmdb:13"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601",
+        "movie:tmdb:329"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-director-zemeckis-1980s",
+      "group": "movie-person-role-reviewed-source",
+      "category": "director-date-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Robert Zemeckis movies released in the eighties.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "acceptableKeys": [
+        "movie:tmdb:105"
+      ],
+      "requireKeys": [
+        "movie:tmdb:105"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:13"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1980,
+            "to": 1989
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-cast-tom-hanks",
+      "group": "movie-person-role-reviewed-source",
+      "category": "cast-role",
+      "type": "minimum",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies starring Tom Hanks from the 1990s.",
+      "minGrounded": 2,
+      "minLineup": 1,
+      "minAcquisitions": 1,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "cast",
+      "acceptableKeys": [
+        "movie:tmdb:13",
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:13",
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:105"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-cast-tom-hanks-animation",
+      "group": "movie-person-role-reviewed-source",
+      "category": "cast-genre-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Animated movies featuring Tom Hanks.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "cast",
+      "acceptableKeys": [
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:13"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-people-hanks-zemeckis",
+      "group": "movie-person-role-reviewed-source",
+      "category": "cast-director-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies starring Tom Hanks and directed by Robert Zemeckis.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "people",
+      "acceptableKeys": [
+        "movie:tmdb:13"
+      ],
+      "requireKeys": [
+        "movie:tmdb:13"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:105",
+        "movie:tmdb:862"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-director-spielberg-pg",
+      "group": "movie-audience-synthetic-control",
+      "category": "director-audience-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies directed by Steven Spielberg, capped at PG.",
+      "minGrounded": 2,
+      "minLineup": 2,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "expectCeiling": "PG",
+      "forbidRatingsAbove": "PG",
+      "audienceAuthority": "synthetic",
+      "acceptableKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:329",
+        "movie:tmdb:105"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-epoch-1950s",
+      "group": "movie-epoch-reviewed-source",
+      "category": "movie-release-decade",
+      "type": "invariance",
+      "fixtureCase": "movie-reviewed",
+      "description": "Musical comedies released in the 1950s.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:872"
+      ],
+      "requireKeys": [
+        "movie:tmdb:872"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:289",
+        "movie:tmdb:62"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1950,
+            "to": 1959
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-epoch-1960s",
+      "group": "movie-epoch-reviewed-source",
+      "category": "movie-release-decade",
+      "type": "invariance",
+      "fixtureCase": "movie-reviewed",
+      "description": "Science-fiction films released in the sixties.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:62"
+      ],
+      "requireKeys": [
+        "movie:tmdb:62"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:601",
+        "movie:tmdb:105",
+        "movie:tmdb:329"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1960,
+            "to": 1969
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-epoch-1980s",
+      "group": "movie-epoch-reviewed-source",
+      "category": "movie-release-decade",
+      "type": "invariance",
+      "fixtureCase": "movie-reviewed",
+      "description": "Funny science-fiction adventures released in the eighties.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:105"
+      ],
+      "requireKeys": [
+        "movie:tmdb:105"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:601",
+        "movie:tmdb:329"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1980,
+            "to": 1989
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-epoch-inclusive",
+      "group": "movie-epoch-reviewed-source",
+      "category": "inclusive-release-boundary",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies released from 1993 through 1995.",
+      "minGrounded": 3,
+      "minLineup": 1,
+      "minAcquisitions": 2,
+      "minMovies": 3,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:329",
+        "movie:tmdb:13",
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:329",
+        "movie:tmdb:13",
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:105",
+        "movie:tmdb:194"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1993,
+            "to": 1995
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-epoch-disjoint",
+      "group": "movie-epoch-reviewed-source",
+      "category": "disjoint-release-intervals",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies released in the 1940s or the 2010s, not the decades between.",
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "minMovies": 3,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:289",
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:289",
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:872",
+        "movie:tmdb:62",
+        "movie:tmdb:578",
+        "movie:tmdb:601",
+        "movie:tmdb:105",
+        "movie:tmdb:329",
+        "movie:tmdb:13",
+        "movie:tmdb:862",
+        "movie:tmdb:194",
+        "movie:tmdb:129"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1940,
+            "to": 1949
+          },
+          {
+            "from": 2010,
+            "to": 2019
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-epoch-before-1970",
+      "group": "movie-epoch-reviewed-source",
+      "category": "exclusive-release-boundary",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies released before 1970.",
+      "minGrounded": 3,
+      "minLineup": 2,
+      "minAcquisitions": 1,
+      "minMovies": 3,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:289",
+        "movie:tmdb:872",
+        "movie:tmdb:62"
+      ],
+      "requireKeys": [
+        "movie:tmdb:289",
+        "movie:tmdb:872",
+        "movie:tmdb:62"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1900,
+            "to": 1969
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-epoch-2000s-international",
+      "group": "movie-epoch-reviewed-source",
+      "category": "release-origin-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "International movies released in the 2000s.",
+      "minGrounded": 2,
+      "minLineup": 1,
+      "minAcquisitions": 1,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:129"
+      ],
+      "requireKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:129"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2000,
+            "to": 2009
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-epoch-2010s-international",
+      "group": "movie-epoch-reviewed-source",
+      "category": "release-origin-intersection",
+      "type": "invariance",
+      "fixtureCase": "movie-reviewed",
+      "description": "International films from the 2010s.",
+      "minGrounded": 2,
+      "minLineup": 1,
+      "minAcquisitions": 1,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:129"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2010,
+            "to": 2019
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-epoch-after-2000",
+      "group": "movie-epoch-reviewed-source",
+      "category": "exclusive-release-boundary",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies released after 2000.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "minMovies": 4,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:129",
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:129",
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:862"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2001,
+            "to": 2099
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-epoch-1990s-not-1980s",
+      "group": "movie-epoch-reviewed-source",
+      "category": "release-decade-exclusion",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies released in the 1990s, not the 1980s.",
+      "minGrounded": 3,
+      "minLineup": 1,
+      "minAcquisitions": 2,
+      "minMovies": 3,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:329",
+        "movie:tmdb:13",
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:329",
+        "movie:tmdb:13",
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:601",
+        "movie:tmdb:105"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-language-french",
+      "group": "movie-region-language-reviewed-source",
+      "category": "language-genre-date-intersection",
+      "type": "minimum",
+      "fixtureCase": "movie-reviewed",
+      "description": "French-language romantic comedies released in the 2000s.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:194"
+      ],
+      "requireKeys": [
+        "movie:tmdb:194"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:129",
+        "movie:tmdb:496243"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2000,
+            "to": 2009
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-region-south-korean",
+      "group": "movie-region-language-reviewed-source",
+      "category": "origin-genre-date-intersection",
+      "type": "minimum",
+      "fixtureCase": "movie-reviewed",
+      "description": "South Korean thrillers released in the 2010s.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:346648"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2010,
+            "to": 2019
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-refine-add",
+      "group": "movie-refinement-reviewed-source",
+      "category": "retain-and-add",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "A Steven Spielberg movie channel.",
+      "refineText": "Keep Jaws and add E.T. the Extra-Terrestrial.",
+      "currentLineup": [
+        {
+          "name": "Jaws",
+          "year": 1975,
+          "key": "movie:tmdb:578"
+        },
+        {
+          "name": "Jurassic Park",
+          "year": 1993,
+          "key": "movie:tmdb:329"
+        }
+      ],
+      "minGrounded": 2,
+      "minLineup": 2,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "acceptableKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:105"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-refine-remove",
+      "group": "movie-refinement-reviewed-source",
+      "category": "retain-and-remove",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "International movies from the 2000s.",
+      "refineText": "Keep Amélie and remove Spirited Away.",
+      "currentLineup": [
+        {
+          "name": "Amélie",
+          "year": 2001,
+          "key": "movie:tmdb:194"
+        },
+        {
+          "name": "Spirited Away",
+          "year": 2001,
+          "key": "movie:tmdb:129"
+        }
+      ],
+      "mustExclude": [
+        "Spirited Away"
+      ],
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:194"
+      ],
+      "requireKeys": [
+        "movie:tmdb:194"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:129"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2000,
+            "to": 2009
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-audience-pg-or-lower",
+      "group": "movie-audience-mpa-reviewed-source",
+      "category": "country-audience-ceiling",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "U.S. movies with nothing above PG.",
+      "minGrounded": 2,
+      "minLineup": 1,
+      "minAcquisitions": 1,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectCeiling": "PG",
+      "forbidRatingsAbove": "PG",
+      "audienceAuthority": "US-MPA",
+      "acceptableKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:329"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-audience-g-animated-1990s",
+      "group": "movie-audience-mpa-reviewed-source",
+      "category": "release-genre-country-audience-thin",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "G-rated U.S. animated movies released in the 1990s.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "expectCeiling": "G",
+      "forbidRatingsAbove": "G",
+      "audienceAuthority": "US-MPA",
+      "acceptableKeys": [
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:329",
+        "movie:tmdb:13"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-audience-spielberg-pg-1970s",
+      "group": "movie-audience-mpa-reviewed-source",
+      "category": "director-release-audience-thin",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies directed by Steven Spielberg in the 1970s, with nothing above PG.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "expectCeiling": "PG",
+      "forbidRatingsAbove": "PG",
+      "audienceAuthority": "US-MPA",
+      "acceptableKeys": [
+        "movie:tmdb:578"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:329"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1970,
+            "to": 1979
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-exclude-jurassic",
+      "group": "movie-title-polarity-reviewed-source",
+      "category": "director-single-exclusion",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies directed by Steven Spielberg, but not Jurassic Park.",
+      "mustExclude": [
+        "Jurassic Park"
+      ],
+      "minGrounded": 2,
+      "minLineup": 2,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "acceptableKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:601"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:329",
+        "movie:tmdb:105"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-exclude-spielberg-two",
+      "group": "movie-title-polarity-reviewed-source",
+      "category": "director-multiple-exclusions-thin",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Steven Spielberg movies, excluding E.T. the Extra-Terrestrial and Jurassic Park.",
+      "mustExclude": [
+        "E.T. the Extra-Terrestrial",
+        "Jurassic Park"
+      ],
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "acceptableKeys": [
+        "movie:tmdb:578"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:601",
+        "movie:tmdb:329",
+        "movie:tmdb:105"
+      ],
+      "noDates": true
+    },
+    {
+      "id": "exp-movie-exclude-toy-story",
+      "group": "movie-title-polarity-reviewed-source",
+      "category": "cast-include-exclude-thin",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Tom Hanks movies from the 1990s, especially Forrest Gump, but not Toy Story.",
+      "mustInclude": [
+        "Forrest Gump"
+      ],
+      "mustExclude": [
+        "Toy Story"
+      ],
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "cast",
+      "acceptableKeys": [
+        "movie:tmdb:13"
+      ],
+      "requireKeys": [
+        "movie:tmdb:13"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:862",
+        "movie:tmdb:105"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-exclude-modern-two",
+      "group": "movie-title-polarity-reviewed-source",
+      "category": "release-multiple-exclusions",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies released after 2000, but leave out Paddington 2 and Parasite.",
+      "mustExclude": [
+        "Paddington 2",
+        "Parasite"
+      ],
+      "minGrounded": 2,
+      "minLineup": 1,
+      "minAcquisitions": 1,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "acceptableKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:129"
+      ],
+      "requireKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:129"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2001,
+            "to": 2099
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-thin-library-2010s",
+      "group": "movie-thin-result-reviewed-source",
+      "category": "library-only-thin-result",
+      "type": "minimum",
+      "fixtureCase": "movie-reviewed",
+      "description": "International movies from the 2010s that are already in my library. Do not add anything new.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "acceptableKeys": [
+        "movie:tmdb:346648"
+      ],
+      "requireKeys": [
+        "movie:tmdb:346648"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:496243"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2010,
+            "to": 2019
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-thin-acquisition-korean",
+      "group": "movie-thin-result-reviewed-source",
+      "category": "acquisition-only-thin-result",
+      "type": "minimum",
+      "fixtureCase": "movie-reviewed",
+      "description": "A South Korean thriller from the 2010s that I do not own yet.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "acceptableKeys": [
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:346648"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 2010,
+            "to": 2019
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-audience-empty-excluded-toy-story",
+      "group": "movie-audience-mpa-reviewed-source",
+      "category": "release-genre-country-audience-exclusion-empty",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "G-rated U.S. animated movies released in the 1990s, but not Toy Story.",
+      "mustExclude": [
+        "Toy Story"
+      ],
+      "minGrounded": 0,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "genre",
+      "expectCeiling": "G",
+      "forbidRatingsAbove": "G",
+      "audienceAuthority": "US-MPA",
+      "expectAbstention": true,
+      "acceptableKeys": [],
+      "forbidKeys": [
+        "movie:tmdb:862"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-audience-empty-spielberg-1990s",
+      "group": "movie-audience-mpa-reviewed-source",
+      "category": "director-release-audience-empty",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Movies directed by Steven Spielberg in the 1990s, with nothing above PG.",
+      "minGrounded": 0,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "creator",
+      "expectCeiling": "PG",
+      "forbidRatingsAbove": "PG",
+      "audienceAuthority": "US-MPA",
+      "expectAbstention": true,
+      "acceptableKeys": [],
+      "forbidKeys": [
+        "movie:tmdb:329"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-warm-animated",
+      "group": "movie-mood-operational-model-attested",
+      "category": "animation-tone",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Warm animated movies with a playful sense of humor.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:129"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require positive valence and clear comedic warmth with no more than mild threat; animation alone supplies no mood credit.",
+        "positiveKeys": [
+          "movie:tmdb:862"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:129"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-intense-adventure",
+      "group": "movie-mood-operational-model-attested",
+      "category": "intense-threat",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Intense, frightening adventures that keep the pressure high.",
+      "minGrounded": 2,
+      "minLineup": 1,
+      "minAcquisitions": 1,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:329"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:329"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:346648",
+        "movie:tmdb:862",
+        "movie:tmdb:129"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require both intense arousal and severe or sustained threat; adventure or family genre labels cannot substitute.",
+        "positiveKeys": [
+          "movie:tmdb:578",
+          "movie:tmdb:329"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:346648",
+          "movie:tmdb:862",
+          "movie:tmdb:129"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "arousal",
+            "min": 3
+          },
+          {
+            "axis": "threatFear",
+            "min": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-low-key-comedy",
+      "group": "movie-mood-operational-model-attested",
+      "category": "low-key-warmth",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Low-key, warm comedies without much danger.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:194"
+      ],
+      "requireKeys": [
+        "movie:tmdb:194"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:872",
+        "movie:tmdb:862",
+        "movie:tmdb:346648",
+        "movie:tmdb:496243"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require positive valence, clear warmth, low arousal and negligible or mild threat; comedy genre alone is insufficient.",
+        "positiveKeys": [
+          "movie:tmdb:194"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:872",
+          "movie:tmdb:862",
+          "movie:tmdb:346648",
+          "movie:tmdb:496243"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 2
+          },
+          {
+            "axis": "arousal",
+            "max": 1
+          },
+          {
+            "axis": "threatFear",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-dark-comic-thriller",
+      "group": "movie-mood-operational-model-attested",
+      "category": "dark-comic-pressure",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Dark thrillers with real pressure and a wicked sense of humor.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:329"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require dark valence, elevated arousal and threat, plus at least some comic warmth; ordinary high-threat films fail without the comic direction.",
+        "positiveKeys": [
+          "movie:tmdb:496243"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:578",
+          "movie:tmdb:329"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "max": 1
+          },
+          {
+            "axis": "arousal",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-positive-adventure",
+      "group": "movie-mood-operational-model-attested",
+      "category": "positive-low-threat",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Positive adventures with some excitement but nothing frightening.",
+      "minGrounded": 4,
+      "minLineup": 2,
+      "minAcquisitions": 2,
+      "minMovies": 4,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:862",
+        "movie:tmdb:194",
+        "movie:tmdb:129",
+        "movie:tmdb:346648"
+      ],
+      "requireKeys": [
+        "movie:tmdb:862",
+        "movie:tmdb:194",
+        "movie:tmdb:129",
+        "movie:tmdb:346648"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:62",
+        "movie:tmdb:578",
+        "movie:tmdb:329",
+        "movie:tmdb:496243"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require positive valence, no more than elevated arousal and no more than mild threat.",
+        "positiveKeys": [
+          "movie:tmdb:862",
+          "movie:tmdb:194",
+          "movie:tmdb:129",
+          "movie:tmdb:346648"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:62",
+          "movie:tmdb:578",
+          "movie:tmdb:329",
+          "movie:tmdb:496243"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "arousal",
+            "max": 2
+          },
+          {
+            "axis": "threatFear",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-dark-high-pressure",
+      "group": "movie-mood-operational-model-attested",
+      "category": "dark-high-pressure",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Dark, high-pressure movies with substantial danger.",
+      "minGrounded": 4,
+      "minLineup": 1,
+      "minAcquisitions": 3,
+      "minMovies": 4,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:62",
+        "movie:tmdb:578",
+        "movie:tmdb:329",
+        "movie:tmdb:496243"
+      ],
+      "requireKeys": [
+        "movie:tmdb:62",
+        "movie:tmdb:578",
+        "movie:tmdb:329",
+        "movie:tmdb:496243"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:872",
+        "movie:tmdb:862",
+        "movie:tmdb:194",
+        "movie:tmdb:129",
+        "movie:tmdb:346648"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "Require dark valence, elevated or intense arousal, and substantial or severe threat.",
+        "positiveKeys": [
+          "movie:tmdb:62",
+          "movie:tmdb:578",
+          "movie:tmdb:329",
+          "movie:tmdb:496243"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:872",
+          "movie:tmdb:862",
+          "movie:tmdb:194",
+          "movie:tmdb:129",
+          "movie:tmdb:346648"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "max": 1
+          },
+          {
+            "axis": "arousal",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "min": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-warm-international",
+      "group": "movie-mood-operational-model-attested",
+      "category": "mood-region-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Warm, low-threat international movies.",
+      "minGrounded": 2,
+      "minLineup": 2,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:346648"
+      ],
+      "requireKeys": [
+        "movie:tmdb:194",
+        "movie:tmdb:346648"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:496243"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "After independent non-U.S. origin filtering, require positive valence, clear warmth and no more than mild threat.",
+        "positiveKeys": [
+          "movie:tmdb:194",
+          "movie:tmdb:346648"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:496243"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-positive-1990s",
+      "group": "movie-mood-operational-model-attested",
+      "category": "mood-date-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Positive, funny movies released in the 1990s.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:329"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      },
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "After the independent 1990-1999 release filter, require positive valence, clear warmth and no more than mild threat.",
+        "positiveKeys": [
+          "movie:tmdb:862"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:329"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-warm-two-epochs",
+      "group": "movie-mood-operational-model-attested",
+      "category": "mood-disjoint-date-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Warm, funny movies from the 1950s or 1990s.",
+      "minGrounded": 2,
+      "minLineup": 1,
+      "minAcquisitions": 1,
+      "minMovies": 2,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:872",
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:872",
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:329"
+      ],
+      "dates": {
+        "movieRelease": [
+          {
+            "from": 1950,
+            "to": 1959
+          },
+          {
+            "from": 1990,
+            "to": 1999
+          }
+        ]
+      },
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "After independent 1950s-or-1990s release filtering, require positive valence, clear warmth and no more than mild threat.",
+        "positiveKeys": [
+          "movie:tmdb:872",
+          "movie:tmdb:862"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:329"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-warm-pg",
+      "group": "movie-mood-operational-model-attested",
+      "category": "mood-audience-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Warm, low-threat U.S. movies rated PG or lower.",
+      "minGrounded": 1,
+      "minAcquisitions": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "expectCeiling": "PG",
+      "forbidRatingsAbove": "PG",
+      "audienceAuthority": "US-MPA",
+      "acceptableKeys": [
+        "movie:tmdb:862"
+      ],
+      "requireKeys": [
+        "movie:tmdb:862"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:578",
+        "movie:tmdb:329"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "After the independent U.S. MPA G-or-PG ceiling, require positive valence, clear warmth and no more than mild threat.",
+        "positiveKeys": [
+          "movie:tmdb:862"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:578"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "valence",
+            "min": 2
+          },
+          {
+            "axis": "comedicWarmth",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-movie-mood-tense-pg",
+      "group": "movie-mood-operational-model-attested",
+      "category": "mood-audience-intersection",
+      "type": "directional",
+      "fixtureCase": "movie-reviewed",
+      "description": "Tense, threatening U.S. movies rated PG or lower.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "expectCeiling": "PG",
+      "forbidRatingsAbove": "PG",
+      "audienceAuthority": "US-MPA",
+      "acceptableKeys": [
+        "movie:tmdb:578"
+      ],
+      "requireKeys": [
+        "movie:tmdb:578"
+      ],
+      "forbidKeys": [
+        "movie:tmdb:862",
+        "movie:tmdb:329"
+      ],
+      "noDates": true,
+      "subjectiveReview": {
+        "version": "movie-mood-ordinal-v2",
+        "status": "model-attested-development",
+        "rubric": "After the independent U.S. MPA G-or-PG ceiling, require elevated arousal and substantial threat.",
+        "positiveKeys": [
+          "movie:tmdb:578"
+        ],
+        "negativeKeys": [
+          "movie:tmdb:862"
+        ],
+        "authoritySha256": "fcd28d60b1604dd3fa1655d8f36ee0b3c6c4e882b2c41973faf8e89f0850264f",
+        "rules": [
+          {
+            "axis": "arousal",
+            "min": 2
+          },
+          {
+            "axis": "threatFear",
+            "min": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "exp-catalog-retry-recovery",
+      "group": "retrieval-fault-recovery",
+      "category": "catalog-retry",
+      "type": "minimum",
+      "fixtureCase": "catalog-retry-recovery",
+      "description": "Warm animated family movies after a temporary catalog problem.",
+      "minGrounded": 1,
+      "minLineup": 1,
+      "minMovies": 1,
+      "allowedMediaTypes": [
+        "movie"
+      ],
+      "expectedToolOperation": "keyword",
+      "acceptableKeys": [
+        "movie:tmdb:99001"
+      ],
+      "requireKeys": [
+        "movie:tmdb:99001"
+      ],
+      "noDates": true,
+      "recoveryExpected": true
+    }
+  ]
+}

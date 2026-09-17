@@ -430,6 +430,23 @@ authoritative and cannot be overridden by model scores. All 130 requests cross
 the production Suggester and Runner with independently authored replies, remain
 non-certifying, and use no live model judge.
 
+### Eighth executable expansion batch
+
+Issue [#1302](https://github.com/loomarr/loomarr/issues/1302) advances the
+cumulative development snapshot to `query-expansion-v8.json`. It retains all
+130 v7 requests byte-for-byte and adds one injected catalog-recovery case, for
+131 cumulative expansion requests and 203 requests when the immutable
+72-request pilot is counted separately.
+
+The v8 catalog fixture adds an explicit one-based occurrence to repeated
+responses for the same operation. In the new case, the first real `keyword`
+catalog boundary returns a timeout and the second returns a grounded result.
+Per-case operation counters reset before each production Suggester run. The
+Runner gives recovery credit only after observing both tool calls and a valid,
+grounded completion. This is hermetic development evidence for the actual
+failure path; it does not establish hosted-provider reliability and makes no
+paid inference claim.
+
 ### Remaining expansion checkpoints
 
 The source-review checkpoint is tracked in [#1278](https://github.com/loomarr/loomarr/issues/1278).

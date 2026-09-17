@@ -31,6 +31,8 @@ func TestQueryExpansionPriorArtifactsRemainImmutable(t *testing.T) {
 		"testdata/query-expansion-v5.json":                       "e231deba1436bfa07b50e2d2632adf8d1b1b0e0f46828bf3d4d5bb39e2f46166",
 		"testdata/query-expansion-catalog-v5.json":               "96bb8a7bf3c2011e6124e238f2b3d0e0bfa5788db9361dfc5ca9ee1cad285589",
 		"testdata/query-expansion-v6.json":                       "bf993d80eba5e99558cca85a32cbf1f2aa2437a9046c87321014fa4c8a8287a2",
+		"testdata/query-expansion-v7.json":                       "b918eefab7395c95fa026ba78c4b1d24653f5d1b9b0b93aba35990c63d77956d",
+		"testdata/query-expansion-catalog-v7.json":               "dfa2427a6e0dd848ac9cfe279e488cf827933c82836bdc24b814d7347d4ba150",
 		"testdata/query-mood-review-packet-v1.json":              "7247bc8930c5b7f5d16014c4c651bd8745eb6fe68a927936628f755fdc22f88f",
 		"testdata/query-mood-review-map-v1.json":                 "8ff878e16a3cbbb1b22c949feef50df59c7c561b738a8b44b857ab4d6346b433",
 		"testdata/query-mood-review-submission-qwen-v1.json":     "f506ba3ac2dff8e93565089b4cf173261e2a9c09b1f322299febba28995224a8",
@@ -74,6 +76,36 @@ func TestQueryExpansionReviewedTGIFUsesProductionSuggestion(t *testing.T) {
 	card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), cases[:1])
 	if !card.Results[0].Passed() || !card.Assessment.Passed || card.Certified || !card.DevelopmentCorpus {
 		t.Fatalf("reviewed TGIF development answer: %+v", card.Results[0])
+	}
+}
+
+func TestQueryExpansionRecoversAfterAnObservedCatalogFailure(t *testing.T) {
+	cases, err := QueryExpansionCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected []Case
+	for _, c := range cases {
+		if c.Name == "exp-catalog-retry-recovery" {
+			selected = append(selected, c)
+		}
+	}
+	if len(selected) != 1 {
+		t.Fatalf("catalog recovery cases = %d, want one", len(selected))
+	}
+	config, err := QueryExpansionRunnerConfig(RunnerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := testkit.NewLLM(queryExpansionRecoveryResponses()...)
+	generator, observer, err := NewEmbeddedQueryExpansionGenerator(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card := NewRunner(generator, config).WithObserver(observer).Run(context.Background(), selected)
+	result := card.Results[0]
+	if !result.Passed() || !result.RecoveryExpected || !result.RecoverySuccessful || result.ToolCalls != 2 {
+		t.Fatalf("catalog recovery result = %+v", result)
 	}
 }
 
@@ -232,8 +264,8 @@ func TestQueryExpansionOperationalMoodEvidenceIsBroadAndQuarantinesContinuity(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "query-expansion-development-v7" {
-		t.Fatalf("corpus version = %q, want v7", corpus.Version)
+	if corpus.Version != "query-expansion-development-v8" {
+		t.Fatalf("corpus version = %q, want v8", corpus.Version)
 	}
 	if corpus.MoodReviewAuthority.Path != "testdata/query-mood-review-authority-v2.json" {
 		t.Fatalf("mood authority = %+v", corpus.MoodReviewAuthority)
@@ -815,8 +847,8 @@ func TestQueryExpansionEveryAuthoredRequestUsesProductionSuggestion(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(corpus.Cases) != 130 {
-		t.Fatalf("cumulative executable corpus has %d requests, want 130", len(corpus.Cases))
+	if len(corpus.Cases) != 131 {
+		t.Fatalf("cumulative executable corpus has %d requests, want 131", len(corpus.Cases))
 	}
 	cases, err := QueryExpansionCases()
 	if err != nil {
@@ -859,6 +891,9 @@ func TestQueryExpansionEveryAuthoredRequestUsesProductionSuggestion(t *testing.T
 // to locate the exact wire-protocol date span.
 func queryExpansionResponses(t *testing.T, c QueryPilotCase) []llm.Response {
 	t.Helper()
+	if c.RecoveryExpected {
+		return queryExpansionRecoveryResponses()
+	}
 	if c.FixtureCase == "mcu-reviewed" {
 		return queryExpansionMCUResponses(t, c)
 	}
@@ -929,6 +964,18 @@ func queryExpansionResponses(t *testing.T, c QueryPilotCase) []llm.Response {
 		t.Fatal(err)
 	}
 	return []llm.Response{testkit.ToolCallResponse("catalog_search", args), testkit.FinalResponse(string(final))}
+}
+
+func queryExpansionRecoveryResponses() []llm.Response {
+	args := map[string]any{
+		"media_type": "movie", "keywords": []any{"warm", "animated", "family"},
+		"dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
+	}
+	return []llm.Response{
+		testkit.ToolCallResponse("catalog_search", args),
+		testkit.ToolCallResponse("catalog_search", args),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:99001"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+	}
 }
 
 func queryExpansionMovieResponses(t *testing.T, c QueryPilotCase) []llm.Response {
