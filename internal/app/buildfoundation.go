@@ -139,6 +139,10 @@ func buildFoundation(
 		storagePolicy := func(domain storagegovernor.Domain) storagegovernor.Policy {
 			switch domain {
 			case storagegovernor.DomainFiller:
+				budget := result.set.intv("filler.storage.library_budget_gb")
+				if budget > 0 {
+					return storagegovernor.Policy{SoftBudgetBytes: int64(budget) * storagegovernor.GiB}
+				}
 				return storagegovernor.Policy{AutomaticBudget: true}
 			case storagegovernor.DomainPrepared:
 				return storagegovernor.Policy{SoftBudgetBytes: preparedBudgetBytes(result.set.intv("playout.prepared_budget_gb"))}

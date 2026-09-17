@@ -1,7 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
-import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
+import { formatRelative, pluralize } from "@loomarr/core/format";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -116,14 +116,13 @@ const FillerPage = ({ tab, settingsSection }: FillerPageProps) => {
 
         {pool && tab === "library" ? <PoolHealth pool={pool} /> : null}
 
-        {watch?.autoFetch?.stoppedBy && tab === "library" ? (
+        {watch?.autoFetch?.stoppedBy === "catalog" && tab === "library" ? (
           <Card className="flex flex-wrap items-center gap-3 border-caution/40 bg-caution/5 p-4">
             <div className="min-w-0 flex-1">
               <p className="font-medium text-sm">Automatic fetching is paused</p>
               <p className="mt-0.5 text-muted-foreground text-sm">
-                {watch.autoFetch.stoppedBy === "catalog"
-                  ? `${watch.autoFetch.catalogClips.toLocaleString()} of ${(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use.`
-                  : `${formatBytes(watch.autoFetch.diskBytes ?? 0)} of ${formatBytes(watch.autoFetch.maxDiskBytes ?? 0)} filler storage is in use.`}{" "}
+                {watch.autoFetch.catalogClips.toLocaleString()} of{" "}
+                {(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use.{" "}
                 You can still add clips yourself. Remove clips you no longer want or raise this limit to
                 restart automatic downloads.
               </p>

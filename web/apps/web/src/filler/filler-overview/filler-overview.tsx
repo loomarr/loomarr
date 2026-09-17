@@ -49,12 +49,27 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
         to: "/filler/settings/$section",
         section: "storage",
       };
-    case "free_disk_capacity":
+    case "free_disposable_space":
       return {
-        title: "Make room for more filler",
+        title: "This drive needs room",
         description:
-          "Automatic sourcing paused at its storage limit. Free space or raise the limit to resume it.",
-        label: "Review limits",
+          "Loomarr paused new filler before it used space kept for this device. Remove clips or other files to continue.",
+        label: "Browse library",
+        to: "/filler/library",
+      };
+    case "choose_another_folder":
+      return {
+        title: "Loomarr cannot check this drive",
+        description: "Choose a filler folder on a drive whose free space Loomarr can measure safely.",
+        label: "Choose folder",
+        to: "/filler/settings/$section",
+        section: "folders",
+      };
+    case "change_storage_limit":
+      return {
+        title: "Filler reached its allowance",
+        description: "Remove clips or give the filler library more room to resume automatic sourcing.",
+        label: "Review storage",
         to: "/filler/settings/$section",
         section: "storage",
       };

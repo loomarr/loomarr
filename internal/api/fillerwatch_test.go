@@ -97,8 +97,6 @@ type watchBody struct {
 		StoppedBy    string
 		CatalogClips int
 		MaxCatalog   int
-		DiskBytes    int64
-		MaxDiskBytes int64
 	} `json:"autoFetch"`
 }
 
@@ -116,7 +114,7 @@ func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
 	srv, _, ff := newFillerWatchServer(t)
 	ff.fetchStatus = filler.FetchStatus{
 		Enabled: true, StoppedBy: "catalog",
-		CatalogClips: 2000, MaxCatalog: 2000, DiskBytes: 3 << 30, MaxDiskBytes: 20 << 30,
+		CatalogClips: 2000, MaxCatalog: 2000,
 	}
 
 	body, code := getWatch(t, srv.URL, memberToken)

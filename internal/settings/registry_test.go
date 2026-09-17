@@ -261,6 +261,26 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 	if perCheck.Advanced {
 		t.Error("per-source download count is hidden under Advanced")
 	}
+	storageAllowance, ok := r.Get("filler.storage.library_budget_gb")
+	if !ok {
+		t.Fatal("filler.storage.library_budget_gb not declared")
+	}
+	if storageAllowance.Default != 0 || storageAllowance.Advanced {
+		t.Errorf("filler storage allowance = default %v advanced %v, want visible automatic default", storageAllowance.Default, storageAllowance.Advanced)
+	}
+	for _, valid := range []string{"0", "1", "512"} {
+		if _, err := storageAllowance.parse(valid); err != nil {
+			t.Errorf("filler storage allowance rejected %q: %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{"-1", "1.5", "automatic"} {
+		if _, err := storageAllowance.parse(invalid); err == nil {
+			t.Errorf("filler storage allowance accepted %q", invalid)
+		}
+	}
+	if _, ok := r.Get("filler.fetch.max_disk_gb"); ok { // retired-ok: absence assertion
+		t.Error("retired fetch-only disk ceiling is still declared")
+	}
 
 	for _, key := range []string{"filler.dir", "filler.watch_dir", "ingest.ytdlp_path", "ingest.ffmpeg_path", "ingest.whisper_path", "ingest.whisper_model", "filler.language_model"} {
 		s, ok := r.Get(key)

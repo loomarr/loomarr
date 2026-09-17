@@ -934,9 +934,9 @@ func declared() []Setting {
 			Doc: "Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand.",
 		},
 		{
-			Key: "filler.fetch.max_disk_gb", Label: "Automatic-download storage limit (GB)", EnvVar: "FILLER_FETCH_MAX_DISK_GB", Group: GroupFiller,
-			Kind: KindInt, Default: 20, Advanced: true, Validate: positiveLimit,
-			Doc: "Stop fetching automatically once the filler folder reaches this size in GB.",
+			Key: "filler.storage.library_budget_gb", Label: "Filler storage allowance", EnvVar: "FILLER_STORAGE_LIBRARY_BUDGET_GB", Group: GroupFiller,
+			Kind: KindInt, Default: 0, Validate: nonNegativeWholeNumber,
+			Doc: "How much space Loomarr may use for filler, in GiB. Leave at 0 to choose a safe allowance automatically. Loomarr always keeps a protected amount of free space for the rest of the system.",
 		},
 		{
 			Key: "filler.incoming.ready_window", Label: "Keep ready clips in Incoming", EnvVar: "FILLER_INCOMING_READY_WINDOW", Group: GroupFiller,

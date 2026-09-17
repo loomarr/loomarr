@@ -16,6 +16,12 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	ff.readiness = filler.ProjectReadiness(filler.ReadinessInput{
 		Fetch: filler.FetchStatus{Enabled: true, CatalogClips: 12, MaxCatalog: 500},
+		Storage: filler.StorageStatus{
+			TotalBytes: 500 << 30, FreeBytes: 200 << 30, ManagedBytes: 2 << 30,
+			ReservedBytes: 1 << 20, FilesystemReservedBytes: 2 << 20,
+			SoftBudgetBytes: 20 << 30, HardReserveBytes: 10 << 30, AvailableBytes: 18 << 30,
+			Automatic: true,
+		},
 		Pipeline: filler.PipelineOverview{
 			Runnable: 2, NeedsDecision: 3, Ready: 9, Complete: 2, Rejected: 4, Recoverable: 1,
 		},
@@ -54,6 +60,11 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 	if body.Pipeline.NeedsDecision != 3 || body.Pipeline.Ready != 9 || body.Pipeline.Complete != 2 ||
 		body.Pipeline.Rejected != 4 || body.Pipeline.Recoverable != 1 {
 		t.Fatalf("pipeline ownership collapsed: %+v", body.Pipeline)
+	}
+	if !body.Storage.Automatic || body.Storage.ManagedBytes != 2<<30 ||
+		body.Storage.ReservedBytes != 1<<20 || body.Storage.FilesystemReservedBytes != 2<<20 ||
+		body.Storage.SoftBudgetBytes != 20<<30 || body.Storage.AvailableBytes != 18<<30 {
+		t.Fatalf("storage projection = %+v", body.Storage)
 	}
 	if len(body.Pool.Channels) != 1 || body.Pool.Channels[0].DurationMs != 180_000 || body.Pool.Channels[0].Brands != 4 {
 		t.Fatalf("channel coverage = %+v, want duration and variety", body.Pool.Channels)

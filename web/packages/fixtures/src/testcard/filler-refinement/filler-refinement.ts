@@ -57,7 +57,10 @@ const fillerSetting = (
   kind,
   advanced,
   group: "filler",
-  owner: key.includes("max_catalog") || key.includes("max_disk") ? "filler.storage" : "filler.downloads",
+  owner:
+    key.includes("max_catalog") || key.startsWith("filler.storage.")
+      ? "filler.storage"
+      : "filler.downloads",
   doc: "",
   provenance: "default",
   apply: "live",
@@ -70,7 +73,7 @@ const fillerRefinementSettings: SettingsListOutputBody = {
     fillerSetting("filler.fetch.every", "Check frequency", "6h", "duration"),
     fillerSetting("filler.fetch.max_per_run", "New clips", "10", "int"),
     fillerSetting("filler.fetch.max_catalog_clips", "Catalog limit", "500", "int", true),
-    fillerSetting("filler.fetch.max_disk_gb", "Storage limit", "20", "int", true),
+    fillerSetting("filler.storage.library_budget_gb", "Filler storage allowance", "0", "int"),
   ],
 };
 

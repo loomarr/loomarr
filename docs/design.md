@@ -4587,7 +4587,7 @@ a channel URL; it does not follow recommendations or crawl beyond the typed quer
 suggestion is still not authorization to enumerate that channel on a schedule: only the separate
 registration command grants that authority. Enumeration downloads no media and
 is capped before its per-item URLs enter the ordinary ingest path. Both partners then share the
-same per-source limit, catalog and disk ceilings, acquisition record, held lifecycle, provenance
+same per-source and catalog bounds, shared storage governor, acquisition record, held lifecycle, provenance
 sidecar, cleanup pipeline, and admission authority. Provider-declared licence metadata is passive
 provenance: Loomarr records it when supplied and treats absence as “not provided,” but it never
 ranks, filters, holds, rejects, or admits an item. The source URL, uploader metadata, acquisition id,
@@ -4601,10 +4601,11 @@ the kind through enumeration and acquisition. URL inference remains only for a o
 typed directly, where no registered source policy exists.
 
 The report is a **live measurement**, not a remembered fetch result: the filler status read counts
-the tracked catalog (including held clips already on disk) and measures the storage root against the same configured bounds the fetcher
-uses. The UI names the bound and its current/maximum values. This makes "nothing new arrived" an
-answerable state even after restart, and makes the warning disappear as soon as curation or a
-settings change creates room.
+the tracked catalog (including held clips already on disk), while the shared governor measures the
+managed roots and real filesystem against the current soft allowance and hard host reserve. The UI
+receives that complete server-owned projection and its typed pause reason. This makes “nothing new
+arrived” answerable after restart and makes the warning disappear as soon as curation, free space,
+or a settings change creates room.
 
 ### Storage is reserved before Loomarr writes
 
@@ -11761,7 +11762,7 @@ Notifications → Add provider**.
 | `FILLER_FETCH_EVERY` | `6h` (§10 V38b). How often each registered source is polled for new items. ⚠ **`0` disables auto-fetch entirely** — the escape hatch for an operator who wants acquisition to stay manual, and the value to reach for before disabling sources one by one. ⚠ **V38c: this is now the DEFAULT, not the only value** — a source may override it, and `0` on one row means *that* source never auto-fetches. Inherit is NULL, never 0 |
 | `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |
 | `FILLER_FETCH_MAX_CATALOG_CLIPS` | `2000` (§10 V38b). Auto-fetch stops when the catalog reaches this. ⚠ Manual queueing and approved pulls still work at the limit: a ceiling on what happens UNATTENDED is not a ceiling on what an operator may deliberately do |
-| `FILLER_STORAGE_LIBRARY_BUDGET_GB` | `0` (automatic) (§10, "Storage is reserved before Loomarr writes"). Soft allowance for Loomarr-managed filler media on its real filesystem: automatic means `min(10% of filesystem capacity, 20 GiB)`; a positive value is the operator's allowance. Hot-applies to new reservations. It never weakens the hard host reserve. The upgrade migration moves a verified stored `filler.fetch.max_disk_gb` value to `filler.storage.library_budget_gb` and removes the obsolete key; the old env name and runtime path are not retained. |
+| `FILLER_STORAGE_LIBRARY_BUDGET_GB` | `0` (automatic) (§10, "Storage is reserved before Loomarr writes"). Soft allowance for Loomarr-managed filler media on its real filesystem: automatic means `min(10% of filesystem capacity, 20 GiB)`; a positive value is the operator's allowance. Hot-applies to new reservations. It never weakens the hard host reserve. The upgrade migration moves a verified stored value from the retired fetch-only disk ceiling to `filler.storage.library_budget_gb` and removes that obsolete key; its old env name and runtime path are not retained. |
 | `FILLER_SOURCE_FOLDER_ENABLED` | `true` (§10 V35). The drop-folder's on/off switch. It is a setting rather than a row because the folder is **derived from configuration** — a remote collection's switch is a column on its own row. Disabling stops the catalog scan; ⚠ **it never removes clips already in the catalog**, and the enforcement lives in the syncer, not in the UI. ⚠ There is deliberately **no library equivalent**: nothing scans a media-server library for filler (§10), so the key would gate nothing |
 
 **Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (AGENTS.md do-nots). Full mechanics: `config-design.md`.

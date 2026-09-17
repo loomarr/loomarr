@@ -97,14 +97,13 @@ const SETTINGS = [
     value: "https://loomarr.example.com",
   }),
   setting({
-    key: "filler.fetch.max_disk_gb",
-    label: "Automatic-download storage limit",
+    key: "filler.storage.library_budget_gb",
+    label: "Filler storage allowance",
     owner: "filler.storage",
-    envVar: "FILLER_FETCH_MAX_DISK_GB",
+    envVar: "FILLER_STORAGE_LIBRARY_BUDGET_GB",
     group: "filler",
     kind: "int",
-    value: "20",
-    advanced: true,
+    value: "0",
   }),
 ];
 
@@ -186,8 +185,8 @@ describe("Settings", () => {
     expect(screen.getByRole("heading", { name: "Filler" })).toBeInTheDocument();
 
     const finder = screen.getByRole("searchbox", { name: "Find a setting" });
-    await userEvent.type(finder, "FILLER_FETCH_MAX_DISK_GB");
-    const match = await screen.findByRole("link", { name: /Automatic-download storage limit/ });
+    await userEvent.type(finder, "FILLER_STORAGE_LIBRARY_BUDGET_GB");
+    const match = await screen.findByRole("link", { name: /Filler storage allowance/ });
     expect(match).toHaveAttribute("href", "/filler/settings/storage");
 
     await userEvent.type(finder, "{ArrowDown}");

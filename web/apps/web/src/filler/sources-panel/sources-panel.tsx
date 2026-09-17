@@ -91,9 +91,6 @@ const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutpu
     result.skipped > 0
       ? ` ${result.skipped} ${result.skipped === 1 ? "clip was" : "clips were"} already known and skipped.`
       : "";
-  if (result.stoppedBy === "disk") {
-    return `Couldn’t add clips from ${source.target} because filler storage is full.${limit}`;
-  }
   if (result.stoppedBy === "catalog") {
     return `Couldn’t add clips from ${source.target} because the clip limit is full.${limit}`;
   }

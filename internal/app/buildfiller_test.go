@@ -176,11 +176,9 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 			t.Fatal("an empty provider listing must not enqueue an ingest")
 			return "", nil
 		}),
-		"",
 		filler.FetchLimits{
 			MaxPerRun:       func() int { return 10 },
 			MaxCatalogClips: func() int { return 2000 },
-			MaxDiskGB:       func() int { return 0 },
 		},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	).WithClock(func() time.Time { return now })

@@ -92,11 +92,9 @@ type fillerWatchOutput struct {
 
 type FillerFetchStatusDTO struct {
 	Enabled      bool   `json:"enabled"`
-	StoppedBy    string `json:"stoppedBy,omitempty" enum:"catalog,disk"`
+	StoppedBy    string `json:"stoppedBy,omitempty" enum:"catalog"`
 	CatalogClips int    `json:"catalogClips"`
 	MaxCatalog   int    `json:"maxCatalog,omitempty"`
-	DiskBytes    int64  `json:"diskBytes,omitempty"`
-	MaxDiskBytes int64  `json:"maxDiskBytes,omitempty"`
 }
 
 type fillerFetchStatusService interface {
@@ -186,7 +184,6 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 			out.Body.AutoFetch = &FillerFetchStatusDTO{
 				Enabled: status.Enabled, StoppedBy: status.StoppedBy,
 				CatalogClips: status.CatalogClips, MaxCatalog: status.MaxCatalog,
-				DiskBytes: status.DiskBytes, MaxDiskBytes: status.MaxDiskBytes,
 			}
 		}
 	}

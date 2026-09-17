@@ -1,6 +1,8 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { FillerStorageStatusDTO } from "@loomarr/api/models/fillerStorageStatusDTO";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { unwrap } from "@loomarr/api/unwrap";
+import { formatBytes } from "@loomarr/core/format";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -65,6 +67,49 @@ const languageUnavailableReason = (entries: SettingEntry[]): string | undefined 
     return "Language filtering is off because FFmpeg is missing. Add it in Playback settings.";
   }
   return undefined;
+};
+
+const storagePauseMessage = (pausedBy?: FillerStorageStatusDTO["pausedBy"]): string | undefined => {
+  switch (pausedBy) {
+    case "library_limit":
+      return "New filler is paused because the library reached its allowance. Remove clips or increase it.";
+    case "host_reserve":
+      return "New filler is paused because this drive is running low. Free some space to continue.";
+    case "capacity_unavailable":
+    case "estimate_unknown":
+      return "Loomarr cannot safely check this folder's available space. Check the drive or choose another folder.";
+    default:
+      return undefined;
+  }
+};
+
+const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
+  if (!storage) {
+    return (
+      <p aria-live="polite" className="rounded-lg bg-muted/50 px-4 py-3 text-muted-foreground text-sm">
+        Checking this drive…
+      </p>
+    );
+  }
+  const pauseMessage = storagePauseMessage(storage.pausedBy);
+  return (
+    <div
+      className={
+        pauseMessage
+          ? "rounded-lg border border-caution/40 bg-caution/5 px-4 py-3 text-sm"
+          : "rounded-lg bg-muted/50 px-4 py-3 text-sm"
+      }
+    >
+      <p className="font-medium">
+        {storage.automatic ? "Automatic" : "Custom"} {formatBytes(storage.softBudgetBytes)} allowance
+      </p>
+      <p className="mt-1 text-muted-foreground">
+        {formatBytes(storage.managedBytes)} used · {formatBytes(storage.availableBytes)} available to Loomarr.
+        Loomarr keeps at least {formatBytes(storage.hardReserveBytes)} free for this device.
+      </p>
+      {pauseMessage ? <p className="mt-2 text-caution-foreground">{pauseMessage}</p> : null}
+    </div>
+  );
 };
 
 const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSection }) => {
@@ -172,7 +217,9 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
   const entries = useSettingsEntries();
   const languageReason = languageUnavailableReason(entries);
   const sourcesQuery = fillerApi.useListFillerSources({ query: { enabled: section === "downloads" } });
+  const readinessQuery = fillerApi.useFillerReadiness({ query: { enabled: section === "storage" } });
   const sources = unwrap(sourcesQuery.data, (body) => body.sources) ?? [];
+  const storage = unwrap(readinessQuery.data, (body) => body.storage);
   const blocks: (SettingsBlock & { section: FillerSettingsSection })[] = [
     {
       section: "folders",
@@ -229,10 +276,10 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
     {
       section: "storage",
       group: "filler",
-      title: "Storage limits",
-      description: "Stop automatic downloads before the filler library takes too much space.",
-      keys: ["filler.fetch.max_catalog_clips", "filler.fetch.max_disk_gb"],
-      initialAdvanced: true,
+      title: "Storage",
+      description: "Loomarr chooses a safe allowance automatically. Set your own only if you need to.",
+      keys: ["filler.storage.library_budget_gb", "filler.fetch.max_catalog_clips"],
+      footer: <StorageSummary storage={storage} />,
     },
     {
       section: "incoming",

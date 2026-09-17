@@ -68,15 +68,29 @@ type FillerAcquisitionRunDTO struct {
 
 type FillerReadinessDTO struct {
 	Ready       bool   `json:"ready"`
-	NextAction  string `json:"nextAction" enum:"none,enable_fetch,free_catalog_capacity,free_disk_capacity,retry_acquisition,retry_failed_work,review_incoming,add_filler,improve_channel_coverage"`
+	NextAction  string `json:"nextAction" enum:"none,enable_fetch,free_catalog_capacity,free_disposable_space,choose_another_folder,change_storage_limit,retry_acquisition,retry_failed_work,review_incoming,add_filler,improve_channel_coverage"`
 	ChannelID   string `json:"channelId,omitempty"`
 	ActionCount int    `json:"actionCount,omitempty"`
 
 	Fetch        FillerFetchStatusDTO        `json:"fetch"`
+	Storage      FillerStorageStatusDTO      `json:"storage"`
 	Pipeline     PipelineOverviewDTO         `json:"pipeline"`
 	Pool         PoolDTO                     `json:"pool"`
 	Acquisitions []FillerAcquisitionRunDTO   `json:"acquisitions"`
 	Repairs      AcquisitionRepairSummaryDTO `json:"repairs"`
+}
+
+type FillerStorageStatusDTO struct {
+	TotalBytes              int64  `json:"totalBytes"`
+	FreeBytes               int64  `json:"freeBytes"`
+	ManagedBytes            int64  `json:"managedBytes"`
+	ReservedBytes           int64  `json:"reservedBytes"`
+	FilesystemReservedBytes int64  `json:"filesystemReservedBytes"`
+	SoftBudgetBytes         int64  `json:"softBudgetBytes"`
+	HardReserveBytes        int64  `json:"hardReserveBytes"`
+	AvailableBytes          int64  `json:"availableBytes"`
+	Automatic               bool   `json:"automatic"`
+	PausedBy                string `json:"pausedBy,omitempty" enum:"library_limit,host_reserve,estimate_unknown,capacity_unavailable"`
 }
 
 type fillerReadinessOutput struct {
@@ -124,7 +138,14 @@ func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {
 		Fetch: FillerFetchStatusDTO{
 			Enabled: readiness.Fetch.Enabled, StoppedBy: readiness.Fetch.StoppedBy,
 			CatalogClips: readiness.Fetch.CatalogClips, MaxCatalog: readiness.Fetch.MaxCatalog,
-			DiskBytes: readiness.Fetch.DiskBytes, MaxDiskBytes: readiness.Fetch.MaxDiskBytes,
+		},
+		Storage: FillerStorageStatusDTO{
+			TotalBytes: readiness.Storage.TotalBytes, FreeBytes: readiness.Storage.FreeBytes,
+			ManagedBytes: readiness.Storage.ManagedBytes, ReservedBytes: readiness.Storage.ReservedBytes,
+			FilesystemReservedBytes: readiness.Storage.FilesystemReservedBytes,
+			SoftBudgetBytes:         readiness.Storage.SoftBudgetBytes, HardReserveBytes: readiness.Storage.HardReserveBytes,
+			AvailableBytes: readiness.Storage.AvailableBytes, Automatic: readiness.Storage.Automatic,
+			PausedBy: readiness.Storage.PausedBy,
 		},
 		Pipeline: pipelineOverviewDTO(readiness.Pipeline), Pool: poolDTO(readiness.Pool),
 		Acquisitions: runs,

@@ -114,6 +114,8 @@ func buildFillerSubsystem(
 			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
 		},
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
+		storage: storageGovernor, storagePath: layout.ClipDir(),
+		storageAutomatic: func() bool { return set.intv("filler.storage.library_budget_gb") == 0 },
 	}
 	if ytDlpPath != "" {
 		adapter.youtubeFinder = clipfetch.NewYouTubeSourceFinder(ytDlpPath)
@@ -163,11 +165,10 @@ func buildFillerSubsystem(
 				return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
 			},
 		},
-		sourceEnumerator, adapter, layout.ClipDir(),
+		sourceEnumerator, adapter,
 		filler.FetchLimits{
 			MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
 			MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
-			MaxDiskGB:       func() int { return set.intv("filler.fetch.max_disk_gb") },
 		}, log,
 	)
 	adapter.autoFetch = autoFetch

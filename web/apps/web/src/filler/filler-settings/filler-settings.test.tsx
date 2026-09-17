@@ -1,4 +1,8 @@
-import { getListFillerSourcesMockHandler, getSettingsListMockHandler } from "@loomarr/api/msw";
+import {
+  getFillerReadinessMockHandler,
+  getListFillerSourcesMockHandler,
+  getSettingsListMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -12,6 +16,36 @@ import { FillerSettings, FillerSettingsIndex } from "./filler-settings";
 const renderSettings = (section: FillerSettingsSection = "downloads") => {
   server.use(
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),
+    getFillerReadinessMockHandler({
+      ready: true,
+      nextAction: "none",
+      repairs: { count: 0 },
+      fetch: { enabled: true, catalogClips: 12 },
+      storage: {
+        automatic: true,
+        totalBytes: 500 * 1024 ** 3,
+        freeBytes: 200 * 1024 ** 3,
+        managedBytes: 2 * 1024 ** 3,
+        reservedBytes: 0,
+        filesystemReservedBytes: 0,
+        softBudgetBytes: 20 * 1024 ** 3,
+        hardReserveBytes: 10 * 1024 ** 3,
+        availableBytes: 18 * 1024 ** 3,
+      },
+      pipeline: {
+        runnable: 0,
+        scheduled: 0,
+        inProgress: 0,
+        needsDecision: 0,
+        recoverable: 0,
+        ready: 12,
+        complete: 0,
+        rejected: 0,
+        dismissed: 0,
+      },
+      pool: { clips: 12, breakBody: 10, eligible: 10, untagged: 0, channels: [] },
+      acquisitions: [],
+    }),
     getSettingsListMockHandler({
       features: { filler: true },
       settings: [
@@ -38,12 +72,12 @@ const renderSettings = (section: FillerSettingsSection = "downloads") => {
           advanced: true,
         }),
         setting({
-          key: "filler.fetch.max_disk_gb",
-          label: "Storage limit",
-          value: "20",
+          key: "filler.storage.library_budget_gb",
+          label: "Filler storage allowance",
+          value: "0",
           kind: "int",
           group: "filler",
-          advanced: true,
+          doc: "How much space Loomarr may use for filler. Leave at 0 to choose automatically.",
         }),
         setting({
           key: "filler.incoming.ready_window",
@@ -76,10 +110,13 @@ describe("focused Filler settings", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens the explicitly selected storage task, including its advanced fields", async () => {
+  it("shows automatic storage simply and keeps the catalog ceiling advanced", async () => {
     renderSettings("storage");
-    expect(await screen.findByRole("spinbutton", { name: "Catalog limit" })).toHaveValue(500);
-    expect(screen.getByRole("spinbutton", { name: "Storage limit" })).toHaveValue(20);
+    expect(await screen.findByRole("spinbutton", { name: "Filler storage allowance" })).toHaveValue(0);
+    expect(screen.getByText("Automatic 20.0 GB allowance")).toBeInTheDocument();
+    expect(screen.getByText(/2.0 GB used · 18.0 GB available to Loomarr/)).toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: "Catalog limit" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show advanced (1)" })).toBeInTheDocument();
     expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
   });
 

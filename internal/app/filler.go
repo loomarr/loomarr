@@ -727,7 +727,10 @@ type fillerServiceAdapter struct {
 	pipeline *filler.Pipeline
 	// autoFetch supplies the live limit status rendered by /v1/filler/watch. It is the same
 	// Fetcher the scheduler runs, so reporting and enforcement cannot drift.
-	autoFetch *filler.Fetcher
+	autoFetch        *filler.Fetcher
+	storage          *storagegovernor.Governor
+	storagePath      string
+	storageAutomatic func() bool
 }
 
 func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
@@ -822,8 +825,23 @@ func (a fillerServiceAdapter) Readiness(ctx context.Context) (filler.Readiness, 
 	if err != nil {
 		return filler.Readiness{}, err
 	}
+	storage := filler.StorageStatus{}
+	if a.storage != nil {
+		decision := a.storage.Snapshot(ctx, a.storagePath)
+		snapshot := decision.Snapshot
+		storage = filler.StorageStatus{
+			TotalBytes: snapshot.TotalBytes, FreeBytes: snapshot.FreeBytes,
+			ManagedBytes: snapshot.ManagedBytes, ReservedBytes: snapshot.ReservedBytes,
+			FilesystemReservedBytes: snapshot.FilesystemReservedBytes,
+			SoftBudgetBytes:         snapshot.SoftBudgetBytes, HardReserveBytes: snapshot.HardReserveBytes,
+			AvailableBytes: snapshot.AvailableBytes, PausedBy: string(snapshot.Reason),
+		}
+		if a.storageAutomatic != nil {
+			storage.Automatic = a.storageAutomatic()
+		}
+	}
 	return filler.ProjectReadiness(filler.ReadinessInput{
-		Fetch: fetch, Pipeline: pipeline, Pool: pool, Runs: runs, Repairs: repairs,
+		Fetch: fetch, Storage: storage, Pipeline: pipeline, Pool: pool, Runs: runs, Repairs: repairs,
 	}), nil
 }
 

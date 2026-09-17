@@ -172,6 +172,17 @@ const appHandlers = (): RequestHandler[] => [
     nextAction: "none",
     repairs: { count: 0 },
     fetch: { enabled: true, catalogClips: 0 },
+    storage: {
+      automatic: true,
+      totalBytes: 500 * 1024 ** 3,
+      freeBytes: 200 * 1024 ** 3,
+      managedBytes: 0,
+      reservedBytes: 0,
+      filesystemReservedBytes: 0,
+      softBudgetBytes: 20 * 1024 ** 3,
+      hardReserveBytes: 10 * 1024 ** 3,
+      availableBytes: 20 * 1024 ** 3,
+    },
     pipeline: {
       runnable: 0,
       inProgress: 0,
