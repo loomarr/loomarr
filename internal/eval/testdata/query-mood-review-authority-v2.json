@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v2",
+  "status": "model-attested-development",
+  "completeness": "partial-uncertain",
+  "packetSha256": "c9f4fb136ff450ea4516235972588f961022eec57a43b17a5301bdbd40df8872",
+  "privateMapSha256": "5b07ebe963f5b007d4c2fb87fdf4fa3a6ab7d99b9fe0bd555303084457af685b",
+  "submissionSha256": [
+    "efdf8bd4ddfd6b00ae656d5cd20885f96b66ecad8e59bf5e010b25f9dd6c32f4",
+    "05a9b9ce5eb5cf43294c698903a5dc3349b732af832776ccd65e0611a205fc11",
+    "47f54f921d513aa8c654e3a50d2a4882976fe225b53f2881c4a04c2cb8c30f7e"
+  ],
+  "decisions": [
+    {
+      "key": "movie:tmdb:872",
+      "scores": {
+        "arousal": 2,
+        "comedicWarmth": 3,
+        "narrativeContinuityDependence": 0,
+        "threatFear": 0,
+        "valence": 2
+      },
+      "uncertainAxes": [
+        "narrativeContinuityDependence"
+      ]
+    },
+    {
+      "key": "movie:tmdb:62",
+      "scores": {
+        "arousal": 2,
+        "comedicWarmth": 0,
+        "narrativeContinuityDependence": 0,
+        "threatFear": 2,
+        "valence": 1
+      },
+      "uncertainAxes": [
+        "narrativeContinuityDependence"
+      ]
+    },
+    {
+      "key": "movie:tmdb:578",
+      "scores": {
+        "arousal": 3,
+        "comedicWarmth": 0,
+        "narrativeContinuityDependence": 0,
+        "threatFear": 3,
+        "valence": 1
+      },
+      "uncertainAxes": [
+        "narrativeContinuityDependence"
+      ]
+    },
+    {
+      "key": "movie:tmdb:862",
+      "scores": {
+        "arousal": 2,
+        "comedicWarmth": 2,
+        "narrativeContinuityDependence": 0,
+        "threatFear": 1,
+        "valence": 2
+      },
+      "uncertainAxes": [
+        "narrativeContinuityDependence"
+      ]
+    },
+    {
+      "key": "movie:tmdb:329",
+      "scores": {
+        "arousal": 3,
+        "comedicWarmth": 0,
+        "narrativeContinuityDependence": 0,
+        "threatFear": 3,
+        "valence": 1
+      },
+      "uncertainAxes": [
+        "narrativeContinuityDependence"
+      ]
+    },
+    {
+      "key": "movie:tmdb:194",
+      "scores": {
+        "arousal": 1,
+        "comedicWarmth": 2,
+        "narrativeContinuityDependence": 0,
+        "threatFear": 0,
+        "valence": 2
+      },
+      "uncertainAxes": [
+        "narrativeContinuityDependence"
+      ]
+    },
+    {
+      "key": "movie:tmdb:129",
+      "scores": {
+        "arousal": 2,
+        "comedicWarmth": 1,
+        "narrativeContinuityDependence": 0,
+        "threatFear": 1,
+        "valence": 2
+      },
+      "uncertainAxes": [
+        "narrativeContinuityDependence"
+      ]
+    },
+    {
+      "key": "movie:tmdb:346648",
+      "scores": {
+        "arousal": 2,
+        "comedicWarmth": 2,
+        "narrativeContinuityDependence": 0,
+        "threatFear": 1,
+        "valence": 3
+      },
+      "uncertainAxes": [
+        "narrativeContinuityDependence"
+      ]
+    },
+    {
+      "key": "movie:tmdb:496243",
+      "scores": {
+        "arousal": 2,
+        "comedicWarmth": 1,
+        "narrativeContinuityDependence": 0,
+        "threatFear": 2,
+        "valence": 1
+      },
+      "uncertainAxes": [
+        "narrativeContinuityDependence"
+      ]
+    }
+  ],
+  "limitations": [
+    "reviewers saw display titles because the evidence is title-specific",
+    "model attestation is exposed development evidence, not human review, certification, qualification, or a sealed holdout",
+    "an explicitly authorized OpenRouter reviewer used a non-ZDR route for this public-only evidence packet; provider data collection was denied but temporary retention may occur"
+  ]
+}

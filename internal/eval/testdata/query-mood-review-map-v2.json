@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v2",
+  "packetId": "movie-mood-review-2026-09-16-b",
+  "packetSha256": "c9f4fb136ff450ea4516235972588f961022eec57a43b17a5301bdbd40df8872",
+  "entries": [
+    {"alias": "candidate-v2-a17c", "key": "movie:tmdb:872"},
+    {"alias": "candidate-v2-b402", "key": "movie:tmdb:62"},
+    {"alias": "candidate-v2-c8d1", "key": "movie:tmdb:578"},
+    {"alias": "candidate-v2-d593", "key": "movie:tmdb:862"},
+    {"alias": "candidate-v2-e06f", "key": "movie:tmdb:329"},
+    {"alias": "candidate-v2-f741", "key": "movie:tmdb:194"},
+    {"alias": "candidate-v2-g32a", "key": "movie:tmdb:129"},
+    {"alias": "candidate-v2-h9be", "key": "movie:tmdb:346648"},
+    {"alias": "candidate-v2-i251", "key": "movie:tmdb:496243"}
+  ]
+}

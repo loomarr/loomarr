@@ -24,12 +24,35 @@ const (
 	MoodReviewContractVersion      = "query-mood-model-review-v1"
 	MoodReviewRubricVersion        = "movie-mood-ordinal-v1"
 	MoodReviewPromptVersion        = "query-mood-blind-review-v1"
+	MoodReviewContractVersionV2    = "query-mood-model-review-v2"
+	MoodReviewRubricVersionV2      = "movie-mood-ordinal-v2"
+	MoodReviewPromptVersionV2      = "query-mood-blind-review-v2"
 	MoodReviewStatusModelAttested  = "model-attested-development"
 	MoodReviewCompletenessComplete = "complete"
 	MoodReviewCompletenessPartial  = "partial-uncertain"
 )
 
-var moodAxisNames = []string{"valence", "arousal", "threatFear", "comedicWarmth", "attentionalDemand"}
+type moodReviewRubric struct {
+	ContractVersion string
+	RubricVersion   string
+	PromptVersion   string
+	Axes            []string
+}
+
+var moodReviewRubrics = []moodReviewRubric{
+	{
+		ContractVersion: MoodReviewContractVersion,
+		RubricVersion:   MoodReviewRubricVersion,
+		PromptVersion:   MoodReviewPromptVersion,
+		Axes:            []string{"valence", "arousal", "threatFear", "comedicWarmth", "attentionalDemand"},
+	},
+	{
+		ContractVersion: MoodReviewContractVersionV2,
+		RubricVersion:   MoodReviewRubricVersionV2,
+		PromptVersion:   MoodReviewPromptVersionV2,
+		Axes:            []string{"valence", "arousal", "threatFear", "comedicWarmth", "narrativeContinuityDependence"},
+	},
+}
 
 // MoodReviewPacket is the complete model-visible contract. It deliberately has
 // no corpus keys, request text, expected polarity, ownership facts, or prior
@@ -48,12 +71,15 @@ type MoodReviewPacket struct {
 }
 
 type MoodReviewEvidence struct {
-	ID          string `json:"id"`
-	URL         string `json:"url"`
-	Observed    string `json:"observed"`
-	Summary     string `json:"summary"`
-	Uncertainty string `json:"uncertainty"`
-	SHA256      string `json:"sha256"`
+	ID              string   `json:"id"`
+	URL             string   `json:"url"`
+	Observed        string   `json:"observed"`
+	Summary         string   `json:"summary"`
+	Uncertainty     string   `json:"uncertainty"`
+	SourceAuthority string   `json:"sourceAuthority,omitempty"`
+	SourceRole      string   `json:"sourceRole,omitempty"`
+	SupportsAxes    []string `json:"supportsAxes,omitempty"`
+	SHA256          string   `json:"sha256"`
 }
 
 type MoodReviewCase struct {
@@ -127,13 +153,7 @@ type MoodReviewAssessment struct {
 	Rationale     string         `json:"rationale"`
 }
 
-type MoodAxisScores struct {
-	Valence           int `json:"valence"`
-	Arousal           int `json:"arousal"`
-	ThreatFear        int `json:"threatFear"`
-	ComedicWarmth     int `json:"comedicWarmth"`
-	AttentionalDemand int `json:"attentionalDemand"`
-}
+type MoodAxisScores map[string]int
 
 type MoodReviewAuthority struct {
 	SchemaVersion    int                  `json:"schemaVersion"`
@@ -166,16 +186,7 @@ type MoodReviewRunConfig struct {
 	Now                      func() time.Time
 }
 
-const moodReviewSystemPrompt = `You are an independent evidence reviewer. Assess only the title-specific evidence in the supplied blinded packet. Do not infer the hidden user request, expected polarity, corpus identity, ownership, or another reviewer's answer.
-
-Score every candidate on five ordinal axes from 0 through 3:
-- valence: 0 strongly negative/dark, 1 somewhat negative, 2 somewhat positive, 3 strongly positive/reassuring
-- arousal: 0 very calm, 1 low, 2 elevated, 3 intense
-- threatFear: 0 none, 1 mild, 2 substantial, 3 severe/sustained
-- comedicWarmth: 0 absent/cold, 1 slight, 2 clear, 3 central/strong
-- attentionalDemand: 0 background-friendly, 1 low, 2 moderate, 3 close attention required
-
-If the supplied evidence does not support an axis, put that exact axis name in uncertainAxes; the numeric placeholder will not be treated as evidence. Cite only evidenceIds attached to that candidate. Return only JSON with this shape: {"assessments":[{"alias":"...","scores":{"valence":0,"arousal":0,"threatFear":0,"comedicWarmth":0,"attentionalDemand":0},"uncertainAxes":[],"evidenceIds":["..."],"rationale":"..."}]}. Include exactly one assessment for every candidate.`
+const moodReviewPromptPreamble = `You are an independent evidence reviewer. Assess only the title-specific evidence in the supplied blinded packet. Do not infer the hidden user request, expected polarity, corpus identity, ownership, or another reviewer's answer.`
 
 // RunMoodReview performs one provider-neutral, blinded JSON review turn and
 // converts the adapter's observed attribution into a lockable submission.
@@ -184,7 +195,7 @@ func RunMoodReview(ctx context.Context, provider llm.Provider, packetBlob []byte
 	if err := decodeMoodReviewJSON(packetBlob, &packet); err != nil {
 		return MoodReviewSubmission{}, fmt.Errorf("decode mood review packet: %w", err)
 	}
-	caseEvidence, aliases, err := validateMoodReviewPacket(packet)
+	rubric, caseEvidence, aliases, err := validateMoodReviewPacket(packet)
 	if err != nil {
 		return MoodReviewSubmission{}, err
 	}
@@ -196,7 +207,11 @@ func RunMoodReview(ctx context.Context, provider llm.Provider, packetBlob []byte
 		now = time.Now
 	}
 	temperature := 0.0
-	response, err := provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: moodReviewSystemPrompt}, {Role: llm.User, Content: string(packetBlob)}}, llm.ChatOptions{JSONMode: true, Temperature: &temperature, MaxTokens: 2048})
+	maxTokens := 2048
+	if rubric.RubricVersion == MoodReviewRubricVersionV2 {
+		maxTokens = 4096
+	}
+	response, err := provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: moodReviewPrompt(rubric)}, {Role: llm.User, Content: string(packetBlob)}}, llm.ChatOptions{JSONMode: true, Temperature: &temperature, MaxTokens: maxTokens})
 	if err != nil {
 		return MoodReviewSubmission{}, fmt.Errorf("run mood review: %w", err)
 	}
@@ -225,7 +240,7 @@ func RunMoodReview(ctx context.Context, provider llm.Provider, packetBlob []byte
 		}
 	}
 	submission := MoodReviewSubmission{
-		SchemaVersion: MoodReviewSchemaVersion, ContractVersion: MoodReviewContractVersion,
+		SchemaVersion: MoodReviewSchemaVersion, ContractVersion: packet.ContractVersion,
 		PacketSHA256: moodReviewSHA256(packetBlob),
 		Reviewer: MoodReviewerIdentity{
 			ID: config.ReviewerID, Provider: attribution.RequestedProvider, Route: route,
@@ -233,11 +248,11 @@ func RunMoodReview(ctx context.Context, provider llm.Provider, packetBlob []byte
 			ModelFamily: config.ModelFamily, IdentityKind: config.IdentityKind,
 			IdentitySHA256: config.IdentitySHA256, SnapshotSHA256: config.SnapshotSHA256,
 			ZeroDataRetention: config.ZeroDataRetention, RetentionAuthorization: config.RetentionAuthorization,
-			PromptVersion: MoodReviewPromptVersion,
+			PromptVersion: packet.PromptVersion,
 		},
 		Output: response.Content, OutputSHA256: moodReviewSHA256([]byte(response.Content)), Inference: inference,
 	}
-	if _, err := validateMoodReviewSubmission(submission, moodReviewSHA256(packetBlob), aliases, caseEvidence); err != nil {
+	if _, err := validateMoodReviewSubmission(submission, packet, moodReviewSHA256(packetBlob), rubric, aliases, caseEvidence); err != nil {
 		return MoodReviewSubmission{}, fmt.Errorf("validate mood review result: %w", err)
 	}
 	return submission, nil
@@ -253,7 +268,7 @@ func MoodReviewEvidenceSHA256(evidence MoodReviewEvidence) string {
 
 // CompileMoodReviewAuthority validates and locks two independent submissions,
 // plus an optional third-family adjudication. It does not expose private corpus
-// keys until every input has been validated and every axis is terminal.
+// keys until every input has been validated. Unresolved axes remain explicit.
 func CompileMoodReviewAuthority(packetBlob, mapBlob []byte, submissionBlobs ...[]byte) (MoodReviewAuthority, error) {
 	if len(submissionBlobs) < 2 || len(submissionBlobs) > 3 {
 		return MoodReviewAuthority{}, fmt.Errorf("mood review requires two submissions and at most one adjudicator")
@@ -263,7 +278,7 @@ func CompileMoodReviewAuthority(packetBlob, mapBlob []byte, submissionBlobs ...[
 		return MoodReviewAuthority{}, fmt.Errorf("decode mood review packet: %w", err)
 	}
 	packetSHA := moodReviewSHA256(packetBlob)
-	caseEvidence, aliases, err := validateMoodReviewPacket(packet)
+	rubric, caseEvidence, aliases, err := validateMoodReviewPacket(packet)
 	if err != nil {
 		return MoodReviewAuthority{}, err
 	}
@@ -286,7 +301,7 @@ func CompileMoodReviewAuthority(packetBlob, mapBlob []byte, submissionBlobs ...[
 		if err := decodeMoodReviewJSON(blob, &submission); err != nil {
 			return MoodReviewAuthority{}, fmt.Errorf("decode mood review submission %d: %w", index+1, err)
 		}
-		output, err := validateMoodReviewSubmission(submission, packetSHA, aliases, caseEvidence)
+		output, err := validateMoodReviewSubmission(submission, packet, packetSHA, rubric, aliases, caseEvidence)
 		if err != nil {
 			return MoodReviewAuthority{}, fmt.Errorf("mood review submission %d: %w", index+1, err)
 		}
@@ -304,7 +319,7 @@ func CompileMoodReviewAuthority(packetBlob, mapBlob []byte, submissionBlobs ...[
 	}
 
 	authority := MoodReviewAuthority{
-		SchemaVersion: MoodReviewSchemaVersion, ContractVersion: MoodReviewContractVersion,
+		SchemaVersion: MoodReviewSchemaVersion, ContractVersion: packet.ContractVersion,
 		Status: MoodReviewStatusModelAttested, Completeness: MoodReviewCompletenessComplete, PacketSHA256: packetSHA,
 		PrivateMapSHA256: moodReviewSHA256(mapBlob), SubmissionSHA256: submissionSHA,
 		Limitations: []string{
@@ -316,7 +331,7 @@ func CompileMoodReviewAuthority(packetBlob, mapBlob []byte, submissionBlobs ...[
 		authority.Limitations = append(authority.Limitations, "an explicitly authorized OpenRouter reviewer used a non-ZDR route for this public-only evidence packet; provider data collection was denied but temporary retention may occur")
 	}
 	for _, alias := range aliases {
-		decision := decideMoodReview(outputs, alias)
+		decision := decideMoodReview(outputs, alias, rubric.Axes, packet)
 		decision.Key = keys[alias]
 		if len(decision.UncertainAxes) != 0 {
 			authority.Completeness = MoodReviewCompletenessPartial
@@ -341,15 +356,60 @@ func registeredMoodReviewerFamily(identity MoodReviewerIdentity) bool {
 	}
 }
 
-func validateMoodReviewPacket(packet MoodReviewPacket) (map[string]map[string]bool, []string, error) {
-	if packet.SchemaVersion != MoodReviewSchemaVersion || packet.ContractVersion != MoodReviewContractVersion || packet.RubricVersion != MoodReviewRubricVersion || packet.PromptVersion != MoodReviewPromptVersion || strings.TrimSpace(packet.PacketID) == "" || packet.PreparedAt.IsZero() || len(packet.Evidence) == 0 || len(packet.Cases) == 0 {
-		return nil, nil, fmt.Errorf("mood review packet identity is incomplete")
+func moodReviewRubricFor(packet MoodReviewPacket) (moodReviewRubric, bool) {
+	for _, rubric := range moodReviewRubrics {
+		if packet.ContractVersion == rubric.ContractVersion && packet.RubricVersion == rubric.RubricVersion && packet.PromptVersion == rubric.PromptVersion {
+			return rubric, true
+		}
+	}
+	return moodReviewRubric{}, false
+}
+
+func moodReviewPrompt(rubric moodReviewRubric) string {
+	definitions := map[string]string{
+		"valence":                       "0 strongly negative/dark, 1 somewhat negative, 2 somewhat positive, 3 strongly positive/reassuring",
+		"arousal":                       "0 very calm, 1 low, 2 elevated, 3 intense",
+		"threatFear":                    "0 none, 1 mild, 2 substantial, 3 severe/sustained",
+		"comedicWarmth":                 "0 absent/cold, 1 slight, 2 clear, 3 central/strong",
+		"attentionalDemand":             "0 background-friendly, 1 low, 2 moderate, 3 close attention required",
+		"narrativeContinuityDependence": "0 self-contained/no ongoing causal state, 1 recurring premise with local reorientation, 2 continuing causal thread, 3 explicitly interdependent, nonlinear, or revelatory structure",
+	}
+	lines := []string{moodReviewPromptPreamble, "", "Score every candidate on these ordinal axes from 0 through 3:"}
+	example := make([]string, 0, len(rubric.Axes))
+	for _, axis := range rubric.Axes {
+		lines = append(lines, "- "+axis+": "+definitions[axis])
+		example = append(example, fmt.Sprintf("%q:0", axis))
+	}
+	if rubric.RubricVersion == MoodReviewRubricVersionV2 {
+		lines = append(lines, "", "narrativeContinuityDependence is supported only when the candidate has at least two cited, source-attributed structural facts. A synopsis, genre, rating, runtime, popularity, keyword, trailer, or your own outside knowledge is insufficient; mark the axis uncertain instead.")
+	}
+	lines = append(lines, "", "If the supplied evidence does not support an axis, put that exact axis name in uncertainAxes; the numeric placeholder will not be treated as evidence. Cite only evidenceIds attached to that candidate. Return only JSON with this shape: {\"assessments\":[{\"alias\":\"...\",\"scores\":{"+strings.Join(example, ",")+"},\"uncertainAxes\":[],\"evidenceIds\":[\"...\"],\"rationale\":\"...\"}]}. Include exactly one assessment for every candidate.")
+	return strings.Join(lines, "\n")
+}
+
+func validateMoodReviewPacket(packet MoodReviewPacket) (moodReviewRubric, map[string]map[string]bool, []string, error) {
+	rubric, registered := moodReviewRubricFor(packet)
+	if packet.SchemaVersion != MoodReviewSchemaVersion || !registered || strings.TrimSpace(packet.PacketID) == "" || packet.PreparedAt.IsZero() || len(packet.Evidence) == 0 || len(packet.Cases) == 0 {
+		return moodReviewRubric{}, nil, nil, fmt.Errorf("mood review packet identity is incomplete")
 	}
 	evidence := make(map[string]bool)
 	for _, item := range packet.Evidence {
 		parsed, err := url.Parse(item.URL)
 		if item.ID == "" || evidence[item.ID] || err != nil || parsed.Scheme != "https" || parsed.Host == "" || item.Observed == "" || strings.TrimSpace(item.Summary) == "" || strings.TrimSpace(item.Uncertainty) == "" || item.SHA256 != MoodReviewEvidenceSHA256(item) {
-			return nil, nil, fmt.Errorf("mood review packet has invalid evidence %q", item.ID)
+			return moodReviewRubric{}, nil, nil, fmt.Errorf("mood review packet has invalid evidence %q", item.ID)
+		}
+		annotated := item.SourceAuthority != "" || item.SourceRole != "" || len(item.SupportsAxes) != 0
+		if annotated {
+			if rubric.RubricVersion != MoodReviewRubricVersionV2 || strings.TrimSpace(item.SourceAuthority) == "" || !slices.Contains([]string{"direct-work", "independent-structural"}, item.SourceRole) || len(item.SupportsAxes) == 0 {
+				return moodReviewRubric{}, nil, nil, fmt.Errorf("mood review packet has invalid evidence attribution %q", item.ID)
+			}
+			seenSupports := make(map[string]bool)
+			for _, axis := range item.SupportsAxes {
+				if !slices.Contains(rubric.Axes, axis) || seenSupports[axis] {
+					return moodReviewRubric{}, nil, nil, fmt.Errorf("mood review packet has invalid evidence axis %q", item.ID)
+				}
+				seenSupports[axis] = true
+			}
 		}
 		evidence[item.ID] = true
 	}
@@ -357,23 +417,23 @@ func validateMoodReviewPacket(packet MoodReviewPacket) (map[string]map[string]bo
 	aliases := make([]string, 0, len(packet.Cases))
 	for _, item := range packet.Cases {
 		if strings.TrimSpace(item.Alias) == "" || caseEvidence[item.Alias] != nil || strings.TrimSpace(item.DisplayTitle) == "" || len(item.EvidenceIDs) == 0 {
-			return nil, nil, fmt.Errorf("mood review packet has invalid case %q", item.Alias)
+			return moodReviewRubric{}, nil, nil, fmt.Errorf("mood review packet has invalid case %q", item.Alias)
 		}
 		allowed := make(map[string]bool)
 		for _, evidenceID := range item.EvidenceIDs {
 			if !evidence[evidenceID] || allowed[evidenceID] {
-				return nil, nil, fmt.Errorf("mood review case %q has invalid evidence reference", item.Alias)
+				return moodReviewRubric{}, nil, nil, fmt.Errorf("mood review case %q has invalid evidence reference", item.Alias)
 			}
 			allowed[evidenceID] = true
 		}
 		caseEvidence[item.Alias] = allowed
 		aliases = append(aliases, item.Alias)
 	}
-	return caseEvidence, aliases, nil
+	return rubric, caseEvidence, aliases, nil
 }
 
 func validateMoodReviewMap(privateMap MoodReviewPrivateMap, packet MoodReviewPacket, packetSHA string, aliases []string) (map[string]provision.Key, error) {
-	if privateMap.SchemaVersion != MoodReviewSchemaVersion || privateMap.ContractVersion != MoodReviewContractVersion || privateMap.PacketID != packet.PacketID || privateMap.PacketSHA256 != packetSHA || len(privateMap.Entries) != len(aliases) {
+	if privateMap.SchemaVersion != MoodReviewSchemaVersion || privateMap.ContractVersion != packet.ContractVersion || privateMap.PacketID != packet.PacketID || privateMap.PacketSHA256 != packetSHA || len(privateMap.Entries) != len(aliases) {
 		return nil, fmt.Errorf("mood review private map does not bind the packet")
 	}
 	keys := make(map[string]provision.Key)
@@ -390,11 +450,11 @@ func validateMoodReviewMap(privateMap MoodReviewPrivateMap, packet MoodReviewPac
 	return keys, nil
 }
 
-func validateMoodReviewSubmission(submission MoodReviewSubmission, packetSHA string, aliases []string, caseEvidence map[string]map[string]bool) (map[string]MoodReviewAssessment, error) {
+func validateMoodReviewSubmission(submission MoodReviewSubmission, packet MoodReviewPacket, packetSHA string, rubric moodReviewRubric, aliases []string, caseEvidence map[string]map[string]bool) (map[string]MoodReviewAssessment, error) {
 	identity := submission.Reviewer
-	if submission.SchemaVersion != MoodReviewSchemaVersion || submission.ContractVersion != MoodReviewContractVersion || submission.PacketSHA256 != packetSHA ||
+	if submission.SchemaVersion != MoodReviewSchemaVersion || submission.ContractVersion != packet.ContractVersion || submission.PacketSHA256 != packetSHA ||
 		strings.TrimSpace(identity.ID) == "" || strings.TrimSpace(identity.Provider) == "" || strings.TrimSpace(identity.Route) == "" || strings.TrimSpace(identity.Model) == "" ||
-		strings.TrimSpace(identity.ResolvedModel) == "" || strings.TrimSpace(identity.ModelFamily) == "" || !slices.Contains([]string{"ollama-model-digest", "openrouter-route-snapshot"}, identity.IdentityKind) || identity.PromptVersion != MoodReviewPromptVersion || !moodReviewSHA(identity.IdentitySHA256) || submission.OutputSHA256 != moodReviewSHA256([]byte(submission.Output)) {
+		strings.TrimSpace(identity.ResolvedModel) == "" || strings.TrimSpace(identity.ModelFamily) == "" || !slices.Contains([]string{"ollama-model-digest", "openrouter-route-snapshot"}, identity.IdentityKind) || identity.PromptVersion != packet.PromptVersion || !moodReviewSHA(identity.IdentitySHA256) || submission.OutputSHA256 != moodReviewSHA256([]byte(submission.Output)) {
 		return nil, fmt.Errorf("identity, packet, prompt, model identity digest, or output digest is incomplete")
 	}
 	if identity.IdentityKind == "ollama-model-digest" {
@@ -421,12 +481,12 @@ func validateMoodReviewSubmission(submission MoodReviewSubmission, packetSHA str
 	result := make(map[string]MoodReviewAssessment)
 	for _, assessment := range output.Assessments {
 		allowed := caseEvidence[assessment.Alias]
-		if allowed == nil || result[assessment.Alias].Alias != "" || !assessment.Scores.valid() || strings.TrimSpace(assessment.Rationale) == "" || len(assessment.EvidenceIDs) == 0 {
+		if allowed == nil || result[assessment.Alias].Alias != "" || !assessment.Scores.valid(rubric.Axes) || strings.TrimSpace(assessment.Rationale) == "" || len(assessment.EvidenceIDs) == 0 {
 			return nil, fmt.Errorf("output has invalid assessment %q", assessment.Alias)
 		}
 		seenAxes := make(map[string]bool)
 		for _, axis := range assessment.UncertainAxes {
-			if !slices.Contains(moodAxisNames, axis) || seenAxes[axis] {
+			if !slices.Contains(rubric.Axes, axis) || seenAxes[axis] {
 				return nil, fmt.Errorf("assessment %q has invalid uncertain axis", assessment.Alias)
 			}
 			seenAxes[axis] = true
@@ -443,51 +503,85 @@ func validateMoodReviewSubmission(submission MoodReviewSubmission, packetSHA str
 	return result, nil
 }
 
-func decideMoodReview(outputs []map[string]MoodReviewAssessment, alias string) MoodReviewDecision {
-	decision := MoodReviewDecision{}
-	chosen := make([]int, len(moodAxisNames))
-	for index, axis := range moodAxisNames {
-		first, firstOK := outputs[0][alias].axis(axis, index)
-		second, secondOK := outputs[1][alias].axis(axis, index)
+func decideMoodReview(outputs []map[string]MoodReviewAssessment, alias string, axes []string, packet MoodReviewPacket) MoodReviewDecision {
+	decision := MoodReviewDecision{Scores: make(MoodAxisScores, len(axes))}
+	for _, axis := range axes {
+		firstAssessment := outputs[0][alias]
+		secondAssessment := outputs[1][alias]
+		first, firstOK := firstAssessment.axis(axis)
+		second, secondOK := secondAssessment.axis(axis)
+		firstOK = firstOK && assessmentSupportsMoodAxis(packet, alias, axis, firstAssessment)
+		secondOK = secondOK && assessmentSupportsMoodAxis(packet, alias, axis, secondAssessment)
 		if firstOK && secondOK && first == second {
-			chosen[index] = first
+			decision.Scores[axis] = first
 			continue
 		}
 		if len(outputs) == 3 {
-			third, thirdOK := outputs[2][alias].axis(axis, index)
+			thirdAssessment := outputs[2][alias]
+			third, thirdOK := thirdAssessment.axis(axis)
+			thirdOK = thirdOK && assessmentSupportsMoodAxis(packet, alias, axis, thirdAssessment)
 			if thirdOK && ((firstOK && third == first) || (secondOK && third == second)) {
-				chosen[index] = third
+				decision.Scores[axis] = third
 				continue
 			}
 		}
 		decision.UncertainAxes = append(decision.UncertainAxes, axis)
+		decision.Scores[axis] = 0
 	}
-	decision.Scores = scoresFromAxes(chosen)
 	return decision
 }
 
-func (assessment MoodReviewAssessment) axis(name string, index int) (int, bool) {
+func assessmentSupportsMoodAxis(packet MoodReviewPacket, alias, axis string, assessment MoodReviewAssessment) bool {
+	if axis != "narrativeContinuityDependence" {
+		return true
+	}
+	caseEvidence := make(map[string]bool)
+	for _, item := range packet.Cases {
+		if item.Alias == alias {
+			for _, evidenceID := range item.EvidenceIDs {
+				caseEvidence[evidenceID] = true
+			}
+			break
+		}
+	}
+	citedEvidence := make(map[string]bool)
+	for _, evidenceID := range assessment.EvidenceIDs {
+		citedEvidence[evidenceID] = true
+	}
+	authorities := make(map[string]bool)
+	roles := make(map[string]bool)
+	for _, evidence := range packet.Evidence {
+		if !caseEvidence[evidence.ID] || !citedEvidence[evidence.ID] || !slices.Contains(evidence.SupportsAxes, "narrativeContinuityDependence") {
+			continue
+		}
+		authorities[evidence.SourceAuthority] = true
+		roles[evidence.SourceRole] = true
+	}
+	return len(authorities) >= 2 && roles["direct-work"] && roles["independent-structural"]
+}
+
+func (assessment MoodReviewAssessment) axis(name string) (int, bool) {
 	if slices.Contains(assessment.UncertainAxes, name) {
 		return 0, false
 	}
-	return assessment.Scores.axes()[index], true
+	value, ok := assessment.Scores[name]
+	return value, ok
 }
 
-func (scores MoodAxisScores) valid() bool {
-	for _, value := range scores.axes() {
+func (scores MoodAxisScores) valid(axes []string) bool {
+	if len(scores) != len(axes) {
+		return false
+	}
+	for _, axis := range axes {
+		value, ok := scores[axis]
+		if !ok {
+			return false
+		}
 		if value < 0 || value > 3 {
 			return false
 		}
 	}
 	return true
-}
-
-func (scores MoodAxisScores) axes() []int {
-	return []int{scores.Valence, scores.Arousal, scores.ThreatFear, scores.ComedicWarmth, scores.AttentionalDemand}
-}
-
-func scoresFromAxes(values []int) MoodAxisScores {
-	return MoodAxisScores{Valence: values[0], Arousal: values[1], ThreatFear: values[2], ComedicWarmth: values[3], AttentionalDemand: values[4]}
 }
 
 func decodeMoodReviewJSON(blob []byte, destination any) error {

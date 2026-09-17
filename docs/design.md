@@ -11144,6 +11144,39 @@ requires zero grounded titles, and the production Suggester returns its ordinary
 no-grounded-title failure after bounded retrieval; an empty successful Proposal or
 a provider/generation fault is not equivalent.
 
+New subjective-review packets do not use the original composite
+`attentionalDemand` title score. Frozen `movie-mood-ordinal-v1` evidence remains
+loadable and immutable, but no new Development Corpus expectation may depend on
+that axis. The successor rubric separates facts that belong to a Title from facts
+that belong to one playable Media Source or to the viewer's situation. Its only
+title-level structural axis is `narrativeContinuityDependence`: `0` means the
+evidence explicitly supports self-contained viewing with no continuing causal
+state, `1` a recurring premise with local reorientation, `2` a continuing causal
+thread, and `3` an explicitly interdependent, nonlinear or revelatory structure.
+That axis requires at least two cited, source-attributed structural facts from
+distinct authorities for the Title in the blinded packet: one direct-work source
+and one independent structural source. Reviewers are instructed to mark the axis
+uncertain without both, and the compiler independently quarantines it regardless
+of a submitted number. Pace or scene-transition rate, spoken-text density,
+language and subtitle reliance, audio-description availability and visual
+dependence are properties of an exact representation or Observation and cannot
+be manufactured from a title synopsis. `backgroundFriendliness` is viewer/context
+policy rather than a title score and is not an authority axis.
+
+The packet's rubric version owns an exact ordered axis registry. A submission must
+contain every registered axis exactly once and no other score; uncertainty is
+recorded per axis. Compilation resolves an axis only from exact agreement between
+the two initial registered families or exact two-of-three agreement after an
+independent third-family adjudication. Disagreement, an explicit reviewer
+uncertainty or insufficient evidence quarantines only that axis. Corpus loading
+rejects a subjective rule that names an axis outside its bound authority or uses
+an uncertain decision, while allowing other resolved axes from the same Title.
+Release year, country, language, rating authority, genre, credit role, collection
+membership and other Catalog facts remain deterministic constraints evaluated
+independently of the subjective authority. Expanded calibration must span multiple
+decades, genres, regions and tonal directions and must exercise complete Intents
+through the existing Runner; title scores alone are not outcome evidence.
+
 Explicit Library-only wording is a hard suggestion qualifier, including “no
 shows added from outside my library”; source-pool completion cannot restore
 outside-Library picks as selections or alternates. A named block described “as
