@@ -204,6 +204,49 @@ func TestDirSource_RefusesArtworkBeforeCreatingCacheOrStartingRenderer(t *testin
 	}
 }
 
+func TestDirSource_StopsAndRemovesArtworkThatExceedsItsReservation(t *testing.T) {
+	dir := t.TempDir()
+	writeAt(t, filepath.Join(dir, "ad.mp4"), "video")
+	governor := storagegovernor.New(artworkCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "clips", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 60 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	})
+	logs := 0
+	source := filler.DirSource{
+		Layout: testLayout(dir), Probe: fakeProbe(30_000), Storage: governor,
+		Artwork: func(_ context.Context, _ string, still, animated string, _ float64) error {
+			if err := os.MkdirAll(filepath.Dir(still), 0o750); err != nil {
+				return err
+			}
+			if err := os.WriteFile(still, nil, 0o600); err != nil {
+				return err
+			}
+			if err := os.Truncate(still, storagegovernor.EstimateArtwork()+1); err != nil {
+				return err
+			}
+			return os.WriteFile(animated, []byte("animation"), 0o600)
+		},
+		Log: func(string, ...any) { logs++ },
+	}
+
+	clips, err := source.ListLocalClips(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || clips[0].Thumbnail != "" || clips[0].Preview != "" {
+		t.Fatalf("clips after artwork overrun = %+v", clips)
+	}
+	if logs != 1 {
+		t.Fatalf("warning logs = %d, want one aggregate artwork warning", logs)
+	}
+	for _, rel := range []string{filler.ThumbPathFor(clips[0].Path), filler.PreviewPathFor(clips[0].Path)} {
+		if _, err := os.Stat(filepath.Join(dir, filler.ThumbDirName, filepath.FromSlash(rel))); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("oversized artwork survived at %s: %v", rel, err)
+		}
+	}
+}
+
 // ⚠ **THE rule that decides where the window sits.** A flat offset does not survive real clips.
 // Every case here is one that produced bad artwork when a constant was used unchanged.
 func TestArtworkStart_PicksAWindowThatFitsTheClip(t *testing.T) {

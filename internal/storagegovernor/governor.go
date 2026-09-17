@@ -76,6 +76,43 @@ type Decision struct {
 	Err      error
 }
 
+// CapacityState is the server-facing presentation state for one snapshot. It deliberately lives
+// beside the capacity arithmetic so clients never invent their own warning threshold.
+type CapacityState string
+
+const (
+	CapacityHealthy     CapacityState = "healthy"
+	CapacityApproaching CapacityState = "approaching"
+	CapacityPaused      CapacityState = "paused"
+	CapacityUnknown     CapacityState = "unknown"
+)
+
+// State classifies a snapshot without hiding its exact typed pause reason. Approaching means the
+// remaining allowance is within the smaller of 1 GiB and twenty percent of a configured soft
+// budget; this warns on small appliances without making a healthy fresh library look constrained.
+func State(snapshot Snapshot) CapacityState {
+	switch snapshot.Reason {
+	case ReasonCapacityUnavailable, ReasonEstimateUnknown:
+		return CapacityUnknown
+	case ReasonHostReserve, ReasonLibraryLimit:
+		return CapacityPaused
+	case "":
+		threshold := GiB
+		if snapshot.SoftLimitEnabled && snapshot.SoftBudgetBytes > 0 {
+			softThreshold := snapshot.SoftBudgetBytes / 5
+			if softThreshold < threshold {
+				threshold = softThreshold
+			}
+		}
+		if threshold > 0 && snapshot.AvailableBytes > 0 && snapshot.AvailableBytes <= threshold {
+			return CapacityApproaching
+		}
+		return CapacityHealthy
+	default:
+		return CapacityUnknown
+	}
+}
+
 // Governor atomically accounts for every in-process reservation sharing a real
 // filesystem. Its mutex deliberately covers measurement as well as mutation:
 // two callers cannot both observe the same unspent bytes and reserve them.

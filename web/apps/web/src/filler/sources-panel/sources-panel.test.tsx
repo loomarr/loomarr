@@ -72,6 +72,7 @@ const stubSources = () => {
       fetch: { enabled: true, catalogClips: 0 },
       storage: {
         automatic: true,
+        state: "healthy",
         totalBytes: 500 * 1024 ** 3,
         freeBytes: 200 * 1024 ** 3,
         managedBytes: 0,
@@ -265,6 +266,47 @@ describe("SourcesPanel", () => {
     );
   });
 
+  it("uses the server-owned approaching state without calculating a warning in the browser", async () => {
+    stubSources();
+    server.use(
+      getFillerReadinessMockHandler({
+        ready: true,
+        nextAction: "none",
+        repairs: { count: 0 },
+        fetch: { enabled: true, catalogClips: 12 },
+        storage: {
+          automatic: true,
+          state: "approaching",
+          totalBytes: 64 * 1024 ** 3,
+          freeBytes: 8 * 1024 ** 3,
+          managedBytes: 5.5 * 1024 ** 3,
+          reservedBytes: 0,
+          filesystemReservedBytes: 0,
+          softBudgetBytes: 6.4 * 1024 ** 3,
+          hardReserveBytes: 6.4 * 1024 ** 3,
+          availableBytes: 512 * 1024 ** 2,
+        },
+        pipeline: {
+          runnable: 0,
+          scheduled: 0,
+          inProgress: 0,
+          needsDecision: 0,
+          recoverable: 0,
+          ready: 12,
+          complete: 0,
+          rejected: 0,
+          dismissed: 0,
+        },
+        pool: { clips: 12, breakBody: 10, eligible: 10, untagged: 0, channels: [] },
+        acquisitions: [],
+      }),
+    );
+    renderPanel();
+
+    const storage = await screen.findByRole("region", { name: "Storage" });
+    expect(storage).toHaveTextContent("512.0 MB is left for new filler");
+  });
+
   it("previews and removes only safe old temporary downloads when the drive is low", async () => {
     stubSources();
     server.use(
@@ -275,6 +317,7 @@ describe("SourcesPanel", () => {
         fetch: { enabled: true, catalogClips: 12 },
         storage: {
           automatic: true,
+          state: "paused",
           totalBytes: 32 * 1024 ** 3,
           freeBytes: 2 * 1024 ** 3,
           managedBytes: 4 * 1024 ** 3,

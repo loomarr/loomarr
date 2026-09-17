@@ -86,7 +86,11 @@ func TestFillerStorageGovernorMigrationSQLite(t *testing.T) {
 func assertSettingAbsent(t *testing.T, ctx context.Context, s *sqlStore, key string) {
 	t.Helper()
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key = ?`, key).Scan(&count); err != nil {
+	query := `SELECT COUNT(*) FROM settings WHERE key = ?`
+	if s.dialect == DialectPostgres {
+		query = `SELECT COUNT(*) FROM settings WHERE key = $1`
+	}
+	if err := s.db.QueryRowContext(ctx, query, key).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {

@@ -51,6 +51,61 @@ func TestTranscodeStage_RefusesCapacityBeforeCreatingRetainedOrDerivedMedia(t *t
 	}
 }
 
+func TestTranscodeStage_StopsOversizedPrivateOutputBeforePublication(t *testing.T) {
+	dir := t.TempDir()
+	hash := writeContentAddressedClip(t, dir, []byte("small source with a deliberately oversized transcode"), ".mp4")
+	rel := filepath.ToSlash(ClipRelPath(hash, ".mp4"))
+	oldFull := filepath.Join(dir, filepath.FromSlash(rel))
+	info, err := os.Stat(oldFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget, ok := storagegovernor.EstimateMedia(storagegovernor.MediaEstimate{
+		DeclaredBytes: info.Size(), DurationMS: 30_000,
+	})
+	if !ok {
+		t.Fatal("source has no transcode storage estimate")
+	}
+	store := &transcodeStore{}
+	stage := NewTranscodeStage(store, func(context.Context, string) (Probed, error) {
+		return Probed{DurationMs: 30_000, Height: 480}, nil
+	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+		if err := os.WriteFile(request.Out, nil, 0o600); err != nil {
+			return MediaQuality{}, err
+		}
+		if err := os.Truncate(request.Out, budget.ReservationBytes+1); err != nil {
+			return MediaQuality{}, err
+		}
+		return MediaQuality{DurationMs: 30_000}, nil
+	}
+	stage.WithStorageGovernor(storagegovernor.New(intakeCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "clips", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 60 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	}))
+
+	_, err = stage.Run(context.Background(), StoreClip{Clip: Clip{
+		Hash: hash, Path: rel, Name: "oversized", DurationMs: 30_000,
+	}})
+	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonEstimateUnknown)) {
+		t.Fatalf("Run error = %v, want estimate ceiling", err)
+	}
+	if store.oldHash != "" {
+		t.Fatalf("catalog was re-keyed after storage overrun: %q", store.oldHash)
+	}
+	if _, err := os.Stat(oldFull); err != nil {
+		t.Fatalf("source changed after storage overrun: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, transcodeStagingDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("oversized transcode left private output: %v", entries)
+	}
+}
+
 type cleanupSyncSource struct{ dir string }
 
 func (s cleanupSyncSource) EnsureLocalSource(context.Context, string) error { return nil }

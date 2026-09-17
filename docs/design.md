@@ -4658,7 +4658,13 @@ The server projects one capacity snapshot: managed usage, active reservations, f
 total bytes, effective soft allowance, hard reserve, available bytes, pause reason, and the actions
 `free_disposable_space`, `choose_another_folder`, and `change_storage_limit`. Sources shows a calm
 summary while healthy and the exact reason plus one primary action when paused. Advanced contains
-the path and soft-budget controls; the browser performs no capacity calculations.
+the path and soft-budget controls; the browser performs no capacity calculations. The governor also
+owns the presentation state (`healthy`, `approaching`, `paused`, or `unknown`). `approaching` begins
+when effective availability is at most the smaller of 1 GiB and twenty percent of the active soft
+allowance, so small appliances receive a proportional warning without making an empty automatic
+library look constrained. The cleanup action revalidates and removes only terminal acquisition
+attempt directories older than 24 hours that no staged or repair artifact references, then returns
+a fresh preview; admitted media and every unknown path remain outside that authority.
 
 **`Look for new clips` runs acquisition as well as discovery (V56).** A source row invokes one ordinary
 bounded fetch pass for that selected source and then scans the configured local sources. It is not

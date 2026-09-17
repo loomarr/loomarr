@@ -31,6 +31,7 @@ type StorageStatus struct {
 	HardReserveBytes        int64
 	AvailableBytes          int64
 	Automatic               bool
+	State                   string
 	PausedBy                string
 }
 

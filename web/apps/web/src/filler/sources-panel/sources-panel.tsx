@@ -476,6 +476,8 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                     ? `New filler is paused at its ${formatBytes(storage.softBudgetBytes)} allowance.`
                     : storage.pausedBy === "capacity_unavailable" || storage.pausedBy === "estimate_unknown"
                       ? "Loomarr cannot safely check the available space in this folder."
+                      : storage.state === "approaching"
+                        ? `${formatBytes(storage.availableBytes)} is left for new filler. Loomarr will pause before it risks space kept for this drive.`
                       : `Automatic downloads will pause before this drive has less than ${formatBytes(storage.hardReserveBytes)} free.`}
                 {storage.reservedBytes > 0
                   ? ` ${formatBytes(storage.reservedBytes)} is set aside for work in progress.`

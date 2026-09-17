@@ -72,6 +72,32 @@ func TestMonitorPathAcceptsBoundedRegularOutputAndRejectsSymlinks(t *testing.T) 
 	}
 }
 
+func TestMonitorPathsAppliesOneCeilingAcrossSeveralOutputs(t *testing.T) {
+	root := t.TempDir()
+	governor := storagegovernor.New(preparedCapacityMeterForMonitor{}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	})
+	lease, _ := governor.Reserve(t.Context(), storagegovernor.Request{
+		Path: root, Domain: storagegovernor.DomainFiller, EstimatedBytes: 10,
+	})
+	if lease == nil {
+		t.Fatal("reservation was refused")
+	}
+	defer lease.Release()
+	first := filepath.Join(root, "still.jpg")
+	second := filepath.Join(root, "preview.webp")
+	if err := os.WriteFile(first, make([]byte, 6), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(second, make([]byte, 5), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, finish := storagegovernor.MonitorPaths(t.Context(), lease, []string{first, second}, 0)
+	if err := finish(); err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonEstimateUnknown)) {
+		t.Fatalf("finish error = %v", err)
+	}
+}
+
 type preparedCapacityMeterForMonitor struct{}
 
 func (preparedCapacityMeterForMonitor) Measure(context.Context, string) (storagegovernor.Measurement, error) {

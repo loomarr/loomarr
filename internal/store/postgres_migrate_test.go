@@ -75,6 +75,43 @@ func TestPostgresRemoveFillerAdmissionRungMigration(t *testing.T) {
 	testRemoveFillerAdmissionRungMigration(t, s, "migrations/postgres")
 }
 
+func TestPostgresFillerStorageGovernorMigration(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgres(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	provider, err := newMigrationProvider(s.db, DialectPostgres, "migrations/postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 111); err != nil {
+		t.Fatalf("migrate through 111: %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO settings
+		(key, value, updated_at, updated_by, env_override) VALUES ($1, $2, $3, $4, $5)`,
+		"filler.fetch.max_disk_gb", "37", int64(1234), "admin-1", false); err != nil { // retired-ok: migration fixture
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 112); err != nil {
+		t.Fatalf("apply storage governor migration: %v", err)
+	}
+	var value, updatedBy string
+	var updatedAt int64
+	var envOverride bool
+	if err := s.db.QueryRowContext(ctx, `SELECT value, updated_at, updated_by, env_override
+		FROM settings WHERE key = $1`, "filler.storage.library_budget_gb").Scan(
+		&value, &updatedAt, &updatedBy, &envOverride,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if value != "37" || updatedAt != 1234 || updatedBy != "admin-1" || envOverride {
+		t.Fatalf("migrated setting = value %q updated_at %d updated_by %q env_override %t", value, updatedAt, updatedBy, envOverride)
+	}
+	assertSettingAbsent(t, ctx, s, "filler.fetch.max_disk_gb") // retired-ok: migration assertion
+}
+
 func TestPostgresFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("pgx", startPostgres(t))

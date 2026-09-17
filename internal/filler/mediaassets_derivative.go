@@ -22,9 +22,10 @@ type mediaDerivativeRequest struct {
 	Transcode   func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
 	Verify      func(context.Context, string, string, int64, int, bool, float64) (mediatools.DerivativeQC, error)
 	OnProgress  func(int)
+	Storage     *storageWriteTracker
 }
 
-func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source MediaAssetIdentity, input Probed, ffmpeg string) (*MediaDerivativeLineage, mediatools.MediaToolIdentity, error) {
+func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source MediaAssetIdentity, input Probed, ffmpeg string, storage *storageWriteTracker) (*MediaDerivativeLineage, mediatools.MediaToolIdentity, error) {
 	if s.evidenceTranscode == nil {
 		return nil, mediatools.MediaToolIdentity{}, nil
 	}
@@ -41,6 +42,7 @@ func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source M
 		FFmpegPath: ffmpeg, Probe: s.probe, Diagnostics: s.diagnostics,
 		Transcode: s.evidenceTranscode, Verify: s.verifyDerivative,
 		OnProgress: func(percent int) { reportProgress(ctx, StageTranscode, percent*40/100) },
+		Storage:    storage,
 	})
 	if err != nil {
 		return nil, mediatools.MediaToolIdentity{}, err
@@ -87,14 +89,21 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 		_ = os.Remove(stagePath)
 		_ = os.Remove(sidecarPathFor(stagePath))
 	}()
-	quality, err := request.Transcode(ctx, mediatools.TranscodeRequest{
+	writeCtx, finishStorage := request.Storage.Monitor(ctx, stagePath)
+	quality, err := request.Transcode(writeCtx, mediatools.TranscodeRequest{
 		In: sourcePath, Out: stagePath, DurationMs: request.Input.DurationMs, HadAudio: !request.Input.Silent,
 		InputProbe: &request.Input,
 		TargetLUFS: request.Recipe.TargetLUFS, Profile: request.Recipe.Profile(), FFmpegPath: request.FFmpegPath,
 		Probe: request.Probe, Diagnostics: request.Diagnostics,
 	}, request.OnProgress)
 	if err != nil {
+		if storageErr := finishStorage(); storageErr != nil {
+			return MediaDerivativeLineage{}, storageErr
+		}
 		return MediaDerivativeLineage{}, fmt.Errorf("build evidence derivative: %w", err)
+	}
+	if err := finishStorage(); err != nil {
+		return MediaDerivativeLineage{}, err
 	}
 	output, err := request.Probe(ctx, stagePath)
 	if err != nil || output.DurationMs <= 0 || output.Height <= 0 || (!request.Input.Silent && output.Silent) {
@@ -107,6 +116,9 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	}
 	digest, size, err := FileSHA256(stagePath)
 	if err != nil {
+		return MediaDerivativeLineage{}, err
+	}
+	if err := request.Storage.Record(ctx, size); err != nil {
 		return MediaDerivativeLineage{}, err
 	}
 	clipHash, err := ClipID(stagePath)

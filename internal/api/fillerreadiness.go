@@ -90,6 +90,7 @@ type FillerStorageStatusDTO struct {
 	HardReserveBytes        int64  `json:"hardReserveBytes"`
 	AvailableBytes          int64  `json:"availableBytes"`
 	Automatic               bool   `json:"automatic"`
+	State                   string `json:"state" enum:"healthy,approaching,paused,unknown"`
 	PausedBy                string `json:"pausedBy,omitempty" enum:"library_limit,host_reserve,estimate_unknown,capacity_unavailable"`
 }
 
@@ -196,6 +197,7 @@ func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {
 			FilesystemReservedBytes: readiness.Storage.FilesystemReservedBytes,
 			SoftBudgetBytes:         readiness.Storage.SoftBudgetBytes, HardReserveBytes: readiness.Storage.HardReserveBytes,
 			AvailableBytes: readiness.Storage.AvailableBytes, Automatic: readiness.Storage.Automatic,
+			State:    readiness.Storage.State,
 			PausedBy: readiness.Storage.PausedBy,
 		},
 		Pipeline: pipelineOverviewDTO(readiness.Pipeline), Pool: poolDTO(readiness.Pool),

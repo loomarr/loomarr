@@ -121,3 +121,36 @@ func TestFilesystemGovernorRejectsOverlappingDomains(t *testing.T) {
 		t.Fatal("overlapping roots with different ownership were accepted")
 	}
 }
+
+func TestFilesystemGovernorRestartReplacesLostReservationsWithCrashLeftUsage(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	policy := func(domain storagegovernor.Domain) storagegovernor.Policy {
+		if domain == storagegovernor.DomainFiller {
+			return storagegovernor.Policy{SoftBudgetBytes: 100}
+		}
+		return storagegovernor.Policy{}
+	}
+	before := newFilesystemGovernor(t, []storagegovernor.ManagedRoot{{Path: root, Domain: storagegovernor.DomainFiller}}, policy)
+	lease, decision := before.Reserve(t.Context(), storagegovernor.Request{
+		Path: root, Domain: storagegovernor.DomainFiller, EstimatedBytes: 30,
+	})
+	if lease == nil || !decision.Allowed {
+		t.Fatalf("pre-crash reserve = %+v", decision)
+	}
+	// Simulate a process dying without Release: only private bytes survive, never the in-memory
+	// lease. A fresh governor must count those bytes instead of treating the restart as free space.
+	staging := filepath.Join(root, ".loomarr-acquisitions", "run", "001")
+	if err := os.MkdirAll(staging, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staging, "partial.mp4"), make([]byte, 80), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	after := newFilesystemGovernor(t, []storagegovernor.ManagedRoot{{Path: root, Domain: storagegovernor.DomainFiller}}, policy)
+	if next, restarted := after.Reserve(t.Context(), storagegovernor.Request{
+		Path: root, Domain: storagegovernor.DomainFiller, EstimatedBytes: 30,
+	}); next != nil || restarted.Snapshot.Reason != storagegovernor.ReasonLibraryLimit || restarted.Snapshot.ManagedBytes != 80 {
+		t.Fatalf("post-restart reserve = lease %v decision %+v", next, restarted)
+	}
+}

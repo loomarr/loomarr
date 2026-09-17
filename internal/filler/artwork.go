@@ -221,13 +221,27 @@ func generateArtwork(ctx context.Context, dir string, clips []RawClip, render Ar
 			continue
 		}
 
-		renderErr := render(ctx, filepath.Join(dir, filepath.FromSlash(clips[i].Path)),
-			stillDst, animDst, previewStartFor(clips[i].DurationMs))
-		capacityFailed := false
+		monitored := make([]string, 0, 2)
+		if !haveStill {
+			monitored = append(monitored, stillDst)
+		}
+		if !haveAnim {
+			monitored = append(monitored, animDst)
+		}
+		renderCtx := ctx
+		finishStorage := func() error { return nil }
 		if lease != nil {
-			written := newlyWrittenArtworkBytes(stillDst, animDst, haveStill, haveAnim)
-			decision := lease.Revalidate(ctx, written)
-			capacityFailed = !decision.Allowed
+			renderCtx, finishStorage = storagegovernor.MonitorPaths(ctx, lease, monitored, 0)
+		}
+		renderErr := render(renderCtx, filepath.Join(dir, filepath.FromSlash(clips[i].Path)),
+			stillDst, animDst, previewStartFor(clips[i].DurationMs))
+		capacityFailed := finishStorage() != nil
+		if lease != nil {
+			if !capacityFailed {
+				written := newlyWrittenArtworkBytes(stillDst, animDst, haveStill, haveAnim)
+				decision := lease.Revalidate(ctx, written)
+				capacityFailed = !decision.Allowed
+			}
 			lease.Release()
 		}
 		if renderErr != nil || capacityFailed {

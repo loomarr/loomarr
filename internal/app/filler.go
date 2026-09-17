@@ -835,7 +835,8 @@ func (a fillerServiceAdapter) Readiness(ctx context.Context) (filler.Readiness, 
 			ManagedBytes: snapshot.ManagedBytes, ReservedBytes: snapshot.ReservedBytes,
 			FilesystemReservedBytes: snapshot.FilesystemReservedBytes,
 			SoftBudgetBytes:         snapshot.SoftBudgetBytes, HardReserveBytes: snapshot.HardReserveBytes,
-			AvailableBytes: snapshot.AvailableBytes, PausedBy: string(snapshot.Reason),
+			AvailableBytes: snapshot.AvailableBytes, State: string(storagegovernor.State(snapshot)),
+			PausedBy: string(snapshot.Reason),
 		}
 		if a.storageAutomatic != nil {
 			storage.Automatic = a.storageAutomatic()

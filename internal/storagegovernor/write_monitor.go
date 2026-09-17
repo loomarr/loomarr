@@ -18,6 +18,13 @@ const writeMonitorInterval = 50 * time.Millisecond
 // be called before the private tree is published or renamed; it performs one final synchronous
 // measurement and returns the storage reason that stopped the writer.
 func MonitorPath(parent context.Context, lease *Lease, root string, baseBytes int64) (context.Context, func() error) {
+	return MonitorPaths(parent, lease, []string{root}, baseBytes)
+}
+
+// MonitorPaths is MonitorPath for a writer that produces several distinct private files in one
+// pass. Their observed bytes are summed before the lease is revalidated, so individually small
+// outputs cannot collectively cross one reservation.
+func MonitorPaths(parent context.Context, lease *Lease, roots []string, baseBytes int64) (context.Context, func() error) {
 	ctx, cancel := context.WithCancelCause(parent)
 	stop := make(chan struct{})
 	done := make(chan error, 1)
@@ -26,9 +33,13 @@ func MonitorPath(parent context.Context, lease *Lease, root string, baseBytes in
 	check := func() error {
 		checkMu.Lock()
 		defer checkMu.Unlock()
-		bytes, err := privatePathBytes(root)
-		if err != nil {
-			return err
+		var bytes int64
+		for _, root := range roots {
+			pathBytes, err := privatePathBytes(root)
+			if err != nil {
+				return err
+			}
+			bytes = saturatingAdd(bytes, pathBytes)
 		}
 		observed := saturatingAdd(baseBytes, bytes)
 		// Writers may replace or remove temporary files while building a final output. A lease

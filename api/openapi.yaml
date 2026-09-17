@@ -4048,6 +4048,13 @@ components:
         softBudgetBytes:
           format: int64
           type: integer
+        state:
+          enum:
+            - healthy
+            - approaching
+            - paused
+            - unknown
+          type: string
         totalBytes:
           format: int64
           type: integer
@@ -4061,6 +4068,7 @@ components:
         - hardReserveBytes
         - availableBytes
         - automatic
+        - state
       type: object
     FillerWatchOutputBody:
       additionalProperties: false

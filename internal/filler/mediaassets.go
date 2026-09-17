@@ -206,6 +206,10 @@ func validateMediaAssetIdentity(asset MediaAssetIdentity, role MediaAssetRole, t
 // returned hidden pathname is the stable input for all later recipes, so a concurrent mutation of
 // the visible name cannot mix bytes between evidence and playback.
 func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags) (MediaAssetIdentity, error) {
+	return preserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
+}
+
+func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags, storage *storageWriteTracker) (MediaAssetIdentity, error) {
 	if err := ctx.Err(); err != nil {
 		return MediaAssetIdentity{}, err
 	}
@@ -239,12 +243,22 @@ func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash str
 	}
 	_ = os.Remove(stagePath)
 	defer func() { _ = os.Remove(stagePath) }()
-	if err := snapshotOwnedFile(ctx, sourcePath, stagePath); err != nil {
+	writeCtx, finishStorage := storage.Monitor(ctx, stagePath)
+	if err := snapshotOwnedFile(writeCtx, sourcePath, stagePath); err != nil {
+		if storageErr := finishStorage(); storageErr != nil {
+			return MediaAssetIdentity{}, storageErr
+		}
 		return MediaAssetIdentity{}, fmt.Errorf("preserve source master: snapshot source: %w", err)
+	}
+	if err := finishStorage(); err != nil {
+		return MediaAssetIdentity{}, err
 	}
 	digest, size, err := FileSHA256(stagePath)
 	if err != nil {
 		return MediaAssetIdentity{}, fmt.Errorf("preserve source master: digest snapshot: %w", err)
+	}
+	if err := storage.Record(ctx, size); err != nil {
+		return MediaAssetIdentity{}, err
 	}
 	snapshotClipHash, err := ClipID(stagePath)
 	if err != nil || snapshotClipHash != clipHash {
@@ -283,9 +297,9 @@ func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash str
 	return asset, nil
 }
 
-func retainedSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags) (MediaAssetIdentity, error) {
+func retainedSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags, storage *storageWriteTracker) (MediaAssetIdentity, error) {
 	if tags.MediaAssets == nil {
-		return preserveSourceMaster(ctx, clipDir, sourcePath, clipHash, tags)
+		return preserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, storage)
 	}
 	if err := tags.MediaAssets.validate(); err != nil {
 		return MediaAssetIdentity{}, fmt.Errorf("resolve source master: %w", err)

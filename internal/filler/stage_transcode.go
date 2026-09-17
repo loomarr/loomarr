@@ -176,6 +176,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	oldRel := c.Path
 	oldFull := filepath.Join(s.clipDir, filepath.FromSlash(oldRel))
 	var storageLease *storagegovernor.Lease
+	var storageWrites *storageWriteTracker
 	if s.storage != nil {
 		info, err := os.Lstat(oldFull)
 		if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
@@ -204,9 +205,10 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		if decision = storageLease.Revalidate(ctx, 0); !decision.Allowed {
 			return StageResult{}, storageDecisionError("revalidate transcode storage", decision)
 		}
+		storageWrites = &storageWriteTracker{lease: storageLease}
 	}
 	tags, hasTags := ReadSidecarTags(oldFull)
-	sourceMaster, err := retainedSourceMaster(ctx, s.clipDir, oldFull, c.Hash, tags)
+	sourceMaster, err := retainedSourceMaster(ctx, s.clipDir, oldFull, c.Hash, tags, storageWrites)
 	if err != nil {
 		if c.ParentHash != "" {
 			return conditioningReview(c, "source master could not be retained"), nil
@@ -283,9 +285,22 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		// After a committed re-key c.Hash names playback bytes while the retained master keeps the
 		// reviewed stream-copy child's sparse identity. Restart validation must bind each role to
 		// its own identity rather than asking the master to masquerade as playback.
-		snapshots, err := snapshotConditioningArtifacts(ctx, conditioningStageDir, inputFull, conditioningParentFull, sourceMaster.ClipHash, conditioningParentHash)
+		snapshotCtx, finishStorage := storageWrites.Monitor(ctx, conditioningStageDir)
+		snapshots, err := snapshotConditioningArtifacts(snapshotCtx, conditioningStageDir, inputFull, conditioningParentFull, sourceMaster.ClipHash, conditioningParentHash)
 		if err != nil {
+			if storageErr := finishStorage(); storageErr != nil {
+				return StageResult{}, storageErr
+			}
 			return conditioningReview(c, err.Error()), nil
+		}
+		if err := finishStorage(); err != nil {
+			return StageResult{}, err
+		}
+		if err := storageWrites.RecordFile(ctx, snapshots.Source); err != nil {
+			return StageResult{}, err
+		}
+		if err := storageWrites.RecordFile(ctx, snapshots.Parent); err != nil {
+			return StageResult{}, err
 		}
 		inputFull = snapshots.Source
 		conditioningReq = mediatools.ConditioningRequest{
@@ -358,7 +373,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		if s.ffmpegPath != nil {
 			ffmpeg = s.ffmpegPath()
 		}
-		evidence, _, err := s.prepareEvidenceDerivative(ctx, sourceMaster, input, ffmpeg)
+		evidence, _, err := s.prepareEvidenceDerivative(ctx, sourceMaster, input, ffmpeg, storageWrites)
 		if err != nil {
 			return StageResult{}, fmt.Errorf("build evidence derivative for existing playback: %w", err)
 		}
@@ -431,7 +446,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	if s.ffmpegPath != nil {
 		ffmpeg = s.ffmpegPath()
 	}
-	evidence, mediaTool, err := s.prepareEvidenceDerivative(ctx, sourceMaster, in, ffmpeg)
+	evidence, mediaTool, err := s.prepareEvidenceDerivative(ctx, sourceMaster, in, ffmpeg, storageWrites)
 	if err != nil {
 		return StageResult{}, fmt.Errorf("transcode %s: %w", oldRel, err)
 	}
@@ -444,7 +459,8 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		FFmpegPath: ffmpeg, Probe: s.probe,
 		Diagnostics: s.diagnostics,
 	}
-	quality, err := s.transcode(ctx, req, func(pct int) {
+	transcodeCtx, finishStorage := storageWrites.Monitor(ctx, stageFull)
+	quality, err := s.transcode(transcodeCtx, req, func(pct int) {
 		if evidence != nil {
 			reportProgress(ctx, StageTranscode, 40+pct*50/100)
 			return
@@ -452,9 +468,18 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		reportProgress(ctx, StageTranscode, pct*90/100)
 	})
 	if err != nil {
+		if storageErr := finishStorage(); storageErr != nil {
+			return StageResult{}, storageErr
+		}
 		if conditioningBefore != nil && isConditioningCancellation(err) {
 			return conditioningReview(c, "conditioning transcode was cancelled"), nil
 		}
+		return StageResult{}, err
+	}
+	if err := finishStorage(); err != nil {
+		return StageResult{}, err
+	}
+	if err := storageWrites.RecordFile(ctx, stageFull); err != nil {
 		return StageResult{}, err
 	}
 	if conditioningBefore != nil && ctx.Err() != nil {

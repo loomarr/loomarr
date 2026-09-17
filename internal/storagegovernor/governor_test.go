@@ -82,6 +82,34 @@ func TestRepresentativeVolumePolicy(t *testing.T) {
 	}
 }
 
+func TestCapacityStateOwnsTheApproachingThreshold(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		snapshot storagegovernor.Snapshot
+		want     storagegovernor.CapacityState
+	}{
+		{name: "healthy", snapshot: storagegovernor.Snapshot{
+			SoftLimitEnabled: true, SoftBudgetBytes: 10 * storagegovernor.GiB, AvailableBytes: 2 * storagegovernor.GiB,
+		}, want: storagegovernor.CapacityHealthy},
+		{name: "one GiB warning cap", snapshot: storagegovernor.Snapshot{
+			SoftLimitEnabled: true, SoftBudgetBytes: 20 * storagegovernor.GiB, AvailableBytes: storagegovernor.GiB,
+		}, want: storagegovernor.CapacityApproaching},
+		{name: "small appliance percentage", snapshot: storagegovernor.Snapshot{
+			SoftLimitEnabled: true, SoftBudgetBytes: 2 * storagegovernor.GiB, AvailableBytes: 400 << 20,
+		}, want: storagegovernor.CapacityApproaching},
+		{name: "paused", snapshot: storagegovernor.Snapshot{Reason: storagegovernor.ReasonHostReserve}, want: storagegovernor.CapacityPaused},
+		{name: "unknown", snapshot: storagegovernor.Snapshot{Reason: storagegovernor.ReasonCapacityUnavailable}, want: storagegovernor.CapacityUnknown},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := storagegovernor.State(tc.snapshot); got != tc.want {
+				t.Fatalf("State() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestReserveUsesTheSmallerHostAndLibraryAllowance(t *testing.T) {
 	t.Parallel()
 	const root = "/filler"

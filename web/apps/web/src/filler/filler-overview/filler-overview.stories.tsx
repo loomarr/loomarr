@@ -11,6 +11,7 @@ const readiness: FillerReadinessDTO = {
   fetch: { enabled: true, catalogClips: 48 },
   storage: {
     automatic: true,
+    state: "healthy",
     totalBytes: 500 * 1024 ** 3,
     freeBytes: 200 * 1024 ** 3,
     managedBytes: 2 * 1024 ** 3,

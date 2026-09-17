@@ -174,6 +174,7 @@ const appHandlers = (): RequestHandler[] => [
     fetch: { enabled: true, catalogClips: 0 },
     storage: {
       automatic: true,
+      state: "healthy",
       totalBytes: 500 * 1024 ** 3,
       freeBytes: 200 * 1024 ** 3,
       managedBytes: 0,

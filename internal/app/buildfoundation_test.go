@@ -5,13 +5,124 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+func TestFoundationStorageBudgetAndProjectionSurviveSQLiteRestart(t *testing.T) {
+	testFoundationStorageBudgetAndProjectionSurviveRestart(t, testkit.MigratedSQLiteStore(t))
+}
+
+func testFoundationStorageBudgetAndProjectionSurviveRestart(t *testing.T, st store.Store) {
+	t.Helper()
+	root := t.TempDir()
+	fillerDir := filepath.Join(root, "filler")
+	watchDir := filepath.Join(fillerDir, "_watch")
+	preparedDir := filepath.Join(root, "prepared")
+	diagnosticsDir := filepath.Join(root, "diagnostics")
+	for _, dir := range []string{fillerDir, watchDir, preparedDir, diagnosticsDir} {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("FILLER_DIR", fillerDir)
+	t.Setenv("FILLER_WATCH_DIR", watchDir)
+	t.Setenv("PLAYOUT_PREPARED_DIR", preparedDir)
+	t.Setenv("DIAGNOSTICS_DIR", diagnosticsDir)
+	if err := st.SetSetting(t.Context(), "filler.storage.library_budget_gb", "7"); err != nil {
+		t.Fatal(err)
+	}
+	overrides := Overrides{EncryptionDataDir: filepath.Join(root, "encryption")}
+	build := func() foundationBuild {
+		t.Helper()
+		lifecycle := newGenerationLifecycle(t.Context())
+		foundation, err := buildFoundation(t.Context(), st, slog.New(slog.DiscardHandler), overrides, lifecycle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decision := foundation.storageGovernor.Snapshot(t.Context(), foundation.fillerLayout.ClipDir())
+		if !decision.Allowed || decision.Snapshot.SoftBudgetBytes != 7*storagegovernor.GiB || !decision.Snapshot.SoftLimitEnabled {
+			t.Fatalf("storage projection = %+v", decision)
+		}
+		if err := lifecycle.shutdown(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		return foundation
+	}
+	_ = build()
+	_ = build()
+}
+
+func TestFoundationRecomputesStorageForChangedFillerPathAfterRestart(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := filepath.Join(root, "first")
+	second := filepath.Join(root, "second")
+	for path, size := range map[string]int{first: 100, second: 200} {
+		if err := os.MkdirAll(filepath.Join(path, "_watch"), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(path, "clip.mp4"), make([]byte, size), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	preparedDir := filepath.Join(root, "prepared")
+	diagnosticsDir := filepath.Join(root, "diagnostics")
+	for _, dir := range []string{preparedDir, diagnosticsDir} {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PLAYOUT_PREPARED_DIR", preparedDir)
+	t.Setenv("DIAGNOSTICS_DIR", diagnosticsDir)
+	overrides := Overrides{EncryptionDataDir: filepath.Join(root, "encryption")}
+	project := func(wantPath string, wantManaged int64) {
+		t.Helper()
+		lifecycle := newGenerationLifecycle(t.Context())
+		foundation, err := buildFoundation(t.Context(), st, slog.New(slog.DiscardHandler), overrides, lifecycle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if foundation.fillerLayout.ClipDir() != wantPath {
+			t.Fatalf("applied filler path = %q, want %q", foundation.fillerLayout.ClipDir(), wantPath)
+		}
+		decision := foundation.storageGovernor.Snapshot(t.Context(), wantPath)
+		if !decision.Allowed || decision.Snapshot.ManagedBytes != wantManaged {
+			t.Fatalf("storage projection for %s = %+v", wantPath, decision)
+		}
+		if err := lifecycle.shutdown(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, setting := range []struct{ key, value string }{
+		{key: "filler.dir", value: first}, {key: "filler.watch_dir", value: filepath.Join(first, "_watch")},
+	} {
+		if err := st.SetSetting(t.Context(), setting.key, setting.value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	project(first, 100)
+	for _, setting := range []struct{ key, value string }{
+		{key: "filler.dir", value: second}, {key: "filler.watch_dir", value: filepath.Join(second, "_watch")},
+	} {
+		if err := st.SetSetting(t.Context(), setting.key, setting.value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	project(second, 200)
+}
 
 func TestBuildRetainsStartupReportWhenSettingsInitializationFails(t *testing.T) {
 	t.Setenv("JOB_WORKERS", "not-a-number")

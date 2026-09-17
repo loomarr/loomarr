@@ -23,6 +23,7 @@ const renderSettings = (section: FillerSettingsSection = "downloads") => {
       fetch: { enabled: true, catalogClips: 12 },
       storage: {
         automatic: true,
+        state: "healthy",
         totalBytes: 500 * 1024 ** 3,
         freeBytes: 200 * 1024 ** 3,
         managedBytes: 2 * 1024 ** 3,
