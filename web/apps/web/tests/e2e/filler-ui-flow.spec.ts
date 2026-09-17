@@ -15,6 +15,9 @@ test("Filler keeps its workspace stable and settings focused without losing edit
   await page.getByRole("spinbutton", { name: "Add up to", exact: true }).fill("4");
   await page.getByRole("link", { name: "Storage limits", exact: true }).click();
   await expect(page).toHaveURL(/\/filler\/settings\/storage$/);
+  await expect(page.getByRole("spinbutton", { name: "Filler storage allowance" })).toBeVisible();
+  await expect(page.getByRole("spinbutton", { name: "Automatic-download catalog limit" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Show advanced (1)" }).click();
   await expect(page.getByRole("spinbutton", { name: "Automatic-download catalog limit" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Automatic downloads", exact: true })).toHaveCount(0);
   await page.getByRole("spinbutton", { name: "Automatic-download catalog limit" }).fill("1000");
