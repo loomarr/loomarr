@@ -27,7 +27,10 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 		{"catalog ceiling before failed work", func(in *filler.ReadinessInput) {
 			in.Fetch.StoppedBy, in.Pipeline.Recoverable = "catalog", 2
 		}, filler.ReadinessFreeCatalog},
-		{"disk ceiling", func(in *filler.ReadinessInput) { in.Fetch.StoppedBy = "disk" }, filler.ReadinessFreeDisk},
+		{"host reserve", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "host_reserve" }, filler.ReadinessFreeSpace},
+		{"library allowance", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "library_limit" }, filler.ReadinessChangeLimit},
+		{"capacity unavailable", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "capacity_unavailable" }, filler.ReadinessChooseFolder},
+		{"estimate unavailable", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "estimate_unknown" }, filler.ReadinessChooseFolder},
 		{"latest acquisition failed", func(in *filler.ReadinessInput) {
 			in.Runs = []filler.AcquisitionRun{{Status: filler.AcquisitionError, Failed: 2}}
 		}, filler.ReadinessRetryAcquisition},

@@ -3,11 +3,13 @@ package filler
 import (
 	"context"
 	"fmt"
-	"github.com/loomarr/loomarr/internal/mediatools"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // Clip artwork (V39): the still frame AND the animated hover preview, from ONE ffmpeg pass.
@@ -170,6 +172,10 @@ func PreviewPathFor(clipPath string) string {
 // skipped — so it returns a count and the caller logs it. A misconfigured ffmpeg then reads as
 // "0 of 412 generated" rather than as artwork mysteriously not existing.
 func GenerateArtwork(ctx context.Context, dir string, clips []RawClip, render ArtworkRenderer) (failed int) {
+	return generateArtwork(ctx, dir, clips, render, nil)
+}
+
+func generateArtwork(ctx context.Context, dir string, clips []RawClip, render ArtworkRenderer, governor *storagegovernor.Governor) (failed int) {
 	if dir == "" || len(clips) == 0 {
 		return 0
 	}
@@ -192,14 +198,62 @@ func GenerateArtwork(ctx context.Context, dir string, clips []RawClip, render Ar
 			clips[i].Thumbnail, clips[i].Preview = stillRel, animRel
 			continue
 		}
+		var lease *storagegovernor.Lease
+		if governor != nil {
+			var decision storagegovernor.Decision
+			lease, decision = governor.Reserve(ctx, storagegovernor.Request{
+				Path: stillDst, Domain: storagegovernor.DomainFiller,
+				EstimatedBytes: storagegovernor.EstimateArtwork(), Mode: storagegovernor.Automatic,
+			})
+			if lease == nil {
+				failed++
+				continue
+			}
+			if decision = lease.Revalidate(ctx, 0); !decision.Allowed {
+				lease.Release()
+				failed++
+				continue
+			}
+		}
 		if err := os.MkdirAll(filepath.Dir(stillDst), 0o750); err != nil {
+			lease.Release()
 			failed++
 			continue
 		}
 
-		if err := render(ctx, filepath.Join(dir, filepath.FromSlash(clips[i].Path)),
-			stillDst, animDst, previewStartFor(clips[i].DurationMs)); err != nil {
+		monitored := make([]string, 0, 2)
+		if !haveStill {
+			monitored = append(monitored, stillDst)
+		}
+		if !haveAnim {
+			monitored = append(monitored, animDst)
+		}
+		renderCtx := ctx
+		finishStorage := func() error { return nil }
+		if lease != nil {
+			renderCtx, finishStorage = storagegovernor.MonitorPaths(ctx, lease, monitored, 0)
+		}
+		renderErr := render(renderCtx, filepath.Join(dir, filepath.FromSlash(clips[i].Path)),
+			stillDst, animDst, previewStartFor(clips[i].DurationMs))
+		capacityFailed := finishStorage() != nil
+		if lease != nil {
+			if !capacityFailed {
+				written := newlyWrittenArtworkBytes(stillDst, animDst, haveStill, haveAnim)
+				decision := lease.Revalidate(ctx, written)
+				capacityFailed = !decision.Allowed
+			}
+			lease.Release()
+		}
+		if renderErr != nil || capacityFailed {
 			failed++
+			if capacityFailed {
+				if !haveStill {
+					_ = os.Remove(stillDst)
+				}
+				if !haveAnim {
+					_ = os.Remove(animDst)
+				}
+			}
 			// ⚠ Partial files from a killed ffmpeg would otherwise be adopted as "already
 			// generated" on the next pass and never retried. Only the ones that are actually
 			// empty or absent are removed — a render that failed on the ANIMATION must not
@@ -221,6 +275,25 @@ func GenerateArtwork(ctx context.Context, dir string, clips []RawClip, render Ar
 		}
 	}
 	return failed
+}
+
+func newlyWrittenArtworkBytes(still, animated string, hadStill, hadAnimated bool) int64 {
+	var total int64
+	if !hadStill {
+		total += regularFileSize(still)
+	}
+	if !hadAnimated {
+		total += regularFileSize(animated)
+	}
+	return total
+}
+
+func regularFileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return 0
+	}
+	return info.Size()
 }
 
 // nonEmpty reports whether a path is a file with bytes in it. A zero-length file is what ffmpeg

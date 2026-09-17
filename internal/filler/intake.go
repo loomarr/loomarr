@@ -1,6 +1,7 @@
 package filler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // Intake — the ONE route every clip takes into the catalog (§10 V38c).
@@ -72,7 +75,7 @@ type IntakeResult struct {
 // `fetched` marks the whole pass as Loomarr's own download so the sidecar records acquisition
 // provenance. It does not affect admission; every new clip starts held.
 func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (IntakeResult, error) {
-	return TakeInFrom(watchDir, clipDir, fetched, "", log)
+	return takeInFrom(context.Background(), watchDir, clipDir, fetched, "", log, nil, nil)
 }
 
 // TakeInWithAcquisitionBinding files watch-folder media while allowing durable acquisition
@@ -81,17 +84,17 @@ func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (I
 // and their durable relative names; it is never invoked for an unfiled operator clip found
 // directly in clipDir.
 func TakeInWithAcquisitionBinding(watchDir, clipDir string, fetched bool, log func(string, ...any), bind func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error) (IntakeResult, error) {
-	return takeInFrom(watchDir, clipDir, fetched, "", log, bind)
+	return takeInFrom(context.Background(), watchDir, clipDir, fetched, "", log, bind, nil)
 }
 
 // TakeInFrom preserves the registered source responsible for an unattended arrival. Registered
 // folder/library scans set fetched=true; a direct hand-copy uses false because its provenance is
 // different, not because it receives different publication authority.
 func TakeInFrom(watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any)) (IntakeResult, error) {
-	return takeInFrom(watchDir, clipDir, fetched, sourceID, log, nil)
+	return takeInFrom(context.Background(), watchDir, clipDir, fetched, sourceID, log, nil, nil)
 }
 
-func takeInFrom(watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any), bind func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error) (IntakeResult, error) {
+func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any), bind func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error, governor *storagegovernor.Governor) (IntakeResult, error) {
 	var res IntakeResult
 	if watchDir == "" || clipDir == "" {
 		return res, nil
@@ -189,7 +192,7 @@ func takeInFrom(watchDir, clipDir string, fetched bool, sourceID string, log fun
 		// ⚠ The name is read BEFORE the move, and written to the sidecar AFTER it. Capturing it
 		// afterwards is impossible — by then the only name is the hash.
 		original := filepath.Base(src)
-		if err := movePath(src, dst); err != nil {
+		if err := movePathWithStorage(ctx, src, dst, governor); err != nil {
 			if log != nil {
 				log("filler intake: could not move a clip into the clip folder",
 					"file", src, "err", err)
@@ -199,7 +202,7 @@ func takeInFrom(watchDir, clipDir string, fetched bool, sourceID string, log fun
 		}
 		// A sidecar the downloader wrote travels with the clip, so its title/description survive
 		// to reach the tagger.
-		_ = moveIfPresent(sidecarPathFor(src), sidecarPathFor(dst))
+		_ = moveIfPresentWithStorage(ctx, sidecarPathFor(src), sidecarPathFor(dst), governor)
 
 		if err := WriteSidecarTags(dst, SidecarTags{OriginalName: original, SourceID: sourceID}, fetched); err != nil && log != nil {
 			// Not fatal: the clip is in place and catalogueable. A missing sidecar costs the
@@ -275,13 +278,17 @@ func collectMedia(dir string, excludedDirs ...string) ([]string, error) {
 // clip reported as success would be counted as Taken and catalogued as a row pointing at nothing.
 // Callers that genuinely do not care use moveIfPresent, which names that choice.
 func movePath(src, dst string) error {
+	return movePathWithStorage(context.Background(), src, dst, nil)
+}
+
+func movePathWithStorage(ctx context.Context, src, dst string, governor *storagegovernor.Governor) error {
 	err := os.Rename(src, dst)
 	if err == nil {
 		return nil
 	}
 	// Cross-device (EXDEV) is the case the fallback exists for, but any rename failure is worth
 	// one copy attempt — the copy either succeeds or reports the real reason.
-	if copyErr := copyFile(src, dst); copyErr != nil {
+	if copyErr := copyFileWithStorage(ctx, src, dst, governor); copyErr != nil {
 		return copyErr
 	}
 	return os.Remove(src)
@@ -290,18 +297,45 @@ func movePath(src, dst string) error {
 // moveIfPresent moves a file that may legitimately not exist — the sidecar, which most
 // hand-dropped clips arrive without. Absence is success; anything else is the caller's problem.
 func moveIfPresent(src, dst string) error {
+	return moveIfPresentWithStorage(context.Background(), src, dst, nil)
+}
+
+func moveIfPresentWithStorage(ctx context.Context, src, dst string, governor *storagegovernor.Governor) error {
 	if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
-	return movePath(src, dst)
+	return movePathWithStorage(ctx, src, dst, governor)
 }
 
 func copyFile(src, dst string) error {
+	return copyFileWithStorage(context.Background(), src, dst, nil)
+}
+
+func copyFileWithStorage(ctx context.Context, src, dst string, governor *storagegovernor.Governor) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = in.Close() }()
+	info, err := in.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+		if err == nil {
+			err = errors.New("source is not a non-empty regular file")
+		}
+		return err
+	}
+	var lease *storagegovernor.Lease
+	if governor != nil {
+		var decision storagegovernor.Decision
+		lease, decision = governor.Reserve(ctx, storagegovernor.Request{
+			Path: dst, Domain: storagegovernor.DomainFiller,
+			EstimatedBytes: info.Size(), Mode: storagegovernor.Automatic,
+		})
+		if lease == nil {
+			return storageDecisionError("reserve cross-filesystem intake copy", decision)
+		}
+		defer lease.Release()
+	}
 
 	// ⚠ Written to a temp name and renamed into place, so a crash mid-copy cannot leave a
 	// truncated file sitting at the hash's name — where the duplicate check would then treat it
@@ -311,14 +345,50 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		_ = os.Remove(tmp)
-		return err
+	buffer := make([]byte, 128<<10)
+	var written int64
+	for {
+		n, readErr := in.Read(buffer)
+		if n > 0 {
+			if written > info.Size()-int64(n) {
+				_ = out.Close()
+				_ = os.Remove(tmp)
+				return errors.New("source grew beyond its reserved intake size")
+			}
+			if _, err := out.Write(buffer[:n]); err != nil {
+				_ = out.Close()
+				_ = os.Remove(tmp)
+				return err
+			}
+			written += int64(n)
+			if lease != nil {
+				decision := lease.Revalidate(ctx, written)
+				if !decision.Allowed {
+					_ = out.Close()
+					_ = os.Remove(tmp)
+					return storageDecisionError("revalidate cross-filesystem intake copy", decision)
+				}
+			}
+		}
+		if readErr != nil {
+			if !errors.Is(readErr, io.EOF) {
+				_ = out.Close()
+				_ = os.Remove(tmp)
+				return readErr
+			}
+			break
+		}
 	}
 	if err := out.Close(); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, dst)
+}
+
+func storageDecisionError(operation string, decision storagegovernor.Decision) error {
+	if decision.Err != nil {
+		return fmt.Errorf("%s (%s): %w", operation, decision.Snapshot.Reason, decision.Err)
+	}
+	return fmt.Errorf("%s (%s)", operation, decision.Snapshot.Reason)
 }

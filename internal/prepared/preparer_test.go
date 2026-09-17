@@ -6,12 +6,27 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+type preparedCapacityMeter struct {
+	measurement storagegovernor.Measurement
+}
+
+func (m preparedCapacityMeter) Measure(context.Context, string) (storagegovernor.Measurement, error) {
+	return m.measurement, nil
+}
+
+func (preparedCapacityMeter) ManagedBytes(context.Context, string, storagegovernor.Domain) (int64, error) {
+	return 0, nil
+}
 
 func TestTransientInputDoesNotSerialize(t *testing.T) {
 	t.Parallel()
@@ -90,6 +105,89 @@ func TestPreparerLookupNeverOpensOrBuildsOnDemand(t *testing.T) {
 	}
 	if packager.count() != 0 || access.Calls() != 0 {
 		t.Fatal("Lookup opened the source or started preparation")
+	}
+}
+
+func TestPreparerRefusesCapacityBeforeCreatingWorkspaceOrOpeningSource(t *testing.T) {
+	root := t.TempDir()
+	library, err := prepared.NewLibrary(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packager := &countingPackager{}
+	access := &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")}
+	governor := storagegovernor.New(preparedCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "prepared", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 60 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 1}
+	})
+	preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+		Library: library, Packager: packager, Access: access, Storage: governor,
+	})
+	request := preparedRequest("capacity")
+	request.DurationMS = int64(time.Hour / time.Millisecond)
+
+	_, err = preparer.Prepare(t.Context(), request)
+	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonLibraryLimit)) {
+		t.Fatalf("Prepare error = %v, want library-limit refusal", err)
+	}
+	if packager.count() != 0 || access.Calls() != 0 {
+		t.Fatalf("capacity refusal opened source or packaged media: builds=%d access=%d", packager.count(), access.Calls())
+	}
+	entries, readErr := os.ReadDir(root)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("prepared root contains workspace after refusal: %v", entries)
+	}
+}
+
+func TestPreparerStopsAndRemovesOutputThatExceedsItsReservation(t *testing.T) {
+	root := t.TempDir()
+	library, err := prepared.NewLibrary(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := preparedRequest("overrun")
+	request.DurationMS = 1
+	reservation, ok := storagegovernor.EstimatePrepared(
+		request.DurationMS, request.Rendition.VideoBitrateKbps, request.Rendition.AudioBitrateKbps,
+	)
+	if !ok {
+		t.Fatal("test request has no storage estimate")
+	}
+	packager := packagerFunc(func(ctx context.Context, workspace string, _ prepared.Input, _ int, _ prepared.RenditionContract) (prepared.Output, error) {
+		path := filepath.Join(workspace, "segment.m4s")
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			return prepared.Output{}, err
+		}
+		if err := os.Truncate(path, reservation+1); err != nil {
+			return prepared.Output{}, err
+		}
+		return prepared.Output{Files: []string{"segment.m4s"}}, nil
+	})
+	governor := storagegovernor.New(preparedCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "prepared", TotalBytes: 128 * storagegovernor.GiB, FreeBytes: 100 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	})
+	preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+		Library: library, Packager: packager,
+		Access:  &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")},
+		Storage: governor,
+	})
+
+	if _, err := preparer.Prepare(t.Context(), request); err == nil ||
+		!strings.Contains(err.Error(), string(storagegovernor.ReasonEstimateUnknown)) {
+		t.Fatalf("Prepare error = %v, want estimate ceiling", err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("overrun left prepared staging: %v", entries)
 	}
 }
 

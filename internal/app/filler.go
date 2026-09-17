@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -687,7 +688,7 @@ type fillerServiceAdapter struct {
 	// fetcher is nil unless the running image carries the ingest tooling (the single image
 	// — §16). nil is the normal state on loomarr:latest, not a misconfiguration.
 	fetcher interface {
-		Run(context.Context, []clipfetch.Source) clipfetch.Result
+		Prepare(context.Context, []clipfetch.Source, storagegovernor.Mode) (clipfetch.AcquisitionPlan, error)
 	}
 	// afterIngest closes the watch-folder → catalog → pipeline loop before a successful ingest
 	// event is published (§10 V56). Optional only in narrow unit tests.
@@ -726,7 +727,11 @@ type fillerServiceAdapter struct {
 	pipeline *filler.Pipeline
 	// autoFetch supplies the live limit status rendered by /v1/filler/watch. It is the same
 	// Fetcher the scheduler runs, so reporting and enforcement cannot drift.
-	autoFetch *filler.Fetcher
+	autoFetch        *filler.Fetcher
+	storage          *storagegovernor.Governor
+	storagePath      string
+	storageAutomatic func() bool
+	storageCleanup   *clipfetch.AcquisitionCleaner
 }
 
 func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
@@ -821,9 +826,39 @@ func (a fillerServiceAdapter) Readiness(ctx context.Context) (filler.Readiness, 
 	if err != nil {
 		return filler.Readiness{}, err
 	}
+	storage := filler.StorageStatus{}
+	if a.storage != nil {
+		decision := a.storage.Snapshot(ctx, a.storagePath)
+		snapshot := decision.Snapshot
+		storage = filler.StorageStatus{
+			TotalBytes: snapshot.TotalBytes, FreeBytes: snapshot.FreeBytes,
+			ManagedBytes: snapshot.ManagedBytes, ReservedBytes: snapshot.ReservedBytes,
+			FilesystemReservedBytes: snapshot.FilesystemReservedBytes,
+			SoftBudgetBytes:         snapshot.SoftBudgetBytes, HardReserveBytes: snapshot.HardReserveBytes,
+			AvailableBytes: snapshot.AvailableBytes, State: string(storagegovernor.State(snapshot)),
+			PausedBy: string(snapshot.Reason),
+		}
+		if a.storageAutomatic != nil {
+			storage.Automatic = a.storageAutomatic()
+		}
+	}
 	return filler.ProjectReadiness(filler.ReadinessInput{
-		Fetch: fetch, Pipeline: pipeline, Pool: pool, Runs: runs, Repairs: repairs,
+		Fetch: fetch, Storage: storage, Pipeline: pipeline, Pool: pool, Runs: runs, Repairs: repairs,
 	}), nil
+}
+
+func (a fillerServiceAdapter) PreviewStorageCleanup(ctx context.Context) (filler.StorageCleanupPreview, error) {
+	if a.storageCleanup == nil {
+		return filler.StorageCleanupPreview{}, nil
+	}
+	return a.storageCleanup.Preview(ctx)
+}
+
+func (a fillerServiceAdapter) CleanupStorage(ctx context.Context) (filler.StorageCleanupResult, error) {
+	if a.storageCleanup == nil {
+		return filler.StorageCleanupResult{}, nil
+	}
+	return a.storageCleanup.Clean(ctx)
 }
 
 func (a fillerServiceAdapter) FetchStatus(ctx context.Context) (filler.FetchStatus, error) {
@@ -995,6 +1030,16 @@ func (a fillerServiceAdapter) ingest(
 		})
 	}
 	sourceID := commonAcquisitionSource(targets)
+	plan, err := a.fetcher.Prepare(ctx, sources, storagegovernor.Automatic)
+	if err != nil {
+		return "", err
+	}
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			plan.Release()
+		}
+	}()
 
 	now := time.Now
 	if a.now != nil {
@@ -1016,12 +1061,12 @@ func (a fillerServiceAdapter) ingest(
 	}
 	var res clipfetch.Result
 	operationTimeout := a.timeout * time.Duration(len(sources))
-	err := a.start(operationTimeout, func(operationCtx context.Context) error {
+	err = a.start(operationTimeout, func(operationCtx context.Context) error {
 		run.Status = filler.AcquisitionRunning
 		run.UpdatedAt = now().UTC()
 		a.persistAcquisition(operationCtx, run)
 		a.publishIngest(jobID, "starting", clipfetch.Result{}, "")
-		res = a.fetcher.Run(operationCtx, sources)
+		res = plan.Run(operationCtx)
 		run.Fetched, run.Skipped = res.Fetched, res.Skipped
 		run.Failed, run.Empty = res.Failed, res.Empty
 		if err := operationCtx.Err(); err != nil {
@@ -1054,6 +1099,7 @@ func (a fillerServiceAdapter) ingest(
 		a.persistAcquisition(ctx, run)
 		return "", err
 	}
+	handedOff = true
 	return jobID, nil
 }
 

@@ -3,8 +3,6 @@ package filler_test
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -110,11 +108,10 @@ func refs(ids ...string) []filler.DiscoveredRef {
 	return out
 }
 
-func limits(perRun, catalog, disk int) filler.FetchLimits {
+func limits(perRun, catalog int) filler.FetchLimits {
 	return filler.FetchLimits{
 		MaxPerRun:       func() int { return perRun },
 		MaxCatalogClips: func() int { return catalog },
-		MaxDiskGB:       func() int { return disk },
 	}
 }
 
@@ -144,7 +141,7 @@ func newFetcherWithRemoteStates(t *testing.T, stub *fetchStub, l filler.FetchLim
 		listRemoteStates: func(context.Context) (map[string]filler.ExistingRemoteState, error) {
 			return states, nil
 		},
-	}, stub, stub, t.TempDir(), l, discardLog())
+	}, stub, stub, l, discardLog())
 }
 
 type sourceEnum func(filler.FetchSource) []filler.DiscoveredRef
@@ -161,7 +158,7 @@ func TestFetch_StopsAtMaxPerRun(t *testing.T) {
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers:  refs("a", "b", "c", "d", "e", "f", "g", "h"),
 	}
-	res, err := newFetcher(t, stub, limits(3, 2000, 20)).Run(context.Background())
+	res, err := newFetcher(t, stub, limits(3, 2000)).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +182,7 @@ func TestFetch_RanksMetadataInsteadOfTakingProviderOrder(t *testing.T) {
 			{ID: "second-hd", URL: "https://archive.org/details/second-hd", Height: 1080, License: "cc-by"},
 		},
 	}
-	res, err := newFetcher(t, stub, limits(1, 2000, 20)).Run(t.Context())
+	res, err := newFetcher(t, stub, limits(1, 2000)).Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +196,7 @@ func TestFetch_EnumeratesTheRegisteredProviderKind(t *testing.T) {
 		sources: []filler.FetchSource{{ID: "youtube:kids", Kind: "youtube", URI: "https://youtube.com/@kids/videos", Enabled: true}},
 		offers:  []filler.DiscoveredRef{{ID: "video-1", URL: "https://youtube.com/watch?v=video-1"}},
 	}
-	if _, err := newFetcher(t, stub, limits(2, 2000, 20)).Run(context.Background()); err != nil {
+	if _, err := newFetcher(t, stub, limits(2, 2000)).Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(stub.listedKinds) != 1 || stub.listedKinds[0] != "youtube" {
@@ -221,7 +218,7 @@ func TestFetch_ScheduledSelectionKeepsProviderNamespacesDistinct(t *testing.T) {
 		}
 		return []filler.DiscoveredRef{{ID: "abcdef12345", URL: "https://archive.org/details/abcdef12345", Height: 1080}}
 	})
-	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, enum, stub, t.TempDir(), limits(1, 2000, 20), discardLog())
+	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, enum, stub, limits(1, 2000), discardLog())
 	res, err := f.Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -236,7 +233,7 @@ func TestFetch_PreservesCaseSensitiveYouTubeItemIdentity(t *testing.T) {
 		{ID: "AbCd123", URL: "https://youtube.com/watch?v=AbCd123", Title: "Upper title"},
 		{ID: "abcd123", URL: "https://youtube.com/watch?v=abcd123", Title: "Lower title"},
 	}}
-	res, err := newFetcher(t, stub, limits(2, 2000, 20)).Run(t.Context())
+	res, err := newFetcher(t, stub, limits(2, 2000)).Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +245,7 @@ func TestFetch_PreservesCaseSensitiveYouTubeItemIdentity(t *testing.T) {
 func TestFetch_TypedRemoteStatesExcludeOnlyExactIdentity(t *testing.T) {
 	upper := filler.RemoteIdentity{Provider: "youtube", SourceID: "youtube:case", RemoteID: "AbCd123"}
 	stub := &fetchStub{sources: []filler.FetchSource{{ID: upper.SourceID, Kind: upper.Provider, URI: "https://youtube.com/@case/videos", Enabled: true}}, offers: []filler.DiscoveredRef{{ID: upper.RemoteID, URL: "https://youtube.com/watch?v=AbCd123"}, {ID: "abcd123", URL: "https://youtube.com/watch?v=abcd123"}}}
-	res, err := newFetcherWithRemoteStates(t, stub, limits(2, 2000, 20), map[string]filler.ExistingRemoteState{upper.Key(): filler.RemoteCatalogued}).Run(t.Context())
+	res, err := newFetcherWithRemoteStates(t, stub, limits(2, 2000), map[string]filler.ExistingRemoteState{upper.Key(): filler.RemoteCatalogued}).Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +257,7 @@ func TestFetch_TypedRemoteStatesExcludeOnlyExactIdentity(t *testing.T) {
 func TestFetch_FailedQueueLeavesIdentityEligibleForHealthyRetry(t *testing.T) {
 	states := map[string]filler.ExistingRemoteState{}
 	stub := &fetchStub{sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}, offers: refs("retry"), ingestErr: errors.New("temporary")}
-	f := newFetcherWithRemoteStates(t, stub, limits(2, 2000, 20), states)
+	f := newFetcherWithRemoteStates(t, stub, limits(2, 2000), states)
 	if _, err := f.Run(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +281,7 @@ func TestFetch_SkipsDisabledSources(t *testing.T) {
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: false}},
 		offers:  refs("a", "b"),
 	}
-	res, _ := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	res, _ := newFetcher(t, stub, limits(10, 2000)).Run(context.Background())
 	if res.SourcesPolled != 0 || len(stub.queued) != 0 {
 		t.Errorf("a switched-off source was polled (%d) and queued %v", res.SourcesPolled, stub.queued)
 	}
@@ -298,7 +295,7 @@ func TestFetch_ManualCheckRefusesADisabledSource(t *testing.T) {
 		ID: "off", Kind: "archive", URI: "collection", Enabled: false,
 	}}}
 
-	_, err := newFetcher(t, stub, limits(10, 2000, 20)).RunSource(t.Context(), "off")
+	_, err := newFetcher(t, stub, limits(10, 2000)).RunSource(t.Context(), "off")
 	if !errors.Is(err, filler.ErrSourceDisabled) || stub.catalogCalls != 0 || stub.calls != 0 {
 		t.Fatalf("disabled manual check = %v, catalog/provider calls = %d/%d; want refusal before work",
 			err, stub.catalogCalls, stub.calls)
@@ -315,7 +312,7 @@ func TestFetch_SkipsFolderAndLibraryRows(t *testing.T) {
 		},
 		offers: refs("a"),
 	}
-	res, _ := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	res, _ := newFetcher(t, stub, limits(10, 2000)).Run(context.Background())
 	if res.SourcesPolled != 0 || len(stub.queued) != 0 {
 		t.Error("a config-backed row was polled — those are scanned, not downloaded from")
 	}
@@ -330,7 +327,7 @@ func TestFetch_SkipsWhatIsAlreadyInTheCatalog(t *testing.T) {
 		paths:   []string{"a.mp4", "nested/b.mp4"},
 		offers:  refs("a", "b", "c"),
 	}
-	res, _ := newFetcherWithRemoteStates(t, stub, limits(10, 2000, 20), map[string]filler.ExistingRemoteState{
+	res, _ := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]filler.ExistingRemoteState{
 		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "a"}).Key(): filler.RemoteCatalogued,
 		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "b"}).Key(): filler.RemoteCatalogued,
 	}).Run(context.Background())
@@ -349,7 +346,7 @@ func TestFetch_SkipsCataloguedArchiveOutputTemplatePath(t *testing.T) {
 		paths:   []string{"CampbellsSoupAdvert - Campbell's Soup Advert 1993.mp4"},
 		offers:  refs("CampbellsSoupAdvert", "new-ad"),
 	}
-	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000, 20), map[string]filler.ExistingRemoteState{
+	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]filler.ExistingRemoteState{
 		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "CampbellsSoupAdvert"}).Key(): filler.RemoteCatalogued,
 	}).Run(context.Background())
 	if err != nil {
@@ -369,7 +366,7 @@ func TestFetch_DoesNotTreatAnOrdinaryNameAsArchiveOutput(t *testing.T) {
 		paths:   []string{"An ordinary catalog name - not an Archive item ID.mp4"},
 		offers:  refs("An ordinary catalog name"),
 	}
-	res, err := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	res, err := newFetcher(t, stub, limits(10, 2000)).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +382,7 @@ func TestFetch_SkipsCataloguedYouTubeOutputTemplatePath(t *testing.T) {
 		paths:   []string{"Title for a catalogued clip [video-id].mp4"},
 		offers:  []filler.DiscoveredRef{{ID: "video-id", URL: "https://youtube.com/watch?v=video-id"}},
 	}
-	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000, 20), map[string]filler.ExistingRemoteState{
+	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]filler.ExistingRemoteState{
 		(filler.RemoteIdentity{Provider: "youtube", SourceID: "youtube:retro", RemoteID: "video-id"}).Key(): filler.RemoteCatalogued,
 	}).Run(context.Background())
 	if err != nil {
@@ -408,7 +405,7 @@ func TestFetch_StopsAndReportsAtTheCatalogCeiling(t *testing.T) {
 		paths:   []string{"x.mp4", "y.mp4", "z.mp4"},
 		offers:  refs("a"),
 	}
-	res, _ := newFetcher(t, stub, limits(10, 3, 20)).Run(context.Background())
+	res, _ := newFetcher(t, stub, limits(10, 3)).Run(context.Background())
 	if res.StoppedBy != "catalog" {
 		t.Errorf("StoppedBy = %q, want catalog", res.StoppedBy)
 	}
@@ -425,7 +422,7 @@ func TestFetch_ManualCheckReportsItsCapWhenCapacityStopsIt(t *testing.T) {
 		paths: []string{"a", "b"},
 	}
 
-	res, err := newFetcher(t, stub, limits(10, 2, 20)).RunSource(t.Context(), "selected")
+	res, err := newFetcher(t, stub, limits(10, 2)).RunSource(t.Context(), "selected")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +437,7 @@ func TestFetchStatus_ReportsTheLiveLimitWithoutRunningAFetch(t *testing.T) {
 		paths:   []string{"x.mp4", "y.mp4", "z.mp4"},
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 	}
-	f := newFetcher(t, stub, limits(10, 3, 0))
+	f := newFetcher(t, stub, limits(10, 3))
 	status, err := f.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -462,57 +459,6 @@ func TestFetchStatus_ReportsTheLiveLimitWithoutRunningAFetch(t *testing.T) {
 	}
 }
 
-func TestFetchStatus_UsesTheSameLimitPriorityAsRun(t *testing.T) {
-	stub := &fetchStub{
-		paths:   []string{"x.mp4"},
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
-	}
-	dir := t.TempDir()
-	large := filepath.Join(dir, "large.mp4")
-	if err := os.WriteFile(large, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// A sparse file reports the logical size dirSizeBytes uses without allocating a gigabyte.
-	if err := os.Truncate(large, 1024*1024*1024); err != nil {
-		t.Fatal(err)
-	}
-	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, stub, stub, dir, limits(10, 1, 1), discardLog())
-
-	status, err := f.Status(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.StoppedBy != "catalog" {
-		t.Errorf("StoppedBy = %q when both limits are reached, want Run's catalog-first answer", status.StoppedBy)
-	}
-}
-
-// Same for the disk ceiling, measured against the FOLDER rather than a running total — so files
-// an operator deletes by hand are noticed.
-func TestFetch_StopsAtTheDiskCeiling(t *testing.T) {
-	dir := t.TempDir()
-	big := make([]byte, 2*1024*1024)
-	if err := os.WriteFile(filepath.Join(dir, "big.mp4"), big, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	stub := &fetchStub{
-		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
-		offers:  refs("a"),
-	}
-	// A 0 GB ceiling is below any real folder, which is the only way to exercise this without
-	// writing gigabytes. `positiveLimit` stops an operator setting it, but the job must still
-	// behave when a value arrives from an env pin or a hand-edited row.
-	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, stub, stub, dir, filler.FetchLimits{
-		MaxPerRun:       func() int { return 10 },
-		MaxCatalogClips: func() int { return 2000 },
-		MaxDiskGB:       func() int { return 1 },
-	}, discardLog())
-	// 2 MB is under 1 GB, so this pass proceeds — the guard is checked, not merely present.
-	if res, _ := f.Run(context.Background()); res.StoppedBy != "" {
-		t.Errorf("StoppedBy = %q with a 2MB folder under a 1GB ceiling", res.StoppedBy)
-	}
-}
-
 // ⚠ A polled source must be STAMPED, or the Sources tab reads "never fetched" forever while
 // auto-fetch downloads from it every six hours — a row describing a source nobody has touched,
 // on an install actively using it. `MarkFillerSourceFetched` shipped in V33 with no production
@@ -523,7 +469,7 @@ func TestFetch_StampsASourceItQueuedFrom(t *testing.T) {
 		offers:  refs("a"),
 	}
 	at := time.Unix(1_800_000_000, 0).UTC()
-	f := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return at })
+	f := newFetcher(t, stub, limits(10, 2000)).WithClock(func() time.Time { return at })
 	if _, err := f.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +490,7 @@ func TestFetch_DoesNotStampASourceThatBroughtNothingIn(t *testing.T) {
 	states := map[string]filler.ExistingRemoteState{
 		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "a"}).Key(): filler.RemoteCatalogued,
 	}
-	if _, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000, 20), states).Run(context.Background()); err != nil {
+	if _, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), states).Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := stub.stamped["s1"]; ok {
@@ -564,7 +510,7 @@ func TestFetch_SkipsASourceThatOptedOutButStaysEnabled(t *testing.T) {
 		},
 		offers: refs("x"),
 	}
-	res, _ := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	res, _ := newFetcher(t, stub, limits(10, 2000)).Run(context.Background())
 	if res.SourcesPolled != 1 {
 		t.Errorf("polled %d sources, want 1 — the opted-out source must be skipped", res.SourcesPolled)
 	}
@@ -581,7 +527,7 @@ func TestFetch_PrefersASourcesOwnPerRunCap(t *testing.T) {
 		offers:  refs("a", "b", "c", "d", "e"),
 	}
 	// The global says 10; this source says 2.
-	res, _ := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	res, _ := newFetcher(t, stub, limits(10, 2000)).Run(context.Background())
 	if res.Queued != 2 {
 		t.Errorf("queued %d, want 2 — the source's own cap must beat the global 10", res.Queued)
 	}
@@ -595,7 +541,7 @@ func TestFetch_FallsBackToTheGlobalCapWhenUnset(t *testing.T) {
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers:  refs("a", "b", "c", "d", "e"),
 	}
-	res, _ := newFetcher(t, stub, limits(3, 2000, 20)).Run(context.Background())
+	res, _ := newFetcher(t, stub, limits(3, 2000)).Run(context.Background())
 	if res.Queued != 3 {
 		t.Errorf("queued %d, want the global 3 — an unset override must inherit, not zero out", res.Queued)
 	}
@@ -608,7 +554,7 @@ func TestFetch_DisabledDoesNothing(t *testing.T) {
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true, NeverFetch: true}},
 		offers:  refs("a", "b"),
 	}
-	f := newFetcher(t, stub, limits(10, 2000, 20))
+	f := newFetcher(t, stub, limits(10, 2000))
 	res, err := f.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -629,7 +575,7 @@ func TestFetch_RunSourceFetchesOnlyTheSelectedSource(t *testing.T) {
 		},
 		offers: refs("a", "b", "c"),
 	}
-	f := newFetcher(t, stub, limits(2, 2000, 20))
+	f := newFetcher(t, stub, limits(2, 2000))
 	res, err := f.RunSource(context.Background(), "selected")
 	if err != nil {
 		t.Fatal(err)
@@ -655,7 +601,7 @@ func TestFetch_ScheduledRunChecksOnlySourcesWhoseEffectiveIntervalIsDue(t *testi
 		},
 		offers: refs("a"),
 	}
-	f := newFetcher(t, stub, limits(1, 2000, 20)).WithClock(func() time.Time { return now })
+	f := newFetcher(t, stub, limits(1, 2000)).WithClock(func() time.Time { return now })
 	res, err := f.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -672,7 +618,7 @@ func TestFetch_ScheduledRunWithNothingDueDoesNotReadCapacity(t *testing.T) {
 		Every: 6 * time.Hour, LastCheckedAt: now.Add(-time.Hour),
 	}}}
 
-	res, err := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return now }).Run(t.Context())
+	res, err := newFetcher(t, stub, limits(10, 2000)).WithClock(func() time.Time { return now }).Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -687,7 +633,7 @@ func TestFetch_SuccessfulEmptyCheckAdvancesDueTimeWithoutClaimingAFetch(t *testi
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "empty", Kind: "archive", URI: "empty", Enabled: true, Every: 6 * time.Hour}},
 	}
-	f := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return now })
+	f := newFetcher(t, stub, limits(10, 2000)).WithClock(func() time.Time { return now })
 	if _, err := f.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -731,7 +677,7 @@ func TestFetch_ProviderFailureUsesDurableBoundedBackoff(t *testing.T) {
 		}},
 		enumErr: errors.New("provider unavailable"),
 	}
-	res, err := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return now }).Run(t.Context())
+	res, err := newFetcher(t, stub, limits(10, 2000)).WithClock(func() time.Time { return now }).Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -752,7 +698,7 @@ func TestFetch_ScheduledBackoffIsSkippedButManualCheckBypassesIt(t *testing.T) {
 		}},
 		offers: refs("a"),
 	}
-	fetcher := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return now })
+	fetcher := newFetcher(t, stub, limits(10, 2000)).WithClock(func() time.Time { return now })
 	if res, err := fetcher.Run(t.Context()); err != nil || res.SourcesPolled != 0 || stub.calls != 0 {
 		t.Fatalf("scheduled backoff result = %+v calls=%d err=%v", res, stub.calls, err)
 	}
@@ -767,7 +713,7 @@ func TestFetch_ManualCheckRefusesAnActiveSourceClaim(t *testing.T) {
 		sources:      []filler.FetchSource{{ID: "active", Kind: "archive", URI: "collection", Enabled: true}},
 		activeChecks: map[string]bool{"active": true},
 	}
-	_, err := newFetcher(t, stub, limits(10, 2000, 20)).RunSource(t.Context(), "active")
+	_, err := newFetcher(t, stub, limits(10, 2000)).RunSource(t.Context(), "active")
 	if !errors.Is(err, filler.ErrSourceCheckInProgress) || stub.calls != 0 {
 		t.Fatalf("active check error/calls = %v/%d, want in-progress and no provider call", err, stub.calls)
 	}
@@ -777,7 +723,7 @@ func TestFetch_ManualCheckRejectsAnUnknownSource(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "known", Kind: "archive", URI: "collection", Enabled: true}},
 	}
-	_, err := newFetcher(t, stub, limits(10, 2000, 20)).RunSource(t.Context(), "missing")
+	_, err := newFetcher(t, stub, limits(10, 2000)).RunSource(t.Context(), "missing")
 	if !errors.Is(err, filler.ErrFetchSourceNotFound) || stub.catalogCalls != 0 || stub.calls != 0 {
 		t.Fatalf("unknown source error/catalog/provider calls = %v/%d/%d, want not-found and no work", err, stub.catalogCalls, stub.calls)
 	}
@@ -793,7 +739,7 @@ func TestFetch_RunSourceReportsQueueFailure(t *testing.T) {
 		ingestErr: want,
 	}
 
-	_, err := newFetcher(t, stub, limits(2, 2000, 20)).RunSource(context.Background(), "selected")
+	_, err := newFetcher(t, stub, limits(2, 2000)).RunSource(context.Background(), "selected")
 	if !errors.Is(err, want) {
 		t.Fatalf("RunSource error = %v, want wrapped queue failure", err)
 	}
@@ -809,7 +755,7 @@ func TestFetch_ScheduledRunKeepsQueueFailureBestEffort(t *testing.T) {
 		ingestErr: errors.New("one source cannot queue"),
 	}
 
-	res, err := newFetcher(t, stub, limits(2, 2000, 20)).Run(context.Background())
+	res, err := newFetcher(t, stub, limits(2, 2000)).Run(context.Background())
 	if err != nil {
 		t.Fatalf("scheduled Run error = %v, want per-source failure isolated", err)
 	}

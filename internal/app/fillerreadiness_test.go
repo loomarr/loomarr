@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -31,6 +33,19 @@ func (s readinessStoreFuncs) AcquisitionRepairSummary(ctx context.Context) (fill
 
 func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 	poolAsked := false
+	storageRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(storageRoot, "clip.mp4"), make([]byte, 256), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	governor, err := storagegovernor.NewFilesystem(
+		[]storagegovernor.ManagedRoot{{Path: storageRoot, Domain: storagegovernor.DomainFiller}},
+		func(storagegovernor.Domain) storagegovernor.Policy {
+			return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	a := fillerServiceAdapter{
 		readiness: readinessStoreFuncs{
 			pipeline: func(context.Context, time.Time) (filler.PipelineOverview, error) {
@@ -45,7 +60,10 @@ func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 			poolAsked = true
 			return filler.PoolReport{Eligible: 12}, nil
 		},
-		now: func() time.Time { return time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC) },
+		now:              func() time.Time { return time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC) },
+		storage:          governor,
+		storagePath:      storageRoot,
+		storageAutomatic: func() bool { return true },
 	}
 
 	got, err := a.Readiness(t.Context())
@@ -60,6 +78,10 @@ func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 	}
 	if !poolAsked {
 		t.Fatal("readiness did not include the live pool projection")
+	}
+	if !got.Storage.Automatic || got.Storage.ManagedBytes != 256 ||
+		got.Storage.SoftBudgetBytes != storagegovernor.GiB || got.Storage.TotalBytes == 0 {
+		t.Fatalf("storage projection = %+v", got.Storage)
 	}
 }
 

@@ -24,6 +24,7 @@ const (
 type preparedNeed struct {
 	class    prepared.CandidateClass
 	neededAt time.Time
+	duration int64
 }
 
 type preparedChannelReader interface {
@@ -146,7 +147,10 @@ func (r *preparedRuntimeResolver) plan(
 			if broadcast.Kind != schedule.SlotProgram || broadcast.LibraryItemID == "" || !broadcast.Stop.After(from) {
 				continue
 			}
-			need := preparedNeed{class: prepared.CandidateLookahead, neededAt: broadcast.Start}
+			need := preparedNeed{
+				class: prepared.CandidateLookahead, neededAt: broadcast.Start,
+				duration: broadcast.Stop.Sub(broadcast.Start).Milliseconds(),
+			}
 			if !broadcast.Start.After(from) && broadcast.Stop.After(from) {
 				need.class = prepared.CandidateCurrent
 				need.neededAt = from // every currently-airing item has equal first priority.
@@ -155,9 +159,15 @@ func (r *preparedRuntimeResolver) plan(
 				nextProgramAssigned = true
 			}
 			key := prepared.BindingKey{ChannelID: channel.ID, LibraryItemID: broadcast.LibraryItemID}
-			if prior, ok := needed[key]; !ok || need.class < prior.class ||
-				(need.class == prior.class && need.neededAt.Before(prior.neededAt)) {
+			if prior, ok := needed[key]; !ok {
 				needed[key] = need
+			} else {
+				if need.class < prior.class ||
+					(need.class == prior.class && need.neededAt.Before(prior.neededAt)) {
+					prior.class, prior.neededAt = need.class, need.neededAt
+				}
+				prior.duration = max(prior.duration, need.duration)
+				needed[key] = prior
 			}
 		}
 	}
@@ -227,6 +237,9 @@ func (r *preparedRuntimeResolver) plan(
 				channelReady[key.ChannelID] = false
 				continue
 			}
+		}
+		request.DurationMS = need.duration
+		if !bound {
 			resolvedBindings[key] = prepared.Binding{
 				Policy: policy, ChannelPolicy: channelPolicy, Request: request,
 			}

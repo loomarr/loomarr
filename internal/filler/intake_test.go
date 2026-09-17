@@ -1,12 +1,28 @@
 package filler
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
+
+type intakeCapacityMeter struct {
+	measurement storagegovernor.Measurement
+}
+
+func (m intakeCapacityMeter) Measure(context.Context, string) (storagegovernor.Measurement, error) {
+	return m.measurement, nil
+}
+
+func (intakeCapacityMeter) ManagedBytes(context.Context, string, storagegovernor.Domain) (int64, error) {
+	return 0, nil
+}
 
 // Intake is the ONE route into the catalog (§10 V38c), so these tests are the guard on the
 // property that makes that claim worth anything: whatever arrives — a download, a hand-dropped
@@ -510,5 +526,36 @@ func TestTakeIn_NeverDeletesWhenSourceAndDestinationAreTheSameFile(t *testing.T)
 	}
 	if _, err := os.Stat(filed); err != nil {
 		t.Fatalf("same-file duplicate cleanup removed the live catalog clip: %v", err)
+	}
+}
+
+func TestCrossFilesystemCopyReservesBeforeCreatingDestinationBytes(t *testing.T) {
+	t.Parallel()
+	source := writeClip(t, t.TempDir(), "source.mp4", 4096, 44)
+	target := filepath.Join(t.TempDir(), "target.mp4")
+	meter := intakeCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "target-disk", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 40 * storagegovernor.GiB,
+	}}
+	blocked := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 1}
+	})
+	if err := copyFileWithStorage(t.Context(), source, target, blocked); err == nil {
+		t.Fatal("cross-filesystem copy ignored the destination storage refusal")
+	}
+	for _, path := range []string{target, target + ".tmp"} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("refused copy left %s: %v", path, err)
+		}
+	}
+
+	allowed := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 1 << 20}
+	})
+	if err := copyFileWithStorage(t.Context(), source, target, allowed); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil || len(got) != 4096 {
+		t.Fatalf("guarded copy = %d bytes, %v; want 4096", len(got), err)
 	}
 }

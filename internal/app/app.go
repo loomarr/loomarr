@@ -152,7 +152,7 @@ func buildHandler(
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
 		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
-		foundation.processDiagnostics, foundation.metrics,
+		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -175,7 +175,7 @@ func buildHandler(
 	}
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
-		foundation.processDiagnostics, foundation.metrics, owner,
+		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, owner,
 	)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
 	completeStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)

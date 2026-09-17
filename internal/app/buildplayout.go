@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -60,6 +61,7 @@ type playoutDeps struct {
 	transportBackend      func(context.Context) (string, error)
 	log                   *slog.Logger
 	processDiagnostics    *diagnostics.ProcessManager
+	storageGovernor       *storagegovernor.Governor
 	metrics               *metrics.Recorder
 }
 
@@ -344,6 +346,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		).WithDiagnostics(deps.processDiagnostics)
 		preparer := prepared.NewPreparer(prepared.PreparerDependencies{
 			Library: preparedLibrary, Packager: packager, Access: playoutRes,
+			Storage: deps.storageGovernor,
 		})
 		preparedRuntime := newPreparedRuntimeResolver(preparedRuntimeDependencies{
 			Channels: st, Timeline: playoutRes, Sources: playoutRes, Lookup: preparer,

@@ -1,5 +1,9 @@
 import type { FillerSourcesOutputBody } from "@loomarr/api";
-import { getListFillerSourcesMockHandler, getMeMockHandler } from "@loomarr/api/msw";
+import {
+  getFillerReadinessMockHandler,
+  getListFillerSourcesMockHandler,
+  getMeMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
@@ -23,6 +27,39 @@ const ADMIN = {
   quota: 0,
 } as const;
 
+const healthyReadiness = () =>
+  getFillerReadinessMockHandler({
+    ready: true,
+    nextAction: "none",
+    repairs: { count: 0 },
+    fetch: { enabled: true, catalogClips: 0 },
+    storage: {
+      automatic: true,
+      state: "healthy",
+      totalBytes: 500 * 1024 ** 3,
+      freeBytes: 200 * 1024 ** 3,
+      managedBytes: 0,
+      reservedBytes: 0,
+      filesystemReservedBytes: 0,
+      softBudgetBytes: 20 * 1024 ** 3,
+      hardReserveBytes: 10 * 1024 ** 3,
+      availableBytes: 20 * 1024 ** 3,
+    },
+    pipeline: {
+      runnable: 0,
+      scheduled: 0,
+      inProgress: 0,
+      needsDecision: 0,
+      recoverable: 0,
+      ready: 0,
+      complete: 0,
+      rejected: 0,
+      dismissed: 0,
+    },
+    pool: { clips: 0, breakBody: 0, eligible: 0, untagged: 0, channels: [] },
+    acquisitions: [],
+  });
+
 // ⚠ `listed` replaces a `calls: string[]` array that recorded every url and was then searched for
 // a substring. Reaching the resolver is a stronger claim than a string match: the handler is bound
 // to the generated route, so it cannot fire for the wrong endpoint, and a request to a route with
@@ -31,6 +68,7 @@ const stubSources = (body: FillerSourcesOutputBody = { sources: [], total: 0 }) 
   let listed = false;
   server.use(
     getMeMockHandler({ ...ADMIN }),
+    healthyReadiness(),
     getListFillerSourcesMockHandler(() => {
       listed = true;
       return body;
@@ -102,7 +140,7 @@ describe("SourcesTab", () => {
   // beside the rows), so what this seam guarantees is that a 500 does not throw and the
   // local-source affordance survives — the operator can still act.
   it("stays renderable when the source list fails", async () => {
-    server.use(getMeMockHandler({ ...ADMIN }), sourcesFail());
+    server.use(getMeMockHandler({ ...ADMIN }), healthyReadiness(), sourcesFail());
     render(<SourcesTab />, { wrapper: makeWrapper() });
 
     expect(await screen.findByText(/add a folder or library/i)).toBeInTheDocument();

@@ -389,6 +389,10 @@ type SettingResult struct {
 type FillerService interface {
 	// Readiness is the one server-owned operational summary used by the Filler overview.
 	Readiness(ctx context.Context) (filler.Readiness, error)
+	// PreviewStorageCleanup and CleanupStorage expose only terminal private staging proven safe
+	// to remove. They never select catalog media or unresolved recovery evidence.
+	PreviewStorageCleanup(ctx context.Context) (filler.StorageCleanupPreview, error)
+	CleanupStorage(ctx context.Context) (filler.StorageCleanupResult, error)
 	// Sync reconciles the clip catalog from the media server's filler library.
 	Sync(ctx context.Context) (total, added, updated, pruned int, err error)
 	// Fetch runs one bounded acquisition pass over enabled remote sources. It is the same

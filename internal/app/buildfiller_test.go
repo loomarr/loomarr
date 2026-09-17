@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -175,11 +176,9 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 			t.Fatal("an empty provider listing must not enqueue an ingest")
 			return "", nil
 		}),
-		"",
 		filler.FetchLimits{
 			MaxPerRun:       func() int { return 10 },
 			MaxCatalogClips: func() int { return 2000 },
-			MaxDiskGB:       func() int { return 0 },
 		},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	).WithClock(func() time.Time { return now })
@@ -227,7 +226,14 @@ func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 		"ingest.ytdlp_path":  ytdlp,
 		"ingest.ffmpeg_path": ffmpeg,
 	})
-	fetcher := buildFetcher(set, layout, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	governor, err := storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
+		{Path: layout.ClipDir(), Domain: storagegovernor.DomainFiller},
+		{Path: layout.WatchDir(), Domain: storagegovernor.DomainFiller},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetcher := buildFetcher(set, layout, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, governor)
 	if fetcher == nil {
 		t.Fatal("buildFetcher returned nil with both tools configured")
 	}

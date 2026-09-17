@@ -14,6 +14,18 @@ const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO =
     nextAction: "none",
     repairs: repairs ?? { count: 0 },
     fetch: { enabled: true, catalogClips: 25 },
+    storage: {
+      automatic: true,
+      state: "healthy",
+      totalBytes: 500 * 1024 ** 3,
+      freeBytes: 200 * 1024 ** 3,
+      managedBytes: 2 * 1024 ** 3,
+      reservedBytes: 0,
+      filesystemReservedBytes: 0,
+      softBudgetBytes: 20 * 1024 ** 3,
+      hardReserveBytes: 10 * 1024 ** 3,
+      availableBytes: 18 * 1024 ** 3,
+    },
     pipeline: {
       runnable: 0,
       scheduled: 0,
@@ -50,7 +62,8 @@ describe("FillerOverview", () => {
   it.each([
     ["enable_fetch", "downloads"],
     ["free_catalog_capacity", "storage"],
-    ["free_disk_capacity", "storage"],
+    ["choose_another_folder", "folders"],
+    ["change_storage_limit", "storage"],
   ] as const)("opens the exact settings task for %s", (nextAction, section) => {
     expect(readinessAction(readiness({ ready: false, nextAction }))).toMatchObject({ section });
   });
@@ -62,7 +75,14 @@ describe("FillerOverview", () => {
       "Review limits",
       "/filler/settings/$section",
     ],
-    ["free_disk_capacity", "Make room for more filler", "Review limits", "/filler/settings/$section"],
+    ["free_disposable_space", "This drive needs room", "Review storage", "/filler/sources"],
+    [
+      "choose_another_folder",
+      "Loomarr cannot check this drive",
+      "Choose folder",
+      "/filler/settings/$section",
+    ],
+    ["change_storage_limit", "Filler reached its allowance", "Review storage", "/filler/settings/$section"],
     ["retry_acquisition", "A download needs another try", "Open diagnostics", "/filler/manage"],
     ["retry_failed_work", "Some filler can be retried", "Open diagnostics", "/filler/manage"],
     ["review_incoming", "A few clips need your help", "Review clips", "/filler/incoming"],

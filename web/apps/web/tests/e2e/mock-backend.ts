@@ -755,7 +755,20 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         return json(route, {
           ready: false,
           nextAction: "add_filler",
+          repairs: { count: 0 },
           fetch: { enabled: false, catalogClips: 0 },
+          storage: {
+            automatic: true,
+            state: "healthy",
+            totalBytes: 64 * 1024 ** 3,
+            freeBytes: 32 * 1024 ** 3,
+            managedBytes: 0,
+            reservedBytes: 0,
+            filesystemReservedBytes: 0,
+            softBudgetBytes: 6.4 * 1024 ** 3,
+            hardReserveBytes: 6.4 * 1024 ** 3,
+            availableBytes: 6.4 * 1024 ** 3,
+          },
           pipeline: {
             runnable: 0,
             scheduled: 0,
@@ -910,6 +923,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             ? [
                 {
                   key: "filler.dir",
+                  label: "Clip library",
                   group: "filler",
                   kind: "path",
                   doc: "Filler library directory.",
@@ -917,7 +931,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   secret: false,
                   set: true,
                   provenance: "db" as const,
-                  value: "/data/filler",
+                  value: state.edits["filler.dir"] ?? "/data/filler",
                 },
                 {
                   key: "filler.fetch.every",
@@ -957,16 +971,16 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   value: "2000",
                 },
                 {
-                  key: "filler.fetch.max_disk_gb",
-                  label: "Automatic-download storage limit (GB)",
+                  key: "filler.storage.library_budget_gb",
+                  label: "Filler storage allowance",
                   group: "filler",
                   kind: "int",
-                  doc: "Stop downloading automatically once filler storage reaches this size.",
-                  advanced: true,
+                  doc: "How much space Loomarr may use for filler. Leave at 0 for automatic.",
+                  advanced: false,
                   secret: false,
                   set: true,
                   provenance: "db" as const,
-                  value: "20",
+                  value: "0",
                 },
               ]
             : []),

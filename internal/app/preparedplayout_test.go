@@ -122,6 +122,8 @@ type preparedLookupFake struct {
 }
 
 func (f preparedLookupFake) Lookup(request prepared.Request) (prepared.Specification, bool, error) {
+	// Capacity duration is operational admission input, not immutable publication identity.
+	request.DurationMS = 0
 	spec, ok := f.hits[request]
 	return spec, ok, nil
 }
@@ -493,7 +495,7 @@ func TestPreparedRuntimeRebindsAnObservedSourceRevision(t *testing.T) {
 	oldRequest := prepared.Request{Source: preparedSource("item", 2), Rendition: rendition}
 	newSource := preparedSource("item", 2)
 	newSource.Revision = "revision-item-2"
-	newRequest := prepared.Request{Source: newSource, Rendition: rendition}
+	newRequest := prepared.Request{Source: newSource, Rendition: rendition, DurationMS: int64(time.Hour / time.Millisecond)}
 	sources := &preparedInputsFake{
 		sources:   map[string]library.InputSource{"item": {URL: "http://media/item", Kind: library.InputHTTP}},
 		revisions: map[string]string{"item": newSource.Revision},
@@ -556,7 +558,10 @@ func TestPreparedRuntimeScheduleChangeAdvancesTheUrgentFrontier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newRequest := prepared.Request{Source: preparedSource("new", 2), Rendition: rendition}
+	newRequest := prepared.Request{
+		Source: preparedSource("new", 2), Rendition: rendition,
+		DurationMS: int64(time.Hour / time.Millisecond),
+	}
 	if len(plan.Protected) != 0 || len(plan.Candidates) != 1 ||
 		plan.Candidates[0].Class != prepared.CandidateCurrent || plan.Candidates[0].Request != newRequest {
 		t.Fatalf("changed schedule plan = protected %+v candidates %+v, want new current first", plan.Protected, plan.Candidates)
@@ -874,6 +879,7 @@ func TestPreparedRuntimeUpgradesOldPackagingBindingsBeforeProspectiveTune(t *tes
 		t.Fatalf("old binding was not replaced by current preparation: %+v", plan)
 	}
 	upgraded := plan.Candidates[0].Request
+	upgraded.DurationMS = 0 // operational admission input is not publication identity
 	lookup.hits[upgraded] = prepared.Specification{SourceFingerprint: "current", Rendition: current}
 	sourceCalls, audioCalls := inputs.calls, timeline.audioCalls
 	window, ok, err := r.ResolvePrepared(t.Context(), playout.TuneRequest{ChannelID: "ch", Delivery: playout.DeliveryMPEGTS}, nextStart)

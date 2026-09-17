@@ -68,19 +68,54 @@ type FillerAcquisitionRunDTO struct {
 
 type FillerReadinessDTO struct {
 	Ready       bool   `json:"ready"`
-	NextAction  string `json:"nextAction" enum:"none,enable_fetch,free_catalog_capacity,free_disk_capacity,retry_acquisition,retry_failed_work,review_incoming,add_filler,improve_channel_coverage"`
+	NextAction  string `json:"nextAction" enum:"none,enable_fetch,free_catalog_capacity,free_disposable_space,choose_another_folder,change_storage_limit,retry_acquisition,retry_failed_work,review_incoming,add_filler,improve_channel_coverage"`
 	ChannelID   string `json:"channelId,omitempty"`
 	ActionCount int    `json:"actionCount,omitempty"`
 
 	Fetch        FillerFetchStatusDTO        `json:"fetch"`
+	Storage      FillerStorageStatusDTO      `json:"storage"`
 	Pipeline     PipelineOverviewDTO         `json:"pipeline"`
 	Pool         PoolDTO                     `json:"pool"`
 	Acquisitions []FillerAcquisitionRunDTO   `json:"acquisitions"`
 	Repairs      AcquisitionRepairSummaryDTO `json:"repairs"`
 }
 
+type FillerStorageStatusDTO struct {
+	TotalBytes              int64  `json:"totalBytes"`
+	FreeBytes               int64  `json:"freeBytes"`
+	ManagedBytes            int64  `json:"managedBytes"`
+	ReservedBytes           int64  `json:"reservedBytes"`
+	FilesystemReservedBytes int64  `json:"filesystemReservedBytes"`
+	SoftBudgetBytes         int64  `json:"softBudgetBytes"`
+	HardReserveBytes        int64  `json:"hardReserveBytes"`
+	AvailableBytes          int64  `json:"availableBytes"`
+	Automatic               bool   `json:"automatic"`
+	State                   string `json:"state" enum:"healthy,approaching,paused,unknown"`
+	PausedBy                string `json:"pausedBy,omitempty" enum:"library_limit,host_reserve,estimate_unknown,capacity_unavailable"`
+}
+
 type fillerReadinessOutput struct {
 	Body FillerReadinessDTO
+}
+
+type FillerStorageCleanupPreviewDTO struct {
+	Items int   `json:"items"`
+	Bytes int64 `json:"bytes"`
+}
+
+type fillerStorageCleanupPreviewOutput struct {
+	Body FillerStorageCleanupPreviewDTO
+}
+
+type FillerStorageCleanupResultDTO struct {
+	RemovedItems int                            `json:"removedItems"`
+	RemovedBytes int64                          `json:"removedBytes"`
+	FailedItems  int                            `json:"failedItems"`
+	Remaining    FillerStorageCleanupPreviewDTO `json:"remaining"`
+}
+
+type fillerStorageCleanupResultOutput struct {
+	Body FillerStorageCleanupResultDTO
 }
 
 type getFillerAcquisitionInput struct {
@@ -113,6 +148,37 @@ func (s *Server) fillerReadiness(ctx context.Context, _ *struct{}) (*fillerReadi
 	return &fillerReadinessOutput{Body: fillerReadinessDTO(readiness)}, nil
 }
 
+func (s *Server) previewFillerStorageCleanup(ctx context.Context, _ *struct{}) (*fillerStorageCleanupPreviewOutput, error) {
+	if s.filler == nil {
+		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before checking storage.")
+	}
+	preview, err := s.filler.PreviewStorageCleanup(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &fillerStorageCleanupPreviewOutput{Body: fillerStorageCleanupPreviewDTO(preview)}, nil
+}
+
+func (s *Server) cleanupFillerStorage(ctx context.Context, _ *struct{}) (*fillerStorageCleanupResultOutput, error) {
+	if s.filler == nil {
+		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before cleaning storage.")
+	}
+	result, err := s.filler.CleanupStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &fillerStorageCleanupResultOutput{Body: FillerStorageCleanupResultDTO{
+		RemovedItems: result.RemovedItems,
+		RemovedBytes: result.RemovedBytes,
+		FailedItems:  result.FailedItems,
+		Remaining:    fillerStorageCleanupPreviewDTO(result.Remaining),
+	}}, nil
+}
+
+func fillerStorageCleanupPreviewDTO(preview filler.StorageCleanupPreview) FillerStorageCleanupPreviewDTO {
+	return FillerStorageCleanupPreviewDTO{Items: preview.Items, Bytes: preview.Bytes}
+}
+
 func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {
 	runs := make([]FillerAcquisitionRunDTO, 0, len(readiness.Runs))
 	for _, run := range readiness.Runs {
@@ -124,7 +190,15 @@ func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {
 		Fetch: FillerFetchStatusDTO{
 			Enabled: readiness.Fetch.Enabled, StoppedBy: readiness.Fetch.StoppedBy,
 			CatalogClips: readiness.Fetch.CatalogClips, MaxCatalog: readiness.Fetch.MaxCatalog,
-			DiskBytes: readiness.Fetch.DiskBytes, MaxDiskBytes: readiness.Fetch.MaxDiskBytes,
+		},
+		Storage: FillerStorageStatusDTO{
+			TotalBytes: readiness.Storage.TotalBytes, FreeBytes: readiness.Storage.FreeBytes,
+			ManagedBytes: readiness.Storage.ManagedBytes, ReservedBytes: readiness.Storage.ReservedBytes,
+			FilesystemReservedBytes: readiness.Storage.FilesystemReservedBytes,
+			SoftBudgetBytes:         readiness.Storage.SoftBudgetBytes, HardReserveBytes: readiness.Storage.HardReserveBytes,
+			AvailableBytes: readiness.Storage.AvailableBytes, Automatic: readiness.Storage.Automatic,
+			State:    readiness.Storage.State,
+			PausedBy: readiness.Storage.PausedBy,
 		},
 		Pipeline: pipelineOverviewDTO(readiness.Pipeline), Pool: poolDTO(readiness.Pool),
 		Acquisitions: runs,

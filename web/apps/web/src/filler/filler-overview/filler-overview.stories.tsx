@@ -9,6 +9,18 @@ const readiness: FillerReadinessDTO = {
   nextAction: "none",
   repairs: { count: 0 },
   fetch: { enabled: true, catalogClips: 48 },
+  storage: {
+    automatic: true,
+    state: "healthy",
+    totalBytes: 500 * 1024 ** 3,
+    freeBytes: 200 * 1024 ** 3,
+    managedBytes: 2 * 1024 ** 3,
+    reservedBytes: 0,
+    filesystemReservedBytes: 0,
+    softBudgetBytes: 20 * 1024 ** 3,
+    hardReserveBytes: 10 * 1024 ** 3,
+    availableBytes: 18 * 1024 ** 3,
+  },
   pipeline: {
     runnable: 0,
     scheduled: 0,

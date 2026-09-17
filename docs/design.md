@@ -75,6 +75,7 @@ Core logic depends only on interfaces; concrete adapters live at the edges.
 | Suggester | *struct* `suggest.Suggester` | LLM: Ollama (local) or an OpenAI-compatible endpoint (hosted — OpenRouter, or a user-supplied Custom base URL; Claude via OpenRouter) |
 | Catalog | *struct* `catalog.Catalog` | Library + TMDB/TVDB — grounds the LLM **and** backs `GET /v1/search` (§7.2) |
 | FillerSource | **interface** `filler.FillerSource` | Four source kinds — `folder`, `youtube` (yt-dlp), `archive` (Archive.org), `library` (the media server's filler library). Loomarr scans and probes them itself; Tunarr is optional (§10) |
+| StorageGovernor | *struct* `storagegovernor.Governor` | Host filesystem capacity + managed-root usage + atomic in-flight reservations; platform filesystem-stat and test adapters (§10) |
 | Store | **interface** `Store` (see §5) | Postgres, SQLite |
 | Events | *struct* `events.Bus` | internal (→ scheduler) + optional outbound webhook |
 
@@ -122,8 +123,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | ---: | --- |
 | `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
-| `diagnostics` | 8 | — |
-| `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
+| `diagnostics` | 8 | `storagegovernor` |
+| `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `storagegovernor`, `taxonomy` |
 | `filleradmission` | 7 | — |
 | `fillerbakeoff` | 9 | `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
 | `fillercorpus` | 7 | — |
@@ -145,6 +146,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 18 | `provision` |
 | `scheduler` | 6 | `store` |
+| `storagegovernor` | 5 | — |
 | `store` | 15 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
@@ -159,8 +161,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`contact`** · 5 importers
   Owns person contact-address identity and normalization (§11).
-- **`diagnostics`** · 8 importers
-  Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
@@ -203,6 +203,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Validates the repository's release publication policy.
 - **`secretprotection`** · 3 importers
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
+- **`storagegovernor`** · 5 importers
+  Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
 - **`taxonomy`** · 5 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`testkit/execfixture`** · 1 importer
@@ -226,6 +228,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 1**
 
+- **`diagnostics`** · 8 importers · → `storagegovernor`
+  Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`fillerdecision`** · 4 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`holidayvocab`** · 2 importers · → `textmatch`
@@ -236,8 +240,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`openroutermedia`** · 7 importers · → `fillereval`
   Owns Loomarr's bounded OpenRouter structured-media transport.
-- **`prepared`** · 4 importers · → `diagnostics`, `media`
-  Owns immutable, reusable playout publications.
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
 - **`testkit/playoutcertfixture`** · → `testkit/httpfixture`
@@ -249,6 +251,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
+- **`prepared`** · 4 importers · → `diagnostics`, `media`, `storagegovernor`
+  Owns immutable, reusable playout publications.
 - **`schedule`** · 18 importers · → `holidayvocab`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
@@ -304,7 +308,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 7**
 
-- **`filler`** · 11 importers · → `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy`
+- **`filler`** · 11 importers · → `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillersafetycorpus`** · 1 importer · → `fillercorpus`, `fillersafety`, `fillersafetycert`
   Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
@@ -313,7 +317,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 8**
 
-- **`clipfetch`** · 1 importer · → `filler`, `proctree`
+- **`clipfetch`** · 1 importer · → `filler`, `proctree`, `storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillersafetyreview`** · → `fillerbakeoff`, `fillereval`, `fillersafety`, `fillersafetycert`, `fillersafetycorpus`, `httpx`, `mediatools`, `openroutermedia`
   Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.
@@ -401,7 +405,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 14**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -4553,7 +4557,7 @@ all fail toward doing less:
 | `filler.fetch.every` | `6h` | Default interval for enabled sources. Off (`0`) stops sources that inherit it; positive custom values are bounded from one minute through seven days, and a source may still carry an explicit interval |
 | `filler.fetch.max_per_run` | `10` | Items one source may pull per poll — a collection of thousands trickles in rather than arriving at once |
 | `filler.fetch.max_catalog_clips` | `2000` | A **ceiling on the whole catalog**. At the limit, auto-fetch stops; manual queueing and approved pulls still work |
-| `filler.fetch.max_disk_gb` | `20` | A ceiling on what the drop-folder may consume. Same behaviour at the limit |
+| `filler.storage.library_budget_gb` | `0` (automatic) | A soft allowance for Loomarr-managed filler media. Automatic is `min(10% of filesystem capacity, 20 GiB)`; a positive value overrides that allowance but never the hard host reserve below |
 
 Incoming shows Ready clips only as recent activity. `filler.incoming.ready_window` defaults to
 `24h`, hot-applies on the next Incoming read, and accepts one hour through 30 days inclusive. It
@@ -4584,7 +4588,7 @@ a channel URL; it does not follow recommendations or crawl beyond the typed quer
 suggestion is still not authorization to enumerate that channel on a schedule: only the separate
 registration command grants that authority. Enumeration downloads no media and
 is capped before its per-item URLs enter the ordinary ingest path. Both partners then share the
-same per-source limit, catalog and disk ceilings, acquisition record, held lifecycle, provenance
+same per-source and catalog bounds, shared storage governor, acquisition record, held lifecycle, provenance
 sidecar, cleanup pipeline, and admission authority. Provider-declared licence metadata is passive
 provenance: Loomarr records it when supplied and treats absence as “not provided,” but it never
 ranks, filters, holds, rejects, or admits an item. The source URL, uploader metadata, acquisition id,
@@ -4598,10 +4602,70 @@ the kind through enumeration and acquisition. URL inference remains only for a o
 typed directly, where no registered source policy exists.
 
 The report is a **live measurement**, not a remembered fetch result: the filler status read counts
-the tracked catalog (including held clips already on disk) and measures the storage root against the same configured bounds the fetcher
-uses. The UI names the bound and its current/maximum values. This makes "nothing new arrived" an
-answerable state even after restart, and makes the warning disappear as soon as curation or a
-settings change creates room.
+the tracked catalog (including held clips already on disk), while the shared governor measures the
+managed roots and real filesystem against the current soft allowance and hard host reserve. The UI
+receives that complete server-owned projection and its typed pause reason. This makes “nothing new
+arrived” answerable after restart and makes the warning disappear as soon as curation, free space,
+or a settings change creates room.
+
+### Storage is reserved before Loomarr writes
+
+The old drop-folder-size ceiling did not protect the host. A nearly full 32 GiB appliance could
+start ten large downloads whenever Loomarr itself had written less than 20 GiB, and each downloader
+made that decision before the pass rather than before each item. It is replaced, not layered, by one
+deep `storagegovernor.Governor` module used at the seam before every Loomarr-managed media write.
+Callers supply a conservative work estimate; the governor owns filesystem identity, live capacity,
+managed-root usage, amplification headroom, atomic in-flight reservations, and the operator-facing
+decision. No fetcher, worker, readiness projection, or browser re-derives this arithmetic.
+
+For the filesystem containing a managed destination:
+
+- The **hard free-space reserve** is `clamp(10% of filesystem capacity, 2 GiB, 20 GiB)`.
+- The automatic filler allowance is `min(10% of filesystem capacity, 20 GiB)`. A positive
+  `filler.storage.library_budget_gb` value replaces that soft allowance; zero selects automatic.
+- Effective automatic availability is the smaller of (a) the remaining soft allowance and (b)
+  live free bytes above the hard reserve, after subtracting all active reservations on that real
+  filesystem. Existing managed media above a newly lowered allowance remains in place; new
+  automatic work pauses and deletes nothing.
+- An explicitly confirmed manual import may exceed the soft allowance, but never the hard reserve.
+  Unknown estimate or capacity is never permission to write.
+
+`Reserve(estimate)` is atomic across paths on the same filesystem/device. It returns a lease or one
+typed pause reason: `library_limit`, `host_reserve`, `estimate_unknown`, or
+`capacity_unavailable`. A lease is acquired before queue or worker mutation, revalidated immediately
+before execution, charged against actual bytes as output grows, and released on success,
+cancellation, or failure. The write itself has a byte ceiling: missing or dishonest provider
+lengths cannot consume through the reservation. Overflow stops the writer and leaves only private
+staging that the existing safe-grace cleanup may later prove disposable.
+
+Filesystem identity, not path spelling, groups reservations. Filler, its derived media, prepared
+output, diagnostics, and staging on the same device cannot each spend the same free bytes. Hard
+reserve accounting aggregates every domain on that filesystem; managed usage and soft reservations
+remain domain-local, so prepared and diagnostics retain their own existing budgets rather than
+silently consuming the filler allowance. A
+same-filesystem rename consumes no second copy; a cross-filesystem intake move reserves the full
+destination copy before reading, retains the source until the destination is complete, and releases
+the lease only after publication or cleanup. A changed managed root is measured as a new destination
+before work is accepted and never implies migration of old media.
+
+Restart deliberately forgets in-memory leases but not bytes. Abandoned staging files remain real
+managed usage until safe-grace cleanup proves they are disposable. Automatic cleanup may remove
+only cancelled/incomplete private staging, superseded temporary output, and unreferenced generated
+artifacts already covered by a retention contract. It never selects admitted clips, pinned media,
+held review evidence, unique source masters, symlinks, or unknown files. Reclaiming meaningful
+media is an explicit operator action with a byte-and-consequence preview, not governor policy.
+
+The server projects one capacity snapshot: managed usage, active reservations, filesystem free and
+total bytes, effective soft allowance, hard reserve, available bytes, pause reason, and the actions
+`free_disposable_space`, `choose_another_folder`, and `change_storage_limit`. Sources shows a calm
+summary while healthy and the exact reason plus one primary action when paused. Advanced contains
+the path and soft-budget controls; the browser performs no capacity calculations. The governor also
+owns the presentation state (`healthy`, `approaching`, `paused`, or `unknown`). `approaching` begins
+when effective availability is at most the smaller of 1 GiB and twenty percent of the active soft
+allowance, so small appliances receive a proportional warning without making an empty automatic
+library look constrained. The cleanup action revalidates and removes only terminal acquisition
+attempt directories older than 24 hours that no staged or repair artifact references, then returns
+a fresh preview; admitted media and every unknown path remain outside that authority.
 
 **`Look for new clips` runs acquisition as well as discovery (V56).** A source row invokes one ordinary
 bounded fetch pass for that selected source and then scans the configured local sources. It is not
@@ -11705,7 +11769,7 @@ Notifications → Add provider**.
 | `FILLER_FETCH_EVERY` | `6h` (§10 V38b). How often each registered source is polled for new items. ⚠ **`0` disables auto-fetch entirely** — the escape hatch for an operator who wants acquisition to stay manual, and the value to reach for before disabling sources one by one. ⚠ **V38c: this is now the DEFAULT, not the only value** — a source may override it, and `0` on one row means *that* source never auto-fetches. Inherit is NULL, never 0 |
 | `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |
 | `FILLER_FETCH_MAX_CATALOG_CLIPS` | `2000` (§10 V38b). Auto-fetch stops when the catalog reaches this. ⚠ Manual queueing and approved pulls still work at the limit: a ceiling on what happens UNATTENDED is not a ceiling on what an operator may deliberately do |
-| `FILLER_FETCH_MAX_DISK_GB` | `20` (§10 V38b). Same, for drop-folder size. ⚠ Measured against the folder, not a running total, so files an operator deletes by hand are noticed |
+| `FILLER_STORAGE_LIBRARY_BUDGET_GB` | `0` (automatic) (§10, "Storage is reserved before Loomarr writes"). Soft allowance for Loomarr-managed filler media on its real filesystem: automatic means `min(10% of filesystem capacity, 20 GiB)`; a positive value is the operator's allowance. Hot-applies to new reservations. It never weakens the hard host reserve. The upgrade migration moves a verified stored value from the retired fetch-only disk ceiling to `filler.storage.library_budget_gb` and removes that obsolete key; its old env name and runtime path are not retained. |
 | `FILLER_SOURCE_FOLDER_ENABLED` | `true` (§10 V35). The drop-folder's on/off switch. It is a setting rather than a row because the folder is **derived from configuration** — a remote collection's switch is a column on its own row. Disabling stops the catalog scan; ⚠ **it never removes clips already in the catalog**, and the enforcement lives in the syncer, not in the UI. ⚠ There is deliberately **no library equivalent**: nothing scans a media-server library for filler (§10), so the key would gate nothing |
 
 **Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (AGENTS.md do-nots). Full mechanics: `config-design.md`.

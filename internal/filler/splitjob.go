@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -123,6 +124,7 @@ type Splitter struct {
 	now             func() time.Time
 	newID           func() string
 	log             *slog.Logger
+	storage         *storagegovernor.Governor
 }
 
 // NewSplitter builds the splitter. dropDir is the filler drop-folder root. minClipDuration may be
@@ -132,6 +134,15 @@ func NewSplitter(store SplitStore, tools MediaTools, provider llm.Provider, drop
 		now = time.Now
 	}
 	return &Splitter{store: store, tools: tools, provider: provider, dropDir: dropDir, minClipDuration: minClipDuration, newID: newID, now: now, log: log}
+}
+
+// WithStorageGovernor protects the peak split working set: the immutable source snapshot, every
+// staged cut, and the published children coexist until the catalog transaction commits.
+func (sp *Splitter) WithStorageGovernor(governor *storagegovernor.Governor) *Splitter {
+	if sp != nil {
+		sp.storage = governor
+	}
+	return sp
 }
 
 // Reground writes a grounding pass back onto an existing proposal WITHOUT re-detecting (§10 V54).
@@ -677,7 +688,7 @@ func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached 
 //
 // The MANUAL path: an operator has finished with this reel and their list is the whole answer.
 func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []SplitSegment) ([]string, error) {
-	return sp.confirm(ctx, proposalID, segments, nil)
+	return sp.confirm(ctx, proposalID, segments, nil, storagegovernor.ConfirmedManual)
 }
 
 // ConfirmSome cuts `segments` and leaves `hold` behind in a shrunken proposal (§10 V54).
@@ -686,7 +697,7 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 // human. ⚠ `hold` is what SURVIVES, stated by the caller rather than diffed from the store — see
 // the reasoning at the write below.
 func (sp *Splitter) ConfirmSome(ctx context.Context, proposalID string, segments, hold []SplitSegment) ([]string, error) {
-	return sp.confirm(ctx, proposalID, segments, hold)
+	return sp.confirm(ctx, proposalID, segments, hold, storagegovernor.Automatic)
 }
 
 // splitProposalClaimLease is deliberately longer than the bounded local split operation. A crash
@@ -694,7 +705,7 @@ func (sp *Splitter) ConfirmSome(ctx context.Context, proposalID string, segments
 // media visible, so an expired predecessor is fenced before it can publish.
 const splitProposalClaimLease = 30 * time.Minute
 
-func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, hold []SplitSegment) ([]string, error) {
+func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, hold []SplitSegment, storageMode storagegovernor.Mode) ([]string, error) {
 	if sp.newID == nil {
 		return nil, errors.New("split confirm: claim token generator is required")
 	}
@@ -734,6 +745,29 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	if err := validateConfirmedSegments(segments, source.DurationMs, sp.floor()); err != nil {
 		return nil, err
 	}
+	var storageLease *storagegovernor.Lease
+	if sp.storage != nil {
+		budget, ok := storagegovernor.EstimateMedia(storagegovernor.MediaEstimate{
+			DeclaredBytes: source.Bytes, DurationMS: source.DurationMs,
+		})
+		if !ok {
+			return nil, storageDecisionError("estimate split storage", storagegovernor.Decision{
+				Snapshot: storagegovernor.Snapshot{Domain: storagegovernor.DomainFiller, Reason: storagegovernor.ReasonEstimateUnknown},
+			})
+		}
+		var decision storagegovernor.Decision
+		storageLease, decision = sp.storage.Reserve(ctx, storagegovernor.Request{
+			Path: src, Domain: storagegovernor.DomainFiller,
+			EstimatedBytes: budget.ReservationBytes, Mode: storageMode,
+		})
+		if storageLease == nil {
+			return nil, storageDecisionError("reserve split storage", decision)
+		}
+		defer storageLease.Release()
+		if decision = storageLease.Revalidate(ctx, 0); !decision.Allowed {
+			return nil, storageDecisionError("revalidate split storage", decision)
+		}
+	}
 	ext := filepath.Ext(source.Path)
 	parentPlayable := filepath.Join(sp.dropDir, filepath.FromSlash(clip.Path))
 	parentTags, _ := ReadSidecarTags(parentPlayable)
@@ -751,8 +785,17 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		return nil, fmt.Errorf("split confirm: temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
-	sourceSnapshot, err := snapshotSplitComposite(ctx, src, tmpDir, ext, source.ClipHash)
+	splitCtx := ctx
+	finishStorage := func() error { return nil }
+	if storageLease != nil {
+		splitCtx, finishStorage = storagegovernor.MonitorPath(ctx, storageLease, tmpDir, 0)
+	}
+	defer func() { _ = finishStorage() }()
+	sourceSnapshot, err := snapshotSplitComposite(splitCtx, src, tmpDir, ext, source.ClipHash)
 	if err != nil {
+		if storageErr := finishStorage(); storageErr != nil {
+			return nil, storageErr
+		}
 		return nil, err
 	}
 
@@ -771,7 +814,10 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			}
 		}
 		tmp := filepath.Join(tmpDir, fmt.Sprintf("seg-%03d%s", i, ext))
-		if err := sp.tools.Cut(ctx, sourceSnapshot, seg.StartMs, seg.EndMs, tmp); err != nil {
+		if err := sp.tools.Cut(splitCtx, sourceSnapshot, seg.StartMs, seg.EndMs, tmp); err != nil {
+			if storageErr := finishStorage(); storageErr != nil {
+				return nil, storageErr
+			}
 			return nil, err
 		}
 		id, err := ClipID(tmp)
@@ -814,7 +860,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		} else if statErr != nil {
 			return nil, fmt.Errorf("split confirm: inspect segment %d: %w", i, statErr)
 		} else {
-			equal, compareErr := exactFileBytesEqual(ctx, tmp, dst, mediatools.ConditioningMaxSnapshotBytes)
+			equal, compareErr := exactFileBytesEqual(splitCtx, tmp, dst, mediatools.ConditioningMaxSnapshotBytes)
 			if compareErr != nil || !equal {
 				return nil, fmt.Errorf("split confirm: existing segment %d bytes do not match identity", i)
 			}
@@ -829,6 +875,9 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			continue
 		}
 		publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst})
+	}
+	if err := finishStorage(); err != nil {
+		return nil, err
 	}
 	if err := validateSplitCompositeOwnership(ctx, src, sourceSnapshot); err != nil {
 		return nil, fmt.Errorf("split confirm: composite source changed while cuts were prepared: %w", err)

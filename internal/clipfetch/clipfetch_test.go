@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/recordfixture"
@@ -21,6 +22,33 @@ type downloaderFunc func(context.Context, clipfetch.Source, string) (clipfetch.D
 
 func (f downloaderFunc) Download(ctx context.Context, src clipfetch.Source, dir string) (clipfetch.DownloadResult, error) {
 	return f(ctx, src, dir)
+}
+
+type estimatingDownloader struct {
+	budget   storagegovernor.MediaBudget
+	estimate error
+	download downloaderFunc
+}
+
+func (d estimatingDownloader) Estimate(context.Context, clipfetch.Source) (storagegovernor.MediaBudget, error) {
+	return d.budget, d.estimate
+}
+
+func (d estimatingDownloader) Download(ctx context.Context, source clipfetch.Source, dir string) (clipfetch.DownloadResult, error) {
+	return d.download(ctx, source, dir)
+}
+
+type capacityMeter struct {
+	measurement storagegovernor.Measurement
+	managed     int64
+}
+
+func (m *capacityMeter) Measure(context.Context, string) (storagegovernor.Measurement, error) {
+	return m.measurement, nil
+}
+
+func (m *capacityMeter) ManagedBytes(context.Context, string, storagegovernor.Domain) (int64, error) {
+	return m.managed, nil
 }
 
 type artifactWriterFunc func(context.Context, []filler.AcquisitionArtifact) error
@@ -77,6 +105,116 @@ func TestRun_DispatchesByKind(t *testing.T) {
 	}
 	if res.Fetched != 7 { // 2 + 5
 		t.Errorf("fetched = %d, want 7", res.Fetched)
+	}
+}
+
+func TestPrepareReservesBeforeDownloadAndRevalidatesBeforeExecution(t *testing.T) {
+	t.Parallel()
+	meter := &capacityMeter{measurement: storagegovernor.Measurement{
+		ID: "disk", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 20 * storagegovernor.GiB,
+	}}
+	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 10 * storagegovernor.GiB}
+	})
+	downloaded := false
+	downloader := estimatingDownloader{
+		budget: storagegovernor.MediaBudget{WriteCeilingBytes: storagegovernor.GiB, ReservationBytes: 4 * storagegovernor.GiB},
+		download: func(context.Context, clipfetch.Source, string) (clipfetch.DownloadResult, error) {
+			downloaded = true
+			return clipfetch.DownloadResult{Fetched: 1}, nil
+		},
+	}
+	ingestor := clipfetch.New(downloader, nil, "/filler", discardLog()).WithStorageGovernor(governor)
+	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{{Kind: clipfetch.YouTube, URL: "https://example.invalid/one"}}, storagegovernor.Automatic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if downloaded {
+		t.Fatal("Prepare downloaded media before the caller durably queued the run")
+	}
+	// The host changed after queue admission. Revalidation must stop execution.
+	meter.measurement.FreeBytes = 7 * storagegovernor.GiB
+	result := plan.Run(t.Context())
+	if downloaded || result.Failed != 1 {
+		t.Fatalf("run = %+v downloaded=%v, want capacity refusal before execution", result, downloaded)
+	}
+	if snapshot := governor.Snapshot(t.Context(), "/filler"); snapshot.Snapshot.ReservedBytes != 0 {
+		t.Fatalf("reservation after run = %d, want released", snapshot.Snapshot.ReservedBytes)
+	}
+}
+
+func TestPrepareRollsBackEarlierReservationsWhenBatchCannotFit(t *testing.T) {
+	t.Parallel()
+	meter := &capacityMeter{measurement: storagegovernor.Measurement{
+		ID: "disk", TotalBytes: 128 * storagegovernor.GiB, FreeBytes: 80 * storagegovernor.GiB,
+	}}
+	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 6 * storagegovernor.GiB}
+	})
+	downloader := estimatingDownloader{
+		budget: storagegovernor.MediaBudget{WriteCeilingBytes: storagegovernor.GiB, ReservationBytes: 4 * storagegovernor.GiB},
+		download: func(context.Context, clipfetch.Source, string) (clipfetch.DownloadResult, error) {
+			t.Fatal("download ran for a batch that could not be reserved")
+			return clipfetch.DownloadResult{}, nil
+		},
+	}
+	ingestor := clipfetch.New(downloader, nil, "/filler", discardLog()).WithStorageGovernor(governor)
+	_, err := ingestor.Prepare(t.Context(), []clipfetch.Source{
+		{Kind: clipfetch.YouTube, URL: "https://example.invalid/one"},
+		{Kind: clipfetch.YouTube, URL: "https://example.invalid/two"},
+	}, storagegovernor.Automatic)
+	var capacityErr *clipfetch.CapacityError
+	if !errors.As(err, &capacityErr) || capacityErr.Decision.Snapshot.Reason != storagegovernor.ReasonLibraryLimit {
+		t.Fatalf("Prepare error = %v, want library_limit", err)
+	}
+	if snapshot := governor.Snapshot(t.Context(), "/filler"); snapshot.Snapshot.ReservedBytes != 0 {
+		t.Fatalf("rolled-back reservation = %d, want zero", snapshot.Snapshot.ReservedBytes)
+	}
+}
+
+func TestPreparedYtDlpOverrunStopsProcessAndRemovesPrivateStaging(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	executable := testkit.Executable(t, "fake-yt-dlp", `#!/bin/sh
+case "$*" in
+  *--simulate*) printf '%s\n' '{"filesize":1,"duration":1,"height":480}'; exit 0 ;;
+esac
+result=""
+while test "$#" -gt 0; do
+  case "$1" in
+    --print-to-file) result="$3"; shift 3 ;;
+    *) shift ;;
+  esac
+done
+stage=$(dirname "$result")
+truncate -s 40000000 "$stage/too-large.mp4"
+sleep 2
+`)
+	governor, err := storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{{
+		Path: root, Domain: storagegovernor.DomainFiller,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingestor := clipfetch.New(clipfetch.NewYtDlpDownloader(executable, "ffmpeg"), nil, root, discardLog()).
+		WithArtifactWriter(artifactWriterFunc(func(context.Context, []filler.AcquisitionArtifact) error { return nil })).
+		WithStorageGovernor(governor)
+	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{{
+		ID: "youtube:test", AcquisitionID: "overrun", Kind: clipfetch.YouTube,
+		URL: "https://youtube.com/watch?v=too-large",
+	}}, storagegovernor.Automatic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := plan.Run(t.Context())
+	if result.Failed != 1 || result.Fetched != 0 || len(result.Artifacts) != 0 {
+		t.Fatalf("overrun result = %+v, want one failed source and no published artifact", result)
+	}
+	stage := filepath.Join(root, ".loomarr-acquisitions", "overrun", "000")
+	if _, err := os.Stat(stage); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unsafe private staging remains after overrun: %v", err)
 	}
 }
 

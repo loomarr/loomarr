@@ -62,11 +62,11 @@ var fillerOwners = map[string]Owner{
 	"filler.fetch.every":       OwnerFillerDownloads,
 	"filler.fetch.max_per_run": OwnerFillerDownloads,
 
-	"filler.fetch.max_catalog_clips": OwnerFillerStorage,
-	"filler.fetch.max_disk_gb":       OwnerFillerStorage,
-	"filler.incoming.ready_window":   OwnerFillerIncoming,
-	"filler.break_duration":          OwnerFillerBreaks,
-	"filler.pod_max":                 OwnerFillerBreaks,
+	"filler.fetch.max_catalog_clips":   OwnerFillerStorage,
+	"filler.storage.library_budget_gb": OwnerFillerStorage,
+	"filler.incoming.ready_window":     OwnerFillerIncoming,
+	"filler.break_duration":            OwnerFillerBreaks,
+	"filler.pod_max":                   OwnerFillerBreaks,
 
 	"filler.ai_tagging":                       OwnerFillerReview,
 	"filler.transcribe.enabled":               OwnerFillerReview,

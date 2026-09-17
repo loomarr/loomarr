@@ -53,6 +53,20 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleMember), s.fillerReadiness)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "preview-filler-storage-cleanup", Method: http.MethodGet, Path: "/v1/filler/storage/cleanup",
+		Summary:     "Preview disposable filler staging",
+		Description: "Admin only. Counts terminal private download staging older than the safety grace that no recovery evidence still needs. It never selects catalog clips, repair evidence, symlinks, or unknown files.",
+		Tags:        []string{"filler"},
+	}, RoleAdmin), s.previewFillerStorageCleanup)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "cleanup-filler-storage", Method: http.MethodPost, Path: "/v1/filler/storage/cleanup",
+		Summary:     "Remove disposable filler staging",
+		Description: "Admin only. Revalidates and removes only the private terminal download staging returned by the preview contract, then reports a fresh remaining preview.",
+		Tags:        []string{"filler"},
+	}, RoleAdmin), s.cleanupFillerStorage)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-filler-acquisition", Method: http.MethodGet, Path: "/v1/filler/acquisitions/{jobId}",
 		Summary:     "Read one clip download",
 		Description: "Admin only (§10). Durable reconnect state for one filler acquisition; SSE only reduces visible latency.",

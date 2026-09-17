@@ -13,13 +13,13 @@ const entries: SettingEntry[] = [
     doc: "The address of your Emby or Jellyfin server.",
   }),
   setting({
-    key: "filler.fetch.max_disk_gb",
-    label: "Automatic-download storage limit",
-    envVar: "FILLER_FETCH_MAX_DISK_GB",
+    key: "filler.storage.library_budget_gb",
+    label: "Filler storage allowance",
+    envVar: "FILLER_STORAGE_LIBRARY_BUDGET_GB",
     owner: "filler.storage",
     group: "filler",
     kind: "int",
-    doc: "Stop fetching automatically once the filler folder reaches this size.",
+    doc: "Choose how much space Loomarr may use for filler, or leave it automatic.",
   }),
   setting({
     key: "session.ttl",
@@ -50,7 +50,7 @@ describe("settings finder", () => {
   });
 
   it("finds exact keys and environment variables without searching values", () => {
-    expect(first("filler.fetch.max_disk_gb")?.setting?.key).toBe("filler.fetch.max_disk_gb");
+    expect(first("filler.storage.library_budget_gb")?.setting?.key).toBe("filler.storage.library_budget_gb");
     expect(first("LIBRARY_URL")?.setting?.key).toBe("library.url");
     expect(findSettings({ query: "http://private.example", entries, isAdmin: true })).toEqual([]);
   });

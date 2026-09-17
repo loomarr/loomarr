@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"path/filepath"
 	"time"
 )
 
@@ -40,11 +38,6 @@ type FetchLimits struct {
 	// deliberate act that this must not block: a ceiling on what happens while nobody is looking
 	// is not a ceiling on what someone chooses to do.
 	MaxCatalogClips func() int
-	// MaxDiskGB stops auto-fetch once the drop-folder reaches this size.
-	//
-	// ⚠ Measured against the FOLDER, not a running total, so files an operator deletes by hand
-	// are noticed. A counter would drift from reality in the direction that keeps downloading.
-	MaxDiskGB func() int
 }
 
 // FetchSource is one pollable source.
@@ -183,20 +176,17 @@ type Fetcher struct {
 	store  FetchStore
 	enum   SourceEnumerator
 	ingest FetchIngestor
-	dir    string
 	limits FetchLimits
 	log    *slog.Logger
-	statFS func(dir string) (int64, error)
 	now    func() time.Time
 }
 
 // NewFetcher builds the automatic-download worker. Source policy, including whether any source
 // should run at all, arrives through ListFetchSources on every pass so global and per-source edits
 // hot-apply through one authority.
-func NewFetcher(store FetchStore, enumerator SourceEnumerator, ingest FetchIngestor, dir string, limits FetchLimits, log *slog.Logger) *Fetcher {
+func NewFetcher(store FetchStore, enumerator SourceEnumerator, ingest FetchIngestor, limits FetchLimits, log *slog.Logger) *Fetcher {
 	return &Fetcher{
-		store: store, enum: enumerator, ingest: ingest, dir: dir, limits: limits, log: log,
-		statFS: dirSizeBytes, now: time.Now,
+		store: store, enum: enumerator, ingest: ingest, limits: limits, log: log, now: time.Now,
 	}
 }
 
@@ -215,22 +205,20 @@ type FetchResult struct {
 	Skipped int
 	// MaxPerCheck is the selected source's effective cap on a manual run.
 	MaxPerCheck int
-	// StoppedBy names the limit that ended the pass early ("catalog", "disk", ""). ⚠ Reported
+	// StoppedBy names the limit that ended the pass early ("catalog" or ""). ⚠ Reported
 	// rather than logged-and-forgotten: an operator whose catalog stopped growing must be able
 	// to see which ceiling stopped it (§10).
 	StoppedBy string
 }
 
 // FetchStatus is the current answer to “why will auto-fetch do no work?”. It is recomputed from the
-// same live limits and catalog/disk measurements Run uses, so the UI does not infer health from a
+// same live catalog limit Run uses, so the UI does not infer health from a
 // stale last-run log line.
 type FetchStatus struct {
 	Enabled      bool
 	StoppedBy    string
 	CatalogClips int
 	MaxCatalog   int
-	DiskBytes    int64
-	MaxDiskBytes int64
 }
 
 func (f *Fetcher) Status(ctx context.Context) (FetchStatus, error) {
@@ -253,21 +241,6 @@ func (f *Fetcher) Status(ctx context.Context) (FetchStatus, error) {
 	status.MaxCatalog = f.limits.MaxCatalogClips()
 	if status.Enabled && status.MaxCatalog > 0 && status.CatalogClips >= status.MaxCatalog {
 		status.StoppedBy = "catalog"
-	}
-	maxDiskGB := f.limits.MaxDiskGB()
-	if maxDiskGB > 0 && f.dir != "" {
-		status.MaxDiskBytes = int64(maxDiskGB) * 1024 * 1024 * 1024
-		size, err := f.statFS(f.dir)
-		if err != nil {
-			return status, fmt.Errorf("measure drop-folder: %w", err)
-		}
-		status.DiskBytes = size
-		// Run checks catalog first and returns before checking disk. Preserve that same answer when
-		// both ceilings are reached; otherwise the status endpoint tells the operator to fix a
-		// different limit from the one the next scheduled pass will actually report.
-		if status.Enabled && status.StoppedBy == "" && size >= status.MaxDiskBytes {
-			status.StoppedBy = "disk"
-		}
 	}
 	return status, nil
 }
@@ -364,15 +337,6 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		f.logStop("catalog", len(have), max)
 		return res, nil
 	}
-	if stopped, err := f.diskFull(); err != nil {
-		// A folder we cannot measure is not a reason to keep downloading into it.
-		f.log.Warn("filler auto-fetch: cannot measure the drop-folder, skipping this pass", "err", err)
-		return res, nil
-	} else if stopped {
-		res.StoppedBy = "disk"
-		return res, nil
-	}
-
 	for _, src := range due {
 		select {
 		case <-ctx.Done():
@@ -521,23 +485,6 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 	return res, nil
 }
 
-func (f *Fetcher) diskFull() (bool, error) {
-	max := f.limits.MaxDiskGB()
-	if max <= 0 || f.dir == "" {
-		return false, nil
-	}
-	size, err := f.statFS(f.dir)
-	if err != nil {
-		return false, err
-	}
-	limit := int64(max) * 1024 * 1024 * 1024
-	if size >= limit {
-		f.logStop("disk", int(size/(1024*1024*1024)), max)
-		return true, nil
-	}
-	return false, nil
-}
-
 // logStop reports a limit that ended a pass. ⚠ At Info, not Debug: this is the answer to "why
 // did my catalog stop growing", and an operator who cannot find it concludes the feature is
 // broken (§10).
@@ -547,21 +494,5 @@ func (f *Fetcher) logStop(which string, have, max int) {
 	}
 	f.log.Info("filler auto-fetch paused at its limit",
 		"limit", which, "have", have, "max", max,
-		"note", "raise filler.fetch.max_"+which+" to continue, or queue clips by hand")
-}
-
-// dirSizeBytes sums the drop-folder. Walk errors are skipped rather than fatal: an unreadable
-// subtree should not stop the measurement of everything else.
-func dirSizeBytes(dir string) (int64, error) {
-	var total int64
-	err := filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil //nolint:nilerr // an unreadable subtree is skipped, not fatal
-		}
-		if info, ierr := d.Info(); ierr == nil {
-			total += info.Size()
-		}
-		return nil
-	})
-	return total, err
+		"note", "raise filler.fetch.max_catalog_clips to continue, or queue clips by hand")
 }

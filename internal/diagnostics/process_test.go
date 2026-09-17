@@ -11,7 +11,55 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
+
+type diagnosticCapacityMeter struct {
+	measurement storagegovernor.Measurement
+}
+
+func (m diagnosticCapacityMeter) Measure(context.Context, string) (storagegovernor.Measurement, error) {
+	return m.measurement, nil
+}
+
+func (diagnosticCapacityMeter) ManagedBytes(context.Context, string, storagegovernor.Domain) (int64, error) {
+	return 0, nil
+}
+
+func TestProcessManagerRefusesCapacityBeforeQueuingRunOrCreatingOutput(t *testing.T) {
+	root := t.TempDir()
+	sink := &processSinkMemory{}
+	governor := storagegovernor.New(diagnosticCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "diagnostics", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 60 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 1}
+	})
+	var failure error
+	manager := NewProcessManager(sink, nil, ProcessOptions{
+		OutputDir: root, Storage: governor, OnFailure: func(err error) { failure = err },
+	})
+	t.Cleanup(func() { _ = manager.Close(context.Background()) })
+
+	if handle := manager.Begin(ProcessSpec{Purpose: "capacity-test", Executable: "ffmpeg"}); handle != nil {
+		t.Fatal("Begin admitted diagnostic output without capacity")
+	}
+	if failure == nil || !strings.Contains(failure.Error(), string(storagegovernor.ReasonLibraryLimit)) {
+		t.Fatalf("failure = %v, want library-limit reason", failure)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("diagnostic output created after refusal: %v", entries)
+	}
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	if len(sink.runs) != 0 {
+		t.Fatalf("diagnostic metadata queued after refusal: %v", sink.runs)
+	}
+}
 
 type processSinkMemory struct {
 	mu     sync.Mutex

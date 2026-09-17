@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
@@ -49,6 +50,7 @@ type foundationBuild struct {
 	metrics                *metrics.Recorder
 	protection             *secretprotection.Manager
 	secretRedactor         *settings.Redactor
+	storageGovernor        *storagegovernor.Governor
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -134,6 +136,34 @@ func buildFoundation(
 			return foundationBuild{}, fmt.Errorf("resolve filler storage layout: %w", err)
 		}
 		canonicalFillerRestartBaseline(result.appliedRestartSettings, result.fillerLayout)
+		storagePolicy := func(domain storagegovernor.Domain) storagegovernor.Policy {
+			switch domain {
+			case storagegovernor.DomainFiller:
+				budget := result.set.intv("filler.storage.library_budget_gb")
+				if budget > 0 {
+					return storagegovernor.Policy{SoftBudgetBytes: int64(budget) * storagegovernor.GiB}
+				}
+				return storagegovernor.Policy{AutomaticBudget: true}
+			case storagegovernor.DomainPrepared:
+				return storagegovernor.Policy{SoftBudgetBytes: preparedBudgetBytes(result.set.intv("playout.prepared_budget_gb"))}
+			case storagegovernor.DomainDiagnostics:
+				return storagegovernor.Policy{SoftBudgetBytes: int64(result.set.intv("diagnostics.max_storage_mb")) * (1 << 20)}
+			default:
+				return storagegovernor.Policy{}
+			}
+		}
+		result.storageGovernor, err = storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
+			{Path: result.fillerLayout.ClipDir(), Domain: storagegovernor.DomainFiller},
+			{Path: result.fillerLayout.WatchDir(), Domain: storagegovernor.DomainFiller},
+			{Path: result.set.str("playout.prepared_dir"), Domain: storagegovernor.DomainPrepared},
+			{Path: result.set.str("diagnostics.dir"), Domain: storagegovernor.DomainDiagnostics},
+		}, storagePolicy)
+		if err != nil {
+			// Keep one fail-closed authority even when the configured roots are ambiguous. Callers
+			// receive capacity_unavailable rather than silently returning to ungoverned writes.
+			fallbackLog.Error("storage governor is unavailable", "err", err)
+			result.storageGovernor = storagegovernor.New(nil, storagePolicy)
+		}
 		result.secrets = secrets
 		result.log = redactedLog
 		fallbackLog = redactedLog
@@ -173,6 +203,7 @@ func buildFoundation(
 		result.activity = activity.New(st, result.log).WithNotifier(result.emitter)
 		result.processDiagnostics = diagnostics.NewProcessManager(st, result.diagnostics, diagnostics.ProcessOptions{
 			OutputDir: result.set.str("diagnostics.dir"), InstanceID: instanceID,
+			Storage:   result.storageGovernor,
 			OnFailure: func(err error) { fallbackLog.Error("diagnostics: process recorder failed", "err", err) },
 		})
 		result.diagnosticProcesses = diagnostics.NewProcessLog(st, diagnostics.ProcessReadOptions{

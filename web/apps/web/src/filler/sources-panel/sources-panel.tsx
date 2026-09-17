@@ -4,7 +4,7 @@ import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { formatRelative } from "@loomarr/core/format";
+import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -91,9 +91,6 @@ const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutpu
     result.skipped > 0
       ? ` ${result.skipped} ${result.skipped === 1 ? "clip was" : "clips were"} already known and skipped.`
       : "";
-  if (result.stoppedBy === "disk") {
-    return `Couldn’t add clips from ${source.target} because filler storage is full.${limit}`;
-  }
   if (result.stoppedBy === "catalog") {
     return `Couldn’t add clips from ${source.target} because the clip limit is full.${limit}`;
   }
@@ -166,6 +163,36 @@ const downloadScheduleSeconds: Record<Exclude<DownloadSchedulePreset, "custom">,
 const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const queryClient = useQueryClient();
   const { isAdmin } = useAuth();
+  const readinessQuery = fillerApi.useFillerReadiness();
+  const readiness = unwrap(readinessQuery.data, (body) => body);
+  const storage = readiness?.storage;
+  const cleanupPreviewQuery = fillerApi.usePreviewFillerStorageCleanup({
+    query: { enabled: isAdmin && storage?.pausedBy === "host_reserve" },
+  });
+  const cleanupPreview = unwrap(cleanupPreviewQuery.data, (body) => body);
+  const cleanupStorage = fillerApi.useCleanupFillerStorage({
+    mutation: {
+      onSuccess: async (response) => {
+        const result = unwrap(response, (body) => body);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: fillerApi.getFillerReadinessQueryKey() }),
+          queryClient.invalidateQueries({ queryKey: fillerApi.getPreviewFillerStorageCleanupQueryKey() }),
+        ]);
+        if (!result) return;
+        if (result.failedItems > 0) {
+          toast.error("Some temporary files could not be removed", {
+            description: `${pluralize(result.failedItems, "folder")} stayed in place. Loomarr will try them again later.`,
+          });
+          return;
+        }
+        toast.success(
+          result.removedItems > 0 ? `Freed ${formatBytes(result.removedBytes)}` : "Nothing needed cleaning",
+          { description: "Your filler library was not changed." },
+        );
+      },
+    },
+  });
+  const cleanupResult = unwrap(cleanupStorage.data, (body) => body);
 
   const [selectedSourceID, setSelectedSourceID] = useState<string>();
   const [sourcePreview, setSourcePreview] = useState<{
@@ -431,6 +458,104 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
 
   return (
     <div className="flex flex-col gap-6">
+      {storage ? (
+        <section
+          aria-labelledby="filler-storage-heading"
+          className="rounded-lg border border-border bg-card p-4"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 id="filler-storage-heading" className="font-medium text-sm">
+                Storage
+              </h2>
+              <p className="mt-1 text-sm">
+                {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
+                this drive
+              </p>
+              <p className="mt-1 text-muted-foreground text-xs">
+                {storage.pausedBy === "host_reserve"
+                  ? `New filler is paused so this drive keeps ${formatBytes(storage.hardReserveBytes)} free.`
+                  : storage.pausedBy === "library_limit"
+                    ? `New filler is paused at its ${formatBytes(storage.softBudgetBytes)} allowance.`
+                    : storage.pausedBy === "capacity_unavailable" || storage.pausedBy === "estimate_unknown"
+                      ? "Loomarr cannot safely check the available space in this folder."
+                      : storage.state === "approaching"
+                        ? `${formatBytes(storage.availableBytes)} is left for new filler. Loomarr will pause before it risks space kept for this drive.`
+                        : `Automatic downloads will pause before this drive has less than ${formatBytes(storage.hardReserveBytes)} free.`}
+                {storage.reservedBytes > 0
+                  ? ` ${formatBytes(storage.reservedBytes)} is set aside for work in progress.`
+                  : ""}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              render={
+                <a
+                  href={`/filler/settings/${
+                    storage.pausedBy === "capacity_unavailable" || storage.pausedBy === "estimate_unknown"
+                      ? "folders"
+                      : "storage"
+                  }`}
+                />
+              }
+            >
+              {storage.pausedBy === "capacity_unavailable" || storage.pausedBy === "estimate_unknown"
+                ? "Choose folder"
+                : storage.pausedBy === "library_limit"
+                  ? "Change allowance"
+                  : "Storage options"}
+            </Button>
+          </div>
+
+          {storage.pausedBy === "host_reserve" ? (
+            <div className="mt-3 border-border border-t pt-3">
+              {cleanupPreviewQuery.isLoading ? (
+                <p aria-live="polite" className="text-muted-foreground text-sm">
+                  Checking for old temporary downloads…
+                </p>
+              ) : cleanupPreview && cleanupPreview.items > 0 ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-muted-foreground text-sm">
+                    {formatBytes(cleanupPreview.bytes)} in{" "}
+                    {pluralize(cleanupPreview.items, "unfinished download")} is safe to remove. Clips in your
+                    library stay untouched.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={cleanupStorage.isPending}
+                    onClick={() => cleanupStorage.mutate()}
+                  >
+                    {cleanupStorage.isPending
+                      ? "Freeing space…"
+                      : `Free ${formatBytes(cleanupPreview.bytes)}`}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm">
+                  There are no old temporary downloads Loomarr can safely remove. Free space elsewhere on this
+                  drive or remove filler clips you no longer want.
+                </p>
+              )}
+              {cleanupResult && cleanupResult.removedItems > 0 ? (
+                <p role="status" className="mt-2 text-muted-foreground text-xs">
+                  Removed {pluralize(cleanupResult.removedItems, "temporary folder")} · freed{" "}
+                  {formatBytes(cleanupResult.removedBytes)}.
+                </p>
+              ) : null}
+              {cleanupPreviewQuery.error || cleanupStorage.error ? (
+                <p role="alert" className="mt-2 text-destructive text-sm">
+                  Temporary files could not be checked or removed. Nothing in your library was changed.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : readinessQuery.error ? (
+        <ErrorState error={readinessQuery.error} onRetry={() => readinessQuery.refetch()} />
+      ) : null}
+
       <FillerSources
         sources={sources}
         onSelect={openSource}

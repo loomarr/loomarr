@@ -9,8 +9,21 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+type artworkCapacityMeter struct {
+	measurement storagegovernor.Measurement
+}
+
+func (m artworkCapacityMeter) Measure(context.Context, string) (storagegovernor.Measurement, error) {
+	return m.measurement, nil
+}
+
+func (artworkCapacityMeter) ManagedBytes(context.Context, string, storagegovernor.Domain) (int64, error) {
+	return 0, nil
+}
 
 // Clip artwork (V28 still + V39 animation), rendered by ONE ffmpeg pass.
 //
@@ -151,6 +164,86 @@ func TestGenerateArtwork_FillsBothPathsInOnePass(t *testing.T) {
 	// exactly what merging the passes removed.
 	if len(starts) != 1 {
 		t.Errorf("renderer called %d times, want 1 — both assets come from a single decode", len(starts))
+	}
+}
+
+func TestDirSource_RefusesArtworkBeforeCreatingCacheOrStartingRenderer(t *testing.T) {
+	dir := t.TempDir()
+	writeAt(t, filepath.Join(dir, "ad.mp4"), "video")
+	governor := storagegovernor.New(artworkCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "clips", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 60 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 1}
+	})
+	renders := 0
+	logs := 0
+	source := filler.DirSource{
+		Layout: testLayout(dir), Probe: fakeProbe(30_000), Storage: governor,
+		Artwork: func(context.Context, string, string, string, float64) error {
+			renders++
+			return nil
+		},
+		Log: func(string, ...any) { logs++ },
+	}
+
+	clips, err := source.ListLocalClips(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || clips[0].Thumbnail != "" || clips[0].Preview != "" {
+		t.Fatalf("clips = %+v, want catalogued media without uncreated artwork", clips)
+	}
+	if renders != 0 {
+		t.Fatalf("renderer calls = %d, want none", renders)
+	}
+	if logs != 1 {
+		t.Fatalf("warning logs = %d, want one aggregate artwork warning", logs)
+	}
+	if _, err := os.Stat(filepath.Join(dir, filler.ThumbDirName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("artwork cache exists after refusal: %v", err)
+	}
+}
+
+func TestDirSource_StopsAndRemovesArtworkThatExceedsItsReservation(t *testing.T) {
+	dir := t.TempDir()
+	writeAt(t, filepath.Join(dir, "ad.mp4"), "video")
+	governor := storagegovernor.New(artworkCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "clips", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 60 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	})
+	logs := 0
+	source := filler.DirSource{
+		Layout: testLayout(dir), Probe: fakeProbe(30_000), Storage: governor,
+		Artwork: func(_ context.Context, _ string, still, animated string, _ float64) error {
+			if err := os.MkdirAll(filepath.Dir(still), 0o750); err != nil {
+				return err
+			}
+			if err := os.WriteFile(still, nil, 0o600); err != nil {
+				return err
+			}
+			if err := os.Truncate(still, storagegovernor.EstimateArtwork()+1); err != nil {
+				return err
+			}
+			return os.WriteFile(animated, []byte("animation"), 0o600)
+		},
+		Log: func(string, ...any) { logs++ },
+	}
+
+	clips, err := source.ListLocalClips(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || clips[0].Thumbnail != "" || clips[0].Preview != "" {
+		t.Fatalf("clips after artwork overrun = %+v", clips)
+	}
+	if logs != 1 {
+		t.Fatalf("warning logs = %d, want one aggregate artwork warning", logs)
+	}
+	for _, rel := range []string{filler.ThumbPathFor(clips[0].Path), filler.PreviewPathFor(clips[0].Path)} {
+		if _, err := os.Stat(filepath.Join(dir, filler.ThumbDirName, filepath.FromSlash(rel))); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("oversized artwork survived at %s: %v", rel, err)
+		}
 	}
 }
 

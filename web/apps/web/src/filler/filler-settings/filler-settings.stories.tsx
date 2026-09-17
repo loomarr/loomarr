@@ -1,4 +1,5 @@
-import { getListFillerSourcesQueryKey } from "@loomarr/api/endpoints/filler";
+import type { FillerReadinessDTO } from "@loomarr/api";
+import { getFillerReadinessQueryKey, getListFillerSourcesQueryKey } from "@loomarr/api/endpoints/filler";
 import { getSettingsListQueryKey } from "@loomarr/api/endpoints/settings";
 import { fillerRefinementSettings } from "@loomarr/fixtures";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
@@ -6,6 +7,38 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
 import { widthFrame, withRouter } from "@/test/story-utils";
 import { FillerSettings } from "./filler-settings";
+
+const readiness: FillerReadinessDTO = {
+  ready: true,
+  nextAction: "none",
+  repairs: { count: 0 },
+  fetch: { enabled: true, catalogClips: 48 },
+  storage: {
+    automatic: true,
+    state: "healthy",
+    totalBytes: 500 * 1024 ** 3,
+    freeBytes: 200 * 1024 ** 3,
+    managedBytes: 2 * 1024 ** 3,
+    reservedBytes: 0,
+    filesystemReservedBytes: 0,
+    softBudgetBytes: 20 * 1024 ** 3,
+    hardReserveBytes: 10 * 1024 ** 3,
+    availableBytes: 18 * 1024 ** 3,
+  },
+  pipeline: {
+    runnable: 0,
+    scheduled: 0,
+    inProgress: 0,
+    needsDecision: 0,
+    recoverable: 0,
+    ready: 48,
+    complete: 0,
+    rejected: 0,
+    dismissed: 0,
+  },
+  pool: { clips: 48, breakBody: 38, eligible: 42, untagged: 0, channels: [] },
+  acquisitions: [],
+};
 
 const withSettings: Decorator = (Story) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
@@ -17,6 +50,11 @@ const withSettings: Decorator = (Story) => {
   client.setQueryData(getListFillerSourcesQueryKey(), {
     status: 200,
     data: { sources: [], total: 0 },
+    headers: new Headers(),
+  });
+  client.setQueryData(getFillerReadinessQueryKey(), {
+    status: 200,
+    data: readiness,
     headers: new Headers(),
   });
   return (

@@ -1426,7 +1426,7 @@ type fetchFillerSourceOutput struct {
 		Queued        int    `json:"queued" doc:"New remote items queued for acquisition"`
 		Skipped       int    `json:"skipped" doc:"Remote items already known to the catalog or acquisition history"`
 		MaxPerCheck   int    `json:"maxPerCheck" doc:"Effective clip limit for this selected source"`
-		StoppedBy     string `json:"stoppedBy,omitempty" enum:"catalog,disk" doc:"Capacity ceiling that stopped the pass"`
+		StoppedBy     string `json:"stoppedBy,omitempty" enum:"catalog" doc:"Capacity ceiling that stopped the pass"`
 		Total         int    `json:"total"`
 		Added         int    `json:"added"`
 		Updated       int    `json:"updated"`

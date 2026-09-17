@@ -588,9 +588,9 @@ func TestFillerSources_FetchNowReportsAnActiveCheck(t *testing.T) {
 	}
 }
 
-func TestFillerSources_FetchNowReportsTheEffectiveCapAndCapacityStop(t *testing.T) {
+func TestFillerSources_FetchNowReportsTheEffectiveCapAndCatalogStop(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchResult = filler.FetchResult{MaxPerCheck: 3, StoppedBy: "disk"}
+	ff.fetchResult = filler.FetchResult{MaxPerCheck: 3, StoppedBy: "catalog"}
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -603,8 +603,8 @@ func TestFillerSources_FetchNowReportsTheEffectiveCapAndCapacityStop(t *testing.
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.MaxPerCheck != 3 || body.StoppedBy != "disk" {
-		t.Fatalf("capacity-stopped result = %+v, want effective cap 3 and disk stop", body)
+	if body.MaxPerCheck != 3 || body.StoppedBy != "catalog" {
+		t.Fatalf("capacity-stopped result = %+v, want effective cap 3 and catalog stop", body)
 	}
 }
 
