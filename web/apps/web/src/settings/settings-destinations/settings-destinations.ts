@@ -229,7 +229,7 @@ const SETTINGS_DESTINATIONS = [
         "filler.storage",
         "Filler storage limits",
         "Stop automatic downloads before clips fill this drive.",
-        ["disk full", "clip limit", "catalog limit", "drive capacity"],
+        ["disk full", "stop clips filling disk", "clip limit", "catalog limit", "drive capacity"],
         "storage",
       ],
       [
