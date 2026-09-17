@@ -76,6 +76,7 @@ func buildSyncer(st store.Store, set resolved, layout filler.Layout, log *slog.L
 		// hardware-encode notes) got their frames from a DIFFERENT binary than playout uses,
 		// silently, and the setting appeared to do nothing here.
 		Artwork: filler.FFmpegArtwork(set.str("playout.ffmpeg_path")),
+		Storage: governor,
 		// The quality gate's floor (§10 V40).
 		MinDuration: func() time.Duration { return set.dur("filler.min_duration") },
 		// ⚠ **Log was never assigned either**, so the "some thumbnails could not be generated"

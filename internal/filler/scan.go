@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // Scanning FILLER_DIR directly (§10, revised by §9.1).
@@ -509,6 +510,10 @@ type DirSource struct {
 	// a single decode. Two seams would let a caller render them separately and quietly
 	// reintroduce the second decode that merging them removed.
 	Artwork ArtworkRenderer
+	// Storage reserves generated artwork before the scanner creates its cache directory or starts
+	// ffmpeg. Nil preserves the narrow filesystem-only test seam; production always supplies the
+	// shared filler governor.
+	Storage *storagegovernor.Governor
 	// MinDuration is the quality gate's floor (§10 V40, `filler.min_duration`). A file shorter
 	// than this is rejected at the scan boundary and never becomes a clip.
 	//
@@ -570,7 +575,7 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 	}
 	// Thumbnails BEFORE the Tunarr annotation, and independent of it: the images are for the
 	// catalog UI and have nothing to do with whether Tunarr is reachable.
-	if failed := GenerateArtwork(ctx, d.Layout.ClipDir(), clips, d.Artwork); failed > 0 && d.Log != nil {
+	if failed := generateArtwork(ctx, d.Layout.ClipDir(), clips, d.Artwork, d.Storage); failed > 0 && d.Log != nil {
 		d.Log("filler: some clip artwork could not be generated",
 			"failed", failed, "of", len(clips),
 			"hint", "check playout.ffmpeg_path — a wrong binary fails every render, and the "+

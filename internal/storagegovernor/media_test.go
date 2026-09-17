@@ -50,3 +50,10 @@ func TestEstimateMediaRefusesUnknownAndOverflowedInputs(t *testing.T) {
 		})
 	}
 }
+
+func TestEstimateArtworkIsBoundedIndependentlyOfSourceSize(t *testing.T) {
+	t.Parallel()
+	if got := storagegovernor.EstimateArtwork(); got != 64<<20 {
+		t.Fatalf("artwork reservation = %d, want 64 MiB", got)
+	}
+}

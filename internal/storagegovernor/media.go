@@ -5,6 +5,7 @@ const (
 	mediaEstimateMarginDenom  = 4
 	mediaDerivativeMultiplier = 4
 	mediaDerivativeFloor      = 64 << 20
+	artworkReservationBytes   = 64 << 20
 )
 
 // MediaEstimate is provider metadata, not trusted capacity. DeclaredBytes may
@@ -14,6 +15,13 @@ type MediaEstimate struct {
 	DeclaredBytes int64
 	DurationMS    int64
 	Height        int
+}
+
+// EstimateArtwork returns the bounded peak allowance for one still plus one animated preview.
+// Artwork is deliberately independent of source size: both outputs use a fixed preview window
+// and width, while the generous ceiling also covers the larger GIF compatibility fallback.
+func EstimateArtwork() int64 {
+	return artworkReservationBytes
 }
 
 // MediaBudget is the governor-owned translation from provider facts to limits.
