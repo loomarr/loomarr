@@ -11336,14 +11336,30 @@ Required certification also declares positive `LOOMARR_EVAL_MAX_TOKENS_PER_RUN`,
 `LOOMARR_EVAL_MAX_SPEND` ceilings before clients. A run is one case trial and the suite is the complete
 `Runner.Run` execution. Token ceilings count provider-reported prompt plus completion totals without
 double-counting their reasoning/cache/modality detail categories; spend ceilings are exact
-nonnegative decimal USD values and are accumulated without binary floating point. Runner checks the
-shared run/suite ledger with overflow-safe arithmetic before and after every individual generator
-provider call and every judge call, including generator repair/tool-loop calls inside one
-`Suggest`. Reaching a calls/tokens/USD ceiling after one generator call prevents the next provider
-call from starting. Exact-ceiling completion is allowed; one additional call is not. Once a per-run
-ceiling is reached it records `budget_exhausted` and skips that run's judge or later call while a
-later run may use its own allowance; once the suite ceiling is reached no subsequent run starts.
-Token/spend exhaustion has the same behavior. Missing usage is sticky per provider call: reported
+nonnegative decimal USD values and are accumulated without binary floating point.
+
+Those limits are **pre-dispatch ceilings**, not merely thresholds checked after a billable response.
+Before the first provider client exists, each hosted role binds an immutable route-resource snapshot:
+the exact requested model and upstream, context ceiling, request completion-token cap, and exact
+prompt/completion/internal-reasoning prices. Every generator turn carries the production 2,048-token
+completion cap and every judge call carries its own explicit bounded completion cap; a provider
+default is never accepted in a resource-bounded run. Immediately before each individual generator or
+judge call, the shared ledger temporarily reserves the route's conservative worst-case tokens and
+USD for that request. The token reservation uses the complete context ceiling plus the request's
+completion cap; the USD reservation prices that same maximum at the most expensive applicable
+text-token category and includes any fixed request charge. If either the run or suite would exceed
+its declared limit with the reservation in place, the request is never dispatched. On return, the
+reservation is atomically replaced by the smaller provider-reported actual usage and exact charge.
+Thus exact-limit completion is allowed while no in-flight response can carry the run beyond the
+declared authorization. OpenRouter key or workspace limits remain useful defense in depth, but they
+are not proof of Loomarr's cap because an already-dispatched request may complete after a provider
+budget is crossed.
+
+Runner applies that reservation with overflow-safe arithmetic to every generator provider call and
+every judge call, including generator repair/tool-loop calls inside one `Suggest`. Once a per-run
+ceiling cannot admit the next reservation it records `budget_exhausted` and skips that run's judge or
+later call while a later run may use its own allowance; once the suite ceiling cannot admit it no
+subsequent run starts. Missing usage is sticky per provider call: reported
 usage from one call can never conceal missing required tokens or hosted spend on another call. With
 a corresponding hard ceiling, one hosted call whose token or spend usage is missing makes the
 shared suite ledger permanently uncertain for that `Runner.Run`: no judge, later trial, or later
