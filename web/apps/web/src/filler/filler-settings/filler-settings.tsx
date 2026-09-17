@@ -48,21 +48,21 @@ const languageUnavailableReason = (entries: SettingEntry[]): string | undefined 
   const provider = settingValue(entries, "filler.language_provider") || "whisper";
   if (provider === "hosted") {
     if (settingValue(entries, "llm.url") === "") {
-      return "Language filtering is off because the hosted AI service address is not configured. Set it under Settings → AI.";
+      return "Language filtering is off because the hosted AI service address is missing. Add it in AI settings.";
     }
     if (settingValue(entries, "llm.model") === "") {
-      return "Language filtering is off because the hosted language model is not configured. Set it under Settings → AI.";
+      return "Language filtering is off because no hosted language model is selected. Choose one in AI settings.";
     }
   } else {
     if (settingValue(entries, "ingest.whisper_path") === "") {
-      return "Language filtering is off because the local language engine is not configured. Set the whisper executable under Processing tools.";
+      return "Language filtering is off because the local language engine is missing. Add it under Processing tools.";
     }
     if (settingValue(entries, "filler.language_model") === "") {
-      return "Language filtering is off because no multilingual detection model is configured. Add one under Settings → AI.";
+      return "Language filtering is off because no multilingual model is selected. Choose one in AI settings.";
     }
   }
   if (settingValue(entries, "playout.ffmpeg_path") === "") {
-    return "Language filtering is off because audio extraction is not configured. Set the ffmpeg executable under System → Playback.";
+    return "Language filtering is off because FFmpeg is missing. Add it in Playback settings.";
   }
   return undefined;
 };
@@ -247,7 +247,7 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       group: "filler",
       title: "Break assembly",
       description:
-        "Default break length and clip density. A channel can override its length; frequency stays under Settings → Defaults.",
+        "Choose the usual break length and number of clips. Each channel can use its own length and frequency.",
       keys: ["filler.break_duration", "filler.pod_max"],
     },
     {
