@@ -13,6 +13,9 @@ const meta = {
   title: "Filler/Incoming/Processing details",
   component: IncomingProcessingDetails,
   args: { processing: { stages: [] } },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByText("Processing details"));
+  },
 } satisfies Meta<typeof IncomingProcessingDetails>;
 
 export default meta;
