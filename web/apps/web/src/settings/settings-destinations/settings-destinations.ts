@@ -126,7 +126,7 @@ const SETTINGS_DESTINATIONS = [
     description: "Manage sessions, single sign-on, paired devices, secrets, and encryption.",
     aliases: ["security", "SSO", "login", "cookie", "API token", "pair device", "encryption"],
     group: "access",
-    path: "/settings/security",
+    path: "/settings/access",
     role: "admin",
     browse: true,
   }),
