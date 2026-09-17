@@ -5,7 +5,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -163,7 +163,10 @@ const DiagnosticRecovery = ({ row }: { row: FillerDecisionDiagnosticDTO }) => {
 
 const FillerManage = () => {
   const { isAdmin } = useAuth();
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const { hash } = useLocation();
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(
+    () => hash === "diagnostics" || hash === "#diagnostics",
+  );
   const activityQuery = fillerApi.useFillerDecisionActivity({ limit: 100 });
   const diagnosticsQuery = fillerApi.useFillerDecisionDiagnostics(
     { limit: 100 },

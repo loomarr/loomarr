@@ -11,13 +11,24 @@ const status = (index: number, statusLabel = "Adding details"): IncomingStatusDT
   durationMs: 25_000 + index * 1_000,
   statusLabel,
   updatedAt: "2026-09-14T20:00:00Z",
-  technical: {
+  processing: {
     attempts: 1,
     stages: [
-      { label: "Checking video", status: "Finished", at: "2026-09-14T19:59:00Z" },
+      {
+        label: "Checking video",
+        outcome: "finished",
+        outcomeLabel: "Finished",
+        note: "This step finished successfully.",
+        at: "2026-09-14T19:59:00Z",
+      },
       {
         label: "Adding details",
-        status: statusLabel === "Ready" ? "Finished" : "In progress",
+        outcome: statusLabel === "Ready" ? "finished" : "in_progress",
+        outcomeLabel: statusLabel === "Ready" ? "Finished" : "In progress",
+        note:
+          statusLabel === "Ready"
+            ? "This step finished successfully."
+            : "Loomarr is working on this step now.",
         at: "2026-09-14T20:00:00Z",
       },
     ],
