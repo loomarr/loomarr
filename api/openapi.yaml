@@ -4727,6 +4727,60 @@ components:
         - rows
         - total
       type: object
+    IncomingProcessingDTO:
+      additionalProperties: false
+      properties:
+        attempts:
+          format: int64
+          type: integer
+        diagnosticsHref:
+          description: Existing operational owner; absent when no deeper evidence exists
+          type: string
+        nextTryAt:
+          description: RFC3339; absent unless this work is scheduled to retry
+          type: string
+        stages:
+          items:
+            $ref: "#/components/schemas/IncomingProcessingStageDTO"
+          type: array
+      required:
+        - stages
+      type: object
+    IncomingProcessingStageDTO:
+      additionalProperties: false
+      properties:
+        at:
+          description: RFC3339
+          type: string
+        label:
+          type: string
+        note:
+          description: Browser-safe server-owned explanation
+          type: string
+        outcome:
+          enum:
+            - waiting
+            - in_progress
+            - finished
+            - retrying
+            - not_needed
+            - recorded
+          type: string
+        outcomeLabel:
+          type: string
+        progress:
+          description: Measured progress inside this active stage only; absent when unmeasured or inactive
+          format: int64
+          maximum: 100
+          minimum: 0
+          type: integer
+      required:
+        - label
+        - outcome
+        - outcomeLabel
+        - note
+        - at
+      type: object
     IncomingStatusDTO:
       additionalProperties: false
       properties:
@@ -4739,15 +4793,10 @@ components:
           type: string
         name:
           type: string
-        progress:
-          format: int64
-          maximum: 100
-          minimum: -1
-          type: integer
+        processing:
+          $ref: "#/components/schemas/IncomingProcessingDTO"
         statusLabel:
           type: string
-        technical:
-          $ref: "#/components/schemas/IncomingTechnicalDTO"
         thumbImage:
           $ref: "#/components/schemas/ImageDTO"
           description: Extracted still; absent while artwork is not ready
@@ -4760,40 +4809,7 @@ components:
         - durationMs
         - statusLabel
         - updatedAt
-        - technical
-      type: object
-    IncomingTechnicalDTO:
-      additionalProperties: false
-      properties:
-        attempts:
-          format: int64
-          type: integer
-        nextTryAt:
-          description: RFC3339; absent unless this work is scheduled to retry
-          type: string
-        stages:
-          items:
-            $ref: "#/components/schemas/IncomingTechnicalStageDTO"
-          type: array
-      required:
-        - stages
-      type: object
-    IncomingTechnicalStageDTO:
-      additionalProperties: false
-      properties:
-        at:
-          description: RFC3339
-          type: string
-        label:
-          type: string
-        note:
-          type: string
-        status:
-          type: string
-      required:
-        - label
-        - status
-        - at
+        - processing
       type: object
     IngestFillerInputBody:
       additionalProperties: false
