@@ -755,7 +755,20 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         return json(route, {
           ready: false,
           nextAction: "add_filler",
+          repairs: { count: 0 },
           fetch: { enabled: false, catalogClips: 0 },
+          storage: {
+            automatic: true,
+            state: "healthy",
+            totalBytes: 64 * 1024 ** 3,
+            freeBytes: 32 * 1024 ** 3,
+            managedBytes: 0,
+            reservedBytes: 0,
+            filesystemReservedBytes: 0,
+            softBudgetBytes: 6.4 * 1024 ** 3,
+            hardReserveBytes: 6.4 * 1024 ** 3,
+            availableBytes: 6.4 * 1024 ** 3,
+          },
           pipeline: {
             runnable: 0,
             scheduled: 0,
@@ -910,6 +923,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             ? [
                 {
                   key: "filler.dir",
+                  label: "Clip library",
                   group: "filler",
                   kind: "path",
                   doc: "Filler library directory.",
@@ -917,7 +931,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   secret: false,
                   set: true,
                   provenance: "db" as const,
-                  value: "/data/filler",
+                  value: state.edits["filler.dir"] ?? "/data/filler",
                 },
                 {
                   key: "filler.fetch.every",
