@@ -44,6 +44,19 @@ func TestConfigDocs_OmitsMigrationOnlySMTPSettings(t *testing.T) {
 	}
 }
 
+func TestConfigDocs_SeparatesRegistryGroupFromOwnerTask(t *testing.T) {
+	md := string(NewRegistry().Markdown())
+	for _, want := range []string{
+		"## Filler / commercials",
+		"| `filler.incoming.ready_window` (`FILLER_INCOMING_READY_WINDOW`) | Filler — Incoming history |",
+		"| `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | Channel defaults |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("generated configuration is missing %q", want)
+		}
+	}
+}
+
 // repoRoot finds the module root by walking up until go.mod is found.
 func repoRoot(t *testing.T) string {
 	t.Helper()

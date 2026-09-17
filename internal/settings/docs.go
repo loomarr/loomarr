@@ -26,6 +26,18 @@ var groupTitles = map[Group]string{
 	GroupAdvanced:      "Advanced",
 }
 
+var ownerTitles = map[Owner]string{
+	OwnerConnections: "Connections", OwnerAI: "AI", OwnerDefaults: "Channel defaults",
+	OwnerNotifications: "Notifications", OwnerLocation: "Location", OwnerSharing: "Sharing address",
+	OwnerAccess: "Access and devices", OwnerPlayback: "Playback", OwnerStorage: "Storage",
+	OwnerBackup: "Backups", OwnerTasks: "Background tasks", OwnerDiagnostics: "Diagnostics",
+	OwnerAdvanced: "Advanced settings", OwnerFillerFolders: "Filler — Clip folders",
+	OwnerFillerDownloads: "Filler — Automatic downloads", OwnerFillerStorage: "Filler — Storage limits",
+	OwnerFillerIncoming: "Filler — Incoming history", OwnerFillerBreaks: "Filler — Break assembly",
+	OwnerFillerReview: "Filler — Clip review", OwnerFillerPlayback: "Filler — Clip eligibility and sound",
+	OwnerFillerLimits: "Filler — Processing limits", OwnerFillerTools: "Filler — Processing tools",
+}
+
 // Markdown renders the registry as docs/configuration.md (config-design §2: the
 // generated contract, mirrored by design.md §15). Deterministic — groups in
 // declaration order, keys in declaration order — so the CI drift check is stable.
@@ -53,8 +65,8 @@ func (r *Registry) Markdown() []byte {
 			title = string(g)
 		}
 		b.WriteString("## " + title + "\n\n")
-		b.WriteString("| Setting (env) | Kind | Default | Notes |\n")
-		b.WriteString("| --- | --- | --- | --- |\n")
+		b.WriteString("| Setting (env) | Owner task | Kind | Default | Notes |\n")
+		b.WriteString("| --- | --- | --- | --- | --- |\n")
 		for _, s := range r.ByGroup(g) {
 			if s.MigrationOnly {
 				continue
@@ -88,8 +100,12 @@ func row(s Setting) string {
 	if len(tags) > 0 {
 		notes = notes + " _(" + strings.Join(tags, "; ") + ")_"
 	}
-	return fmt.Sprintf("| `%s` (`%s`) | %s | %s | %s |\n",
-		s.Key, s.EnvVar, s.Kind, def, escapePipes(notes))
+	owner := ownerTitles[s.Owner]
+	if owner == "" {
+		owner = string(s.Owner)
+	}
+	return fmt.Sprintf("| `%s` (`%s`) | %s | %s | %s | %s |\n",
+		s.Key, s.EnvVar, escapePipes(owner), s.Kind, def, escapePipes(notes))
 }
 
 // defaultCell renders a setting's default for the table. Secrets never print a
