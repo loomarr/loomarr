@@ -10,15 +10,17 @@ material; none is an untouched holdout. Each example below is a design probe, no
 a passed test or a complete expected-answer set. Family status is `proposed` until
 its source facts, independent oracle and negative controls are reviewed.
 
-Five cumulative executable batches now have 119 authored requests across the
+Six cumulative executable batches now have 119 authored requests across the
 TGIF, MCU Phase One, partial History editorial-era and reviewed movie-pool source
 families. The first three provide partial evidence relevant to BLK-01, IDN-02,
 SET-02, EPO-01, OWN-01/02/04, POL-01 and date-axis behavior. The fourth adds
 partial evidence for DAT-01, INT-01/03/04, PPL-01/02 and REF-01/03. The fifth
 adds a bounded same-authority U.S. MPA ceiling slice, one-title and explicit-empty
-results, and stronger single/multiple title-exclusion probes. Its mood rubrics
-are authored but have no completed reviewers; the earlier PG case remains
-synthetic plumbing. Case categories do
+results, and stronger single/multiple title-exclusion probes. The sixth adds no
+requests; it promotes eight existing mood rubrics to bounded
+`model-attested-development` evidence through independent Gemini and Qwen reviews
+plus Gemma adjudication. Attentional demand remains uncertain and is not used by
+those cases; the earlier PG case remains synthetic plumbing. Case categories do
 not become new truth families. The other registry rows remain proposed until
 their own source/oracle review and coverage. All executable batches are
 development-only.
@@ -172,21 +174,24 @@ Source family: `genre-intersection`. Review status: proposed; fixture-ready: no.
 
 ### Mood and atmosphere
 
-Source family: `subjective-mood`. Review status: ordinal rubric authored;
-fixture-ready: deterministic development projection only, completed reviewers no.
+Source family: `subjective-mood`. Review status: partial
+`model-attested-development`; fixture-ready: eight bounded movie cases over four
+resolved axes, attentional demand unresolved.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |
-| MOD-01 | Comfort television for a rainy Sunday | Human-reviewed comfort coherence, not random popular shows. |
+| MOD-01 | Comfort television for a rainy Sunday | Independently attested comfort coherence, not random popular shows; television evidence remains proposed. |
 | MOD-02 | Relaxed family viewing after dinner | Mood plus explicit audience expectations. |
 | MOD-03 | Suspenseful but not frightening | Directional intensity contrast with calibrated subjective judgment. |
 | MOD-04 | Slow shows I can leave on in the background | Pacing/attention expectations need reviewed evidence. |
 | MOD-05 | Nineties nostalgia, not necessarily nineties episodes | Nostalgia must not silently impose an airing interval. |
 
-The v4 movie cases exercise a small directional comfort/tense/dark slice with
-`movie-mood-ordinal-v1`. They do not promote any MOD row: two independent reviews,
-stored disagreements and threshold adjudication are still required before these
-rubrics become subjective outcome evidence.
+The v6 movie cases exercise a small directional comfort/tense/dark slice with
+`movie-mood-ordinal-v1`. Their exact packet, three family-distinct submissions,
+OpenRouter route snapshot, disagreements, third-family resolution and per-case
+threshold projections are digest-bound. This is partial evidence relevant to
+MOD-01/03 only; it does not establish television comfort, background viewing,
+nostalgia, human review, provider qualification or certification.
 
 ### Audience constraints
 

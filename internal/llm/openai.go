@@ -54,6 +54,10 @@ type OpenRouterChatConfig struct {
 	Model            string
 	APIKey           string
 	UpstreamProvider string
+	// AllowProviderRetention is an explicit development-only exception for
+	// public evidence. Data collection and fallback remain denied; the default
+	// false preserves the certification lane's ZDR requirement.
+	AllowProviderRetention bool
 }
 
 // decodeOpenAIJSON preserves ordinary JSON syntax errors while turning the common "wrong API
@@ -110,6 +114,7 @@ func NewOpenRouterChat(cfg OpenRouterChatConfig) (*OpenAI, error) {
 	}
 	provider := NewOpenAIForProvider("openrouter", cfg.BaseURL, cfg.Model, cfg.APIKey)
 	provider.route = strictOpenRouterChatRoute(cfg.UpstreamProvider)
+	provider.route.ZDR = !cfg.AllowProviderRetention
 	return provider, nil
 }
 

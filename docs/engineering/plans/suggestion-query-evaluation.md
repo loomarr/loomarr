@@ -342,8 +342,46 @@ No hosted-provider call, spend, sealed holdout, new UI or Playwright acceptance 
 claimed. The MPA slice promotes only the bounded same-authority audience evidence
 described above; it is not a complete U.S. movie catalog or individualized safety
 recommendation. The mood protocol is now fully specified, but two independent
-human submissions and any required adjudication still have not occurred, so mood
-outcomes remain authored development rubric metadata and #1290 remains open.
+human submissions and any required adjudication did not occur in v5, so its mood
+outcomes remain authored development rubric metadata.
+
+### Sixth executable expansion batch
+
+Follow-on checkpoint [#1290](https://github.com/loomarr/loomarr/issues/1290)
+advances the cumulative snapshot to `query-expansion-v6.json` without adding or
+removing requests. It retains all 119 expansion requests and binds the eight mood
+cases to `query-mood-model-review-v1`, a separate blinded multi-model authority.
+This is an evidence-status promotion inside the exposed Development Corpus, not
+new semantic breadth, human review, provider qualification or certification.
+
+Two independent initial reviewers received the same three-title packet with
+institutional evidence summaries and neutral aliases, but no TMDB Keys, request
+text, expected polarity, ownership state, acceptable/forbidden sets or prior
+answers. Local Qwen 3.5 9B and Gemini 3.7 Flash through one snapshot-bound
+OpenRouter Google AI Studio route disagreed on several ordinal values. Local
+Gemma 4 12B therefore reviewed the original packet independently as the third
+family. Exact agreement or a two-of-three value resolves each axis. The only
+unresolved axis is `attentionalDemand` for all three titles; no promoted case
+uses it.
+
+The resulting bounded decisions are Paddington 2 `(valence 3, arousal 1,
+threat/fear 0, comedic warmth 3)`, Jaws `(1, 3, 3, 0)`, and Parasite
+`(1, 2, 2, 1)`. Every promoted case carries machine-readable min/max rules over
+only those resolved axes. The loader reconstructs the authority from the exact
+packet, private alias map, three raw submissions and provider snapshot, then
+checks every subjective positive satisfies all rules and every subjective
+negative fails at least one. Jaws and Parasite remain deterministic date/region
+negatives where appropriate rather than being falsely labelled mood negatives.
+
+The Gemini run was explicitly limited to ten hosted calls and USD 1.00. One
+successful inference cost USD 0.00685725 and reported 1,343 prompt plus 1,560
+completion tokens; an earlier ZDR request failed before inference and reported
+no charge. The successful public-only packet used a non-ZDR Google AI Studio
+route after explicit maintainer authorization, with provider data collection
+still denied. The immutable artifact records that retention limitation, exact
+snapshot, resolved route, generation ID, usage and charge. Qwen and Gemma ran
+locally against exact Ollama model digests. These facts cannot set `certified:
+true` and do not establish a human-reviewed or provider-qualified mood family.
 
 ### Remaining expansion checkpoints
 

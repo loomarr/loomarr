@@ -10,10 +10,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
@@ -22,22 +24,27 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json testdata/query-expansion-v4.json testdata/query-expansion-catalog-v4.json testdata/query-expansion-v5.json testdata/query-expansion-catalog-v5.json
+//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json testdata/query-expansion-v4.json testdata/query-expansion-catalog-v4.json testdata/query-expansion-v5.json testdata/query-expansion-catalog-v5.json testdata/query-expansion-v6.json testdata/query-mood-review-packet-v1.json testdata/query-mood-review-map-v1.json testdata/query-mood-review-submission-qwen-v1.json testdata/query-mood-review-submission-gemini-v1.json testdata/query-mood-review-submission-gemma-v1.json testdata/query-mood-review-authority-v1.json testdata/query-mood-review-openrouter-snapshot-v1.json
 var queryPilotFiles embed.FS
 
 // QueryPilotCorpus is exposed development evidence, never a release holdout.
 type QueryPilotCorpus struct {
-	SchemaVersion       int                  `json:"schemaVersion"`
-	Version             string               `json:"version"`
-	Split               string               `json:"split"`
-	PromptVersion       string               `json:"promptVersion"`
-	ToolSchemaVersion   string               `json:"toolSchemaVersion"`
-	SourceVersion       string               `json:"sourceVersion"`
-	CatalogFixture      CertificationFixture `json:"catalogFixture"`
-	SourcesFixture      CertificationFixture `json:"sourcesFixture"`
-	ExtraCatalogFixture CertificationFixture `json:"extraCatalogFixture"`
-	SourceReviews       []QuerySourceReview  `json:"sourceReviews,omitempty"`
-	Cases               []QueryPilotCase     `json:"cases"`
+	SchemaVersion         int                    `json:"schemaVersion"`
+	Version               string                 `json:"version"`
+	Split                 string                 `json:"split"`
+	PromptVersion         string                 `json:"promptVersion"`
+	ToolSchemaVersion     string                 `json:"toolSchemaVersion"`
+	SourceVersion         string                 `json:"sourceVersion"`
+	CatalogFixture        CertificationFixture   `json:"catalogFixture"`
+	SourcesFixture        CertificationFixture   `json:"sourcesFixture"`
+	ExtraCatalogFixture   CertificationFixture   `json:"extraCatalogFixture"`
+	MoodReviewPacket      CertificationFixture   `json:"moodReviewPacket,omitempty"`
+	MoodReviewPrivateMap  CertificationFixture   `json:"moodReviewPrivateMap,omitempty"`
+	MoodReviewSubmissions []CertificationFixture `json:"moodReviewSubmissions,omitempty"`
+	MoodReviewAuthority   CertificationFixture   `json:"moodReviewAuthority,omitempty"`
+	MoodReviewSnapshots   []CertificationFixture `json:"moodReviewSnapshots,omitempty"`
+	SourceReviews         []QuerySourceReview    `json:"sourceReviews,omitempty"`
+	Cases                 []QueryPilotCase       `json:"cases"`
 }
 
 type QueryPilotCase struct {
@@ -69,15 +76,22 @@ type QueryPilotCase struct {
 	SubjectiveReview      *QuerySubjectiveReview  `json:"subjectiveReview,omitempty"`
 }
 
-// QuerySubjectiveReview records an exposed human-review protocol separately from
-// deterministic grounding and policy gates. Authored rubric metadata is neither
-// a completed human review nor a model-judge pass.
+// QuerySubjectiveReview records exposed subjective development evidence
+// separately from deterministic grounding and policy gates.
 type QuerySubjectiveReview struct {
-	Version      string          `json:"version"`
-	Status       string          `json:"status"`
-	Rubric       string          `json:"rubric"`
-	PositiveKeys []provision.Key `json:"positiveKeys"`
-	NegativeKeys []provision.Key `json:"negativeKeys"`
+	Version         string          `json:"version"`
+	Status          string          `json:"status"`
+	Rubric          string          `json:"rubric"`
+	PositiveKeys    []provision.Key `json:"positiveKeys"`
+	NegativeKeys    []provision.Key `json:"negativeKeys"`
+	AuthoritySHA256 string          `json:"authoritySha256,omitempty"`
+	Rules           []QueryMoodRule `json:"rules,omitempty"`
+}
+
+type QueryMoodRule struct {
+	Axis string `json:"axis"`
+	Min  *int   `json:"min,omitempty"`
+	Max  *int   `json:"max,omitempty"`
 }
 
 // LoadEmbeddedQueryPilotCorpus validates identity and facts before any provider
@@ -140,6 +154,10 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 			return QueryPilotCorpus{}, err
 		}
 		keysByFixture[fixture.ID] = keys
+	}
+	moodAuthority, err := loadQueryMoodReviewAuthority(corpus)
+	if err != nil {
+		return QueryPilotCorpus{}, err
 	}
 	seen := make(map[string]bool)
 	descriptions := make(map[string]bool)
@@ -209,7 +227,7 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 			}
 		}
 		if review := c.SubjectiveReview; review != nil {
-			if review.Version != "movie-mood-ordinal-v1" || review.Status != "rubric-authored-development" || strings.TrimSpace(review.Rubric) == "" || len(review.PositiveKeys) == 0 || len(review.NegativeKeys) == 0 {
+			if review.Version != MoodReviewRubricVersion || strings.TrimSpace(review.Rubric) == "" || len(review.PositiveKeys) == 0 || len(review.NegativeKeys) == 0 {
 				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has incomplete subjective review protocol", c.ID)
 			}
 			for _, key := range review.PositiveKeys {
@@ -222,6 +240,21 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 					return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has a subjective negative outside its forbidden set", c.ID)
 				}
 			}
+			switch review.Status {
+			case "rubric-authored-development":
+				if review.AuthoritySHA256 != "" || len(review.Rules) != 0 {
+					return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q attaches authority to an authored-only rubric", c.ID)
+				}
+			case MoodReviewStatusModelAttested:
+				if moodAuthority == nil || review.AuthoritySHA256 != corpus.MoodReviewAuthority.SHA256 {
+					return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q is not bound to the corpus mood authority", c.ID)
+				}
+				if err := validateQueryMoodProjection(*review, *moodAuthority); err != nil {
+					return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q: %w", c.ID, err)
+				}
+			default:
+				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has unsupported subjective review status", c.ID)
+			}
 		}
 	}
 	return corpus, nil
@@ -232,6 +265,170 @@ func readQueryPilotFacts(path string) ([]byte, error) {
 		return blob, nil
 	}
 	return releaseGateFiles.ReadFile(path)
+}
+
+func loadQueryMoodReviewAuthority(corpus QueryPilotCorpus) (*MoodReviewAuthority, error) {
+	bindings := []CertificationFixture{corpus.MoodReviewPacket, corpus.MoodReviewPrivateMap, corpus.MoodReviewAuthority}
+	configured := false
+	for _, binding := range bindings {
+		configured = configured || binding.Path != "" || binding.SHA256 != ""
+	}
+	configured = configured || len(corpus.MoodReviewSubmissions) != 0 || len(corpus.MoodReviewSnapshots) != 0
+	if !configured {
+		return nil, nil
+	}
+	if len(corpus.MoodReviewSubmissions) < 2 || len(corpus.MoodReviewSubmissions) > 3 {
+		return nil, fmt.Errorf("query mood authority requires two submissions and at most one adjudicator")
+	}
+	packet, err := readBoundQueryMoodArtifact(corpus.MoodReviewPacket)
+	if err != nil {
+		return nil, err
+	}
+	privateMap, err := readBoundQueryMoodArtifact(corpus.MoodReviewPrivateMap)
+	if err != nil {
+		return nil, err
+	}
+	snapshotBlobs := make(map[string][]byte)
+	for _, binding := range corpus.MoodReviewSnapshots {
+		blob, err := readBoundQueryMoodArtifact(binding)
+		if err != nil {
+			return nil, err
+		}
+		snapshotBlobs[binding.SHA256] = blob
+	}
+	submissionBlobs := make([][]byte, 0, len(corpus.MoodReviewSubmissions))
+	for _, binding := range corpus.MoodReviewSubmissions {
+		blob, err := readBoundQueryMoodArtifact(binding)
+		if err != nil {
+			return nil, err
+		}
+		var submission MoodReviewSubmission
+		if err := decodeMoodReviewJSON(blob, &submission); err != nil {
+			return nil, fmt.Errorf("decode query mood submission: %w", err)
+		}
+		if submission.Reviewer.SnapshotSHA256 != "" {
+			snapshotBlob := snapshotBlobs[submission.Reviewer.SnapshotSHA256]
+			if snapshotBlob == nil {
+				return nil, fmt.Errorf("query mood submission lacks its bound provider snapshot")
+			}
+			var snapshot fillerbakeoff.OpenRouterSnapshot
+			if err := decodeMoodReviewJSON(snapshotBlob, &snapshot); err != nil {
+				return nil, fmt.Errorf("decode query mood provider snapshot: %w", err)
+			}
+			_, capabilityDigest, err := fillerbakeoff.OpenRouterAssessorIdentity(snapshot, submission.Reviewer.Model, submission.Reviewer.Route, submission.Reviewer.RouteSlug, "disabled")
+			if err != nil || capabilityDigest != submission.Reviewer.IdentitySHA256 {
+				return nil, fmt.Errorf("query mood submission does not match its provider route snapshot")
+			}
+		}
+		submissionBlobs = append(submissionBlobs, blob)
+	}
+	locked, err := CompileMoodReviewAuthority(packet, privateMap, submissionBlobs...)
+	if err != nil {
+		return nil, fmt.Errorf("compile query mood authority: %w", err)
+	}
+	authorityBlob, err := readBoundQueryMoodArtifact(corpus.MoodReviewAuthority)
+	if err != nil {
+		return nil, err
+	}
+	var stored MoodReviewAuthority
+	if err := decodeMoodReviewJSON(authorityBlob, &stored); err != nil {
+		return nil, fmt.Errorf("decode query mood authority: %w", err)
+	}
+	if !reflect.DeepEqual(stored, locked) || stored.Status != MoodReviewStatusModelAttested || !slices.Contains([]string{MoodReviewCompletenessComplete, MoodReviewCompletenessPartial}, stored.Completeness) {
+		return nil, fmt.Errorf("query mood authority does not match its locked packet and submissions")
+	}
+	return &stored, nil
+}
+
+func readBoundQueryMoodArtifact(binding CertificationFixture) ([]byte, error) {
+	if binding.Path == "" || !moodReviewSHA(binding.SHA256) {
+		return nil, fmt.Errorf("query mood artifact binding is incomplete")
+	}
+	blob, err := queryPilotFiles.ReadFile(binding.Path)
+	if err != nil {
+		return nil, err
+	}
+	if moodReviewSHA256(blob) != binding.SHA256 {
+		return nil, fmt.Errorf("query mood artifact digest mismatch: %s", binding.Path)
+	}
+	return blob, nil
+}
+
+func validateQueryMoodProjection(review QuerySubjectiveReview, authority MoodReviewAuthority) error {
+	if len(review.Rules) == 0 || len(review.Rules) > len(moodAxisNames) {
+		return fmt.Errorf("subjective projection has no bounded ordinal rules")
+	}
+	seenAxes := make(map[string]bool)
+	for _, rule := range review.Rules {
+		if !slices.Contains(moodAxisNames, rule.Axis) || seenAxes[rule.Axis] || (rule.Min == nil && rule.Max == nil) || (rule.Min != nil && (*rule.Min < 0 || *rule.Min > 3)) || (rule.Max != nil && (*rule.Max < 0 || *rule.Max > 3)) || (rule.Min != nil && rule.Max != nil && *rule.Min > *rule.Max) {
+			return fmt.Errorf("subjective projection has an invalid rule for %q", rule.Axis)
+		}
+		seenAxes[rule.Axis] = true
+	}
+	decisions := make(map[provision.Key]MoodReviewDecision)
+	for _, decision := range authority.Decisions {
+		decisions[decision.Key] = decision
+	}
+	for _, key := range review.PositiveKeys {
+		decision, ok := decisions[key]
+		if !ok {
+			return fmt.Errorf("subjective positive %q lacks an authority decision", key)
+		}
+		matches, err := queryMoodDecisionMatches(decision, review.Rules)
+		if err != nil {
+			return err
+		}
+		if !matches {
+			return fmt.Errorf("subjective positive %q fails its authority rules", key)
+		}
+	}
+	for _, key := range review.NegativeKeys {
+		decision, ok := decisions[key]
+		if !ok {
+			return fmt.Errorf("subjective negative %q lacks an authority decision", key)
+		}
+		matches, err := queryMoodDecisionMatches(decision, review.Rules)
+		if err != nil {
+			return err
+		}
+		if matches {
+			return fmt.Errorf("subjective negative %q satisfies every authority rule", key)
+		}
+	}
+	return nil
+}
+
+func queryMoodDecisionMatches(decision MoodReviewDecision, rules []QueryMoodRule) (bool, error) {
+	for _, rule := range rules {
+		if slices.Contains(decision.UncertainAxes, rule.Axis) {
+			return false, fmt.Errorf("subjective projection depends on uncertain axis %q for %q", rule.Axis, decision.Key)
+		}
+		value, ok := moodScoreForAxis(decision.Scores, rule.Axis)
+		if !ok {
+			return false, fmt.Errorf("subjective projection uses unknown axis %q", rule.Axis)
+		}
+		if (rule.Min != nil && value < *rule.Min) || (rule.Max != nil && value > *rule.Max) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func moodScoreForAxis(scores MoodAxisScores, axis string) (int, bool) {
+	switch axis {
+	case "valence":
+		return scores.Valence, true
+	case "arousal":
+		return scores.Arousal, true
+	case "threatFear":
+		return scores.ThreatFear, true
+	case "comedicWarmth":
+		return scores.ComedicWarmth, true
+	case "attentionalDemand":
+		return scores.AttentionalDemand, true
+	default:
+		return 0, false
+	}
 }
 
 // NewEmbeddedQueryPilotGenerator reuses the production Suggester, observed
