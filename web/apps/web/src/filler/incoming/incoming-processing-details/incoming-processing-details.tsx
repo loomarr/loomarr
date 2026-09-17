@@ -1,4 +1,5 @@
-import type { IncomingProcessingDTO, IncomingProcessingStageDTO } from "@loomarr/api";
+import type { IncomingProcessingDTO } from "@loomarr/api/models/incomingProcessingDTO";
+import type { IncomingProcessingStageDTO } from "@loomarr/api/models/incomingProcessingStageDTO";
 import { formatRelative, formatUntil } from "@loomarr/core/format";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
