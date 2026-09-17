@@ -238,7 +238,7 @@ func incomingStatusDTO(clip store.Clip, row filler.ClipPipeline, label string, i
 
 func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProcessingDTO {
 	detail := IncomingProcessingDTO{Attempts: row.Attempts, Stages: make([]IncomingProcessingStageDTO, 0, len(row.Stages)+1)}
-	if row.Disposition == filler.DispositionRunning && row.NextRun.After(at) {
+	if row.Disposition == filler.DispositionRunning && row.Status == filler.StatusFailed && row.NextRun.After(at) {
 		detail.NextTryAt = row.NextRun.UTC().Format(time.RFC3339)
 	}
 	currentRecorded := false

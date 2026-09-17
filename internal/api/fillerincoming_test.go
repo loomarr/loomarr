@@ -173,6 +173,43 @@ func TestFillerIncoming_ProjectsSafeOrderedProcessingDetailsAndMeasuredCurrentSt
 	}
 }
 
+func TestFillerIncoming_ShowsNextTryOnlyWhileTheCurrentStepWaitsForRetry(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	for _, clip := range []filler.Clip{
+		{Hash: "active", Path: "active.mp4", Name: "Active clip", Held: true},
+		{Hash: "retrying", Path: "retrying.mp4", Name: "Retrying clip", Held: true},
+	} {
+		putClip(t, st, clip)
+	}
+	for _, row := range []filler.ClipPipeline{
+		{ClipHash: "active", Stage: filler.StageTranscode, Status: filler.StatusRunning,
+			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour), UpdatedAt: now},
+		{ClipHash: "retrying", Stage: filler.StageVision, Status: filler.StatusFailed,
+			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour), UpdatedAt: now.Add(-time.Second)},
+	} {
+		if err := st.UpsertClipPipeline(t.Context(), row); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res, body := readIncoming(t, srv.URL, "/v1/filler/incoming", adminToken)
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK || len(body.Preparing.Rows) != 2 {
+		t.Fatalf("Incoming = status %d, preparing %+v", res.StatusCode, body.Preparing)
+	}
+	byHash := make(map[string]struct{ NextTryAt string }, len(body.Preparing.Rows))
+	for _, row := range body.Preparing.Rows {
+		byHash[row.ClipHash] = struct{ NextTryAt string }{NextTryAt: row.Processing.NextTryAt}
+	}
+	if byHash["active"].NextTryAt != "" {
+		t.Fatalf("active next try = %q, want no retry message while work is in progress", byHash["active"].NextTryAt)
+	}
+	if byHash["retrying"].NextTryAt != now.Add(time.Hour).Format(time.RFC3339) {
+		t.Fatalf("retrying next try = %q, want scheduled retry", byHash["retrying"].NextTryAt)
+	}
+}
+
 func incomingContainsAny(value string, needles ...string) bool {
 	for _, needle := range needles {
 		if strings.Contains(value, needle) {
