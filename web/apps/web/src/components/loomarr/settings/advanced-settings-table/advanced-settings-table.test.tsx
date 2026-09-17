@@ -4,11 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { RouterHarness } from "@/test/story-utils";
-import { AllSettingsTable } from "./all-settings-table";
+import { AdvancedSettingsTable } from "./advanced-settings-table";
 
 const entry = (over: Partial<SettingEntry> = {}): SettingEntry =>
   ({
     key: "library.url",
+    owner: "settings.connections",
     group: "connections.media_server",
     kind: "url",
     value: "http://emby:8096",
@@ -42,7 +43,7 @@ const Harness = ({ entries = ENTRIES }: { entries?: SettingEntry[] }) => {
   const [q, setQ] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   return (
-    <AllSettingsTable
+    <AdvancedSettingsTable
       entries={entries}
       query={q}
       onQueryChange={setQ}
@@ -52,7 +53,7 @@ const Harness = ({ entries = ENTRIES }: { entries?: SettingEntry[] }) => {
   );
 };
 
-describe("AllSettingsTable", () => {
+describe("AdvancedSettingsTable", () => {
   it("lists every key with its group and provenance", () => {
     render(<Harness />);
     expect(screen.getByText("library.url")).toBeInTheDocument();
@@ -154,9 +155,9 @@ describe("AllSettingsTable", () => {
     expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
   });
 
-  it("links a group to the workflow that owns it", () => {
+  it("links each owner to the workflow that owns it", () => {
     render(<Harness entries={[entry()]} />);
-    expect(screen.getByRole("link", { name: "connections.media_server" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Connections" })).toHaveAttribute(
       "href",
       "/settings/connections",
     );
@@ -168,7 +169,13 @@ describe("AllSettingsTable", () => {
       <RouterHarness
         initialPath="/settings"
         content={
-          <AllSettingsTable entries={[model]} query="" onQueryChange={vi.fn()} values={{}} onEdit={vi.fn()} />
+          <AdvancedSettingsTable
+            entries={[model]}
+            query=""
+            onQueryChange={vi.fn()}
+            values={{}}
+            onEdit={vi.fn()}
+          />
         }
       />,
     );
@@ -182,7 +189,7 @@ describe("AllSettingsTable", () => {
     const onClear = vi.fn();
     const dbEntry = entry();
     render(
-      <AllSettingsTable
+      <AdvancedSettingsTable
         entries={[dbEntry]}
         query=""
         onQueryChange={vi.fn()}

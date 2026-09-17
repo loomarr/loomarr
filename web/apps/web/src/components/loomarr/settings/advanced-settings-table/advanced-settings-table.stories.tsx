@@ -3,7 +3,7 @@ import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
-import { AllSettingsTable } from "./all-settings-table";
+import { AdvancedSettingsTable } from "./advanced-settings-table";
 
 const noop = () => {};
 
@@ -56,11 +56,11 @@ const entries: SettingEntry[] = [
 ];
 
 const meta = {
-  title: "Settings/AllSettingsTable",
-  component: AllSettingsTable,
+  title: "Settings/AdvancedSettingsTable",
+  component: AdvancedSettingsTable,
   args: { entries, query: "", onQueryChange: noop, values: {}, onEdit: noop },
   decorators: [withTooltip, widthFrame(880)],
-} satisfies Meta<typeof AllSettingsTable>;
+} satisfies Meta<typeof AdvancedSettingsTable>;
 
 type Story = StoryObj<typeof meta>;
 

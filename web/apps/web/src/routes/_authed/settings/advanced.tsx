@@ -2,12 +2,12 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { AllSettingsTable } from "@/components/loomarr/settings/all-settings-table";
+import { AdvancedSettingsTable } from "@/components/loomarr/settings/advanced-settings-table";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useSettingsEdits } from "@/settings/settings-edits";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
-// Settings → All settings (config-design §5, V10) — the escape hatch.
+// Settings → Advanced settings (config-design §5) — the raw registry escape hatch.
 //
 // ⚠ Deliberately NOT a `SettingsPage`. Someone arrives here holding a literal key string — from a
 // compose file, an env var, or a log line — and asks "what is it set to, and which workflow owns
@@ -18,7 +18,7 @@ import { useSettingsEntries } from "@/settings/use-settings-entries";
 // This also replaced the old "Advanced" page, which had quietly become a dumping ground for
 // whatever did not fit elsewhere. Advanced keys are still marked (the ADV chip) but they are no
 // longer a *category* — they are an attribute of a key that lives on some other page.
-const AllSettings = () => {
+const AdvancedSettings = () => {
   const queryClient = useQueryClient();
   const entries = useSettingsEntries();
   // The SAME cross-tab buffer every other Settings page stages into (V9). An edit made here and
@@ -36,11 +36,11 @@ const AllSettings = () => {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
-        title="All settings"
-        description="Every key Loomarr knows about, searchable by name, group, or value. Edit it here, or follow its Group to the workflow that owns it."
+        title="Advanced settings"
+        description="Every setting key Loomarr knows about. Search by key, group, or value, or follow its owner to the usual place to change it."
       />
       <div className="min-h-0 flex-1 overflow-auto p-6">
-        <AllSettingsTable
+        <AdvancedSettingsTable
           entries={entries}
           query={query}
           onQueryChange={setQuery}
@@ -63,8 +63,8 @@ const AllSettings = () => {
   );
 };
 
-const Route = createFileRoute("/_authed/settings/all")({
-  component: AllSettings,
+const Route = createFileRoute("/_authed/settings/advanced")({
+  component: AdvancedSettings,
 });
 
 export { Route };

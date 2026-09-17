@@ -4,7 +4,7 @@ import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // Settings → Defaults (config-design §5) — only settings that are ACTUALLY consulted as a
 // per-channel fallback. A curated page is a promise about ownership, so operational knobs and
-// global caps stay with their owning workflow even though All settings still exposes every key.
+// global caps stay with their owning workflow even though Advanced settings still exposes every key.
 const DefaultsSettings = () => (
   <SettingsPage
     title="Channel defaults"

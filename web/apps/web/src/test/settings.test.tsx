@@ -374,12 +374,12 @@ describe("Settings", () => {
     await expect.poll(() => seq).toEqual(["patch", "test"]);
   });
 
-  // All settings is a TABLE (V10), so its controls carry the raw key rather than a humanized
+  // Advanced settings is a table, so its controls carry the raw key rather than a humanized
   // label. The env lock still applies — and this is the surface where someone would most likely
   // try to work around it, since it is the editor of last resort.
-  it("locks an env-pinned key on the all-settings table", async () => {
+  it("locks an env-pinned key on the advanced-settings table", async () => {
     stubSettings();
-    const { container } = renderAt("/settings/all");
+    const { container } = renderAt("/settings/advanced");
     await screen.findByText("job.workers");
     expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
   });

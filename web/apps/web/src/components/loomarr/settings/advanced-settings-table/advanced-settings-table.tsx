@@ -4,10 +4,11 @@ import { Link } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { destinationForOwner } from "@/settings/settings-destinations";
 import { SettingField } from "../setting-field";
-import type { AllSettingsTableProps } from "./all-settings-table.type";
+import type { AdvancedSettingsTableProps } from "./advanced-settings-table.type";
 
-// AllSettingsTable — the escape hatch (config-design §5, V10).
+// AdvancedSettingsTable — the raw registry escape hatch (config-design §5).
 //
 // A lookup surface that is ALSO editable. The lookup half is why keys are monospace and
 // verbatim rather than humanized: someone arrives holding a literal `job.workers` from a
@@ -48,22 +49,7 @@ const PROVENANCE: Record<string, { label: string; className: string }> = {
   [SettingEntryProvenance.default]: { label: "DEFAULT", className: "bg-static-800 text-static-400" },
 };
 
-const HOME_BY_GROUP: Record<string, string> = {
-  "connections.media_server": "/settings/connections",
-  "connections.requester": "/settings/connections",
-  "connections.tunarr": "/settings/connections",
-  "connections.tmdb": "/settings/connections",
-  ai: "/settings/ai",
-  channels: "/settings/defaults",
-  filler: "/filler/settings",
-  playout: "/settings/system/playback",
-  backup: "/settings/system/backup",
-  images: "/settings/system/storage",
-  users_security: "/settings/access",
-  sso: "/settings/access",
-};
-
-const AllSettingsTable = ({
+const AdvancedSettingsTable = ({
   entries,
   query,
   onQueryChange,
@@ -72,7 +58,7 @@ const AllSettingsTable = ({
   onEnvOverride,
   onClear,
   className,
-}: AllSettingsTableProps) => {
+}: AdvancedSettingsTableProps) => {
   const q = query.trim().toLowerCase();
   const rows = entries.filter((e) => matches(e, q));
 
@@ -104,7 +90,7 @@ const AllSettingsTable = ({
           <div className="grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-border border-b px-4 py-2 font-mono text-2xs text-muted-foreground uppercase tracking-wide">
             <div>Key</div>
             <div>Value</div>
-            <div>Group</div>
+            <div>Owner</div>
             <div>Provenance</div>
             <div>Action</div>
           </div>
@@ -116,6 +102,7 @@ const AllSettingsTable = ({
           )}
 
           {rows.map((entry) => {
+            const home = destinationForOwner(entry.owner);
             const prov = PROVENANCE[entry.provenance] ?? {
               label: entry.provenance.toUpperCase(),
               className: "bg-static-800 text-static-400",
@@ -165,12 +152,12 @@ const AllSettingsTable = ({
                     onEnvOverride={onEnvOverride ? (enabled) => onEnvOverride(entry.key, enabled) : undefined}
                   />
                 )}
-                {HOME_BY_GROUP[entry.group] ? (
+                {home ? (
                   <a
-                    href={HOME_BY_GROUP[entry.group]}
+                    href={home.path}
                     className="truncate text-muted-foreground text-xs underline-offset-4 hover:text-foreground hover:underline"
                   >
-                    {entry.group}
+                    {home.label}
                   </a>
                 ) : (
                   <span className="truncate text-muted-foreground text-xs">{entry.group}</span>
@@ -206,4 +193,4 @@ const AllSettingsTable = ({
   );
 };
 
-export { AllSettingsTable };
+export { AdvancedSettingsTable };

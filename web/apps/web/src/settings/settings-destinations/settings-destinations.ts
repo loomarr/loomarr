@@ -24,7 +24,7 @@ type SettingsStaticDestinationPath =
   | "/settings/system/diagnostics"
   | "/settings/system/database"
   | "/settings/system/about"
-  | "/settings/all"
+  | "/settings/advanced"
   | "/filler/settings";
 
 type SettingsDestinationPath = SettingsStaticDestinationPath | `/filler/settings/${FillerSettingsSection}`;
@@ -210,7 +210,7 @@ const SETTINGS_DESTINATIONS = [
     description: "Find and edit a setting by its exact key or environment variable.",
     aliases: ["all settings", "raw settings", "environment variables", "expert", "keys"],
     group: "advanced",
-    path: "/settings/all",
+    path: "/settings/advanced",
     role: "admin",
     browse: true,
   }),
