@@ -237,6 +237,18 @@ A recorded condition that prevents automated filler work from progressing withou
 semantic verdict. It is diagnostic state, not a Needs-help task.
 _Avoid_: review, rejection, failed decision
 
+**Processing stage**:
+One named rung in the automatic work that prepares a Clip, such as checking the video or adding
+details. Incoming may show the ordered stages as an explanation of work Loomarr has already done;
+the stages are not a checklist for the household.
+_Avoid_: task, job, review step, pipeline stage in user-facing copy
+
+**Stage progress**:
+An optional measured percentage inside the active Processing stage. It may reset when the next
+stage begins and never claims how close the Clip is to Ready. When a stage cannot measure itself,
+Stage progress is unknown rather than zero.
+_Avoid_: Preparation progress, overall progress, percent Ready, ETA
+
 **Filler role**:
 What kind of non-program item a Clip is, such as commercial, promo, bumper, PSA, station ID,
 trailer, or interstitial. A Filler role says nothing about Media quality or Airworthiness.

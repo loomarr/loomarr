@@ -24,6 +24,26 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 describe("FillerManage", () => {
+  it("opens the diagnostics owner when Incoming links to it", async () => {
+    server.use(
+      getMeMockHandler(me({ name: "Admin" })),
+      getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
+      getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <RouterHarness content={<FillerManage />} initialPath="/filler/manage#diagnostics" />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "Hide issues" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(await screen.findByText("Everything is working. Nothing needs your attention.")).toBeVisible();
+  });
+
   it("opens the complete settings index instead of exposing one buried task", async () => {
     server.use(
       getMeMockHandler(me({ name: "Admin" })),

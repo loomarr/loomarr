@@ -50,31 +50,33 @@ type IncomingHelpGroupDTO struct {
 	NextCursor string            `json:"nextCursor,omitempty" doc:"Opaque cursor for the next newest-first page"`
 }
 
-// IncomingStatusDTO is the calm row shared by Preparing and recently Ready. Internal state
-// vocabulary stays in Technical, which the browser reveals only after a deliberate details click.
+// IncomingStatusDTO is the calm row shared by Preparing and recently Ready. Processing is a
+// server-owned, browser-safe explanation revealed only after a deliberate details click.
 type IncomingStatusDTO struct {
-	ClipHash    string               `json:"clipHash"`
-	Name        string               `json:"name"`
-	From        string               `json:"from,omitempty"`
-	DurationMs  int64                `json:"durationMs"`
-	ThumbImage  *ImageDTO            `json:"thumbImage,omitempty" doc:"Extracted still; absent while artwork is not ready"`
-	StatusLabel string               `json:"statusLabel"`
-	Progress    int                  `json:"progress,omitempty" minimum:"-1" maximum:"100"`
-	UpdatedAt   string               `json:"updatedAt" doc:"RFC3339"`
-	Technical   IncomingTechnicalDTO `json:"technical"`
+	ClipHash    string                `json:"clipHash"`
+	Name        string                `json:"name"`
+	From        string                `json:"from,omitempty"`
+	DurationMs  int64                 `json:"durationMs"`
+	ThumbImage  *ImageDTO             `json:"thumbImage,omitempty" doc:"Extracted still; absent while artwork is not ready"`
+	StatusLabel string                `json:"statusLabel"`
+	UpdatedAt   string                `json:"updatedAt" doc:"RFC3339"`
+	Processing  IncomingProcessingDTO `json:"processing"`
 }
 
-type IncomingTechnicalDTO struct {
-	Attempts  int                         `json:"attempts,omitempty"`
-	NextTryAt string                      `json:"nextTryAt,omitempty" doc:"RFC3339; absent unless this work is scheduled to retry"`
-	Stages    []IncomingTechnicalStageDTO `json:"stages"`
+type IncomingProcessingDTO struct {
+	Attempts        int                          `json:"attempts,omitempty" doc:"Attempts of the current processing stage; not a whole-preparation attempt count"`
+	NextTryAt       string                       `json:"nextTryAt,omitempty" doc:"RFC3339; absent unless this work is scheduled to retry"`
+	DiagnosticsHref string                       `json:"diagnosticsHref,omitempty" doc:"Existing operational owner; absent when no deeper evidence exists"`
+	Stages          []IncomingProcessingStageDTO `json:"stages"`
 }
 
-type IncomingTechnicalStageDTO struct {
-	Label  string `json:"label"`
-	Status string `json:"status"`
-	Note   string `json:"note,omitempty"`
-	At     string `json:"at" doc:"RFC3339"`
+type IncomingProcessingStageDTO struct {
+	Label        string `json:"label"`
+	Outcome      string `json:"outcome" enum:"waiting,in_progress,finished,retrying,not_needed,recorded"`
+	OutcomeLabel string `json:"outcomeLabel"`
+	Note         string `json:"note" doc:"Browser-safe server-owned explanation"`
+	At           string `json:"at" doc:"RFC3339"`
+	Progress     *int   `json:"progress,omitempty" minimum:"0" maximum:"100" doc:"Measured progress inside this active stage only; absent when unmeasured or inactive"`
 }
 
 // IncomingHelpDTO names a real task and the existing destination where its durable mutation is
@@ -229,23 +231,75 @@ func incomingStatusDTO(clip store.Clip, row filler.ClipPipeline, label string, i
 	}
 	return IncomingStatusDTO{
 		ClipHash: clip.Hash, Name: clip.Name, From: clip.Source, DurationMs: clip.DurationMs,
-		ThumbImage: thumb, StatusLabel: label, Progress: row.Progress,
-		UpdatedAt: row.UpdatedAt.UTC().Format(time.RFC3339), Technical: incomingTechnicalDTO(row, at),
+		ThumbImage: thumb, StatusLabel: label,
+		UpdatedAt: row.UpdatedAt.UTC().Format(time.RFC3339), Processing: incomingProcessingDTO(row, at),
 	}
 }
 
-func incomingTechnicalDTO(row filler.ClipPipeline, at time.Time) IncomingTechnicalDTO {
-	detail := IncomingTechnicalDTO{Attempts: row.Attempts, Stages: make([]IncomingTechnicalStageDTO, 0, len(row.Stages))}
-	if row.Disposition == filler.DispositionRunning && row.NextRun.After(at) {
+func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProcessingDTO {
+	detail := IncomingProcessingDTO{Attempts: row.Attempts, Stages: make([]IncomingProcessingStageDTO, 0, len(row.Stages)+1)}
+	if row.Disposition == filler.DispositionRunning && row.Status == filler.StatusFailed && row.NextRun.After(at) {
 		detail.NextTryAt = row.NextRun.UTC().Format(time.RFC3339)
 	}
+	currentRecorded := false
 	for _, stage := range row.Stages {
-		detail.Stages = append(detail.Stages, IncomingTechnicalStageDTO{
-			Label: friendlyIncomingStage(stage.Stage), Status: friendlyIncomingStageStatus(stage.Status),
-			Note: stage.Note, At: stage.At.UTC().Format(time.RFC3339),
-		})
+		detail.Stages = append(detail.Stages, incomingProcessingStage(stage.Stage, stage.Status, stage.At, nil))
+		if stage.Stage == row.Stage && stage.Status == row.Status {
+			currentRecorded = true
+		}
+		if stage.Status == filler.StatusFailed {
+			detail.DiagnosticsHref = "/filler/manage#diagnostics"
+		}
+	}
+	// A running rung is intentionally absent from the stored completed-stage ladder. Append its
+	// current snapshot without replacing a prior failed attempt; both are true and useful. Queued,
+	// failed, and terminal snapshots are appended only when the store has not already recorded the
+	// same state.
+	if !currentRecorded {
+		var progress *int
+		if row.Status == filler.StatusRunning && row.Progress >= 0 {
+			measured := row.Progress
+			progress = &measured
+		}
+		detail.Stages = append(detail.Stages, incomingProcessingStage(row.Stage, row.Status, row.UpdatedAt, progress))
+	}
+	if row.Status == filler.StatusFailed {
+		detail.DiagnosticsHref = "/filler/manage#diagnostics"
 	}
 	return detail
+}
+
+func incomingProcessingStage(stage filler.StageID, status filler.StageStatus, at time.Time, progress *int) IncomingProcessingStageDTO {
+	outcome, label, note := friendlyIncomingStageOutcome(status)
+	return IncomingProcessingStageDTO{
+		Label: friendlyIncomingProcessingStage(stage), Outcome: outcome, OutcomeLabel: label,
+		Note: note, At: at.UTC().Format(time.RFC3339), Progress: progress,
+	}
+}
+
+func friendlyIncomingProcessingStage(stage filler.StageID) string {
+	switch stage {
+	case filler.StageProbe:
+		return "Inspecting the file"
+	case filler.StageTranscode:
+		return "Preparing playback"
+	case filler.StageScreen:
+		return "Checking video safety"
+	case filler.StageSplit:
+		return "Checking for separate clips"
+	case filler.StageLanguage:
+		return "Detecting the language"
+	case filler.StageTranscribe:
+		return "Listening for speech"
+	case filler.StageTag:
+		return "Adding clip details"
+	case filler.StageVision:
+		return "Checking the picture"
+	case filler.StageScore:
+		return "Finishing"
+	default:
+		return "Getting ready"
+	}
 }
 
 func friendlyIncomingStage(stage filler.StageID) string {
@@ -263,20 +317,20 @@ func friendlyIncomingStage(stage filler.StageID) string {
 	}
 }
 
-func friendlyIncomingStageStatus(status filler.StageStatus) string {
+func friendlyIncomingStageOutcome(status filler.StageStatus) (string, string, string) {
 	switch status {
 	case filler.StatusQueued:
-		return "Waiting"
+		return "waiting", "Waiting", "Loomarr saved its place and will continue automatically."
 	case filler.StatusRunning:
-		return "In progress"
+		return "in_progress", "In progress", "Loomarr is working on this step now."
 	case filler.StatusDone:
-		return "Finished"
+		return "finished", "Finished", "This step finished successfully."
 	case filler.StatusFailed:
-		return "Trying again"
+		return "retrying", "Trying again", "This step did not finish. Loomarr will try again automatically."
 	case filler.StatusSkipped:
-		return "Not needed"
+		return "not_needed", "Not needed", "This step was not needed for this clip."
 	default:
-		return "Recorded"
+		return "recorded", "Recorded", "Loomarr recorded this step."
 	}
 }
 

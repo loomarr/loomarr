@@ -16,7 +16,7 @@ const status = (over: Partial<IncomingStatusDTO> = {}): IncomingStatusDTO => ({
   durationMs: 30_000,
   statusLabel: "Adding details",
   updatedAt: "2026-09-14T20:00:00Z",
-  technical: { attempts: 1, stages: [] },
+  processing: { attempts: 1, stages: [] },
   ...over,
 });
 
@@ -43,9 +43,10 @@ describe("Incoming", () => {
     const error = vi.spyOn(console, "error");
     const stage = {
       label: "Adding details",
-      status: "Not needed",
+      outcome: "not_needed" as const,
+      outcomeLabel: "Not needed",
       at: "2026-09-14T20:00:00Z",
-      note: "No model is configured.",
+      note: "This step was not needed for this clip.",
     };
     server.use(
       getFillerIncomingMockHandler(
@@ -54,7 +55,7 @@ describe("Incoming", () => {
             rows: [
               status({
                 statusLabel: "Ready",
-                technical: {
+                processing: {
                   stages: [stage, { ...stage }, { ...stage, note: "Optional enrichment is disabled." }],
                 },
               }),
@@ -69,13 +70,14 @@ describe("Incoming", () => {
       render(<Incoming />, { wrapper });
       expect(await screen.findByText("This clip is ready whenever a channel needs it.")).toBeInTheDocument();
       await userEvent.click(await screen.findByRole("button", { name: /view details for tootsie pop/i }));
-      await userEvent.click(screen.getByText("Technical details"));
+      await userEvent.click(screen.getByText("Processing details"));
+      await userEvent.click(screen.getByRole("button", { name: "Show 3 skipped steps" }));
       const rows = within(screen.getByRole("dialog")).getAllByRole("listitem");
       expect(rows).toHaveLength(3);
-      expect(rows.map((row) => row.textContent)).toEqual([
-        "Adding detailsNot neededNo model is configured.",
-        "Adding detailsNot neededNo model is configured.",
-        "Adding detailsNot neededOptional enrichment is disabled.",
+      expect(rows.map((row) => within(row).getByText("Adding details").textContent)).toEqual([
+        "Adding details",
+        "Adding details",
+        "Adding details",
       ]);
       expect(error).not.toHaveBeenCalled();
     } finally {
@@ -165,15 +167,23 @@ describe("Incoming", () => {
           preparing: {
             rows: [
               status({
-                technical: {
+                processing: {
                   attempts: 2,
                   nextTryAt: "2026-09-14T20:05:00Z",
+                  diagnosticsHref: "/filler/manage#diagnostics",
                   stages: [
-                    { label: "Checking video", status: "Finished", at: "2026-09-14T19:58:00Z" },
+                    {
+                      label: "Checking video",
+                      outcome: "finished",
+                      outcomeLabel: "Finished",
+                      note: "This step finished successfully.",
+                      at: "2026-09-14T19:58:00Z",
+                    },
                     {
                       label: "Adding details",
-                      status: "Trying again",
-                      note: "The provider was briefly unavailable.",
+                      outcome: "retrying",
+                      outcomeLabel: "Trying again",
+                      note: "This step did not finish. Loomarr will try again automatically.",
                       at: "2026-09-14T20:00:00Z",
                     },
                   ],
@@ -190,10 +200,16 @@ describe("Incoming", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /view details for tootsie pop/i }));
     expect(screen.getByRole("heading", { name: "Tootsie Pop classic commercial" })).toBeInTheDocument();
-    expect(screen.queryByText("The provider was briefly unavailable.")).not.toBeVisible();
-    await userEvent.click(screen.getByText("Technical details"));
-    expect(screen.getByText("2 processing attempts")).toBeVisible();
-    expect(screen.getByText("The provider was briefly unavailable.")).toBeVisible();
+    expect(
+      screen.queryByText("This step did not finish. Loomarr will try again automatically."),
+    ).not.toBeVisible();
+    await userEvent.click(screen.getByText("Processing details"));
+    expect(screen.getByText("This step was tried 2 times.")).toBeVisible();
+    expect(screen.getByText("This step did not finish. Loomarr will try again automatically.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "View diagnostics" })).toHaveAttribute(
+      "href",
+      "/filler/manage#diagnostics",
+    );
   });
 
   it("adds the next bounded page without replacing visible rows", async () => {

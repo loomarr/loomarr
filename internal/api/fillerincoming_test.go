@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,9 +21,14 @@ type calmIncomingBody struct {
 	Preparing          struct {
 		Rows []struct {
 			ClipHash, Name, StatusLabel string
-			Technical                   struct {
-				Stages []struct{ Label, Status string } `json:"stages"`
-			} `json:"technical"`
+			Processing                  struct {
+				Attempts                   int
+				NextTryAt, DiagnosticsHref string
+				Stages                     []struct {
+					Label, Outcome, OutcomeLabel, Note, At string
+					Progress                               *int
+				} `json:"stages"`
+			} `json:"processing"`
 		} `json:"rows"`
 		Total      int    `json:"total"`
 		NextCursor string `json:"nextCursor"`
@@ -102,8 +108,10 @@ func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWo
 		body.Preparing.Rows[0].ClipHash != "preparing" || body.Preparing.Rows[0].StatusLabel != "Checking video" {
 		t.Fatalf("preparing = %+v, want the one machine-owned clip with a friendly status", body.Preparing)
 	}
-	if stages := body.Preparing.Rows[0].Technical.Stages; len(stages) != 1 || stages[0].Label != "Checking video" || stages[0].Status != "Finished" {
-		t.Fatalf("technical stages = %+v, want friendly history behind details", stages)
+	if stages := body.Preparing.Rows[0].Processing.Stages; len(stages) != 2 ||
+		stages[0].Label != "Inspecting the file" || stages[0].OutcomeLabel != "Finished" ||
+		stages[1].Label != "Preparing playback" || stages[1].Outcome != "in_progress" {
+		t.Fatalf("processing stages = %+v, want history followed by the active step", stages)
 	}
 	if body.RecentlyReady.Total != 1 || len(body.RecentlyReady.Rows) != 1 ||
 		body.RecentlyReady.Rows[0].ClipHash != "ready" || body.RecentlyReady.Rows[0].StatusLabel != "Ready" {
@@ -115,6 +123,100 @@ func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWo
 	if body.NeedsHelp.Total != 0 || len(body.NeedsHelp.Rows) != 0 {
 		t.Fatalf("needs help = %+v; an audit-only review must not become household work", body.NeedsHelp)
 	}
+}
+
+func TestFillerIncoming_ProjectsSafeOrderedProcessingDetailsAndMeasuredCurrentStage(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	putClip(t, st, filler.Clip{Hash: "retrying", Path: "retrying.mp4", Name: "Retrying clip", Held: true})
+	if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
+		ClipHash: "retrying", Stage: filler.StageTranscode, Status: filler.StatusRunning, Progress: 47,
+		Disposition: filler.DispositionRunning, Attempts: 2, UpdatedAt: now,
+		Stages: []filler.StageRecord{
+			{Stage: filler.StageProbe, Status: filler.StatusDone, At: now.Add(-2 * time.Minute)},
+			{Stage: filler.StageTranscode, Status: filler.StatusFailed, Note: "open /Users/private/token: permission denied", At: now.Add(-time.Minute)},
+			{Stage: filler.StageTranscode, Status: filler.StatusFailed, Note: "open /Users/private/token: permission denied", At: now.Add(-time.Minute)},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, body := readIncoming(t, srv.URL, "/v1/filler/incoming", adminToken)
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK || len(body.Preparing.Rows) != 1 {
+		t.Fatalf("Incoming = status %d, preparing %+v", res.StatusCode, body.Preparing)
+	}
+	processing := body.Preparing.Rows[0].Processing
+	if processing.DiagnosticsHref != "/filler/manage#diagnostics" {
+		t.Fatalf("diagnostics href = %q, want existing owner", processing.DiagnosticsHref)
+	}
+	if len(processing.Stages) != 4 {
+		t.Fatalf("stages = %+v, want all three stored occurrences plus current", processing.Stages)
+	}
+	for _, index := range []int{1, 2} {
+		stage := processing.Stages[index]
+		if stage.Outcome != "retrying" || stage.OutcomeLabel != "Trying again" ||
+			stage.Note != "This step did not finish. Loomarr will try again automatically." {
+			t.Fatalf("retry stage %d = %+v, want safe server-owned explanation", index, stage)
+		}
+	}
+	active := processing.Stages[3]
+	if active.Outcome != "in_progress" || active.Progress == nil || *active.Progress != 47 {
+		t.Fatalf("active stage = %+v, want measured current-stage progress", active)
+	}
+	encoded, err := json.Marshal(processing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) == "" || incomingContainsAny(string(encoded), "/Users/private", "permission denied") {
+		t.Fatalf("processing leaked raw failure evidence: %s", encoded)
+	}
+}
+
+func TestFillerIncoming_ShowsNextTryOnlyWhileTheCurrentStepWaitsForRetry(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	for _, clip := range []filler.Clip{
+		{Hash: "active", Path: "active.mp4", Name: "Active clip", Held: true},
+		{Hash: "retrying", Path: "retrying.mp4", Name: "Retrying clip", Held: true},
+	} {
+		putClip(t, st, clip)
+	}
+	for _, row := range []filler.ClipPipeline{
+		{ClipHash: "active", Stage: filler.StageTranscode, Status: filler.StatusRunning,
+			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour), UpdatedAt: now},
+		{ClipHash: "retrying", Stage: filler.StageVision, Status: filler.StatusFailed,
+			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour), UpdatedAt: now.Add(-time.Second)},
+	} {
+		if err := st.UpsertClipPipeline(t.Context(), row); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res, body := readIncoming(t, srv.URL, "/v1/filler/incoming", adminToken)
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK || len(body.Preparing.Rows) != 2 {
+		t.Fatalf("Incoming = status %d, preparing %+v", res.StatusCode, body.Preparing)
+	}
+	byHash := make(map[string]struct{ NextTryAt string }, len(body.Preparing.Rows))
+	for _, row := range body.Preparing.Rows {
+		byHash[row.ClipHash] = struct{ NextTryAt string }{NextTryAt: row.Processing.NextTryAt}
+	}
+	if byHash["active"].NextTryAt != "" {
+		t.Fatalf("active next try = %q, want no retry message while work is in progress", byHash["active"].NextTryAt)
+	}
+	if byHash["retrying"].NextTryAt != now.Add(time.Hour).Format(time.RFC3339) {
+		t.Fatalf("retrying next try = %q, want scheduled retry", byHash["retrying"].NextTryAt)
+	}
+}
+
+func incomingContainsAny(value string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestFillerIncoming_UsesTheLiveReadyWindowForRowsAndTotals(t *testing.T) {

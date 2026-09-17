@@ -4749,6 +4749,23 @@ disagrees with its total. Ready rows age out of Incoming while remaining in Libr
 completed audit, retries, provider/model failures, and optional enrichment live in Activity or
 Diagnostics and cannot become a Needs-help task merely because a browser can describe them.
 
+The calm row carries one server-owned current-state sentence. Its Clip panel may reveal collapsed
+**Processing details**: the server's ordered Processing stages, each with a friendly name, outcome,
+recorded time, and safe explanation. Successful and active stages remain visible; routine
+`not_needed` stages are hidden behind **Show skipped steps**; retrying work remains visible without
+turning recovery into a human task. A diagnostics link is present only when the server names an
+existing operational owner. The projection never exposes a private path, raw error, transcript,
+provider/model response, credential, or browser-reconstructed reason.
+
+**Stage progress belongs only to the active Processing stage.** A measured stage carries an exact
+0–100 value and labels it as current-step progress. An active stage without a real measurement is
+indeterminate. Finished, waiting, retrying, skipped, and Ready states carry no percentage. Stage
+progress may reset between stages and is never Preparation progress, percent Ready, or an ETA; the
+server projection, not the browser, owns the stage label, outcome, safe note, measurement, and
+order. Every stored stage occurrence is returned in its stored order, including occurrences with
+identical content and timestamps. The private-beta `technical` projection is retired rather than
+kept as a compatibility alias.
+
 ### The quality gate: reject the broken, normalise the quiet (V40)
 
 A clip that arrives is not automatically a clip worth playing. Real downloads from the archive

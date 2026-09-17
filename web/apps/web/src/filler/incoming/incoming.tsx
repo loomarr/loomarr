@@ -17,6 +17,7 @@ import { Image } from "@/components/ui/image";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { ClipDetails } from "../clip-details";
+import { IncomingProcessingDetails } from "./incoming-processing-details";
 
 type IncomingView = Pick<
   FillerIncomingOutputBody,
@@ -124,9 +125,6 @@ const Incoming = () => {
     { query: { enabled: Boolean(selected) } },
   );
   const selectedClip = unwrap(selectedClipQuery.data, (value) => value.clips[0]);
-  // The ordered history can contain identical records; give each occurrence its own identity.
-  const stageOccurrences = new Map<string, number>();
-
   const loadMore = async (name: GroupName) => {
     if (!view) return false;
     const cursor = view[name].nextCursor;
@@ -367,52 +365,7 @@ const Incoming = () => {
                 </p>
               )}
               <p className="text-muted-foreground text-xs">Updated {formatRelative(selected.updatedAt)}</p>
-              <details className="rounded-lg border border-border p-4 text-sm">
-                <summary className="cursor-pointer font-medium">Technical details</summary>
-                <div className="mt-4 space-y-4">
-                  {selected.technical.attempts ? (
-                    <p className="text-muted-foreground">
-                      {pluralize(selected.technical.attempts, "processing attempt")}
-                    </p>
-                  ) : null}
-                  {selected.technical.nextTryAt ? (
-                    <p className="text-muted-foreground">
-                      Next try {formatRelative(selected.technical.nextTryAt)}
-                    </p>
-                  ) : null}
-                  {selected.technical.stages.length ? (
-                    <ol className="space-y-3">
-                      {selected.technical.stages.map((stage) => {
-                        const identity = JSON.stringify([
-                          selected.clipHash,
-                          stage.at,
-                          stage.label,
-                          stage.status,
-                          stage.note,
-                        ]);
-                        const occurrence = stageOccurrences.get(identity) ?? 0;
-                        stageOccurrences.set(identity, occurrence + 1);
-                        return (
-                          <li
-                            key={JSON.stringify([identity, occurrence])}
-                            className="grid grid-cols-[1fr_auto] gap-x-3"
-                          >
-                            <span>{stage.label}</span>
-                            <span className="text-muted-foreground">{stage.status}</span>
-                            {stage.note ? (
-                              <span className="col-span-2 mt-0.5 break-words text-muted-foreground text-xs">
-                                {stage.note}
-                              </span>
-                            ) : null}
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  ) : (
-                    <p className="text-muted-foreground">No processing steps recorded yet.</p>
-                  )}
-                </div>
-              </details>
+              <IncomingProcessingDetails key={selected.clipHash} processing={selected.processing} />
             </div>
           </SheetContent>
         ) : null}
