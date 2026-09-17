@@ -393,6 +393,7 @@ func (a libPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID
 func mapIntent(i Intent) suggest.Intent {
 	return suggest.Intent{
 		Description: i.Description, Era: i.Era, Tone: i.Tone, RuntimeTgt: i.RuntimeTgt,
+		RefineText: i.RefineText, CurrentLineup: i.CurrentLineup,
 		MustInclude: i.MustInclude, MustExclude: i.MustExclude, MaxAcquire: i.MaxAcquire,
 	}
 }

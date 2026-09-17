@@ -254,6 +254,54 @@ exclusions, Library/acquisition state and thin-result behavior. Its subjective
 expectations require calibrated rubrics and reviewed fixtures; this History batch
 does not pre-author those answers.
 
+### Fourth executable expansion batch
+
+Authoring checkpoint [#1290](https://github.com/loomarr/loomarr/issues/1290)
+advances the cumulative snapshot to `query-expansion-v4.json`. It retains the 75
+TGIF, MCU and History requests and adds 33 movie requests: seven minimum, six
+invariance and twenty directional cases. Together with the immutable 72-request
+pilot, there are now 180 authored Development Corpus requests. This is four
+exposed source families, not 180 independent truth families, a sealed holdout or
+model qualification.
+
+The movie fixture resolves thirteen exact TMDB Keys and independently records
+only the release, genre, credit, origin, language, synopsis or classification
+facts supported by each field's named authority. It spans reviewed release facts
+from the 1940s through the 2010s and exercises `movie_release` decades, inclusive
+and exclusive boundaries, disjoint ranges, genre/date intersections, director
+versus producer, cast versus creator, combined people roles, one French-language
+case, one South Korean-origin case, simulated ownership/acquisition, and two
+refinement turns carrying the current lineup. Story setting never supplies
+origin, translated title never supplies language, and credits remain role-specific.
+The [source note](../research/suggestion-query-source-truth.md#movie-lookup-source-review-1290)
+records the authority split and unresolved gaps.
+
+Eight mood requests carry the authored `movie-mood-ordinal-v1` rubric and
+directional acceptable/contrast sets. They deliberately do **not** populate the
+Runner's model-judge rubric and are labelled `rubric-authored-development`, not
+human-reviewed outcomes: the required two independent reviews and adjudication
+records have not occurred. Genre, rating, provider keywords and cooperative model
+prose cannot masquerade as mood evidence. The one PG-ceiling case likewise tests
+synthetic policy plumbing only; AFI-reported MPAA fields and a BBFC classification
+are not promoted into same-authority audience truth. AUD-02/03 remain unqualified.
+
+Ten independent movie causal controls reject a wrong date axis, producer credit
+substituted for direction, director credit substituted for cast, language
+substitution, mood-direction inversions, a rating above an explicit ceiling,
+swapped ownership, and both dropped additions and retained removals during
+refinement. The production-path checks cover genre, keyword, cast, creator and
+combined-people Catalog operations; the Runner now accounts for the combined
+people operation rather than silently treating it as unknown.
+
+V1 through v3 manifest and Catalog bytes remain embedded and pinned by literal
+digests. V4 binds its new cumulative Catalog fixture, 57 source-review records and
+the unchanged source fixture. Every one of the 108 cumulative expansion requests
+crosses the production Suggester and Runner with independently authored replies,
+and every scorecard remains non-certifying. No hosted-provider call, spend, sealed
+holdout, new UI or Playwright acceptance is claimed. INT-02 still needs a sourced
+1990--92 positive, INT-05 needs a bound observation clock, the mood slice needs
+actual reviewers, and broader audience/language/region families remain future work.
+
 ### Remaining expansion checkpoints
 
 The source-review checkpoint is tracked in [#1278](https://github.com/loomarr/loomarr/issues/1278).

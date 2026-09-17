@@ -14,7 +14,7 @@ type QuerySourceReview struct {
 	Uncertainty string `json:"uncertainty"`
 }
 
-const queryExpansionManifest = "testdata/query-expansion-v3.json"
+const queryExpansionManifest = "testdata/query-expansion-v4.json"
 
 // LoadEmbeddedQueryExpansionCorpus loads exposed development evidence only.
 func LoadEmbeddedQueryExpansionCorpus() (QueryPilotCorpus, error) {
@@ -31,7 +31,7 @@ func QueryExpansionCases() ([]Case, error) {
 }
 
 func QueryExpansionRunnerConfig(config RunnerConfig) (RunnerConfig, error) {
-	return queryDevelopmentRunnerConfig(queryExpansionManifest, "query-expansion-scorer-v3", config)
+	return queryDevelopmentRunnerConfig(queryExpansionManifest, "query-expansion-scorer-v4", config)
 }
 
 // NewEmbeddedQueryExpansionGenerator varies fixture facts, never grounding or
