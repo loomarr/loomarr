@@ -24,6 +24,22 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 describe("FillerManage", () => {
+  it("opens the complete settings index instead of exposing one buried task", async () => {
+    server.use(
+      getMeMockHandler(me({ name: "Admin" })),
+      getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
+      getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
+    );
+    render(<FillerManage />, { wrapper });
+
+    expect(await screen.findByRole("heading", { name: "Settings and tools" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Open filler settings" })).toHaveAttribute(
+      "href",
+      "/filler/settings",
+    );
+    expect(screen.queryByRole("link", { name: "Automatic download settings" })).not.toBeInTheDocument();
+  });
+
   it("shows automatic outcomes without exposing runtime modes", async () => {
     server.use(
       getMeMockHandler(me({ name: "Admin" })),
@@ -155,10 +171,11 @@ describe("FillerManage", () => {
       "href",
       "/filler/settings/limits",
     );
-    expect(screen.getByRole("link", { name: "Open filler settings" })).toHaveAttribute(
-      "href",
-      "/filler/settings/review",
-    );
+    expect(
+      screen
+        .getAllByRole("link", { name: "Open filler settings" })
+        .find((link) => link.getAttribute("href") === "/filler/settings/review"),
+    ).toBeDefined();
     expect(screen.getByRole("link", { name: "Open clip" })).toHaveAttribute(
       "href",
       `/v1/filler/media/${"d".repeat(64)}`,
