@@ -17,6 +17,7 @@ import { WizardAiBlock } from "./wizard-ai-block";
 // URL/key fields that reveal themselves (ShowWhen) when provider = openai (config-design §5).
 const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key">): SettingEntry => ({
   group: "ai",
+  owner: "settings.ai",
   kind: "string",
   advanced: false,
   apply: SettingEntryApply.live,

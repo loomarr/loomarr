@@ -57,6 +57,7 @@ const fillerSetting = (
   kind,
   advanced,
   group: "filler",
+  owner: key.includes("max_catalog") || key.includes("max_disk") ? "filler.storage" : "filler.downloads",
   doc: "",
   provenance: "default",
   apply: "live",

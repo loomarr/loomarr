@@ -17,6 +17,7 @@ const withTooltip: Decorator = (Story) => (
 
 const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key">): SettingEntry => ({
   group: "system.jobs",
+  owner: "settings.advanced",
   kind: "int",
   doc: "",
   advanced: false,
