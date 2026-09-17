@@ -1,8 +1,9 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Link } from "@tanstack/react-router";
-import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { type FillerSettingsSection, SETTINGS_SECTIONS } from "../filler-settings-section";
@@ -65,6 +66,107 @@ const languageUnavailableReason = (entries: SettingEntry[]): string | undefined 
   }
   return undefined;
 };
+
+const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSection }) => {
+  const navigate = useNavigate();
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <Link
+          to="/filler/settings"
+          className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden />
+          All filler settings
+        </Link>
+        <p className="mt-2 text-muted-foreground text-xs">Jump straight to another task.</p>
+      </div>
+      <Select
+        value={section}
+        onValueChange={(next) =>
+          void navigate({
+            to: "/filler/settings/$section",
+            params: { section: next as FillerSettingsSection },
+          })
+        }
+      >
+        <SelectTrigger className="w-full sm:w-64" aria-label="Filler settings task">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="end">
+          {SETTINGS_SECTIONS.map((item) => (
+            <SelectItem key={item.id} value={item.id}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+};
+
+const FillerSettingsIndex = () => (
+  <div className="space-y-8">
+    <div>
+      <Link
+        to="/filler/manage"
+        className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+      >
+        <ArrowLeft className="size-3.5" aria-hidden />
+        Manage
+      </Link>
+      <h2 className="mt-3 font-semibold text-xl">Filler settings</h2>
+      <p className="mt-1 text-muted-foreground text-sm">
+        Change how Loomarr finds, prepares, stores, and plays short clips.
+      </p>
+    </div>
+
+    {(
+      [
+        {
+          id: "everyday",
+          label: "Everyday choices",
+          description: "The settings most people are likely to change.",
+        },
+        {
+          id: "advanced",
+          label: "Advanced tuning",
+          description: "Processing capacity and tools for unusual installations.",
+        },
+      ] as const
+    ).map((group) => (
+      <section key={group.id} aria-labelledby={`filler-settings-${group.id}`}>
+        <div className="mb-3">
+          <h3 id={`filler-settings-${group.id}`} className="font-medium text-base">
+            {group.label}
+          </h3>
+          <p className="mt-0.5 text-muted-foreground text-sm">{group.description}</p>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) => (
+            <Link
+              key={item.id}
+              to="/filler/settings/$section"
+              params={{ section: item.id }}
+              className="group flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-signal/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium text-sm">{item.label}</span>
+                <span className="mt-0.5 block text-muted-foreground text-xs leading-relaxed">
+                  {item.description}
+                </span>
+              </span>
+              <ArrowRight
+                className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+                aria-hidden
+              />
+            </Link>
+          ))}
+        </div>
+      </section>
+    ))}
+  </div>
+);
 
 const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSection }) => {
   const entries = useSettingsEntries();
@@ -218,27 +320,10 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       description="Change the defaults here. Individual sources and channels can use their own settings."
       entries={entries}
       blocks={blocks.filter((block) => block.section === section)}
-      footer={
-        <CollapsibleSection
-          title="More settings"
-          description="Folders, storage, breaks, and advanced controls."
-        >
-          <nav aria-label="Filler settings tasks" className="grid gap-3 sm:grid-cols-2">
-            {SETTINGS_SECTIONS.filter((item) => item.id !== section).map((item) => (
-              <Link
-                key={item.id}
-                to="/filler/settings/$section"
-                params={{ section: item.id }}
-                className="text-sm underline underline-offset-4"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </CollapsibleSection>
-      }
-    />
+    >
+      <FillerSettingsTaskSwitcher section={section} />
+    </SettingsPage>
   );
 };
 
-export { FillerSettings };
+export { FillerSettings, FillerSettingsIndex };

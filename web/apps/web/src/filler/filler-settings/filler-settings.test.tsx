@@ -7,7 +7,7 @@ import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import type { FillerSettingsSection } from "../filler-settings-section";
-import { FillerSettings } from "./filler-settings";
+import { FillerSettings, FillerSettingsIndex } from "./filler-settings";
 
 const renderSettings = (section: FillerSettingsSection = "downloads") => {
   server.use(
@@ -91,5 +91,35 @@ describe("focused Filler settings", () => {
       "days",
     );
     expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
+  });
+
+  it("switches tasks near the heading instead of burying them at the bottom", async () => {
+    renderSettings("storage");
+    expect(await screen.findByRole("combobox", { name: "Filler settings task" })).toHaveTextContent(
+      "Storage limits",
+    );
+    expect(screen.getByRole("link", { name: "All filler settings" })).toHaveAttribute(
+      "href",
+      "/filler/settings",
+    );
+    expect(screen.queryByRole("button", { name: /more settings/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("Filler settings index", () => {
+  it("shows every task in an everyday or advanced group", async () => {
+    render(<RouterHarness initialPath="/filler/settings" content={<FillerSettingsIndex />} />);
+
+    expect(await screen.findByRole("heading", { name: "Everyday choices" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Advanced tuning" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Automatic downloads/ })).toHaveAttribute(
+      "href",
+      "/filler/settings/downloads",
+    );
+    expect(screen.getByRole("link", { name: /Processing tools/ })).toHaveAttribute(
+      "href",
+      "/filler/settings/tools",
+    );
+    expect(screen.getByRole("link", { name: "Manage" })).toHaveAttribute("href", "/filler/manage");
   });
 });

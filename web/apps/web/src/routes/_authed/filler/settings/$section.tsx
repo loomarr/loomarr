@@ -11,7 +11,7 @@ const FillerSettingsScreen = () => {
 const Route = createFileRoute("/_authed/filler/settings/$section")({
   beforeLoad: ({ params }) => {
     if (!parseFillerSettingsSection(params.section)) {
-      throw redirect({ to: "/filler/settings/$section", params: { section: "downloads" } });
+      throw redirect({ to: "/filler/settings" });
     }
   },
   component: FillerSettingsScreen,

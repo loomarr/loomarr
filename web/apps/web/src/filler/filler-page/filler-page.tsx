@@ -16,7 +16,7 @@ import { FillerCatalog } from "../filler-catalog";
 import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
 import type { FillerSearch } from "../filler-search";
-import { FillerSettings } from "../filler-settings";
+import { FillerSettings, FillerSettingsIndex } from "../filler-settings";
 import { Incoming } from "../incoming";
 import { SourcesTab } from "../sources-tab";
 import { TaxonomyTab } from "../taxonomy-tab";
@@ -151,7 +151,11 @@ const FillerPage = ({ tab, settingsSection }: FillerPageProps) => {
         ) : tab === "taxonomy" ? (
           <TaxonomyTab isAdmin={isAdmin} />
         ) : tab === "settings" ? (
-          <FillerSettings section={settingsSection} />
+          settingsSection ? (
+            <FillerSettings section={settingsSection} />
+          ) : (
+            <FillerSettingsIndex />
+          )
         ) : (
           <FillerCatalog isAdmin={isAdmin} />
         )}

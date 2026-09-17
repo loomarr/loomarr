@@ -36,6 +36,7 @@ const NAV_PATHS = [
   "/filler/library",
   "/filler/manage",
   "/filler/sources",
+  "/filler/settings",
   "/filler/taxonomy",
   "/people",
   "/settings",

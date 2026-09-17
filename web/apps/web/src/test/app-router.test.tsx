@@ -314,16 +314,16 @@ describe("legacy tab links redirect to their new paths", () => {
     await waitFor(() => expect(at(router)).toBe("/filler/incoming"));
   });
 
-  it("/filler/settings lands on its default path task", async () => {
+  it("/filler/settings stays on the task index", async () => {
     stubAuth(true);
     const router = renderApp("/filler/settings");
-    await waitFor(() => expect(at(router)).toBe("/filler/settings/downloads"));
+    await waitFor(() => expect(at(router)).toBe("/filler/settings"));
   });
 
-  it("an unknown Filler settings task returns to the default path", async () => {
+  it("an unknown Filler settings task returns to the task index", async () => {
     stubAuth(true);
     const router = renderApp("/filler/settings/not-a-task");
-    await waitFor(() => expect(at(router)).toBe("/filler/settings/downloads"));
+    await waitFor(() => expect(at(router)).toBe("/filler/settings"));
   });
 
   // ⚠ The catalog FILTERS survive the move. They are query params on purpose — a shared link to
