@@ -108,7 +108,7 @@ func buildFillerSubsystem(
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	taggerProvider, tagger := buildTagger(st, set, layout, log, metricRecorder)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
-	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder)
+	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor)
 	ytDlpPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
 	adapter := fillerServiceAdapter{
 		syncer: syncer, tagger: tagger, fetcher: fetcher,
@@ -140,7 +140,7 @@ func buildFillerSubsystem(
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake,
-		processDiagnostics, metricRecorder)
+		processDiagnostics, storageGovernor, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
 	adapter.pipeline = pipeline
 	if decisionService != nil {

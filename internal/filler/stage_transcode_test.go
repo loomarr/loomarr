@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 type transcodeStore struct {
@@ -21,6 +22,33 @@ type transcodeStore struct {
 	err           error
 	clips         map[string]StoreClip
 	beforeReplace func(string, StoreClip)
+}
+
+func TestTranscodeStage_RefusesCapacityBeforeCreatingRetainedOrDerivedMedia(t *testing.T) {
+	dir := t.TempDir()
+	hash := writeContentAddressedClip(t, dir, []byte("source bytes that must remain untouched"), ".mp4")
+	rel := filepath.ToSlash(ClipRelPath(hash, ".mp4"))
+	governor := storagegovernor.New(intakeCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "clips", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 60 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 1}
+	})
+	stage := NewTranscodeStage(&transcodeStore{}, nil, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now).
+		WithMediaDerivatives().
+		WithStorageGovernor(governor)
+
+	_, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
+		Hash: hash, Path: rel, DurationMs: 30_000,
+	}})
+	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonLibraryLimit)) {
+		t.Fatalf("Run error = %v, want capacity refusal", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, MediaAssetRootName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("retained-media tree exists after refusal: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, transcodeStagingDir)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("transcode staging exists after refusal: %v", err)
+	}
 }
 
 type cleanupSyncSource struct{ dir string }

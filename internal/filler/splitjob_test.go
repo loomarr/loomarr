@@ -18,9 +18,22 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+type splitCapacityMeter struct {
+	measurement storagegovernor.Measurement
+}
+
+func (m splitCapacityMeter) Measure(context.Context, string) (storagegovernor.Measurement, error) {
+	return m.measurement, nil
+}
+
+func (splitCapacityMeter) ManagedBytes(context.Context, string, storagegovernor.Domain) (int64, error) {
+	return 0, nil
+}
 
 // fakeTools scripts MediaTools per test (§19 — unit tests never exec a binary).
 type fakeTools struct {
@@ -1514,6 +1527,42 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(drop, seg.Path)); err != nil {
 			t.Errorf("cataloged segment %s has no file: %v", seg.Path, err)
 		}
+	}
+}
+
+func TestConfirm_RefusesHostCapacityBeforeCreatingSplitStaging(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/full-host.mp4", 60_000)
+	drop := t.TempDir()
+	materializeSplitSources(st, drop)
+	parent := filepath.Join(drop, "comps", "full-host.mp4")
+	hash = bindCompilationIdentity(t, st, hash, parent)
+	stageParentForSplitReview(st, hash)
+	tools := &fakeTools{}
+	sp := newSplitter(st, tools, nil, drop)
+	proposal, err := sp.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	governor := storagegovernor.New(splitCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "clips", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 2 * storagegovernor.GiB,
+	}}, nil)
+	sp.WithStorageGovernor(governor)
+
+	_, err = sp.Confirm(context.Background(), proposal.ID, []filler.SplitSegment{{
+		StartMs: 0, EndMs: 60_000, Name: "Reviewed clip",
+	}})
+	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonHostReserve)) {
+		t.Fatalf("Confirm error = %v, want host-reserve refusal", err)
+	}
+	if len(tools.cutCalls) != 0 {
+		t.Fatalf("cut calls = %v, want no media work", tools.cutCalls)
+	}
+	if _, err := os.Stat(filepath.Join(drop, ".split")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("split staging exists after refusal: %v", err)
+	}
+	if _, err := st.GetSplitProposal(context.Background(), proposal.ID); err != nil {
+		t.Fatalf("proposal was consumed after capacity refusal: %v", err)
 	}
 }
 

@@ -154,7 +154,7 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 //
 // The LLM provider wires whenever one is configured — splitting's rescue and classification are
 // operator-invoked, so they are not gated by `filler.ai_tagging`, which gates the batch job.
-func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder) *filler.Splitter {
+func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
@@ -166,7 +166,8 @@ func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog
 
 	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
 	return filler.NewSplitter(fillerSplitStoreAdapter{st: st, wake: wake}, tools, splitProvider, dir,
-		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log)
+		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log).
+		WithStorageGovernor(governor)
 }
 
 // activeFillerProvider resolves the same branded provider selection as the AI surface. OpenRouter
@@ -227,7 +228,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 // conditional to "clean up" the nil cases.
 func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, taggerProvider llm.Provider, wake *fillerChannelWake,
-	processDiagnostics *diagnostics.ProcessManager,
+	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder) *filler.Pipeline {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
@@ -342,7 +343,8 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 					return 0
 				}
 				return lufs
-			}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).WithDiagnostics(processDiagnostics),
+			}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
+			WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor),
 		// Rendered compilation children must not reach enrichment or the compatibility score gate
 		// until the five certified authorities are wired. The qualification runtime records the
 		// exact rights and playback answers plus explicit holds for the three uncertified safety
