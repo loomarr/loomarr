@@ -38,6 +38,14 @@ func newRegistry(list []Setting) *Registry {
 		if s.Kind == KindEnum && len(s.Enum) == 0 {
 			panic("settings: enum setting " + s.Key + " has no Enum values")
 		}
+		if !s.MigrationOnly {
+			if s.Owner == "" {
+				panic("settings: public setting " + s.Key + " has no owner")
+			}
+			if _, ok := knownOwners[s.Owner]; !ok {
+				panic("settings: public setting " + s.Key + " has unknown owner " + string(s.Owner))
+			}
+		}
 		switch s.Apply {
 		case ApplyLive, ApplyRestart:
 		default:

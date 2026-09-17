@@ -39,9 +39,9 @@ func (f *unlockLoader) SetEnvOverride(_ context.Context, key string, on bool, se
 func newUnlockService(t *testing.T, env map[string]string, l *unlockLoader) *Service {
 	t.Helper()
 	reg := newRegistry([]Setting{
-		{Key: "library.url", EnvVar: "LIBRARY_URL", Kind: KindURL, Default: "", Doc: "x"},
-		{Key: "job.workers", EnvVar: "JOB_WORKERS", Kind: KindInt, Default: 2, Doc: "x"},
-		{Key: "library.token", EnvVar: "LIBRARY_TOKEN", Kind: KindSecret, Default: "", Doc: "x"},
+		{Key: "library.url", EnvVar: "LIBRARY_URL", Owner: OwnerAdvanced, Kind: KindURL, Default: "", Doc: "x"},
+		{Key: "job.workers", EnvVar: "JOB_WORKERS", Owner: OwnerAdvanced, Kind: KindInt, Default: 2, Doc: "x"},
+		{Key: "library.token", EnvVar: "LIBRARY_TOKEN", Owner: OwnerAdvanced, Kind: KindSecret, Default: "", Doc: "x"},
 	})
 	s, err := New(context.Background(), reg, l, nil)
 	if err != nil {

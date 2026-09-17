@@ -210,7 +210,7 @@ func storagePath(optional bool) ValidateFunc {
 }
 
 func declared() []Setting {
-	return []Setting{
+	settings := []Setting{
 		// --- Connections: media server (§15, Phase 5) ---
 		{
 			Key: "library.flavor", EnvVar: "LIBRARY_FLAVOR", Group: GroupMediaServer,
@@ -1376,4 +1376,10 @@ func declared() []Setting {
 			Doc: "Whether first-run setup is done. Until it is, Loomarr opens the setup wizard.",
 		},
 	}
+	for i := range settings {
+		if !settings[i].MigrationOnly {
+			settings[i].Owner = ownerFor(settings[i])
+		}
+	}
+	return settings
 }

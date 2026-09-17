@@ -61,7 +61,7 @@ func TestRegistry_RestartKeys(t *testing.T) {
 func TestRegistry_RejectsInvalidApplyTiming(t *testing.T) {
 	declaration := Setting{
 		Key: "test.path", EnvVar: "TEST_PATH", Group: GroupAdvanced,
-		Kind: KindString, Apply: ApplyTiming("eventually"), Doc: "test",
+		Owner: OwnerAdvanced, Kind: KindString, Apply: ApplyTiming("eventually"), Doc: "test",
 	}
 	defer func() {
 		if recover() == nil {
@@ -168,6 +168,23 @@ func TestRegistry_Invariants(t *testing.T) {
 		if s.Doc == "" {
 			t.Errorf("%s: missing Doc (UI help + generated docs derive from it)", s.Key)
 		}
+	}
+}
+
+func TestRegistry_RejectsMissingOrUnknownPublicOwner(t *testing.T) {
+	for _, owner := range []Owner{"", "settings.nowhere"} {
+		t.Run(string(owner), func(t *testing.T) {
+			declaration := Setting{
+				Key: "test.value", EnvVar: "TEST_VALUE", Group: GroupAdvanced,
+				Owner: owner, Kind: KindString, Doc: "test",
+			}
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("newRegistry accepted public owner %q", owner)
+				}
+			}()
+			newRegistry([]Setting{declaration})
+		})
 	}
 }
 
@@ -450,8 +467,8 @@ func TestRegistry_DuplicateKeyPanics(t *testing.T) {
 		}
 	}()
 	newRegistry([]Setting{
-		{Key: "a", EnvVar: "A", Kind: KindString, Doc: "x"},
-		{Key: "a", EnvVar: "B", Kind: KindString, Doc: "y"},
+		{Key: "a", EnvVar: "A", Owner: OwnerAdvanced, Kind: KindString, Doc: "x"},
+		{Key: "a", EnvVar: "B", Owner: OwnerAdvanced, Kind: KindString, Doc: "y"},
 	})
 }
 
