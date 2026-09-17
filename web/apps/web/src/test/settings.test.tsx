@@ -207,6 +207,24 @@ describe("Settings", () => {
     expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
   });
 
+  it("uses a grouped server landing instead of a second tab matrix", async () => {
+    stubSettings();
+    renderAt("/settings/system");
+
+    expect(await screen.findByRole("heading", { name: "This server" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Run this server" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Troubleshoot" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Playback/ })).toHaveAttribute(
+      "href",
+      "/settings/system/playback",
+    );
+    expect(screen.getByRole("link", { name: /Diagnostics/ })).toHaveAttribute(
+      "href",
+      "/settings/system/diagnostics",
+    );
+    expect(screen.queryByRole("navigation", { name: "System settings" })).not.toBeInTheDocument();
+  });
+
   it("shows one notification provider list with SMTP as a peer provider", async () => {
     stubSettings();
     renderAt("/settings/notifications");

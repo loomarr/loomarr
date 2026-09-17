@@ -54,5 +54,8 @@ describe("settings destination catalog", () => {
         : item.path;
       expect(registered, `${item.id} → ${path}`).toContain(path);
     }
+    expect(registered).not.toContain("/settings/general");
+    expect(registered).not.toContain("/settings/security");
+    expect(registered).not.toContain("/settings/all");
   });
 });
