@@ -814,7 +814,7 @@ describe("Settings honesty", () => {
 
     expect(await screen.findByLabelText("Expected spoken language")).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Language filtering is off because no multilingual detection model is configured",
+      "Language filtering is off because no multilingual model is selected. Choose one in AI settings.",
     );
   });
 
