@@ -49,15 +49,19 @@ func TestEvalCorpus(t *testing.T) {
 		Required: required, LiveSchedule: liveSchedule, Trials: trials,
 		GeneratorProvider: provider, GeneratorBaseURL: generatorConfig.BaseURL, GeneratorModel: generatorIdentity.Model,
 		JudgeProvider: judgeProvider, JudgeBaseURL: judgeConfig.BaseURL, JudgeModel: judgeIdentity.Model,
-		GeneratorUpstream: os.Getenv("LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER"),
-		JudgeUpstream:     os.Getenv("LOOMARR_EVAL_JUDGE_UPSTREAM_PROVIDER"),
-		AllowLocal:        os.Getenv("LOOMARR_EVAL_ALLOW_LOCAL") == "1",
-		MaxCallsPerRun:    os.Getenv("LOOMARR_EVAL_MAX_CALLS_PER_RUN"),
-		MaxCallsPerSuite:  os.Getenv("LOOMARR_EVAL_MAX_CALLS_PER_SUITE"),
-		MaxTokensPerRun:   os.Getenv("LOOMARR_EVAL_MAX_TOKENS_PER_RUN"),
-		MaxSpendPerRun:    os.Getenv("LOOMARR_EVAL_MAX_SPEND_PER_RUN"),
-		MaxTokensPerSuite: os.Getenv("LOOMARR_EVAL_MAX_TOKENS"),
-		MaxSpendPerSuite:  os.Getenv("LOOMARR_EVAL_MAX_SPEND"),
+		GeneratorUpstream:      os.Getenv("LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER"),
+		JudgeUpstream:          os.Getenv("LOOMARR_EVAL_JUDGE_UPSTREAM_PROVIDER"),
+		AllowLocal:             os.Getenv("LOOMARR_EVAL_ALLOW_LOCAL") == "1",
+		MaxCallsPerRun:         os.Getenv("LOOMARR_EVAL_MAX_CALLS_PER_RUN"),
+		MaxCallsPerSuite:       os.Getenv("LOOMARR_EVAL_MAX_CALLS_PER_SUITE"),
+		MaxTokensPerRun:        os.Getenv("LOOMARR_EVAL_MAX_TOKENS_PER_RUN"),
+		MaxSpendPerRun:         os.Getenv("LOOMARR_EVAL_MAX_SPEND_PER_RUN"),
+		MaxTokensPerSuite:      os.Getenv("LOOMARR_EVAL_MAX_TOKENS"),
+		MaxSpendPerSuite:       os.Getenv("LOOMARR_EVAL_MAX_SPEND"),
+		GeneratorTokensPerCall: os.Getenv("LOOMARR_EVAL_GENERATOR_RESERVE_TOKENS"),
+		GeneratorSpendPerCall:  os.Getenv("LOOMARR_EVAL_GENERATOR_RESERVE_SPEND"),
+		JudgeTokensPerCall:     os.Getenv("LOOMARR_EVAL_JUDGE_RESERVE_TOKENS"),
+		JudgeSpendPerCall:      os.Getenv("LOOMARR_EVAL_JUDGE_RESERVE_SPEND"),
 	})
 	t.Logf("pre-provider call budget: cases=%d trials=%d generator<=%d judge<=%d total<=%d declared_run<=%d declared_suite<=%d",
 		budget.Cases, budget.Trials, budget.MaxGeneratorCalls, budget.MaxJudgeCalls, budget.Total,
@@ -123,9 +127,11 @@ func TestEvalCorpus(t *testing.T) {
 	}
 	runner := NewRunner(sug, RunnerConfig{
 		Trials: trials, Profile: profile,
-		Generator:      generatorIdentity,
-		Judge:          judgeIdentity,
-		ResourceBudget: budget.Resource,
+		Generator:            generatorIdentity,
+		Judge:                judgeIdentity,
+		ResourceBudget:       budget.Resource,
+		GeneratorReservation: budget.GeneratorReservation,
+		JudgeReservation:     budget.JudgeReservation,
 	}).WithObserver(observed).WithJudge(modelJudge{provider: judgeClient})
 	if liveSchedule {
 		runner = runner.WithMaterializer(materializer)

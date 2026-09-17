@@ -125,9 +125,9 @@ func (p *observedProvider) Begin() {
 	p.mu.Unlock()
 }
 
-func (p *observedProvider) beginResourceRun(limits ResourceBudget, run, suite *resourceAccumulator) {
+func (p *observedProvider) beginResourceRun(limits ResourceBudget, reservation InferenceReservation, run, suite *resourceAccumulator) {
 	p.mu.Lock()
-	p.ledger = &providerResourceLedger{limits: limits, run: run, suite: suite}
+	p.ledger = &providerResourceLedger{limits: limits, reservation: reservation, run: run, suite: suite}
 	p.mu.Unlock()
 }
 

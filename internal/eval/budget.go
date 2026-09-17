@@ -15,12 +15,14 @@ import (
 // CallBudget is the deterministic worst-case inference envelope reported before
 // an evaluation constructs any external client.
 type CallBudget struct {
-	Cases             int            `json:"cases"`
-	Trials            int            `json:"trials"`
-	MaxGeneratorCalls int            `json:"maxGeneratorCalls"`
-	MaxJudgeCalls     int            `json:"maxJudgeCalls"`
-	Total             int            `json:"total"`
-	Resource          ResourceBudget `json:"resource"`
+	Cases                int                  `json:"cases"`
+	Trials               int                  `json:"trials"`
+	MaxGeneratorCalls    int                  `json:"maxGeneratorCalls"`
+	MaxJudgeCalls        int                  `json:"maxJudgeCalls"`
+	Total                int                  `json:"total"`
+	Resource             ResourceBudget       `json:"resource"`
+	GeneratorReservation InferenceReservation `json:"generatorReservation"`
+	JudgeReservation     InferenceReservation `json:"judgeReservation"`
 }
 
 // ResourceBudget is the declared runtime inference ceiling. A run is one case
@@ -34,6 +36,13 @@ type ResourceBudget struct {
 	MaxSpendPerSuite  string `json:"maxSpendPerSuite"`
 }
 
+// InferenceReservation is the conservative resource envelope that must fit
+// before one hosted provider call may be dispatched.
+type InferenceReservation struct {
+	Tokens int    `json:"tokens"`
+	Spend  string `json:"spend"`
+}
+
 type ResourceUsage struct {
 	Calls  int    `json:"calls"`
 	Tokens int    `json:"tokens"`
@@ -43,25 +52,29 @@ type ResourceUsage struct {
 // CertificationOptions are the resource decisions available before any Library,
 // TMDB, generator, or judge client exists.
 type CertificationOptions struct {
-	Required          bool
-	LiveSchedule      bool
-	FrozenCatalog     bool
-	Trials            int
-	GeneratorProvider string
-	GeneratorBaseURL  string
-	GeneratorModel    string
-	JudgeProvider     string
-	JudgeBaseURL      string
-	JudgeModel        string
-	GeneratorUpstream string
-	JudgeUpstream     string
-	AllowLocal        bool
-	MaxCallsPerRun    string
-	MaxCallsPerSuite  string
-	MaxTokensPerRun   string
-	MaxSpendPerRun    string
-	MaxTokensPerSuite string
-	MaxSpendPerSuite  string
+	Required               bool
+	LiveSchedule           bool
+	FrozenCatalog          bool
+	Trials                 int
+	GeneratorProvider      string
+	GeneratorBaseURL       string
+	GeneratorModel         string
+	JudgeProvider          string
+	JudgeBaseURL           string
+	JudgeModel             string
+	GeneratorUpstream      string
+	JudgeUpstream          string
+	AllowLocal             bool
+	MaxCallsPerRun         string
+	MaxCallsPerSuite       string
+	MaxTokensPerRun        string
+	MaxSpendPerRun         string
+	MaxTokensPerSuite      string
+	MaxSpendPerSuite       string
+	GeneratorTokensPerCall string
+	GeneratorSpendPerCall  string
+	JudgeTokensPerCall     string
+	JudgeSpendPerCall      string
 }
 
 // ParseEvaluationTrials resolves the run's trial count before any external
@@ -111,6 +124,22 @@ func PrepareCertificationRun(caseCount int, options CertificationOptions) (CallB
 	if judgeProvider == "" {
 		judgeProvider = provider
 	}
+	if !localInferenceProvider(provider) {
+		budget.GeneratorReservation, err = parseRequiredInferenceReservation(
+			"generator", options.GeneratorTokensPerCall, options.GeneratorSpendPerCall, resource,
+		)
+		if err != nil {
+			return budget, err
+		}
+	}
+	if !localInferenceProvider(judgeProvider) {
+		budget.JudgeReservation, err = parseRequiredInferenceReservation(
+			"judge", options.JudgeTokensPerCall, options.JudgeSpendPerCall, resource,
+		)
+		if err != nil {
+			return budget, err
+		}
+	}
 	if (localInferenceProvider(provider) || localInferenceProvider(judgeProvider)) && !options.AllowLocal {
 		return budget, fmt.Errorf("LOOMARR_EVAL_ALLOW_LOCAL=1 is required for local certification")
 	}
@@ -131,6 +160,26 @@ func PrepareCertificationRun(caseCount int, options CertificationOptions) (CallB
 		}
 	}
 	return budget, nil
+}
+
+func parseRequiredInferenceReservation(role, rawTokens, rawSpend string, limits ResourceBudget) (InferenceReservation, error) {
+	tokens, err := strconv.Atoi(rawTokens)
+	if err != nil || tokens <= 0 {
+		return InferenceReservation{}, fmt.Errorf("%s token reservation must be a positive integer in certification mode", role)
+	}
+	spend, valid := parseExactDecimal(rawSpend)
+	if !valid || spend.sign() <= 0 {
+		return InferenceReservation{}, fmt.Errorf("%s spend reservation must be a positive plain decimal in certification mode", role)
+	}
+	if tokens > limits.MaxTokensPerRun || tokens > limits.MaxTokensPerSuite {
+		return InferenceReservation{}, fmt.Errorf("%s token reservation exceeds a declared ceiling", role)
+	}
+	maxRunSpend, _ := parseExactDecimal(limits.MaxSpendPerRun)
+	maxSuiteSpend, _ := parseExactDecimal(limits.MaxSpendPerSuite)
+	if spend.cmp(maxRunSpend) > 0 || spend.cmp(maxSuiteSpend) > 0 {
+		return InferenceReservation{}, fmt.Errorf("%s spend reservation exceeds a declared ceiling", role)
+	}
+	return InferenceReservation{Tokens: tokens, Spend: rawSpend}, nil
 }
 
 func parseRequiredResourceBudget(options CertificationOptions, estimate CallBudget) (ResourceBudget, error) {

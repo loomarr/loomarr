@@ -288,8 +288,8 @@ func (o *releaseGateObserver) Begin() {
 	o.generator.begin()
 }
 
-func (o *releaseGateObserver) beginResourceRun(limits ResourceBudget, run, suite *resourceAccumulator) {
-	o.provider.beginResourceRun(limits, run, suite)
+func (o *releaseGateObserver) beginResourceRun(limits ResourceBudget, reservation InferenceReservation, run, suite *resourceAccumulator) {
+	o.provider.beginResourceRun(limits, reservation, run, suite)
 }
 
 func (o *releaseGateObserver) Snapshot(err error) Observation {

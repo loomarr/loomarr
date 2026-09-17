@@ -112,6 +112,25 @@ func TestRunnerRecordsIndependentGeneratorAndJudgeCallAttribution(t *testing.T) 
 	}
 }
 
+func TestRunnerBoundsTheJudgeCompletion(t *testing.T) {
+	judgeProvider := testkit.NewLLM(testkit.FinalResponse(
+		`{"overall":0.9,"relevance":0.9,"serendipity":0.8,"reason":"Grounded."}`,
+	))
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+	}}}
+	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
+		WithJudge(modelJudge{provider: judgeProvider}).
+		Run(context.Background(), []Case{{Name: "bounded_judge", JudgeRubric: "Relevant science fiction"}})
+
+	if !card.Certified {
+		t.Fatalf("bounded judge result = %+v", card.Results[0])
+	}
+	if judgeProvider.LastOpts.MaxTokens != 512 {
+		t.Fatalf("judge max tokens = %d, want 512", judgeProvider.LastOpts.MaxTokens)
+	}
+}
+
 func TestRunnerKeepsMissingCallAttributionExplicitInsteadOfInferringIt(t *testing.T) {
 	generatorLLM := testkit.NewLLM(llm.Response{})
 	observed := &observedProvider{inner: generatorLLM}
@@ -294,6 +313,63 @@ func TestRunnerEnforcesGeneratorBudgetAtEveryProviderCallBoundary(t *testing.T) 
 				t.Fatalf("exhausted boundary result = %+v", card.Results[0])
 			}
 		})
+	}
+}
+
+func TestRunnerRefusesAGeneratorCallThatCannotFitItsReservation(t *testing.T) {
+	provider := testkit.NewLLM(testkit.FinalResponse(`{"channelName":"Should not run"}`))
+	observed := &observedProvider{inner: provider}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+	}}}
+	card := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
+		ResourceBudget: ResourceBudget{
+			MaxCallsPerRun: 2, MaxCallsPerSuite: 2,
+			MaxTokensPerRun: 100, MaxTokensPerSuite: 100,
+			MaxSpendPerRun: "0.50", MaxSpendPerSuite: "0.50",
+		},
+		GeneratorReservation: InferenceReservation{Tokens: 101, Spend: "0.51"},
+	}).WithObserver(observed).Run(context.Background(), []Case{{Name: "reserved_provider_boundary"}})
+
+	if provider.Calls != 0 {
+		t.Fatalf("provider calls = %d, want none when the reservation cannot fit", provider.Calls)
+	}
+	if card.Certified || card.Results[0].FailureStage != FailureStageBudgetExhausted {
+		t.Fatalf("reservation result = %+v", card.Results[0])
+	}
+}
+
+func TestRunnerRefusesAJudgeCallThatCannotFitItsReservation(t *testing.T) {
+	generatorProvider := testkit.NewLLM(llm.Response{Attribution: llm.Attribution{
+		RequestedProvider: "openrouter",
+		Tokens:            llm.TokenUsage{Prompt: 6, Completion: 4},
+		Charge:            &llm.Money{Amount: "0.05", Currency: "USD"},
+	}})
+	observed := &observedProvider{inner: generatorProvider}
+	judgeProvider := testkit.NewLLM(testkit.FinalResponse(
+		`{"overall":0.9,"relevance":0.9,"serendipity":0.8,"reason":"Must not run."}`,
+	))
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+	}}}
+	card := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
+		ResourceBudget: ResourceBudget{
+			MaxCallsPerRun: 2, MaxCallsPerSuite: 2,
+			MaxTokensPerRun: 100, MaxTokensPerSuite: 100,
+			MaxSpendPerRun: "0.50", MaxSpendPerSuite: "0.50",
+		},
+		GeneratorReservation: InferenceReservation{Tokens: 20, Spend: "0.10"},
+		JudgeReservation:     InferenceReservation{Tokens: 91, Spend: "0.46"},
+	}).WithObserver(observed).WithJudge(modelJudge{provider: judgeProvider}).Run(
+		context.Background(),
+		[]Case{{Name: "reserved_judge_boundary", JudgeRubric: "Relevant science fiction"}},
+	)
+
+	if generatorProvider.Calls != 1 || judgeProvider.Calls != 0 {
+		t.Fatalf("provider calls = generator %d judge %d, want 1/0", generatorProvider.Calls, judgeProvider.Calls)
+	}
+	if card.Certified || card.Results[0].FailureStage != FailureStageBudgetExhausted {
+		t.Fatalf("judge reservation result = %+v", card.Results[0])
 	}
 }
 
@@ -606,6 +682,36 @@ func TestPrepareCertificationRunRequiresDeclaredTokenAndSpendBudgets(t *testing.
 	}
 }
 
+func TestPrepareCertificationRunRequiresHostedCallReservations(t *testing.T) {
+	base := withRequiredResourceBudget(CertificationOptions{
+		Required: true, LiveSchedule: true, Trials: 1,
+		GeneratorProvider: "openai", JudgeProvider: "openai",
+	})
+	for name, mutate := range map[string]func(*CertificationOptions){
+		"missing generator tokens": func(o *CertificationOptions) { o.GeneratorTokensPerCall = "" },
+		"missing generator spend":  func(o *CertificationOptions) { o.GeneratorSpendPerCall = "" },
+		"missing judge tokens":     func(o *CertificationOptions) { o.JudgeTokensPerCall = "" },
+		"missing judge spend":      func(o *CertificationOptions) { o.JudgeSpendPerCall = "" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			options := base
+			mutate(&options)
+			if _, err := PrepareCertificationRun(1, options); err == nil || !strings.Contains(err.Error(), "reservation") {
+				t.Fatalf("required certification reservation error = %v", err)
+			}
+		})
+	}
+
+	budget, err := PrepareCertificationRun(1, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if budget.GeneratorReservation != (InferenceReservation{Tokens: 80, Spend: "0.80"}) ||
+		budget.JudgeReservation != (InferenceReservation{Tokens: 40, Spend: "0.40"}) {
+		t.Fatalf("prepared reservations = generator %+v judge %+v", budget.GeneratorReservation, budget.JudgeReservation)
+	}
+}
+
 func TestParseEvaluationTrialsRejectsInvalidRequiredValues(t *testing.T) {
 	for name, raw := range map[string]string{
 		"invalid":  "many",
@@ -674,5 +780,9 @@ func withRequiredResourceBudget(options CertificationOptions) CertificationOptio
 	options.MaxSpendPerRun = "1.00"
 	options.MaxTokensPerSuite = "1000"
 	options.MaxSpendPerSuite = "10.00"
+	options.GeneratorTokensPerCall = "80"
+	options.GeneratorSpendPerCall = "0.80"
+	options.JudgeTokensPerCall = "40"
+	options.JudgeSpendPerCall = "0.40"
 	return options
 }

@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	scorecardSchemaVersion = 14
+	scorecardSchemaVersion = 15
 	corpusVersion          = "2026-08-27.8"
 )
 
@@ -33,13 +33,15 @@ type Generator interface {
 // provider payloads never enter it or the scorecard.
 type RunnerConfig struct {
 	// DevelopmentCorpus prevents exposed development evidence from certifying.
-	DevelopmentCorpus bool
-	Trials            int
-	Profile           string
-	Generator         ModelIdentity
-	Judge             ModelIdentity
-	ResourceBudget    ResourceBudget
-	Contract          *CertificationContract
+	DevelopmentCorpus    bool
+	Trials               int
+	Profile              string
+	Generator            ModelIdentity
+	Judge                ModelIdentity
+	ResourceBudget       ResourceBudget
+	GeneratorReservation InferenceReservation
+	JudgeReservation     InferenceReservation
+	Contract             *CertificationContract
 }
 
 // CertificationContract identifies every versioned input that makes a planner
@@ -196,19 +198,20 @@ type Observer interface {
 }
 
 type resourceBoundaryObserver interface {
-	beginResourceRun(ResourceBudget, *resourceAccumulator, *resourceAccumulator)
+	beginResourceRun(ResourceBudget, InferenceReservation, *resourceAccumulator, *resourceAccumulator)
 }
 
 var errProviderBudgetExhausted = errors.New("evaluation provider budget exhausted")
 
 type providerResourceLedger struct {
-	limits ResourceBudget
-	run    *resourceAccumulator
-	suite  *resourceAccumulator
+	limits      ResourceBudget
+	reservation InferenceReservation
+	run         *resourceAccumulator
+	suite       *resourceAccumulator
 }
 
 func (l *providerResourceLedger) beforeCall() string {
-	return resourceBudgetBeforeNextCall(l.limits, l.run, l.suite, true)
+	return resourceBudgetBeforeReservedCall(l.limits, l.reservation, l.run, l.suite, true)
 }
 
 func (l *providerResourceLedger) afterCall(call InferenceCall) string {
@@ -315,7 +318,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				if !ok {
 					result.addFailures(FailureStageBudgetExhausted, "budget_exhausted: generator provider-boundary observation is required to enforce resource ceilings")
 				} else {
-					boundaryObserver.beginResourceRun(r.config.ResourceBudget, runUsage, suiteUsage)
+					boundaryObserver.beginResourceRun(r.config.ResourceBudget, r.config.GeneratorReservation, runUsage, suiteUsage)
 					boundaryBudget = true
 				}
 			}
@@ -412,7 +415,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 					result.addFailures(FailureStageJudge, result.JudgeError)
 				}
 				if evidenceErr == nil {
-					if budgetMessage := resourceBudgetBeforeNextCall(r.config.ResourceBudget, runUsage, suiteUsage, true); budgetMessage != "" {
+					if budgetMessage := resourceBudgetBeforeReservedCall(r.config.ResourceBudget, r.config.JudgeReservation, runUsage, suiteUsage, true); budgetMessage != "" {
 						result.addFailures(FailureStageBudgetExhausted, budgetMessage)
 					}
 				}
@@ -964,6 +967,53 @@ func resourceBudgetBeforeNextCall(limits ResourceBudget, run, suite *resourceAcc
 			if run.spend.cmp(maxRunSpend) >= 0 {
 				return "budget_exhausted: per-run spend ceiling reached before provider call"
 			}
+		}
+	}
+	return ""
+}
+
+func resourceBudgetBeforeReservedCall(limits ResourceBudget, reservation InferenceReservation, run, suite *resourceAccumulator, includeRun bool) string {
+	if message := resourceBudgetBeforeNextCall(limits, run, suite, includeRun); message != "" {
+		return message
+	}
+	if reservation.Tokens < 0 {
+		return "budget_exhausted: provider token reservation is invalid"
+	}
+	if reservation.Tokens > 0 {
+		suiteTokens, ok := checkedAdd(suite.tokens, reservation.Tokens)
+		if !ok {
+			return "budget_exhausted: suite token reservation overflow"
+		}
+		if limits.MaxTokensPerSuite > 0 && suiteTokens > limits.MaxTokensPerSuite {
+			return "budget_exhausted: suite token reservation exceeds the declared ceiling"
+		}
+		if includeRun {
+			runTokens, ok := checkedAdd(run.tokens, reservation.Tokens)
+			if !ok {
+				return "budget_exhausted: per-run token reservation overflow"
+			}
+			if limits.MaxTokensPerRun > 0 && runTokens > limits.MaxTokensPerRun {
+				return "budget_exhausted: per-run token reservation exceeds the declared ceiling"
+			}
+		}
+	}
+	if reservation.Spend == "" {
+		return ""
+	}
+	reservedSpend, valid := parseExactDecimal(reservation.Spend)
+	if !valid {
+		return "budget_exhausted: provider spend reservation is invalid"
+	}
+	if limits.MaxSpendPerSuite != "" {
+		maxSuiteSpend, valid := parseExactDecimal(limits.MaxSpendPerSuite)
+		if !valid || suite.spend.add(reservedSpend).cmp(maxSuiteSpend) > 0 {
+			return "budget_exhausted: suite spend reservation exceeds an invalid or declared ceiling"
+		}
+	}
+	if includeRun && limits.MaxSpendPerRun != "" {
+		maxRunSpend, valid := parseExactDecimal(limits.MaxSpendPerRun)
+		if !valid || run.spend.add(reservedSpend).cmp(maxRunSpend) > 0 {
+			return "budget_exhausted: per-run spend reservation exceeds an invalid or declared ceiling"
 		}
 	}
 	return ""

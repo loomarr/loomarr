@@ -29,6 +29,8 @@ type JudgeScores struct {
 
 type modelJudge struct{ provider llm.Provider }
 
+const judgeMaxTokens = 512
+
 func (j modelJudge) Score(ctx context.Context, evidence JudgeEvidence) (JudgeScores, error) {
 	bounded, err := boundJudgeEvidence(evidence)
 	if err != nil {
@@ -91,7 +93,7 @@ Reply with ONLY this JSON: {"overall": <0..1>, "relevance": <0..1>, "serendipity
 	resp, err := j.Chat(ctx, []llm.Message{
 		{Role: llm.System, Content: "You are a precise, terse evaluation judge. You output only the requested JSON."},
 		{Role: llm.User, Content: prompt},
-	}, llm.ChatOptions{JSONMode: true})
+	}, llm.ChatOptions{JSONMode: true, MaxTokens: judgeMaxTokens})
 	if err != nil {
 		return JudgeScores{Attribution: resp.Attribution}, fmt.Errorf("judge call failed: %w", err)
 	}
