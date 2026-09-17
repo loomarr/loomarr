@@ -341,7 +341,7 @@ Individual destinations show a compact Settings breadcrumb/back action and one *
 setting** affordance. The persistent top-level Settings matrix and nested System matrix are removed.
 `/settings/system` is a grouped server/troubleshooting landing page, while its task pages remain
 path-addressable. The one-field General surface is folded into Access and devices, as is the existing
-Security content; the superseded General route is removed. Destination changes use paths. Finder
+Security content; the superseded General and Security routes are removed. Destination changes use paths. Finder
 text, disclosure state, and table filters remain local state rather than destination routing.
 
 The established destination behavior remains unchanged: Connections owns its live tests and
@@ -381,7 +381,7 @@ Two consequences worth stating, because both are easy to "fix" wrongly later:
   secrets (`playout_token`, the API token) are a separate registry (`internal/settings/secrets.go`)
   and are not settings entries at all — the API's provenance enum is exactly env/db/default.
   A fourth chip would render a state the backend never sends. Those secrets have their own panel
-  on **Security**, where view/copy/regenerate belong.
+  under **Access and devices**, where view/copy/regenerate belong.
 - **The compact control has no `<label>`, so it must carry `aria-labelledby`** pointing at the
   row's visible **Key** cell. Naming it by `title` alone is an axe `label-title-only` violation
   rated *serious*: a sighted mouse user gets a tooltip, a screen-reader user gets an unnamed text
@@ -445,7 +445,7 @@ Connections applies the same rule to service-owned identifiers. Loomarr automati
 Tunarr's Default transcode profile and the first Sonarr/Radarr profile and root folder when their
 fields are blank. Their free-form identifiers are therefore labelled as **overrides** and remain
 behind the connection block's Advanced disclosure; the ordinary path asks only how to reach the
-service. Security likewise keeps `cookie.secure` behind Advanced because `auto` follows the request
+service. Access and devices likewise keeps `cookie.secure` behind Advanced because `auto` follows the request
 and is the safe ordinary path; changing the transport policy is deployment troubleshooting, not a
 routine sign-in preference.
 
@@ -468,7 +468,7 @@ do not "stage" regenerating a secret, and a Save button next to *Run now* would 
 | --- | --- | --- |
 | **Select a model** | AI | Hot-swaps the live suggester (§8.1); the picker's whole point is trying one |
 | **Pull a model** | AI | A long streaming download with its own progress, not a value |
-| **Regenerate a secret** | Security | Destructive and irreversible — it invalidates the old value on the spot (§4) |
+| **Regenerate a secret** | Access and devices | Destructive and irreversible — it invalidates the old value on the spot (§4) |
 | **Run a job now** | System → Tasks | Triggers work; there is no "unsaved run" |
 
 Everything else on every page goes through the bar. A fifth exception should be argued for
