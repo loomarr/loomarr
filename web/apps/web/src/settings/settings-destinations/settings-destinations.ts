@@ -12,6 +12,7 @@ type FillerSettingsSection =
   | "tools";
 
 type SettingsStaticDestinationPath =
+  | "/settings/access"
   | "/settings/general"
   | "/settings/connections"
   | "/settings/ai"
@@ -103,7 +104,7 @@ const SETTINGS_DESTINATIONS = [
     description: "Set the country and local area Loomarr uses for relevant content.",
     aliases: ["where I live", "country", "city", "area", "market", "geography"],
     group: "setup",
-    path: "/settings/general",
+    path: "/settings/access",
     role: "admin",
     browse: true,
   }),
@@ -114,7 +115,7 @@ const SETTINGS_DESTINATIONS = [
     description: "Set the Loomarr address people can open from invitations and recovery links.",
     aliases: ["public URL", "invitation link", "recovery link", "recipient address", "share"],
     group: "access",
-    path: "/settings/general",
+    path: "/settings/access",
     role: "admin",
     browse: true,
   }),
