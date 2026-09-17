@@ -90,6 +90,37 @@ const (
 	GroupAdvanced Group = "advanced"
 )
 
+// Owner is the stable task that owns editing a setting. It is deliberately not a
+// browser route: the API carries this identifier and the frontend destination catalog
+// decides which path and wording represent the task (config-design §2, §5).
+type Owner string
+
+const (
+	OwnerConnections   Owner = "settings.connections"
+	OwnerAI            Owner = "settings.ai"
+	OwnerDefaults      Owner = "settings.defaults"
+	OwnerNotifications Owner = "settings.notifications"
+	OwnerLocation      Owner = "settings.location"
+	OwnerSharing       Owner = "settings.sharing"
+	OwnerAccess        Owner = "settings.access"
+	OwnerPlayback      Owner = "settings.playback"
+	OwnerStorage       Owner = "settings.storage"
+	OwnerBackup        Owner = "settings.backup"
+	OwnerTasks         Owner = "settings.tasks"
+	OwnerDiagnostics   Owner = "settings.diagnostics"
+	OwnerAdvanced      Owner = "settings.advanced"
+
+	OwnerFillerFolders   Owner = "filler.folders"
+	OwnerFillerDownloads Owner = "filler.downloads"
+	OwnerFillerStorage   Owner = "filler.storage"
+	OwnerFillerIncoming  Owner = "filler.incoming"
+	OwnerFillerBreaks    Owner = "filler.breaks"
+	OwnerFillerReview    Owner = "filler.review"
+	OwnerFillerPlayback  Owner = "filler.playback"
+	OwnerFillerLimits    Owner = "filler.limits"
+	OwnerFillerTools     Owner = "filler.tools"
+)
+
 // Feature is a capability gated on settings completeness (config-design §7). A
 // setting's RequiredFor names the feature it's a prerequisite for; the computed
 // feature set drives the API 409s, the tab empty states, and the checklist —
@@ -133,6 +164,7 @@ type Setting struct {
 	Label        string // human label for workflow forms; raw-key views still show Key
 	EnvVar       string // the env pin, e.g. "LIBRARY_URL" (config-design §1)
 	Group        Group
+	Owner        Owner // one stable editing task; frontend presentation and paths stay out of the registry
 	Kind         Kind
 	Presentation Presentation // optional richer editor semantics beyond Kind
 	Apply        ApplyTiming  // empty/live = next read; restart = next app generation
