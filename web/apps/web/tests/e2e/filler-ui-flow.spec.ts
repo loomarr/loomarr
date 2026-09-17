@@ -5,14 +5,14 @@ test("Filler keeps its workspace stable and settings focused without losing edit
   const backend = await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
   await page.goto("/filler/manage");
   await page.getByRole("link", { name: "Automatic download settings" }).click();
-  await expect(page).toHaveURL(/section=downloads/);
+  await expect(page).toHaveURL(/\/filler\/settings\/downloads$/);
   await expect(page.getByRole("heading", { level: 1, name: "Filler", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Automatic downloads", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Clip folders", exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Processing tools", exact: true })).toHaveCount(0);
   await page.getByRole("spinbutton", { name: "Add up to", exact: true }).fill("4");
   await page.getByRole("link", { name: "Storage limits", exact: true }).click();
-  await expect(page).toHaveURL(/section=storage/);
+  await expect(page).toHaveURL(/\/filler\/settings\/storage$/);
   await expect(page.getByRole("spinbutton", { name: "Automatic-download catalog limit" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Automatic downloads", exact: true })).toHaveCount(0);
   await page.getByRole("spinbutton", { name: "Automatic-download catalog limit" }).fill("1000");
