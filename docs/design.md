@@ -123,8 +123,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | ---: | --- |
 | `catalog` | 6 | `library`, `provision` |
 | `contact` | 5 | — |
-| `diagnostics` | 8 | — |
-| `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
+| `diagnostics` | 8 | `storagegovernor` |
+| `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `storagegovernor`, `taxonomy` |
 | `filleradmission` | 7 | — |
 | `fillerbakeoff` | 9 | `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
 | `fillercorpus` | 7 | — |
@@ -146,6 +146,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 18 | `provision` |
 | `scheduler` | 6 | `store` |
+| `storagegovernor` | 5 | — |
 | `store` | 15 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
@@ -160,8 +161,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`contact`** · 5 importers
   Owns person contact-address identity and normalization (§11).
-- **`diagnostics`** · 8 importers
-  Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
@@ -204,7 +203,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Validates the repository's release publication policy.
 - **`secretprotection`** · 3 importers
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
-- **`storagegovernor`**
+- **`storagegovernor`** · 5 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
 - **`taxonomy`** · 5 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
@@ -229,6 +228,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 1**
 
+- **`diagnostics`** · 8 importers · → `storagegovernor`
+  Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`fillerdecision`** · 4 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`holidayvocab`** · 2 importers · → `textmatch`
@@ -239,8 +240,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`openroutermedia`** · 7 importers · → `fillereval`
   Owns Loomarr's bounded OpenRouter structured-media transport.
-- **`prepared`** · 4 importers · → `diagnostics`, `media`
-  Owns immutable, reusable playout publications.
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
 - **`testkit/playoutcertfixture`** · → `testkit/httpfixture`
@@ -252,6 +251,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
+- **`prepared`** · 4 importers · → `diagnostics`, `media`, `storagegovernor`
+  Owns immutable, reusable playout publications.
 - **`schedule`** · 18 importers · → `holidayvocab`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
@@ -307,7 +308,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 7**
 
-- **`filler`** · 11 importers · → `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy`
+- **`filler`** · 11 importers · → `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillersafetycorpus`** · 1 importer · → `fillercorpus`, `fillersafety`, `fillersafetycert`
   Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
@@ -316,7 +317,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 8**
 
-- **`clipfetch`** · 1 importer · → `filler`, `proctree`
+- **`clipfetch`** · 1 importer · → `filler`, `proctree`, `storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillersafetyreview`** · → `fillerbakeoff`, `fillereval`, `fillersafety`, `fillersafetycert`, `fillersafetycorpus`, `httpx`, `mediatools`, `openroutermedia`
   Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.
@@ -404,7 +405,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 14**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
