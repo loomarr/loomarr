@@ -1,3 +1,5 @@
+import type { ReviewVariant } from "@/suggest/review-prototype";
+
 type GuidePageProps = {
   // Seeds the inline describe panel and opens it on arrival. The wizard's guided first channel
   // hands off with `?intent=` (§13's blank-page killer); the route forwards it here. Absent on
@@ -5,6 +7,8 @@ type GuidePageProps = {
   initialIntent?: string;
   // Opaque Job id used to resume an authorized recovery flow from My Requests.
   initialJobId?: string;
+  // Throwaway design-comparison hook. Removed when a production direction is selected.
+  reviewVariant?: ReviewVariant;
 };
 
 export type { GuidePageProps };

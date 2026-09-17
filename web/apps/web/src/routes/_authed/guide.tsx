@@ -2,6 +2,7 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { createFileRoute } from "@tanstack/react-router";
 import { GuidePage } from "@/channels/guide-page";
 import { defaultGuideWindow } from "@/channels/guide-window";
+import type { ReviewVariant } from "@/suggest/review-prototype";
 
 // The channels surface (§12) — headed "Channels", it is both the cross-channel time grid and
 // the app's one origination door. Readable by any authenticated user: the guide is
@@ -14,19 +15,25 @@ import { defaultGuideWindow } from "@/channels/guide-window";
 interface GuideSearch {
   intent?: string;
   job?: string;
+  variant?: ReviewVariant;
 }
 
 const GuideScreen = () => {
-  const { intent, job } = Route.useSearch();
-  return <GuidePage initialIntent={intent} initialJobId={job} />;
+  const { intent, job, variant } = Route.useSearch();
+  return <GuidePage initialIntent={intent} initialJobId={job} reviewVariant={variant} />;
 };
 
 const Route = createFileRoute("/_authed/guide")({
   component: GuideScreen,
-  validateSearch: (search: Record<string, unknown>): GuideSearch => ({
-    intent: typeof search.intent === "string" ? search.intent : undefined,
-    job: typeof search.job === "string" ? search.job : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): GuideSearch => {
+    const variant =
+      search.variant === "a" || search.variant === "b" || search.variant === "c" ? search.variant : undefined;
+    return {
+      intent: typeof search.intent === "string" ? search.intent : undefined,
+      job: typeof search.job === "string" ? search.job : undefined,
+      variant,
+    };
+  },
   // Warm the guide before the component mounts, so arriving from the nav paints rows rather
   // than a spinner. With `defaultPreload: "intent"` this runs on HOVER, which buys the whole
   // round trip: the request is already in flight (or done) by the time the click lands.

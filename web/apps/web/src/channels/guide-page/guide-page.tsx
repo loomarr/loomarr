@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { cn } from "@/lib/utils";
 import { type ChannelSuggestionStage, ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
+import { SuggestionReviewPrototype } from "@/suggest/review-prototype";
 import { clearSuggestionDraft, readSuggestionDraft } from "@/suggest/suggestion-draft";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
@@ -94,7 +95,7 @@ const dayLabel = (offset: number, now: number): string => {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
-const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
+const GuidePage = ({ initialIntent, initialJobId, reviewVariant }: GuidePageProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -124,8 +125,12 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   // Opens on arrival when the wizard handed off a template (§13), so the operator lands on a
   // filled form rather than a bare grid wondering where their pick went. Lazy initializer:
   // read once at mount, so closing it stays closed.
-  const [adding, setAdding] = useState(() => Boolean(initialIntent || initialJobId || readSuggestionDraft()));
-  const [suggestionStage, setSuggestionStage] = useState<ChannelSuggestionStage>("describe");
+  const [adding, setAdding] = useState(() =>
+    Boolean(reviewVariant || initialIntent || initialJobId || readSuggestionDraft()),
+  );
+  const [suggestionStage, setSuggestionStage] = useState<ChannelSuggestionStage>(
+    reviewVariant ? "review" : "describe",
+  );
 
   // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
   // panel with a template the operator already dismissed — and right after the wizard, on a
@@ -134,7 +139,9 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   const closePanel = () => {
     setAdding(false);
     clearSuggestionDraft();
-    if (initialIntent || initialJobId) void navigate({ to: "/guide", search: {}, replace: true });
+    if (initialIntent || initialJobId || reviewVariant) {
+      void navigate({ to: "/guide", search: {}, replace: true });
+    }
   };
 
   // A recovered job is deliberately resumable from the URL, but a user who explicitly starts
@@ -287,13 +294,17 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
       {/* The inline create surface — describe a channel, review, approve, land on it. */}
       {adding && (
         <div className="border-border border-b bg-card px-7 py-4.5">
-          <ChannelSuggestPanel
-            initialIntent={initialIntent}
-            initialJobId={initialJobId}
-            onCreated={onCreated}
-            onStartFresh={startFresh}
-            onStageChange={setSuggestionStage}
-          />
+          {reviewVariant ? (
+            <SuggestionReviewPrototype variant={reviewVariant} />
+          ) : (
+            <ChannelSuggestPanel
+              initialIntent={initialIntent}
+              initialJobId={initialJobId}
+              onCreated={onCreated}
+              onStartFresh={startFresh}
+              onStageChange={setSuggestionStage}
+            />
+          )}
         </div>
       )}
 
