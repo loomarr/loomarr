@@ -66,7 +66,7 @@ func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.L
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
 func buildSyncer(st store.Store, set resolved, layout filler.Layout, log *slog.Logger,
-	fillerProg *programmer.Tunarr, lib *library.Client) *filler.Syncer {
+	fillerProg *programmer.Tunarr, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := filler.DirSource{
 		Layout: layout,
 		Probe:  filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
@@ -96,7 +96,8 @@ func buildSyncer(st store.Store, set resolved, layout filler.Layout, log *slog.L
 
 	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, layout, time.Now, log).
 		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") }).
-		WithAcquisitionManifests(st)
+		WithAcquisitionManifests(st).
+		WithStorageGovernor(governor)
 
 	// Keep the library scanner wired while the connection is empty. The adapter treats the
 	// library module's explicit unconfigured result as an empty optional source, then starts
@@ -122,7 +123,7 @@ func buildSyncer(st store.Store, set resolved, layout filler.Layout, log *slog.L
 // ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has always
 // described these as defaulting to the vendored binaries, and only the Docker image set them, so
 // a source build had ingest off with the tools installed.
-func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifacts clipfetch.ArtifactWriter) *clipfetch.Ingestor {
+func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifacts clipfetch.ArtifactWriter, governor *storagegovernor.Governor) *clipfetch.Ingestor {
 	ytPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
 	ffPath := resolveTool(set.str("ingest.ffmpeg_path"), "ffmpeg")
 	if ffPath == "" {
@@ -136,13 +137,6 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 	var ytDL clipfetch.Downloader
 	if ytPath != "" {
 		ytDL = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
-	}
-	governor, governorErr := storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
-		{Path: layout.ClipDir(), Domain: storagegovernor.DomainFiller},
-		{Path: layout.WatchDir(), Domain: storagegovernor.DomainFiller},
-	}, nil)
-	if governorErr != nil {
-		log.Error("filler storage governor is unavailable", "err", governorErr)
 	}
 	log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
 	return clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(), layout.WatchDir(), log).

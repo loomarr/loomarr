@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -85,6 +86,13 @@ func buildFillerSubsystem(
 			}
 		}
 	}
+	storageGovernor, storageErr := storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
+		{Path: layout.ClipDir(), Domain: storagegovernor.DomainFiller},
+		{Path: layout.WatchDir(), Domain: storagegovernor.DomainFiller},
+	}, nil)
+	if storageErr != nil {
+		log.Error("filler storage governor is unavailable", "err", storageErr)
+	}
 	artifactRecoveryCtx, artifactRecoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	if recovered, err := clipfetch.RecoverAcquisitionArtifacts(artifactRecoveryCtx, layout.WatchDir(), layout.ClipDir(), st, time.Now); err != nil {
 		log.Warn("could not recover filler acquisition artifacts", "err", err)
@@ -97,9 +105,9 @@ func buildFillerSubsystem(
 	fillerProgrammer := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
-	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient)
+	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	taggerProvider, tagger := buildTagger(st, set, layout, log, metricRecorder)
-	fetcher := buildFetcher(set, layout, log, st)
+	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder)
 	ytDlpPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
 	adapter := fillerServiceAdapter{

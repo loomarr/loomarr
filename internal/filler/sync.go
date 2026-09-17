@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // This file is the catalog sync (§10, revised by §9.1): loomarr scans FILLER_DIR
@@ -154,6 +156,7 @@ type Syncer struct {
 	// is the honest state for an install with no media server configured.
 	libraries    *LibraryScanner
 	acquisitions AcquisitionManifestStore
+	storage      *storagegovernor.Governor
 }
 
 // drainScanSources reads every registered folder and library into the watch folder (§10 V38c),
@@ -216,7 +219,7 @@ func (s *Syncer) drainScanSources(ctx context.Context) {
 				s.warnSource("filler: skipped a watched folder that overlaps the clip library", src, err)
 				continue
 			}
-			if res, err := TakeInFrom(sourceDir, s.dir, true, src.ID, s.logAttrs); err != nil {
+			if res, err := takeInFrom(ctx, sourceDir, s.dir, true, src.ID, s.logAttrs, nil, s.storage); err != nil {
 				s.warnSource("filler: could not drain a watched folder", src, err)
 			} else if s.log != nil && res.Taken > 0 {
 				s.log.Info("filler: filed clips from a watched folder",
@@ -240,7 +243,7 @@ func (s *Syncer) drainScanSources(ctx context.Context) {
 					"source", src.ID, "library", src.URI, "copied", res.Copied)
 			}
 			if res.Copied > 0 {
-				if _, err := TakeInFrom(watch, s.dir, true, src.ID, s.logAttrs); err != nil {
+				if _, err := takeInFrom(ctx, watch, s.dir, true, src.ID, s.logAttrs, nil, s.storage); err != nil {
 					s.warnSource("filler: could not file media-server library clips", src, err)
 				}
 			}
@@ -307,6 +310,13 @@ func (s *Syncer) WithAcquisitionManifests(manifests AcquisitionManifestStore) *S
 	return s
 }
 
+// WithStorageGovernor protects cross-filesystem intake copies. Same-filesystem
+// filing remains an atomic rename and consumes no second copy.
+func (s *Syncer) WithStorageGovernor(governor *storagegovernor.Governor) *Syncer {
+	s.storage = governor
+	return s
+}
+
 // SyncResult reports what a sync did (for the API + logs).
 type SyncResult struct {
 	Total    int // clips in the Tunarr local filler source
@@ -358,7 +368,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	// Failures are logged, not returned: a watch folder that cannot be drained (a permissions
 	// problem, a full disk) must not take the catalog down with it. The clips already filed are
 	// still there, and the arrivals stay put for the next pass.
-	if taken, err := TakeInWithAcquisitionBinding(s.watch, s.dir, false, s.logAttrs, s.bindAcquisitionArtifact(ctx)); err != nil {
+	if taken, err := takeInFrom(ctx, s.watch, s.dir, false, "", s.logAttrs, s.bindAcquisitionArtifact(ctx), s.storage); err != nil {
 		if s.log != nil {
 			s.log.Warn("filler: could not drain the watch folder; scanning what is already filed",
 				"watch", s.watch, "err", err)
