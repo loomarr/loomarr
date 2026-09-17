@@ -27,18 +27,32 @@ afterEach(() => window.sessionStorage.clear());
 // was the reason four required SettingEntry fields could go missing elsewhere in the suite
 // without anything noticing they were required at all.
 const SETTINGS = [
-  setting({ key: "library.url", group: "connections.media_server", kind: "url", value: "http://emby:8096" }),
+  setting({
+    key: "library.url",
+    owner: "settings.connections",
+    group: "connections.media_server",
+    kind: "url",
+    value: "http://emby:8096",
+  }),
   setting({
     key: "library.token",
+    owner: "settings.connections",
     group: "connections.media_server",
     kind: "secret",
     secret: true,
     preview: "…a1b2",
     value: "",
   }),
-  setting({ key: "tunarr.url", group: "connections.tunarr", kind: "url", value: "http://tunarr:8000" }),
+  setting({
+    key: "tunarr.url",
+    owner: "settings.connections",
+    group: "connections.tunarr",
+    kind: "url",
+    value: "http://tunarr:8000",
+  }),
   setting({
     key: "session.ttl",
+    owner: "settings.access",
     label: "Sign-in lifetime",
     group: "users_security",
     kind: "duration",
@@ -46,6 +60,7 @@ const SETTINGS = [
   }),
   setting({
     key: "cookie.secure",
+    owner: "settings.access",
     label: "Secure cookies",
     group: "users_security",
     kind: "enum",
@@ -57,15 +72,39 @@ const SETTINGS = [
       { value: "never", label: "Never (local dev only)" },
     ],
   }),
-  setting({ key: "job.workers", group: "advanced", kind: "int", value: "2", provenance: "env" }),
-  setting({ key: "llm.provider", group: "ai", kind: "enum", value: "ollama" }),
-  setting({ key: "llm.url", group: "ai", kind: "url", value: "http://localhost:11434" }),
+  setting({
+    key: "job.workers",
+    owner: "settings.advanced",
+    group: "advanced",
+    kind: "int",
+    value: "2",
+    provenance: "env",
+  }),
+  setting({ key: "llm.provider", owner: "settings.ai", group: "ai", kind: "enum", value: "ollama" }),
+  setting({
+    key: "llm.url",
+    owner: "settings.ai",
+    group: "ai",
+    kind: "url",
+    value: "http://localhost:11434",
+  }),
   setting({
     key: "access.public_url",
+    owner: "settings.sharing",
     label: "Recipient-facing Loomarr address",
     group: "general",
     kind: "url",
     value: "https://loomarr.example.com",
+  }),
+  setting({
+    key: "filler.fetch.max_disk_gb",
+    label: "Automatic-download storage limit",
+    owner: "filler.storage",
+    envVar: "FILLER_FETCH_MAX_DISK_GB",
+    group: "filler",
+    kind: "int",
+    value: "20",
+    advanced: true,
   }),
 ];
 
@@ -135,6 +174,39 @@ const renderAt = (path: string) => {
 };
 
 describe("Settings", () => {
+  it("opens on a task-based home and finds the exact owner of a setting", async () => {
+    stubSettings();
+    renderAt("/settings");
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Set up Loomarr" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Access and devices" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Troubleshoot" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Filler" })).toBeInTheDocument();
+
+    const finder = screen.getByRole("searchbox", { name: "Find a setting" });
+    await userEvent.type(finder, "FILLER_FETCH_MAX_DISK_GB");
+    const match = await screen.findByRole("link", { name: /Automatic-download storage limit/ });
+    expect(match).toHaveAttribute("href", "/filler/settings/storage");
+
+    await userEvent.type(finder, "{ArrowDown}");
+    expect(match).toHaveFocus();
+  });
+
+  it("keeps task browsing available when a search has no matches", async () => {
+    stubSettings();
+    renderAt("/settings");
+
+    await userEvent.type(
+      await screen.findByRole("searchbox", { name: "Find a setting" }),
+      "not a real setting",
+    );
+    expect(await screen.findByText("No settings found")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /Connections/ })).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
+  });
+
   it("shows one notification provider list with SMTP as a peer provider", async () => {
     stubSettings();
     renderAt("/settings/notifications");
