@@ -343,7 +343,7 @@ optimizations can move without relaxing required release gates.
 | [#907](https://github.com/loomarr/loomarr/issues/907) | Prototype Apple SCA capability for source-level filler screening | Later / conditional |
 | [#837](https://github.com/loomarr/loomarr/issues/837) | Add the curated planner-model install, update, rollback, and offline UX | Later / conditional |
 | [#836](https://github.com/loomarr/loomarr/issues/836) | Verify planner-model compatibility and integrity before activation | Later / conditional |
-| [#835](https://github.com/loomarr/loomarr/issues/835) | Publish immutable planner-model releases with provenance and licenses | Later / conditional |
+| [#835](https://github.com/loomarr/loomarr/issues/835) | Publish immutable planner-model releases with reproducible provenance | Later / conditional |
 | [#834](https://github.com/loomarr/loomarr/issues/834) | Merge, quantize, package, and certify the selected planner model | Later / conditional |
 | [#832](https://github.com/loomarr/loomarr/issues/832) | Build a privacy-safe corpus of reviewed Loomarr tool-use traces | Later / conditional |
 | [#831](https://github.com/loomarr/loomarr/issues/831) | Benchmark stock local planner models and select at most two finalists | Later / conditional |

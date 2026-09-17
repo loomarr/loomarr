@@ -26,14 +26,14 @@ func TestBuildManifestCanonicalizesAndBindsReferenceHostEvidence(t *testing.T) {
 	if !bytes.Equal(artifact.JSON, again.JSON) || artifact.SHA256 != again.SHA256 {
 		t.Fatal("identical raw inputs did not produce an identical manifest")
 	}
-	want, err := os.ReadFile("testdata/planner-reference-host-v1.golden.json")
+	want, err := os.ReadFile("testdata/planner-reference-host-v2.golden.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(artifact.JSON, want) {
 		t.Fatalf("canonical manifest drifted\nwant:\n%s\ngot:\n%s", want, artifact.JSON)
 	}
-	const wantDigest = "46c78edcd8b08dfac708631561a4bc2f1f2b3ed526f334ecab4c1085aa5c16c4"
+	const wantDigest = "1f43642a158733c8974dd15b0c66701eda8c9951adcadffc300f0ae31669708b"
 	if artifact.SHA256 != wantDigest {
 		t.Fatalf("canonical manifest digest = %q, want %q", artifact.SHA256, wantDigest)
 	}
@@ -46,7 +46,7 @@ func TestBuildManifestCanonicalizesAndBindsReferenceHostEvidence(t *testing.T) {
 	}
 	text := string(artifact.JSON)
 	for _, want := range []string{
-		`"contract": "planner-reference-host-v1"`,
+		`"contract": "planner-reference-host-v2"`,
 		`"generatorProvider": "ollama"`,
 		`"generatorModel": "hf.co/loomarr/gemma:Q4_K_M"`,
 		`"physicalUnifiedMemoryBytes": 68719476736`,
@@ -304,10 +304,10 @@ func TestBuildManifestRejectsMalformedAdversarialAndOverBoundInputs(t *testing.T
 		want    string
 	}{
 		"unknown capture field": {
-			card: card, capture: bytes.Replace(validCapture, []byte(`"schemaVersion":1`), []byte(`"schemaVersion":1,"unknown":true`), 1), want: "unknown field",
+			card: card, capture: bytes.Replace(validCapture, []byte(`"schemaVersion":2`), []byte(`"schemaVersion":2,"unknown":true`), 1), want: "unknown field",
 		},
 		"duplicate capture field": {
-			card: card, capture: bytes.Replace(validCapture, []byte(`"schemaVersion":1`), []byte(`"schemaVersion":1,"schemaVersion":1`), 1), want: "duplicate object key",
+			card: card, capture: bytes.Replace(validCapture, []byte(`"schemaVersion":2`), []byte(`"schemaVersion":2,"schemaVersion":2`), 1), want: "duplicate object key",
 		},
 		"trailing capture": {card: card, capture: append(bytes.Clone(validCapture), []byte(`{}`)...), want: "trailing JSON value"},
 		"duplicate scorecard field": {
@@ -351,7 +351,7 @@ func validFixture(t *testing.T) ([]byte, capture, map[string][]byte, time.Time) 
 	)
 	card := []byte(`{"schemaVersion":10,"corpusVersion":"planner-certification-v3","profile":"m5-pro-gemma","generator":{"provider":"ollama","model":"` + modelTag + `"},"contract":{"corpusVersion":"planner-certification-v3","catalogFixtureSha256":"` + strings.Repeat("1", 64) + `","promptVersion":"planner-prompt-v1","toolSchemaVersion":"planner-tools-v1","scorerVersion":"planner-scorer-v3"},"assessment":{"performance":{"resourceStatus":"measured","resourceSource":"ollama:/api/ps","peakRamBytes":2147483648,"peakVramBytes":10737418240}},"cases":[{"case":"one","trials":3},{"case":"two","trials":3}],"certified":false}`)
 	captured := capture{
-		SchemaVersion: 1, Contract: contractVersion, RunID: "m5-pro-gemma-q4",
+		SchemaVersion: manifestSchemaVersion, Contract: contractVersion, RunID: "m5-pro-gemma-q4",
 		StartedAt:   time.Date(2026, 10, 15, 14, 0, 0, 0, time.UTC),
 		CompletedAt: time.Date(2026, 10, 15, 15, 0, 0, 0, time.UTC),
 		Model: modelCapture{
@@ -360,7 +360,6 @@ func validFixture(t *testing.T) ([]byte, capture, map[string][]byte, time.Time) 
 			GGUFFile: "gemma-Q4_K_M.gguf", GGUFSHA256: strings.Repeat("c", 64),
 			Quantization: "Q4_K_M", ContextLength: 8192, TemplateSHA256: sha256Text("template"),
 			ModelfileSHA256: sha256Text("FROM /Users/test/sha256-" + strings.Repeat("c", 64) + "\nPARAMETER num_ctx 8192\n"),
-			LicenseID:       "Gemma", LicenseSHA256: sha256Text("Gemma"),
 		},
 		Runtime: runtimeCapture{
 			OllamaVersion: "0.15.1", MacOSVersion: "27.0", MacOSBuild: "26A123",
@@ -386,12 +385,12 @@ func validEvidence(t *testing.T, captured capture) map[string][]byte {
 	t.Helper()
 	model := captured.Model
 	return map[string][]byte{
-		"huggingface-model.json":     []byte(`{"id":"` + model.SourceRepository + `","sha":"` + model.SourceRevision + `","cardData":{"license":"` + model.LicenseID + `"},"siblings":[{"rfilename":"` + model.GGUFFile + `","lfs":{"sha256":"` + model.GGUFSHA256 + `"}}]}`),
+		"huggingface-model.json":     []byte(`{"id":"` + model.SourceRepository + `","sha":"` + model.SourceRevision + `","siblings":[{"rfilename":"` + model.GGUFFile + `","lfs":{"sha256":"` + model.GGUFSHA256 + `"}}]}`),
 		"gguf-sha256.txt":            []byte(model.GGUFSHA256 + `  /Users/test/` + model.GGUFFile + "\n"),
 		"ollama-version.json":        []byte(`{"version":"` + captured.Runtime.OllamaVersion + `"}`),
 		"ollama-list.json":           []byte(`{"models":[{"name":"` + model.Tag + `","model":"` + model.Tag + `","digest":"` + model.OllamaDigest + `","details":{"quantization_level":"` + model.Quantization + `"}}]}`),
 		"ollama-load-request.json":   []byte(`{"model":"` + model.Tag + `","prompt":"","stream":false,"keep_alive":"30m","options":{"num_ctx":8192}}`),
-		"ollama-show.json":           []byte(`{"license":"Gemma","modelfile":"FROM /Users/test/sha256-` + model.GGUFSHA256 + `\nPARAMETER num_ctx 8192\n","template":"template","details":{"quantization_level":"Q4_K_M"}}`),
+		"ollama-show.json":           []byte(`{"modelfile":"FROM /Users/test/sha256-` + model.GGUFSHA256 + `\nPARAMETER num_ctx 8192\n","template":"template","details":{"quantization_level":"Q4_K_M"}}`),
 		"ollama-show-request.json":   []byte(`{"model":"` + model.Tag + `"}`),
 		"ollama-ps-cold-before.json": []byte(`{"models":[{"name":"unrelated-resident-model:Q4_K_M","model":"unrelated-resident-model:Q4_K_M","digest":"` + strings.Repeat("7", 64) + `","size":1024,"size_vram":1024,"context_length":8192}]}`),
 		"ollama-ps-warm-before.json": []byte(`{"models":[{"name":"` + model.Tag + `","model":"` + model.Tag + `","digest":"` + model.OllamaDigest + `","size":12884901888,"size_vram":10737418240,"context_length":8192}]}`),

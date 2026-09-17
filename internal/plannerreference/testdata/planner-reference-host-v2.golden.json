@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "contract": "planner-reference-host-v1",
+  "schemaVersion": 2,
+  "contract": "planner-reference-host-v2",
   "generatedAt": "2026-10-15T15:01:00Z",
   "runId": "m5-pro-gemma-q4",
   "startedAt": "2026-10-15T14:00:00Z",
@@ -29,9 +29,7 @@
     "quantization": "Q4_K_M",
     "contextLength": 8192,
     "templateSha256": "5cde0f1298f41f7d1c8b907a36992a7a513225a2615bd6e307bf1a9149b06b40",
-    "modelfileSha256": "cdffc70c1d335b1ba941370a44b6c8f00824e196b5c44e1b952d7a8e8be52a42",
-    "licenseId": "Gemma",
-    "licenseSha256": "67d5c7435efd8048b72ec16c4b6fe57405738ccb3351f828bc64885f7606fc4a"
+    "modelfileSha256": "cdffc70c1d335b1ba941370a44b6c8f00824e196b5c44e1b952d7a8e8be52a42"
   },
   "runtime": {
     "ollamaVersion": "0.15.1",
@@ -79,8 +77,8 @@
     },
     {
       "kind": "huggingface-model.json",
-      "sha256": "4bf605462bb959ff9e1f851b40c591b6238482995750eb93b50a151f29395c38",
-      "bytes": 238
+      "sha256": "ec69d823e19ce33585cae8bf338a25d0d0f898faaeb30004db3a9f6bf169f0e2",
+      "bytes": 207
     },
     {
       "kind": "ollama-list.json",
@@ -109,8 +107,8 @@
     },
     {
       "kind": "ollama-show.json",
-      "sha256": "38b2068435750c4d90b9c306baa0ea8294054da49f8e3d91fc412d89e372fd05",
-      "bytes": 212
+      "sha256": "0fa9398d2e928379e80edbd6bae6214c107b06255ce206716e6913b2f321e85f",
+      "bytes": 194
     },
     {
       "kind": "ollama-show-request.json",

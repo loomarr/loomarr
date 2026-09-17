@@ -1940,12 +1940,12 @@ A clean first answer is not mislabeled as recovery, and all three remain aggrega
 not hard safety failures.
 
 The October reference-host bake-off adds a separate, provider-free
-`planner-reference-host-v1` manifest around each planner scorecard. One deep module interface accepts
+`planner-reference-host-v2` manifest around each planner scorecard. One deep module interface accepts
 the exact raw scorecard bytes plus a bounded normalized capture and returns the canonical manifest;
 host-command execution remains an edge adapter and is not part of that interface. The module binds
 the scorecard SHA-256, schema/corpus/profile and generator identity; immutable Ollama artifact digest;
-source repository and revision; GGUF filename and SHA-256; quantization, context, template,
-Modelfile, and license identities; Ollama and macOS versions; architecture, hardware model, chip, and
+source repository and revision; GGUF filename and SHA-256; quantization, context, template, and
+Modelfile identities; Ollama and macOS versions; architecture, hardware model, chip, and
 physical unified memory; benchmark start/end times; declared sampling and cold/warm measured-suite
 protocol; and cold-before/warm-before/after resident-model evidence. The fixed raw evidence set is the
 Ollama version, inventory, show response, bounded empty-prompt preload request, and the three residency
@@ -2007,18 +2007,18 @@ prompts, viewing or request history, library inventories, Proposal approval/deni
 filesystem paths, and provider credentials are not training data. Any future use of real traces
 requires a prior design amendment that specifies affirmative consent, minimization and redaction,
 access and key custody, region/provider constraints, retention and deletion, incident response,
-human correction, and redistribution rights. A de-identified derivative is not assumed safe merely
+and human correction. A de-identified derivative is not assumed safe merely
 because direct identifiers were removed.
 
 **One release means one certified set of bytes.** The supported end-user artifact is a merged,
 quantized GGUF tested through the production Ollama path; a LoRA/QLoRA adapter and unquantized merge
-remain reproducibility artifacts, not something a household operator assembles. Redistributable
-datasets are versioned in dedicated Hugging Face dataset repositories under Loomarr's namespace,
+remain reproducibility artifacts, not something a household operator assembles. Training datasets
+are versioned in dedicated model-data repositories under Loomarr's namespace,
 training source and manifests live in the separate GitHub `loomarr-models` repository, the canonical
 model card and weights live in a version-pinned Hugging Face model repository under that same
 namespace, and the exact namespaced Ollama package is the convenience install target. Every release
 manifest records the base revision, dataset and training manifest, converter and quantizer, GGUF
-checksum, Ollama content digest, quantization, license/NOTICE material, evaluation revision,
+checksum, Ollama content digest, quantization, evaluation revision,
 prompt/tool contract, and minimum Loomarr and Ollama versions.
 
 Loomarr never selects `latest` for a curated release and never silently downloads or swaps
@@ -2027,7 +2027,7 @@ capability-probed, exercised with a bounded real tool-call canary, and only then
 previous model remains available for rollback until the operator removes it. The ordinary AI
 profile remains model-less, arbitrary compatible models remain selectable, and hosted/custom
 providers remain first-class. Model weights are never embedded in the Loomarr image: application
-and model releases have independent size, hardware, licensing, update, and rollback lifecycles.
+and model releases have independent size, hardware, update, and rollback lifecycles.
 
 ### 8.1 Model selection & system probe (local + hosted)
 
