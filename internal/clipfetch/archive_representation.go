@@ -99,6 +99,18 @@ func positiveArchiveInt(raw string) int64 {
 	return value
 }
 
+// positiveArchiveDimension keeps provider metadata deterministic across every supported Go
+// architecture. A dimension outside the positive 32-bit range is corrupt metadata and remains
+// unknown instead of being narrowed through the host's platform-sized int.
+func positiveArchiveDimension(raw string) int {
+	value := positiveArchiveInt(raw)
+	const maximumPortableInt = int64(1<<31 - 1)
+	if value > maximumPortableInt {
+		return 0
+	}
+	return int(value)
+}
+
 // plausibleArchiveBitrate returns bits/second only inside a deliberately broad compressed-video
 // envelope. A corrupt byte or duration claim must not win selection by manufacturing infinity.
 func plausibleArchiveBitrate(bytes, durationMS int64) int64 {

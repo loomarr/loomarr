@@ -243,7 +243,11 @@ func estimateArchiveItem(meta metadataResp) (storagegovernor.MediaBudget, error)
 	if !ok {
 		return storagegovernor.MediaBudget{}, ErrEstimateUnavailable
 	}
-	return mediaBudget(positiveArchiveInt(file.Size), int64(parseLengthMS(file.Length)), int(positiveArchiveInt(file.Height)))
+	return mediaBudget(
+		positiveArchiveInt(file.Size),
+		int64(parseLengthMS(file.Length)),
+		positiveArchiveDimension(file.Height),
+	)
 }
 
 // walkCollection lists a collection's member items and walks each (capped).

@@ -221,6 +221,25 @@ func TestArchiveEstimateBudgetsTheRepresentationDownloadWillSelect(t *testing.T)
 	}
 }
 
+func TestArchiveEstimateDoesNotNarrowProviderHeight(t *testing.T) {
+	t.Parallel()
+	budget, err := estimateArchiveItem(metadataResp{Files: []archiveFile{{
+		Name: "corrupt-height.mp4", Format: "MPEG4", Source: "original",
+		Length: "1", Height: "9223372036854775807",
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Provider dimensions outside the portable positive-int range are corrupt metadata, not a
+	// real resolution. Every architecture must therefore use the governor's bounded unknown-
+	// resolution fallback: 20 Mbit/s for one second plus the fixed 32 MiB acquisition margin.
+	// Direct int64-to-int narrowing made this architecture-dependent.
+	const wantWriteCeiling = int64(2_500_000 + 32<<20)
+	if budget.WriteCeilingBytes != wantWriteCeiling {
+		t.Fatalf("write ceiling = %d, want %d without platform-sized narrowing", budget.WriteCeilingBytes, wantWriteCeiling)
+	}
+}
+
 func TestDiskSinkStopsAndRemovesAnOverCeilingPartialDownload(t *testing.T) {
 	t.Parallel()
 	target := filepath.Join(t.TempDir(), "clip.mp4")
