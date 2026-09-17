@@ -201,9 +201,9 @@ func TestWorkflowInspectProviderFailureOffersAdminAISettings(t *testing.T) {
 func assertFailureCopy(t *testing.T, terminal string, failure *Failure) {
 	t.Helper()
 	want := map[string][2]string{
-		suggest.TerminalRetrievalFailure:    {"Loomarr couldn't retrieve the catalog information needed for this request.", "If this keeps happening, check the title sources in Connections."},
-		suggest.TerminalReferenceUnreadable: {"Loomarr couldn't read a reference for this request.", "Check that the reference is a public page that does not require sign-in, or provide a few example titles and try again."},
-		suggest.TerminalInvalidToolCalls:    {"The AI provider did not produce a usable catalog-search instruction.", "Try again later; ask an administrator to check AI settings if this keeps happening."},
+		suggest.TerminalRetrievalFailure:    {"Loomarr couldn't check the title sources right now.", "Try again in a few minutes. If this keeps happening, check Connections."},
+		suggest.TerminalReferenceUnreadable: {"Loomarr couldn't open the page in your description.", "Use a public page that does not require sign-in, or add a few example titles instead."},
+		suggest.TerminalInvalidToolCalls:    {"Loomarr couldn't finish searching for titles.", "Try again later. If this keeps happening, ask an administrator to check AI settings."},
 	}[terminal]
 	if want != [2]string{} && (failure.Message != want[0] || failure.Guidance != want[1]) {
 		t.Fatalf("failure copy = %+v", failure)
@@ -453,31 +453,31 @@ func TestWorkflowInspectFailureReturnsSafeGuidanceAndRoleActions(t *testing.T) {
 		{
 			name: "grounding miss can be edited or retried", code: FailureNoGroundedTitles,
 			viewer: Viewer{UserID: "member-1"}, wantCode: FailureNoGroundedTitles,
-			wantMessage: "No grounded titles matched this request. Try again, or edit its description and constraints.",
+			wantMessage: "We couldn't find any titles that fit this description.",
 			wantActions: []Action{ActionEdit, ActionRetry},
 		},
 		{
 			name: "discovery budget does not blame the request", code: FailureBudgetExhausted,
 			viewer: Viewer{UserID: "member-1"}, wantCode: FailureBudgetExhausted,
-			wantMessage: "Loomarr couldn't finish searching for titles.",
+			wantMessage: "The search ended before Loomarr found enough good matches.",
 			wantActions: []Action{ActionRetry},
 		},
 		{
 			name: "provider diagnostic is generalized for member", code: FailureGenerationFailed,
 			viewer: Viewer{UserID: "member-1"}, wantCode: FailureGenerationFailed,
-			wantMessage: "Loomarr couldn't generate this channel. Try again later.",
+			wantMessage: "Loomarr couldn't finish this channel. Try again later.",
 			wantActions: []Action{ActionRetry},
 		},
 		{
 			name: "unclassified admin failure does not invent AI blame", code: FailureGenerationFailed,
 			viewer: Viewer{Admin: true}, wantCode: FailureGenerationFailed,
-			wantMessage: "Loomarr couldn't generate this channel. Try again later.",
+			wantMessage: "Loomarr couldn't finish this channel. Try again later.",
 			wantActions: []Action{ActionRetry},
 		},
 		{
 			name: "unknown persisted code fails safe", code: "future_provider_detail",
 			viewer: Viewer{UserID: "member-1"}, wantCode: FailureGenerationFailed,
-			wantMessage: "Loomarr couldn't generate this channel. Try again later.",
+			wantMessage: "Loomarr couldn't finish this channel. Try again later.",
 			wantActions: []Action{ActionRetry},
 		},
 	}

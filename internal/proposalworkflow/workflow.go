@@ -375,41 +375,41 @@ func failureDetails(code FailureCode, trace suggest.DecisionTrace) (FailureReaso
 	if suggest.ValidateDecisionTrace(trace) == nil {
 		switch trace.Terminal {
 		case suggest.TerminalRetrievalFailure:
-			return FailureReasonRetrievalUnavailable, RecoveryActionRetryLater, "Loomarr couldn't retrieve the catalog information needed for this request.", "If this keeps happening, check the title sources in Connections."
+			return FailureReasonRetrievalUnavailable, RecoveryActionRetryLater, "Loomarr couldn't check the title sources right now.", "Try again in a few minutes. If this keeps happening, check Connections."
 		case suggest.TerminalReferenceUnreadable:
-			return FailureReasonReferenceUnreadable, RecoveryActionEditReference, "Loomarr couldn't read a reference for this request.", "Check that the reference is a public page that does not require sign-in, or provide a few example titles and try again."
+			return FailureReasonReferenceUnreadable, RecoveryActionEditReference, "Loomarr couldn't open the page in your description.", "Use a public page that does not require sign-in, or add a few example titles instead."
 		case suggest.ReasonRetrievalEmpty, suggest.FailureSelectionEmpty:
-			return FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest, "No grounded titles matched this request. Try again, or edit its description and constraints.", "Broaden the request or add a few examples."
+			return FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest, "We couldn't find any titles that fit this description.", "Try a broader description or name a few shows or movies you like."
 		case suggest.TerminalNamedSetUnproven:
-			return FailureReasonNamedSetUnproven, RecoveryActionProvideExamples, "Loomarr couldn't verify the requested set.", "Provide a few examples and try again."
+			return FailureReasonNamedSetUnproven, RecoveryActionProvideExamples, "We couldn't confirm which titles belong in this lineup.", "Name a few shows or movies you expect to see, then try again."
 		case suggest.TerminalConstraintsConflict:
-			return FailureReasonConstraintsConflict, RecoveryActionResolveConstraints, "This request has conflicting constraints.", "Resolve the conflicting constraints and try again."
+			return FailureReasonConstraintsConflict, RecoveryActionResolveConstraints, "Some of your choices conflict with each other.", "Review the era, required titles, and excluded titles, then try again."
 		case suggest.TerminalDateSemanticsUnclear:
-			return FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates, "Loomarr couldn't determine the requested date range.", "Clarify the date range and try again."
+			return FailureReasonDateSemanticsUnclear, RecoveryActionClarifyDates, "We couldn't tell which years you meant.", "Add a decade or year range, then try again."
 		case suggest.TerminalInvalidToolCalls:
-			return FailureReasonInvalidToolCalls, RecoveryActionRetryLater, "The AI provider did not produce a usable catalog-search instruction.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+			return FailureReasonInvalidToolCalls, RecoveryActionRetryLater, "Loomarr couldn't finish searching for titles.", "Try again later. If this keeps happening, ask an administrator to check AI settings."
 		case suggest.TerminalProviderTimeout:
-			return FailureReasonProviderTimeout, RecoveryActionRetryLater, "The AI provider timed out.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+			return FailureReasonProviderTimeout, RecoveryActionRetryLater, "The search took too long to finish.", "Try again later. If this keeps happening, ask an administrator to check AI settings."
 		case suggest.TerminalProviderFailure:
-			return FailureReasonProviderUnavailable, RecoveryActionRetryLater, "The AI provider is unavailable.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+			return FailureReasonProviderUnavailable, RecoveryActionRetryLater, "Channel suggestions aren't available right now.", "Try again later. If this keeps happening, ask an administrator to check AI settings."
 		case suggest.TerminalMalformedExhausted:
-			return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "The AI provider returned an invalid response.", "Try again later; ask an administrator to check AI settings if this keeps happening."
+			return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "Loomarr couldn't finish the suggestions.", "Try again later. If this keeps happening, ask an administrator to check AI settings."
 		case suggest.TerminalGenerationFailure:
-			return FailureReasonGenerationFailed, RecoveryActionRetryLater, "Loomarr couldn't generate this channel.", "Try again later."
+			return FailureReasonGenerationFailed, RecoveryActionRetryLater, "Loomarr couldn't finish this channel.", "Try again later."
 		case suggest.FailureBudgetExhausted:
 			if trace.SurfacedTotal > 0 {
-				return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "Loomarr found titles but couldn't finish the lineup.", "Try again. Your description is still here."
+				return FailureReasonProviderResponseInvalid, RecoveryActionRetryLater, "Loomarr found some titles but couldn't finish the suggestions.", "Try again. Your description is still here."
 			}
-			return FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater, "Loomarr couldn't finish searching for titles.", "Try again. Your description is still here."
+			return FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater, "The search ended before Loomarr found enough good matches.", "Try again. If this keeps happening, add a few example titles."
 		}
 	}
 	if code == FailureBudgetExhausted {
-		return FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater, "Loomarr couldn't finish searching for titles.", "Try again. Your description is still here."
+		return FailureReasonDiscoveryBudgetExhausted, RecoveryActionRetryLater, "The search ended before Loomarr found enough good matches.", "Try again. If this keeps happening, add a few example titles."
 	}
 	if code == FailureNoGroundedTitles || code == FailureSelectionEmpty {
-		return FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest, "No grounded titles matched this request. Try again, or edit its description and constraints.", "Broaden the request or add a few examples."
+		return FailureReasonNoCatalogMatch, RecoveryActionBroadenRequest, "We couldn't find any titles that fit this description.", "Try a broader description or name a few shows or movies you like."
 	}
-	return FailureReasonGenerationFailed, RecoveryActionRetryLater, "Loomarr couldn't generate this channel. Try again later.", "Try again later."
+	return FailureReasonGenerationFailed, RecoveryActionRetryLater, "Loomarr couldn't finish this channel. Try again later.", "Try again later."
 }
 
 // PublicFailureTrace returns the bounded requester-facing portion of a private

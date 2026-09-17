@@ -181,12 +181,12 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 
 func membershipItemRationale(intent Intent, key provision.Key) string {
 	if intent.curatedTitleSet && intent.curatedTitleKey == key {
-		return "Included because your curated-title subject resolves to this Catalog title."
+		return "This is the title you asked for."
 	}
 	if intent.referenceKeys[key] {
-		return "Included because the resolved public reference names this title as a constituent."
+		return "This title is part of the lineup or collection you asked for."
 	}
-	return "Included because you supplied this title as a constituent of the named set."
+	return "You named this title as part of the lineup or collection."
 }
 
 func membershipProposalRationale(intent Intent, groups ...[]ProposalItem) string {
@@ -206,11 +206,11 @@ func membershipProposalRationale(intent Intent, groups ...[]ProposalItem) string
 	}
 	switch {
 	case hasUser && hasReference:
-		return "Every offered title is backed by user-supplied or resolved public-reference constituent evidence."
+		return "These titles come from the lineup or collection you asked for and the examples you provided."
 	case hasReference:
-		return "Every offered title is backed by resolved public-reference constituent evidence."
+		return "These titles are part of the lineup or collection you asked for."
 	default:
-		return "Every offered title is backed by user-supplied constituent evidence."
+		return "These titles are based on the examples you provided."
 	}
 }
 

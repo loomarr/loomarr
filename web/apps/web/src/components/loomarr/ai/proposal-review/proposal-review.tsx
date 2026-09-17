@@ -1,6 +1,6 @@
 import { provisionKey } from "@loomarr/core/provision";
 import { Check, X } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,7 @@ const catalogDecision = (disposition: string, reason: string) => {
   if (disposition === "alternate") return "Kept as a backup";
   const reasons: Record<string, string> = {
     not_selected: "Considered, but not chosen",
-    not_surfaced: "Not confirmed by the catalog search",
+    not_surfaced: "Loomarr couldn't confirm this title",
     no_relevance_evidence: "Not enough evidence that it fits your request",
     malformed_id: "Could not identify this title reliably",
     over_ceiling: "Outside the audience limit",
@@ -39,6 +39,21 @@ const availabilitySummary = (selected: number, ready: number, missing: number) =
   if (missing === 0) return `${titles} · all in your library`;
   if (ready === 0) return `${titles} · ${missing} will be added`;
   return `${titles} · ${ready} in your library · ${missing} will be added`;
+};
+
+const friendlyProposalRationale = (value: string) => {
+  const knownExplanations: Record<string, string> = {
+    "Every offered title is backed by user-supplied or resolved public-reference constituent evidence.":
+      "These titles come from the lineup or collection you asked for and the examples you provided.",
+    "Every offered title is backed by resolved public-reference constituent evidence.":
+      "These titles are part of the lineup or collection you asked for.",
+    "Every offered title is backed by user-supplied constituent evidence.":
+      "These titles are based on the examples you provided.",
+  };
+  return (
+    knownExplanations[value] ??
+    value.replace(/^Grounded against\b/i, "Matched against").replace(/^A grounded\b/i, "A")
+  );
 };
 
 const selectedLineupContext = (
@@ -90,6 +105,8 @@ const ProposalReview = ({
   const actionable = status === "draft" || status === "submitted" || status === "partially-edited";
   const [denying, setDenying] = useState(false);
   const [editingBrief, setEditingBrief] = useState(false);
+  const [findingMore, setFindingMore] = useState(false);
+  const findingMoreStarted = useRef(false);
   const [brief, setBrief] = useState(proposal.intent.description);
   const [reason, setReason] = useState("");
   const reasonId = useId();
@@ -108,7 +125,7 @@ const ProposalReview = ({
   const statusDisplay = selfService ? (status === "approved" ? STATUS.approved : undefined) : STATUS[status];
   const scoresCurrent = status !== "partially-edited" && proposal.scores?.version === 1;
   const partialTheme = scoresCurrent && proposal.scores?.theme.status !== "supported";
-  const controlsDisabled = busy || revising;
+  const controlsDisabled = busy || revising || findingMore;
   const requestDetails = (
     [
       proposal.intent.era ? (["Era", proposal.intent.era] as const) : null,
@@ -127,6 +144,15 @@ const ProposalReview = ({
         : null,
     ] as Array<readonly [string, string] | null>
   ).filter((detail): detail is readonly [string, string] => detail !== null);
+
+  useEffect(() => {
+    if (!findingMore) return;
+    if (revising) findingMoreStarted.current = true;
+    if (revisionError || (!revising && findingMoreStarted.current)) {
+      findingMoreStarted.current = false;
+      setFindingMore(false);
+    }
+  }, [findingMore, revising, revisionError]);
 
   return (
     <section className={cn("mx-auto flex w-full max-w-3xl flex-col gap-5 py-2", className)}>
@@ -226,9 +252,11 @@ const ProposalReview = ({
         <ProposalOutlook assessment={assessment} pending={assessmentPending} showDetails={false} />
       </div>
 
-      {revising && (
+      {(revising || findingMore) && (
         <p role="status" className="text-muted-foreground text-sm">
-          Updating suggestions… Your current lineup will stay here until the new one is ready.
+          {findingMore
+            ? "Finding more ideas… Your selected titles won’t change."
+            : "Updating suggestions… Your current lineup will stay here until the new one is ready."}
         </p>
       )}
 
@@ -252,14 +280,17 @@ const ProposalReview = ({
         optionalSuggestionKeys={optionalSuggestionKeys}
         onFindMore={
           actionable && onRevise
-            ? () =>
+            ? () => {
+                setFindingMore(true);
                 onRevise({
                   ...proposal.intent,
                   currentLineup,
                   refineText: "Find more grounded options that match this brief.",
-                })
+                });
+              }
             : undefined
         }
+        findingMore={findingMore}
         value={edit}
         onChange={onEdit}
         disabled={controlsDisabled}
@@ -323,17 +354,16 @@ const ProposalReview = ({
       )}
 
       <details className="border-border border-t pt-3 text-sm">
-        <summary className="cursor-pointer font-medium text-muted-foreground">Suggestion details</summary>
+        <summary className="cursor-pointer font-medium text-muted-foreground">
+          How these suggestions were chosen
+        </summary>
         <div className="mt-4 flex flex-col gap-5 text-muted-foreground">
           <section aria-label="Why these titles" className="flex flex-col gap-2">
             <h3 className="font-medium text-foreground">Why these titles</h3>
             {status === "partially-edited" ? (
               <p>You changed the title list. Check any titles you added against your brief.</p>
             ) : proposal.scores?.version !== 1 ? (
-              <p>
-                This saved channel draft has no current catalog assessment. Review each title before creating
-                it.
-              </p>
+              <p>Loomarr couldn't check this saved draft. Review each title before creating the channel.</p>
             ) : (
               <>
                 <p>
@@ -341,14 +371,14 @@ const ProposalReview = ({
                     ? "These suggestions are listed as part of the lineup you asked for."
                     : proposal.scores.theme.basis === "none"
                       ? "Review the titles to decide whether this is the channel you want."
-                      : "We checked the titles against your brief using catalog information. A match isn't a guarantee—remove anything that doesn't fit."}
+                      : "We compared the titles with your description. Remove anything that doesn't fit."}
                 </p>
                 {proposal.scores.theme.basis === "qualifiers" && (
                   <ul className="list-inside list-disc">
                     {(proposal.scores.theme.qualifiers ?? []).map((qualifier) => (
                       <li key={qualifier.term}>
-                        “{qualifier.term}” matched {qualifier.supportedItems} of{" "}
-                        {proposal.scores.theme.assessedItems} checked titles
+                        “{qualifier.term}” fits {qualifier.supportedItems} of{" "}
+                        {proposal.scores.theme.assessedItems} titles Loomarr could check
                       </li>
                     ))}
                   </ul>
@@ -356,7 +386,7 @@ const ProposalReview = ({
                 {proposal.scores.era.status !== "not_requested" && (
                   <p>
                     {proposal.scores.era.status === "unassessed"
-                      ? "Loomarr could not check the date range because some catalog dates were missing."
+                      ? "Loomarr could not check the date range because some release or air dates were missing."
                       : `${proposal.scores.era.matchingItems} of ${proposal.scores.era.assessedItems} titles with known dates matched your requested range.`}
                   </p>
                 )}
@@ -372,22 +402,21 @@ const ProposalReview = ({
 
           {(proposal.rationale || assessment || proposal.trace?.candidates?.length) && (
             <details className="border-border border-t pt-3">
-              <summary className="w-fit cursor-pointer">Technical details</summary>
+              <summary className="w-fit cursor-pointer">Troubleshooting details</summary>
               <div className="mt-3 flex flex-col gap-4">
                 <p className="text-xs">
-                  For troubleshooting. Catalog decisions describe the original suggestions, not your later
-                  edits.
+                  This shows how Loomarr handled the original suggestions, before any changes you made.
                 </p>
                 {proposal.rationale && (
                   <section>
-                    <h3 className="mb-1 font-medium text-foreground">Original explanation</h3>
-                    <p>{proposal.rationale}</p>
+                    <h3 className="mb-1 font-medium text-foreground">Suggestion summary</h3>
+                    <p>{friendlyProposalRationale(proposal.rationale)}</p>
                   </section>
                 )}
                 {assessment && !assessmentPending && <ProposalOutlookDiagnostics assessment={assessment} />}
                 {proposal.trace?.candidates?.length ? (
-                  <section aria-label="Catalog decisions">
-                    <h3 className="mb-2 font-medium text-foreground">Catalog decisions</h3>
+                  <section aria-label="Titles considered">
+                    <h3 className="mb-2 font-medium text-foreground">Titles considered</h3>
                     <ul className="flex flex-col divide-y divide-border">
                       {proposal.trace.candidates.map((candidate) => (
                         <li
@@ -395,14 +424,14 @@ const ProposalReview = ({
                           className="py-2"
                         >
                           <p className="font-medium text-foreground">
-                            {candidate.name || "Unidentified catalog entry"}
+                            {candidate.name || "Unidentified title"}
                           </p>
                           <p>{catalogDecision(candidate.disposition, candidate.reason)}</p>
                         </li>
                       ))}
                     </ul>
                     <details className="mt-3">
-                      <summary className="w-fit cursor-pointer text-xs">Raw diagnostic evidence</summary>
+                      <summary className="w-fit cursor-pointer text-xs">Raw search data</summary>
                       <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs">
                         {JSON.stringify(proposal.trace, null, 2)}
                       </pre>

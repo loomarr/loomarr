@@ -14,6 +14,7 @@ interface ProposalEditProps {
   // reviewer explicitly adds them. Their keys are presented with alternates.
   optionalSuggestionKeys?: string[];
   onFindMore?: () => void;
+  findingMore?: boolean;
   // Read-only server projection from the trusted Proposal Intent. Used only to
   // explain series added in this local edit; it is never copied into the edit DTO.
   episodeSelectionPreview?: EpisodeSelection;

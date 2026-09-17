@@ -4,7 +4,7 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
-import { Plus, RotateCcw } from "lucide-react";
+import { LoaderCircle, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,21 @@ const seasonLabel = (item: ProposalItem) => {
   if (lo <= 0 && hi <= 0) return null;
   if (lo > 0 && hi > 0) return lo === hi ? `Season ${lo}` : `Seasons ${lo}–${hi}`;
   return lo > 0 ? `From season ${lo}` : `Through season ${hi}`;
+};
+
+const friendlyTitleRationale = (value: string) => {
+  const knownExplanations: Record<string, string> = {
+    "Included because your curated-title subject resolves to this Catalog title.":
+      "This is the title you asked for.",
+    "Included because the resolved public reference names this title as a constituent.":
+      "This title is part of the lineup or collection you asked for.",
+    "Included because you supplied this title as a constituent of the named set.":
+      "You named this title as part of the lineup or collection.",
+  };
+  return (
+    knownExplanations[value] ??
+    value.replace(/^Grounded against\b/i, "Matched against").replace(/^A grounded\b/i, "A")
+  );
 };
 
 const PickRow = ({
@@ -100,7 +115,9 @@ const PickRow = ({
             <summary className="w-fit cursor-pointer text-muted-foreground text-xs hover:text-foreground">
               Why this title?
             </summary>
-            <p className="mt-1 max-w-prose text-muted-foreground">{pick.item.rationale}</p>
+            <p className="mt-1 max-w-prose text-muted-foreground">
+              {friendlyTitleRationale(pick.item.rationale)}
+            </p>
           </details>
         )}
         {included && feedback && <div className="mt-2">{feedback}</div>}
@@ -123,6 +140,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
     alternates = [],
     optionalSuggestionKeys = [],
     onFindMore,
+    findingMore = false,
     episodeSelectionPreview,
     value,
     onChange,
@@ -367,8 +385,15 @@ const ProposalEdit = (props: ProposalEditProps) => {
             </ul>
           )}
           {onFindMore && (
-            <Button variant="ghost" size="sm" className="mt-2" disabled={disabled} onClick={onFindMore}>
-              Find more ideas
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-2"
+              disabled={disabled || findingMore}
+              onClick={onFindMore}
+            >
+              {findingMore && <LoaderCircle aria-hidden className="animate-spin" />}
+              {findingMore ? "Finding more ideas…" : "Find more ideas"}
             </Button>
           )}
         </details>

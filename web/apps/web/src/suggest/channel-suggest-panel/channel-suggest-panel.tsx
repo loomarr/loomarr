@@ -115,13 +115,18 @@ const ChannelSuggestPanel = ({
   const discoveryBudgetExhausted = run.failure?.reason === "discovery_budget_exhausted";
   const failureNeedsEdit = run.failure?.recoveryAction !== "retry_later";
   const failureTitle = discoveryBudgetExhausted
-    ? "We couldn't finish the lineup"
+    ? "Search stopped early"
     : failureNeedsEdit
-      ? "Adjust your description"
-      : "We couldn't finish this channel";
+      ? run.failure?.recoveryAction === "edit_reference"
+        ? "Change the link"
+        : "Try a different description"
+      : "Something went wrong";
   const failureMessage = discoveryBudgetExhausted
-    ? "Your description is still here. Try again, or edit it if you want to."
-    : (run.failure?.message ?? "Something interrupted this channel. Your description is still here.");
+    ? "The search ended before Loomarr found enough good matches."
+    : (run.failure?.message ?? "Loomarr couldn't finish this request. Your description is still here.");
+  const failureGuidance = discoveryBudgetExhausted
+    ? "Try again. If this keeps happening, add a few example titles."
+    : run.failure?.guidance;
 
   return (
     <section className={cn("flex flex-col gap-4", className)}>
@@ -150,7 +155,7 @@ const ChannelSuggestPanel = ({
                   ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
                   : "AI is connected, but an administrator needs to connect TMDB before Loomarr can match your description to real titles. Your draft is saved."
                 : isAdmin
-                  ? "Connect a provider and choose a lineup model. Your draft is saved."
+                  ? "Connect an AI service and choose a model for channel suggestions. Your draft is saved."
                   : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
             </p>
             {isAdmin &&
@@ -190,6 +195,7 @@ const ChannelSuggestPanel = ({
           <div>
             <h3 className="font-medium">{failureTitle}</h3>
             <p className="mt-1 text-muted-foreground text-sm">{failureMessage}</p>
+            {failureGuidance && <p className="mt-1 text-muted-foreground text-sm">{failureGuidance}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
             {run.actions.includes("edit") && (
@@ -198,7 +204,7 @@ const ChannelSuggestPanel = ({
                 size="sm"
                 onClick={editFailedDescription}
               >
-                {run.failure?.recoveryAction === "edit_reference" ? "Change reference" : "Edit description"}
+                {run.failure?.recoveryAction === "edit_reference" ? "Change link" : "Edit description"}
               </Button>
             )}
             {run.actions.includes("retry") && (
@@ -254,8 +260,8 @@ const ChannelSuggestPanel = ({
             <div className="flex flex-col items-start gap-2">
               <p role="status" className="text-lock text-sm">
                 {user?.autoApprove
-                  ? "Automatically approved using your account setting. The channel has already been created."
-                  : "This proposal is already approved. The channel has already been created."}
+                  ? "Created automatically using your account setting."
+                  : "This channel has already been created."}
               </p>
               <Button variant="outline" size="sm" onClick={startFresh}>
                 Create another

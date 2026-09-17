@@ -1973,7 +1973,7 @@ func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) 
 	if len(prop.Lineup) != 2 {
 		t.Fatalf("description-backed lineup = %+v, want both exact examples", prop.Lineup)
 	}
-	if !strings.Contains(prop.Rationale, "user-supplied constituent evidence") ||
+	if prop.Rationale != "These titles are based on the examples you provided." ||
 		strings.Contains(prop.Rationale, "throughout the decade") {
 		t.Fatalf("proposal rationale did not reflect admitted provenance: %q", prop.Rationale)
 	}
@@ -1981,7 +1981,7 @@ func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) 
 		if item.EditorialRole != suggest.EditorialCore {
 			t.Fatalf("verified user-supplied member must retain Core evidence: %+v", item)
 		}
-		if !strings.Contains(item.Rationale, "you supplied this title") || strings.Contains(item.Rationale, "aired") {
+		if item.Rationale != "You named this title as part of the lineup or collection." || strings.Contains(item.Rationale, "aired") {
 			t.Fatalf("item rationale did not replace unsupported model prose: %+v", item)
 		}
 	}
@@ -2104,12 +2104,12 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 	if (prop.Scores.ThemeFit == nil || *prop.Scores.ThemeFit != 1) || prop.Scores.EraBalance != nil {
 		t.Fatalf("reference-backed membership should score as supported with episode-era overlap unassessed, got %+v", prop.Scores)
 	}
-	if !strings.Contains(prop.Rationale, "resolved public-reference constituent evidence") {
-		t.Fatalf("proposal rationale did not report reference provenance: %q", prop.Rationale)
+	if prop.Rationale != "These titles are part of the lineup or collection you asked for." {
+		t.Fatalf("proposal rationale was not written for a person reviewing the lineup: %q", prop.Rationale)
 	}
 	for _, item := range prop.Lineup {
-		if !strings.Contains(item.Rationale, "resolved public reference") {
-			t.Fatalf("item rationale did not report reference provenance: %+v", item)
+		if item.Rationale != "This title is part of the lineup or collection you asked for." {
+			t.Fatalf("item rationale was not written for a person reviewing the lineup: %+v", item)
 		}
 	}
 }
@@ -2715,7 +2715,7 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 		if item.TVDBID == 99001 {
 			t.Fatalf("non-member search neighbor survived: %+v", prop.Lineup)
 		}
-		if !strings.Contains(item.Rationale, "you supplied this title") {
+		if item.Rationale != "You named this title as part of the lineup or collection." {
 			t.Fatalf("member rationale lacks user provenance: %+v", item)
 		}
 	}

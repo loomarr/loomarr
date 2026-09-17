@@ -29,10 +29,10 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
       {(
         [
-          ["Requested or retained", value.mix.core],
-          ["Recorded recommendations", value.mix.adjacent],
-          ["Other matches", value.mix.discovery],
-          ["No recorded role", value.mix.unknown],
+          ["Requested or kept", value.mix.core],
+          ["Related suggestions", value.mix.adjacent],
+          ["Other suggestions", value.mix.discovery],
+          ["Uncategorized", value.mix.unknown],
         ] as const
       )
         .filter(([, count]) => count > 0)
@@ -46,23 +46,23 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
       <dd>{value.seasons}</dd>
     </dl>
     <p>
-      The estimate uses this exact lineup, {value.ordering || "inherited"} ordering, separation, and active
-      scheduling rules. Unavailable media and breaks add no programming time.
+      This estimate reflects the current title list and schedule settings. Missing titles and breaks do not
+      add playing time.
     </p>
     {value.relaxations.length > 0 && (
       <p>
-        The scheduler used {value.relaxations.length} recorded policy{" "}
-        {value.relaxations.length === 1 ? "relaxation" : "relaxations"}. Audience and scope filters remain
-        enforced.
+        Loomarr loosened {value.relaxations.length} scheduling{" "}
+        {value.relaxations.length === 1 ? "rule" : "rules"} to build this preview. Your audience and title
+        limits still apply.
       </p>
     )}
     <p>
-      Observed{" "}
+      Checked{" "}
       {new Date(value.observedAt).toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "short",
       })}
-      . Library and policy changes can alter the result.
+      . Changes to your library or schedule can update this result.
     </p>
   </div>
 );
@@ -106,7 +106,7 @@ const ProposalOutlookDetails = ({
     {value.windowLimited && <p>This is a partial preview; more from your library may fit.</p>}
     {showDiagnostics && (
       <details className="mt-1">
-        <summary className="w-fit cursor-pointer">Technical details</summary>
+        <summary className="w-fit cursor-pointer">How this estimate works</summary>
         <div className="mt-3">
           <ProposalOutlookDiagnostics assessment={value} />
         </div>

@@ -13,10 +13,10 @@ describe("ProposalOutlook", () => {
     expect(screen.getByText("What can play now")).not.toBeVisible();
     await user.click(screen.getByText("Schedule details"));
     expect(screen.getByText("12 playable episodes or movies from 3 titles.")).toBeVisible();
-    expect(screen.getByText("Requested or retained")).not.toBeVisible();
-    await user.click(screen.getByText("Technical details"));
-    expect(screen.getByText("Requested or retained")).toBeVisible();
-    expect(screen.queryByText("Other matches")).not.toBeInTheDocument();
+    expect(screen.getByText("Requested or kept")).not.toBeVisible();
+    await user.click(screen.getByText("How this estimate works"));
+    expect(screen.getByText("Requested or kept")).toBeVisible();
+    expect(screen.queryByText("Other suggestions")).not.toBeInTheDocument();
   });
 
   it("does not invent runway while acquisitions are missing", () => {
