@@ -1,6 +1,8 @@
 package fillerreview
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -208,7 +210,7 @@ func newTemporalStructureHoldoutFixtureWithEvidenceAndProgrammeParentDuration(t 
 	for _, item := range reference.Cases {
 		fingerprints = append(fingerprints, fillerreference.FamilyFingerprint{
 			CaseID: item.CaseID, ContentSHA256: item.ContentSHA256, LocalFile: item.SourceLocalFile,
-			FrameHashes: []uint64{1}, AudioRMS: []uint32{1},
+			FrameHashes: unrelatedComparableVisualFingerprint(item.ContentSHA256), AudioRMS: []uint32{1},
 		})
 	}
 	family, err := fillerreference.BuildFamilyAudit(referenceRaw, fingerprints, suitability.ComparedAt.Add(time.Hour))
@@ -319,6 +321,18 @@ func newTemporalStructureHoldoutFixtureWithEvidenceAndProgrammeParentDuration(t 
 		quality: qualityPath, suitability: suitabilityPath, referenceAudit: referencePath, referenceDownloadLedger: ledgerPath, family: familyPath, transition: transitionPath, inventory: inventoryPath,
 		plannedAt: inventory.GeneratedAt.Add(time.Hour),
 	}
+}
+
+func unrelatedComparableVisualFingerprint(identity string) []uint64 {
+	const comparableFrames = 12
+	result := make([]uint64, comparableFrames)
+	for index := range result {
+		digest := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", identity, index)))
+		// Fix four low bits on and four high bits off so every generated dHash
+		// is informative while its remaining 56 bits stay identity-bound.
+		result[index] = (binary.BigEndian.Uint64(digest[:8]) & 0x0fffffffffffffff) | 0xf
+	}
+	return result
 }
 
 func (fixture temporalStructureHoldoutFixture) config(output string) TemporalStructureHoldoutConfig {
