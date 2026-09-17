@@ -76,7 +76,7 @@ describe("SettingField", () => {
     expect(screen.queryByLabelText("Custom check interval")).not.toBeInTheDocument();
 
     await userEvent.click(schedule);
-    expect(screen.getByRole("option", { name: "Never" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Never" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("option", { name: "Custom" }));
     expect(screen.getByLabelText("Custom check interval")).toHaveValue(6);
     fireEvent.change(screen.getByLabelText("Custom check interval"), { target: { value: "8" } });

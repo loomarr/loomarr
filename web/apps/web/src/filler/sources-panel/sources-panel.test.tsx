@@ -698,7 +698,7 @@ describe("SourcesPanel", () => {
     expect(screen.queryByLabelText("Source check interval")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
-    await userEvent.click(screen.getByRole("option", { name: "Use a different schedule" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Use a different schedule" }));
     await userEvent.click(screen.getByRole("combobox", { name: "Source check schedule" }));
     await userEvent.click(await screen.findByRole("option", { name: "Custom" }));
     fireEvent.change(screen.getByLabelText("Source check interval"), { target: { value: "12" } });
