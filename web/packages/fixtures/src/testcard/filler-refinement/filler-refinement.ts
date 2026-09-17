@@ -58,9 +58,7 @@ const fillerSetting = (
   advanced,
   group: "filler",
   owner:
-    key.includes("max_catalog") || key.startsWith("filler.storage.")
-      ? "filler.storage"
-      : "filler.downloads",
+    key.includes("max_catalog") || key.startsWith("filler.storage.") ? "filler.storage" : "filler.downloads",
   doc: "",
   provenance: "default",
   apply: "live",

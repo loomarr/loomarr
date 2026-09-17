@@ -352,9 +352,7 @@ describe("SourcesPanel", () => {
     );
     renderPanel();
 
-    expect(
-      await screen.findByText(/2.0 KB in 2 unfinished downloads is safe to remove/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/2.0 KB in 2 unfinished downloads is safe to remove/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Free 2.0 KB" }));
     expect(await screen.findByText(/Removed 2 temporary folders · freed 2.0 KB/)).toBeInTheDocument();
   });

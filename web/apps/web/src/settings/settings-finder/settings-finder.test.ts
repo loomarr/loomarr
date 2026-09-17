@@ -50,9 +50,7 @@ describe("settings finder", () => {
   });
 
   it("finds exact keys and environment variables without searching values", () => {
-    expect(first("filler.storage.library_budget_gb")?.setting?.key).toBe(
-      "filler.storage.library_budget_gb",
-    );
+    expect(first("filler.storage.library_budget_gb")?.setting?.key).toBe("filler.storage.library_budget_gb");
     expect(first("LIBRARY_URL")?.setting?.key).toBe("library.url");
     expect(findSettings({ query: "http://private.example", entries, isAdmin: true })).toEqual([]);
   });

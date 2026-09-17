@@ -459,7 +459,10 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   return (
     <div className="flex flex-col gap-6">
       {storage ? (
-        <section aria-labelledby="filler-storage-heading" className="rounded-lg border border-border bg-card p-4">
+        <section
+          aria-labelledby="filler-storage-heading"
+          className="rounded-lg border border-border bg-card p-4"
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h2 id="filler-storage-heading" className="font-medium text-sm">
@@ -478,7 +481,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
                       ? "Loomarr cannot safely check the available space in this folder."
                       : storage.state === "approaching"
                         ? `${formatBytes(storage.availableBytes)} is left for new filler. Loomarr will pause before it risks space kept for this drive.`
-                      : `Automatic downloads will pause before this drive has less than ${formatBytes(storage.hardReserveBytes)} free.`}
+                        : `Automatic downloads will pause before this drive has less than ${formatBytes(storage.hardReserveBytes)} free.`}
                 {storage.reservedBytes > 0
                   ? ` ${formatBytes(storage.reservedBytes)} is set aside for work in progress.`
                   : ""}
@@ -514,8 +517,9 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
               ) : cleanupPreview && cleanupPreview.items > 0 ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-muted-foreground text-sm">
-                    {formatBytes(cleanupPreview.bytes)} in {pluralize(cleanupPreview.items, "unfinished download")} is
-                    safe to remove. Clips in your library stay untouched.
+                    {formatBytes(cleanupPreview.bytes)} in{" "}
+                    {pluralize(cleanupPreview.items, "unfinished download")} is safe to remove. Clips in your
+                    library stay untouched.
                   </p>
                   <Button
                     type="button"

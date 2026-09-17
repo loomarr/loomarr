@@ -122,9 +122,9 @@ const FillerPage = ({ tab, settingsSection }: FillerPageProps) => {
               <p className="font-medium text-sm">Automatic fetching is paused</p>
               <p className="mt-0.5 text-muted-foreground text-sm">
                 {watch.autoFetch.catalogClips.toLocaleString()} of{" "}
-                {(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use.{" "}
-                You can still add clips yourself. Remove clips you no longer want or raise this limit to
-                restart automatic downloads.
+                {(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use. You can still
+                add clips yourself. Remove clips you no longer want or raise this limit to restart automatic
+                downloads.
               </p>
             </div>
             {isAdmin ? (
