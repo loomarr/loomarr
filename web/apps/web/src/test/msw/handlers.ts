@@ -102,7 +102,7 @@ const appHandlers = (): RequestHandler[] => [
     items: [],
   }),
   getSetupStatusMockHandler({ checks: [] }),
-  // Settings → Security lists the operator's paired devices on mount (§11, Shield P1). Empty is
+  // Settings → Access and devices lists the operator's paired devices on mount (§11, Shield P1). Empty is
   // the honest default: a test that cares about devices overrides this, and every other test that
   // merely renders the page gets the "no devices yet" state rather than an unhandled request.
   getDeviceListMockHandler({ devices: [] }),

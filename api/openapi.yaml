@@ -8628,6 +8628,9 @@ components:
         label:
           description: Registry-owned human label for workflow forms.
           type: string
+        owner:
+          description: Stable task id for the setting's one curated editor. Browser paths are frontend-owned.
+          type: string
         presentation:
           description: Human editor semantics beyond kind, e.g. bytes, path, or language.
           type: string
@@ -8666,6 +8669,7 @@ components:
       required:
         - key
         - group
+        - owner
         - kind
         - apply
         - set

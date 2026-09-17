@@ -27,18 +27,32 @@ afterEach(() => window.sessionStorage.clear());
 // was the reason four required SettingEntry fields could go missing elsewhere in the suite
 // without anything noticing they were required at all.
 const SETTINGS = [
-  setting({ key: "library.url", group: "connections.media_server", kind: "url", value: "http://emby:8096" }),
+  setting({
+    key: "library.url",
+    owner: "settings.connections",
+    group: "connections.media_server",
+    kind: "url",
+    value: "http://emby:8096",
+  }),
   setting({
     key: "library.token",
+    owner: "settings.connections",
     group: "connections.media_server",
     kind: "secret",
     secret: true,
     preview: "…a1b2",
     value: "",
   }),
-  setting({ key: "tunarr.url", group: "connections.tunarr", kind: "url", value: "http://tunarr:8000" }),
+  setting({
+    key: "tunarr.url",
+    owner: "settings.connections",
+    group: "connections.tunarr",
+    kind: "url",
+    value: "http://tunarr:8000",
+  }),
   setting({
     key: "session.ttl",
+    owner: "settings.access",
     label: "Sign-in lifetime",
     group: "users_security",
     kind: "duration",
@@ -46,6 +60,7 @@ const SETTINGS = [
   }),
   setting({
     key: "cookie.secure",
+    owner: "settings.access",
     label: "Secure cookies",
     group: "users_security",
     kind: "enum",
@@ -57,15 +72,39 @@ const SETTINGS = [
       { value: "never", label: "Never (local dev only)" },
     ],
   }),
-  setting({ key: "job.workers", group: "advanced", kind: "int", value: "2", provenance: "env" }),
-  setting({ key: "llm.provider", group: "ai", kind: "enum", value: "ollama" }),
-  setting({ key: "llm.url", group: "ai", kind: "url", value: "http://localhost:11434" }),
+  setting({
+    key: "job.workers",
+    owner: "settings.advanced",
+    group: "advanced",
+    kind: "int",
+    value: "2",
+    provenance: "env",
+  }),
+  setting({ key: "llm.provider", owner: "settings.ai", group: "ai", kind: "enum", value: "ollama" }),
+  setting({
+    key: "llm.url",
+    owner: "settings.ai",
+    group: "ai",
+    kind: "url",
+    value: "http://localhost:11434",
+  }),
   setting({
     key: "access.public_url",
+    owner: "settings.sharing",
     label: "Recipient-facing Loomarr address",
     group: "general",
     kind: "url",
     value: "https://loomarr.example.com",
+  }),
+  setting({
+    key: "filler.fetch.max_disk_gb",
+    label: "Automatic-download storage limit",
+    owner: "filler.storage",
+    envVar: "FILLER_FETCH_MAX_DISK_GB",
+    group: "filler",
+    kind: "int",
+    value: "20",
+    advanced: true,
   }),
 ];
 
@@ -135,6 +174,57 @@ const renderAt = (path: string) => {
 };
 
 describe("Settings", () => {
+  it("opens on a task-based home and finds the exact owner of a setting", async () => {
+    stubSettings();
+    renderAt("/settings");
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Set up Loomarr" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Access and devices" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Troubleshoot" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Filler" })).toBeInTheDocument();
+
+    const finder = screen.getByRole("searchbox", { name: "Find a setting" });
+    await userEvent.type(finder, "FILLER_FETCH_MAX_DISK_GB");
+    const match = await screen.findByRole("link", { name: /Automatic-download storage limit/ });
+    expect(match).toHaveAttribute("href", "/filler/settings/storage");
+
+    await userEvent.type(finder, "{ArrowDown}");
+    expect(match).toHaveFocus();
+  });
+
+  it("keeps task browsing available when a search has no matches", async () => {
+    stubSettings();
+    renderAt("/settings");
+
+    await userEvent.type(
+      await screen.findByRole("searchbox", { name: "Find a setting" }),
+      "not a real setting",
+    );
+    expect(await screen.findByText("No settings found")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Connections/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
+  });
+
+  it("uses a grouped server landing instead of a second tab matrix", async () => {
+    stubSettings();
+    renderAt("/settings/system");
+
+    expect(await screen.findByRole("heading", { name: "This server" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Run this server" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Troubleshoot" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Playback/ })).toHaveAttribute(
+      "href",
+      "/settings/system/playback",
+    );
+    expect(screen.getByRole("link", { name: /Diagnostics/ })).toHaveAttribute(
+      "href",
+      "/settings/system/diagnostics",
+    );
+    expect(screen.queryByRole("navigation", { name: "System settings" })).not.toBeInTheDocument();
+  });
+
   it("shows one notification provider list with SMTP as a peer provider", async () => {
     stubSettings();
     renderAt("/settings/notifications");
@@ -146,14 +236,14 @@ describe("Settings", () => {
     expect(screen.queryByRole("heading", { name: "Email account messages" })).not.toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "Send email notifications" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Send test email" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Find another setting" })).toHaveAttribute("href", "/settings");
   });
 
-  it("owns the recipient-facing Loomarr address on General settings", async () => {
+  it("owns the recipient-facing Loomarr address under Access and devices", async () => {
     stubSettings();
-    renderAt("/settings/general");
+    renderAt("/settings/access");
 
-    expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Access and devices" })).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { name: "Share invitation and recovery links" }),
     ).toBeInTheDocument();
@@ -165,14 +255,14 @@ describe("Settings", () => {
     expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue(
       "https://loomarr.example.com",
     );
-    expect(screen.getByRole("link", { name: "General" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Find another setting" })).toHaveAttribute("href", "/settings");
   });
 
   it("defaults an unset recipient-facing address to the current browser origin", async () => {
     stubSettings(
       SETTINGS.map((entry) => (entry.key === "access.public_url" ? { ...entry, value: "" } : entry)),
     );
-    renderAt("/settings/general");
+    renderAt("/settings/access");
 
     expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue(
       window.location.origin,
@@ -185,7 +275,7 @@ describe("Settings", () => {
         entry.key === "access.public_url" ? { ...entry, provenance: "env" as const, value: "" } : entry,
       ),
     );
-    renderAt("/settings/general");
+    renderAt("/settings/access");
 
     expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue("");
   });
@@ -302,12 +392,12 @@ describe("Settings", () => {
     await expect.poll(() => seq).toEqual(["patch", "test"]);
   });
 
-  // All settings is a TABLE (V10), so its controls carry the raw key rather than a humanized
+  // Advanced settings is a table, so its controls carry the raw key rather than a humanized
   // label. The env lock still applies — and this is the surface where someone would most likely
   // try to work around it, since it is the editor of last resort.
-  it("locks an env-pinned key on the all-settings table", async () => {
+  it("locks an env-pinned key on the advanced-settings table", async () => {
     stubSettings();
-    const { container } = renderAt("/settings/all");
+    const { container } = renderAt("/settings/advanced");
     await screen.findByText("job.workers");
     expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
   });
@@ -330,10 +420,12 @@ describe("Settings — the save bar spans tabs (V9)", () => {
     // The bar counts it, which is what tells the operator anything is staged at all.
     expect(await screen.findByText(/1 unsaved/i)).toBeInTheDocument();
 
-    // Leave for another tab and come back — the tab bar is navigation, not a commit boundary.
-    await userEvent.click(screen.getByRole("link", { name: "All settings" }));
+    // Leave through the task home and come back — navigation is not a commit boundary.
+    await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
+    await userEvent.click(await screen.findByRole("link", { name: "Advanced settings" }));
     await screen.findByText("job.workers");
-    await userEvent.click(screen.getByRole("link", { name: "Connections" }));
+    await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
+    await userEvent.click(await screen.findByRole("link", { name: /Connections/ }));
 
     expect(await screen.findByLabelText("Library URL")).toHaveValue("http://emby:9999");
     expect(screen.getByText(/1 unsaved/i)).toBeInTheDocument();
@@ -349,12 +441,14 @@ describe("Settings — the save bar spans tabs (V9)", () => {
     await userEvent.clear(url);
     await userEvent.type(url, "http://emby:9999");
 
-    await userEvent.click(screen.getByRole("link", { name: "All settings" }));
+    await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
+    await userEvent.click(await screen.findByRole("link", { name: "Advanced settings" }));
     await screen.findByText("job.workers");
     // `job.workers` is env-pinned in the fixture, so edit the OTHER connection key instead —
     // asserting against a disabled field would prove nothing about the buffer.
 
-    await userEvent.click(screen.getByRole("link", { name: "Connections" }));
+    await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
+    await userEvent.click(await screen.findByRole("link", { name: /Connections/ }));
     const tunarr = await screen.findByLabelText("Tunarr URL");
     await userEvent.clear(tunarr);
     await userEvent.type(tunarr, "http://tunarr:9999");
@@ -501,10 +595,11 @@ describe("AI model pull", () => {
 // imported-but-never-rendered, so the feature was absent while every unit test stayed
 // green. Asserting the panel reaches the page is what the component tests can't do.
 describe("Settings page footers", () => {
-  it("mounts the secrets panel on Security", async () => {
+  it("keeps generated secrets under Access and devices advanced controls", async () => {
     stubSettings();
 
-    renderAt("/settings/security");
+    renderAt("/settings/access");
+    await userEvent.click(await screen.findByRole("button", { name: /advanced access controls/i }));
     // The two operator-facing credentials are a closed set held in the component (config-design
     // §4), not a fetched list — so the assertion is that the panel is on the page at all.
     expect(await screen.findByText(/API token/i)).toBeInTheDocument();
@@ -513,9 +608,9 @@ describe("Settings page footers", () => {
 });
 
 describe("Settings progressive disclosure", () => {
-  it("keeps cookie transport policy behind Security's Advanced disclosure", async () => {
+  it("keeps cookie transport policy behind Access and devices' Advanced disclosure", async () => {
     stubSettings();
-    renderAt("/settings/security");
+    renderAt("/settings/access");
 
     expect(await screen.findByLabelText("Sign-in lifetime")).toBeInTheDocument();
     expect(screen.queryByLabelText("Secure cookies")).not.toBeInTheDocument();
@@ -719,7 +814,7 @@ describe("Settings honesty", () => {
 
     expect(await screen.findByLabelText("Expected spoken language")).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Language filtering is off because no multilingual detection model is configured",
+      "Language filtering is off because no multilingual model is selected. Choose one in AI settings.",
     );
   });
 

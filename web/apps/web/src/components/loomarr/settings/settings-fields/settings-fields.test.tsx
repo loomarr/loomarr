@@ -11,6 +11,7 @@ const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipPro
 
 const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key" | "kind">): SettingEntry => ({
   group: "ai",
+  owner: "settings.ai",
   doc: "help",
   advanced: false,
   apply: SettingEntryApply.live,

@@ -177,27 +177,21 @@ const FillerManage = () => {
       <section aria-labelledby="manage-tools-heading">
         <div className="mb-3">
           <h2 id="manage-tools-heading" className="font-semibold text-lg">
-            Manage filler
+            Settings and tools
           </h2>
           <p className="text-muted-foreground text-sm">
-            Filler runs automatically. Use these tools only when you want to change something or fix a
-            problem.
+            Filler runs automatically. Change how it works or open a tool when you need one.
           </p>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <Card className="p-4">
-            <h3 className="font-medium">Automatic downloads</h3>
+            <h3 className="font-medium">Filler settings</h3>
             <p className="mt-1 text-muted-foreground text-sm">
-              Choose how often Loomarr looks for new clips and how many each source may add.
+              Downloads, folders, storage, clip review, playback, and advanced processing controls.
             </p>
             {isAdmin ? (
-              <Button
-                className="mt-4"
-                size="sm"
-                variant="outline"
-                render={<Link to="/filler/settings/$section" params={{ section: "downloads" }} />}
-              >
-                Automatic download settings
+              <Button className="mt-4" size="sm" variant="outline" render={<Link to="/filler/settings" />}>
+                Open filler settings
               </Button>
             ) : null}
           </Card>

@@ -16,6 +16,7 @@ const withTooltip: Decorator = (Story) => (
 
 const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key" | "kind" | "doc">): SettingEntry => ({
   group: "connections.media_server",
+  owner: "settings.connections",
   advanced: false,
   apply: SettingEntryApply.live,
   secret: false,

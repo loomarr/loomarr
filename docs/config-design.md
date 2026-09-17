@@ -76,6 +76,7 @@ type Setting struct {
     Group    Group         // connections.media_server | connections.requester |
                            // connections.tunarr | ai | channels | filler |
                            // users_security | advanced
+    Owner    Owner         // stable task id; browser paths stay frontend-owned
     Kind     Kind          // string | int | bool | duration | url | enum | secret | string_list
     Default  any
     Enum     []string      // Kind == enum
@@ -88,7 +89,9 @@ type Setting struct {
 }
 ```
 
-**The registry is the single source of truth**, with the same committed-artifact discipline as OpenAPI: `make config-docs` generates `docs/configuration.md` (grouped tables, env names, defaults, docs) and CI fails on drift (`git diff --exit-code`). The main doc's §15 table is a human mirror; the generated file is the contract. A setting that isn't in the registry does not exist — validation, the API, the UI, the wizard, and the docs all derive from it.
+**The registry is the single source of truth**, with the same committed-artifact discipline as OpenAPI: `make config-docs` generates `docs/configuration.md` (grouped tables, owner tasks, env names, defaults, docs) and CI fails on drift (`git diff --exit-code`). The main doc's §15 table is a human mirror; the generated file is the contract. A setting that isn't in the registry does not exist — validation, the API, the UI, the wizard, and the docs all derive from it.
+
+`Group` and `Owner` answer different questions. A group is the registry's stable form and documentation grouping; an owner identifies the one task where a person changes the value. Every public setting has exactly one known owner. The API exposes that owner id, while one frontend destination catalog maps ids to labels, aliases, role visibility, and paths. The backend never knows browser paths. Action-owned destinations such as database migration, paired devices, diagnostics, and About live only in that catalog because they do not represent registry values.
 
 ---
 
@@ -320,38 +323,35 @@ or user-disable workflow, never by rotating unrelated application configuration.
 
 ## 5. Settings UI — information architecture
 
-Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
+Settings opens on a task-based home, not a category tab and not an automatic redirect. The primary
+control is a finder over human labels, descriptions, common aliases, exact keys, and environment
+variable names. A result navigates to its one curated owner; it does not create another inline
+editor. Empty and no-result states keep the browseable task groups visible.
 
-| Page | Contents | Live tests |
-| --- | --- | --- |
-| **General** | Installation location and shared links. **Your location** owns `filler.home_country` and `filler.home_market`, but Setup and Settings expose them as one searchable **Location** control. Manual city, populated-municipality, or country search is always available; it waits for a short typing pause, keeps results stable while searching, and includes a region in ambiguous labels without storing another setting. **Use my location** follows one resolver pipeline: browser coordinates after explicit permission, trusted CDN geography, then local country lookup of the public client IP. Private/LAN addresses and failures yield no estimate. Approximate results are labelled, never imply a city without city evidence, and never save themselves. Locale, timezone, untrusted headers, and server location are never substitutes. A selected place stages country + market as one logical edit, and a commit is complete only when both per-key results are `saved`. **Share invitation and recovery links** owns `access.public_url`, labelled **Recipient-facing Loomarr address**. When empty, the editor stages the current browser origin as the default; the operator saves it or changes it when recipients reach Loomarr elsewhere. The server never derives this persisted value from request headers. | — |
-| **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB. **No manual wiring actions** — connecting Tunarr to the guide and pointing it at the library happen *automatically on save* (see below). | one **Test** button per connection block → runs the same `ConnectionTest` the wizard uses; the `livetv` / `tunarr_library` outcomes surface on the Tunarr + Media-server block verdicts, since a save auto-runs `POST /v1/setup/{livetv,tunarr}-connect` server-side |
-| **AI** | One **AI setup** block owns provider, credentials, connection status, and lineup-model selection in that order; it does not split one setup task across a connection form and a separate policy card. The picker exclusively owns the lineup model's probe/catalog/hot-swap, so the page never presents a conflicting free-text model field. It leads with one explained recommendation and two differentiated alternatives; **Find another model** opens a name/ID typeahead over the live catalog rather than rendering the catalog as a giant list. Hosted cards refuse models without advertised tool-calling. Choosing a known hosted provider seeds its canonical API base from the probe; only Custom asks the operator to supply one. A readiness action that must persist staged credentials says **Save & check AI setup** before it is clicked. **Provider connected** and **channel suggestions ready** are distinct verdicts: a connected provider plus selected model remains honestly connected when TMDB grounding is absent, while the block names TMDB as the remaining dependency and links directly to its Connections block. Request and auto-curation limits follow in one **AI behavior** section; filler role overrides stay behind **Advanced model roles**. Approval remains per-person; there is no global auto-approve switch. | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
-| **Defaults** | The registry values channels can actually inherit today: rolling schedule horizon and filler break frequency. Changing one affects every existing channel still following it; explicit channel choices stay unchanged. Filler ingestion/storage/automation live with the Filler workflow. | — |
-| **Notifications** | One provider list and **Add provider** workflow. Choose SMTP, Slack, Discord, Browser Push, or another supported provider; enter only its fields, select events, save, and optionally send a test. SMTP is not a separate block. Provider secrets are write-only and encrypted through the database secret-protection boundary. A member sees only that person's Browser Push subscriptions; installation providers remain admin-managed. | **Send test** queues the same provider adapter through a distinct durable test intent and reports only queued handoff plus the provider row's safe delivery health. Browser permission is requested only by the explicit **Enable this browser** action. |
-| **System** | The machine, not the product. Sub-tabs: **Tasks** · **Playback** (current streaming owner/health first; then engine/address, picture/sound, live capacity, guide, and advanced encoder/storage/path overrides) · **Database** · **Backup** (schedule, retention, destination, files) · **Storage** (image location, remote-artwork policy, upload/cache bounds) · **About**. “Playback” is the user-facing label for the `playout` domain. Playback distinguishes Loomarr-owned controls from Tunarr-owned transcode profiles; it does not duplicate Tunarr's profile editor. | per sub-tab where testable |
-| **Security** | Sign-in lifetime · advanced cookie transport policy · **Generated secrets panel** (view/copy/regenerate per §4) · database-encryption status and non-secret installation-key fingerprint · data-key rotation · SSO once V8 lands. Installation-key material is never entered or revealed in the UI. | — |
-| **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. Rows are **editable in place** — see below. | — |
-
-⚠ **This table was AMENDED (V9) to the v2 mock's structure**, and the change is a restructure
-rather than a rename — worth recording because the previous six pages shipped and are what an
-existing install has bookmarked:
-
-| Was | Now |
+| Home group | Destinations |
 | --- | --- |
-| Channels & playback + Filler | **Defaults** (both answer "what does a new channel inherit?") |
-| Tasks (added after this table was written) | **System → Tasks** |
-| Users & security | **Security** |
-| Advanced | **All settings** (searchable, not a dumping ground) |
+| **Set up Loomarr** | Connections, AI, channel defaults, notifications |
+| **Access and devices** | Recipient-facing address, sessions, SSO, paired devices, generated secrets, encryption |
+| **This server** | Playback, storage, backups |
+| **Troubleshoot** | Background tasks, diagnostics, database migration, version and About |
+| **Filler** | One link into Filler's own settings index; global Settings never duplicates those controls |
 
-The mock wins here despite `design/README.md` making the prototypes non-authoritative for IA:
-that rule exists because a prototype's *structure* can contradict a considered decision, and
-here the opposite is true — the v2 program's own phases are written against this shape (V12 is
-literally "System → Backup UI"; V13's probes are System-shaped), so following the older table
-would leave four phases describing pages that do not exist. **`design.md` §12 still wins on
-behaviour**; this table owns the config surface's shape.
+The raw registry editor is a quiet **Advanced settings** escape hatch, not a peer of everyday tasks.
+Individual destinations show a compact Settings breadcrumb/back action and one **Find another
+setting** affordance. The persistent top-level Settings matrix and nested System matrix are removed.
+`/settings/system` is a grouped server/troubleshooting landing page, while its task pages remain
+path-addressable. The one-field General surface is folded into Access and devices, as is the existing
+Security content; the superseded General and Security routes are removed. Destination changes use paths. Finder
+text, disclosure state, and table filters remain local state rather than destination routing.
 
-⚠ **All settings is EDITABLE, and this is the one place the v2 mock is not followed.** The mock
+The established destination behavior remains unchanged: Connections owns its live tests and
+automatic wiring; AI owns provider, credentials, model selection, and behavior; channel defaults
+contain only values channels actually inherit; notifications use the provider workflow; Playback
+separates Loomarr controls from Tunarr-owned profiles; Access and devices owns sign-in/device choices
+and progressively discloses secrets and encryption. The recipient-facing address continues to be
+edited and validated exactly as before, and the server never derives it from request headers.
+
+⚠ **Advanced settings is EDITABLE.** The earlier mock
 draws it as a read-only lookup. That works only if every key also has a home page — and the
 restructure above broke exactly that: `GroupAdvanced` holds 19 keys (job schedules, TTLs, the
 reconcile interval) whose only editor was the *Advanced* page that folded into this one. A
@@ -381,7 +381,7 @@ Two consequences worth stating, because both are easy to "fix" wrongly later:
   secrets (`playout_token`, the API token) are a separate registry (`internal/settings/secrets.go`)
   and are not settings entries at all — the API's provenance enum is exactly env/db/default.
   A fourth chip would render a state the backend never sends. Those secrets have their own panel
-  on **Security**, where view/copy/regenerate belong.
+  under **Access and devices**, where view/copy/regenerate belong.
 - **The compact control has no `<label>`, so it must carry `aria-labelledby`** pointing at the
   row's visible **Key** cell. Naming it by `title` alone is an axe `label-title-only` violation
   rated *serious*: a sighted mouse user gets a tooltip, a screen-reader user gets an unnamed text
@@ -423,7 +423,7 @@ associated for assistive technology.
 
 **Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · unavailable reason where applicable · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, unavailable reason, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
 
-**One curated home, with progressive disclosure.** `All settings` remains the searchable escape
+**One curated home, with progressive disclosure.** `Advanced settings` remains the raw-key escape
 hatch, but every key has only one task-shaped editor elsewhere. A control does not appear on both
 an operational workflow and a generic Settings page: the workflow owns it when its effect is best
 understood beside the affected work (for example, auto-filing beside Incoming clips), while service
@@ -445,16 +445,16 @@ Connections applies the same rule to service-owned identifiers. Loomarr automati
 Tunarr's Default transcode profile and the first Sonarr/Radarr profile and root folder when their
 fields are blank. Their free-form identifiers are therefore labelled as **overrides** and remain
 behind the connection block's Advanced disclosure; the ordinary path asks only how to reach the
-service. Security likewise keeps `cookie.secure` behind Advanced because `auto` follows the request
+service. Access and devices likewise keeps `cookie.secure` behind Advanced because `auto` follows the request
 and is the safe ordinary path; changing the transport policy is deployment troubleshooting, not a
 routine sign-in preference.
 
 **Save model — explicit, spanning the whole Settings surface (Sonarr's sticky save bar):** the
-buffer and the bar both live in the Settings *layout*, not on a page (V9/V10) — the tab bar is
-navigation, not a commit boundary, and a per-page buffer silently discarded edits on tab switch.
+buffer and the bar both live in the Settings *layout*, not on a page. Navigation is not a commit
+boundary, and a per-page buffer silently discarded edits when moving between destinations.
 Edits accumulate with dirty tracking; a persistent bar offers Save/Discard; navigation away with dirty state prompts. Chosen over per-field autosave because connection settings often change *together* (URL + token) and half-saved pairs mid-test are a footgun. Save = validate → persist → apply by §3 lifecycle → per-key results (RFC 7807 problems map to inline field errors; `pinned` keys are rejected with the chip explanation). A generation-scoped save is still successful: the field shows the desired value and the derived restart notice explains why the applied value has not moved yet.
 
-**The save bar spans TABS, not just a page (V9).** Dirty state survives switching between
+**The save bar spans destinations, not just a page.** Dirty state survives switching between
 Connections, AI, Defaults and so on: an operator who edits a connection, checks a default, and
 comes back must not silently lose the first edit. One `edits` map keyed by setting id, one bar,
 one Save. The alternative — per-tab state — makes the bar's "3 unsaved" mean something different
@@ -468,7 +468,7 @@ do not "stage" regenerating a secret, and a Save button next to *Run now* would 
 | --- | --- | --- |
 | **Select a model** | AI | Hot-swaps the live suggester (§8.1); the picker's whole point is trying one |
 | **Pull a model** | AI | A long streaming download with its own progress, not a value |
-| **Regenerate a secret** | Security | Destructive and irreversible — it invalidates the old value on the spot (§4) |
+| **Regenerate a secret** | Access and devices | Destructive and irreversible — it invalidates the old value on the spot (§4) |
 | **Run a job now** | System → Tasks | Triggers work; there is no "unsaved run" |
 
 Everything else on every page goes through the bar. A fifth exception should be argued for
@@ -480,14 +480,15 @@ but those values are staged inside the panel and committed with an explicit **Sa
 action. Being closer to the affected clips is not permission to introduce an uncued autosave model.
 
 Filler settings use the same workspace heading and navigation as Sources, Incoming, and Library.
-`/filler/settings` redirects to `/filler/settings/downloads`; the requested folders, storage,
-Incoming history, breaks, review, playback, limits, or tools task is a path segment, never a query
-parameter. One task is visible at a time, with other tasks available under More settings.
-Expert-only tasks expose their fields after the operator explicitly chooses that task. Incoming
-itself explains how long Ready clips remain visible and links quietly to Incoming history; changing
-that live duration affects the next read only, never removes a clip from the Library or changes
-playback eligibility. Path changes preserve the shared staged edits and single save bar. Settings
-remain reachable before Filler is configured so setup is not a dead end.
+`/filler/settings` is a small task index grouped into everyday choices and advanced tuning; it does
+not silently choose Automatic downloads. Folders, downloads, storage, Incoming history, breaks,
+review, playback, limits, and tools use canonical path segments, never destination query parameters.
+One task is visible at a time and a compact switcher beside its heading replaces the buried **More
+settings** disclosure. Incoming, Sources, storage warnings, diagnostics, and global search link to
+the exact task. Incoming itself explains how long Ready clips remain visible and links quietly to
+Incoming history; changing that live duration affects the next read only, never removes a clip from
+the Library or changes playback eligibility. Path changes preserve the shared staged edits and
+single save bar. Settings remain reachable before Filler is configured so setup is not a dead end.
 
 **Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). Each block says what the service enables, whether it is optional for the current path, and what saving wires automatically. When several checks fail, **only the first failing block opens** while every other failure remains labelled `needs attention` in its collapsed header. Connection blocks behave as an accordion after that — opening one closes the prior block — because several simultaneous service forms recreate the same wall of controls the initial triage avoids. A fully set-up install shows quiet collapsed blocks with nothing to worry about.
 
@@ -535,7 +536,7 @@ does not exist.
 
 ## 8. API contract (extends main doc §7)
 
-- `GET /v1/settings` → grouped entries: `{key, group, kind, apply: live | restart, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
+- `GET /v1/settings` → grouped entries: `{key, group, owner, kind, apply: live | restart, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`. `owner` is the stable task id from the registry; it is never a browser path.
 - `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; persistence is immediate and runtime application follows the key's §3 lifecycle. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
 - A shared settings commit owner sends every staged key through that PATCH and clears only keys whose returned status is `saved`. `invalid` and `pinned` edits remain staged beside their field-level result; one successful key never makes a rejected sibling disappear. Installation location always stages country and market together, so its success message and Setup continuation require two `saved` results rather than transport-level HTTP 200.
 - `GET /v1/locations?q=&limit=` searches the embedded city/country index; `GET /v1/locations/suggestion` checks allowlisted provider geography headers only behind `security.trust_proxy`, then checks the effective public client IP against the embedded country index; `POST /v1/locations/resolve` maps explicitly shared device coordinates to its nearest supported place. Cloudflare, CloudFront, and Vercel work directly; every other CDN/proxy—including Fastly, Akamai, a load balancer, or a custom edge—can set the provider-neutral `X-Loomarr-Geo-Country` and optional `X-Loomarr-Geo-City` headers. All are admin-only, bounded, same-origin operations. Suggestions never save automatically, and no path stores a position or calls a runtime provider.

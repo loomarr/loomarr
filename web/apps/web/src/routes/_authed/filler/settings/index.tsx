@@ -1,9 +1,8 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { FillerPage } from "@/filler/filler-page";
 
 const Route = createFileRoute("/_authed/filler/settings/")({
-  beforeLoad: () => {
-    throw redirect({ to: "/filler/settings/$section", params: { section: "downloads" } });
-  },
+  component: () => <FillerPage tab="settings" />,
 });
 
 export { Route };

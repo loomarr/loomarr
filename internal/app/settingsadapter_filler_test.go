@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/settings"
 )
 
-func TestToAPIEntry_ExposesApplyTiming(t *testing.T) {
+func TestToAPIEntry_ExposesOwnerAndApplyTiming(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name  string
@@ -22,8 +22,11 @@ func TestToAPIEntry_ExposesApplyTiming(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			entry := toAPIEntry(settings.Entry{Setting: settings.Setting{
-				Key: "test.key", Kind: settings.KindString, Apply: tc.apply,
+				Key: "test.key", Owner: settings.OwnerFillerIncoming, Kind: settings.KindString, Apply: tc.apply,
 			}})
+			if entry.Owner != "filler.incoming" {
+				t.Errorf("owner = %q, want filler.incoming", entry.Owner)
+			}
 			if entry.Apply != tc.want {
 				t.Errorf("apply = %q, want %q", entry.Apply, tc.want)
 			}

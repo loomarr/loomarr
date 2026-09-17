@@ -14,6 +14,7 @@ const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipPro
 const entry = (over: Partial<SettingEntry> = {}): SettingEntry => ({
   key: "library.url",
   group: "connections.media_server",
+  owner: "settings.connections",
   kind: "url",
   doc: "Base URL of your Emby/Jellyfin server.",
   advanced: false,

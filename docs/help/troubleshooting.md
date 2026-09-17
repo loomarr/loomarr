@@ -25,7 +25,7 @@ policy blocks it.
 
 ## Database secret encryption
 
-**Settings:** Security → Database secret encryption
+**Settings:** Access and devices → Advanced access controls → Database secret encryption
 
 Loomarr encrypts recoverable credentials before writing them to SQLite or PostgreSQL. The database
 contains wrapped data-encryption keys; the installation key stays outside it.

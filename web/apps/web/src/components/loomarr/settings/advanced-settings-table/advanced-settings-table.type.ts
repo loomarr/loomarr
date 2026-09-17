@@ -1,6 +1,6 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 
-interface AllSettingsTableProps {
+interface AdvancedSettingsTableProps {
   entries: SettingEntry[];
   // Controlled so the page owns the query — it belongs in the URL eventually (a shared link to
   // "every playout key" is useful), and a component holding its own input cannot offer that.
@@ -16,4 +16,4 @@ interface AllSettingsTableProps {
   className?: string;
 }
 
-export type { AllSettingsTableProps };
+export type { AdvancedSettingsTableProps };

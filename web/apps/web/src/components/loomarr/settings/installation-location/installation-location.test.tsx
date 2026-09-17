@@ -36,6 +36,7 @@ const entry = (key: string, value = ""): SettingEntry => ({
   key,
   label: key.endsWith("country") ? "Country" : "Local area",
   group: "filler",
+  owner: "settings.location",
   kind: "string",
   value,
   provenance: "default",

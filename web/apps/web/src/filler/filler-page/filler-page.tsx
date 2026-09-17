@@ -16,7 +16,7 @@ import { FillerCatalog } from "../filler-catalog";
 import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
 import type { FillerSearch } from "../filler-search";
-import { FillerSettings } from "../filler-settings";
+import { FillerSettings, FillerSettingsIndex } from "../filler-settings";
 import { Incoming } from "../incoming";
 import { SourcesTab } from "../sources-tab";
 import { TaxonomyTab } from "../taxonomy-tab";
@@ -58,11 +58,11 @@ const FillerPage = ({ tab, settingsSection }: FillerPageProps) => {
         <div className="min-h-0 flex-1 overflow-auto p-6">
           <EmptyState
             title="No filler folder configured"
-            description="Add a folder of commercials, bumpers, and station IDs under Settings → Defaults. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
+            description="Choose a folder for commercials, bumpers, and station IDs. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
             {...(isAdmin
               ? {
                   action: {
-                    label: "Open filler defaults",
+                    label: "Choose clip folders",
                     onClick: () =>
                       navigate({ to: "/filler/settings/$section", params: { section: "folders" } }),
                   },
@@ -124,8 +124,8 @@ const FillerPage = ({ tab, settingsSection }: FillerPageProps) => {
                 {watch.autoFetch.stoppedBy === "catalog"
                   ? `${watch.autoFetch.catalogClips.toLocaleString()} of ${(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use.`
                   : `${formatBytes(watch.autoFetch.diskBytes ?? 0)} of ${formatBytes(watch.autoFetch.maxDiskBytes ?? 0)} filler storage is in use.`}{" "}
-                Manual queueing still works; curate the library or raise this ceiling to resume unattended
-                fetching.
+                You can still add clips yourself. Remove clips you no longer want or raise this limit to
+                restart automatic downloads.
               </p>
             </div>
             {isAdmin ? (
@@ -151,7 +151,11 @@ const FillerPage = ({ tab, settingsSection }: FillerPageProps) => {
         ) : tab === "taxonomy" ? (
           <TaxonomyTab isAdmin={isAdmin} />
         ) : tab === "settings" ? (
-          <FillerSettings section={settingsSection} />
+          settingsSection ? (
+            <FillerSettings section={settingsSection} />
+          ) : (
+            <FillerSettingsIndex />
+          )
         ) : (
           <FillerCatalog isAdmin={isAdmin} />
         )}

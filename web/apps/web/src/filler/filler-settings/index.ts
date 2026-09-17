@@ -1,1 +1,1 @@
-export { FillerSettings } from "./filler-settings";
+export { FillerSettings, FillerSettingsIndex } from "./filler-settings";

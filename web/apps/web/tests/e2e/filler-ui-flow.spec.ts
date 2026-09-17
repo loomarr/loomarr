@@ -4,7 +4,9 @@ import { installMockBackend } from "./mock-backend";
 test("Filler keeps its workspace stable and settings focused without losing edits", async ({ page }) => {
   const backend = await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
   await page.goto("/filler/manage");
-  await page.getByRole("link", { name: "Automatic download settings" }).click();
+  await page.getByRole("link", { name: "Open filler settings" }).click();
+  await expect(page).toHaveURL(/\/filler\/settings$/);
+  await page.getByRole("link", { name: /^Automatic downloads/ }).click();
   await expect(page).toHaveURL(/\/filler\/settings\/downloads$/);
   await expect(page.getByRole("heading", { level: 1, name: "Filler", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Automatic downloads", exact: true })).toBeVisible();
@@ -17,11 +19,8 @@ test("Filler keeps its workspace stable and settings focused without losing edit
   await expect(page.getByRole("heading", { name: "Automatic downloads", exact: true })).toHaveCount(0);
   await page.getByRole("spinbutton", { name: "Automatic-download catalog limit" }).fill("1000");
   await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(1);
-  await page.getByRole("button", { name: /More settings/ }).click();
-  await page
-    .getByRole("navigation", { name: "Filler settings tasks" })
-    .getByRole("link", { name: "Automatic downloads", exact: true })
-    .click();
+  await page.getByRole("link", { name: "All filler settings" }).click();
+  await page.getByRole("link", { name: /^Automatic downloads/ }).click();
   await expect(page.getByRole("spinbutton", { name: "Add up to", exact: true })).toHaveValue("4");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect

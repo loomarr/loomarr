@@ -18,6 +18,7 @@ const withTooltip: Decorator = (Story) => (
 const base: SettingEntry = {
   key: "library.url",
   group: "connections.media_server",
+  owner: "settings.connections",
   kind: "url",
   doc: "Base URL of your Emby/Jellyfin server.",
   advanced: false,

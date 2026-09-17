@@ -4,8 +4,8 @@ import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 // A minimal VALID SettingEntry. Same rule as `./channels` and `./users`: every required field the
 // wire declares, nothing more.
 //
-// ⚠ `SettingEntry` requires NINE fields — `advanced`, `apply`, `doc`, `group`, `key`,
-// `kind`, `provenance`, `secret`, `set`. Tests wrote four of them:
+// ⚠ `SettingEntry` requires TEN fields — `advanced`, `apply`, `doc`, `group`, `key`,
+// `kind`, `owner`, `provenance`, `secret`, `set`. Tests wrote four of them:
 //
 //   { key: "tunarr.url", set: true, provenance: "db", secret: false }
 //
@@ -21,6 +21,7 @@ const setting = (over: Partial<SettingEntry> = {}): SettingEntry => ({
   key: "tunarr.url",
   kind: "string",
   group: "playout",
+  owner: "settings.advanced",
   doc: "Where Tunarr lives.",
   provenance: "db",
   advanced: false,

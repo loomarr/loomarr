@@ -278,7 +278,7 @@ const SettingsPage = ({
         {patch.error != null && <ErrorState error={patch.error} />}
       </div>
 
-      {/* The save bar lives in the LAYOUT now (V10), not here: All settings is a tab that is
+      {/* The save bar lives in the layout, not here: Advanced settings is a destination that is
           not a SettingsPage, and an edit staged there had no Save button on screen. One bar
           above the outlet also means two pages can never render two bars. */}
     </div>

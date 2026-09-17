@@ -23,9 +23,9 @@ func (f fakeLoader) LoadSnapshot(context.Context) (Snapshot, error) {
 func newTestService(t *testing.T, env map[string]string, db map[string]string) *Service {
 	t.Helper()
 	reg := newRegistry([]Setting{
-		{Key: "library.url", EnvVar: "LIBRARY_URL", Kind: KindURL, Default: "", Doc: "x"},
-		{Key: "job.workers", EnvVar: "JOB_WORKERS", Kind: KindInt, Default: 2, Doc: "x"},
-		{Key: "library.token", EnvVar: "LIBRARY_TOKEN", Kind: KindSecret, Default: "", Doc: "x"},
+		{Key: "library.url", EnvVar: "LIBRARY_URL", Owner: OwnerAdvanced, Kind: KindURL, Default: "", Doc: "x"},
+		{Key: "job.workers", EnvVar: "JOB_WORKERS", Owner: OwnerAdvanced, Kind: KindInt, Default: 2, Doc: "x"},
+		{Key: "library.token", EnvVar: "LIBRARY_TOKEN", Owner: OwnerAdvanced, Kind: KindSecret, Default: "", Doc: "x"},
 	})
 	s, err := New(context.Background(), reg, fakeLoader{m: db}, nil)
 	if err != nil {
@@ -80,9 +80,9 @@ func TestResolveMany_UsesOneSnapshotWithOrdinaryPrecedence(t *testing.T) {
 // e.g. Default: 2; the real registry never does.)
 func TestResolve_StringDefaultParsesToTypedValue(t *testing.T) {
 	reg := newRegistry([]Setting{
-		{Key: "sched.window_hours", EnvVar: "SCHED_WINDOW_HOURS", Kind: KindDuration, Default: "24h", Doc: "x"},
-		{Key: "job.workers", EnvVar: "JOB_WORKERS", Kind: KindInt, Default: "2", Doc: "x"},
-		{Key: "flag.on", EnvVar: "FLAG_ON", Kind: KindBool, Default: "true", Doc: "x"},
+		{Key: "sched.window_hours", EnvVar: "SCHED_WINDOW_HOURS", Owner: OwnerAdvanced, Kind: KindDuration, Default: "24h", Doc: "x"},
+		{Key: "job.workers", EnvVar: "JOB_WORKERS", Owner: OwnerAdvanced, Kind: KindInt, Default: "2", Doc: "x"},
+		{Key: "flag.on", EnvVar: "FLAG_ON", Owner: OwnerAdvanced, Kind: KindBool, Default: "true", Doc: "x"},
 	})
 	s, err := New(context.Background(), reg, fakeLoader{m: nil}, nil)
 	if err != nil {
@@ -113,7 +113,7 @@ func TestResolve_BadDBSelfHeals(t *testing.T) {
 // is surfaced loudly, not silently self-healed. Exercised through the real New
 // path with a real env var (t.Setenv), since New reads os.LookupEnv at boot.
 func TestNew_BadEnvFailsBoot(t *testing.T) {
-	reg := newRegistry([]Setting{{Key: "job.workers", EnvVar: "JOB_WORKERS", Kind: KindInt, Default: 2, Doc: "x"}})
+	reg := newRegistry([]Setting{{Key: "job.workers", EnvVar: "JOB_WORKERS", Owner: OwnerAdvanced, Kind: KindInt, Default: 2, Doc: "x"}})
 	t.Setenv("JOB_WORKERS", "twelve")
 	if _, err := New(context.Background(), reg, fakeLoader{m: nil}, nil); err == nil {
 		t.Fatal("expected boot to fail on an unparseable env value")
@@ -209,7 +209,7 @@ func TestEnvValue_EmptyDirectDoesNotBlockFile(t *testing.T) {
 func TestNew_WarnsOnEmptyEnvPin(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	reg := newRegistry([]Setting{{Key: "llm.model", EnvVar: "LLM_MODEL", Kind: KindString, Default: "", Doc: "x"}})
+	reg := newRegistry([]Setting{{Key: "llm.model", EnvVar: "LLM_MODEL", Owner: OwnerAdvanced, Kind: KindString, Default: "", Doc: "x"}})
 
 	t.Setenv("LLM_MODEL", "")
 	if _, err := New(context.Background(), reg, fakeLoader{m: nil}, log); err != nil {

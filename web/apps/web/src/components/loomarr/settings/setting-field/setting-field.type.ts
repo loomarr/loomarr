@@ -38,7 +38,7 @@ interface SettingFieldProps {
   // exactly the details that matter.
   compact?: boolean;
   // Id of the element that visibly labels this control, for `compact` mode — which renders no
-  // <label> of its own. In the all-settings table the visible label IS the Key cell, so the
+  // <label> of its own. In the advanced-settings table the visible label IS the Key cell, so the
   // control points at it rather than growing a duplicate. Without this the input is labelled
   // only by `title`, which axe rates a SERIOUS violation (`label-title-only`): a sighted mouse
   // user gets a tooltip, a screen-reader user may get nothing.

@@ -148,7 +148,7 @@ describe("FillerSources", () => {
     );
     expect(screen.getByText("Add your location")).toBeInTheDocument();
     expect(screen.queryByText("Location needed")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Set location" })).toHaveAttribute("href", "/settings/general");
+    expect(screen.getByRole("link", { name: "Set location" })).toHaveAttribute("href", "/settings/access");
   });
 });
 
