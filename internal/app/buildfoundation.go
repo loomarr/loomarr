@@ -199,6 +199,7 @@ func buildFoundation(
 		result.activity = activity.New(st, result.log).WithNotifier(result.emitter)
 		result.processDiagnostics = diagnostics.NewProcessManager(st, result.diagnostics, diagnostics.ProcessOptions{
 			OutputDir: result.set.str("diagnostics.dir"), InstanceID: instanceID,
+			Storage:   result.storageGovernor,
 			OnFailure: func(err error) { fallbackLog.Error("diagnostics: process recorder failed", "err", err) },
 		})
 		result.diagnosticProcesses = diagnostics.NewProcessLog(st, diagnostics.ProcessReadOptions{

@@ -49,6 +49,22 @@ func EstimatePrepared(durationMS int64, videoBitrateKbps, audioBitrateKbps int) 
 	return reservation, true
 }
 
+// EstimateDiagnosticOutput reserves the atomic-rewrite peak for one bounded process log: the
+// current retained file and its replacement temp can coexist during a flush. The fixed overhead
+// covers timestamps, the discard marker, and filesystem metadata.
+func EstimateDiagnosticOutput(prefixBytes, tailBytes int) (int64, bool) {
+	if prefixBytes <= 0 || tailBytes <= 0 {
+		return 0, false
+	}
+	const overhead = int64(64 << 10)
+	retained := saturatingAdd(int64(prefixBytes), int64(tailBytes))
+	reservation := saturatingAdd(saturatingMultiply(retained, 2), overhead)
+	if reservation <= retained {
+		return 0, false
+	}
+	return reservation, true
+}
+
 // MediaBudget is the governor-owned translation from provider facts to limits.
 // WriteCeilingBytes bounds acquisition staging. ReservationBytes also accounts
 // for the retained source, evidence/playback derivatives, and small generated

@@ -76,3 +76,14 @@ func TestEstimatePreparedUsesScheduledDurationAndRenditionBitrate(t *testing.T) 
 		t.Fatal("overflowed duration must fail closed")
 	}
 }
+
+func TestEstimateDiagnosticOutputIncludesAtomicReplacementPeak(t *testing.T) {
+	t.Parallel()
+	got, ok := storagegovernor.EstimateDiagnosticOutput(256<<10, 768<<10)
+	if !ok || got != (2<<20)+(64<<10) {
+		t.Fatalf("diagnostic reservation = (%d, %v)", got, ok)
+	}
+	if _, ok := storagegovernor.EstimateDiagnosticOutput(0, 1); ok {
+		t.Fatal("invalid diagnostic bound must fail closed")
+	}
+}

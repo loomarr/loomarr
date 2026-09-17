@@ -15,6 +15,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 const (
@@ -56,6 +58,7 @@ type ProcessOptions struct {
 	Now            func() time.Time
 	Version        func(context.Context, string) string
 	OnFailure      func(error)
+	Storage        *storagegovernor.Governor
 }
 
 // ProcessSpec is the stable correlation known when an external process starts.
@@ -239,6 +242,28 @@ func (m *ProcessManager) Begin(spec ProcessSpec) *ProcessHandle {
 	if m.closed {
 		return nil
 	}
+	var storageLease *storagegovernor.Lease
+	if m.opts.OutputDir != "" && m.opts.Storage != nil {
+		reservation, ok := storagegovernor.EstimateDiagnosticOutput(m.opts.PrefixBytes, m.opts.TailBytes)
+		if !ok {
+			m.fail(fmt.Errorf("diagnostic storage paused (%s)", storagegovernor.ReasonEstimateUnknown))
+			return nil
+		}
+		var decision storagegovernor.Decision
+		storageLease, decision = m.opts.Storage.Reserve(context.Background(), storagegovernor.Request{
+			Path: m.opts.OutputDir, Domain: storagegovernor.DomainDiagnostics,
+			EstimatedBytes: reservation, Mode: storagegovernor.Automatic,
+		})
+		if storageLease == nil {
+			m.fail(diagnosticStorageError(decision))
+			return nil
+		}
+		if decision = storageLease.Revalidate(context.Background(), 0); !decision.Allowed {
+			storageLease.Release()
+			m.fail(diagnosticStorageError(decision))
+			return nil
+		}
+	}
 	now := m.opts.Now()
 	id := newID(now)
 	ref := ""
@@ -256,7 +281,8 @@ func (m *ProcessManager) Begin(spec ProcessSpec) *ProcessHandle {
 			CommandSummary: commandSummary(spec.Executable, spec.Args), StartedAt: now.UnixMilli(),
 			Status: ProcessRunning, OutputRef: ref, UpdatedAt: now.UnixMilli(),
 		},
-		lines: make(chan string, m.opts.OutputCapacity),
+		lines:        make(chan string, m.opts.OutputCapacity),
+		storageLease: storageLease,
 	}
 	h.run.SizeBytes = processRetainedSize(h.run)
 	m.enqueue(h.run)
@@ -340,6 +366,7 @@ type ProcessHandle struct {
 	discardedQueue atomic.Int64
 	progressAt     time.Time
 	progressSpeed  float64
+	storageLease   *storagegovernor.Lease
 }
 
 // ID is the correlation identity children and Diagnostic events carry.
@@ -419,6 +446,7 @@ func (h *ProcessHandle) Finish(result ProcessResult) {
 
 func (h *ProcessHandle) capture() {
 	defer h.manager.runs.Done()
+	defer h.storageLease.Release()
 	if version := h.manager.executableVersion(h.executable); version != "" {
 		h.run.ExecutableVersion = sanitizeString(version, maxNameBytes)
 		h.snapshotMetadata(0)
@@ -429,9 +457,22 @@ func (h *ProcessHandle) capture() {
 	var tail [][]byte
 	prefixBytes, tailBytes := 0, 0
 	discardedRetention := int64(0)
+	outputDisabled := false
 	flush := func() {
 		if h.run.OutputRef == "" {
 			return
+		}
+		if outputDisabled {
+			return
+		}
+		if h.storageLease != nil {
+			decision := h.storageLease.Revalidate(context.Background(), 0)
+			if !decision.Allowed {
+				outputDisabled = true
+				h.storageLease.Release()
+				h.manager.fail(diagnosticStorageError(decision))
+				return
+			}
 		}
 		path := filepath.Join(h.manager.opts.OutputDir, h.run.OutputRef)
 		tmp := path + ".tmp"
@@ -515,6 +556,13 @@ func (h *ProcessHandle) capture() {
 			h.snapshotMetadata(discardedRetention)
 		}
 	}
+}
+
+func diagnosticStorageError(decision storagegovernor.Decision) error {
+	if decision.Err != nil {
+		return fmt.Errorf("diagnostic storage paused (%s): %w", decision.Snapshot.Reason, decision.Err)
+	}
+	return fmt.Errorf("diagnostic storage paused (%s)", decision.Snapshot.Reason)
 }
 
 func (m *ProcessManager) executableVersion(executable string) string {
