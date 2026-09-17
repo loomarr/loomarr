@@ -85,6 +85,12 @@ func runPlannerReleaseReplay(t *testing.T, cases []Case, trials int, timeout tim
 	generatorConfig, judgeConfig := certificationRoleConfigsFromEnv()
 	profile := os.Getenv("LOOMARR_EVAL_PROFILE")
 	generatorIdentity, judgeIdentity := CertificationIdentitiesFromEnv()
+	generatorReservation, judgeReservation, err := openRouterReservationsFromEnv(
+		os.Getenv, generatorConfig, judgeConfig, time.Now().UTC(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	budget, err := PrepareCertificationRun(len(cases), CertificationOptions{
 		Required: true, FrozenCatalog: true, Trials: trials,
 		GeneratorProvider: generatorConfig.Provider, GeneratorBaseURL: generatorConfig.BaseURL, GeneratorModel: generatorIdentity.Model,
@@ -97,6 +103,8 @@ func runPlannerReleaseReplay(t *testing.T, cases []Case, trials int, timeout tim
 		MaxTokensPerSuite: os.Getenv("LOOMARR_EVAL_MAX_TOKENS"), MaxSpendPerSuite: os.Getenv("LOOMARR_EVAL_MAX_SPEND"),
 		GeneratorTokensPerCall: os.Getenv("LOOMARR_EVAL_GENERATOR_RESERVE_TOKENS"), GeneratorSpendPerCall: os.Getenv("LOOMARR_EVAL_GENERATOR_RESERVE_SPEND"),
 		JudgeTokensPerCall: os.Getenv("LOOMARR_EVAL_JUDGE_RESERVE_TOKENS"), JudgeSpendPerCall: os.Getenv("LOOMARR_EVAL_JUDGE_RESERVE_SPEND"),
+		GeneratorOpenRouterReservation: generatorReservation,
+		JudgeOpenRouterReservation:     judgeReservation,
 	})
 	if err != nil {
 		t.Fatal(err)

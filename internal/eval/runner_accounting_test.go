@@ -425,8 +425,8 @@ func TestRunnerRecordsGeneratorAndJudgeIdentitiesIndependently(t *testing.T) {
 
 	card := runner.Run(context.Background(), []Case{{Name: "identity"}})
 
-	if card.SchemaVersion != 15 {
-		t.Fatalf("schema version = %d, want 15", card.SchemaVersion)
+	if card.SchemaVersion != 16 {
+		t.Fatalf("schema version = %d, want 16", card.SchemaVersion)
 	}
 	if card.CorpusVersion != "2026-08-27.8" {
 		t.Fatalf("corpus version = %q, want 2026-08-27.8", card.CorpusVersion)

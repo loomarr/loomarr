@@ -5,9 +5,12 @@ package eval
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -39,8 +42,108 @@ type ResourceBudget struct {
 // InferenceReservation is the conservative resource envelope that must fit
 // before one hosted provider call may be dispatched.
 type InferenceReservation struct {
-	Tokens int    `json:"tokens"`
-	Spend  string `json:"spend"`
+	Tokens              int    `json:"tokens"`
+	Spend               string `json:"spend"`
+	MaxInputTokens      int    `json:"maxInputTokens,omitempty"`
+	MaxCompletionTokens int    `json:"maxCompletionTokens,omitempty"`
+}
+
+// OpenRouterReservationConfig binds a resource reservation to one immutable
+// capability snapshot and the exact request limits enforced by the caller.
+type OpenRouterReservationConfig struct {
+	Snapshot            fillerbakeoff.OpenRouterSnapshot
+	SnapshotSHA256      string
+	At                  time.Time
+	Model               string
+	UpstreamProvider    string
+	MaxInputTokens      int
+	MaxCompletionTokens int
+	RequiredParameters  []string
+}
+
+// DeriveOpenRouterReservation prices one call against the most expensive
+// active ZDR endpoint OpenRouter may choose inside the pinned provider family.
+func DeriveOpenRouterReservation(config OpenRouterReservationConfig) (InferenceReservation, error) {
+	if err := fillerbakeoff.ValidateOpenRouterSnapshot(config.Snapshot); err != nil {
+		return InferenceReservation{}, err
+	}
+	if config.SnapshotSHA256 == "" || config.SnapshotSHA256 != fillerbakeoff.OpenRouterSnapshotSHA256(config.Snapshot) {
+		return InferenceReservation{}, fmt.Errorf("OpenRouter snapshot digest does not match the pinned reservation authority")
+	}
+	if config.Snapshot.SourceBaseURL != OpenRouterCertificationBaseURL || config.At.IsZero() || config.At.Location() != time.UTC {
+		return InferenceReservation{}, fmt.Errorf("OpenRouter reservation requires the canonical API snapshot and a UTC validation time")
+	}
+	age := config.At.Sub(config.Snapshot.RetrievedAt)
+	if age < 0 || age > 24*time.Hour {
+		return InferenceReservation{}, fmt.Errorf("OpenRouter reservation is outside the snapshot's 24-hour window")
+	}
+	if config.MaxInputTokens <= 0 || config.MaxCompletionTokens <= 0 {
+		return InferenceReservation{}, fmt.Errorf("OpenRouter reservation requires positive input and completion limits")
+	}
+	tokens, ok := checkedAdd(config.MaxInputTokens, config.MaxCompletionTokens)
+	if !ok {
+		return InferenceReservation{}, fmt.Errorf("OpenRouter reservation token limit overflows")
+	}
+	var model *fillerbakeoff.OpenRouterModelSnapshot
+	for index := range config.Snapshot.Models {
+		if config.Snapshot.Models[index].ID == config.Model {
+			model = &config.Snapshot.Models[index]
+			break
+		}
+	}
+	if model == nil {
+		return InferenceReservation{}, fmt.Errorf("OpenRouter reservation model %q is absent from the snapshot", config.Model)
+	}
+	maximumCharge := int64(0)
+	eligible := 0
+	for _, endpoint := range model.Endpoints {
+		if endpoint.ProviderName != config.UpstreamProvider || !endpoint.ZDR || endpoint.Status != 0 ||
+			endpoint.MaxCompletionTokens < int64(config.MaxCompletionTokens) {
+			continue
+		}
+		supported := true
+		for _, parameter := range config.RequiredParameters {
+			if !slices.Contains(endpoint.SupportedParameters, parameter) {
+				supported = false
+				break
+			}
+		}
+		if !supported {
+			continue
+		}
+		// The shared estimator prices every output token at completion price.
+		// Fail closed if a route could charge reasoning tokens at a higher rate.
+		if reasoning := endpoint.Pricing["internal_reasoning"]; reasoning != "" {
+			reasoningPrice, reasoningOK := new(big.Rat).SetString(reasoning)
+			completionPrice, completionOK := new(big.Rat).SetString(endpoint.Pricing["completion"])
+			if !reasoningOK || !completionOK || reasoningPrice.Cmp(completionPrice) > 0 {
+				return InferenceReservation{}, fmt.Errorf("OpenRouter route %q requires a stronger reasoning-token price bound", endpoint.ProviderSlug)
+			}
+		}
+		charge, err := fillerbakeoff.EstimateOpenRouterTokenChargeNanoUSD(
+			endpoint, int64(config.MaxInputTokens), int64(config.MaxCompletionTokens),
+		)
+		if err != nil {
+			return InferenceReservation{}, fmt.Errorf("OpenRouter route %q reservation: %w", endpoint.ProviderSlug, err)
+		}
+		eligible++
+		maximumCharge = max(maximumCharge, charge)
+	}
+	if eligible == 0 {
+		return InferenceReservation{}, fmt.Errorf("OpenRouter reservation has no active ZDR endpoint for provider %q", config.UpstreamProvider)
+	}
+	return InferenceReservation{
+		Tokens: tokens, Spend: nanoUSDDecimal(maximumCharge),
+		MaxInputTokens: config.MaxInputTokens, MaxCompletionTokens: config.MaxCompletionTokens,
+	}, nil
+}
+
+func nanoUSDDecimal(value int64) string {
+	whole, fraction := value/1_000_000_000, value%1_000_000_000
+	if fraction == 0 {
+		return strconv.FormatInt(whole, 10)
+	}
+	return fmt.Sprintf("%d.%s", whole, strings.TrimRight(fmt.Sprintf("%09d", fraction), "0"))
 }
 
 type ResourceUsage struct {
@@ -52,29 +155,31 @@ type ResourceUsage struct {
 // CertificationOptions are the resource decisions available before any Library,
 // TMDB, generator, or judge client exists.
 type CertificationOptions struct {
-	Required               bool
-	LiveSchedule           bool
-	FrozenCatalog          bool
-	Trials                 int
-	GeneratorProvider      string
-	GeneratorBaseURL       string
-	GeneratorModel         string
-	JudgeProvider          string
-	JudgeBaseURL           string
-	JudgeModel             string
-	GeneratorUpstream      string
-	JudgeUpstream          string
-	AllowLocal             bool
-	MaxCallsPerRun         string
-	MaxCallsPerSuite       string
-	MaxTokensPerRun        string
-	MaxSpendPerRun         string
-	MaxTokensPerSuite      string
-	MaxSpendPerSuite       string
-	GeneratorTokensPerCall string
-	GeneratorSpendPerCall  string
-	JudgeTokensPerCall     string
-	JudgeSpendPerCall      string
+	Required                       bool
+	LiveSchedule                   bool
+	FrozenCatalog                  bool
+	Trials                         int
+	GeneratorProvider              string
+	GeneratorBaseURL               string
+	GeneratorModel                 string
+	JudgeProvider                  string
+	JudgeBaseURL                   string
+	JudgeModel                     string
+	GeneratorUpstream              string
+	JudgeUpstream                  string
+	AllowLocal                     bool
+	MaxCallsPerRun                 string
+	MaxCallsPerSuite               string
+	MaxTokensPerRun                string
+	MaxSpendPerRun                 string
+	MaxTokensPerSuite              string
+	MaxSpendPerSuite               string
+	GeneratorTokensPerCall         string
+	GeneratorSpendPerCall          string
+	JudgeTokensPerCall             string
+	JudgeSpendPerCall              string
+	GeneratorOpenRouterReservation *OpenRouterReservationConfig
+	JudgeOpenRouterReservation     *OpenRouterReservationConfig
 }
 
 // ParseEvaluationTrials resolves the run's trial count before any external
@@ -124,22 +229,6 @@ func PrepareCertificationRun(caseCount int, options CertificationOptions) (CallB
 	if judgeProvider == "" {
 		judgeProvider = provider
 	}
-	if !localInferenceProvider(provider) {
-		budget.GeneratorReservation, err = parseRequiredInferenceReservation(
-			"generator", options.GeneratorTokensPerCall, options.GeneratorSpendPerCall, resource,
-		)
-		if err != nil {
-			return budget, err
-		}
-	}
-	if !localInferenceProvider(judgeProvider) {
-		budget.JudgeReservation, err = parseRequiredInferenceReservation(
-			"judge", options.JudgeTokensPerCall, options.JudgeSpendPerCall, resource,
-		)
-		if err != nil {
-			return budget, err
-		}
-	}
 	if (localInferenceProvider(provider) || localInferenceProvider(judgeProvider)) && !options.AllowLocal {
 		return budget, fmt.Errorf("LOOMARR_EVAL_ALLOW_LOCAL=1 is required for local certification")
 	}
@@ -159,7 +248,53 @@ func PrepareCertificationRun(caseCount int, options CertificationOptions) (CallB
 			return budget, fmt.Errorf("judge %w", err)
 		}
 	}
+	if !localInferenceProvider(provider) {
+		budget.GeneratorReservation, err = prepareRoleReservation(
+			"generator", provider, options.GeneratorModel, options.GeneratorUpstream,
+			options.GeneratorTokensPerCall, options.GeneratorSpendPerCall,
+			options.GeneratorOpenRouterReservation, resource,
+		)
+		if err != nil {
+			return budget, err
+		}
+	}
+	if !localInferenceProvider(judgeProvider) {
+		budget.JudgeReservation, err = prepareRoleReservation(
+			"judge", judgeProvider, options.JudgeModel, options.JudgeUpstream,
+			options.JudgeTokensPerCall, options.JudgeSpendPerCall,
+			options.JudgeOpenRouterReservation, resource,
+		)
+		if err != nil {
+			return budget, err
+		}
+	}
 	return budget, nil
+}
+
+func prepareRoleReservation(role, provider, model, upstream, rawTokens, rawSpend string, openRouter *OpenRouterReservationConfig, limits ResourceBudget) (InferenceReservation, error) {
+	if provider != "openrouter" {
+		return parseRequiredInferenceReservation(role, rawTokens, rawSpend, limits)
+	}
+	if openRouter == nil {
+		return InferenceReservation{}, fmt.Errorf("%s OpenRouter calls require a snapshot-derived reservation", role)
+	}
+	if openRouter.Model != model || openRouter.UpstreamProvider != upstream {
+		return InferenceReservation{}, fmt.Errorf("%s OpenRouter reservation does not match the configured model and provider", role)
+	}
+	reservation, err := DeriveOpenRouterReservation(*openRouter)
+	if err != nil {
+		return InferenceReservation{}, fmt.Errorf("%s OpenRouter reservation: %w", role, err)
+	}
+	if reservation.Tokens > limits.MaxTokensPerRun || reservation.Tokens > limits.MaxTokensPerSuite {
+		return InferenceReservation{}, fmt.Errorf("%s token reservation exceeds a declared ceiling", role)
+	}
+	spend, _ := parseExactDecimal(reservation.Spend)
+	maxRunSpend, _ := parseExactDecimal(limits.MaxSpendPerRun)
+	maxSuiteSpend, _ := parseExactDecimal(limits.MaxSpendPerSuite)
+	if spend.cmp(maxRunSpend) > 0 || spend.cmp(maxSuiteSpend) > 0 {
+		return InferenceReservation{}, fmt.Errorf("%s spend reservation exceeds a declared ceiling", role)
+	}
+	return reservation, nil
 }
 
 func parseRequiredInferenceReservation(role, rawTokens, rawSpend string, limits ResourceBudget) (InferenceReservation, error) {

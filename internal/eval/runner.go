@@ -4,6 +4,7 @@ package eval
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -18,7 +20,7 @@ import (
 )
 
 const (
-	scorecardSchemaVersion = 15
+	scorecardSchemaVersion = 16
 	corpusVersion          = "2026-08-27.8"
 )
 
@@ -210,12 +212,48 @@ type providerResourceLedger struct {
 	suite       *resourceAccumulator
 }
 
-func (l *providerResourceLedger) beforeCall() string {
+func (l *providerResourceLedger) beforeCall(messages []llm.Message, opts llm.ChatOptions) string {
+	if message := requestWithinReservation(l.reservation, messages, opts); message != "" {
+		return message
+	}
 	return resourceBudgetBeforeReservedCall(l.limits, l.reservation, l.run, l.suite, true)
 }
 
 func (l *providerResourceLedger) afterCall(call InferenceCall) string {
 	return consumeResourceCalls(l.limits, l.run, l.suite, []InferenceCall{call})
+}
+
+func requestWithinReservation(reservation InferenceReservation, messages []llm.Message, opts llm.ChatOptions) string {
+	if reservation.MaxInputTokens == 0 && reservation.MaxCompletionTokens == 0 {
+		return ""
+	}
+	if reservation.MaxInputTokens <= 0 || reservation.MaxCompletionTokens <= 0 ||
+		opts.MaxTokens <= 0 || opts.MaxTokens > reservation.MaxCompletionTokens {
+		return "budget_exhausted: provider request exceeds the reserved completion limit"
+	}
+	payload, err := json.Marshal(struct {
+		Messages []llm.Message    `json:"messages"`
+		Tools    []llm.ToolSchema `json:"tools"`
+	}{Messages: messages, Tools: opts.Tools})
+	if err != nil {
+		return "budget_exhausted: provider request size cannot be bounded"
+	}
+	// A byte-level bound is conservative for byte-pair tokenizers. Doubling the
+	// serialized input and adding fixed framing headroom covers provider chat
+	// markers without requiring a mutable provider tokenizer dependency.
+	inputBound, ok := checkedMultiply(len(payload), 2)
+	if !ok {
+		return "budget_exhausted: provider input reservation overflows"
+	}
+	inputBound, ok = checkedAdd(inputBound, 256)
+	if !ok || inputBound > reservation.MaxInputTokens {
+		return "budget_exhausted: provider request exceeds the reserved input limit"
+	}
+	total, ok := checkedAdd(inputBound, opts.MaxTokens)
+	if !ok || total > reservation.Tokens {
+		return "budget_exhausted: provider request exceeds the reserved token limit"
+	}
+	return ""
 }
 
 // Runner owns evaluation from grounded generation through deterministic gates.
@@ -236,6 +274,13 @@ func (r *Runner) WithMaterializer(materializer ScheduleMaterializer) *Runner {
 }
 
 func (r *Runner) WithJudge(judge Judge) *Runner {
+	switch typed := judge.(type) {
+	case modelJudge:
+		typed.reservation = r.config.JudgeReservation
+		judge = typed
+	case *modelJudge:
+		typed.reservation = r.config.JudgeReservation
+	}
 	r.judge = judge
 	return r
 }
@@ -421,16 +466,22 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				}
 				if evidenceErr == nil && result.Passed() {
 					scores, judgeErr := r.judge.Score(ctx, evidence)
-					result.JudgeCalls = append(result.JudgeCalls, scrubAttribution(scores.Attribution))
-					if budgetMessage := consumeResourceCalls(r.config.ResourceBudget, runUsage, suiteUsage, result.JudgeCalls); budgetMessage != "" {
-						result.addFailures(FailureStageBudgetExhausted, budgetMessage)
+					if !errors.Is(judgeErr, errProviderBudgetExhausted) {
+						result.JudgeCalls = append(result.JudgeCalls, scrubAttribution(scores.Attribution))
+						if budgetMessage := consumeResourceCalls(r.config.ResourceBudget, runUsage, suiteUsage, result.JudgeCalls); budgetMessage != "" {
+							result.addFailures(FailureStageBudgetExhausted, budgetMessage)
+						}
 					}
 					if judgeErr == nil {
 						judgeErr = validateJudgeScores(scores)
 					}
 					if judgeErr != nil {
 						result.JudgeError = judgeErr.Error()
-						result.addFailures(FailureStageJudge, result.JudgeError)
+						if errors.Is(judgeErr, errProviderBudgetExhausted) {
+							result.addFailures(FailureStageBudgetExhausted, result.JudgeError)
+						} else {
+							result.addFailures(FailureStageJudge, result.JudgeError)
+						}
 					} else {
 						result.JudgeScore = scores.Overall
 						result.RelevanceScore = scores.Relevance

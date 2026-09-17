@@ -137,7 +137,7 @@ func (p *observedProvider) Chat(ctx context.Context, messages []llm.Message, opt
 	p.mu.Lock()
 	ledger := p.ledger
 	if ledger != nil {
-		if message := ledger.beforeCall(); message != "" {
+		if message := ledger.beforeCall(messages, opts); message != "" {
 			p.obs.generatorBudgetErr = message
 			p.mu.Unlock()
 			return llm.Response{}, fmt.Errorf("generator provider call blocked: %w", errProviderBudgetExhausted)

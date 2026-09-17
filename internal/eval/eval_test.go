@@ -41,6 +41,12 @@ func TestEvalCorpus(t *testing.T) {
 	provider := generatorConfig.Provider
 	judgeProvider := judgeConfig.Provider
 	generatorIdentity, judgeIdentity := CertificationIdentitiesFromEnv()
+	generatorReservation, judgeReservation, reservationErr := openRouterReservationsFromEnv(
+		os.Getenv, generatorConfig, judgeConfig, time.Now().UTC(),
+	)
+	if reservationErr != nil {
+		t.Fatal(reservationErr)
+	}
 	plannedCaseCount := len(Corpus)
 	if required || liveSchedule {
 		plannedCaseCount += liveScheduleCaseCount
@@ -49,19 +55,21 @@ func TestEvalCorpus(t *testing.T) {
 		Required: required, LiveSchedule: liveSchedule, Trials: trials,
 		GeneratorProvider: provider, GeneratorBaseURL: generatorConfig.BaseURL, GeneratorModel: generatorIdentity.Model,
 		JudgeProvider: judgeProvider, JudgeBaseURL: judgeConfig.BaseURL, JudgeModel: judgeIdentity.Model,
-		GeneratorUpstream:      os.Getenv("LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER"),
-		JudgeUpstream:          os.Getenv("LOOMARR_EVAL_JUDGE_UPSTREAM_PROVIDER"),
-		AllowLocal:             os.Getenv("LOOMARR_EVAL_ALLOW_LOCAL") == "1",
-		MaxCallsPerRun:         os.Getenv("LOOMARR_EVAL_MAX_CALLS_PER_RUN"),
-		MaxCallsPerSuite:       os.Getenv("LOOMARR_EVAL_MAX_CALLS_PER_SUITE"),
-		MaxTokensPerRun:        os.Getenv("LOOMARR_EVAL_MAX_TOKENS_PER_RUN"),
-		MaxSpendPerRun:         os.Getenv("LOOMARR_EVAL_MAX_SPEND_PER_RUN"),
-		MaxTokensPerSuite:      os.Getenv("LOOMARR_EVAL_MAX_TOKENS"),
-		MaxSpendPerSuite:       os.Getenv("LOOMARR_EVAL_MAX_SPEND"),
-		GeneratorTokensPerCall: os.Getenv("LOOMARR_EVAL_GENERATOR_RESERVE_TOKENS"),
-		GeneratorSpendPerCall:  os.Getenv("LOOMARR_EVAL_GENERATOR_RESERVE_SPEND"),
-		JudgeTokensPerCall:     os.Getenv("LOOMARR_EVAL_JUDGE_RESERVE_TOKENS"),
-		JudgeSpendPerCall:      os.Getenv("LOOMARR_EVAL_JUDGE_RESERVE_SPEND"),
+		GeneratorUpstream:              os.Getenv("LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER"),
+		JudgeUpstream:                  os.Getenv("LOOMARR_EVAL_JUDGE_UPSTREAM_PROVIDER"),
+		AllowLocal:                     os.Getenv("LOOMARR_EVAL_ALLOW_LOCAL") == "1",
+		MaxCallsPerRun:                 os.Getenv("LOOMARR_EVAL_MAX_CALLS_PER_RUN"),
+		MaxCallsPerSuite:               os.Getenv("LOOMARR_EVAL_MAX_CALLS_PER_SUITE"),
+		MaxTokensPerRun:                os.Getenv("LOOMARR_EVAL_MAX_TOKENS_PER_RUN"),
+		MaxSpendPerRun:                 os.Getenv("LOOMARR_EVAL_MAX_SPEND_PER_RUN"),
+		MaxTokensPerSuite:              os.Getenv("LOOMARR_EVAL_MAX_TOKENS"),
+		MaxSpendPerSuite:               os.Getenv("LOOMARR_EVAL_MAX_SPEND"),
+		GeneratorTokensPerCall:         os.Getenv("LOOMARR_EVAL_GENERATOR_RESERVE_TOKENS"),
+		GeneratorSpendPerCall:          os.Getenv("LOOMARR_EVAL_GENERATOR_RESERVE_SPEND"),
+		JudgeTokensPerCall:             os.Getenv("LOOMARR_EVAL_JUDGE_RESERVE_TOKENS"),
+		JudgeSpendPerCall:              os.Getenv("LOOMARR_EVAL_JUDGE_RESERVE_SPEND"),
+		GeneratorOpenRouterReservation: generatorReservation,
+		JudgeOpenRouterReservation:     judgeReservation,
 	})
 	t.Logf("pre-provider call budget: cases=%d trials=%d generator<=%d judge<=%d total<=%d declared_run<=%d declared_suite<=%d",
 		budget.Cases, budget.Trials, budget.MaxGeneratorCalls, budget.MaxJudgeCalls, budget.Total,

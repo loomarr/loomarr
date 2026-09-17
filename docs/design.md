@@ -11339,16 +11339,27 @@ double-counting their reasoning/cache/modality detail categories; spend ceilings
 nonnegative decimal USD values and are accumulated without binary floating point.
 
 Those limits are **pre-dispatch ceilings**, not merely thresholds checked after a billable response.
-Before the first provider client exists, each hosted role binds an immutable route-resource snapshot:
-the exact requested model and upstream, context ceiling, request completion-token cap, and exact
+Before the first provider client exists, each OpenRouter role binds a fresh, digest-pinned immutable
+route-resource snapshot: the exact requested model, ordered upstream provider family, active ZDR
+endpoints, request input allowance, request completion-token cap, supported parameters, and exact
 prompt/completion/internal-reasoning prices. Every generator turn carries the production 2,048-token
 completion cap and every judge call carries its own explicit bounded completion cap; a provider
-default is never accepted in a resource-bounded run. Immediately before each individual generator or
-judge call, the shared ledger temporarily reserves the route's conservative worst-case tokens and
-USD for that request. The token reservation uses the complete context ceiling plus the request's
-completion cap; the USD reservation prices that same maximum at the most expensive applicable
-text-token category and includes any fixed request charge. If either the run or suite would exceed
-its declared limit with the reservation in place, the request is never dispatched. On return, the
+default is never accepted in a resource-bounded run. Because OpenRouter routing names the provider
+family rather than one endpoint slug, the reservation uses the most expensive eligible active ZDR
+endpoint in that family, never the cheapest observed endpoint. A higher reasoning-token price than
+the shared estimator can bound fails closed.
+
+Immediately before each individual generator or judge call, the shared ledger checks the actual
+serialized messages and tool schema against the snapshot-backed input allowance, using twice the
+UTF-8 byte length plus fixed chat-framing headroom as the conservative token bound, and checks the
+actual completion limit against the role cap. It then temporarily reserves that input allowance plus
+the completion cap and its worst-route USD price. `LOOMARR_EVAL_OPENROUTER_SNAPSHOT`,
+`LOOMARR_EVAL_OPENROUTER_SNAPSHOT_SHA256`, `LOOMARR_EVAL_GENERATOR_MAX_INPUT_TOKENS`, and
+`LOOMARR_EVAL_JUDGE_MAX_INPUT_TOKENS` are required for an OpenRouter run; caller-entered token or
+spend reservations cannot replace the derived values. Other hosted adapters without a capability
+snapshot retain explicit conservative reservation declarations. If either the run or suite would
+exceed its declared limit with the reservation in place, or the exact request exceeds its role
+allowance, the request is never dispatched. On return, the
 reservation is atomically replaced by the smaller provider-reported actual usage and exact charge.
 Thus exact-limit completion is allowed while no in-flight response can carry the run beyond the
 declared authorization. OpenRouter key or workspace limits remain useful defense in depth, but they

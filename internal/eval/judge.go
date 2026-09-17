@@ -27,7 +27,10 @@ type JudgeScores struct {
 	Attribution llm.Attribution
 }
 
-type modelJudge struct{ provider llm.Provider }
+type modelJudge struct {
+	provider    llm.Provider
+	reservation InferenceReservation
+}
 
 const judgeMaxTokens = 512
 
@@ -36,10 +39,10 @@ func (j modelJudge) Score(ctx context.Context, evidence JudgeEvidence) (JudgeSco
 	if err != nil {
 		return JudgeScores{}, err
 	}
-	return judge(ctx, j.provider, bounded)
+	return judge(ctx, j.provider, bounded, j.reservation)
 }
 
-func judge(ctx context.Context, j llm.Provider, evidence JudgeEvidence) (JudgeScores, error) {
+func judge(ctx context.Context, j llm.Provider, evidence JudgeEvidence, reservation InferenceReservation) (JudgeScores, error) {
 	if j == nil {
 		return JudgeScores{}, errors.New("judge is not configured")
 	}
@@ -90,10 +93,15 @@ Score three dimensions from 0.0 to 1.0:
 Reply with ONLY this JSON: {"overall": <0..1>, "relevance": <0..1>, "serendipity": <0..1>, "reason": "<one sentence>"}`,
 		evidence.Request, evidence.Rubric, titles, policy, observation, scheduled)
 
-	resp, err := j.Chat(ctx, []llm.Message{
+	messages := []llm.Message{
 		{Role: llm.System, Content: "You are a precise, terse evaluation judge. You output only the requested JSON."},
 		{Role: llm.User, Content: prompt},
-	}, llm.ChatOptions{JSONMode: true, MaxTokens: judgeMaxTokens})
+	}
+	opts := llm.ChatOptions{JSONMode: true, MaxTokens: judgeMaxTokens}
+	if message := requestWithinReservation(reservation, messages, opts); message != "" {
+		return JudgeScores{}, fmt.Errorf("judge provider call blocked: %s: %w", message, errProviderBudgetExhausted)
+	}
+	resp, err := j.Chat(ctx, messages, opts)
 	if err != nil {
 		return JudgeScores{Attribution: resp.Attribution}, fmt.Errorf("judge call failed: %w", err)
 	}
