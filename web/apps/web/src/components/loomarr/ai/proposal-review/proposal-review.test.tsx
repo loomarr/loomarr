@@ -93,6 +93,8 @@ describe("ProposalReview", () => {
             era: "1990s",
             runtimeTargetMin: 180,
             mustInclude: ["Heat"],
+            refineText: "Find more grounded options that match this brief.",
+            currentLineup: [{ key: "movie:tmdb:1", name: "Stale title", year: 1980 }],
           },
         }}
         selfService
@@ -198,6 +200,26 @@ describe("ProposalReview", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Find more ideas" })).toBeEnabled();
     });
+  });
+
+  it("shows progress when finding more ideas again after a failed attempt", async () => {
+    const user = userEvent.setup();
+    const onRevise = vi.fn();
+    renderReview(
+      <ProposalReview
+        proposal={proposal}
+        selfService
+        revisionError="The previous search did not finish."
+        onRevise={onRevise}
+      />,
+    );
+
+    await user.click(screen.getByText("More suggestions"));
+    await user.click(screen.getByRole("button", { name: "Find more ideas" }));
+
+    expect(screen.getByRole("button", { name: "Finding more ideas…" })).toBeDisabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(onRevise).toHaveBeenCalledOnce();
   });
 
   it("lets an admin choose titles and creates with the exact edited count", async () => {

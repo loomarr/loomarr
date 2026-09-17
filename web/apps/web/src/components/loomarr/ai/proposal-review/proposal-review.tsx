@@ -122,6 +122,11 @@ const ProposalReview = ({
     (edit?.add?.filter((item) => !item.inLibrary).length ?? 0);
   const selectedCount = selectedReady + selectedMissing;
   const currentLineup = selectedLineupContext(lineup, acquisitions, edit);
+  const {
+    refineText: _previousRefinement,
+    currentLineup: _previousLineup,
+    ...requestIntent
+  } = proposal.intent;
   const statusDisplay = selfService ? (status === "approved" ? STATUS.approved : undefined) : STATUS[status];
   const scoresCurrent = status !== "partially-edited" && proposal.scores?.version === 1;
   const partialTheme = scoresCurrent && proposal.scores?.theme.status !== "supported";
@@ -148,11 +153,11 @@ const ProposalReview = ({
   useEffect(() => {
     if (!findingMore) return;
     if (revising) findingMoreStarted.current = true;
-    if (revisionError || (!revising && findingMoreStarted.current)) {
+    if (!revising && findingMoreStarted.current) {
       findingMoreStarted.current = false;
       setFindingMore(false);
     }
-  }, [findingMore, revising, revisionError]);
+  }, [findingMore, revising]);
 
   return (
     <section className={cn("mx-auto flex w-full max-w-3xl flex-col gap-5 py-2", className)}>
@@ -177,7 +182,7 @@ const ProposalReview = ({
             event.preventDefault();
             const description = brief.trim();
             if (!description || !onRevise) return;
-            onRevise({ ...proposal.intent, description, currentLineup });
+            onRevise({ ...requestIntent, description, currentLineup });
             setEditingBrief(false);
           }}
         >
@@ -260,7 +265,7 @@ const ProposalReview = ({
         </p>
       )}
 
-      {revisionError && (
+      {revisionError && !revising && !findingMore && (
         <p role="alert" className="rounded-md border border-onair/40 bg-onair/5 px-3 py-2 text-sm">
           We couldn't update the suggestions. Your current lineup is unchanged.
         </p>
@@ -283,7 +288,7 @@ const ProposalReview = ({
             ? () => {
                 setFindingMore(true);
                 onRevise({
-                  ...proposal.intent,
+                  ...requestIntent,
                   currentLineup,
                   refineText: "Find more grounded options that match this brief.",
                 });
