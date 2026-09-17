@@ -250,8 +250,11 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 	if got.Intent.Description != "Classic Simpson Episodes" {
 		t.Errorf("intent = %q, want preserved request", got.Intent.Description)
 	}
-	if got.Failure.Code != suggest.FailureCodeNoGroundedTitles || !strings.Contains(got.Failure.Message, "No grounded titles") {
-		t.Errorf("failure = %+v, want grounded-title guidance", got.Failure)
+	if got.Failure.Code != suggest.FailureCodeNoGroundedTitles || got.Failure.Message != "We couldn't find any titles that fit this description." {
+		t.Errorf("failure = %+v, want plain-language no-match guidance", got.Failure)
+	}
+	if strings.Contains(strings.ToLower(got.Failure.Message), "grounded") {
+		t.Errorf("failure message exposed internal grounding language: %q", got.Failure.Message)
 	}
 }
 
