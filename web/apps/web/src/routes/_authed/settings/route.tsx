@@ -4,6 +4,7 @@ import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { SettingsContextNav } from "@/settings/settings-context-nav";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
 import { SettingsSaveBarHost } from "@/settings/settings-save-bar-host";
 
@@ -47,6 +48,8 @@ const SettingsLayout = () => {
   }
 
   const visiblePages = isAdmin ? PAGES : PAGES.filter((page) => page.to === "/settings/notifications");
+  const normalizedPath = pathname.replace(/\/+$/, "");
+  const showContextNav = normalizedPath !== "/settings";
 
   return (
     // ⚠ The provider wraps the OUTLET, which is what makes the save bar cross-tab: the buffer
@@ -69,6 +72,9 @@ const SettingsLayout = () => {
           tabs={visiblePages.map((p) => ({ id: p.to, label: p.label, to: p.to }))}
           activeId={visiblePages.find((p) => pathname.startsWith(p.to))?.to ?? ""}
         />
+        {showContextNav ? (
+          <SettingsContextNav section={pathname.startsWith("/settings/system") ? "This server" : undefined} />
+        ) : null}
         <div className="min-w-0 flex-1 overflow-hidden">
           <Outlet />
         </div>
