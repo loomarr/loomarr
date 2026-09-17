@@ -25,6 +25,7 @@ const status = (index: number, statusLabel = "Adding details"): IncomingStatusDT
 });
 
 const empty: FillerIncomingOutputBody = {
+  readyWindowSeconds: 86400,
   preparing: { rows: [], total: 0 },
   needsHelp: { rows: [], total: 0 },
   recentlyReady: { rows: [], total: 0 },
@@ -70,6 +71,7 @@ export const Empty: Story = { decorators: [withIncoming(empty)] };
 export const PreparingAndReady: Story = {
   decorators: [
     withIncoming({
+      readyWindowSeconds: 86400,
       preparing: { rows: [status(1), status(2, "Checking video")], total: 2 },
       needsHelp: { rows: [], total: 0 },
       recentlyReady: { rows: [status(3, "Ready")], total: 1 },
@@ -80,6 +82,7 @@ export const PreparingAndReady: Story = {
 export const NeedsHelp: Story = {
   decorators: [
     withIncoming({
+      readyWindowSeconds: 86400,
       preparing: { rows: [status(1)], total: 1 },
       needsHelp: {
         rows: [
@@ -105,6 +108,7 @@ export const NeedsHelp: Story = {
 export const TwentyPlusClips: Story = {
   decorators: [
     withIncoming({
+      readyWindowSeconds: 86400,
       preparing: {
         rows: Array.from({ length: 20 }, (_, index) => status(index + 1)),
         total: 47,

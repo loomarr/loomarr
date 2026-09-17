@@ -304,6 +304,19 @@ func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*ht
 }
 
 func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, store.Store, *fakeFiller) {
+	return newFillerServerWithRuntimeConfig(t, imageService, liveConfig, nil, nil)
+}
+
+func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, store.Store, *fakeFiller) {
+	return newFillerServerWithRuntimeConfig(t, nil, nil, func(key string) time.Duration {
+		if key != "filler.incoming.ready_window" {
+			t.Fatalf("unexpected duration setting %q", key)
+		}
+		return readyWindow
+	}, func() time.Time { return now })
+}
+
+func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string, liveConfigDuration func(string) time.Duration, now func() time.Time) (*httptest.Server, store.Store, *fakeFiller) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -318,11 +331,13 @@ func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, live
 		// with it a test that passes `memberToken` is really testing an anonymous caller — which
 		// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
 		// is member-readable and that has to be provable.
-		Auth:       testAuthorizer{},
-		Log:        slog.New(slog.DiscardHandler),
-		Filler:     ff,
-		Images:     imageService,
-		LiveConfig: liveConfig,
+		Auth:               testAuthorizer{},
+		Log:                slog.New(slog.DiscardHandler),
+		Filler:             ff,
+		Images:             imageService,
+		LiveConfig:         liveConfig,
+		LiveConfigDuration: liveConfigDuration,
+		Now:                now,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

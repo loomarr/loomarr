@@ -3541,12 +3541,17 @@ components:
           $ref: "#/components/schemas/IncomingHelpGroupDTO"
         preparing:
           $ref: "#/components/schemas/IncomingClipGroupDTO"
+        readyWindowSeconds:
+          description: Resolved recently-Ready window used for this projection
+          format: int64
+          type: integer
         recentlyReady:
           $ref: "#/components/schemas/IncomingClipGroupDTO"
       required:
         - preparing
         - needsHelp
         - recentlyReady
+        - readyWindowSeconds
       type: object
     FillerIngestEvent:
       additionalProperties: false

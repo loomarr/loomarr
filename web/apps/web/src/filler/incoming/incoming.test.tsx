@@ -25,6 +25,7 @@ const incoming = (over: Partial<FillerIncomingOutputBody> = {}): FillerIncomingO
     preparing: { rows: [], total: 0 },
     needsHelp: { rows: [], total: 0 },
     recentlyReady: { rows: [], total: 0 },
+    readyWindowSeconds: 86400,
     ...over,
   }) as FillerIncomingOutputBody;
 
@@ -66,6 +67,7 @@ describe("Incoming", () => {
     );
     try {
       render(<Incoming />, { wrapper });
+      expect(await screen.findByText("This clip is ready whenever a channel needs it.")).toBeInTheDocument();
       await userEvent.click(await screen.findByRole("button", { name: /view details for tootsie pop/i }));
       await userEvent.click(screen.getByText("Technical details"));
       const rows = within(screen.getByRole("dialog")).getAllByRole("listitem");
@@ -139,6 +141,10 @@ describe("Incoming", () => {
     expect(screen.getByText("Holiday commercial reel")).toBeInTheDocument();
     expect(screen.queryByText("Saturday morning commercial reel")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Ready" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Added in the last 24 hours\. These clips stay in your Library\./),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Change" })).toHaveAttribute("href", "/filler/settings/incoming");
     expect(screen.getByRole("link", { name: "Open Library" })).toHaveAttribute("href", "/filler/library");
     expect(screen.queryByText(/shadow|admission|evidence hash|reason code/i)).not.toBeInTheDocument();
   });

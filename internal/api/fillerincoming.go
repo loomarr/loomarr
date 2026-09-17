@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	incomingPageLimit   = 20
-	recentlyReadyWindow = 7 * 24 * time.Hour
+	incomingPageLimit          = 20
+	defaultRecentlyReadyWindow = 24 * time.Hour
 )
 
 var errInvalidIncomingCursor = errors.New("invalid incoming cursor")
@@ -29,9 +29,10 @@ type fillerIncomingInput struct {
 
 type fillerIncomingOutput struct {
 	Body struct {
-		Preparing     IncomingClipGroupDTO `json:"preparing"`
-		NeedsHelp     IncomingHelpGroupDTO `json:"needsHelp"`
-		RecentlyReady IncomingClipGroupDTO `json:"recentlyReady"`
+		Preparing          IncomingClipGroupDTO `json:"preparing"`
+		NeedsHelp          IncomingHelpGroupDTO `json:"needsHelp"`
+		RecentlyReady      IncomingClipGroupDTO `json:"recentlyReady"`
+		ReadyWindowSeconds int64                `json:"readyWindowSeconds" doc:"Resolved recently-Ready window used for this projection"`
 	}
 }
 
@@ -108,12 +109,20 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
 	at := time.Now().UTC()
+	if s.now != nil {
+		at = s.now().UTC()
+	}
+	readyWindow := defaultRecentlyReadyWindow
+	if s.liveConfigDuration != nil {
+		readyWindow = s.liveConfigDuration("filler.incoming.ready_window")
+	}
 	out := &fillerIncomingOutput{}
+	out.Body.ReadyWindowSeconds = int64(readyWindow / time.Second)
 	var err error
-	if out.Body.Preparing, err = s.incomingPipelineGroup(ctx, at, in.PreparingCursor, false); err != nil {
+	if out.Body.Preparing, err = s.incomingPipelineGroup(ctx, at, 0, in.PreparingCursor, false); err != nil {
 		return nil, incomingProjectionError(err)
 	}
-	if out.Body.RecentlyReady, err = s.incomingPipelineGroup(ctx, at, in.ReadyCursor, true); err != nil {
+	if out.Body.RecentlyReady, err = s.incomingPipelineGroup(ctx, at, readyWindow, in.ReadyCursor, true); err != nil {
 		return nil, incomingProjectionError(err)
 	}
 	if out.Body.NeedsHelp, err = s.incomingHelpGroup(ctx, in.NeedsHelpCursor); err != nil {
@@ -122,7 +131,7 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 	return out, nil
 }
 
-func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, cursorValue string, ready bool) (IncomingClipGroupDTO, error) {
+func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyWindow time.Duration, cursorValue string, ready bool) (IncomingClipGroupDTO, error) {
 	beforeAt, beforeID, err := decodeIncomingCursor(cursorValue)
 	if err != nil {
 		return IncomingClipGroupDTO{}, err
@@ -135,7 +144,7 @@ func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, cursor
 	if ready {
 		disposition = filler.DispositionReady
 		filter.Dispositions = []filler.Disposition{disposition}
-		filter.UpdatedAtOrAfter = at.Add(-recentlyReadyWindow)
+		filter.UpdatedAtOrAfter = at.Add(-readyWindow)
 	}
 	rows, err := s.store.ListClipPipelines(ctx, filter)
 	if err != nil {

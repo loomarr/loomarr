@@ -5,6 +5,9 @@ type FillerTab = "overview" | "incoming" | "library" | "manage" | "sources" | "t
 
 type FillerPageProps = {
   tab: FillerTab;
+  settingsSection?: FillerSettingsSection;
 };
 
 export type { FillerPageProps, FillerTab };
+
+import type { FillerSettingsSection } from "../filler-settings-section";

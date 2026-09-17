@@ -41,7 +41,7 @@ const SettingsPage = ({
   // switch and took the operator's unsaved edits with it — silently, which is the worst way to
   // lose work. The save unit is still "everything staged", the bar is still one bar; what
   // changed is that the buffer outlives this component.
-  const { edits, setEdit, clearEdits } = useSettingsEdits();
+  const { edits, results, setEdit, setResults, clearEdits } = useSettingsEdits();
   const [testing, setTesting] = useState<string | undefined>();
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; hint?: string }>>({});
   // Which connection blocks are expanded. Seeded once from the checklist (first failure open,
@@ -51,6 +51,7 @@ const SettingsPage = ({
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async (response) => {
+        setResults(response.status === 200 ? (response.data.results ?? []) : []);
         // A saved connection key can flip its check — refresh both, like the wizard.
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
@@ -93,7 +94,6 @@ const SettingsPage = ({
   const checks = unwrap(status.data, (b) => b.checks) ?? [];
   const standingFor = (check?: string) => (check ? checks.find((c) => c.name === check) : undefined);
 
-  const results = patch.data?.status === 200 ? (patch.data.data.results ?? []) : undefined;
   const byGroup = (group: string) => entries.filter((e) => e.group === group);
   const entriesFor = (block: SettingsPageProps["blocks"][number]) => {
     const grouped = byGroup(block.group);

@@ -21,6 +21,7 @@ const admin: MeBody = {
   autoApprove: false,
 };
 const incoming: FillerIncomingOutputBody = {
+  readyWindowSeconds: 86400,
   preparing: { rows: [], total: 0 },
   needsHelp: { rows: [], total: 0 },
   recentlyReady: { rows: [], total: 0 },

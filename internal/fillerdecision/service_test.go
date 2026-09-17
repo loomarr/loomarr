@@ -424,10 +424,10 @@ func TestDiagnosticsProjectCompletableServerOwnedRecoveryPlans(t *testing.T) {
 	}
 	want := []RecoveryPlan{
 		{Action: RecoveryConfigureProvider, Mode: RecoveryModeConfiguration, Destination: "/settings/ai"},
-		{Action: RecoveryAdjustBudget, Mode: RecoveryModeConfiguration, Destination: "/filler/settings"},
+		{Action: RecoveryAdjustBudget, Mode: RecoveryModeConfiguration, Destination: "/filler/settings/limits"},
 		{Action: RecoveryRetryExtraction, Mode: RecoveryModeManualRetry},
 		{Action: RecoveryInspectMedia, Mode: RecoveryModeInspection, Destination: "/v1/filler/media/inspect-clip"},
-		{Action: RecoveryUpdatePolicy, Mode: RecoveryModeConfiguration, Destination: "/filler/settings"},
+		{Action: RecoveryUpdatePolicy, Mode: RecoveryModeConfiguration, Destination: "/filler/settings/review"},
 	}
 	if len(page.Rows) != len(want) {
 		t.Fatalf("Diagnostics rows = %d, want %d", len(page.Rows), len(want))

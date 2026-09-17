@@ -55,9 +55,14 @@ describe("FillerOverview", () => {
     expect(readinessAction(readiness({ ready: false, nextAction }))).toMatchObject({ section });
   });
   it.each([
-    ["enable_fetch", "Turn on automatic sourcing", "Review automation", "/filler/settings"],
-    ["free_catalog_capacity", "Make room in the filler catalog", "Review limits", "/filler/settings"],
-    ["free_disk_capacity", "Make room for more filler", "Review limits", "/filler/settings"],
+    ["enable_fetch", "Turn on automatic sourcing", "Review automation", "/filler/settings/$section"],
+    [
+      "free_catalog_capacity",
+      "Make room in the filler catalog",
+      "Review limits",
+      "/filler/settings/$section",
+    ],
+    ["free_disk_capacity", "Make room for more filler", "Review limits", "/filler/settings/$section"],
     ["retry_acquisition", "A download needs another try", "Open diagnostics", "/filler/manage"],
     ["retry_failed_work", "Some filler can be retried", "Open diagnostics", "/filler/manage"],
     ["review_incoming", "A few clips need your help", "Review clips", "/filler/incoming"],

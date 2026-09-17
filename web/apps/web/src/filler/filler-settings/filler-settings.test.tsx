@@ -6,9 +6,10 @@ import { SettingsEditsProvider } from "@/settings/settings-edits";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
+import type { FillerSettingsSection } from "../filler-settings-section";
 import { FillerSettings } from "./filler-settings";
 
-const renderSettings = (section?: string) => {
+const renderSettings = (section: FillerSettingsSection = "downloads") => {
   server.use(
     getListFillerSourcesMockHandler({ sources: [], total: 0 }),
     getSettingsListMockHandler({
@@ -44,16 +45,21 @@ const renderSettings = (section?: string) => {
           group: "filler",
           advanced: true,
         }),
+        setting({
+          key: "filler.incoming.ready_window",
+          label: "Keep ready clips in Incoming",
+          value: "24h",
+          kind: "duration",
+          group: "filler",
+          advanced: true,
+        }),
       ],
     }),
   );
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <SettingsEditsProvider>
-        <RouterHarness
-          initialPath={section ? `/filler?section=${section}` : "/filler"}
-          content={<FillerSettings />}
-        />
+        <RouterHarness initialPath="/filler" content={<FillerSettings section={section} />} />
       </SettingsEditsProvider>
     </QueryClientProvider>,
   );
@@ -74,6 +80,16 @@ describe("focused Filler settings", () => {
     renderSettings("storage");
     expect(await screen.findByRole("spinbutton", { name: "Catalog limit" })).toHaveValue(500);
     expect(screen.getByRole("spinbutton", { name: "Storage limit" })).toHaveValue(20);
+    expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
+  });
+
+  it("opens the Incoming history task with one human duration control", async () => {
+    renderSettings("incoming");
+    expect(await screen.findByRole("heading", { name: "Incoming history" })).toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "Keep ready clips in Incoming" })).toHaveValue(1);
+    expect(screen.getByRole("combobox", { name: "Keep ready clips in Incoming unit" })).toHaveTextContent(
+      "days",
+    );
     expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
   });
 });

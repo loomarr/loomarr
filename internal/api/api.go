@@ -63,6 +63,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		clientDiagnostics: opts.ClientDiagnostics,
 		startupReports:    opts.StartupReports,
 		healthRefresh:     opts.HealthRefresh,
+		now:               opts.Now,
 		systemLLM:         opts.SystemLLM, database: opts.Database, encryption: opts.Encryption, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		restartDrift:             opts.RestartDrift,
 		settings:                 opts.Settings,

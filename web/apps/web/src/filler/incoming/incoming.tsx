@@ -18,8 +18,19 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { ClipDetails } from "../clip-details";
 
-type IncomingView = Pick<FillerIncomingOutputBody, "preparing" | "needsHelp" | "recentlyReady">;
-type GroupName = keyof IncomingView;
+type IncomingView = Pick<
+  FillerIncomingOutputBody,
+  "preparing" | "needsHelp" | "recentlyReady" | "readyWindowSeconds"
+>;
+type GroupName = "preparing" | "needsHelp" | "recentlyReady";
+
+const readyWindowLabel = (seconds: number): string => {
+  if (seconds === 3600) return "the last hour";
+  if (seconds === 86400) return "the last 24 hours";
+  if (seconds % 86400 === 0) return `the last ${seconds / 86400} days`;
+  if (seconds % 3600 === 0) return `the last ${seconds / 3600} hours`;
+  return `the last ${Math.max(1, Math.round(seconds / 3600))} hours`;
+};
 
 const mergeRows = <T extends { clipHash: string }>(current: T[], next: T[]) => {
   const seen = new Set(current.map((row) => row.clipHash));
@@ -93,7 +104,12 @@ const Incoming = () => {
 
   useEffect(() => {
     if (body) {
-      setView({ preparing: body.preparing, needsHelp: body.needsHelp, recentlyReady: body.recentlyReady });
+      setView({
+        preparing: body.preparing,
+        needsHelp: body.needsHelp,
+        recentlyReady: body.recentlyReady,
+        readyWindowSeconds: body.readyWindowSeconds,
+      });
       setHelpIndex(0);
     }
   }, [body]);
@@ -199,6 +215,14 @@ const Incoming = () => {
       : view.needsHelp.total > 0
         ? `${pluralize(view.needsHelp.total, "clip")} ${view.needsHelp.total === 1 ? "needs" : "need"} your help`
         : `${pluralize(view.recentlyReady.total, "clip")} added to your Library`;
+  const summaryDescription =
+    view.preparing.total > 0
+      ? "Loomarr is taking care of these in the background."
+      : view.needsHelp.total > 0
+        ? "Loomarr needs one choice from you before it can continue."
+        : view.recentlyReady.total === 1
+          ? "This clip is ready whenever a channel needs it."
+          : "These clips are ready whenever a channel needs them.";
 
   const openDetails = (row: IncomingStatusDTO, trigger: HTMLElement) => {
     detailTrigger.current = trigger;
@@ -212,9 +236,7 @@ const Incoming = () => {
         <h2 id="incoming-heading" className="font-semibold text-2xl">
           {summary}
         </h2>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Loomarr is taking care of these in the background.
-        </p>
+        <p className="mt-1 text-muted-foreground text-sm">{summaryDescription}</p>
       </div>
 
       {view.preparing.total > 0 ? (
@@ -296,7 +318,16 @@ const Incoming = () => {
               <h3 id="ready-heading" className="font-semibold text-lg">
                 Ready
               </h3>
-              <p className="text-muted-foreground text-sm">Recently added and ready to use.</p>
+              <p className="text-muted-foreground text-sm">
+                Added in {readyWindowLabel(view.readyWindowSeconds)}. These clips stay in your Library.{" "}
+                <Link
+                  to="/filler/settings/$section"
+                  params={{ section: "incoming" }}
+                  className="underline underline-offset-4"
+                >
+                  Change
+                </Link>
+              </p>
             </div>
             <Button render={<Link to="/filler/library" />} variant="outline" size="sm">
               Open Library

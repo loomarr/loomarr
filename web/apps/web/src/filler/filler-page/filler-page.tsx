@@ -24,7 +24,7 @@ import type { FillerPageProps } from "./filler-page.type";
 
 // FillerPage is the route-level composition root. It owns only state shared across destinations:
 // navigation counts, installation readiness, the watch/health summary. Destination-specific behavior stays in its own module.
-const FillerPage = ({ tab }: FillerPageProps) => {
+const FillerPage = ({ tab, settingsSection }: FillerPageProps) => {
   useDocumentTitle("Filler");
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -63,7 +63,8 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               ? {
                   action: {
                     label: "Open filler defaults",
-                    onClick: () => navigate({ to: "/filler/settings", search: { section: "folders" } }),
+                    onClick: () =>
+                      navigate({ to: "/filler/settings/$section", params: { section: "folders" } }),
                   },
                 }
               : {})}
@@ -131,7 +132,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               <Button
                 variant="outline"
                 size="sm"
-                render={<Link to="/filler/settings" search={{ section: "storage" }} />}
+                render={<Link to="/filler/settings/$section" params={{ section: "storage" }} />}
               >
                 Review limits
               </Button>
@@ -150,7 +151,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         ) : tab === "taxonomy" ? (
           <TaxonomyTab isAdmin={isAdmin} />
         ) : tab === "settings" ? (
-          <FillerSettings />
+          <FillerSettings section={settingsSection} />
         ) : (
           <FillerCatalog isAdmin={isAdmin} />
         )}

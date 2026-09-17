@@ -35,7 +35,10 @@ const meta = {
 type Story = StoryObj<typeof meta>;
 
 const Downloads: Story = { decorators: [withRouter("/filler")] };
-const Storage: Story = { decorators: [withRouter("/filler?section=storage")] };
+const Storage: Story = {
+  args: { section: "storage" },
+  decorators: [withRouter("/filler")],
+};
 
 export default meta;
 export { Downloads, Storage };

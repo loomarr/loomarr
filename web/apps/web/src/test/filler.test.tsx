@@ -547,7 +547,7 @@ describe("Filler page", () => {
     expect(screen.getByText(/2,000 of 2,000 catalog clips/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review limits" })).toHaveAttribute(
       "href",
-      "/filler/settings?section=storage",
+      "/filler/settings/storage",
     );
   });
 
