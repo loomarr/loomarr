@@ -53,9 +53,9 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
       return {
         title: "This drive needs room",
         description:
-          "Loomarr paused new filler before it used space kept for this device. Remove clips or other files to continue.",
-        label: "Browse library",
-        to: "/filler/library",
+          "Loomarr paused new filler before it used space kept for this device. Check for old temporary downloads or choose what to do next.",
+        label: "Review storage",
+        to: "/filler/sources",
       };
     case "choose_another_folder":
       return {

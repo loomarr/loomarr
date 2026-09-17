@@ -1,13 +1,16 @@
 import type { FillerSourceDTO } from "@loomarr/api";
 import {
   getAddFillerSourceMockHandler,
+  getCleanupFillerStorageMockHandler,
   getDiscoverFillerMockHandler,
   getDiscoverFillerStatsMockHandler,
   getFetchFillerSourceMockHandler,
+  getFillerReadinessMockHandler,
   getGetFillerAcquisitionMockHandler,
   getListFillerSourcesMockHandler,
   getLocationsSearchMockHandler,
   getMeMockHandler,
+  getPreviewFillerStorageCleanupMockHandler,
   getQueueFillerSourceItemMockHandler,
   getResolveFillerSourceMockHandler,
   getSetFillerProviderEnabledMockHandler,
@@ -62,6 +65,36 @@ const stubSources = () => {
   const sourceItems: { sourceId: string; body: unknown }[] = [];
   server.use(
     getMeMockHandler(me({ name: "Admin" })),
+    getFillerReadinessMockHandler({
+      ready: true,
+      nextAction: "none",
+      repairs: { count: 0 },
+      fetch: { enabled: true, catalogClips: 0 },
+      storage: {
+        automatic: true,
+        totalBytes: 500 * 1024 ** 3,
+        freeBytes: 200 * 1024 ** 3,
+        managedBytes: 0,
+        reservedBytes: 0,
+        filesystemReservedBytes: 0,
+        softBudgetBytes: 20 * 1024 ** 3,
+        hardReserveBytes: 10 * 1024 ** 3,
+        availableBytes: 20 * 1024 ** 3,
+      },
+      pipeline: {
+        runnable: 0,
+        scheduled: 0,
+        inProgress: 0,
+        needsDecision: 0,
+        recoverable: 0,
+        ready: 0,
+        complete: 0,
+        rejected: 0,
+        dismissed: 0,
+      },
+      pool: { clips: 0, breakBody: 0, eligible: 0, untagged: 0, channels: [] },
+      acquisitions: [],
+    }),
     getAddFillerSourceMockHandler(async ({ request }) => {
       adds.push(await request.json());
       // ⚠ The add returns a RemoteSourceDTO — `{ id, label, uri, enabled }` — not a bare id.
@@ -219,6 +252,70 @@ const renderPanel = (sources: FillerSourceDTO[] = [source({ kind: "folder" })]) 
 beforeEach(() => sessionStorage.clear());
 
 describe("SourcesPanel", () => {
+  it("shows one calm server-owned storage summary", async () => {
+    stubSources();
+    renderPanel();
+
+    const storage = await screen.findByRole("region", { name: "Storage" });
+    expect(storage).toHaveTextContent("0 B used for filler");
+    expect(storage).toHaveTextContent(/Automatic downloads will pause before this drive has less than/);
+    expect(within(storage).getByRole("link", { name: "Storage options" })).toHaveAttribute(
+      "href",
+      "/filler/settings/storage",
+    );
+  });
+
+  it("previews and removes only safe old temporary downloads when the drive is low", async () => {
+    stubSources();
+    server.use(
+      getFillerReadinessMockHandler({
+        ready: false,
+        nextAction: "free_disposable_space",
+        repairs: { count: 0 },
+        fetch: { enabled: true, catalogClips: 12 },
+        storage: {
+          automatic: true,
+          totalBytes: 32 * 1024 ** 3,
+          freeBytes: 2 * 1024 ** 3,
+          managedBytes: 4 * 1024 ** 3,
+          reservedBytes: 0,
+          filesystemReservedBytes: 0,
+          softBudgetBytes: 3.2 * 1024 ** 3,
+          hardReserveBytes: 3.2 * 1024 ** 3,
+          availableBytes: 0,
+          pausedBy: "host_reserve",
+        },
+        pipeline: {
+          runnable: 0,
+          scheduled: 0,
+          inProgress: 0,
+          needsDecision: 0,
+          recoverable: 0,
+          ready: 12,
+          complete: 0,
+          rejected: 0,
+          dismissed: 0,
+        },
+        pool: { clips: 12, breakBody: 10, eligible: 10, untagged: 0, channels: [] },
+        acquisitions: [],
+      }),
+      getPreviewFillerStorageCleanupMockHandler({ items: 2, bytes: 2048 }),
+      getCleanupFillerStorageMockHandler({
+        removedItems: 2,
+        removedBytes: 2048,
+        failedItems: 0,
+        remaining: { items: 0, bytes: 0 },
+      }),
+    );
+    renderPanel();
+
+    expect(
+      await screen.findByText(/2.0 KB in 2 unfinished downloads is safe to remove/),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Free 2.0 KB" }));
+    expect(await screen.findByText(/Removed 2 temporary folders · freed 2.0 KB/)).toBeInTheDocument();
+  });
+
   it("lists the sources it is given", () => {
     stubSources();
     renderPanel([
@@ -562,7 +659,7 @@ describe("SourcesPanel", () => {
     await userEvent.click(screen.getByRole("combobox", { name: "Automatic downloads for this source" }));
     await userEvent.click(screen.getByRole("option", { name: "Use a different schedule" }));
     await userEvent.click(screen.getByRole("combobox", { name: "Source check schedule" }));
-    await userEvent.click(screen.getByRole("option", { name: "Custom" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Custom" }));
     fireEvent.change(screen.getByLabelText("Source check interval"), { target: { value: "12" } });
     fireEvent.change(screen.getByLabelText("Clips per source check"), { target: { value: "3" } });
     await userEvent.click(screen.getByRole("button", { name: "Save automatic downloads" }));

@@ -74,7 +74,7 @@ describe("FillerOverview", () => {
       "Review limits",
       "/filler/settings/$section",
     ],
-    ["free_disposable_space", "This drive needs room", "Browse library", "/filler/library"],
+    ["free_disposable_space", "This drive needs room", "Review storage", "/filler/sources"],
     ["choose_another_folder", "Loomarr cannot check this drive", "Choose folder", "/filler/settings/$section"],
     ["change_storage_limit", "Filler reached its allowance", "Review storage", "/filler/settings/$section"],
     ["retry_acquisition", "A download needs another try", "Open diagnostics", "/filler/manage"],

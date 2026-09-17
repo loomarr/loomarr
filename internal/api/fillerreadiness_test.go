@@ -80,6 +80,43 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 	}
 }
 
+func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.cleanupPreview = filler.StorageCleanupPreview{Items: 3, Bytes: 4096}
+	ff.cleanupResult = filler.StorageCleanupResult{
+		RemovedItems: 2, RemovedBytes: 3072, FailedItems: 1,
+		Remaining: filler.StorageCleanupPreview{Items: 1, Bytes: 1024},
+	}
+
+	for _, path := range []string{"/v1/filler/storage/cleanup"} {
+		res := sourceReq(t, http.MethodGet, srv.URL+path, "", memberToken)
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusForbidden {
+			t.Fatalf("member preview = %d, want 403", res.StatusCode)
+		}
+	}
+	previewResponse := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/storage/cleanup", "", adminToken)
+	defer func() { _ = previewResponse.Body.Close() }()
+	var preview api.FillerStorageCleanupPreviewDTO
+	if err := json.NewDecoder(previewResponse.Body).Decode(&preview); err != nil {
+		t.Fatal(err)
+	}
+	if preview.Items != 3 || preview.Bytes != 4096 {
+		t.Fatalf("preview = %+v", preview)
+	}
+
+	cleanupResponse := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/storage/cleanup", "", adminToken)
+	defer func() { _ = cleanupResponse.Body.Close() }()
+	var result api.FillerStorageCleanupResultDTO
+	if err := json.NewDecoder(cleanupResponse.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.RemovedItems != 2 || result.RemovedBytes != 3072 || result.FailedItems != 1 ||
+		result.Remaining.Items != 1 || result.Remaining.Bytes != 1024 {
+		t.Fatalf("cleanup result = %+v", result)
+	}
+}
+
 func TestFillerAcquisitionReturnsDurableReconnectState(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	now := time.Date(2026, 9, 13, 14, 0, 0, 0, time.UTC)

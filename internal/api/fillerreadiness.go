@@ -97,6 +97,26 @@ type fillerReadinessOutput struct {
 	Body FillerReadinessDTO
 }
 
+type FillerStorageCleanupPreviewDTO struct {
+	Items int   `json:"items"`
+	Bytes int64 `json:"bytes"`
+}
+
+type fillerStorageCleanupPreviewOutput struct {
+	Body FillerStorageCleanupPreviewDTO
+}
+
+type FillerStorageCleanupResultDTO struct {
+	RemovedItems int                            `json:"removedItems"`
+	RemovedBytes int64                          `json:"removedBytes"`
+	FailedItems  int                            `json:"failedItems"`
+	Remaining    FillerStorageCleanupPreviewDTO `json:"remaining"`
+}
+
+type fillerStorageCleanupResultOutput struct {
+	Body FillerStorageCleanupResultDTO
+}
+
 type getFillerAcquisitionInput struct {
 	JobID string `path:"jobId" minLength:"1" maxLength:"256"`
 }
@@ -125,6 +145,37 @@ func (s *Server) fillerReadiness(ctx context.Context, _ *struct{}) (*fillerReadi
 		return nil, err
 	}
 	return &fillerReadinessOutput{Body: fillerReadinessDTO(readiness)}, nil
+}
+
+func (s *Server) previewFillerStorageCleanup(ctx context.Context, _ *struct{}) (*fillerStorageCleanupPreviewOutput, error) {
+	if s.filler == nil {
+		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before checking storage.")
+	}
+	preview, err := s.filler.PreviewStorageCleanup(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &fillerStorageCleanupPreviewOutput{Body: fillerStorageCleanupPreviewDTO(preview)}, nil
+}
+
+func (s *Server) cleanupFillerStorage(ctx context.Context, _ *struct{}) (*fillerStorageCleanupResultOutput, error) {
+	if s.filler == nil {
+		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before cleaning storage.")
+	}
+	result, err := s.filler.CleanupStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &fillerStorageCleanupResultOutput{Body: FillerStorageCleanupResultDTO{
+		RemovedItems: result.RemovedItems,
+		RemovedBytes: result.RemovedBytes,
+		FailedItems:  result.FailedItems,
+		Remaining:    fillerStorageCleanupPreviewDTO(result.Remaining),
+	}}, nil
+}
+
+func fillerStorageCleanupPreviewDTO(preview filler.StorageCleanupPreview) FillerStorageCleanupPreviewDTO {
+	return FillerStorageCleanupPreviewDTO{Items: preview.Items, Bytes: preview.Bytes}
 }
 
 func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {

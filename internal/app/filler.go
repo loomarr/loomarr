@@ -731,6 +731,7 @@ type fillerServiceAdapter struct {
 	storage          *storagegovernor.Governor
 	storagePath      string
 	storageAutomatic func() bool
+	storageCleanup   *clipfetch.AcquisitionCleaner
 }
 
 func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
@@ -843,6 +844,20 @@ func (a fillerServiceAdapter) Readiness(ctx context.Context) (filler.Readiness, 
 	return filler.ProjectReadiness(filler.ReadinessInput{
 		Fetch: fetch, Storage: storage, Pipeline: pipeline, Pool: pool, Runs: runs, Repairs: repairs,
 	}), nil
+}
+
+func (a fillerServiceAdapter) PreviewStorageCleanup(ctx context.Context) (filler.StorageCleanupPreview, error) {
+	if a.storageCleanup == nil {
+		return filler.StorageCleanupPreview{}, nil
+	}
+	return a.storageCleanup.Preview(ctx)
+}
+
+func (a fillerServiceAdapter) CleanupStorage(ctx context.Context) (filler.StorageCleanupResult, error) {
+	if a.storageCleanup == nil {
+		return filler.StorageCleanupResult{}, nil
+	}
+	return a.storageCleanup.Clean(ctx)
 }
 
 func (a fillerServiceAdapter) FetchStatus(ctx context.Context) (filler.FetchStatus, error) {

@@ -116,6 +116,7 @@ func buildFillerSubsystem(
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 		storage: storageGovernor, storagePath: layout.ClipDir(),
 		storageAutomatic: func() bool { return set.intv("filler.storage.library_budget_gb") == 0 },
+		storageCleanup:   clipfetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
 	}
 	if ytDlpPath != "" {
 		adapter.youtubeFinder = clipfetch.NewYouTubeSourceFinder(ytDlpPath)

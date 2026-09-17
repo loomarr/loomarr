@@ -72,6 +72,8 @@ type fakeFiller struct {
 	fetchResult           filler.FetchResult
 	fetchErr              error
 	readiness             filler.Readiness
+	cleanupPreview        filler.StorageCleanupPreview
+	cleanupResult         filler.StorageCleanupResult
 	pullID                string
 	pullTargets           []filler.AcquisitionTarget
 	sourceSuggestions     []filler.SourceSuggestion
@@ -90,6 +92,14 @@ type fakeFiller struct {
 }
 
 func (f *fakeFiller) Readiness(context.Context) (filler.Readiness, error) { return f.readiness, nil }
+
+func (f *fakeFiller) PreviewStorageCleanup(context.Context) (filler.StorageCleanupPreview, error) {
+	return f.cleanupPreview, nil
+}
+
+func (f *fakeFiller) CleanupStorage(context.Context) (filler.StorageCleanupResult, error) {
+	return f.cleanupResult, nil
+}
 
 func (f *fakeFiller) FetchStatus(context.Context) (filler.FetchStatus, error) {
 	return f.fetchStatus, nil
