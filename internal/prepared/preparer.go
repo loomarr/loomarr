@@ -5,8 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 var (
@@ -63,6 +66,10 @@ type SourceAccess interface {
 type Request struct {
 	Source    Source            `json:"source"`
 	Rendition RenditionContract `json:"rendition"`
+	// DurationMS is the authoritative scheduled programme duration used only for capacity
+	// admission. It is not publication identity: the source revision and rendition already own
+	// the immutable bytes, while different channels may schedule the same programme length.
+	DurationMS int64 `json:"durationMs,omitempty"`
 }
 
 // Packager writes every immutable media file for a request into workspace and declares the
@@ -77,16 +84,18 @@ type Preparer struct {
 	library  *Library
 	packager Packager
 	access   SourceAccess
+	storage  *storagegovernor.Governor
 }
 
 type PreparerDependencies struct {
 	Library  *Library
 	Packager Packager
 	Access   SourceAccess
+	Storage  *storagegovernor.Governor
 }
 
 func NewPreparer(deps PreparerDependencies) *Preparer {
-	return &Preparer{library: deps.Library, packager: deps.Packager, access: deps.Access}
+	return &Preparer{library: deps.Library, packager: deps.Packager, access: deps.Access, storage: deps.Storage}
 }
 
 // Lookup reports a complete publication without opening the source, reading Inventory, or calling
@@ -117,6 +126,30 @@ func (p *Preparer) Prepare(ctx context.Context, request Request) (Publication, e
 	if err != nil {
 		return Publication{}, err
 	}
+	if publication, ready, lookupErr := p.library.Peek(spec); lookupErr != nil || ready {
+		return publication, lookupErr
+	}
+	var lease *storagegovernor.Lease
+	if p.storage != nil {
+		reservation, ok := storagegovernor.EstimatePrepared(
+			request.DurationMS, request.Rendition.VideoBitrateKbps, request.Rendition.AudioBitrateKbps,
+		)
+		if !ok {
+			return Publication{}, fmt.Errorf("prepared storage paused (%s)", storagegovernor.ReasonEstimateUnknown)
+		}
+		var decision storagegovernor.Decision
+		lease, decision = p.storage.Reserve(ctx, storagegovernor.Request{
+			Path: p.library.root, Domain: storagegovernor.DomainPrepared,
+			EstimatedBytes: reservation, Mode: storagegovernor.Automatic,
+		})
+		if lease == nil {
+			return Publication{}, preparedStorageError(decision)
+		}
+		defer lease.Release()
+		if decision = lease.Revalidate(ctx, 0); !decision.Allowed {
+			return Publication{}, preparedStorageError(decision)
+		}
+	}
 	return p.library.Publish(ctx, spec, func(ctx context.Context, workspace string) (Output, error) {
 		input, err := p.access.OpenInput(ctx, request.Source)
 		if err != nil {
@@ -134,6 +167,13 @@ func (p *Preparer) Prepare(ctx context.Context, request Request) (Publication, e
 		}
 		return output, nil
 	})
+}
+
+func preparedStorageError(decision storagegovernor.Decision) error {
+	if decision.Err != nil {
+		return fmt.Errorf("prepared storage paused (%s): %w", decision.Snapshot.Reason, decision.Err)
+	}
+	return fmt.Errorf("prepared storage paused (%s)", decision.Snapshot.Reason)
 }
 
 func specificationFor(request Request) (Specification, error) {

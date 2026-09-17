@@ -25,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -58,6 +59,7 @@ func buildChannels(
 	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
 	jobReg *scheduler.Registry, episodeRefresh *reconcile.EpisodeRefresh, fillerLayout filler.Layout,
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
+	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder,
 ) (channelBuild, error) {
 	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
@@ -279,6 +281,7 @@ func buildChannels(
 			resolveDesiredBackend: resolveDesiredBackend, appliedBackend: appliedBackendContext,
 			transportBackend: transportBackendContext, log: log,
 			processDiagnostics: processDiagnostics,
+			storageGovernor:    storageGovernor,
 			metrics:            metricRecorder,
 		})
 		if err != nil {

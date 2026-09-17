@@ -57,3 +57,22 @@ func TestEstimateArtworkIsBoundedIndependentlyOfSourceSize(t *testing.T) {
 		t.Fatalf("artwork reservation = %d, want 64 MiB", got)
 	}
 }
+
+func TestEstimatePreparedUsesScheduledDurationAndRenditionBitrate(t *testing.T) {
+	t.Parallel()
+	got, ok := storagegovernor.EstimatePrepared(30*60*1000, 4_000, 192)
+	if !ok {
+		t.Fatal("prepared estimate was rejected")
+	}
+	// 30 minutes at 4,192 kbit/s is 943.2 MB; the 25% margin exceeds the fixed floor.
+	want := int64(943_200_000 + 943_200_000/4)
+	if got != want {
+		t.Fatalf("prepared reservation = %d, want %d", got, want)
+	}
+	if _, ok := storagegovernor.EstimatePrepared(0, 4_000, 192); ok {
+		t.Fatal("unknown duration must fail closed")
+	}
+	if _, ok := storagegovernor.EstimatePrepared(int64(^uint64(0)>>1), 4_000, 192); ok {
+		t.Fatal("overflowed duration must fail closed")
+	}
+}

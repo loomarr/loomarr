@@ -40,6 +40,7 @@ func buildFillerSubsystem(
 	playoutResolver *playoutResolver,
 	channelService api.ChannelService,
 	processDiagnostics *diagnostics.ProcessManager,
+	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder,
 	owner *generationLifecycle,
 ) fillerBuild {
@@ -85,13 +86,6 @@ func buildFillerSubsystem(
 					"dir", watch, "err", err)
 			}
 		}
-	}
-	storageGovernor, storageErr := storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
-		{Path: layout.ClipDir(), Domain: storagegovernor.DomainFiller},
-		{Path: layout.WatchDir(), Domain: storagegovernor.DomainFiller},
-	}, nil)
-	if storageErr != nil {
-		log.Error("filler storage governor is unavailable", "err", storageErr)
 	}
 	artifactRecoveryCtx, artifactRecoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	if recovered, err := clipfetch.RecoverAcquisitionArtifacts(artifactRecoveryCtx, layout.WatchDir(), layout.ClipDir(), st, time.Now); err != nil {

@@ -6,12 +6,27 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/prepared"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+type preparedCapacityMeter struct {
+	measurement storagegovernor.Measurement
+}
+
+func (m preparedCapacityMeter) Measure(context.Context, string) (storagegovernor.Measurement, error) {
+	return m.measurement, nil
+}
+
+func (preparedCapacityMeter) ManagedBytes(context.Context, string, storagegovernor.Domain) (int64, error) {
+	return 0, nil
+}
 
 func TestTransientInputDoesNotSerialize(t *testing.T) {
 	t.Parallel()
@@ -90,6 +105,41 @@ func TestPreparerLookupNeverOpensOrBuildsOnDemand(t *testing.T) {
 	}
 	if packager.count() != 0 || access.Calls() != 0 {
 		t.Fatal("Lookup opened the source or started preparation")
+	}
+}
+
+func TestPreparerRefusesCapacityBeforeCreatingWorkspaceOrOpeningSource(t *testing.T) {
+	root := t.TempDir()
+	library, err := prepared.NewLibrary(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packager := &countingPackager{}
+	access := &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")}
+	governor := storagegovernor.New(preparedCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "prepared", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 60 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 1}
+	})
+	preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+		Library: library, Packager: packager, Access: access, Storage: governor,
+	})
+	request := preparedRequest("capacity")
+	request.DurationMS = int64(time.Hour / time.Millisecond)
+
+	_, err = preparer.Prepare(t.Context(), request)
+	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonLibraryLimit)) {
+		t.Fatalf("Prepare error = %v, want library-limit refusal", err)
+	}
+	if packager.count() != 0 || access.Calls() != 0 {
+		t.Fatalf("capacity refusal opened source or packaged media: builds=%d access=%d", packager.count(), access.Calls())
+	}
+	entries, readErr := os.ReadDir(root)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("prepared root contains workspace after refusal: %v", entries)
 	}
 }
 
