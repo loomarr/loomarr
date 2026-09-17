@@ -190,9 +190,10 @@ func TestSettings_MissingBackendTransitionDoesNotRunMutation(t *testing.T) {
 
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {
 	return []api.SettingEntry{
-		{Key: "library.url", Group: "connections.media_server", Kind: "url", Apply: "live", Value: "http://emby:8096", Provenance: "db", Doc: "x"},
-		{Key: "library.token", Group: "connections.media_server", Kind: "secret", Apply: "live", Secret: true, Set: true, Preview: "…a1b2", Provenance: "db", Doc: "x"},
-		{Key: "job.workers", Group: "advanced", Kind: "int", Apply: "live", Value: "2", Provenance: "env", Doc: "x"},
+		{Key: "library.url", Group: "connections.media_server", Owner: "settings.connections", Kind: "url", Apply: "live", Value: "http://emby:8096", Provenance: "db", Doc: "x"},
+		{Key: "library.token", Group: "connections.media_server", Owner: "settings.connections", Kind: "secret", Apply: "live", Secret: true, Set: true, Preview: "…a1b2", Provenance: "db", Doc: "x"},
+		{Key: "job.workers", Group: "advanced", Owner: "settings.advanced", Kind: "int", Apply: "live", Value: "2", Provenance: "env", Doc: "x"},
+		{Key: "filler.incoming.ready_window", Group: "filler", Owner: "filler.incoming", Kind: "duration", Apply: "live", Value: "24h", Provenance: "default", Advanced: true, Doc: "x"},
 	}
 }
 
@@ -327,6 +328,9 @@ func TestSettings_ListMasksSecretsAndFeatures(t *testing.T) {
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	for _, e := range body.Settings {
+		if e.Owner == "" {
+			t.Errorf("setting %s is missing its owner task", e.Key)
+		}
 		if e.Secret {
 			if e.Value != "" {
 				t.Errorf("secret %s leaked value %q", e.Key, e.Value)
@@ -334,6 +338,15 @@ func TestSettings_ListMasksSecretsAndFeatures(t *testing.T) {
 			if !e.Set || e.Preview == "" {
 				t.Errorf("secret %s should carry set+preview", e.Key)
 			}
+		}
+	}
+	wantOwners := map[string]string{
+		"library.url": "settings.connections", "library.token": "settings.connections",
+		"job.workers": "settings.advanced", "filler.incoming.ready_window": "filler.incoming",
+	}
+	for _, entry := range body.Settings {
+		if want := wantOwners[entry.Key]; want != "" && entry.Owner != want {
+			t.Errorf("%s owner = %q, want %q", entry.Key, entry.Owner, want)
 		}
 	}
 	if body.Features["suggestions"] { // fake says false

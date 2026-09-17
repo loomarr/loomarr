@@ -437,6 +437,7 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 		Key:          e.Setting.Key,
 		Label:        e.Setting.Label,
 		Group:        string(e.Setting.Group),
+		Owner:        string(e.Setting.Owner),
 		Kind:         string(e.Setting.Kind),
 		Apply:        apply,
 		Presentation: string(e.Setting.Presentation),

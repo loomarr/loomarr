@@ -353,6 +353,7 @@ type SettingEntry struct {
 	Key          string              `json:"key"`
 	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`
 	Group        string              `json:"group"`
+	Owner        string              `json:"owner" doc:"Stable task id for the setting's one curated editor. Browser paths are frontend-owned."`
 	Kind         string              `json:"kind"`
 	Apply        string              `json:"apply" enum:"live,restart" doc:"When a saved value becomes active: live on the next owning operation, or restart in the next app generation."`
 	Presentation string              `json:"presentation,omitempty" doc:"Human editor semantics beyond kind, e.g. bytes, path, or language."`
