@@ -17,7 +17,7 @@ import { Image } from "@/components/ui/image";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { ClipDetails } from "../clip-details";
-import { IncomingProcessingDetails } from "./incoming-processing-details/incoming-processing-details";
+import { IncomingProcessingDetails } from "./incoming-processing-details";
 
 type IncomingView = Pick<
   FillerIncomingOutputBody,
