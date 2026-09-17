@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,6 +50,119 @@ func TestQueryExpansionPriorArtifactsRemainImmutable(t *testing.T) {
 		if got := fmt.Sprintf("%x", sha256.Sum256(blob)); got != expected {
 			t.Fatalf("%s digest = %s, want immutable %s", path, got, expected)
 		}
+	}
+}
+
+func TestQueryExpansionDiagnosticCasesAreTheReviewedTenBehaviorSample(t *testing.T) {
+	cases, err := QueryExpansionDiagnosticCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"exp-tgif-minimum",
+		"exp-history-minimum",
+		"exp-movie-epoch-1940s",
+		"exp-movie-mood-comforting",
+		"exp-movie-audience-pg-or-lower",
+		"exp-movie-exclude-modern-two",
+		"exp-movie-thin-library-2010s",
+		"exp-movie-audience-empty-excluded-toy-story",
+		"exp-movie-refine-add",
+		"exp-movie-refine-remove",
+	}
+	got := make([]string, len(cases))
+	for index := range cases {
+		got[index] = cases[index].Name
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("diagnostic cases = %v, want %v", got, want)
+	}
+	selections := QueryExpansionDiagnosticSelections()
+	if len(selections) != len(want) {
+		t.Fatalf("diagnostic selections = %d, want %d", len(selections), len(want))
+	}
+	for index, selection := range selections {
+		if selection.ID != want[index] || strings.TrimSpace(selection.Capability) == "" {
+			t.Fatalf("diagnostic selection %d = %+v", index, selection)
+		}
+	}
+}
+
+func TestQueryExpansionDiagnosticScriptedRequestsFitReservedInput(t *testing.T) {
+	corpus, err := LoadEmbeddedQueryExpansionCorpus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := QueryExpansionDiagnosticCases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	authoredByID := make(map[string]QueryPilotCase, len(corpus.Cases))
+	for _, authored := range corpus.Cases {
+		authoredByID[authored.ID] = authored
+	}
+	for _, candidate := range selected {
+		t.Run(candidate.Name, func(t *testing.T) {
+			authored, ok := authoredByID[candidate.Name]
+			if !ok {
+				t.Fatalf("authored diagnostic case %q is missing", candidate.Name)
+			}
+			provider := testkit.NewLLM(queryExpansionResponses(t, authored)...)
+			generator, _, err := NewEmbeddedQueryExpansionGenerator(provider)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = generator.Suggest(context.Background(), mapIntent(candidate.Intent))
+			reservation := InferenceReservation{
+				Tokens:         queryExpansionDiagnosticMaxInputTokens + 2048,
+				MaxInputTokens: queryExpansionDiagnosticMaxInputTokens, MaxCompletionTokens: 2048,
+			}
+			inputBound, ok := requestInputTokenBound(provider.LastMessages, provider.LastOpts.Tools)
+			if !ok {
+				t.Fatal("scripted provider request size cannot be bounded")
+			}
+			if message := requestWithinReservation(reservation, provider.LastMessages, provider.LastOpts); message != "" {
+				t.Fatalf("largest scripted provider request needs %d input tokens, outside the diagnostic reservation: %s", inputBound, message)
+			}
+		})
+	}
+}
+
+func TestQueryExpansionDiagnosticSummaryReportsFailuresByCapability(t *testing.T) {
+	summary := QueryExpansionDiagnosticSummary(Scorecard{
+		DevelopmentCorpus: true, CorpusVersion: "query-expansion-v8",
+		Generator:  ModelIdentity{Provider: "openrouter", Model: "google/gemini-3.7-flash"},
+		CallBudget: CallBudget{Total: 250, Resource: ResourceBudget{MaxTokensPerSuite: 2500000, MaxSpendPerSuite: "5"}},
+		Results: []Result{
+			{Case: "exp-tgif-minimum", Trial: 1},
+			{Case: "exp-movie-mood-comforting", Trial: 1, FailureStage: FailureStageDeterministic, Failures: []string{"required warm title missing"}},
+		},
+	})
+	for _, want := range []string{
+		"# Query expansion diagnostic",
+		"named programming block | exp-tgif-minimum | PASS",
+		"movie mood | exp-movie-mood-comforting | FAIL | deterministic | required warm title missing",
+		"Development evidence only; certified: false.",
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("diagnostic summary lacks %q:\n%s", want, summary)
+		}
+	}
+}
+
+func TestQueryExpansionDiagnosticStructuralDemandShowsTheRuntimeStopBoundary(t *testing.T) {
+	budget := CallBudget{
+		MaxGeneratorCalls: 240, MaxJudgeCalls: 10,
+		GeneratorReservation: InferenceReservation{Tokens: 42048, Spend: "0.067824"},
+		JudgeReservation:     InferenceReservation{Tokens: 5212, Spend: "0.009801"},
+		Resource:             ResourceBudget{MaxTokensPerSuite: 2500000, MaxSpendPerSuite: "5"},
+	}
+	demand, canStop, err := queryExpansionDiagnosticStructuralDemand(budget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if demand != (ResourceUsage{Calls: 250, Tokens: 10143640, Spend: "16.375770"}) || !canStop {
+		t.Fatalf("structural demand = %+v canStop=%t", demand, canStop)
 	}
 }
 

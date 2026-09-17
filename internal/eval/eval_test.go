@@ -181,6 +181,11 @@ func evalCases(required, liveSchedule bool, liveCases []Case) ([]Case, string, e
 // writeScorecard prints a summary table and, when LOOMARR_EVAL_OUT is set, writes
 // the JSON scorecard there for CI archiving / trend tracking.
 func writeScorecard(t *testing.T, scorecard Scorecard, required bool) {
+	writeScorecardWithSummary(t, scorecard, required, HumanSummary)
+}
+
+func writeScorecardWithSummary(t *testing.T, scorecard Scorecard, required bool, renderSummary func(Scorecard) string) {
+	t.Helper()
 	results := scorecard.Results
 	pass := 0
 	var b strings.Builder
@@ -217,7 +222,7 @@ func writeScorecard(t *testing.T, scorecard Scorecard, required bool) {
 		}
 	}
 	if out := os.Getenv("LOOMARR_EVAL_SUMMARY_OUT"); out != "" {
-		if err := os.WriteFile(out, []byte(HumanSummary(scorecard)), 0o644); err != nil {
+		if err := os.WriteFile(out, []byte(renderSummary(scorecard)), 0o644); err != nil {
 			if required {
 				t.Errorf("write required semantic summary to %s: %v", out, err)
 			} else {

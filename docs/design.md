@@ -11078,6 +11078,31 @@ qualification remains separately owned by #1195; no hypothetical failure earns
 recovery credit. The staged plan and coverage inventory live in
 `docs/engineering/plans/suggestion-query-evaluation.md`.
 
+The query-expansion diagnostic selects exactly ten reviewed Development Corpus
+behaviors: TGIF, the 1990s History editorial epoch, movie release era, mood,
+audience ceiling, exclusions, a thin Library result, a valid empty result, and
+add/remove refinements. It runs one trial per behavior through the production
+Suggester and Runner and remains non-certifying. Its provider-free dry run validates
+the exact ordered selection, manifest and fixture identities, a fresh digest-pinned
+OpenRouter capability/price/privacy snapshot, one concrete model and ZDR upstream
+provider, and all call/token/USD ceilings before any provider is constructed. The
+live command is local-only and requires a separate explicit authorization latch.
+Fallback and provider data collection remain disabled and required request
+parameters remain enforced by the shared strict OpenRouter adapter.
+
+The diagnostic reserves a conservative input bound for every hosted request by
+serializing the exact messages and tool schemas, doubling their UTF-8 byte length,
+and adding fixed framing headroom. The current ten representative scripted paths
+fit a 40,000-token generator input reservation; a later or longer turn that does
+not fit is refused before dispatch. The structural maximum is 240 generator calls
+plus ten judge allowances, but the independent 2.5-million-token and USD 5 suite
+ceilings may stop the run before that structural maximum. The dry-run artifact
+states both quantities rather than implying that USD 5 guarantees all 250 calls.
+The live JSON retains requested and resolved model/provider attribution, per-call
+tokens and charges, corpus/snapshot identity, and failure stage. Its companion
+summary maps every result to the predeclared capability; neither artifact retains
+prompts, payloads, credentials, or household data.
+
 The expansion family registry is exposed development planning, not executable
 case-count or holdout evidence. Promotion requires source/oracle review,
 independent negative controls and digest-bound fixture facts; questionable or

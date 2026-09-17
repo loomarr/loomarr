@@ -34,6 +34,55 @@ eval-planner-smoke: ## replay one frozen base Intent per planner family; explici
 	  LOOMARR_EVAL_OUT="$$report" LOOMARR_EVAL_SUMMARY_OUT="$$summary" \
 	    $(GO) test -count=1 -tags=eval -run '^TestPlannerModelCertification$$' -v -timeout 20m ./internal/eval/
 
+eval-query-expansion-diagnostic-dry-run: ## preflight the ten-case Gemini query diagnostic without inference
+	@test -n "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT" || { echo "eval-query-expansion-diagnostic-dry-run: LOOMARR_EVAL_OPENROUTER_SNAPSHOT is required" >&2; exit 2; }; \
+	  test -f "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT" || { echo "eval-query-expansion-diagnostic-dry-run: snapshot does not exist" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT_SHA256" || { echo "eval-query-expansion-diagnostic-dry-run: LOOMARR_EVAL_OPENROUTER_SNAPSHOT_SHA256 is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  snapshot="$$(cd "$$(dirname "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT")" && pwd -P)/$$(basename "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT")"; \
+	  preflight="$${LOOMARR_EVAL_QUERY_EXPANSION_PREFLIGHT_OUT:-$$LOOMARR_ARTIFACT_DIR/query-expansion-diagnostic-preflight.json}"; \
+	  mkdir -p "$$(dirname "$$preflight")"; \
+	  preflight="$$(cd "$$(dirname "$$preflight")" && pwd -P)/$$(basename "$$preflight")"; \
+	  LLM_PROVIDER=openrouter LLM_URL=https://openrouter.ai/api/v1 \
+	  LLM_MODEL="$${LOOMARR_EVAL_QUERY_EXPANSION_MODEL:-google/gemini-3.7-flash}" \
+	  LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER="$${LOOMARR_EVAL_QUERY_EXPANSION_UPSTREAM_PROVIDER:-Google}" \
+	  LOOMARR_EVAL_OPENROUTER_SNAPSHOT="$$snapshot" \
+	  LOOMARR_EVAL_GENERATOR_MAX_INPUT_TOKENS=40000 LOOMARR_EVAL_JUDGE_MAX_INPUT_TOKENS=4700 \
+	  LOOMARR_EVAL_MAX_CALLS_PER_RUN=25 LOOMARR_EVAL_MAX_CALLS_PER_SUITE=250 \
+	  LOOMARR_EVAL_MAX_TOKENS_PER_RUN=1100000 LOOMARR_EVAL_MAX_TOKENS=2500000 \
+	  LOOMARR_EVAL_MAX_SPEND_PER_RUN=2 LOOMARR_EVAL_MAX_SPEND=5 \
+	  LOOMARR_EVAL_QUERY_EXPANSION_DIAGNOSTIC=1 LOOMARR_EVAL_QUERY_EXPANSION_DRY_RUN=1 \
+	  LOOMARR_EVAL_QUERY_EXPANSION_PREFLIGHT_OUT="$$preflight" \
+	    $(GO) test -count=1 -tags=eval -run '^TestQueryExpansionOpenRouterDiagnostic$$' -v -timeout 20m ./internal/eval/
+
+eval-query-expansion-diagnostic: ## run the authorized ten-case Gemini query diagnostic (paid/manual)
+	@test "$$LOOMARR_EVAL_QUERY_EXPANSION_AUTHORIZED" = "1" || { echo "eval-query-expansion-diagnostic: set LOOMARR_EVAL_QUERY_EXPANSION_AUTHORIZED=1 after approving the displayed envelope" >&2; exit 2; }; \
+	  test -n "$$OPENROUTER_API_KEY" || { echo "eval-query-expansion-diagnostic: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT" || { echo "eval-query-expansion-diagnostic: LOOMARR_EVAL_OPENROUTER_SNAPSHOT is required" >&2; exit 2; }; \
+	  test -f "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT" || { echo "eval-query-expansion-diagnostic: snapshot does not exist" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT_SHA256" || { echo "eval-query-expansion-diagnostic: LOOMARR_EVAL_OPENROUTER_SNAPSHOT_SHA256 is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  snapshot="$$(cd "$$(dirname "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT")" && pwd -P)/$$(basename "$$LOOMARR_EVAL_OPENROUTER_SNAPSHOT")"; \
+	  report="$${LOOMARR_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/query-expansion-diagnostic.json}"; \
+	  summary="$${LOOMARR_EVAL_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/query-expansion-diagnostic.md}"; \
+	  preflight="$${LOOMARR_EVAL_QUERY_EXPANSION_PREFLIGHT_OUT:-$$LOOMARR_ARTIFACT_DIR/query-expansion-diagnostic-preflight.json}"; \
+	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")" "$$(dirname "$$preflight")"; \
+	  report="$$(cd "$$(dirname "$$report")" && pwd -P)/$$(basename "$$report")"; \
+	  summary="$$(cd "$$(dirname "$$summary")" && pwd -P)/$$(basename "$$summary")"; \
+	  preflight="$$(cd "$$(dirname "$$preflight")" && pwd -P)/$$(basename "$$preflight")"; \
+	  LLM_PROVIDER=openrouter LLM_URL=https://openrouter.ai/api/v1 \
+	  LLM_MODEL="$${LOOMARR_EVAL_QUERY_EXPANSION_MODEL:-google/gemini-3.7-flash}" LLM_API_KEY="$$OPENROUTER_API_KEY" \
+	  LOOMARR_EVAL_GENERATOR_UPSTREAM_PROVIDER="$${LOOMARR_EVAL_QUERY_EXPANSION_UPSTREAM_PROVIDER:-Google}" \
+	  LOOMARR_EVAL_OPENROUTER_SNAPSHOT="$$snapshot" \
+	  LOOMARR_EVAL_GENERATOR_MAX_INPUT_TOKENS=40000 LOOMARR_EVAL_JUDGE_MAX_INPUT_TOKENS=4700 \
+	  LOOMARR_EVAL_MAX_CALLS_PER_RUN=25 LOOMARR_EVAL_MAX_CALLS_PER_SUITE=250 \
+	  LOOMARR_EVAL_MAX_TOKENS_PER_RUN=1100000 LOOMARR_EVAL_MAX_TOKENS=2500000 \
+	  LOOMARR_EVAL_MAX_SPEND_PER_RUN=2 LOOMARR_EVAL_MAX_SPEND=5 \
+	  LOOMARR_EVAL_QUERY_EXPANSION_DIAGNOSTIC=1 \
+	  LOOMARR_EVAL_QUERY_EXPANSION_PREFLIGHT_OUT="$$preflight" \
+	  LOOMARR_EVAL_OUT="$$report" LOOMARR_EVAL_SUMMARY_OUT="$$summary" \
+	    $(GO) test -count=1 -tags=eval -run '^TestQueryExpansionOpenRouterDiagnostic$$' -v -timeout 20m ./internal/eval/
+
 planner-tool-diagnostic: ## probe the exact post-catalog-result model turn; explicit, inference-spending, non-CI
 	$(GO) run ./cmd/planner-tool-diagnostic
 

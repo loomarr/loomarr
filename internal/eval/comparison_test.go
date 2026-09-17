@@ -144,9 +144,9 @@ func TestComparePlannerModelsRejectsDifferentMetricContracts(t *testing.T) {
 	if _, err := ComparePlannerModels([]Scorecard{first, second}); err == nil || !strings.Contains(err.Error(), "unsupported scorecard schema 12") {
 		t.Fatalf("old transcript-accounting schema error = %v", err)
 	}
-	first.SchemaVersion, second.SchemaVersion = 15, 15
+	first.SchemaVersion, second.SchemaVersion = scorecardSchemaVersion, scorecardSchemaVersion
 	if _, err := ComparePlannerModels([]Scorecard{first, second}); err == nil || !strings.Contains(err.Error(), "lacks its run snapshot") {
-		t.Fatalf("missing schema-v15 snapshot error = %v", err)
+		t.Fatalf("missing current-schema snapshot error = %v", err)
 	}
 }
 

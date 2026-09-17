@@ -231,22 +231,11 @@ func requestWithinReservation(reservation InferenceReservation, messages []llm.M
 		opts.MaxTokens <= 0 || opts.MaxTokens > reservation.MaxCompletionTokens {
 		return "budget_exhausted: provider request exceeds the reserved completion limit"
 	}
-	payload, err := json.Marshal(struct {
-		Messages []llm.Message    `json:"messages"`
-		Tools    []llm.ToolSchema `json:"tools"`
-	}{Messages: messages, Tools: opts.Tools})
-	if err != nil {
+	inputBound, ok := requestInputTokenBound(messages, opts.Tools)
+	if !ok {
 		return "budget_exhausted: provider request size cannot be bounded"
 	}
-	// A byte-level bound is conservative for byte-pair tokenizers. Doubling the
-	// serialized input and adding fixed framing headroom covers provider chat
-	// markers without requiring a mutable provider tokenizer dependency.
-	inputBound, ok := checkedMultiply(len(payload), 2)
-	if !ok {
-		return "budget_exhausted: provider input reservation overflows"
-	}
-	inputBound, ok = checkedAdd(inputBound, 256)
-	if !ok || inputBound > reservation.MaxInputTokens {
+	if inputBound > reservation.MaxInputTokens {
 		return "budget_exhausted: provider request exceeds the reserved input limit"
 	}
 	total, ok := checkedAdd(inputBound, opts.MaxTokens)
@@ -254,6 +243,24 @@ func requestWithinReservation(reservation InferenceReservation, messages []llm.M
 		return "budget_exhausted: provider request exceeds the reserved token limit"
 	}
 	return ""
+}
+
+func requestInputTokenBound(messages []llm.Message, tools []llm.ToolSchema) (int, bool) {
+	payload, err := json.Marshal(struct {
+		Messages []llm.Message    `json:"messages"`
+		Tools    []llm.ToolSchema `json:"tools"`
+	}{Messages: messages, Tools: tools})
+	if err != nil {
+		return 0, false
+	}
+	// A byte-level bound is conservative for byte-pair tokenizers. Doubling the
+	// serialized input and adding fixed framing headroom covers provider chat
+	// markers without requiring a mutable provider tokenizer dependency.
+	inputBound, ok := checkedMultiply(len(payload), 2)
+	if !ok {
+		return 0, false
+	}
+	return checkedAdd(inputBound, 256)
 }
 
 // Runner owns evaluation from grounded generation through deterministic gates.
