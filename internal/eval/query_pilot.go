@@ -22,7 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json testdata/query-expansion-v4.json testdata/query-expansion-catalog-v4.json
+//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json testdata/query-expansion-v4.json testdata/query-expansion-catalog-v4.json testdata/query-expansion-v5.json testdata/query-expansion-catalog-v5.json
 var queryPilotFiles embed.FS
 
 // QueryPilotCorpus is exposed development evidence, never a release holdout.
@@ -59,6 +59,8 @@ type QueryPilotCase struct {
 	ExpectedToolOperation string                  `json:"expectedToolOperation,omitempty"`
 	ExpectCeiling         string                  `json:"expectCeiling,omitempty"`
 	ForbidRatingsAbove    string                  `json:"forbidRatingsAbove,omitempty"`
+	AudienceAuthority     string                  `json:"audienceAuthority,omitempty"`
+	ExpectAbstention      bool                    `json:"expectAbstention,omitempty"`
 	AcceptableKeys        []provision.Key         `json:"acceptableKeys"`
 	RequireKeys           []provision.Key         `json:"requireKeys,omitempty"`
 	ForbidKeys            []provision.Key         `json:"forbidKeys,omitempty"`
@@ -149,7 +151,11 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 		if c.Type != "minimum" && c.Type != "invariance" && c.Type != "directional" {
 			return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has unsupported test type", c.ID)
 		}
-		if c.MinGrounded < 1 || c.MinGrounded > len(c.AcceptableKeys) || c.MinLineup < 0 || c.MinAcquisitions < 0 || c.MinLineup+c.MinAcquisitions > len(c.AcceptableKeys) {
+		if c.ExpectAbstention {
+			if c.MinGrounded != 0 || c.MinLineup != 0 || c.MinAcquisitions != 0 || c.MinMovies != 0 || len(c.AcceptableKeys) != 0 || len(c.RequireKeys) != 0 {
+				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has nonempty expectations for an abstention", c.ID)
+			}
+		} else if c.MinGrounded < 1 || c.MinGrounded > len(c.AcceptableKeys) || c.MinLineup < 0 || c.MinAcquisitions < 0 || c.MinLineup+c.MinAcquisitions > len(c.AcceptableKeys) {
 			return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has impossible breadth or ownership expectations", c.ID)
 		}
 		if c.NoDates == (c.Dates != nil) || (c.Dates != nil && !normalizedDateScope(c.Dates)) {
@@ -169,6 +175,10 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 			if ceiling != "" && schedule.NormalizeRating(ceiling) == "" {
 				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has an unsupported rating ceiling", c.ID)
 			}
+		}
+		hasAudienceCeiling := c.ExpectCeiling != "" || c.ForbidRatingsAbove != ""
+		if hasAudienceCeiling != (c.AudienceAuthority != "") || (c.AudienceAuthority != "" && !slices.Contains([]string{"synthetic", "US-MPA"}, c.AudienceAuthority)) {
+			return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has an absent or unsupported audience authority", c.ID)
 		}
 		seenCurrent := make(map[string]bool)
 		for _, item := range c.CurrentLineup {
@@ -291,14 +301,21 @@ func queryDevelopmentCases(corpus QueryPilotCorpus) []Case {
 		if authored.NoDates {
 			dates = &schedule.DateScope{}
 		}
+		if authored.ExpectAbstention {
+			// An explicit empty result has no Proposal on which to observe the
+			// canonical policy. The authored request still retains its date and
+			// audience constraints for production parsing and filtering.
+			dates = nil
+		}
 		cases = append(cases, Case{
 			Name: authored.ID, Intent: Intent{Description: authored.Description, RefineText: authored.RefineText, CurrentLineup: authored.CurrentLineup, MustInclude: authored.MustInclude, MustExclude: authored.MustExclude},
-			NoFabrication: true, RequireUniqueKeys: true, OnlyAcceptableKeys: true, ExpectGroundedCompletion: true,
+			NoFabrication: true, RequireUniqueKeys: true, OnlyAcceptableKeys: true, ExpectGroundedCompletion: !authored.ExpectAbstention,
 			MinGrounded: authored.MinGrounded, MinLineup: authored.MinLineup, MinAcquisitions: authored.MinAcquisitions,
 			MinMovies: authored.MinMovies, AllowedMediaTypes: authored.AllowedMediaTypes, ExpectedToolOperation: authored.ExpectedToolOperation,
 			ExpectCeiling: authored.ExpectCeiling, ForbidRatingsAbove: authored.ForbidRatingsAbove,
 			AcceptableKeys: authored.AcceptableKeys, MinAcceptableKeys: authored.MinGrounded,
 			RequireKeys: authored.RequireKeys, ForbidKeys: authored.ForbidKeys, ExpectedDateScope: dates,
+			ExpectedProposalAbstention: authored.ExpectAbstention,
 		})
 	}
 	return withProductionStructuralBounds(cases)

@@ -302,6 +302,49 @@ holdout, new UI or Playwright acceptance is claimed. INT-02 still needs a source
 1990--92 positive, INT-05 needs a bound observation clock, the mood slice needs
 actual reviewers, and broader audience/language/region families remain future work.
 
+### Fifth executable expansion batch
+
+Follow-on checkpoint [#1290](https://github.com/loomarr/loomarr/issues/1290)
+advances the cumulative snapshot to `query-expansion-v5.json`. It retains all 108
+v4 requests and adds eleven movie requests: six named-exclusion or deliberately
+thin ownership outcomes and five U.S. MPA audience cases. Together with the
+immutable 72-request pilot, there are now 191 authored Development Corpus
+requests. The additional categories remain probes over the same reviewed movie
+pool, not independent truth families, a sealed holdout or model qualification.
+
+The audience slice uses one classification authority throughout. The MPA guide
+defines the U.S. scale; direct CARA certificate records bind *Toy Story* to G,
+*Jaws* to PG and *Jurassic Park* to PG-13. Each authored audience case records
+`audienceAuthority: US-MPA`; the earlier Spielberg PG case remains explicitly
+`synthetic`. No BBFC, KOFIC, provider parental-guide or unrated field participates
+in the ordinal comparison. Three nonempty cases exercise a broad PG ceiling, a
+one-title 1990s G-animation result, and a one-title Spielberg/1970s result. A
+new causal control proves that a PG-13 pick fails the MPA-backed PG ceiling.
+
+Two further audience cases require an honest empty outcome: excluding *Toy Story*
+from the bounded 1990s U.S. G-animation pool, and asking for a 1990s Spielberg
+title at PG or below when the reviewed pool contains only PG-13 *Jurassic Park*.
+They must execute bounded retrieval and return the production no-grounded-title
+abstention. They cannot pass via an empty successful Proposal, fabricated padding,
+provider failure or lowered minimum. The evaluator retains the authored request
+constraints but does not score Proposal policy fields when no Proposal exists.
+
+The other six cases cover one and multiple named exclusions, including a required
+positive title, plus Library-only and acquisition-only one-title results. A second
+new causal control proves that excluded modern titles cannot pad the answer. The
+cumulative suite now has 36 independent causal controls. V1 through v4 manifest
+and Catalog bytes remain embedded and literal-digest pinned; v5 binds 61 source
+reviews and a new cumulative Catalog fixture. Every one of the 119 cumulative
+expansion requests crosses the production Suggester and Runner with independently
+authored replies, and every scorecard remains non-certifying.
+
+No hosted-provider call, spend, sealed holdout, new UI or Playwright acceptance is
+claimed. The MPA slice promotes only the bounded same-authority audience evidence
+described above; it is not a complete U.S. movie catalog or individualized safety
+recommendation. The mood protocol is now fully specified, but two independent
+human submissions and any required adjudication still have not occurred, so mood
+outcomes remain authored development rubric metadata and #1290 remains open.
+
 ### Remaining expansion checkpoints
 
 The source-review checkpoint is tracked in [#1278](https://github.com/loomarr/loomarr/issues/1278).

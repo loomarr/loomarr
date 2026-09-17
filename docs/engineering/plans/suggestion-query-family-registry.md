@@ -10,13 +10,15 @@ material; none is an untouched holdout. Each example below is a design probe, no
 a passed test or a complete expected-answer set. Family status is `proposed` until
 its source facts, independent oracle and negative controls are reviewed.
 
-Four cumulative executable batches now have 108 authored requests across the
+Five cumulative executable batches now have 119 authored requests across the
 TGIF, MCU Phase One, partial History editorial-era and reviewed movie-pool source
 families. The first three provide partial evidence relevant to BLK-01, IDN-02,
 SET-02, EPO-01, OWN-01/02/04, POL-01 and date-axis behavior. The fourth adds
-partial evidence for DAT-01, INT-01/03/04, PPL-01/02 and REF-01/03. Its mood
-rubrics are authored but have no completed reviewers, and its PG ceiling is
-synthetic plumbing rather than audience-source promotion. Case categories do
+partial evidence for DAT-01, INT-01/03/04, PPL-01/02 and REF-01/03. The fifth
+adds a bounded same-authority U.S. MPA ceiling slice, one-title and explicit-empty
+results, and stronger single/multiple title-exclusion probes. Its mood rubrics
+are authored but have no completed reviewers; the earlier PG case remains
+synthetic plumbing. Case categories do
 not become new truth families. The other registry rows remain proposed until
 their own source/oracle review and coverage. All executable batches are
 development-only.
@@ -188,7 +190,8 @@ rubrics become subjective outcome evidence.
 
 ### Audience constraints
 
-Source family: `audience-policy`. Review status: proposed; fixture-ready: no.
+Source family: `audience-policy`. Review status: AUD-02 partial executable;
+fixture-ready: bounded U.S. MPA G/PG/PG-13 controls only.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |
@@ -198,9 +201,13 @@ Source family: `audience-policy`. Review status: proposed; fixture-ready: no.
 | AUD-04 | Family shows, including titles with no rating | Unknown rating is not silently equivalent to allowed. |
 | AUD-05 | Keep this channel child-friendly when adding variety | Refine may tighten but never relax the existing audience ceiling. |
 
-The v4 PG case is a synthetic policy-path control only. AFI-reported historical
-MPAA fields and a BBFC classification do not constitute a same-authority rating
-set, so AUD-02/03 remain proposed.
+The v4 PG case remains a synthetic policy-path control. V5 separately binds direct
+MPA/CARA records for *Toy Story* (G), *Jaws* (PG) and *Jurassic Park* (PG-13) to
+`audienceAuthority: US-MPA`. Its broad PG ceiling, thin G-animation and two empty
+pool cases partially exercise AUD-02 mechanics without claiming that a rating is
+an individualized suitability judgment or that three titles form a complete
+family-film catalog. AUD-03's PG-13 ceiling and unknown-rating behavior remain
+proposed.
 
 ### Library and acquisition authority
 
@@ -266,7 +273,8 @@ movie case, with no registry row yet promoted.
 
 ### Thin, empty and uncertain results
 
-Source family: `catalog-outcome-health`. Review status: proposed; fixture-ready: no.
+Source family: `catalog-outcome-health`. Review status: RES-01/02 partial executable;
+fixture-ready: bounded reviewed movie-pool thin and explicit-empty outcomes only.
 
 | ID | Example user intent | Independent oracle or negative contrast |
 | --- | --- | --- |
@@ -275,6 +283,12 @@ Source family: `catalog-outcome-health`. Review status: proposed; fixture-ready:
 | RES-03 | A named block with conflicting source rosters | Ambiguity remains explicit; no invented consensus. |
 | RES-04 | A title whose catalog ID cannot be resolved | No fabricated identity or approval-ready pick. |
 | RES-05 | A lineup whose episodes are unavailable | No unavailable media added to fresh-programming estimates. |
+
+V5 adds Library-only and acquisition-only one-title results plus two explicit
+empty outcomes. The empty cases pass only on a production no-grounded-title
+abstention after catalog activity; neither an empty successful Proposal nor a
+provider/generation fault satisfies the oracle. This is bounded-pool evidence,
+not a claim that the public catalog has no other matches.
 
 ### Refinement and user selections
 

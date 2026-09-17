@@ -321,6 +321,129 @@ each deterministic axis has its own authority.
   qualification, a sealed holdout, a two-reviewer result, or permission to copy
   cooperative model picks into expected answers.
 
+### Follow-on review: MPA audience controls and blinded mood packet (#1290)
+
+Observed 2026-09-16, America/New_York. This follow-on supplies the previously
+missing same-jurisdiction rating authority for a small U.S. audience-control
+slice. It does not change the treatment of UK BBFC or Korean KOFIC ratings, and
+it does not fabricate any completed mood review.
+
+#### U.S. rating-board source set
+
+The [MPA Film Ratings guide](https://www.filmratings.com/ratings-guide/) says
+that its rating system assigns each film one of `G`, `PG`, `PG-13`, `R`, or
+`NC-17` to indicate content level for parents. Its public certificate search
+therefore provides a coherent U.S. MPA/CARA authority for an ordinal ceiling:
+`G <= PG < PG-13 < R < NC-17`. The ordering is a fixture policy interpretation
+of the MPA's named scale, not a cross-national conversion table.
+
+| Candidate and independently resolved provider identity | Direct MPA/CARA record observed 2026-09-16 | Deterministic use and boundary |
+| --- | --- | --- |
+| *Toy Story* [`movie:tmdb:862`](https://www.themoviedb.org/movie/862-toy-story?language=en-US) | [Certificate 34132](https://www.filmratings.com/search-results/?cn=34132) identifies *Toy Story*, Buena Vista Pictures Distribution, 1995, as `G`. | Positive for U.S. `PG-or-lower`; paired with AFI's 1995 Comedy/Animation and Tom Hanks voice facts above. It does not itself establish a mood. |
+| *Jaws* [`movie:tmdb:578`](https://www.themoviedb.org/movie/578-jaws) | [Certificate 24175](https://www.filmratings.com/search-results/?cn=24175) identifies *Jaws*, Universal City Studios, 1975, as `PG`. | Positive for U.S. `PG-or-lower`; useful as the same-ceiling contrast to an eventual low-threat mood request. Its classification is not a fear score. |
+| *Jurassic Park* [`movie:tmdb:329`](https://www.themoviedb.org/movie/329-jurassic-park) | [Certificate 32451](https://www.filmratings.com/search-results/?cn=32451) identifies *Jurassic Park*, Universal City Studios, 1993, as `PG-13`, with the record's “intense science fiction terror” descriptor. | Required negative for a U.S. `PG-or-lower` ceiling, even though it matches a Spielberg/1990s request. The descriptor is evidence a reviewer may read; it is not a deterministic mood label. |
+
+The MPA's records are preferred to the historical MPAA fields transcribed by
+AFI because they are maintained by the classification authority itself. Each
+case must retain `audienceAuthority: US-MPA`; it must not compare any of the
+three records with BBFC `PG`, KOFIC `15`, an unrated title, an age recommendation,
+or a provider's current parental-guide field. The certificate search is live, so
+freeze the observed certificate number, direct URL, title, rating, distributor
+and year in the development artifact; a later re-observation must be recorded as
+a new source observation rather than silently replacing it.
+
+#### Eligible bounded-catalog cases
+
+These are proposed development cases over the reviewed movie fixture only, not
+claims of a complete public catalog. The identity Key remains resolved from the
+linked TMDB page; deterministic release/genre facts remain separately sourced
+as documented in the preceding table.
+
+| Proposed request/control | Grounded pool result before mood grading | Why it is useful |
+| --- | --- | --- |
+| “U.S. G or PG movies” | *Toy Story* and *Jaws* are eligible; *Jurassic Park* is excluded by the `PG` ceiling. | Establishes both `G` and `PG` positives plus an above-ceiling `PG-13` negative from one board. |
+| “1990s U.S. G animated movies” | *Toy Story* is the sole reviewed-pool candidate. | A deliberately thin, one-title result: AFI supports the 1995/Animation fact and MPA supports `G`. Do not present it as the only such film globally. |
+| “1990s U.S. G animated movies, but not *Toy Story*” | No reviewed-pool candidate remains. | Tests a named exclusion and an honest empty/thin-result explanation: the exclusion is user-directed, not an inference that *Toy Story* is unsuitable. |
+| “1990s Steven Spielberg movies, U.S. PG or lower” | No reviewed-pool candidate: *Jurassic Park* matches person/era but fails `PG-or-lower`. | Ensures the audience ceiling is a hard deterministic filter rather than a soft preference. |
+| “warm, low-threat U.S. G or PG movies” | **Do not author required keys yet.** *Toy Story* may become the sole acceptable reviewed-pool candidate only after the protocol below records two human reviews meeting the request thresholds; *Jaws* remains a needed mood-negative and *Jurassic Park* remains a rating-negative. | Gives an audience-plus-mood intersection with independently attributable deterministic and human-review axes, without treating Pixar prose or an AI suggestion as a completed review. |
+| “tense U.S. G or PG movies” | **Do not author required keys yet.** *Jaws* can be adjudicated as an eligible candidate under the same protocol; *Jurassic Park* must stay excluded on rating. | Separates a human tension judgment from the MPA ceiling and catches a common “more intense means higher rating” shortcut. |
+
+For the prospective *Toy Story* mood packet, [Pixar's official title page](https://www.pixar.com/toy-story)
+describes a fun-filled journey, rival toys who form an alliance, and a
+“hilarious adventure-filled mission.” Those are source-addressable facts for a
+reviewer to weigh alongside counter-evidence on the same page (Woody's anxiety,
+Sid's harmful play). They neither certify “warm” nor license a score without the
+two independent reviews. For *Jaws* and *Jurassic Park*, the MPA record and the
+already-cited AFI synopsis/history are likewise evidence inputs, not expected
+answers.
+
+#### Blinded human-review packet: `movie-mood-ordinal-v1`
+
+Before any mood-dependent expected or forbidden Key is put in a manifest, a
+review coordinator creates a sealed packet version such as
+`movie-mood-ordinal-v1/packet-2026-09-16-a`. The coordinator, not either
+reviewer, maps a random opaque `packetItemID` (for example `M-014`) to a title
+Key. Reviewer copies contain no `movie:tmdb` Key, fixture ownership, requested
+query, proposed acceptable/forbidden set, prior model output, other review,
+or scoring result. Reviewers may see the title name and a fixed evidence bundle
+because judging the work requires identifying it; blinding concerns the expected
+lineup and target polarity, not the public identity.
+
+Each item contains only:
+
+1. packet version, opaque item ID, source-observation date and the five axis
+   definitions from the rubric above;
+2. immutable evidence pointers (direct URL plus an artifact digest or captured
+   excerpt digest), with a short field label such as `official synopsis` or
+   `MPA descriptor`; and
+3. a blank, independently completed response record:
+
+   ```text
+   packetVersion, packetItemID, reviewerID, reviewedAt
+   valence(0..3), arousal(0..3), threatFear(0..3),
+   comedicWarmth(0..3), attentionalDemand(0..3)
+   evidencePointer[], paraphrasedRationale, uncertaintyNote, conflictOfInterest
+   ```
+
+The coordinator assigns at least two reviewers independently, releases their
+identical packets simultaneously, and stores submitted records append-only
+before revealing either record to the other reviewer. The source bundle must
+not include model-generated descriptions, audience/user reviews, poster art,
+popularity, mutable TMDB keywords, or any old expected Key. A reviewer declares
+a material conflict; that response is discarded and replaced before comparison.
+
+After both valid responses arrive, the coordinator records the per-axis pair
+unchanged. Exact agreement is directly eligible. A one-step disagreement is
+eligible only if it does not change the named request threshold; otherwise, and
+for every two-or-more-step difference, an adjudicator reviews the same sealed
+evidence bundle and writes a separate rationale. The adjudicator may select a
+bounded ordinal, or mark the axis `uncertain`. `uncertain`, a missing response,
+or unresolved threshold crossing excludes that title from required/forbidden
+mood grading for that request. It never defaults to the model's selection.
+
+Only after this record is complete may the coordinator unseal the item-to-Key
+map and derive a request-specific acceptable/forbidden set. Persist (a) both
+original reviewer records, (b) adjudication if any, (c) source-pointer/digest
+list, (d) the unsealing event, and (e) the resulting status as one immutable
+review artifact. Allowed statuses are `pending`, `complete`, `uncertain`, and
+`superseded`; this note creates only `pending` packets and contains **no
+completed human judgment**. A new rubric, evidence bundle, or threshold needs a
+new packet version rather than mutation of a completed record.
+
+#### Follow-on limitations
+
+- The MPA source set supports a U.S. G/PG/PG-13 ceiling only. It does not
+  establish content equivalence, an age recommendation, current suitability for
+  an individual household, or a mapping to BBFC/KOFIC systems.
+- The three entries do not prove a complete U.S. cohort. A zero result above is
+  only zero within the explicitly reviewed fixture pool.
+- Pixar's own prose supports the existence of stated plot/tonal evidence but
+  does not turn mood into an objective provider field. No case may label *Toy
+  Story*, *Jaws*, or any other work “human-reviewed” until packet records exist.
+- MPA record identity must be checked against the title and certificate number;
+  title text alone is insufficient where remakes, reissues or similarly named
+  films exist.
+
 ## Remaining review queue before further case authoring
 
 1. Map original American Full House and later TGIF revival titles to exact provider Keys without
