@@ -1,7 +1,17 @@
 type SettingsTaskGroup = "setup" | "access" | "server" | "troubleshoot" | "filler" | "advanced";
 type SettingsRole = "all" | "admin";
+type FillerSettingsSection =
+  | "folders"
+  | "downloads"
+  | "storage"
+  | "incoming"
+  | "breaks"
+  | "review"
+  | "playback"
+  | "limits"
+  | "tools";
 
-type SettingsDestinationPath =
+type SettingsStaticDestinationPath =
   | "/settings/general"
   | "/settings/connections"
   | "/settings/ai"
@@ -16,20 +26,26 @@ type SettingsDestinationPath =
   | "/settings/system/database"
   | "/settings/system/about"
   | "/settings/all"
-  | "/filler/settings"
-  | `/filler/settings/${"folders" | "downloads" | "storage" | "incoming" | "breaks" | "review" | "playback" | "limits" | "tools"}`;
+  | "/filler/settings";
 
-interface SettingsDestination {
+type SettingsDestinationPath = SettingsStaticDestinationPath | `/filler/settings/${FillerSettingsSection}`;
+
+interface SettingsDestinationBase {
   id: string;
   owner?: string;
   label: string;
   description: string;
   aliases: readonly string[];
   group: SettingsTaskGroup;
-  path: SettingsDestinationPath;
   role: SettingsRole;
   browse: boolean;
 }
+
+type SettingsDestination = SettingsDestinationBase &
+  (
+    | { path: SettingsStaticDestinationPath; section?: never }
+    | { path: `/filler/settings/${FillerSettingsSection}`; section: FillerSettingsSection }
+  );
 
 const destination = (value: SettingsDestination): SettingsDestination => value;
 
@@ -284,6 +300,7 @@ const SETTINGS_DESTINATIONS = [
       aliases,
       group: "filler",
       path: `/filler/settings/${section}`,
+      section,
       role: "admin",
       browse: false,
     }),
@@ -304,5 +321,11 @@ const destinationForOwner = (owner: string): SettingsDestination | undefined =>
 const canVisitDestination = (item: SettingsDestination, isAdmin: boolean): boolean =>
   item.role === "all" || isAdmin;
 
-export type { SettingsDestination, SettingsDestinationPath, SettingsRole, SettingsTaskGroup };
+export type {
+  FillerSettingsSection,
+  SettingsDestination,
+  SettingsDestinationPath,
+  SettingsRole,
+  SettingsTaskGroup,
+};
 export { canVisitDestination, destinationForOwner, SETTINGS_DESTINATIONS, SETTINGS_TASK_GROUPS };

@@ -67,7 +67,7 @@ const SettingsLayout = () => {
           linkComponent={Link}
           className="bg-background px-6 pt-2"
           tabs={visiblePages.map((p) => ({ id: p.to, label: p.label, to: p.to }))}
-          activeId={visiblePages.find((p) => pathname.startsWith(p.to))?.to ?? visiblePages[0]?.to}
+          activeId={visiblePages.find((p) => pathname.startsWith(p.to))?.to ?? ""}
         />
         <div className="min-w-0 flex-1 overflow-hidden">
           <Outlet />
