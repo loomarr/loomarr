@@ -1,5 +1,5 @@
 import type { IncomingProcessingDTO, IncomingProcessingStageDTO } from "@loomarr/api";
-import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
+import { formatRelative, formatUntil } from "@loomarr/core/format";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -60,7 +60,9 @@ const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcess
       <summary className="cursor-pointer font-medium">Processing details</summary>
       <div className="mt-4 space-y-4">
         {processing.attempts ? (
-          <p className="text-muted-foreground">{pluralize(processing.attempts, "processing attempt")}</p>
+          <p className="text-muted-foreground">
+            This step was tried {processing.attempts} {processing.attempts === 1 ? "time" : "times"}.
+          </p>
         ) : null}
         {processing.nextTryAt ? (
           <p className="text-muted-foreground">Next try {formatUntil(processing.nextTryAt)}</p>

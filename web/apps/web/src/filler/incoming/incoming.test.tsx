@@ -204,7 +204,7 @@ describe("Incoming", () => {
       screen.queryByText("This step did not finish. Loomarr will try again automatically."),
     ).not.toBeVisible();
     await userEvent.click(screen.getByText("Processing details"));
-    expect(screen.getByText("2 processing attempts")).toBeVisible();
+    expect(screen.getByText("This step was tried 2 times.")).toBeVisible();
     expect(screen.getByText("This step did not finish. Loomarr will try again automatically.")).toBeVisible();
     expect(screen.getByRole("link", { name: "View diagnostics" })).toHaveAttribute(
       "href",

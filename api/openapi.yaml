@@ -4731,6 +4731,7 @@ components:
       additionalProperties: false
       properties:
         attempts:
+          description: Attempts of the current processing stage; not a whole-preparation attempt count
           format: int64
           type: integer
         diagnosticsHref:

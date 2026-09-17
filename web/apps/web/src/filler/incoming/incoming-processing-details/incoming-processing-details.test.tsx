@@ -118,7 +118,7 @@ describe("IncomingProcessingDetails", () => {
     );
     await userEvent.click(screen.getByText("Processing details"));
     expect(screen.getByText("Trying again")).toBeVisible();
-    expect(screen.getByText("2 processing attempts")).toBeVisible();
+    expect(screen.getByText("This step was tried 2 times.")).toBeVisible();
     expect(screen.getByText("Next try in 1m")).toBeVisible();
     expect(screen.getByRole("link", { name: "View diagnostics" })).toHaveAttribute(
       "href",

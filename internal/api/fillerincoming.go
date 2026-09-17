@@ -64,7 +64,7 @@ type IncomingStatusDTO struct {
 }
 
 type IncomingProcessingDTO struct {
-	Attempts        int                          `json:"attempts,omitempty"`
+	Attempts        int                          `json:"attempts,omitempty" doc:"Attempts of the current processing stage; not a whole-preparation attempt count"`
 	NextTryAt       string                       `json:"nextTryAt,omitempty" doc:"RFC3339; absent unless this work is scheduled to retry"`
 	DiagnosticsHref string                       `json:"diagnosticsHref,omitempty" doc:"Existing operational owner; absent when no deeper evidence exists"`
 	Stages          []IncomingProcessingStageDTO `json:"stages"`
