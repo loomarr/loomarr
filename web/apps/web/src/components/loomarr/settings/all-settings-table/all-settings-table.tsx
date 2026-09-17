@@ -35,7 +35,7 @@ const matches = (entry: SettingEntry, q: string): boolean => {
 // generated secrets (`playout_token`, the API token) are a separate registry
 // (`internal/settings/secrets.go`) and are not settings entries at all — the API's provenance
 // enum has exactly env/db/default. Rendering a fourth state would mean inventing a value the
-// backend never sends. Those secrets have their own panel on Security, where view/copy/
+// backend never sends. Those secrets live under Access and devices, where view/copy/
 // regenerate belong.
 const PROVENANCE: Record<string, { label: string; className: string }> = {
   [SettingEntryProvenance.env]: {
@@ -59,8 +59,8 @@ const HOME_BY_GROUP: Record<string, string> = {
   playout: "/settings/system/playback",
   backup: "/settings/system/backup",
   images: "/settings/system/storage",
-  users_security: "/settings/security",
-  sso: "/settings/security",
+  users_security: "/settings/access",
+  sso: "/settings/access",
 };
 
 const AllSettingsTable = ({

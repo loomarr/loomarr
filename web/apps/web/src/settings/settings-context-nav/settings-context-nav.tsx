@@ -33,6 +33,7 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
     </nav>
     <Link
       to="/settings"
+      aria-label="Find another setting"
       className="inline-flex shrink-0 items-center gap-1.5 rounded-sm text-muted-foreground text-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <Search className="size-3.5" aria-hidden />

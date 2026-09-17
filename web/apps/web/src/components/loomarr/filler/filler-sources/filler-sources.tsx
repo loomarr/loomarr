@@ -255,7 +255,7 @@ const FillerSources = ({
               Loomarr uses it to choose sources that fit your area.
             </p>
           </div>
-          <a className={buttonVariants({ variant: "outline" })} href="/settings/general">
+          <a className={buttonVariants({ variant: "outline" })} href="/settings/access">
             Set location
           </a>
         </div>

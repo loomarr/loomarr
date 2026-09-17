@@ -203,7 +203,7 @@ describe("Settings", () => {
       "not a real setting",
     );
     expect(await screen.findByText("No settings found")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: /Connections/ })).toHaveLength(2);
+    expect(screen.getByRole("link", { name: /Connections/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "This server" })).toBeInTheDocument();
   });
 
@@ -218,14 +218,14 @@ describe("Settings", () => {
     expect(screen.queryByRole("heading", { name: "Email account messages" })).not.toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "Send email notifications" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Send test email" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Find another setting" })).toHaveAttribute("href", "/settings");
   });
 
-  it("owns the recipient-facing Loomarr address on General settings", async () => {
+  it("owns the recipient-facing Loomarr address under Access and devices", async () => {
     stubSettings();
-    renderAt("/settings/general");
+    renderAt("/settings/access");
 
-    expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Access and devices" })).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { name: "Share invitation and recovery links" }),
     ).toBeInTheDocument();
@@ -237,14 +237,14 @@ describe("Settings", () => {
     expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue(
       "https://loomarr.example.com",
     );
-    expect(screen.getByRole("link", { name: "General" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Find another setting" })).toHaveAttribute("href", "/settings");
   });
 
   it("defaults an unset recipient-facing address to the current browser origin", async () => {
     stubSettings(
       SETTINGS.map((entry) => (entry.key === "access.public_url" ? { ...entry, value: "" } : entry)),
     );
-    renderAt("/settings/general");
+    renderAt("/settings/access");
 
     expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue(
       window.location.origin,
@@ -257,7 +257,7 @@ describe("Settings", () => {
         entry.key === "access.public_url" ? { ...entry, provenance: "env" as const, value: "" } : entry,
       ),
     );
-    renderAt("/settings/general");
+    renderAt("/settings/access");
 
     expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue("");
   });
@@ -402,10 +402,12 @@ describe("Settings — the save bar spans tabs (V9)", () => {
     // The bar counts it, which is what tells the operator anything is staged at all.
     expect(await screen.findByText(/1 unsaved/i)).toBeInTheDocument();
 
-    // Leave for another tab and come back — the tab bar is navigation, not a commit boundary.
-    await userEvent.click(screen.getByRole("link", { name: "All settings" }));
+    // Leave through the task home and come back — navigation is not a commit boundary.
+    await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
+    await userEvent.click(await screen.findByRole("link", { name: "Advanced settings" }));
     await screen.findByText("job.workers");
-    await userEvent.click(screen.getByRole("link", { name: "Connections" }));
+    await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
+    await userEvent.click(await screen.findByRole("link", { name: /Connections/ }));
 
     expect(await screen.findByLabelText("Library URL")).toHaveValue("http://emby:9999");
     expect(screen.getByText(/1 unsaved/i)).toBeInTheDocument();
@@ -421,12 +423,14 @@ describe("Settings — the save bar spans tabs (V9)", () => {
     await userEvent.clear(url);
     await userEvent.type(url, "http://emby:9999");
 
-    await userEvent.click(screen.getByRole("link", { name: "All settings" }));
+    await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
+    await userEvent.click(await screen.findByRole("link", { name: "Advanced settings" }));
     await screen.findByText("job.workers");
     // `job.workers` is env-pinned in the fixture, so edit the OTHER connection key instead —
     // asserting against a disabled field would prove nothing about the buffer.
 
-    await userEvent.click(screen.getByRole("link", { name: "Connections" }));
+    await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
+    await userEvent.click(await screen.findByRole("link", { name: /Connections/ }));
     const tunarr = await screen.findByLabelText("Tunarr URL");
     await userEvent.clear(tunarr);
     await userEvent.type(tunarr, "http://tunarr:9999");
@@ -573,10 +577,11 @@ describe("AI model pull", () => {
 // imported-but-never-rendered, so the feature was absent while every unit test stayed
 // green. Asserting the panel reaches the page is what the component tests can't do.
 describe("Settings page footers", () => {
-  it("mounts the secrets panel on Security", async () => {
+  it("keeps generated secrets under Access and devices advanced controls", async () => {
     stubSettings();
 
-    renderAt("/settings/security");
+    renderAt("/settings/access");
+    await userEvent.click(await screen.findByRole("button", { name: /advanced access controls/i }));
     // The two operator-facing credentials are a closed set held in the component (config-design
     // §4), not a fetched list — so the assertion is that the panel is on the page at all.
     expect(await screen.findByText(/API token/i)).toBeInTheDocument();
@@ -585,9 +590,9 @@ describe("Settings page footers", () => {
 });
 
 describe("Settings progressive disclosure", () => {
-  it("keeps cookie transport policy behind Security's Advanced disclosure", async () => {
+  it("keeps cookie transport policy behind Access and devices' Advanced disclosure", async () => {
     stubSettings();
-    renderAt("/settings/security");
+    renderAt("/settings/access");
 
     expect(await screen.findByLabelText("Sign-in lifetime")).toBeInTheDocument();
     expect(screen.queryByLabelText("Secure cookies")).not.toBeInTheDocument();

@@ -80,7 +80,7 @@ const NoCounts: Story = {
       { id: "/settings/ai", label: "AI", to: "/settings/ai" },
       { id: "/settings/defaults", label: "Defaults", to: "/settings/defaults" },
       { id: "/settings/system", label: "System", to: "/settings/system" },
-      { id: "/settings/security", label: "Security", to: "/settings/security" },
+      { id: "/settings/access", label: "Access and devices", to: "/settings/access" },
       { id: "/settings/all", label: "All settings", to: "/settings/all" },
     ],
   },

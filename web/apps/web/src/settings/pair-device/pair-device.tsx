@@ -116,7 +116,8 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
         <div className="mt-8 rounded-lg border border-border p-5 text-center">
           <p className="font-medium text-lg">{approved} is ready</p>
           <p className="mt-1 text-muted-foreground leading-relaxed">
-            It should start playing in a few seconds. You can remove it any time from Settings → Security.
+            It should start playing in a few seconds. You can remove it any time from Settings → Access and
+            devices.
           </p>
         </div>
       ) : null}

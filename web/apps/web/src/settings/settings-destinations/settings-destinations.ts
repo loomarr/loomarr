@@ -13,12 +13,10 @@ type FillerSettingsSection =
 
 type SettingsStaticDestinationPath =
   | "/settings/access"
-  | "/settings/general"
   | "/settings/connections"
   | "/settings/ai"
   | "/settings/defaults"
   | "/settings/notifications"
-  | "/settings/security"
   | "/settings/system/playback"
   | "/settings/system/storage"
   | "/settings/system/backup"
