@@ -143,6 +143,54 @@ func TestPreparerRefusesCapacityBeforeCreatingWorkspaceOrOpeningSource(t *testin
 	}
 }
 
+func TestPreparerStopsAndRemovesOutputThatExceedsItsReservation(t *testing.T) {
+	root := t.TempDir()
+	library, err := prepared.NewLibrary(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := preparedRequest("overrun")
+	request.DurationMS = 1
+	reservation, ok := storagegovernor.EstimatePrepared(
+		request.DurationMS, request.Rendition.VideoBitrateKbps, request.Rendition.AudioBitrateKbps,
+	)
+	if !ok {
+		t.Fatal("test request has no storage estimate")
+	}
+	packager := packagerFunc(func(ctx context.Context, workspace string, _ prepared.Input, _ int, _ prepared.RenditionContract) (prepared.Output, error) {
+		path := filepath.Join(workspace, "segment.m4s")
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			return prepared.Output{}, err
+		}
+		if err := os.Truncate(path, reservation+1); err != nil {
+			return prepared.Output{}, err
+		}
+		return prepared.Output{Files: []string{"segment.m4s"}}, nil
+	})
+	governor := storagegovernor.New(preparedCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "prepared", TotalBytes: 128 * storagegovernor.GiB, FreeBytes: 100 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	})
+	preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+		Library: library, Packager: packager,
+		Access:  &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")},
+		Storage: governor,
+	})
+
+	if _, err := preparer.Prepare(t.Context(), request); err == nil ||
+		!strings.Contains(err.Error(), string(storagegovernor.ReasonEstimateUnknown)) {
+		t.Fatalf("Prepare error = %v, want estimate ceiling", err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("overrun left prepared staging: %v", entries)
+	}
+}
+
 func TestPreparerSharesOnePublicationAcrossConcurrentRequests(t *testing.T) {
 	t.Parallel()
 	lib, err := prepared.NewLibrary(t.TempDir())

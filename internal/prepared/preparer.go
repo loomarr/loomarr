@@ -158,7 +158,16 @@ func (p *Preparer) Prepare(ctx context.Context, request Request) (Publication, e
 		if strings.TrimSpace(input.url) == "" {
 			return Output{}, ErrInvalidSource
 		}
-		output, err := p.packager.Package(ctx, workspace, input, request.Source.AudioTrack, request.Rendition)
+		packageCtx := ctx
+		finishStorage := func() error { return nil }
+		if lease != nil {
+			packageCtx, finishStorage = storagegovernor.MonitorPath(ctx, lease, workspace, 0)
+		}
+		output, err := p.packager.Package(packageCtx, workspace, input, request.Source.AudioTrack, request.Rendition)
+		storageErr := finishStorage()
+		if storageErr != nil {
+			return Output{}, storageErr
+		}
 		if err != nil {
 			return Output{}, err
 		}

@@ -785,8 +785,17 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		return nil, fmt.Errorf("split confirm: temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
-	sourceSnapshot, err := snapshotSplitComposite(ctx, src, tmpDir, ext, source.ClipHash)
+	splitCtx := ctx
+	finishStorage := func() error { return nil }
+	if storageLease != nil {
+		splitCtx, finishStorage = storagegovernor.MonitorPath(ctx, storageLease, tmpDir, 0)
+	}
+	defer func() { _ = finishStorage() }()
+	sourceSnapshot, err := snapshotSplitComposite(splitCtx, src, tmpDir, ext, source.ClipHash)
 	if err != nil {
+		if storageErr := finishStorage(); storageErr != nil {
+			return nil, storageErr
+		}
 		return nil, err
 	}
 
@@ -805,7 +814,10 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			}
 		}
 		tmp := filepath.Join(tmpDir, fmt.Sprintf("seg-%03d%s", i, ext))
-		if err := sp.tools.Cut(ctx, sourceSnapshot, seg.StartMs, seg.EndMs, tmp); err != nil {
+		if err := sp.tools.Cut(splitCtx, sourceSnapshot, seg.StartMs, seg.EndMs, tmp); err != nil {
+			if storageErr := finishStorage(); storageErr != nil {
+				return nil, storageErr
+			}
 			return nil, err
 		}
 		id, err := ClipID(tmp)
@@ -848,7 +860,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		} else if statErr != nil {
 			return nil, fmt.Errorf("split confirm: inspect segment %d: %w", i, statErr)
 		} else {
-			equal, compareErr := exactFileBytesEqual(ctx, tmp, dst, mediatools.ConditioningMaxSnapshotBytes)
+			equal, compareErr := exactFileBytesEqual(splitCtx, tmp, dst, mediatools.ConditioningMaxSnapshotBytes)
 			if compareErr != nil || !equal {
 				return nil, fmt.Errorf("split confirm: existing segment %d bytes do not match identity", i)
 			}
@@ -863,6 +875,9 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			continue
 		}
 		publication.cuts = append(publication.cuts, preparedSplitCut{segment: seg, kind: childKind, hash: id, path: ClipRelPath(id, ext), staged: tmp, final: dst})
+	}
+	if err := finishStorage(); err != nil {
+		return nil, err
 	}
 	if err := validateSplitCompositeOwnership(ctx, src, sourceSnapshot); err != nil {
 		return nil, fmt.Errorf("split confirm: composite source changed while cuts were prepared: %w", err)

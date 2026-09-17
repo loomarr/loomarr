@@ -1566,6 +1566,59 @@ func TestConfirm_RefusesHostCapacityBeforeCreatingSplitStaging(t *testing.T) {
 	}
 }
 
+func TestConfirm_StopsAndPublishesNothingWhenSplitOutputExceedsReservation(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/split-overrun.mp4", 60_000)
+	drop := t.TempDir()
+	materializeSplitSources(st, drop)
+	parent := filepath.Join(drop, "comps", "split-overrun.mp4")
+	hash = bindCompilationIdentity(t, st, hash, parent)
+	stageParentForSplitReview(st, hash)
+	tools := &fakeTools{}
+	sp := newSplitter(st, tools, nil, drop)
+	proposal, err := sp.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget, ok := storagegovernor.EstimateMedia(storagegovernor.MediaEstimate{
+		DeclaredBytes: proposal.Source.Bytes, DurationMS: proposal.Source.DurationMs,
+	})
+	if !ok {
+		t.Fatal("proposal has no split storage estimate")
+	}
+	tools.cutFn = func(_ string, _, _ int64, out string) error {
+		if err := os.WriteFile(out, nil, 0o600); err != nil {
+			return err
+		}
+		return os.Truncate(out, budget.ReservationBytes+1)
+	}
+	sp.WithStorageGovernor(storagegovernor.New(splitCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "clips", TotalBytes: 64 * storagegovernor.GiB, FreeBytes: 60 * storagegovernor.GiB,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	}))
+
+	_, err = sp.Confirm(context.Background(), proposal.ID, []filler.SplitSegment{{
+		StartMs: 0, EndMs: 60_000, Name: "Oversized clip",
+	}})
+	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonEstimateUnknown)) {
+		t.Fatalf("Confirm error = %v, want estimate ceiling", err)
+	}
+	if _, err := st.GetSplitProposal(context.Background(), proposal.ID); err != nil {
+		t.Fatalf("proposal was consumed after storage overrun: %v", err)
+	}
+	if entries, readErr := os.ReadDir(filepath.Join(drop, ".split")); readErr != nil || len(entries) != 0 {
+		t.Fatalf("split staging after overrun = %v, err=%v", entries, readErr)
+	}
+	clips, err := st.ListClips(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 {
+		t.Fatalf("catalog clips after overrun = %d, want only parent", len(clips))
+	}
+}
+
 func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 	st := newSplitMemStore()
 	parentHash := seedCompilation(st, "comps/sidecar-failure.mp4", 60_000)
