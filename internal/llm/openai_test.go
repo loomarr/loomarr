@@ -172,6 +172,36 @@ func TestOpenRouterAttributionKeepsMissingResolutionAndAttemptsUnknown(t *testin
 	}
 }
 
+func TestOpenRouterPublicDevelopmentReviewCanExplicitlyDisableZDRWithoutAllowingDataCollection(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		route, _ := body["provider"].(map[string]any)
+		if route["zdr"] != false || route["data_collection"] != "deny" || route["allow_fallbacks"] != false {
+			t.Errorf("development route = %v, want explicit non-ZDR, no collection, no fallback", route)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":"generation-1","model":"google/gemini-versioned","choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"cost":0.001},"openrouter_metadata":{"attempt":1,"endpoints":{"available":[{"provider":"Google AI Studio","selected":true}]}}}`))
+	}))
+	defer server.Close()
+
+	provider, err := llm.NewOpenRouterChat(llm.OpenRouterChatConfig{
+		BaseURL: server.URL, Model: "google/gemini-versioned", UpstreamProvider: "Google AI Studio",
+		AllowProviderRetention: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "public evidence"}}, llm.ChatOptions{JSONMode: true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // A syntactically valid but wrong API base commonly returns the provider's HTML marketing page
 // with status 200. The raw JSON decoder error ("invalid character '<'") sends the operator to the
 // model output instead of the setting that is wrong, so name the response type and the URL field.

@@ -125,7 +125,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `diagnostics` | 8 | — |
 | `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 7 | — |
-| `fillerbakeoff` | 8 | `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
+| `fillerbakeoff` | 9 | `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
 | `fillercorpus` | 7 | — |
 | `fillereval` | 7 | — |
 | `fillersafety` | 8 | `mediatools`, `openroutermedia` |
@@ -254,7 +254,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 3**
 
-- **`fillerbakeoff`** · 8 importers · → `filleradmission`, `fillereval`, `httpx`, `openroutermedia`
+- **`fillerbakeoff`** · 9 importers · → `filleradmission`, `fillereval`, `httpx`, `openroutermedia`
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 6 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
@@ -383,7 +383,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
-- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `provision`, `quality`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
+- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `fillerbakeoff`, `library`, `llm`, `provision`, `quality`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`proposaloutlook`** · 2 importers · → `channels`, `library`, `provision`, `schedule`, `store`, `suggest`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
@@ -11110,10 +11110,31 @@ it. Refinement cases may carry both the free-text change and the current lineup
 through the same production `Suggester.Suggest` seam, while required and forbidden
 Keys independently grade retained, added and removed choices. A development case
 may attach a versioned subjective rubric with directional positive/negative Keys,
-but rubric authorship is not completed human review. That metadata is intentionally
-not projected into `Case.JudgeRubric`, cannot produce a scripted judge pass, and
-does not become certification evidence without the separately recorded reviewers,
-disagreements and adjudication required by its research protocol. Cross-jurisdiction
+but rubric authorship alone is not reviewed evidence. A subjective development
+expectation may become `model-attested-development` only through a separate,
+immutable authority artifact: two independently executed reviewers from distinct
+registered model families receive the same blinded evidence packet and ordinal
+rubric without request text, expected polarity, corpus Keys, ownership facts or
+one another's answers. Their exact provider route, resolved model, local model
+digest or fresh hosted route-capability snapshot digest, prompt version, evidence
+and output digests, inference accounting and
+per-axis results are recorded. Exact initial agreement is accepted; disagreement
+requires an independent third reviewer from a third registered family, and any
+missing, malformed, same-family or unresolved result leaves that title and axis
+uncertain. The private alias-to-Key map may be applied only after this terminal
+decision. An ordinary model-judge result, including one that shares the generator's
+provider or model family, is not this authority. Model-attested evidence remains
+exposed development evidence: it is neither human review nor certification,
+qualification or sealed-holdout evidence. It may project only complete,
+non-uncertain threshold decisions into subjective development expectations;
+uncertain titles are omitted rather than guessed. Local inference is preferred,
+and paid inference still requires an explicit call and monetary budget. Hosted
+review records its data-retention posture. A non-ZDR route is allowed only for a
+packet containing public evidence and no household, request, ownership, credential
+or expected-answer data, with explicit maintainer authorization recorded as a
+limitation; the request must still deny provider data collection. Rubric
+metadata without that authority is intentionally not projected into
+`Case.JudgeRubric` and cannot produce a scripted judge pass. Cross-jurisdiction
 or non-board rating facts may exercise synthetic policy plumbing only; they cannot
 promote an audience family to reviewed truth. A source-reviewed audience case names
 one rating authority, uses only that authority's ordinal scale, and keeps unrated or

@@ -28,6 +28,8 @@ func TestQueryExpansionPriorArtifactsRemainImmutable(t *testing.T) {
 		"testdata/query-expansion-catalog-v3.json": "bb5c884ea3dabbf5c9cb41203cb451a87f647c685348b92e4464c244248d612a",
 		"testdata/query-expansion-v4.json":         "89fd0375a099ec52f5ae60f684724aed6c3a2ed8fb4b1d683717b2f805e92e7c",
 		"testdata/query-expansion-catalog-v4.json": "f99b4b6dfbdd2ca54a7a0db0a4aeb859fdfe4d5ce9ee7a52aeff2bffaa4d47ce",
+		"testdata/query-expansion-v5.json":         "e231deba1436bfa07b50e2d2632adf8d1b1b0e0f46828bf3d4d5bb39e2f46166",
+		"testdata/query-expansion-catalog-v5.json": "96bb8a7bf3c2011e6124e238f2b3d0e0bfa5788db9361dfc5ca9ee1cad285589",
 	}
 	for path, expected := range want {
 		blob, err := queryPilotFiles.ReadFile(path)
@@ -180,10 +182,13 @@ func TestQueryExpansionReviewedMovieEpochUsesProductionSuggestion(t *testing.T) 
 	}
 }
 
-func TestQueryExpansionMovieSubjectiveRubricsRemainSeparateFromDeterministicGate(t *testing.T) {
+func TestQueryExpansionMovieSubjectiveRubricsAreBoundToModelAttestedAuthority(t *testing.T) {
 	corpus, err := LoadEmbeddedQueryExpansionCorpus()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if corpus.MoodReviewAuthority.Path != "testdata/query-mood-review-authority-v1.json" || corpus.MoodReviewAuthority.SHA256 != "7e763f965b84f59af7b41931e01cc7921c0f03f6c06cfb8e5b9bb401252d02d3" {
+		t.Fatalf("mood authority binding = %+v", corpus.MoodReviewAuthority)
 	}
 	reviewed := 0
 	for _, authored := range corpus.Cases {
@@ -191,8 +196,13 @@ func TestQueryExpansionMovieSubjectiveRubricsRemainSeparateFromDeterministicGate
 			continue
 		}
 		reviewed++
-		if authored.SubjectiveReview.Version != "movie-mood-ordinal-v1" || authored.SubjectiveReview.Status != "rubric-authored-development" || authored.SubjectiveReview.Rubric == "" {
+		if authored.SubjectiveReview.Version != "movie-mood-ordinal-v1" || authored.SubjectiveReview.Status != MoodReviewStatusModelAttested || authored.SubjectiveReview.Rubric == "" || authored.SubjectiveReview.AuthoritySHA256 != corpus.MoodReviewAuthority.SHA256 || len(authored.SubjectiveReview.Rules) == 0 {
 			t.Fatalf("case %q has incomplete subjective review: %+v", authored.ID, authored.SubjectiveReview)
+		}
+		for _, rule := range authored.SubjectiveReview.Rules {
+			if rule.Axis == "attentionalDemand" {
+				t.Fatalf("case %q depends on an unresolved mood axis", authored.ID)
+			}
 		}
 	}
 	if reviewed != 8 {

@@ -232,7 +232,7 @@ quality ranking.
 | *Casablanca* [`movie:tmdb:289`](https://www.themoviedb.org/movie/289-casablanca) | [AFI](https://catalog.afi.com/Film/27175-CASABLANCA) records a 26 November 1942 New York opening, Romance, director Michael Curtiz, United States and English. | TMDB currently displays 1943 while AFI distinguishes the 1942 opening from the January 1943 national release. It is safe for a 1940s case, but an exact-year case must name and bind its release territory. |
 | *Singin' in the Rain* [`movie:tmdb:872`](https://www.themoviedb.org/movie/872-singin-in-the-rain) | [AFI](https://catalog.afi.com/Film/50652-SINGIN-INTHERAIN) records 11 April 1952, Musical comedy and directors Gene Kelly and Stanley Donen. | This supports release-era, genre and director facts, not an objective cheerful-mood label. |
 | *2001: A Space Odyssey* [`movie:tmdb:62`](https://www.themoviedb.org/movie/62-2001-a-space-odyssey) | [AFI](https://catalog.afi.com/Catalog/moviedetails/23399) records 3 April 1968, Science fiction, director Stanley Kubrick, United Kingdom/United States and English. | Mixed country must remain mixed; setting in space supplies no origin fact. |
-| *Jaws* [`movie:tmdb:578`](https://www.themoviedb.org/movie/578-jaws) | [AFI](https://catalog.afi.com/Film/55193-JAWS) records 20 June 1975, director Steven Spielberg, United States, English and an MPAA `PG` field; its synopsis and history describe the threatening/suspense context. | The catalogued rating is not a substitute for a rating-board record. Synopsis/history may be input to human mood review, not a source-certified fear score. |
+| *Jaws* [`movie:tmdb:578`](https://www.themoviedb.org/movie/578-jaws) | [AFI](https://catalog.afi.com/Film/55193-JAWS) records 20 June 1975, director Steven Spielberg, United States, English and an MPAA `PG` field; its synopsis and history describe the threatening/suspense context. | The catalogued rating is not a substitute for a rating-board record. Synopsis/history may be input to independent mood review, not a source-certified fear score. |
 | *E.T. the Extra-Terrestrial* [`movie:tmdb:601`](https://www.themoviedb.org/movie/601-e-t-the-extra-terrestrial?language=en-US) | [AFI](https://catalog.afi.com/Catalog/moviedetails/67140) records 11 June 1982, Fantasy/Science fiction, director Steven Spielberg, United States, English and an MPAA `PG` field. | Use release, genre and director deterministically; do not infer mood or current audience suitability from genre or an old catalogued rating. |
 | *Back to the Future* [`movie:tmdb:105`](https://www.themoviedb.org/movie/105-back-to-the-future) | [AFI](https://catalog.afi.com/Film/55763-) records 3 July 1985, Comedy/Science fiction and director Robert Zemeckis; Steven Spielberg is credited as executive producer. | This is the required role negative for “directed by Spielberg”: producer association is not direction. |
 | *Jurassic Park* [`movie:tmdb:329`](https://www.themoviedb.org/movie/329-jurassic-park) | [AFI](https://catalog.afi.com/Film/67200-JURASSIC-PARK) records 11 June 1993, Adventure/Science fiction, director Steven Spielberg and an MPAA `PG-13` field. | Use the release, genre and director facts. Treat the catalogued classification as non-board evidence. |
@@ -272,7 +272,7 @@ audience truth.
 
 ### Directional mood slice and rubric `movie-mood-ordinal-v1`
 
-Mood is a human-reviewed judgment over cited evidence, never provider metadata.
+Mood is an independently reviewed judgment over cited evidence, never provider metadata.
 Two independent reviewers receive only the versioned title facts, synopsis and
 classification/content-advice or institutional editorial prose above—no poster,
 popularity, user reviews, mutable TMDB vibe/keyword field, model rationale or
@@ -365,7 +365,7 @@ as documented in the preceding table.
 | “1990s U.S. G animated movies” | *Toy Story* is the sole reviewed-pool candidate. | A deliberately thin, one-title result: AFI supports the 1995/Animation fact and MPA supports `G`. Do not present it as the only such film globally. |
 | “1990s U.S. G animated movies, but not *Toy Story*” | No reviewed-pool candidate remains. | Tests a named exclusion and an honest empty/thin-result explanation: the exclusion is user-directed, not an inference that *Toy Story* is unsuitable. |
 | “1990s Steven Spielberg movies, U.S. PG or lower” | No reviewed-pool candidate: *Jurassic Park* matches person/era but fails `PG-or-lower`. | Ensures the audience ceiling is a hard deterministic filter rather than a soft preference. |
-| “warm, low-threat U.S. G or PG movies” | **Do not author required keys yet.** *Toy Story* may become the sole acceptable reviewed-pool candidate only after the protocol below records two human reviews meeting the request thresholds; *Jaws* remains a needed mood-negative and *Jurassic Park* remains a rating-negative. | Gives an audience-plus-mood intersection with independently attributable deterministic and human-review axes, without treating Pixar prose or an AI suggestion as a completed review. |
+| “warm, low-threat U.S. G or PG movies” | **Do not author required keys yet.** *Toy Story* may become the sole acceptable reviewed-pool candidate only after the model-attested protocol below records family-distinct reviews meeting the request thresholds; *Jaws* remains a needed mood-negative and *Jurassic Park* remains a rating-negative. | Gives an audience-plus-mood intersection with independently attributable deterministic and subjective-review axes, without treating Pixar prose or one AI suggestion as a completed review. |
 | “tense U.S. G or PG movies” | **Do not author required keys yet.** *Jaws* can be adjudicated as an eligible candidate under the same protocol; *Jurassic Park* must stay excluded on rating. | Separates a human tension judgment from the MPA ceiling and catches a common “more intense means higher rating” shortcut. |
 
 For the prospective *Toy Story* mood packet, [Pixar's official title page](https://www.pixar.com/toy-story)
@@ -377,7 +377,11 @@ two independent reviews. For *Jaws* and *Jurassic Park*, the MPA record and the
 already-cited AFI synopsis/history are likewise evidence inputs, not expected
 answers.
 
-#### Blinded human-review packet: `movie-mood-ordinal-v1`
+#### Original blinded human-review packet: `movie-mood-ordinal-v1`
+
+This was the initial proposed protocol. The automated family-distinct contract
+below supersedes its unavailable-human requirement for the bounded exposed
+development slice while retaining its evidence, blinding and uncertainty rules.
 
 Before any mood-dependent expected or forbidden Key is put in a manifest, a
 review coordinator creates a sealed packet version such as
@@ -461,3 +465,223 @@ new packet version rather than mutation of a completed record.
 The [100-family registry](../plans/suggestion-query-family-registry.md) defines
 the authoring backlog. Its rows are proposed development families, not passed
 tests, provider qualification or historical lineup completeness.
+
+## Follow-on: bounded automated blinded model-review contract (#1290)
+
+Observed 2026-09-16, America/New_York. This investigation proposed a replacement
+for the **unavailable human-review step** in the bounded movie-mood development
+slice; the executed v6 result is recorded below. It is deliberately an
+attestation protocol, not human review, source truth, model qualification or
+certification. It does not rewrite the `movie-mood-ordinal-v1` human packet
+above or permit `certified: true` in an exposed development corpus.
+
+### Supported repository facts and resulting boundary
+
+- The current plan says that the eight mood cases are not in the Runner's
+  model-judge rubric; two independent reviews and adjudication have not
+  occurred, so they remain authored development metadata
+  ([evaluation plan](../plans/suggestion-query-evaluation.md#fourth-executable-expansion-batch)).
+  The human packet already requires opaque IDs, identical evidence, append-only
+  submissions, threshold-aware adjudication, and `uncertain` instead of forced
+  consensus ([packet protocol](#blinded-human-review-packet-movie-mood-ordinal-v1)).
+- The existing generic `modelJudge` is not a substitute: it takes a single
+  `llm.Provider`, and its own comment permits that provider to be the same as
+  the suggester ([`internal/eval/judge.go`](../../../internal/eval/judge.go)).
+  It judges generated lineups, rather than independently scoring a blinded
+  title evidence packet.
+- Loomarr already records requested/resolved provider and model, token classes,
+  charge status, attempts and latency per observed call
+  ([`internal/eval/attribution.go`](../../../internal/eval/attribution.go)).
+  Provider attribution intentionally treats unreported facts as unknown
+  ([`internal/llm/llm.go`](../../../internal/llm/llm.go)); missing route or
+  billing data cannot honestly be inferred.
+- The ordinary scorecard projection intentionally omits prompts, payloads and
+  generation IDs ([`internal/eval/attribution.go`](../../../internal/eval/attribution.go)).
+  That is appropriate for a public scorecard, but insufficient as the sole
+  evidence for a blinded-review claim. A separate, access-controlled immutable
+  artifact must bind digests of those bytes and retain the provider generation
+  identity where it was reported.
+- Certification-mode resource controls already require declared call, token and
+  spend envelopes before provider construction and reject undeclared local
+  certification ([`internal/eval/budget.go`](../../../internal/eval/budget.go)).
+  The plan separately requires explicit provider/model/repetition/spend
+  authorization and rejects a qualification claim without billing or completion
+  evidence ([evaluation plan](../plans/suggestion-query-evaluation.md#remaining-expansion-checkpoints)).
+
+Accordingly, the smallest honest automated result is
+`model-attested-development`, never `human-reviewed`, `source-certified`,
+`qualified`, or `certified`. It may provide a bounded, reproducible development
+label only after the state machine below completes. Any missing identity,
+unavailable local route, budget authorization, failed parse, unreported output
+or accounting fact, shared family, threshold disagreement, or failed
+adjudication yields `uncertain`; it does not silently fall back to a single
+model or a generic judge score.
+
+### Independence and blinding requirements
+
+Use exactly two initial reviewers from distinct registered model families, then
+a third reviewer from a family distinct from **both** initial families when
+adjudication is required. A provider name, model-name prefix, OpenRouter route,
+or different sampling seed alone does not establish a distinct family. The
+coordinator maintains a versioned family registry that states the declared
+developer/training family and the evidence used to classify it. It must reject
+unknown, aliased, retired, self-declared-but-unverified, or common-family
+routes. This mitigates known shared-family and routing correlation; it cannot
+prove that vendors share no data, weights, training corpus, safety layer, or
+infrastructure, so the artifact must record that residual limitation.
+
+For each candidate, the coordinator creates one canonical evidence bundle and
+two separately rendered, byte-digested packets. A packet contains only the
+opaque `packetItemID`, rubric version and axes, fixed evidence-pointer/digest
+list, requested scoring JSON schema, and an instruction that `uncertain` is
+valid. It excludes title/Catalog Keys, fixture ownership, request text,
+acceptable/forbidden sets, previous outputs, model/provider names, review
+order, and any result. Unlike the human protocol, a model need not see the
+title name: the fixed evidence excerpts must be sufficient for the narrow
+ordinal decision. If that is not feasible, retain the title only in a blinded
+display label and record that identity exposure as a limitation; do not expose
+the target polarity or expected lineup.
+
+Initial packets are released independently, with no shared conversation,
+memory, tool session, cache, prompt history, response, coordinator annotation,
+or cross-review retry. Their evidence content and scoring schema are identical;
+only an independently generated opaque packet nonce may differ. Each reviewer
+returns a schema-valid ordinal or `uncertain`, evidence-pointer IDs it used, a
+short rationale, and an uncertainty/conflict declaration. Free-form output
+must be retained and hashed even when a parsed projection is used.
+
+### Proposed immutable artifact schema
+
+This is a schema sketch for a new review artifact, not a claim that the current
+scorecard already serializes these fields. All IDs below are stable opaque IDs
+or SHA-256 digests; credentials and raw provider endpoints remain out of the
+artifact.
+
+```text
+schemaVersion, artifactID, status, createdAt, completedAt
+reviewKind: "model-attested-development"
+rubric: {version, axes[], thresholdVersion, parserVersion}
+candidate: {packetItemID, blindedDisplayLabel?, evidenceBundleSHA256,
+            evidencePointers[{id, sourceArtifactSHA256, excerptSHA256}]}
+packets: [{reviewRole: initial_a|initial_b|adjudicator,
+           packetSHA256, promptTemplateID, renderedPromptSHA256,
+           toolSchemaVersion, sampling{temperature, topP, maxTokens}, nonceSHA256}]
+reviews: [{reviewRole, familyRegistryVersion, declaredFamilyID,
+           requested{provider, providerRouteID, model, modelRevision},
+           resolved{provider, providerRouteID, model, modelRevision},
+           providerGenerationID?, startedAt, completedAt,
+           outputSHA256, rawOutputRef, parsedOrdinalOrUncertain,
+           parseStatus, rationaleSHA256, evidencePointerIDs[],
+           attribution{tokens, chargeStatus, charge?, attempts, latencyNanos},
+           accountingComplete}]
+comparison: {axisPairs, thresholdAffected, outcome: agree|adjudicate|uncertain,
+             reason}
+adjudication?: {required, distinctFamilyVerified, reviewRef?, outcome,
+                rationaleSHA256}
+unsealing?: {occurredAt, packetItemToCatalogKeySHA256, derivedSetSHA256}
+limitations: {familyIndependenceResidualRisk, identityExposure?, missingFacts[]}
+```
+
+`rawOutputRef` denotes an access-controlled append-only blob whose digest is in
+the artifact; a public scorecard may expose only its digest and parsed result.
+`accountingComplete` is false unless requested and resolved provider-route and
+model-revision identities, provider generation identity when the provider
+supplies one, completion status, token usage, charge status and attempts are
+all recorded. A mutable model alias without a resolved immutable revision is
+not an exact model identity and blocks attestation. An unavailable charge
+may be represented only by an explicit provider-reported `free`/`not-billed`
+accounting mode established before the run; otherwise it is missing and blocks
+attestation. Prompt/evidence/output identity means byte digests plus retained
+immutable bytes, not a human-written version label alone.
+
+### State machine and decision rule
+
+```text
+draft -> sealed -> initial_reviews_running -> initial_reviews_recorded
+  -> agreed -> unsealed -> model_attested_development
+  -> adjudication_required -> adjudicator_running -> adjudicated -> unsealed -> model_attested_development
+  -> uncertain
+
+Any state except model_attested_development -> superseded
+```
+
+Only `sealed` packets may be sent. `initial_reviews_recorded` requires both
+append-only outputs, complete identity/accounting, distinct-family verification,
+and successful schema parsing. Exact agreement, or a one-step difference that
+does not cross the named request threshold, may enter `agreed`. Every
+threshold-changing difference, every two-or-more-step difference, malformed or
+missing output, failed accounting, or family-correlation failure enters
+`adjudication_required` or directly `uncertain` as appropriate. The adjudicator
+receives the same blinded packet and neither initial answer; it must be a third
+distinct registered family. It may select a bounded ordinal or `uncertain`.
+Failure to obtain that third independent route is `uncertain`, not majority vote.
+Unsealing happens only after a terminal attested outcome and derives
+request-specific sets from the result; uncertain candidates are omitted from
+mood-required and mood-forbidden grading.
+
+### Bounded implementation recommendations
+
+1. Keep this as a new artifact/runner seam beside, not inside, `modelJudge`.
+   Its inputs and decision object differ materially from generated-lineup
+   quality scoring, and the latter's same-provider allowance is incompatible
+   with this contract.
+2. Reuse the existing source/corpus digest and provider-attribution primitives,
+   but add digest binding for the rendered review packet and raw response plus
+   protected generation IDs. Reject a projected scorecard as the sole evidence.
+3. Make a local route the default and do not initiate a paid request without an
+   explicit authorization artifact that fixes providers, exact models, family
+   registry version, repetitions, maximum calls/tokens/spend and accounting
+   mode. Reuse the preflight resource-envelope pattern in
+   [`internal/eval/budget.go`](../../../internal/eval/budget.go).
+4. Test fail-closed cases: same family under different routes, resolved route
+   missing or different from the authorized route, shared cache/history,
+   output/prompt/evidence digest mutation, incomplete accounting, one reviewer
+   unavailable, adjudicator family collision, threshold disagreement, and an
+   unseal attempted before a terminal decision.
+5. Publish only the non-certifying status, digests, declared limitations and
+   aggregate accounting needed for reproducibility. Do not claim human review,
+   independent human taste, provider qualification, a sealed holdout, or
+   certification from this artifact.
+
+### Executed v6 result
+
+The implementation uses the proposal's stricter artifact seam with one clarified
+decision rule: exact agreement between the two initial families is accepted;
+every disagreement requires the third family, and an axis resolves only when two
+of the three independently returned the same ordinal. A third value or declared
+uncertainty leaves that axis uncertain. There is no one-step or
+threshold-preserving shortcut. All three reviewers receive the identical packet,
+and none receives an earlier answer.
+
+The registered families and exact executed routes were:
+
+| Role | Family and route | Bound identity and accounting |
+| --- | --- | --- |
+| Initial A | Qwen 3.5, local Ollama `qwen3.5:9b` | Ollama digest `6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7`; 1,348 prompt and 629 completion tokens; local unmetered. |
+| Initial B | Gemini, OpenRouter `google/gemini-3.7-flash` via `Google AI Studio` | Capability identity `d11b2f380812c4ddbf6c1e9f4f836a709136e8f206573525e3b05b3d14159e72`; snapshot `0ba24ce9f4a485d7e436a8d2cb3169ad86c1c250041a06453c1c1084c2dc393b`; generation `gen-1789610545-esrxMYJ9KSLEHyLEnCH1`; 1,343 prompt and 1,560 completion tokens; USD 0.00685725. |
+| Adjudicator | Gemma 4, local Ollama `gemma4:12b` | Ollama digest `4eb23ef187e2c5462566d6a1d3bbbc2f1346d0b4327cbb66d58fffbcc9b2b05c`; 1,359 prompt and 336 completion tokens; local unmetered. |
+
+The authorized OpenRouter envelope was at most ten hosted calls and USD 1.00.
+Three metadata requests created the snapshot, one ZDR inference attempt failed
+before inference with no reported charge, and one non-ZDR inference completed.
+The latter used only the public evidence packet after explicit maintainer
+authorization; fallback and provider data collection remained denied, while
+possible temporary provider retention is recorded as a limitation.
+
+The locked authority is `model-attested-development` with
+`partial-uncertain` completeness:
+
+| Title | Valence | Arousal | Threat/fear | Comedic warmth | Attentional demand |
+| --- | ---: | ---: | ---: | ---: | --- |
+| *Paddington 2* | 3 | 1 | 0 | 3 | uncertain |
+| *Jaws* | 1 | 3 | 3 | 0 | uncertain |
+| *Parasite* | 1 | 2 | 2 | 1 | uncertain |
+
+The eight v6 requests declare machine-readable rules only over the four resolved
+axes. The loader reconstructs the authority from packet, map, submissions and
+provider snapshot; rejects family, identity, digest, accounting or route
+mismatches; and proves each mood-positive satisfies all rules while each
+mood-negative fails at least one. Date- and region-only exclusions remain
+deterministic negatives rather than being relabelled as mood judgments. The
+generic lineup `modelJudge` remains unrelated, and no certification or human
+review claim is produced.

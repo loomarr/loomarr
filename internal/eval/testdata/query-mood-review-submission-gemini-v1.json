@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v1",
+  "packetSha256": "7247bc8930c5b7f5d16014c4c651bd8745eb6fe68a927936628f755fdc22f88f",
+  "reviewer": {
+    "id": "gemini-openrouter-a",
+    "provider": "openrouter",
+    "route": "Google AI Studio",
+    "routeSlug": "google-ai-studio",
+    "model": "google/gemini-3.7-flash",
+    "resolvedModel": "google/gemini-3.7-flash",
+    "modelFamily": "gemini",
+    "identityKind": "openrouter-route-snapshot",
+    "identitySha256": "d11b2f380812c4ddbf6c1e9f4f836a709136e8f206573525e3b05b3d14159e72",
+    "snapshotSha256": "0ba24ce9f4a485d7e436a8d2cb3169ad86c1c250041a06453c1c1084c2dc393b",
+    "zeroDataRetention": false,
+    "retentionAuthorization": "maintainer-approved-public-packet-2026-09-16",
+    "promptVersion": "query-mood-blind-review-v1"
+  },
+  "output": "{\n  \"assessments\": [\n    {\n      \"alias\": \"candidate-e492\",\n      \"scores\": {\n        \"valence\": 0,\n        \"arousal\": 2,\n        \"threatFear\": 2,\n        \"comedicWarmth\": 1,\n        \"attentionalDemand\": 0\n      },\n      \"uncertainAxes\": [\n        \"attentionalDemand\"\n      ],\n      \"evidenceIds\": [\n        \"mood-e04\"\n      ],\n      \"rationale\": \"Evidence characterizes the film as a darkly satirical thriller with wickedly comic elements, indicating dark valence, elevated thriller arousal/threat, and sharp comedy, while attentional demand is not directly addressed.\"\n    },\n    {\n      \"alias\": \"candidate-7f3a\",\n      \"scores\": {\n        \"valence\": 3,\n        \"arousal\": 1,\n        \"threatFear\": 1,\n        \"comedicWarmth\": 3,\n        \"attentionalDemand\": 0\n      },\n      \"uncertainAxes\": [\n        \"attentionalDemand\"\n      ],\n      \"evidenceIds\": [\n        \"mood-e01\",\n        \"mood-e02\"\n      ],\n      \"rationale\": \"Evidence notes family-fun, kindness, comedy, and reassuring outcomes with only mild threat, indicating strongly positive valence, strong comedic warmth, and low-to-mild arousal/threat. Attentional demand is unsupported.\"\n    },\n    {\n      \"alias\": \"candidate-b1c8\",\n      \"scores\": {\n        \"valence\": 1,\n        \"arousal\": 3,\n        \"threatFear\": 3,\n        \"comedicWarmth\": 0,\n        \"attentionalDemand\": 0\n      },\n      \"uncertainAxes\": [\n        \"attentionalDemand\"\n      ],\n      \"evidenceIds\": [\n        \"mood-e03\"\n      ],\n      \"rationale\": \"Evidence highlights a threatening shark and sustained suspense regarding swimmers and the hunt, reflecting negative valence, intense arousal, severe/sustained threat/fear, and an absence of comedic warmth. Attentional demand is unsupported.\"\n    }\n  ]\n}",
+  "outputSha256": "26b726128b0c9415f1c095faa712d830102a389558089776213ed1da316c402f",
+  "inference": {
+    "completedAt": "2026-09-17T02:02:30.706157Z",
+    "attempts": 1,
+    "promptTokens": 1343,
+    "completionTokens": 1560,
+    "latencyMs": 4821,
+    "costBasis": "provider-reported",
+    "chargeAmount": "0.00685725",
+    "chargeCurrency": "USD",
+    "generationId": "gen-1789610545-esrxMYJ9KSLEHyLEnCH1"
+  }
+}
