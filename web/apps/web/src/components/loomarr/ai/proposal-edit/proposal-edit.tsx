@@ -16,7 +16,7 @@ import { SearchCommand } from "../../shell";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import type { ProposalEditProps } from "./proposal-edit.type";
 
-type PickKind = "ready" | "missing" | "backup";
+type PickKind = "ready" | "missing";
 type Keyed = { item: ProposalItem; key: string; kind: PickKind };
 
 const mediaLabel = (item: ProposalItem) => (item.mediaType === "series" ? "Series" : "Movie");
@@ -24,14 +24,14 @@ const mediaLabel = (item: ProposalItem) => (item.mediaType === "series" ? "Serie
 const itemDetails = (item: ProposalItem) =>
   [mediaLabel(item), item.officialRating].filter(Boolean).join(" · ");
 
-const stateLabel = (kind: PickKind) => {
+const stateLabel = (kind: PickKind, selected: boolean) => {
   switch (kind) {
     case "ready":
       return { text: "In your library", variant: "lock" as const };
-    case "backup":
-      return { text: "Alternate", variant: "neutral" as const };
     default:
-      return { text: "Will be added", variant: "tune" as const };
+      return selected
+        ? { text: "Will be added", variant: "tune" as const }
+        : { text: "Not in your library", variant: "neutral" as const };
   }
 };
 
@@ -51,6 +51,7 @@ const PickRow = ({
   episodeSelectionPreview,
   feedback,
   onToggle,
+  onAdd,
 }: {
   pick: Keyed;
   included: boolean;
@@ -58,9 +59,10 @@ const PickRow = ({
   disabled?: boolean;
   episodeSelectionPreview?: ProposalEditProps["episodeSelectionPreview"];
   feedback?: ReactNode;
-  onToggle: () => void;
+  onToggle?: () => void;
+  onAdd?: () => void;
 }) => {
-  const state = stateLabel(pick.kind);
+  const state = stateLabel(pick.kind, onAdd === undefined);
   const selection = episodeSelectionLabel(pick.item, episodeSelectionPreview);
   const season = seasonLabel(pick.item);
 
@@ -71,7 +73,7 @@ const PickRow = ({
         !included && "opacity-55",
       )}
     >
-      {editable && pick.key !== "" && (
+      {editable && onToggle && pick.key !== "" && (
         <Checkbox
           className="mt-0.5 shrink-0"
           checked={included}
@@ -103,6 +105,11 @@ const PickRow = ({
         )}
         {included && feedback && <div className="mt-2">{feedback}</div>}
       </div>
+      {editable && onAdd && (
+        <Button variant="outline" size="sm" disabled={disabled} onClick={onAdd}>
+          <Plus aria-hidden /> Add <span className="sr-only">{pick.item.name}</span>
+        </Button>
+      )}
     </li>
   );
 };
@@ -114,6 +121,8 @@ const ProposalEdit = (props: ProposalEditProps) => {
     lineup,
     acquisitions,
     alternates = [],
+    optionalSuggestionKeys = [],
+    onFindMore,
     episodeSelectionPreview,
     value,
     onChange,
@@ -132,7 +141,8 @@ const ProposalEdit = (props: ProposalEditProps) => {
   const added = currentEdit?.add ?? [];
   const note = currentEdit?.note ?? "";
 
-  const picks: Keyed[] = [
+  const optionalKeys = new Set(optionalSuggestionKeys);
+  const allPicks: Keyed[] = [
     ...lineup.map((item) => ({
       item,
       key: provisionKey(item),
@@ -140,11 +150,22 @@ const ProposalEdit = (props: ProposalEditProps) => {
     })),
     ...acquisitions.map((item) => ({ item, key: provisionKey(item), kind: "missing" as const })),
   ];
+  const picks = allPicks.filter((pick) => !optionalKeys.has(pick.key));
   const addedKeys = new Set(added.map(provisionKey));
-  const backups: Keyed[] = alternates
-    .map((item) => ({ item, key: provisionKey(item), kind: "backup" as const }))
-    .filter((pick) => !addedKeys.has(pick.key));
-  const includedBackups = backups.filter((pick) => !dropped.includes(pick.key)).length;
+  const suggestionKeys = new Set<string>();
+  const suggestions: Keyed[] = [
+    ...allPicks.filter((pick) => optionalKeys.has(pick.key)),
+    ...alternates.map((item) => ({
+      item,
+      key: provisionKey(item),
+      kind: item.inLibrary ? ("ready" as const) : ("missing" as const),
+    })),
+  ].filter((pick) => {
+    if (addedKeys.has(pick.key) || (!optionalKeys.has(pick.key) && dropped.includes(pick.key))) return false;
+    if (suggestionKeys.has(pick.key)) return false;
+    suggestionKeys.add(pick.key);
+    return true;
+  });
 
   const search = searchApi.useSearch(
     { q: query, scope: "all", limit: 8 },
@@ -198,9 +219,14 @@ const ProposalEdit = (props: ProposalEditProps) => {
     emit(dropped, next, note);
   };
 
+  const addSuggestion = (pick: Keyed) => {
+    const nextDropped = dropped.includes(pick.key) ? dropped : [...dropped, pick.key];
+    emit(nextDropped, [...added, pick.item], note);
+  };
+
   const existingKeys = new Set([
     ...picks.map((pick) => pick.key),
-    ...backups.map((pick) => pick.key),
+    ...suggestions.map((pick) => pick.key),
     ...added.map(provisionKey),
   ]);
   const edited = dropped.length > 0 || added.length > 0 || note.trim() !== "";
@@ -311,31 +337,40 @@ const ProposalEdit = (props: ProposalEditProps) => {
           </Button>
         ))}
 
-      {backups.length > 0 && (
+      {(suggestions.length > 0 || onFindMore) && (
         <details className="rounded-md border border-border px-3 py-2.5">
           <summary className="cursor-pointer text-sm">
-            <span className="font-medium">Alternates</span>
+            <span className="font-medium">More suggestions</span>
             <span className="ml-2 text-muted-foreground">
-              {includedBackups} {includedBackups === 1 ? "option" : "options"}
+              {suggestions.length} {suggestions.length === 1 ? "option" : "options"}
             </span>
           </summary>
           <p className="mt-2 text-muted-foreground text-sm">
-            Used only when a selected title cannot be added.
+            {suggestions.length > 0
+              ? "Add any that belong on your channel."
+              : "There aren't any extra options yet."}
           </p>
-          <ul className="mt-2 border-border border-t">
-            {backups.map((pick) => (
-              <PickRow
-                key={pick.key || `unkeyed-${pick.item.name}`}
-                pick={pick}
-                included={!dropped.includes(pick.key)}
-                editable={editable}
-                disabled={disabled}
-                episodeSelectionPreview={episodeSelectionPreview}
-                feedback={renderFeedback?.(pick.item)}
-                onToggle={() => toggleDrop(pick.key)}
-              />
-            ))}
-          </ul>
+          {suggestions.length > 0 && (
+            <ul className="mt-2 border-border border-t">
+              {suggestions.map((pick) => (
+                <PickRow
+                  key={pick.key || `unkeyed-${pick.item.name}`}
+                  pick={pick}
+                  included
+                  editable={editable}
+                  disabled={disabled}
+                  episodeSelectionPreview={episodeSelectionPreview}
+                  feedback={renderFeedback?.(pick.item)}
+                  onAdd={() => addSuggestion(pick)}
+                />
+              ))}
+            </ul>
+          )}
+          {onFindMore && (
+            <Button variant="ghost" size="sm" className="mt-2" disabled={disabled} onClick={onFindMore}>
+              Find more ideas
+            </Button>
+          )}
         </details>
       )}
 

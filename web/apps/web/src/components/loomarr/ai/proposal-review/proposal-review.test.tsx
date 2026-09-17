@@ -115,6 +115,65 @@ describe("ProposalReview", () => {
       era: "1990s",
       runtimeTargetMin: 180,
       mustInclude: ["Heat"],
+      currentLineup: [
+        { key: "movie:tmdb:949", name: "Heat", year: 1995 },
+        { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
+      ],
+    });
+  });
+
+  it("revises from the exact lineup currently visible to the reviewer", async () => {
+    const user = userEvent.setup();
+    const onRevise = vi.fn();
+    renderReview(
+      <ProposalReview
+        proposal={proposal}
+        edit={{
+          drop: ["movie:tmdb:949"],
+          add: [
+            {
+              name: "The Matrix",
+              year: 1999,
+              mediaType: "movie",
+              tmdbId: 603,
+              inLibrary: false,
+            },
+          ],
+        }}
+        selfService
+        onRevise={onRevise}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Edit brief" }));
+    await user.clear(screen.getByLabelText("Channel brief"));
+    await user.type(screen.getByLabelText("Channel brief"), "90s action with more science fiction");
+    await user.click(screen.getByRole("button", { name: "Update suggestions" }));
+
+    expect(onRevise).toHaveBeenCalledWith({
+      description: "90s action with more science fiction",
+      currentLineup: [
+        { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
+        { key: "movie:tmdb:603", name: "The Matrix", year: 1999 },
+      ],
+    });
+  });
+
+  it("finds more ideas without changing the selected lineup", async () => {
+    const user = userEvent.setup();
+    const onRevise = vi.fn();
+    renderReview(<ProposalReview proposal={proposal} selfService onRevise={onRevise} />);
+
+    await user.click(screen.getByText("More suggestions"));
+    await user.click(screen.getByRole("button", { name: "Find more ideas" }));
+
+    expect(onRevise).toHaveBeenCalledWith({
+      description: "90s action movies",
+      currentLineup: [
+        { key: "movie:tmdb:949", name: "Heat", year: 1995 },
+        { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
+      ],
+      refineText: "Find more grounded options that match this brief.",
     });
   });
 

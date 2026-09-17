@@ -10,6 +10,10 @@ interface ProposalEditProps {
   lineup: ProposalItem[];
   acquisitions: ProposalItem[];
   alternates?: ProposalItem[];
+  // A revision may return new primary picks, but they remain optional until the
+  // reviewer explicitly adds them. Their keys are presented with alternates.
+  optionalSuggestionKeys?: string[];
+  onFindMore?: () => void;
   // Read-only server projection from the trusted Proposal Intent. Used only to
   // explain series added in this local edit; it is never copied into the edit DTO.
   episodeSelectionPreview?: EpisodeSelection;

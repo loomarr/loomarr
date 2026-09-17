@@ -160,15 +160,17 @@ const renderPanel = (onCreated: (id: string) => void) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const panel = () => (
     <RouterHarness
       content={
         <QueryClientProvider client={client}>
           <ChannelSuggestPanel onCreated={onCreated} />
         </QueryClientProvider>
       }
-    />,
+    />
   );
+  const view = render(panel());
+  return { ...view, rerenderPanel: () => view.rerender(panel()) };
 };
 
 describe("ChannelSuggestPanel", () => {
@@ -368,7 +370,20 @@ describe("ChannelSuggestPanel", () => {
     await user.type(screen.getByLabelText("Channel brief"), "80s teen comedies with more variety");
     await user.click(screen.getByRole("button", { name: "Update suggestions" }));
 
-    await waitFor(() => expect(revisions).toEqual([{ description: "80s teen comedies with more variety" }]));
+    await waitFor(() =>
+      expect(revisions).toEqual([
+        {
+          description: "80s teen comedies with more variety",
+          currentLineup: [
+            {
+              key: "movie:tmdb:9377",
+              name: "Ferris Bueller's Day Off",
+              year: 1986,
+            },
+          ],
+        },
+      ]),
+    );
     expect(submissions).toHaveLength(1);
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
     expect(screen.getByText("Ferris Bueller's Day Off")).toBeVisible();
@@ -522,6 +537,65 @@ describe("ChannelSuggestPanel", () => {
     expect(screen.getAllByText("The Matrix")).toHaveLength(1);
     expect(screen.getByText("Will be added")).toBeVisible();
     view.unmount();
+  });
+
+  it("keeps the reviewer's selected lineup when a replacement proposes different primary titles", async () => {
+    const ferris = PROPOSAL.proposal.lineup[0]!;
+    const matrix = {
+      mediaType: "movie",
+      tmdbId: 603,
+      name: "The Matrix",
+      year: 1999,
+      inLibrary: false,
+    };
+    const { approvals } = stubSuggest();
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: { id: PROPOSAL.id, status: PROPOSAL.status, proposal: PROPOSAL.proposal },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    const view = renderPanel(() => {});
+
+    expect(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" })).toBeChecked();
+
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: "p-2",
+        status: "submitted",
+        proposal: {
+          ...PROPOSAL.proposal,
+          lineup: [],
+          acquisitions: [matrix],
+        },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    view.rerenderPanel();
+
+    expect(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" })).toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "Include The Matrix" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText("More suggestions"));
+    expect(screen.getByRole("button", { name: "Add The Matrix" })).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "Create channel" }));
+    await waitFor(() =>
+      expect(approvals).toEqual([
+        {
+          id: "p-2",
+          edit: {
+            drop: ["movie:tmdb:603"],
+            add: [ferris],
+          },
+        },
+      ]),
+    );
   });
 
   it("a member's approve is inert — no approve call fires (approval is admin-only, §7)", async () => {

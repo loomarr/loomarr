@@ -41,8 +41,37 @@ const availabilitySummary = (selected: number, ready: number, missing: number) =
   return `${titles} · ${ready} in your library · ${missing} will be added`;
 };
 
+const selectedLineupContext = (
+  lineup: ProposalReviewProps["proposal"]["lineup"],
+  acquisitions: ProposalReviewProps["proposal"]["acquisitions"],
+  edit: ProposalReviewProps["edit"],
+) => {
+  const dropped = new Set(edit?.drop ?? []);
+  const selected = [
+    ...lineup.filter((item) => !dropped.has(provisionKey(item))),
+    ...acquisitions.filter((item) => !dropped.has(provisionKey(item))),
+    ...(edit?.add ?? []),
+  ];
+  const seen = new Set<string>();
+
+  return selected.flatMap((item) => {
+    const key = provisionKey(item);
+    const identity = key || `${item.mediaType}:${item.name.toLocaleLowerCase()}:${item.year ?? ""}`;
+    if (seen.has(identity)) return [];
+    seen.add(identity);
+    return [
+      {
+        name: item.name,
+        ...(item.year ? { year: item.year } : {}),
+        ...(key ? { key } : {}),
+      },
+    ];
+  });
+};
+
 const ProposalReview = ({
   proposal,
+  optionalSuggestionKeys,
   assessment,
   assessmentPending = false,
   edit,
@@ -75,6 +104,7 @@ const ProposalReview = ({
     acquisitions.filter((item) => !dropped.has(provisionKey(item))).length +
     (edit?.add?.filter((item) => !item.inLibrary).length ?? 0);
   const selectedCount = selectedReady + selectedMissing;
+  const currentLineup = selectedLineupContext(lineup, acquisitions, edit);
   const statusDisplay = selfService ? (status === "approved" ? STATUS.approved : undefined) : STATUS[status];
   const scoresCurrent = status !== "partially-edited" && proposal.scores?.version === 1;
   const partialTheme = scoresCurrent && proposal.scores?.theme.status !== "supported";
@@ -121,7 +151,7 @@ const ProposalReview = ({
             event.preventDefault();
             const description = brief.trim();
             if (!description || !onRevise) return;
-            onRevise({ ...proposal.intent, description });
+            onRevise({ ...proposal.intent, description, currentLineup });
             setEditingBrief(false);
           }}
         >
@@ -219,6 +249,17 @@ const ProposalReview = ({
         lineup={lineup}
         acquisitions={acquisitions}
         alternates={alternates}
+        optionalSuggestionKeys={optionalSuggestionKeys}
+        onFindMore={
+          actionable && onRevise
+            ? () =>
+                onRevise({
+                  ...proposal.intent,
+                  currentLineup,
+                  refineText: "Find more grounded options that match this brief.",
+                })
+            : undefined
+        }
         value={edit}
         onChange={onEdit}
         disabled={controlsDisabled}

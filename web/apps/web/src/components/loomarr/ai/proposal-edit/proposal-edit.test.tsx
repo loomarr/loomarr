@@ -1,6 +1,6 @@
 import type { ProposalItem } from "@loomarr/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -201,15 +201,23 @@ describe("ProposalEdit", () => {
     expect(screen.queryByRole("checkbox", { name: /Include Mystery Film/ })).not.toBeInTheDocument();
   });
 
-  it("keeps backups optional and lets the reviewer remove one", async () => {
+  it("keeps more suggestions unselected until the reviewer adds one", async () => {
     stubSearch([]);
     const onChange = vi.fn();
-    const backup = { ...heat, name: "Face/Off", tmdbId: 754 };
+    const backup = { ...heat, name: "Face/Off", tmdbId: 754, inLibrary: false };
     render(<ProposalEdit lineup={[heat]} acquisitions={[]} alternates={[backup]} onChange={onChange} />);
 
-    await userEvent.click(screen.getByText("Alternates"));
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Face/Off" }));
-    expect(onChange).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:754"] });
+    await userEvent.click(screen.getByText("More suggestions"));
+    expect(screen.queryByRole("checkbox", { name: "Include Face/Off" })).not.toBeInTheDocument();
+    const suggestion = screen.getByRole("button", { name: "Add Face/Off" }).closest("li");
+    expect(suggestion).not.toBeNull();
+    expect(within(suggestion!).getByText("Not in your library")).toBeVisible();
+    expect(within(suggestion!).queryByText("Will be added")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Add Face/Off" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      drop: ["movie:tmdb:754"],
+      add: [backup],
+    });
   });
 
   it("renders a read-only title summary when no edit handler is provided", () => {
