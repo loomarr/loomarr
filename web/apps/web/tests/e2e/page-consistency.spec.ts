@@ -16,11 +16,12 @@ const pages = [
   { path: "/filler/sources", title: "Filler" },
   { path: "/filler/settings", title: "Filler" },
   { path: "/people", title: "People" },
+  { path: "/settings", title: "Settings" },
   { path: "/settings/connections", title: "Connections" },
   { path: "/settings/ai", title: "AI" },
   { path: "/settings/defaults", title: "Channel defaults" },
-  { path: "/settings/security", title: "Security" },
-  { path: "/settings/all", title: "All settings" },
+  { path: "/settings/access", title: "Access and devices" },
+  { path: "/settings/advanced", title: "Advanced settings" },
   { path: "/settings/system/tasks", title: "Tasks" },
   { path: "/settings/system/playback", title: "Playback" },
   { path: "/settings/system/database", title: "Database" },
@@ -41,40 +42,11 @@ const sectionDestinations: Record<string, Array<{ navigation: string; current: s
   "/queue/approval": [{ navigation: "Queue sections", current: "Needs approval" }],
   "/queue/flight": [{ navigation: "Queue sections", current: "In flight" }],
   "/queue/history": [{ navigation: "Queue sections", current: "History" }],
-  "/settings/connections": [{ navigation: "Settings", current: "Connections" }],
-  "/settings/ai": [{ navigation: "Settings", current: "AI" }],
-  "/settings/defaults": [{ navigation: "Settings", current: "Defaults" }],
-  "/settings/security": [{ navigation: "Settings", current: "Security" }],
-  "/settings/all": [{ navigation: "Settings", current: "All settings" }],
-  "/settings/system/tasks": [
-    { navigation: "Settings", current: "System" },
-    { navigation: "System settings", current: "Tasks" },
-  ],
-  "/settings/system/playback": [
-    { navigation: "Settings", current: "System" },
-    { navigation: "System settings", current: "Playback" },
-  ],
-  "/settings/system/database": [
-    { navigation: "Settings", current: "System" },
-    { navigation: "System settings", current: "Database" },
-  ],
-  "/settings/system/backup": [
-    { navigation: "Settings", current: "System" },
-    { navigation: "System settings", current: "Backup" },
-  ],
-  "/settings/system/storage": [
-    { navigation: "Settings", current: "System" },
-    { navigation: "System settings", current: "Storage" },
-  ],
-  "/settings/system/diagnostics": [
-    { navigation: "Settings", current: "System" },
-    { navigation: "System settings", current: "Diagnostics" },
-  ],
-  "/settings/system/about": [
-    { navigation: "Settings", current: "System" },
-    { navigation: "System settings", current: "About" },
-  ],
 };
+
+const settingsPages = new Set(
+  pages.map((entry) => entry.path).filter((path) => path.startsWith("/settings/")),
+);
 
 test("pages share one navigation and header geometry at desktop and mobile widths", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
@@ -116,6 +88,21 @@ test("pages share one navigation and header geometry at desktop and mobile width
         const current = navigation.locator('a[aria-current="page"]');
         await expect(current).toHaveCount(1);
         await expect(current).toHaveAccessibleName(new RegExp(`^${expected.current}`));
+      }
+
+      if (settingsPages.has(entry.path)) {
+        const location = page.getByRole("navigation", { name: "Settings location" });
+        await expect(location.getByRole("link", { name: "Settings", exact: true })).toHaveAttribute(
+          "href",
+          "/settings",
+        );
+        await expect(page.getByRole("link", { name: "Find another setting" })).toHaveAttribute(
+          "href",
+          "/settings",
+        );
+        if (entry.path.startsWith("/settings/system/")) {
+          await expect(location).toContainText("This server");
+        }
       }
 
       const [mainBox, navBox, headerBox, titleBox] = await Promise.all([
@@ -180,7 +167,8 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
       ).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
       if (destination.path === "/filler/settings") {
-        await expect(page.getByRole("heading", { name: "Automatic downloads", exact: true })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Filler settings", exact: true })).toBeVisible();
+        await expect(page.getByRole("link", { name: /^Automatic downloads/ })).toBeVisible();
       }
       await expect(sections.locator('a[aria-current="page"]')).toHaveCount(1);
       await expect(

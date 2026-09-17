@@ -10,10 +10,14 @@ test("automatic downloads expose simple defaults with optional per-source contro
 
   await page.goto("/filler/manage");
 
-  await expect(page.getByRole("heading", { name: "Automatic downloads" })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Filler settings" })).toBeVisible({
     timeout: 10_000,
   });
-  await page.getByRole("link", { name: "Automatic download settings" }).click();
+  await page.getByRole("link", { name: "Open filler settings" }).click();
+  await expect(page.getByRole("heading", { name: "Filler settings" })).toBeVisible({
+    timeout: 10_000,
+  });
+  await page.getByRole("link", { name: /^Automatic downloads/ }).click();
 
   await expect(page.getByRole("heading", { name: "Automatic downloads" })).toBeVisible({
     timeout: 10_000,
@@ -90,7 +94,7 @@ test("automatic downloads expose simple defaults with optional per-source contro
   ).toBeVisible();
   await expect(page.getByText(/^Next automatic check /)).toHaveCount(0);
 
-  await page.goto("/filler/settings");
+  await page.goto("/filler/settings/downloads");
   await page.getByRole("combobox", { name: "Look for new clips" }).click();
   await page.getByRole("option", { name: "Never" }).click();
   await expect(
@@ -107,8 +111,11 @@ test("automatic download controls stay usable on a narrow, zoomed screen and fro
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/filler/manage");
 
-  const settingsLink = page.getByRole("link", { name: "Automatic download settings" });
+  const settingsLink = page.getByRole("link", { name: "Open filler settings" });
   await settingsLink.focus();
+  await page.keyboard.press("Enter");
+  const downloadsLink = page.getByRole("link", { name: /^Automatic downloads/ });
+  await downloadsLink.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("combobox", { name: "Look for new clips" })).toBeVisible();
   await expect(page.getByRole("spinbutton", { name: "Add up to" })).toBeVisible();
