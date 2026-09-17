@@ -1,15 +1,7 @@
+import { type FillerSettingsSection, SETTINGS_SECTIONS } from "@/filler/filler-settings-section";
+
 type SettingsTaskGroup = "setup" | "access" | "server" | "troubleshoot" | "filler" | "advanced";
 type SettingsRole = "all" | "admin";
-type FillerSettingsSection =
-  | "folders"
-  | "downloads"
-  | "storage"
-  | "incoming"
-  | "breaks"
-  | "review"
-  | "playback"
-  | "limits"
-  | "tools";
 
 type SettingsStaticDestinationPath =
   | "/settings/access"
@@ -224,86 +216,21 @@ const SETTINGS_DESTINATIONS = [
     role: "admin",
     browse: true,
   }),
-  ...(
-    [
-      [
-        "filler.folders",
-        "Clip folders",
-        "Choose where clips live and how dropped files enter Loomarr.",
-        ["drop folder", "watch folder", "clip library"],
-        "folders",
-      ],
-      [
-        "filler.downloads",
-        "Automatic downloads",
-        "Choose how often sources are checked and how many clips they add.",
-        ["fetch schedule", "check sources", "download clips"],
-        "downloads",
-      ],
-      [
-        "filler.storage",
-        "Filler storage limits",
-        "Stop automatic downloads before clips fill this drive.",
-        ["disk full", "stop clips filling disk", "clip limit", "catalog limit", "drive capacity"],
-        "storage",
-      ],
-      [
-        "filler.incoming",
-        "Incoming history",
-        "Choose how long ready clips remain visible in Incoming.",
-        ["recent clips", "ready window", "24 hours"],
-        "incoming",
-      ],
-      [
-        "filler.breaks",
-        "Break assembly",
-        "Choose the usual length and number of clips in a commercial break.",
-        ["commercial length", "clips per break", "ad break"],
-        "breaks",
-      ],
-      [
-        "filler.review",
-        "Clip review",
-        "Choose which automatic checks can identify and split incoming clips.",
-        ["AI tagging", "vision", "transcribe", "auto split"],
-        "review",
-      ],
-      [
-        "filler.playback",
-        "Clip eligibility and sound",
-        "Choose which clips may play, how often they repeat, and their sound level.",
-        ["language", "loudness", "quality", "repeat cooldown", "duration"],
-        "playback",
-      ],
-      [
-        "filler.limits",
-        "Processing limits",
-        "Limit how much clip preparation Loomarr performs in one pass.",
-        ["pipeline", "background processing", "CPU", "GPU", "per pass"],
-        "limits",
-      ],
-      [
-        "filler.tools",
-        "Processing tools",
-        "Set executable and model paths for unusual installations.",
-        ["yt-dlp", "FFmpeg", "whisper", "binary paths"],
-        "tools",
-      ],
-    ] as const
-  ).map(([owner, label, description, aliases, section]) =>
-    destination({
+  ...SETTINGS_SECTIONS.map((section) => {
+    const owner = `filler.${section.id}`;
+    return destination({
       id: owner,
       owner,
-      label,
-      description,
-      aliases,
+      label: section.label,
+      description: section.description,
+      aliases: section.aliases,
       group: "filler",
-      path: `/filler/settings/${section}`,
-      section,
+      path: `/filler/settings/${section.id}`,
+      section: section.id,
       role: "admin",
       browse: false,
-    }),
-  ),
+    });
+  }),
 ] as const;
 
 const SETTINGS_TASK_GROUPS: readonly { id: SettingsTaskGroup; label: string; description: string }[] = [
