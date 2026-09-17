@@ -173,7 +173,10 @@ describe("RefinePanel", () => {
     await userEvent.type(screen.getByLabelText("What to change"), "add more Schwarzenegger");
     await userEvent.click(screen.getByRole("button", { name: /^refine$/i }));
     // Back on the form, with a recoverable error and the text intact — no diff, no Apply.
-    expect(await screen.findByText(/couldn't complete/i)).toBeInTheDocument();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("AI is temporarily unavailable");
+    expect(alert).toHaveTextContent("Loomarr couldn't reach the AI service right now.");
+    expect(alert).not.toHaveTextContent(/provider|generation/i);
     expect(screen.getByLabelText("What to change")).toHaveValue("add more Schwarzenegger");
     expect(screen.queryByRole("button", { name: /apply changes/i })).not.toBeInTheDocument();
     // And the retry affordance is right there.

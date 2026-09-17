@@ -7,10 +7,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { roundOf } from "../round";
-import { clearSuggestionDraft, readSuggestionDraft, writeSuggestionDraft } from "../suggestion-draft";
+import {
+  clearSuggestionDraft,
+  readActiveSuggestionJob,
+  readSuggestionDraft,
+  writeActiveSuggestionJob,
+  writeSuggestionDraft,
+} from "../suggestion-draft";
 import type { SuggestionRun } from "./use-suggestion-run.type";
-
-const ACTIVE_JOB_KEY = "loomarr.activeProposalJob";
 
 // Owns one suggestion run: submit an intent, follow it through the live phases, and
 // surface the proposal it produced.
@@ -21,11 +25,7 @@ const ACTIVE_JOB_KEY = "loomarr.activeProposalJob";
 const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
   const queryClient = useQueryClient();
   const [jobId, setJobIdState] = useState<string | undefined>(
-    () =>
-      initialJobId ??
-      (typeof window === "undefined"
-        ? undefined
-        : (window.sessionStorage.getItem(ACTIVE_JOB_KEY) ?? undefined)),
+    () => initialJobId ?? readActiveSuggestionJob(),
   );
   // Keep the complete intent after an authorized edit clears the finished job. The form must
   // retain constraints; its description alone is not an honest retry of the request.
@@ -40,7 +40,7 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
   // panel restores the same review and its Job-scoped local title choices.
   useEffect(() => {
     if (initialJobId && typeof window !== "undefined") {
-      window.sessionStorage.setItem(ACTIVE_JOB_KEY, initialJobId);
+      writeActiveSuggestionJob(initialJobId);
     }
   }, [initialJobId]);
 
@@ -80,9 +80,7 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
   const journey = unwrap(journeyQuery.data);
   const setJobId = (next: string | undefined) => {
     setJobIdState(next);
-    if (typeof window === "undefined") return;
-    if (next) window.sessionStorage.setItem(ACTIVE_JOB_KEY, next);
-    else window.sessionStorage.removeItem(ACTIVE_JOB_KEY);
+    writeActiveSuggestionJob(next);
   };
   const start = (intent: Intent) => {
     setIntent(intent);

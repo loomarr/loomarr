@@ -182,7 +182,7 @@ describe("ProposalReview", () => {
         { key: "movie:tmdb:949", name: "Heat", year: 1995 },
         { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
       ],
-      refineText: "Find more grounded options that match this brief.",
+      refineText: "Find more titles that match this brief.",
     });
 
     view.rerender(

@@ -12,6 +12,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useProposalOutlook } from "../live-proposal-outlook";
+import { suggestionFailureCopy } from "../suggestion-failure-copy";
 import { useElapsed } from "../use-elapsed";
 import { useProposalReviewEdit } from "../use-proposal-review-edit";
 import { useSuggestionRun } from "../use-suggestion-run";
@@ -112,21 +113,8 @@ const ChannelSuggestPanel = ({
     setEdit(undefined);
     run.retry();
   };
-  const discoveryBudgetExhausted = run.failure?.reason === "discovery_budget_exhausted";
   const failureNeedsEdit = run.failure?.recoveryAction !== "retry_later";
-  const failureTitle = discoveryBudgetExhausted
-    ? "Search stopped early"
-    : failureNeedsEdit
-      ? run.failure?.recoveryAction === "edit_reference"
-        ? "Change the link"
-        : "Try a different description"
-      : "Something went wrong";
-  const failureMessage = discoveryBudgetExhausted
-    ? "The search ended before Loomarr found enough good matches."
-    : (run.failure?.message ?? "Loomarr couldn't finish this request. Your description is still here.");
-  const failureGuidance = discoveryBudgetExhausted
-    ? "Try again. If this keeps happening, add a few example titles."
-    : run.failure?.guidance;
+  const failureCopy = run.failure ? suggestionFailureCopy(run.failure) : undefined;
 
   return (
     <section className={cn("flex flex-col gap-4", className)}>
@@ -193,9 +181,13 @@ const ChannelSuggestPanel = ({
           className="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-lg border border-border bg-muted/35 p-4"
         >
           <div>
-            <h3 className="font-medium">{failureTitle}</h3>
-            <p className="mt-1 text-muted-foreground text-sm">{failureMessage}</p>
-            {failureGuidance && <p className="mt-1 text-muted-foreground text-sm">{failureGuidance}</p>}
+            <h3 className="font-medium">{failureCopy?.title ?? "Something went wrong"}</h3>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {failureCopy?.message ?? "Loomarr couldn't finish this request."}
+            </p>
+            {failureCopy?.guidance && (
+              <p className="mt-1 text-muted-foreground text-sm">{failureCopy.guidance}</p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {run.actions.includes("edit") && (

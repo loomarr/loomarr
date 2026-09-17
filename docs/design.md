@@ -1605,6 +1605,11 @@ semantic match even when catalog metadata does not repeat the collection name; i
 score floor and does not make model-only rosters admissible. Named-set item and proposal explanations
 are generated from the same admitted provenance (user-supplied constituent or resolved public reference),
 replacing model prose that could otherwise invent membership, historical-airing, or era facts.
+The review translates that provenance through fixed presentation copy: ordinary title and proposal
+explanations never expose constituent, grounding, Catalog, public-reference, or machine-identity
+terminology. Unknown technical explanation forms fall back to a truthful generic match statement;
+already-readable editorial rationale remains intact. Exact provenance and reason codes remain available
+only in the nested troubleshooting data.
 
 ### Proposal decision trace v1 (#496)
 
@@ -2441,6 +2446,12 @@ tool-loop rounds, a ticking timer, a percentage, or a checklist for a process th
 A terminal failure replaces progress completely with one plain-language explanation and the useful
 server-authorized recovery action. The copy states what Loomarr could not finish and preserves the
 saved Intent; it does not infer a defect in the user's description from an internal work limit.
+Review revisions stay in place: editing the brief or finding more ideas keeps the current title list
+visible and read-only until the replacement arrives, carries the exact selected lineup as context,
+and never returns to the initial description form. The active Job and its local approval edit are
+session-restored after close or reload; only an explicit discard/reset starts a fresh request. The
+Find-more action exposes one disabled progress state, and reduced-motion preferences suppress its
+decorative spinner animation without removing the status text.
 
 **Workflow versus activities.** Ordering, transitions, attempt tokens, approval, grounding gates, and
 retry classification are deterministic workflow logic. Model turns, catalog reads, and external

@@ -20,7 +20,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { cn } from "@/lib/utils";
 import { type ChannelSuggestionStage, ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
-import { clearSuggestionDraft, readSuggestionDraft } from "@/suggest/suggestion-draft";
+import {
+  clearSuggestionDraft,
+  readActiveSuggestionJob,
+  readSuggestionDraft,
+} from "@/suggest/suggestion-draft";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
 import type { GuidePageProps } from "./guide-page.type";
@@ -121,10 +125,12 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
   // dialog. `adding` toggles it open.
   //
-  // Opens on arrival when the wizard handed off a template (§13), so the operator lands on a
-  // filled form rather than a bare grid wondering where their pick went. Lazy initializer:
-  // read once at mount, so closing it stays closed.
-  const [adding, setAdding] = useState(() => Boolean(initialIntent || initialJobId || readSuggestionDraft()));
+  // Opens on arrival when the wizard handed off a template (§13), a setup round trip retained
+  // a draft, or this tab owns an active Proposal Job. The last case makes a reload return to the
+  // current review rather than a bare grid; closing still hides it for the current page lifetime.
+  const [adding, setAdding] = useState(() =>
+    Boolean(initialIntent || initialJobId || readActiveSuggestionJob() || readSuggestionDraft()),
+  );
   const [suggestionStage, setSuggestionStage] = useState<ChannelSuggestionStage>("describe");
 
   // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
@@ -247,7 +253,7 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
               : suggestionStage === "updating"
                 ? "Your current lineup stays in place while Loomarr refreshes its suggestions."
                 : suggestionStage === "generating"
-                  ? "Loomarr is matching your brief to titles from your library and catalog."
+                  ? "Loomarr is finding titles that match your brief."
                   : suggestionStage === "failed"
                     ? "Your brief is saved. Choose a recovery option below."
                     : "Describe what you want to watch. You'll choose the final titles before anything is created."

@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { friendlyTitleRationale } from "@/suggest/suggestion-language";
 import { SearchCommand } from "../../shell";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import type { ProposalEditProps } from "./proposal-edit.type";
@@ -41,21 +42,6 @@ const seasonLabel = (item: ProposalItem) => {
   if (lo <= 0 && hi <= 0) return null;
   if (lo > 0 && hi > 0) return lo === hi ? `Season ${lo}` : `Seasons ${lo}–${hi}`;
   return lo > 0 ? `From season ${lo}` : `Through season ${hi}`;
-};
-
-const friendlyTitleRationale = (value: string) => {
-  const knownExplanations: Record<string, string> = {
-    "Included because your curated-title subject resolves to this Catalog title.":
-      "This is the title you asked for.",
-    "Included because the resolved public reference names this title as a constituent.":
-      "This title is part of the lineup or collection you asked for.",
-    "Included because you supplied this title as a constituent of the named set.":
-      "You named this title as part of the lineup or collection.",
-  };
-  return (
-    knownExplanations[value] ??
-    value.replace(/^Grounded against\b/i, "Matched against").replace(/^A grounded\b/i, "A")
-  );
 };
 
 const PickRow = ({

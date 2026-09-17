@@ -2,6 +2,7 @@ import type { Intent } from "@loomarr/api/models/intent";
 import { intentSchema } from "@loomarr/core/schemas";
 
 const SUGGESTION_DRAFT_KEY = "loomarr.pendingProposalIntent";
+const ACTIVE_SUGGESTION_JOB_KEY = "loomarr.activeProposalJob";
 
 const readSuggestionDraft = (): Intent | undefined => {
   if (typeof window === "undefined") return undefined;
@@ -28,4 +29,23 @@ const clearSuggestionDraft = () => {
   if (typeof window !== "undefined") window.sessionStorage.removeItem(SUGGESTION_DRAFT_KEY);
 };
 
-export { clearSuggestionDraft, readSuggestionDraft, SUGGESTION_DRAFT_KEY, writeSuggestionDraft };
+const readActiveSuggestionJob = (): string | undefined => {
+  if (typeof window === "undefined") return undefined;
+  return window.sessionStorage.getItem(ACTIVE_SUGGESTION_JOB_KEY) ?? undefined;
+};
+
+const writeActiveSuggestionJob = (jobId: string | undefined) => {
+  if (typeof window === "undefined") return;
+  if (jobId) window.sessionStorage.setItem(ACTIVE_SUGGESTION_JOB_KEY, jobId);
+  else window.sessionStorage.removeItem(ACTIVE_SUGGESTION_JOB_KEY);
+};
+
+export {
+  ACTIVE_SUGGESTION_JOB_KEY,
+  clearSuggestionDraft,
+  readActiveSuggestionJob,
+  readSuggestionDraft,
+  SUGGESTION_DRAFT_KEY,
+  writeActiveSuggestionJob,
+  writeSuggestionDraft,
+};

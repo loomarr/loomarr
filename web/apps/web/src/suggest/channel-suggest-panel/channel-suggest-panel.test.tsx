@@ -667,7 +667,8 @@ describe("ChannelSuggestPanel", () => {
 
     // The failure replaces progress with one recovery surface.
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText(/couldn't finish this channel/i)).toBeInTheDocument();
+    expect(screen.getByText("AI is temporarily unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/couldn't reach the AI service/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /check ai settings/i })).toHaveAttribute("href", "/settings/ai");
     // …and the describe form is NOT rendered underneath it (the silent-drop bug).
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
@@ -677,7 +678,7 @@ describe("ChannelSuggestPanel", () => {
     expect(retry).toHaveBeenCalled();
   });
 
-  it("presents a catalog failure once with a direct retry action", async () => {
+  it("presents a title-source failure once with a direct retry action", async () => {
     runOverride = failedRun({
       failure: {
         code: "generation_failed",
@@ -691,8 +692,8 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     renderPanel(() => {});
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Something went wrong/);
-    expect(screen.getByText(/couldn't check the title sources/i)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Title search is unavailable/);
+    expect(screen.getByText(/couldn't reach the title sources/i)).toBeInTheDocument();
     expect(screen.queryByText(/catalog|retrieval/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /check ai settings/i })).not.toBeInTheDocument();
@@ -716,11 +717,32 @@ describe("ChannelSuggestPanel", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Something went wrong");
-    expect(alert).toHaveTextContent("Loomarr found titles but couldn't finish the lineup.");
+    expect(alert).toHaveTextContent("Loomarr couldn't finish these suggestions.");
     expect(alert).not.toHaveTextContent(/more specific|too many possible directions/i);
     expect(screen.queryByRole("button", { name: "Edit description" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(retry).toHaveBeenCalled();
+  });
+
+  it("explains an empty search without exposing grounding or catalog language", async () => {
+    runOverride = failedRun({
+      failure: {
+        code: "generation_failed",
+        message: "No grounded titles matched this request.",
+        reason: "no_catalog_match",
+        recoveryAction: "broaden_request",
+        guidance: "Try a broader description or add a few example titles.",
+      },
+      actions: ["edit", "retry"],
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("No matches yet");
+    expect(alert).toHaveTextContent("Loomarr couldn't confidently match any titles to this description.");
+    expect(alert).toHaveTextContent("Try a broader description or add a few example titles.");
+    expect(alert).not.toHaveTextContent(/grounded|catalog/i);
   });
 
   it("does not expose discovery budgets or blame the description", async () => {

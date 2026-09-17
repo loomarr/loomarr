@@ -32,7 +32,7 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
           ["Requested or kept", value.mix.core],
           ["Related suggestions", value.mix.adjacent],
           ["Other suggestions", value.mix.discovery],
-          ["Uncategorized", value.mix.unknown],
+          ["Other matches", value.mix.unknown],
         ] as const
       )
         .filter(([, count]) => count > 0)

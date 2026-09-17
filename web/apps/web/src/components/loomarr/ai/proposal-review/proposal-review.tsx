@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { friendlyCandidateName, friendlyProposalRationale } from "@/suggest/suggestion-language";
 import { ProposalEdit } from "../proposal-edit";
 import { ProposalOutlook, ProposalOutlookDetails, ProposalOutlookDiagnostics } from "../proposal-outlook";
 import type { ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
@@ -24,7 +25,7 @@ const catalogDecision = (disposition: string, reason: string) => {
   const reasons: Record<string, string> = {
     not_selected: "Considered, but not chosen",
     not_surfaced: "Loomarr couldn't confirm this title",
-    no_relevance_evidence: "Not enough evidence that it fits your request",
+    no_relevance_evidence: "Loomarr couldn't confirm that it fits your request",
     malformed_id: "Could not identify this title reliably",
     over_ceiling: "Outside the audience limit",
     never: "Excluded by your preferences",
@@ -39,21 +40,6 @@ const availabilitySummary = (selected: number, ready: number, missing: number) =
   if (missing === 0) return `${titles} · all in your library`;
   if (ready === 0) return `${titles} · ${missing} will be added`;
   return `${titles} · ${ready} in your library · ${missing} will be added`;
-};
-
-const friendlyProposalRationale = (value: string) => {
-  const knownExplanations: Record<string, string> = {
-    "Every offered title is backed by user-supplied or resolved public-reference constituent evidence.":
-      "These titles come from the lineup or collection you asked for and the examples you provided.",
-    "Every offered title is backed by resolved public-reference constituent evidence.":
-      "These titles are part of the lineup or collection you asked for.",
-    "Every offered title is backed by user-supplied constituent evidence.":
-      "These titles are based on the examples you provided.",
-  };
-  return (
-    knownExplanations[value] ??
-    value.replace(/^Grounded against\b/i, "Matched against").replace(/^A grounded\b/i, "A")
-  );
 };
 
 const selectedLineupContext = (
@@ -290,7 +276,7 @@ const ProposalReview = ({
                 onRevise({
                   ...requestIntent,
                   currentLineup,
-                  refineText: "Find more grounded options that match this brief.",
+                  refineText: "Find more titles that match this brief.",
                 });
               }
             : undefined
@@ -429,7 +415,7 @@ const ProposalReview = ({
                           className="py-2"
                         >
                           <p className="font-medium text-foreground">
-                            {candidate.name || "Unidentified title"}
+                            {friendlyCandidateName(candidate.name)}
                           </p>
                           <p>{catalogDecision(candidate.disposition, candidate.reason)}</p>
                         </li>

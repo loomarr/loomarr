@@ -467,6 +467,15 @@ of 2.5 million tokens and USD 5 may stop the run before the structural maximum.
 The preflight publishes that limitation directly. No hosted inference was used to
 derive or verify this envelope.
 
+The same checkpoint exercises the complete Guide review with an isolated mocked
+backend. The browser journey removes a suggested title, manually adds another,
+requests more ideas in place, reloads the active Job, edits the brief, and approves
+the exact retained selection. Separate recovery cases cover missing TMDB, empty
+results, exhausted discovery, retry, and discard. A phone-sized reduced-motion run
+verifies the sticky approval action, selectable titles, bounded layout, persistent
+status text, and suppressed spinner motion. These are application-contract checks;
+they make no hosted inference or model-quality claim.
+
 ### Remaining expansion checkpoints
 
 The source-review checkpoint is tracked in [#1278](https://github.com/loomarr/loomarr/issues/1278).
