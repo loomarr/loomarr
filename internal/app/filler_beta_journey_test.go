@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -47,6 +48,9 @@ func TestFillerBetaJourney_QueuedSourceItemResumesAfterRestartAndBecomesPlayable
 	}
 
 	ytdlp := testkit.Executable(t, "yt-dlp", `#!/bin/sh
+case "$*" in
+  *--simulate*) printf '%s\n' '{"filesize":25,"duration":30,"height":480}'; exit 0 ;;
+esac
 archive=""; result=""
 while test "$#" -gt 0; do
   case "$1" in
@@ -92,8 +96,16 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		Layout: layout, Probe: scanProbe, Artwork: artwork,
 	}, fillerStoreAdapter{st: st}, layout, func() time.Time { return now }, nil).
 		WithAcquisitionManifests(st)
+	governor, err := storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
+		{Path: layout.ClipDir(), Domain: storagegovernor.DomainFiller},
+		{Path: layout.WatchDir(), Domain: storagegovernor.DomainFiller},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fetcher := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, layout.WatchDir(), nil).
-		WithArtifactWriter(st)
+		WithArtifactWriter(st).
+		WithStorageGovernor(governor)
 	adapter := fillerServiceAdapter{
 		fetcher: fetcher, acquisitions: st, sources: st,
 		newID:   func() string { return "acq-beta-journey" },
@@ -125,6 +137,9 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		t.Fatal(err)
 	}
 	if len(held) != 1 || !held[0].Held {
+		run, _ := st.GetAcquisitionRun(ctx, jobID, now)
+		artifacts, _ := st.ListRecoverableAcquisitionArtifacts(ctx, 10)
+		t.Logf("acquisition = %+v artifacts = %+v", run, artifacts)
 		t.Fatalf("catalog after acquisition = %+v, want one held clip", held)
 	}
 	if held[0].Kind != filler.Unclassified {

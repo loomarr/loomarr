@@ -7,14 +7,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/proctree"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // This file holds the REAL downloaders — the ones that touch the network and the
@@ -74,6 +78,64 @@ func NewYtDlpDownloader(ytDlpPath, ffmpegPath string) *YtDlpDownloader {
 	return &YtDlpDownloader{ytDlpPath: ytDlpPath, ffmpegPath: ffmpegPath}
 }
 
+// Estimate resolves the exact selected yt-dlp format without downloading it.
+// One source passed to acquisition is one bounded item; playlists are capped to
+// the same first item by Download.
+func (d *YtDlpDownloader) Estimate(ctx context.Context, src Source) (storagegovernor.MediaBudget, error) {
+	if d.ytDlpPath == "" {
+		return storagegovernor.MediaBudget{}, ErrEstimateUnavailable
+	}
+	cmd := exec.Command(d.ytDlpPath,
+		"--no-config", "--simulate", "--dump-single-json", "--playlist-end", "1", src.URL,
+	) //nolint:gosec // configured executable; arguments are separate
+	stdout := boundedSourceFinderOutput{limit: maxSourceFinderJSONBytes}
+	stderr := diagnosticTail{limit: ytDlpDiagnosticLimit}
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	supervisor, err := proctree.Start(ctx, cmd)
+	if err != nil {
+		return storagegovernor.MediaBudget{}, fmt.Errorf("start yt-dlp estimate: %w", err)
+	}
+	err = supervisor.Wait()
+	if supervisor.Stopped() && ctx.Err() != nil {
+		return storagegovernor.MediaBudget{}, ctx.Err()
+	}
+	if err != nil {
+		return storagegovernor.MediaBudget{}, fmt.Errorf("yt-dlp estimate %s: %w: %s", src.URL, err, stderr.String())
+	}
+	if stdout.overflow {
+		return storagegovernor.MediaBudget{}, fmt.Errorf("yt-dlp estimate exceeded %d bytes", maxSourceFinderJSONBytes)
+	}
+	var wire ytDlpEstimate
+	if err := json.Unmarshal(stdout.data.Bytes(), &wire); err != nil {
+		return storagegovernor.MediaBudget{}, fmt.Errorf("decode yt-dlp estimate: %w", err)
+	}
+	if len(wire.Entries) > 0 {
+		wire = wire.Entries[0]
+	}
+	declared := max(wire.Filesize, wire.FilesizeApprox)
+	if len(wire.RequestedFormats) > 0 {
+		declared = 0
+		for _, format := range wire.RequestedFormats {
+			size := max(format.Filesize, format.FilesizeApprox)
+			if size <= 0 || declared > int64(^uint64(0)>>1)-size {
+				declared = 0
+				break
+			}
+			declared += size
+		}
+	}
+	return mediaBudget(declared, int64(wire.Duration*1000), wire.Height)
+}
+
+type ytDlpEstimate struct {
+	Filesize         int64           `json:"filesize"`
+	FilesizeApprox   int64           `json:"filesize_approx"`
+	Duration         float64         `json:"duration"`
+	Height           int             `json:"height"`
+	RequestedFormats []ytDlpEstimate `json:"requested_formats"`
+	Entries          []ytDlpEstimate `json:"entries"`
+}
+
 // Download runs supervised yt-dlp for one source. It writes video + `.info.json` sidecars
 // into dropDir and uses --download-archive so a re-run skips already-fetched
 // items (idempotent ingest). It parses only yt-dlp's final paths so provenance
@@ -110,11 +172,18 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 		return DownloadResult{}, fmt.Errorf("close yt-dlp result file: %w", err)
 	}
 	defer func() { _ = os.Remove(resultPath) }()
+	baselineBytes, err := stagingBytes(absDropDir)
+	if err != nil {
+		return DownloadResult{}, fmt.Errorf("measure yt-dlp staging: %w", err)
+	}
+	guard := newWriteGuard(src.storageLease, src.writeCeilingBytes)
 	// -o with a sanitized template into the drop folder; --write-info-json so the
 	// title/description survive for AI tagging (§10); --download-archive for
 	// idempotent re-runs; --ffmpeg-location for the bundled binary.
 	args := []string{
+		"--no-config",
 		"--no-progress",
+		"--playlist-end", "1",
 		"--write-info-json",
 		"--download-archive", archiveFile,
 		"--ffmpeg-location", d.ffmpegPath,
@@ -122,15 +191,38 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 		"--print-to-file", "after_move:%(id)s\t%(filepath)j", resultPath,
 		src.URL,
 	}
-	cmd := exec.Command(d.ytDlpPath, args...)
+	if src.writeCeilingBytes > 0 {
+		args = append(args[:len(args)-1], "--max-filesize", strconv.FormatInt(src.writeCeilingBytes, 10), src.URL)
+	}
+	runCtx, stop := context.WithCancelCause(ctx)
+	monitorDone := make(chan error, 1)
+	go monitorStaging(runCtx, absDropDir, baselineBytes, guard, stop, monitorDone)
+	cmd := exec.Command(d.ytDlpPath, args...) //nolint:gosec // configured executable; arguments are separate
 	out := diagnosticTail{limit: ytDlpDiagnosticLimit}
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	supervisor, err := proctree.Start(ctx, cmd)
+	supervisor, err := proctree.Start(runCtx, cmd)
 	if err != nil {
+		stop(nil)
+		<-monitorDone
 		return DownloadResult{}, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, err, out.String())
 	}
 	err = supervisor.Wait()
+	if currentBytes, sizeErr := stagingBytes(absDropDir); sizeErr != nil {
+		stop(sizeErr)
+	} else if currentBytes > baselineBytes {
+		stop(guard.CheckTotal(ctx, currentBytes-baselineBytes))
+	} else {
+		stop(nil)
+	}
+	monitorErr := <-monitorDone
+	if cause := context.Cause(runCtx); cause != nil && !errors.Is(cause, context.Canceled) {
+		monitorErr = errors.Join(monitorErr, cause)
+	}
+	if monitorErr != nil {
+		cleanupUnsafeStaging(src, absDropDir)
+		return DownloadResult{}, fmt.Errorf("yt-dlp %s storage guard: %w", src.URL, monitorErr)
+	}
 	if supervisor.Stopped() {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return DownloadResult{}, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, ctxErr, out.String())
@@ -201,7 +293,80 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 		}
 		result.Outputs = append(result.Outputs, output)
 	}
+	if currentBytes, sizeErr := stagingBytes(absDropDir); sizeErr != nil {
+		provenanceErr = errors.Join(provenanceErr, sizeErr)
+	} else if currentBytes > baselineBytes {
+		provenanceErr = errors.Join(provenanceErr, guard.CheckTotal(ctx, currentBytes-baselineBytes))
+	}
+	if guardErr := guard.Finish(ctx); guardErr != nil {
+		provenanceErr = errors.Join(provenanceErr, guardErr)
+	}
+	if errors.Is(provenanceErr, ErrWriteCeilingExceeded) {
+		cleanupUnsafeStaging(src, absDropDir)
+		return DownloadResult{}, provenanceErr
+	}
+	var capacityErr *CapacityError
+	if errors.As(provenanceErr, &capacityErr) {
+		cleanupUnsafeStaging(src, absDropDir)
+		return DownloadResult{}, provenanceErr
+	}
 	return result, provenanceErr
+}
+
+func monitorStaging(
+	ctx context.Context,
+	root string,
+	baseline int64,
+	guard *writeGuard,
+	stop context.CancelCauseFunc,
+	done chan<- error,
+) {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			done <- nil
+			return
+		case <-ticker.C:
+			current, err := stagingBytes(root)
+			if err == nil && current > baseline {
+				err = guard.CheckTotal(ctx, current-baseline)
+			}
+			if err != nil {
+				stop(err)
+				done <- err
+				return
+			}
+		}
+	}
+}
+
+func stagingBytes(root string) (int64, error) {
+	var total int64
+	err := filepath.WalkDir(root, func(_ string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total, err
+}
+
+func cleanupUnsafeStaging(source Source, root string) {
+	if source.archiveAttempt {
+		_ = os.RemoveAll(root)
+	}
 }
 
 // CommitArchive merges this attempt's yt-dlp archive into the shared publication archive. The
@@ -462,11 +627,27 @@ func NewArchiveDownloader() *ArchiveDownloader {
 
 // Download fetches an Archive.org source into dropDir (§10).
 func (d *ArchiveDownloader) Download(ctx context.Context, src Source, dropDir string) (DownloadResult, error) {
-	fetched, skipped, outputs, err := d.client.walk(withAcquisition(ctx, src.ID, src.AcquisitionID, src.PublicationDir), src.URL, dropDir)
+	guard := newWriteGuard(src.storageLease, src.writeCeilingBytes)
+	fetched, skipped, outputs, err := d.client.walk(
+		withAcquisition(ctx, src.ID, src.AcquisitionID, src.PublicationDir, guard),
+		src.URL, dropDir,
+	)
+	if guardErr := guard.Finish(ctx); guardErr != nil {
+		err = errors.Join(err, guardErr)
+	}
 	return DownloadResult{Fetched: fetched, Skipped: skipped, Outputs: outputs}, err
+}
+
+// Estimate reads Archive metadata and budgets the exact representation Download
+// will select. A collection is the bounded collection prefix the downloader
+// would walk, not the collection's unbounded catalog size.
+func (d *ArchiveDownloader) Estimate(ctx context.Context, src Source) (storagegovernor.MediaBudget, error) {
+	return d.client.estimate(ctx, src.URL)
 }
 
 var (
 	_ Downloader = (*YtDlpDownloader)(nil)
 	_ Downloader = (*ArchiveDownloader)(nil)
+	_ Estimator  = (*YtDlpDownloader)(nil)
+	_ Estimator  = (*ArchiveDownloader)(nil)
 )

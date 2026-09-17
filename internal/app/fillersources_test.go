@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -20,8 +21,25 @@ type recordingSources struct {
 
 type successfulClipIngestor struct{}
 
+type rejectingClipIngestor struct{ err error }
+
+type testAcquisitionPlan struct {
+	run func(context.Context) clipfetch.Result
+}
+
+func (p testAcquisitionPlan) Run(ctx context.Context) clipfetch.Result { return p.run(ctx) }
+func (testAcquisitionPlan) Release()                                   {}
+
 func (successfulClipIngestor) Run(context.Context, []clipfetch.Source) clipfetch.Result {
 	return clipfetch.Result{Fetched: 1}
+}
+
+func (s successfulClipIngestor) Prepare(_ context.Context, sources []clipfetch.Source, _ storagegovernor.Mode) (clipfetch.AcquisitionPlan, error) {
+	return testAcquisitionPlan{run: func(ctx context.Context) clipfetch.Result { return s.Run(ctx, sources) }}, nil
+}
+
+func (r rejectingClipIngestor) Prepare(context.Context, []clipfetch.Source, storagegovernor.Mode) (clipfetch.AcquisitionPlan, error) {
+	return nil, r.err
 }
 
 type recordingClipIngestor struct {
@@ -61,9 +79,17 @@ func (b blockingClipIngestor) Run(ctx context.Context, _ []clipfetch.Source) cli
 	return clipfetch.Result{}
 }
 
+func (b blockingClipIngestor) Prepare(_ context.Context, sources []clipfetch.Source, _ storagegovernor.Mode) (clipfetch.AcquisitionPlan, error) {
+	return testAcquisitionPlan{run: func(ctx context.Context) clipfetch.Result { return b.Run(ctx, sources) }}, nil
+}
+
 func (r recordingClipIngestor) Run(_ context.Context, sources []clipfetch.Source) clipfetch.Result {
 	r.sources <- append([]clipfetch.Source(nil), sources...)
 	return r.result
+}
+
+func (r recordingClipIngestor) Prepare(_ context.Context, sources []clipfetch.Source, _ storagegovernor.Mode) (clipfetch.AcquisitionPlan, error) {
+	return testAcquisitionPlan{run: func(ctx context.Context) clipfetch.Result { return r.Run(ctx, sources) }}, nil
 }
 
 type recordingAcquisitions struct {
@@ -384,6 +410,29 @@ func TestIngest_ProviderPauseBlocksDirectDownloaderExecution(t *testing.T) {
 	select {
 	case run := <-runs:
 		t.Fatalf("paused provider persisted durable work: %+v", run)
+	default:
+	}
+}
+
+func TestIngest_StorageRefusalHappensBeforeDurableQueueMutation(t *testing.T) {
+	runs := make(chan filler.AcquisitionRun, 1)
+	refusal := &clipfetch.CapacityError{Decision: storagegovernor.Decision{
+		Snapshot: storagegovernor.Snapshot{Reason: storagegovernor.ReasonHostReserve},
+	}}
+	a := fillerServiceAdapter{
+		fetcher: rejectingClipIngestor{err: refusal}, acquisitions: recordingAcquisitions{runs: runs},
+		newID: func() string { return "must-not-queue" },
+		start: func(time.Duration, func(context.Context) error, func(context.Context, error)) error {
+			t.Error("storage-refused acquisition reached launcher")
+			return nil
+		},
+	}
+	if _, err := a.Ingest(t.Context(), []string{"https://archive.org/details/one"}); !errors.As(err, &refusal) {
+		t.Fatalf("storage-refused ingest = %v, want typed capacity error", err)
+	}
+	select {
+	case run := <-runs:
+		t.Fatalf("storage-refused acquisition persisted durable work: %+v", run)
 	default:
 	}
 }

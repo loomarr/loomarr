@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // Archive.org ingestion (§10): a plain-net/http walk of Archive's public JSON
@@ -52,7 +53,7 @@ type archiveClient struct {
 // fileSink abstracts writing downloaded media + sidecars (real = disk).
 type fileSink interface {
 	Exists(path string) bool
-	WriteStream(path string, r io.Reader) error
+	WriteStream(ctx context.Context, path string, r io.Reader, guard *writeGuard) error
 	WriteFile(path string, data []byte) error
 	Inspect(path string) (digest string, size int64, clipHash string, err error)
 }
@@ -167,11 +168,13 @@ type acquisitionContext struct {
 	sourceID       string
 	acquisitionID  string
 	publicationDir string
+	writeGuard     *writeGuard
 }
 
-func withAcquisition(ctx context.Context, sourceID, acquisitionID, publicationDir string) context.Context {
+func withAcquisition(ctx context.Context, sourceID, acquisitionID, publicationDir string, guard *writeGuard) context.Context {
 	return context.WithValue(ctx, registeredSourceContextKey{}, acquisitionContext{
 		sourceID: sourceID, acquisitionID: acquisitionID, publicationDir: publicationDir,
+		writeGuard: guard,
 	})
 }
 
@@ -196,6 +199,51 @@ func (c *archiveClient) walk(ctx context.Context, rawURL, dropDir string) (int, 
 		return c.walkCollection(ctx, id, dropDir)
 	}
 	return c.downloadItem(ctx, id, meta, dropDir)
+}
+
+func (c *archiveClient) estimate(ctx context.Context, rawURL string) (storagegovernor.MediaBudget, error) {
+	id := archiveIDFromURL(rawURL)
+	if id == "" {
+		return storagegovernor.MediaBudget{}, fmt.Errorf("archive: cannot extract id from %q", rawURL)
+	}
+	meta, err := c.metadata(ctx, id)
+	if err != nil {
+		return storagegovernor.MediaBudget{}, err
+	}
+	if meta.Metadata.MediaType != "collection" {
+		return estimateArchiveItem(meta)
+	}
+	ids, err := c.collectionItems(ctx, id)
+	if err != nil {
+		return storagegovernor.MediaBudget{}, err
+	}
+	if len(ids) == 0 {
+		return storagegovernor.MediaBudget{}, ErrEstimateUnavailable
+	}
+	var total storagegovernor.MediaBudget
+	for _, itemID := range ids {
+		item, itemErr := c.metadata(ctx, itemID)
+		if itemErr != nil {
+			return storagegovernor.MediaBudget{}, itemErr
+		}
+		budget, itemErr := estimateArchiveItem(item)
+		if itemErr != nil {
+			return storagegovernor.MediaBudget{}, fmt.Errorf("estimate archive item %s: %w", itemID, itemErr)
+		}
+		total, itemErr = addMediaBudget(total, budget)
+		if itemErr != nil {
+			return storagegovernor.MediaBudget{}, itemErr
+		}
+	}
+	return total, nil
+}
+
+func estimateArchiveItem(meta metadataResp) (storagegovernor.MediaBudget, error) {
+	file, ok := pickVideoFile(meta.Files)
+	if !ok {
+		return storagegovernor.MediaBudget{}, ErrEstimateUnavailable
+	}
+	return mediaBudget(positiveArchiveInt(file.Size), int64(parseLengthMS(file.Length)), int(positiveArchiveInt(file.Height)))
 }
 
 // walkCollection lists a collection's member items and walks each (capped).
@@ -283,6 +331,11 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 		acquisition.sourceID, acquisition.acquisitionID,
 	)
 	sidecar, _ := json.MarshalIndent(fields, "", "  ")
+	if err := acquisition.writeGuard.Add(ctx, int64(len(sidecar))); err != nil {
+		output.SidecarPath = ""
+		output.Repair = "archive sidecar exceeded reserved storage: " + err.Error()
+		return 1, 0, []Output{output}, err
+	}
 	if err := c.fs.WriteFile(sidecarPath, sidecar); err != nil {
 		output.SidecarPath = ""
 		output.Repair = "archive sidecar could not be written: " + err.Error()
@@ -358,7 +411,7 @@ func (c *archiveClient) fetchTo(ctx context.Context, u, path string) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("GET %s: status %d", u, resp.StatusCode)
 	}
-	return c.fs.WriteStream(path, resp.Body)
+	return c.fs.WriteStream(ctx, path, resp.Body, acquisitionFrom(ctx).writeGuard)
 }
 
 // archiveIDFromURL extracts the Archive item/collection id from a URL or bare id.
@@ -396,12 +449,14 @@ func sanitize(name string) string {
 
 type diskSink struct{}
 
+var ErrWriteCeilingExceeded = errors.New("clipfetch: media write exceeded its reserved byte ceiling")
+
 func (diskSink) Exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
 
-func (diskSink) WriteStream(path string, r io.Reader) error {
+func (diskSink) WriteStream(ctx context.Context, path string, r io.Reader, guard *writeGuard) error {
 	// Write to a temp file then rename, so a partial download isn't seen as
 	// complete by the media server's scan (atomic publish).
 	tmp := path + ".part"
@@ -409,10 +464,29 @@ func (diskSink) WriteStream(path string, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(f, r); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return err
+	buffer := make([]byte, 128<<10)
+	for {
+		n, readErr := r.Read(buffer)
+		if n > 0 {
+			if err := guard.Add(ctx, int64(n)); err != nil {
+				_ = f.Close()
+				_ = os.Remove(tmp)
+				return err
+			}
+			if _, err := f.Write(buffer[:n]); err != nil {
+				_ = f.Close()
+				_ = os.Remove(tmp)
+				return err
+			}
+		}
+		if readErr != nil {
+			if !errors.Is(readErr, io.EOF) {
+				_ = f.Close()
+				_ = os.Remove(tmp)
+				return readErr
+			}
+			break
+		}
 	}
 	if err := f.Close(); err != nil {
 		return err

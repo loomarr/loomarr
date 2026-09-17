@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -136,8 +137,17 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 	if ytPath != "" {
 		ytDL = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
 	}
+	governor, governorErr := storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
+		{Path: layout.ClipDir(), Domain: storagegovernor.DomainFiller},
+		{Path: layout.WatchDir(), Domain: storagegovernor.DomainFiller},
+	}, nil)
+	if governorErr != nil {
+		log.Error("filler storage governor is unavailable", "err", governorErr)
+	}
 	log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
-	return clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(), layout.WatchDir(), log).WithArtifactWriter(artifacts)
+	return clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(), layout.WatchDir(), log).
+		WithArtifactWriter(artifacts).
+		WithStorageGovernor(governor)
 }
 
 // buildSplitter constructs the compilation splitter (§10, V34). Nil without a drop-folder — clip

@@ -29,9 +29,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // Kind is the source type — it selects the downloader.
@@ -57,6 +59,10 @@ type Source struct {
 	// adapters retain their provider-specific idempotency index without publishing into it.
 	PublicationDir string
 	archiveAttempt bool
+	// writeCeilingBytes is governor-owned and reaches the provider adapter only
+	// after a reservation is granted. It is deliberately not caller-settable.
+	writeCeilingBytes int64
+	storageLease      *storagegovernor.Lease
 }
 
 // Output is one exact file produced by a downloader. Provider adapters identify bytes; the
@@ -123,6 +129,7 @@ type Ingestor struct {
 	dropDir string
 	log     *slog.Logger
 	writer  ArtifactWriter
+	storage *storagegovernor.Governor
 	now     func() time.Time
 }
 
@@ -136,6 +143,122 @@ func New(youtube, archive Downloader, dropDir string, log *slog.Logger) *Ingesto
 func (i *Ingestor) WithArtifactWriter(writer ArtifactWriter) *Ingestor {
 	i.writer = writer
 	return i
+}
+
+// WithStorageGovernor requires provider metadata and an atomic reservation
+// before a planned production acquisition can be queued.
+func (i *Ingestor) WithStorageGovernor(governor *storagegovernor.Governor) *Ingestor {
+	i.storage = governor
+	return i
+}
+
+// CapacityError retains the server-owned pause reason without making callers
+// parse downloader or filesystem diagnostics.
+type CapacityError struct {
+	Decision storagegovernor.Decision
+}
+
+func (e *CapacityError) Error() string {
+	if e == nil {
+		return "filler storage is unavailable"
+	}
+	if e.Decision.Err != nil {
+		return fmt.Sprintf("filler storage paused (%s): %v", e.Decision.Snapshot.Reason, e.Decision.Err)
+	}
+	return fmt.Sprintf("filler storage paused (%s)", e.Decision.Snapshot.Reason)
+}
+
+type plannedSource struct {
+	source Source
+	lease  *storagegovernor.Lease
+}
+
+// Plan owns reservations acquired before durable queue mutation. Run consumes
+// it at most once; Release is idempotent for every start/failure path.
+type Plan struct {
+	ingestor *Ingestor
+	sources  []plannedSource
+	once     sync.Once
+}
+
+// AcquisitionPlan is the prepared, already-reserved unit the app may durably
+// queue. Test adapters can implement this without filesystem or provider I/O.
+type AcquisitionPlan interface {
+	Run(context.Context) Result
+	Release()
+}
+
+// Prepare estimates and reserves every selected item as one atomic batch from
+// the caller's perspective. Any refusal releases earlier leases.
+func (i *Ingestor) Prepare(ctx context.Context, sources []Source, mode storagegovernor.Mode) (AcquisitionPlan, error) {
+	if i == nil || i.storage == nil {
+		return nil, &CapacityError{Decision: storagegovernor.Decision{
+			Snapshot: storagegovernor.Snapshot{Reason: storagegovernor.ReasonCapacityUnavailable},
+			Err:      errors.New("storage governor is not configured"),
+		}}
+	}
+	plan := &Plan{ingestor: i, sources: make([]plannedSource, 0, len(sources))}
+	for _, source := range sources {
+		downloader := i.downloaderFor(source.Kind)
+		estimator, ok := downloader.(Estimator)
+		if !ok {
+			plan.Release()
+			return nil, &CapacityError{Decision: storagegovernor.Decision{
+				Snapshot: storagegovernor.Snapshot{Domain: storagegovernor.DomainFiller, Reason: storagegovernor.ReasonEstimateUnknown},
+				Err:      ErrEstimateUnavailable,
+			}}
+		}
+		budget, err := estimator.Estimate(ctx, source)
+		if err != nil || budget.WriteCeilingBytes <= 0 || budget.ReservationBytes <= 0 {
+			plan.Release()
+			if err == nil {
+				err = ErrEstimateUnavailable
+			}
+			return nil, &CapacityError{Decision: storagegovernor.Decision{
+				Snapshot: storagegovernor.Snapshot{Domain: storagegovernor.DomainFiller, Reason: storagegovernor.ReasonEstimateUnknown},
+				Err:      err,
+			}}
+		}
+		lease, decision := i.storage.Reserve(ctx, storagegovernor.Request{
+			Path: i.dropDir, Domain: storagegovernor.DomainFiller,
+			EstimatedBytes: budget.ReservationBytes, Mode: mode,
+		})
+		if lease == nil {
+			plan.Release()
+			return nil, &CapacityError{Decision: decision}
+		}
+		source.writeCeilingBytes = budget.WriteCeilingBytes
+		source.storageLease = lease
+		plan.sources = append(plan.sources, plannedSource{source: source, lease: lease})
+	}
+	return plan, nil
+}
+
+// Run consumes the plan and releases all reservations on return.
+func (p *Plan) Run(ctx context.Context) Result {
+	if p == nil || p.ingestor == nil {
+		return Result{Failed: 1}
+	}
+	var result Result
+	p.once.Do(func() {
+		defer p.release()
+		result = p.ingestor.run(ctx, p.sources)
+	})
+	return result
+}
+
+// Release abandons a prepared batch that could not be queued or started.
+func (p *Plan) Release() {
+	if p == nil {
+		return
+	}
+	p.once.Do(p.release)
+}
+
+func (p *Plan) release() {
+	for _, source := range p.sources {
+		source.lease.Release()
+	}
 }
 
 // Result aggregates one pass.
@@ -152,8 +275,17 @@ type Result struct {
 // Run ingests every source once. A failed source is logged and counted, never
 // fatal — one bad playlist must not stop the rest (§6 resilience spirit).
 func (i *Ingestor) Run(ctx context.Context, sources []Source) Result {
+	planned := make([]plannedSource, len(sources))
+	for index := range sources {
+		planned[index].source = sources[index]
+	}
+	return i.run(ctx, planned)
+}
+
+func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 	var res Result
-	for sourceIndex, src := range sources {
+	for sourceIndex, planned := range sources {
+		src := planned.source
 		select {
 		case <-ctx.Done():
 			return res
@@ -164,6 +296,14 @@ func (i *Ingestor) Run(ctx context.Context, sources []Source) Result {
 			i.logf("no downloader for kind %q (%s)", src.Kind, src.URL)
 			res.Failed++
 			continue
+		}
+		if planned.lease != nil {
+			decision := planned.lease.Revalidate(ctx, 0)
+			if !decision.Allowed {
+				i.logf("storage reservation for %s is no longer safe: %s", src.URL, decision.Snapshot.Reason)
+				res.Failed++
+				continue
+			}
 		}
 		outputDir := i.dropDir
 		if i.writer != nil {
@@ -177,6 +317,13 @@ func (i *Ingestor) Run(ctx context.Context, sources []Source) Result {
 			src.archiveAttempt = true
 		}
 		download, err := dl.Download(ctx, src, outputDir)
+		var capacityErr *CapacityError
+		if i.writer != nil && (errors.Is(err, ErrWriteCeilingExceeded) || errors.As(err, &capacityErr)) {
+			if cleanupErr := os.RemoveAll(outputDir); cleanupErr != nil {
+				err = errors.Join(err, fmt.Errorf("clean unsafe acquisition staging: %w", cleanupErr))
+			}
+			download = DownloadResult{}
+		}
 		manifests := i.manifests(src, outputDir, download.Outputs)
 		if len(manifests) > 0 && i.writer != nil {
 			if persistErr := i.writer.UpsertAcquisitionArtifacts(ctx, manifests); persistErr != nil {

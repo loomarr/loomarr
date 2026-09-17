@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -687,7 +688,7 @@ type fillerServiceAdapter struct {
 	// fetcher is nil unless the running image carries the ingest tooling (the single image
 	// — §16). nil is the normal state on loomarr:latest, not a misconfiguration.
 	fetcher interface {
-		Run(context.Context, []clipfetch.Source) clipfetch.Result
+		Prepare(context.Context, []clipfetch.Source, storagegovernor.Mode) (clipfetch.AcquisitionPlan, error)
 	}
 	// afterIngest closes the watch-folder → catalog → pipeline loop before a successful ingest
 	// event is published (§10 V56). Optional only in narrow unit tests.
@@ -995,6 +996,16 @@ func (a fillerServiceAdapter) ingest(
 		})
 	}
 	sourceID := commonAcquisitionSource(targets)
+	plan, err := a.fetcher.Prepare(ctx, sources, storagegovernor.Automatic)
+	if err != nil {
+		return "", err
+	}
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			plan.Release()
+		}
+	}()
 
 	now := time.Now
 	if a.now != nil {
@@ -1016,12 +1027,12 @@ func (a fillerServiceAdapter) ingest(
 	}
 	var res clipfetch.Result
 	operationTimeout := a.timeout * time.Duration(len(sources))
-	err := a.start(operationTimeout, func(operationCtx context.Context) error {
+	err = a.start(operationTimeout, func(operationCtx context.Context) error {
 		run.Status = filler.AcquisitionRunning
 		run.UpdatedAt = now().UTC()
 		a.persistAcquisition(operationCtx, run)
 		a.publishIngest(jobID, "starting", clipfetch.Result{}, "")
-		res = a.fetcher.Run(operationCtx, sources)
+		res = plan.Run(operationCtx)
 		run.Fetched, run.Skipped = res.Fetched, res.Skipped
 		run.Failed, run.Empty = res.Failed, res.Empty
 		if err := operationCtx.Err(); err != nil {
@@ -1054,6 +1065,7 @@ func (a fillerServiceAdapter) ingest(
 		a.persistAcquisition(ctx, run)
 		return "", err
 	}
+	handedOff = true
 	return jobID, nil
 }
 

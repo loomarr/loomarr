@@ -1,11 +1,15 @@
 package clipfetch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,7 +24,7 @@ type memSink struct {
 func newMemSink() *memSink { return &memSink{files: map[string][]byte{}} }
 
 func (m *memSink) Exists(path string) bool { _, ok := m.files[path]; return ok }
-func (m *memSink) WriteStream(path string, r io.Reader) error {
+func (m *memSink) WriteStream(_ context.Context, path string, r io.Reader, _ *writeGuard) error {
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
@@ -149,7 +153,7 @@ func TestArchive_DownloadsItemAndSidecar(t *testing.T) {
 func TestArchive_DownloadCarriesAcquisitionProvenance(t *testing.T) {
 	fs := newMemSink()
 	c := newTestClient(t, fs)
-	ctx := withAcquisition(context.Background(), "archive:classic", "acq-17", "")
+	ctx := withAcquisition(context.Background(), "archive:classic", "acq-17", "", nil)
 
 	if _, _, _, err := c.walk(ctx, "test-ad", "/drop"); err != nil {
 		t.Fatal(err)
@@ -195,6 +199,39 @@ func TestArchive_WalksCollection(t *testing.T) {
 	}
 	if fetched != 1 {
 		t.Errorf("collection walk fetched %d, want 1 (its one member item)", fetched)
+	}
+}
+
+func TestArchiveEstimateBudgetsTheRepresentationDownloadWillSelect(t *testing.T) {
+	t.Parallel()
+	c := newTestClient(t, newMemSink())
+	item, err := c.estimate(context.Background(), "https://archive.org/details/test-ad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.WriteCeilingBytes <= 246_000_000 || item.ReservationBytes <= item.WriteCeilingBytes {
+		t.Fatalf("item estimate = %+v, want original bytes plus processing headroom", item)
+	}
+	collection, err := c.estimate(context.Background(), "test-collection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if collection != item {
+		t.Fatalf("one-item collection estimate = %+v, want %+v", collection, item)
+	}
+}
+
+func TestDiskSinkStopsAndRemovesAnOverCeilingPartialDownload(t *testing.T) {
+	t.Parallel()
+	target := filepath.Join(t.TempDir(), "clip.mp4")
+	err := (diskSink{}).WriteStream(t.Context(), target, bytes.NewReader([]byte("12345")), newWriteGuard(nil, 4))
+	if !errors.Is(err, ErrWriteCeilingExceeded) {
+		t.Fatalf("WriteStream error = %v, want byte-ceiling refusal", err)
+	}
+	for _, path := range []string{target, target + ".part"} {
+		if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("partial path %s remains after overflow: %v", path, statErr)
+		}
 	}
 }
 

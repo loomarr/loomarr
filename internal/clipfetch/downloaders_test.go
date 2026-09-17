@@ -96,6 +96,39 @@ func TestYtDlpDownloaderFailureKeepsBoundedActionableDiagnostics(t *testing.T) {
 	}
 }
 
+func TestYtDlpEstimateUsesSelectedVideoAndAudioFormats(t *testing.T) {
+	t.Parallel()
+	executable := testkit.Executable(t, "fake-yt-dlp", `#!/bin/sh
+case "$*" in
+  *--no-config*--simulate*--dump-single-json*--playlist-end\ 1*) ;;
+  *) exit 19 ;;
+esac
+printf '%s\n' '{"duration":60,"height":1080,"filesize_approx":1,"requested_formats":[{"filesize":100000000},{"filesize_approx":10000000}]}'
+`)
+	budget, err := NewYtDlpDownloader(executable, "ffmpeg").Estimate(context.Background(), Source{
+		Kind: YouTube, URL: "https://www.youtube.com/watch?v=one",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if budget.WriteCeilingBytes <= 110_000_000 || budget.ReservationBytes <= budget.WriteCeilingBytes {
+		t.Fatalf("yt-dlp estimate = %+v, want selected formats plus processing headroom", budget)
+	}
+}
+
+func TestYtDlpEstimateFallsBackToDurationWhenProviderOmitsSize(t *testing.T) {
+	t.Parallel()
+	executable := testkit.Executable(t, "fake-yt-dlp", `#!/bin/sh
+printf '%s\n' '{"entries":[{"duration":30,"height":480}]}'
+`)
+	budget, err := NewYtDlpDownloader(executable, "ffmpeg").Estimate(context.Background(), Source{
+		Kind: YouTube, URL: "https://www.youtube.com/watch?v=one",
+	})
+	if err != nil || budget.WriteCeilingBytes <= 0 {
+		t.Fatalf("duration estimate = (%+v, %v), want bounded fallback", budget, err)
+	}
+}
+
 func TestYtDlpDownloaderNaturalSuccessStampsSidecar(t *testing.T) {
 	dir := t.TempDir()
 	sidecar := writeTestSidecar(t, dir)
