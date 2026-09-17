@@ -11108,7 +11108,13 @@ not projected into `Case.JudgeRubric`, cannot produce a scripted judge pass, and
 does not become certification evidence without the separately recorded reviewers,
 disagreements and adjudication required by its research protocol. Cross-jurisdiction
 or non-board rating facts may exercise synthetic policy plumbing only; they cannot
-promote an audience family to reviewed truth.
+promote an audience family to reviewed truth. A source-reviewed audience case names
+one rating authority, uses only that authority's ordinal scale, and keeps unrated or
+other-jurisdiction classifications outside the comparison. An explicitly reviewed
+empty pool is a successful abstention only when the case declares that outcome,
+requires zero grounded titles, and the production Suggester returns its ordinary
+no-grounded-title failure after bounded retrieval; an empty successful Proposal or
+a provider/generation fault is not equivalent.
 
 Explicit Library-only wording is a hard suggestion qualifier, including “no
 shows added from outside my library”; source-pool completion cannot restore
