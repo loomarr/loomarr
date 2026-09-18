@@ -375,7 +375,7 @@ func admitsUngroundedAudience(aud Audience) bool {
 // plus — on a channel allowed to take them — the clips whose audience could not be grounded.
 //
 // ⚠ **This rung is why picking an Audience stopped emptying the whole ladder (§10 V51f).**
-// `filler.ai_tagging` defaulted off for most of this project's life, so a real catalog is full of
+// optional classification was absent for most of this project's life, so a real catalog is full of
 // clips carrying `""`, which equals no audience and matches `General` either. The moment an
 // operator chose an audience, every rung went empty and the channel fell to its bumper card —
 // while the meter said "nothing in the catalog fits", which reads as a catalog problem rather

@@ -681,10 +681,9 @@ func (a fillerSplitStoreAdapter) ListSplitProposals(ctx context.Context) ([]fill
 	return a.st.ListSplitProposals(ctx)
 }
 
-// fillerServiceAdapter bridges filler.Syncer/Tagger → api.FillerService.
+// fillerServiceAdapter bridges filler acquisition and readiness → api.FillerService.
 type fillerServiceAdapter struct {
 	syncer *filler.Syncer
-	tagger *filler.Tagger
 	// fetcher is nil unless the running image carries the ingest tooling (the single image
 	// — §16). nil is the normal state on loomarr:latest, not a misconfiguration.
 	fetcher interface {
@@ -922,13 +921,6 @@ func (a fillerServiceAdapter) RetryDiagnostic(ctx context.Context, hash string) 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
 	res, err := a.syncer.Sync(ctx)
 	return res.Total, res.Added, res.Updated, res.Pruned, err
-}
-func (a fillerServiceAdapter) Tag(ctx context.Context) (int, int, int, int, error) {
-	if a.tagger == nil {
-		return 0, 0, 0, 0, nil // AI tagging disabled (FILLER_AI_TAGGING=false)
-	}
-	res, err := a.tagger.Run(ctx)
-	return res.Considered, res.Tagged, res.Partial, res.Skipped, err
 }
 
 // Ingest downloads clips into the drop-folder (§10). It returns a job id immediately and

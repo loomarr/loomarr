@@ -24,14 +24,14 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// fakeFiller records sync/tag calls.
+// fakeFiller records filler service calls.
 type fakeFiller struct {
 	pullMu     sync.Mutex
 	beforePull func()
 	testkit.FillerAcquisitionPlanner
-	syncs, tags, fetches int
-	fetchedSourceIDs     []string
-	rewinds              []struct {
+	syncs, fetches   int
+	fetchedSourceIDs []string
+	rewinds          []struct {
 		hash  string
 		from  filler.StageID
 		force bool
@@ -170,10 +170,6 @@ func (f *fakeFiller) RetryFailure(_ context.Context, hash string) error {
 func (f *fakeFiller) Sync(context.Context) (int, int, int, int, error) {
 	f.syncs++
 	return 4, 2, 1, 0, nil
-}
-func (f *fakeFiller) Tag(context.Context) (int, int, int, int, error) {
-	f.tags++
-	return 3, 2, 1, 0, nil
 }
 
 // Discover records the query so a test can prove the handler passes it through, and returns a
@@ -680,19 +676,19 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedClip(t, st, "stuck", filler.Commercial, 0, "", "")
 
-	member := do(t, srv, http.MethodPost, "/v1/filler/rewind", memberToken, `{"hash":"stuck","from":"tag"}`)
+	member := do(t, srv, http.MethodPost, "/v1/filler/rewind", memberToken, `{"hash":"stuck","from":"vision"}`)
 	if member.StatusCode != http.StatusForbidden {
 		t.Fatalf("member rewind → %d, want 403", member.StatusCode)
 	}
-	admin := do(t, srv, http.MethodPost, "/v1/filler/rewind", adminToken, `{"hash":"stuck","from":"tag"}`)
+	admin := do(t, srv, http.MethodPost, "/v1/filler/rewind", adminToken, `{"hash":"stuck","from":"vision"}`)
 	if admin.StatusCode != http.StatusNoContent {
 		t.Fatalf("admin rewind → %d, want 204", admin.StatusCode)
 	}
-	if len(ff.rewinds) != 1 || ff.rewinds[0].hash != "stuck" || ff.rewinds[0].from != filler.StageTag || ff.rewinds[0].force {
-		t.Errorf("rewinds = %+v, want stuck from tag without force", ff.rewinds)
+	if len(ff.rewinds) != 1 || ff.rewinds[0].hash != "stuck" || ff.rewinds[0].from != filler.StageVision || ff.rewinds[0].force {
+		t.Errorf("rewinds = %+v, want stuck from vision without force", ff.rewinds)
 	}
 
-	missing := do(t, srv, http.MethodPost, "/v1/filler/rewind", adminToken, `{"hash":"gone","from":"tag"}`)
+	missing := do(t, srv, http.MethodPost, "/v1/filler/rewind", adminToken, `{"hash":"gone","from":"vision"}`)
 	if missing.StatusCode != http.StatusNotFound {
 		t.Errorf("missing clip rewind → %d, want 404", missing.StatusCode)
 	}
@@ -799,20 +795,6 @@ func TestSyncFiller_AdminOnly(t *testing.T) {
 	}
 }
 
-func TestTagFiller_AdminOnly(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
-	if resp := do(t, srv, http.MethodPost, "/v1/filler/tag", "", ""); resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("member tag → %d, want 401", resp.StatusCode)
-	}
-	resp := do(t, srv, http.MethodPost, "/v1/filler/tag", adminToken, "")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("admin tag → %d", resp.StatusCode)
-	}
-	if ff.tags != 1 {
-		t.Errorf("tag invoked %d times, want 1", ff.tags)
-	}
-}
-
 // Clip search lives on /v1/filler, not /v1/search (§7.2). A clip is not a provisionable
 // title, so it cannot be a federated Candidate without pushing a non-title through the
 // LLM grounding path — the leak §10 exists to prevent.
@@ -859,6 +841,19 @@ func TestFiller_PatchCorrectsKind(t *testing.T) {
 	}
 	if got.Kind != filler.Trailer {
 		t.Errorf("kind = %q, want trailer", got.Kind)
+	}
+	states, err := st.ListFillerEnrichment(context.Background(), "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kindState fillerenrichment.State
+	for _, state := range states {
+		if state.Axis == fillerenrichment.AxisKind {
+			kindState = state
+		}
+	}
+	if kindState.Value.Text != "trailer" || kindState.Evidence.Kind != fillerenrichment.EvidenceOperator {
+		t.Fatalf("operator kind evidence = %+v", kindState)
 	}
 
 	// Omitting kind must leave it alone, so a tag-only edit never rewrites it.

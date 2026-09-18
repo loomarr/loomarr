@@ -1110,7 +1110,7 @@ func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
 			Disposition: filler.DispositionComplete},
 		{ClipHash: "rejected", Stage: filler.StageTranscode, Status: filler.StatusFailed,
 			Disposition: filler.DispositionRejected, RejectReason: filler.ReasonUnplayable},
-		{ClipHash: "dismissed", Stage: filler.StageTag, Status: filler.StatusDone,
+		{ClipHash: "dismissed", Stage: filler.StageVision, Status: filler.StatusDone,
 			Disposition: filler.DispositionDismissed},
 	}
 	for i := range rows {
@@ -1170,7 +1170,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	pipelines := []filler.ClipPipeline{
-		{ClipHash: "preparing", AcquisitionID: newer.ID, Stage: filler.StageTag, Status: filler.StatusRunning,
+		{ClipHash: "preparing", AcquisitionID: newer.ID, Stage: filler.StageVision, Status: filler.StatusRunning,
 			Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now},
 		{ClipHash: "review", AcquisitionID: newer.ID, Stage: filler.StageScore, Status: filler.StatusDone,
 			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
@@ -3505,7 +3505,7 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	p := filler.ClipPipeline{
-		ClipHash: clip.Hash, Stage: filler.StageTag, Status: filler.StatusRunning,
+		ClipHash: clip.Hash, Stage: filler.StageVision, Status: filler.StatusRunning,
 		Progress: 40, Disposition: filler.DispositionRunning,
 		Attempts: 1, ForceRun: true, NextRun: now, EnrolledAt: now, UpdatedAt: now,
 		PreparationAttempt: 2, PreparationStartedAt: now.Add(-5 * time.Minute),
@@ -3530,7 +3530,7 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !found {
 		t.Fatalf("GetClipPipeline = (%+v, %v, %v)", got, found, err)
 	}
-	if got.Stage != filler.StageTag || got.Status != filler.StatusRunning || got.Progress != 40 || got.Attempts != 1 {
+	if got.Stage != filler.StageVision || got.Status != filler.StatusRunning || got.Progress != 40 || got.Attempts != 1 {
 		t.Errorf("header round-trip lost fields: %+v", got)
 	}
 	if !got.ForceRun {

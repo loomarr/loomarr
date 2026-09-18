@@ -287,8 +287,8 @@ Placement were committed. Ready is the only state eligible for a Pod.
 _Avoid_: filed, admitted, approved clip
 
 **Enrichment axis**:
-One independent descriptive question Loomarr may answer about a Clip after Enrollment, such as era,
-brand, target audience, geography, language, product, or presentation. Each axis has its own durable
+One independent descriptive question Loomarr may answer about a Clip after Enrollment, such as kind,
+era, brand, target audience, geography, language, product, or presentation. Each axis has its own durable
 completion and evidence state; there is no clip-wide “AI tagged” answer.
 _Avoid_: tag pass, AI status, readiness check, safety axis
 

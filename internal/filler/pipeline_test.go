@@ -245,7 +245,7 @@ func TestPipeline_StagePanicBecomesARecoverableClipFailure(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "c1")
 	stages := allStages()
-	stages[filler.StageTag].panicV = "classifier exploded"
+	stages[filler.StageVision].panicV = "classifier exploded"
 
 	p := newPipe(st, asSlice(stages), filler.DefaultBudget())
 	if err := p.Advance(context.Background(), "c1"); err != nil {
@@ -253,13 +253,13 @@ func TestPipeline_StagePanicBecomesARecoverableClipFailure(t *testing.T) {
 	}
 
 	row := st.rows["c1"]
-	if row.Stage != filler.StageTag || row.Status != filler.StatusFailed || row.Attempts != 1 {
-		t.Fatalf("panic state = %q/%q attempts=%d, want tag/failed attempts=1", row.Stage, row.Status, row.Attempts)
+	if row.Stage != filler.StageVision || row.Status != filler.StatusFailed || row.Attempts != 1 {
+		t.Fatalf("panic state = %q/%q attempts=%d, want vision/failed attempts=1", row.Stage, row.Status, row.Attempts)
 	}
 	if row.NextRun.IsZero() {
 		t.Error("panic did not receive ordinary failure backoff")
 	}
-	if got := row.Stages[len(row.Stages)-1].Note; got != "stage tag panicked: classifier exploded" {
+	if got := row.Stages[len(row.Stages)-1].Note; got != "stage vision panicked: classifier exploded" {
 		t.Fatalf("panic note = %q", got)
 	}
 }
@@ -378,18 +378,18 @@ func TestPipeline_RewindResetsOnlyTheRequestedSuffix(t *testing.T) {
 	st.rows["stuck"] = row
 
 	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
-	if err := p.Rewind(context.Background(), "stuck", filler.StageTag, false); err != nil {
+	if err := p.Rewind(context.Background(), "stuck", filler.StageVision, false); err != nil {
 		t.Fatal(err)
 	}
 	got := st.rows["stuck"]
-	if got.Stage != filler.StageTag || got.Status != filler.StatusQueued || got.Attempts != 0 || got.Disposition != filler.DispositionRunning {
-		t.Fatalf("rewound row = %+v, want tag/queued/running with fresh attempts", got)
+	if got.Stage != filler.StageVision || got.Status != filler.StatusQueued || got.Attempts != 0 || got.Disposition != filler.DispositionRunning {
+		t.Fatalf("rewound row = %+v, want vision/queued/running with fresh attempts", got)
 	}
 	if !got.ForceRun {
 		t.Fatal("rewind did not persist the explicit rerun instruction")
 	}
-	if len(got.Stages) != filler.StageIndex(filler.StageTag) {
-		t.Fatalf("kept %d stages, want only %d stages before tag", len(got.Stages), filler.StageIndex(filler.StageTag))
+	if len(got.Stages) != filler.StageIndex(filler.StageVision) {
+		t.Fatalf("kept %d stages, want only %d stages before vision", len(got.Stages), filler.StageIndex(filler.StageVision))
 	}
 	if got.PreparationAttempt != 2 || got.PreparationStartReason != filler.PreparationStartedByRestart || got.PreparationProgress != 0 {
 		t.Fatalf("rewind attempt = (%d, %q, %d), want generation 2 restart at zero", got.PreparationAttempt, got.PreparationStartReason, got.PreparationProgress)
@@ -408,18 +408,18 @@ func TestPipeline_RewindRunsAStageThatWouldNormallySkip(t *testing.T) {
 	}
 	st.rows["already-tagged"] = row
 
-	tag := stage(filler.StageTag)
-	tag.applies = false
-	tag.note = "already fully tagged"
-	p := newPipe(st, []filler.Stage{tag, stage(filler.StageScore)}, filler.DefaultBudget()).WithRewind(st, "")
-	if err := p.Rewind(context.Background(), "already-tagged", filler.StageTag, false); err != nil {
+	vision := stage(filler.StageVision)
+	vision.applies = false
+	vision.note = "already inspected"
+	p := newPipe(st, []filler.Stage{vision, stage(filler.StageScore)}, filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.Rewind(context.Background(), "already-tagged", filler.StageVision, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if tag.runs != 1 {
-		t.Fatalf("tag runs = %d, want 1 after an explicit rewind", tag.runs)
+	if vision.runs != 1 {
+		t.Fatalf("vision runs = %d, want 1 after an explicit rewind", vision.runs)
 	}
 	if st.rows["already-tagged"].ForceRun {
 		t.Fatal("forced rerun marker survived the requested stage")

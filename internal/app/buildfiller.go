@@ -33,29 +33,6 @@ import (
 // EIGHT locals from earlier sections, while its 133-line suggester section reads far more.
 // Coupling, not size, predicts extraction cost — extract along the seam, not the line count.
 
-// buildTagger constructs the AI-tagging provider and the manual whole-catalog tagger (§10).
-//
-// Returns BOTH because they have different lifetimes and different consumers: the provider is
-// also handed to the ingest pipeline's tag rung (§10 V51b), which is why it is hoisted out of
-// the `if` rather than living inside the tagger. Nil for both is the honest un-opted-in state,
-// and every reader treats it that way — the manual sweep becomes a no-op, and the rung reports
-// "no language model is configured" on each clip's ladder rather than silently doing nothing.
-func buildTagger(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, recorder *metrics.Recorder) (llm.Provider, *filler.Tagger) {
-	if !set.boolv("filler.ai_tagging") {
-		return nil, nil
-	}
-	provider := activeFillerProvider(set, recorder)
-	if provider == nil {
-		return nil, nil
-	}
-
-	// The generation's clip-root FS lets tagging read the info-JSON sidecars ingest writes beside
-	// each clip (§10). A zero layout yields nil and tagging falls back to filenames.
-	tagger := filler.NewTagger(fillerTagStoreAdapter{st: st}, provider, layout.FS(), time.Now, log)
-
-	return provider, tagger
-}
-
 // buildSyncer constructs the catalog syncer and its scan sources (§10 V38c).
 //
 // ⚠ Policy remains live, while the storage layout is immutable for this application generation.
@@ -153,8 +130,7 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 // yt-dlp is absent. whisper is optional: without it, over-long segments come back Unsplittable
 // rather than guessed (§15).
 //
-// The LLM provider wires whenever one is configured — splitting's rescue and classification are
-// operator-invoked, so they are not gated by `filler.ai_tagging`, which gates the batch job.
+// The LLM provider wires whenever one is configured because splitting is operator-invoked.
 func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
@@ -228,7 +204,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
 func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
-	splitter *filler.Splitter, taggerProvider llm.Provider, wake *fillerChannelWake,
+	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder) *filler.Pipeline {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
@@ -241,10 +217,8 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	// the PROVIDER needs a restart, which is the same bargain `llm.provider` makes.
 	var langDetect filler.LanguageDetector
 	if set.str("filler.language_provider") == "hosted" {
-		// ⚠ Its OWN client rather than the tagger's. The tagging provider is built inside
-		// `if filler.ai_tagging && llm.url != ""`, so reusing it would silently tie the
-		// language gate to a setting that has nothing to do with it — switch AI tagging off
-		// and clips would stop being checked, with nothing saying why.
+		// ⚠ Its OWN client rather than the descriptive enrichment provider. Reusing the latter
+		// would silently tie this safety gate to unrelated classification availability.
 		//
 		// ⚠ Nil asker ⇒ the detector reports "cannot tell" and the gate keeps every clip.
 		// That is the honest state for an install that selected `hosted` without configuring
@@ -355,7 +329,6 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 			func() string { return set.str("filler.language") }, time.Now),
 		filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
 			func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now),
-		filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st: st}, fillerDrop, time.Now),
 		filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
 			func() bool { return set.boolv("filler.vision.enabled") }, time.Now),
 		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, nil, time.Now),

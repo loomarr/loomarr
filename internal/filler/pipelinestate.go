@@ -23,7 +23,6 @@ const (
 	StageScreen     StageID = "screen"
 	StageLanguage   StageID = "language"
 	StageTranscribe StageID = "transcribe"
-	StageTag        StageID = "tag"
 	StageVision     StageID = "vision"
 	StageScore      StageID = "score"
 )
@@ -41,7 +40,7 @@ const (
 // descriptive rung, after which terminal readiness owns the effective publication transition.
 var StageOrder = []StageID{
 	StageProbe, StageTranscode, StageSplit, StageScreen, StageLanguage,
-	StageTranscribe, StageTag, StageVision, StageScore,
+	StageTranscribe, StageVision, StageScore,
 }
 
 // StageIndex returns a stage's position in StageOrder, or -1 when it is not a stage.

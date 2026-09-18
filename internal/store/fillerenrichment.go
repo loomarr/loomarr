@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 )
 
-const catalogProjectionBackfillVersion = 1
+const catalogProjectionBackfillVersion = 2
 
 const enrichmentColumns = `clip_hash, axis, state, value_json, evidence_kind,
        evidence_rank, evidence_reference, confidence, producer, producer_version,
@@ -207,6 +207,12 @@ func (s *sqlStore) groundEnrichmentStateTx(ctx context.Context, tx *sql.Tx, stat
 func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx *sql.Tx, state fillerenrichment.State, updatedAt time.Time) error {
 	var err error
 	switch state.Axis {
+	case fillerenrichment.AxisKind:
+		if kind := filler.Kind(state.Value.Text); kind == filler.Commercial || kind == filler.Bumper ||
+			kind == filler.StationID || kind == filler.PSA || kind == filler.Trailer || kind == filler.Interstitial {
+			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET kind = ?, updated_at = ? WHERE hash = ? AND kind = ?`),
+				string(kind), epoch(updatedAt), state.ClipHash, string(filler.Unclassified))
+		}
 	case fillerenrichment.AxisEra:
 		if state.Value.Year > 0 {
 			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET era = ?, updated_at = ? WHERE hash = ? AND era = 0`), state.Value.Year, epoch(updatedAt), state.ClipHash)
@@ -341,6 +347,9 @@ func (s *sqlStore) backfillFillerEnrichment(ctx context.Context, completedAt tim
 			textKind = fillerenrichment.EvidenceInference
 		}
 		var states []fillerenrichment.State
+		if clip.Kind != filler.Unclassified {
+			states = append(states, base(fillerenrichment.AxisKind, fillerenrichment.Value{Text: string(clip.Kind)}, textKind, "catalog.kind"))
+		}
 		if clip.Era > 0 {
 			states = append(states, base(fillerenrichment.AxisEra, fillerenrichment.Value{Year: clip.Era}, textKind, "catalog.era"))
 		}

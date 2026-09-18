@@ -324,7 +324,7 @@ func TestHostedTranscriber_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 	}
 }
 
-func TestFillerTagger_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
+func TestFillerEnrichment_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 	var authorization string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authorization = r.Header.Get("Authorization")
@@ -334,18 +334,17 @@ func TestFillerTagger_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	set := visionSet(t, map[string]string{
-		"filler.ai_tagging":      "true",
 		"llm.provider":           "openai",
 		"llm.hosted_provider":    "openrouter",
 		"llm.url":                server.URL,
 		"llm.model":              "openai/gpt-4o-mini",
 		"llm.api_key.openrouter": "provider-secret",
 	})
-	provider, _ := buildTagger(nil, set, filler.Layout{}, nil, nil)
-	if provider == nil {
-		t.Fatal("tagger provider is nil for configured OpenRouter")
+	selection := activeFillerTextSelection(set, nil)
+	if selection.Provider == nil {
+		t.Fatal("enrichment provider is nil for configured OpenRouter")
 	}
-	if _, err := provider.Chat(context.Background(), nil, llm.ChatOptions{}); err != nil {
+	if _, err := selection.Provider.Chat(context.Background(), nil, llm.ChatOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if authorization != "Bearer provider-secret" {

@@ -16,7 +16,6 @@ import {
   getSplitFillerMockHandler,
   getSyncFillerMockHandler,
   getTagFillerClipMockHandler,
-  getTagFillerMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
@@ -94,8 +93,7 @@ const fireFrame = (type: string, payload: unknown) => {
 //     assertions in this file then searched for "a PATCH, to anything" and read its body.
 //   • `u.endsWith("/split")` and `u.includes("/v1/filler/splits/")` are two different endpoints
 //     distinguished only by a trailing slash and a plural.
-//   • `u.includes("/v1/filler/tag")` also matches `/v1/filler/tags`, so the whole-catalog AI
-//     tagger and the single-clip tag write shared one branch.
+//   • route-prefix matching can make a collection action and single-clip tag write share a branch.
 //
 // Every one is route-bound now, and the recorded values below come from the resolver that owns
 // the route rather than from a scan of the test's own call log.
@@ -117,7 +115,6 @@ const stubFiller = ({
   server.use(
     getMeMockHandler(who),
     getSyncFillerMockHandler({ total: 3, added: 2, updated: 1, pruned: 0 }),
-    getTagFillerMockHandler({ considered: 2, tagged: 2, partial: 0, skipped: 0 }),
     getIngestFillerMockHandler({ jobId: "job-1" }),
     // Split (V34): detection starts as a job; the review route reads the proposal back.
     getSplitFillerMockHandler(() => {

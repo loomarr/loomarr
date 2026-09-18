@@ -9,12 +9,12 @@ import (
 
 const (
 	DeterministicProducer        = "deterministic-metadata"
-	DeterministicProducerVersion = "1"
+	DeterministicProducerVersion = "2"
 	ControlledTaxonomyVersion    = "seed-v2"
 )
 
 var DeterministicAxes = []Axis{
-	AxisEra, AxisBrand, AxisGeography, AxisProduct, AxisFormat,
+	AxisKind, AxisEra, AxisBrand, AxisGeography, AxisProduct, AxisFormat,
 	AxisSeasonal, AxisAudienceCue, AxisPresentation,
 }
 
@@ -25,10 +25,12 @@ type Signals struct {
 	Description  string
 	OriginalName string
 	// UploadDate is retained so tests pin the rule that upload time never becomes broadcast era.
-	UploadDate string
-	SourceID   string
-	Source     Geography
-	ObservedAt time.Time
+	UploadDate  string
+	SourceID    string
+	Source      Geography
+	Transcript  string
+	VisibleText string
+	ObservedAt  time.Time
 }
 
 type phraseMapping struct {
@@ -84,7 +86,14 @@ func AnalyzeDeterministic(signals Signals) []State {
 		appendState(AxisProduct, Value{Tags: []string{mapping.product}}, evidence)
 		break
 	}
-	if kind := strings.ToLower(strings.TrimSpace(signals.Kind)); kind != "" {
+	kind := strings.ToLower(strings.TrimSpace(signals.Kind))
+	kindReference := "clip.role"
+	if kind == "" || kind == "unclassified" {
+		kind = kindFromText(lower)
+		kindReference = "item.title_description_or_original_name"
+	}
+	if kind != "" && kind != "unclassified" {
+		appendState(AxisKind, Value{Text: kind}, itemEvidence(kindReference, 100))
 		format := map[string]string{
 			"commercial": "commercial", "psa": "psa", "promo": "promo", "bumper": "bumper",
 			"station_id": "ident", "interstitial": "interstitial",
@@ -134,6 +143,29 @@ func AnalyzeDeterministic(signals Signals) []State {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Axis < out[j].Axis })
 	return out
+}
+
+func kindFromText(lower string) string {
+	patterns := []struct {
+		kind    string
+		phrases []string
+	}{
+		{"station_id", []string{"station id", "station ident"}},
+		{"psa", []string{"public service announcement", " psa "}},
+		{"bumper", []string{"bumper"}},
+		{"trailer", []string{"trailer"}},
+		{"interstitial", []string{"interstitial"}},
+		{"commercial", []string{"commercial", "advertisement", " advert", " ad spot"}},
+	}
+	padded := " " + lower + " "
+	for _, pattern := range patterns {
+		for _, phrase := range pattern.phrases {
+			if strings.Contains(padded, phrase) {
+				return pattern.kind
+			}
+		}
+	}
+	return ""
 }
 
 func uniqueYears(raw []string) []int {

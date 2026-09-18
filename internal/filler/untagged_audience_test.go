@@ -4,7 +4,7 @@ import "testing"
 
 // The untagged-audience cliff (§10 V51f) and the guardrail that bounds the fix.
 //
-// ⚠ **The cliff:** `filler.ai_tagging` defaulted off for most of this project's life, so a real
+// ⚠ **The cliff:** optional classification was absent for most of this project's life, so a real
 // catalog is full of clips whose audience is `""`. `filterAudience` admits `c.Audience == aud ||
 // c.Audience == General`, and `""` is neither — so the moment an operator picked an Audience,
 // every rung emptied and the channel fell to its bumper card. The meter then said "nothing in the

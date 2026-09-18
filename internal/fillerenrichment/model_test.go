@@ -73,6 +73,22 @@ func TestApply_RefreshesAProducerVersionWithoutDiscardingAKnownValue(t *testing.
 	}
 }
 
+func TestApply_SelectedTextProviderMayRefreshOlderInference(t *testing.T) {
+	current := fillerenrichment.State{ClipHash: "clip", Axis: fillerenrichment.AxisAudience,
+		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "general"},
+		Evidence: evidence(fillerenrichment.EvidenceInference, 80)}
+	current.Evidence.Producer = "text-model:ollama"
+	current.Evidence.ProducerVersion = "prompt:old-model"
+	next := current
+	next.Value.Text = "family"
+	next.Evidence.Producer = "text-model:openrouter"
+	next.Evidence.ProducerVersion = "prompt:new-model"
+	got, changed, err := fillerenrichment.Apply(current, next)
+	if err != nil || !changed || got.Value.Text != "family" {
+		t.Fatalf("selected-provider refresh = %+v, changed %v, err %v", got, changed, err)
+	}
+}
+
 func TestApply_LaterOperatorCorrectionReplacesEarlierOperatorValue(t *testing.T) {
 	current := fillerenrichment.State{ClipHash: "clip", Axis: fillerenrichment.AxisBrand,
 		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "Old"},
@@ -96,6 +112,15 @@ func TestState_CompleteMayRecordHonestEmpty(t *testing.T) {
 	invalid.Status = fillerenrichment.StatusMissing
 	if err := invalid.Validate(); !errors.Is(err, fillerenrichment.ErrInvalidState) {
 		t.Fatalf("missing state with evidence error = %v, want ErrInvalidState", err)
+	}
+}
+
+func TestState_RejectsUnknownKind(t *testing.T) {
+	state := fillerenrichment.State{ClipHash: "clip", Axis: fillerenrichment.AxisKind,
+		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "promo"},
+		Evidence: evidence(fillerenrichment.EvidenceInference, 80)}
+	if err := state.Validate(); !errors.Is(err, fillerenrichment.ErrInvalidState) {
+		t.Fatalf("unknown kind error = %v, want ErrInvalidState", err)
 	}
 }
 
@@ -144,6 +169,9 @@ func statesByAxis(states []fillerenrichment.State) map[fillerenrichment.Axis]fil
 
 func TestAnalyzeDeterministic_TootsieUsesItemTextButNotUploadDate(t *testing.T) {
 	got := statesByAxis(fillerenrichment.AnalyzeDeterministic(readSignals(t, "tootsie-pop.info.json", "tootsie")))
+	if got[fillerenrichment.AxisKind].Value.Text != "commercial" {
+		t.Fatalf("kind = %+v", got[fillerenrichment.AxisKind])
+	}
 	if got[fillerenrichment.AxisBrand].Value.Text != "Tootsie Pop" {
 		t.Fatalf("brand = %+v", got[fillerenrichment.AxisBrand])
 	}
@@ -152,6 +180,19 @@ func TestAnalyzeDeterministic_TootsieUsesItemTextButNotUploadDate(t *testing.T) 
 	}
 	if got[fillerenrichment.AxisEra].Value.Year != 0 || got[fillerenrichment.AxisEra].Status != fillerenrichment.StatusComplete {
 		t.Fatalf("upload date became era or deterministic check was not recorded: %+v", got[fillerenrichment.AxisEra])
+	}
+}
+
+func TestAnalyzeDeterministic_RecognizesRoleFromItemText(t *testing.T) {
+	got := statesByAxis(fillerenrichment.AnalyzeDeterministic(fillerenrichment.Signals{
+		ClipHash: "advert", Kind: "unclassified", Title: "Local Toy Advert", ObservedAt: time.Unix(100, 0).UTC(),
+	}))
+	if got[fillerenrichment.AxisKind].Value.Text != "commercial" ||
+		got[fillerenrichment.AxisKind].Evidence.Reference != "item.title_description_or_original_name" {
+		t.Fatalf("item-text kind = %+v", got[fillerenrichment.AxisKind])
+	}
+	if tags := got[fillerenrichment.AxisFormat].Value.Tags; len(tags) != 1 || tags[0] != "commercial" {
+		t.Fatalf("item-text format = %+v", got[fillerenrichment.AxisFormat])
 	}
 }
 

@@ -136,7 +136,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `httpx` | 13 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 10 | `filler`, `httpx`, `metrics` |
-| `llm` | 6 | `httpx`, `metrics` |
+| `llm` | 7 | `httpx`, `metrics` |
 | `mediatools` | 11 | `diagnostics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
@@ -149,7 +149,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `storagegovernor` | 5 | — |
 | `store` | 15 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
-| `taxonomy` | 5 | — |
+| `taxonomy` | 6 | — |
 
 ##### Every package, by layer
 
@@ -173,8 +173,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the immutable replacement-candidate-pool contract.
 - **`fillercorpus`** · 7 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillerenrichment`** · 3 importers
-  Owns progressive descriptive understanding for filler clips.
 - **`fillereval`** · 7 importers
   Owns the hermetic certification contract for filler admission.
 - **`fillerstructure`** · 8 importers
@@ -207,7 +205,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`storagegovernor`** · 5 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`taxonomy`** · 5 importers
+- **`taxonomy`** · 6 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`testkit/execfixture`** · 1 importer
   Owns filesystem-backed executable test doubles without importing application packages.
@@ -262,7 +260,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillerbakeoff`** · 9 importers · → `filleradmission`, `fillereval`, `httpx`, `openroutermedia`
   Runs bounded, inference-spending filler admission comparisons.
-- **`llm`** · 6 importers · → `httpx`, `metrics`
+- **`llm`** · 7 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
@@ -275,6 +273,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 4**
 
+- **`fillerenrichment`** · 3 importers · → `llm`, `taxonomy`
+  Owns progressive descriptive understanding for filler clips.
 - **`mediatools`** · 11 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
@@ -1125,7 +1125,6 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | POST | `/v1/filler/sync` | Sync catalog from the Tunarr `local` filler source (§10). |
 | POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` if the vendored ingest tooling isn't runnable — it ships in the single image (§10, §16), so this is a degraded-install signal, not an opt-in gate. |
 | GET | `/v1/filler/acquisitions/{jobId}` | Read one durable filler acquisition run (admin), including queued/running/terminal download state, safe error, artifact publication, and current pipeline outcomes. This is reconnect truth for both direct and registered-source item downloads; `filler_ingest` SSE frames only reduce visible latency. |
-| POST | `/v1/filler/tag` | Start an AI-tagging job over untagged clips (§10). |
 | POST | `/v1/filler/split` | Propose splits for a compilation clip (admin, §10 V34). ⚠ The clip is identified by its content `hash` in the BODY — same wire-identity rule as `PATCH /v1/filler/tags` above. Runs detection — chapters → `blackdetect`/`silencedetect` → transcript rescue for over-long segments — as an **interactive operation** (minutes per file; progress on `/v1/events`), producing a persisted **split proposal**: the cut points, per-segment duration/tags (era suggestions marked unconfirmed when the year is not in the text), and dedup flags (a segment whose dHash matches an existing clip). The returned `jobId` is retained as the wire name for compatibility and identifies the durable operation read below. **Nothing enters the catalog here** — review is not optional, because detection quality is a property of the source (§10). |
 | GET | `/v1/filler/split-operations/{jobId}` | Read one split-detection operation (admin): queued/running/terminal state plus the terminal `proposalId` or safe error. This is the reconnect truth for the identifier returned by `POST /v1/filler/split`; a successful proposal remains a separate resource at `/v1/filler/splits/{proposalId}`. |
 | GET | `/v1/filler/splits/{proposalId}` | Read a split proposal (admin, §10 V34) — the source of truth on SSE reconnect, the same pattern as `/v1/proposals/{id}`. |
@@ -9168,7 +9167,7 @@ Two consequences, and the second is the one an operator feels:
 
 V51b replaces the seven sweeps with **one ordered per-clip pipeline** and one driver job.
 
-**The stages, in order:** `probe → transcode → split → screen → language → transcribe → tag →
+**The readiness stages, in order:** `probe → transcode → split → screen → language → transcribe →
 vision → score`. Each stage answers two questions separately — *does this stage apply to this Clip,
 in this install?* (no exec, re-evaluated while the Clip is on the conveyor) and *do the work*.
 Missing optional capability records a skipped rung and does not block Ready. A later capability
@@ -9177,7 +9176,7 @@ rewinds readiness or holds playable media (#1251).
 
 **Progressive enrichment is a separate, per-axis loop (#1251).** Readiness answers whether exact
 bytes may play; enrichment incrementally improves their descriptive matching metadata. The axes are
-era, brand, target audience, geography, language, and the controlled taxonomy dimensions product,
+kind, era, brand, target audience, geography, language, and the controlled taxonomy dimensions product,
 format, seasonal, audience cue, and presentation. A missing descriptive answer never holds,
 unpublishes, duplicates, or removes a Ready Clip, and enrichment never creates an Incoming
 Needs-help task.
@@ -9213,6 +9212,17 @@ household's already-enabled AI capability and existing egress/cost controls. The
 Filler-specific enable switch. Ready Clips wake automatically when a relevant capability or
 taxonomy version appears; the manual whole-catalog tagging action and the clip-wide `ai_tagged` /
 `vision_tagged` authority retire once this loop owns catch-up.
+
+The text-model pass is automatic when the household has a configured text provider. It makes one
+bounded JSON-mode call per eligible Clip, names only axes whose accepted value is still empty, and
+serves the current operator-editable taxonomy in the prompt. Returned taxonomy terms are
+resolve-or-dropped against that same vocabulary, a brand is accepted only when it occurs literally
+in the supplied item/transcript/visible-text signals, and the pass never asks a text model to infer
+era or geography. Its durable pass identity binds the prompt version, branded provider, selected
+model, and a digest of the live taxonomy. Changing any of those wakes the relevant Clips; replaying
+the same identity does not pay for another call. An absent provider does not query, stamp, fail, or
+create a visible problem. Operator evidence, including an intentional empty correction, is never
+reopened by automation.
 
 **The pipeline is sequential and budget-bounded, and that is not a limitation.** Whisper is ~341s
 per clip under QEMU and ffmpeg competes with playout for the GPU, so one clip at a time is what
@@ -10154,7 +10164,7 @@ Two jobs the suggester (§8) can do here, both under the same grounding rule (ca
 2. **Assemble pods** matched to a block's vibe, and flag gaps — "the Saturday-morning channel has no 80s toy ads" — so you can point the `FillerSource` at a playlist to fill them.
 
 ### Config
-Core: `FILLER_DIR` (Loomarr's own clip folder, scanned directly; on a Tunarr-backed channel Loomarr separately exposes the same folder as a Tunarr `local` source), `FILLER_SYNC_EVERY`, `FILLER_AI_TAGGING`, and pod/density knobs (see §15). **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_TIMEOUT`; concurrency is owned by the pipeline implementation rather than exposed as a second worker dial. ⚠ **"Ingestion targets are supplied per-request by an admin — there is no unattended crawler" is SUPERSEDED (V38b).** A registered source now fetches on a schedule; see "Sources fetch on their own" below for what bounds it. The superseded rule's concern was right and is preserved as the limits there, not discarded. **Migration note (THRICE revised):** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity were superseded by the Tunarr `local`-source program id — itself superseded by the clip's path relative to `FILLER_DIR` (§9.1: internal playout needs a playable input, and it must not require Tunarr to discover its own files) — and **that is now superseded by a content hash (V38c, see "Clip identity is a content hash" below)**. Each step moved identity closer to the thing Loomarr actually owns: from a foreign id, to a path we control, to the file's own bytes.
+Core: `FILLER_DIR` (Loomarr's own clip folder, scanned directly; on a Tunarr-backed channel Loomarr separately exposes the same folder as a Tunarr `local` source), `FILLER_SYNC_EVERY`, and pod/density knobs (see §15). Text enrichment uses the household AI selection automatically; the retired `FILLER_AI_TAGGING` switch must not return. **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_TIMEOUT`; concurrency is owned by the pipeline implementation rather than exposed as a second worker dial. ⚠ **"Ingestion targets are supplied per-request by an admin — there is no unattended crawler" is SUPERSEDED (V38b).** A registered source now fetches on a schedule; see "Sources fetch on their own" below for what bounds it. The superseded rule's concern was right and is preserved as the limits there, not discarded. **Migration note (THRICE revised):** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity were superseded by the Tunarr `local`-source program id — itself superseded by the clip's path relative to `FILLER_DIR` (§9.1: internal playout needs a playable input, and it must not require Tunarr to discover its own files) — and **that is now superseded by a content hash (V38c, see "Clip identity is a content hash" below)**. Each step moved identity closer to the thing Loomarr actually owns: from a foreign id, to a path we control, to the file's own bytes.
 
 ---
 
@@ -11888,7 +11898,7 @@ Notifications → Add provider**.
 | `episodes.max_age` | `24h` — how stale a cached series episode list may be before resolution and `channel-maintenance` re-enumerate it (§5). A miss or aged row attempts the live library call. On an aged refresh failure, a non-empty valid cache preserves playable/safety facts but disables editorial subset selection; an empty cache remains unavailable. |
 | `SUGGEST_MAX_ACQUISITIONS` | `10` |
 | `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
-| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, scanned directly by Loomarr and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* Tunarr-backed channels also receive this folder as a `local` source; that playout integration is not how the catalog discovers files. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at generation build if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error). **Generation-scoped:** a saved replacement is desired immediately but every filesystem consumer keeps the applied root until restart. Changing it selects another library; it never moves the old library implicitly |
+| `FILLER_DIR` / `FILLER_SYNC_EVERY` | **`/data/filler`** / `15m` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, scanned directly by Loomarr and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* Tunarr-backed channels also receive this folder as a `local` source; that playout integration is not how the catalog discovers files. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at generation build if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error). **Generation-scoped:** a saved replacement is desired immediately but every filesystem consumer keeps the applied root until restart. Changing it selects another library; it never moves the old library implicitly |
 | `FILLER_WATCH_DIR` | **`""` ⇒ `<FILLER_DIR>/_watch`** (§10 V38c, "Two folders, one pipeline"). Where clips ARRIVE — downloads land here, operators drop files here — and Loomarr drains it into the clip folder on every sync. ⚠ **The default is derived rather than a literal**, so pointing `FILLER_DIR` at an existing library moves the watch folder with it instead of leaving it orphaned under `/data`. ⚠ **Underscore-prefixed and INSIDE the clip folder on purpose**: a sibling default would need a second mounted volume to survive a restart, and an unmounted watch folder loses anything not yet filed on the next restart — silently, because an empty folder is also what success looks like. The scan skips it by name, so a file waiting there is never catalogued from its arrival path. **Generation-scoped with `FILLER_DIR`:** saving both can never apply the new watch against the old root; one immutable pair takes effect after restart |
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_BREAK_DURATION` / `FILLER_POD_MAX` | `4` / `5m` / `4`. Break frequency is the inherited channel default (`policy.breaksPerHour`: absent = follow it, `0` = no breaks, positive = custom). Break length is also inherited (`policy.breakDuration`: absent = follow it, minimum `30s`) and never uses zero as off. Pod size is a global preferred clip count, automatically raised when the matching catalog's median clip duration needs more clips to fill the resolved break length. |
 | `FILLER_INCOMING_READY_WINDOW` | `24h` — how long Ready clips remain visible as recent activity in Filler → Incoming. Bounded from `1h` through `720h` (30 days), hot-applied on the next read, and view-only: aging out never removes a Library clip or changes playback eligibility. |

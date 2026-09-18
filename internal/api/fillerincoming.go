@@ -387,8 +387,6 @@ func friendlyIncomingProcessingStage(stage filler.StageID) string {
 		return "Detecting the language"
 	case filler.StageTranscribe:
 		return "Listening for speech"
-	case filler.StageTag:
-		return "Adding clip details"
 	case filler.StageVision:
 		return "Checking the picture"
 	case filler.StageScore:
@@ -404,7 +402,7 @@ func friendlyIncomingStage(stage filler.StageID) string {
 		return "Checking video"
 	case filler.StageSplit:
 		return "Checking for separate clips"
-	case filler.StageLanguage, filler.StageTranscribe, filler.StageTag, filler.StageVision:
+	case filler.StageLanguage, filler.StageTranscribe, filler.StageVision:
 		return "Adding details"
 	case filler.StageScore:
 		return "Finishing"

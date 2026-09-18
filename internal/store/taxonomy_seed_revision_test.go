@@ -61,7 +61,7 @@ func TestFillerEnrichmentBackfillCapturesExistingCatalogFactsOnce(t *testing.T) 
 	if err := st.SetClipTags(ctx, clip.Hash, []string{"condiments"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.db.ExecContext(ctx, `DELETE FROM filler_enrichment_backfills WHERE version = 1`); err != nil {
+	if _, err := st.db.ExecContext(ctx, `DELETE FROM filler_enrichment_backfills WHERE version = ?`, catalogProjectionBackfillVersion); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.backfillFillerEnrichment(ctx, at.Add(time.Minute)); err != nil {
@@ -75,7 +75,8 @@ func TestFillerEnrichmentBackfillCapturesExistingCatalogFactsOnce(t *testing.T) 
 	for _, state := range states {
 		byAxis[state.Axis] = state
 	}
-	if byAxis[fillerenrichment.AxisEra].Value.Year != 1999 || byAxis[fillerenrichment.AxisBrand].Value.Text != "HP Sauce" ||
+	if byAxis[fillerenrichment.AxisKind].Value.Text != "commercial" ||
+		byAxis[fillerenrichment.AxisEra].Value.Year != 1999 || byAxis[fillerenrichment.AxisBrand].Value.Text != "HP Sauce" ||
 		byAxis[fillerenrichment.AxisGeography].Evidence.Kind != fillerenrichment.EvidenceOperator ||
 		len(byAxis[fillerenrichment.AxisProduct].Value.Tags) != 1 {
 		t.Fatalf("backfilled states = %+v", states)

@@ -86,12 +86,6 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleAdmin), s.syncFiller)
 
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "tag-filler", Method: http.MethodPost, Path: "/v1/filler/tag",
-		Summary: "AI-tag untagged clips", Description: "Admin only. Text-signal classification (§10).",
-		Tags: []string{"filler"},
-	}, RoleAdmin), s.tagFiller)
-
-	huma.Register(api, withRole(huma.Operation{
 		OperationID: "rewind-filler-clip", Method: http.MethodPost, Path: "/v1/filler/rewind",
 		Summary: "Re-run a clip's ingest pipeline from one stage",
 		Description: "Admin only. Resets the selected stage and every later stage, durably forces the selected stage to run, and invalidates only derived data safe for that stage to replace. " +
@@ -230,7 +224,7 @@ func (s *Server) registerFiller(api huma.API) {
 type rewindFillerClipInput struct {
 	Body struct {
 		Hash  string `json:"hash" minLength:"1"`
-		From  string `json:"from" enum:"probe,transcode,split,screen,language,transcribe,tag,vision,score"`
+		From  string `json:"from" enum:"probe,transcode,split,screen,language,transcribe,vision,score"`
 		Force bool   `json:"force,omitempty"`
 	}
 }
@@ -822,6 +816,11 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if err := record(fillerenrichment.AxisAudience, fillerenrichment.Value{Text: in.Body.Audience}, ""); err != nil {
 		return nil, err
 	}
+	if in.Body.Kind != "" {
+		if err := record(fillerenrichment.AxisKind, fillerenrichment.Value{Text: in.Body.Kind}, ""); err != nil {
+			return nil, err
+		}
+	}
 	if in.Body.Brand != nil {
 		if err := record(fillerenrichment.AxisBrand, fillerenrichment.Value{Text: strings.TrimSpace(*in.Body.Brand)}, ""); err != nil {
 			return nil, err
@@ -883,29 +882,6 @@ func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput
 	}
 	out := &syncFillerOutput{}
 	out.Body.Total, out.Body.Added, out.Body.Updated, out.Body.Pruned = total, added, updated, pruned
-	return out, nil
-}
-
-type tagFillerOutput struct {
-	Body struct {
-		Considered int `json:"considered"`
-		Tagged     int `json:"tagged"`
-		Partial    int `json:"partial"`
-		Skipped    int `json:"skipped"`
-	}
-}
-
-func (s *Server) tagFiller(ctx context.Context, _ *struct{}) (*tagFillerOutput, error) {
-	if s.filler == nil || s.featureOff(ctx, "filler") {
-		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
-	}
-	considered, tagged, partial, skipped, err := s.filler.Tag(ctx)
-	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't tag filler",
-			"Loomarr couldn't AI-tag the filler clips. Check that an AI provider is connected in Settings and try again.", err)
-	}
-	out := &tagFillerOutput{}
-	out.Body.Considered, out.Body.Tagged, out.Body.Partial, out.Body.Skipped = considered, tagged, partial, skipped
 	return out, nil
 }
 

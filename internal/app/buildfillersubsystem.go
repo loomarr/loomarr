@@ -101,12 +101,11 @@ func buildFillerSubsystem(
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
-	taggerProvider, tagger := buildTagger(st, set, layout, log, metricRecorder)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor)
 	ytDlpPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
 	adapter := fillerServiceAdapter{
-		syncer: syncer, tagger: tagger, fetcher: fetcher,
+		syncer: syncer, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
 		start: owner.startInteractiveOperation, operations: st,
 		sources: st, pullPlanning: st, acquisitions: st, readiness: st, now: time.Now,
@@ -136,8 +135,8 @@ func buildFillerSubsystem(
 
 	jobs.Add(fillerSyncJob(syncer))
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
-		"every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
-	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake,
+		"every", set.dur("filler.sync_every"))
+	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
 	enrichment := fillerenrichment.NewRunner(
@@ -145,7 +144,13 @@ func buildFillerSubsystem(
 		fillerEnrichmentSignals{store: st, files: layout.FS()}.Load,
 		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
 	)
-	jobs.Add(fillerEnrichmentJob(enrichment))
+	enrichmentCoordinator := fillerenrichment.NewCoordinator(
+		enrichment, fillerEnrichmentRepository{st: st},
+		func() fillerenrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
+		fillerEnrichmentSignals{store: st, files: layout.FS()}.Load,
+		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
+	)
+	jobs.Add(fillerEnrichmentJob(enrichmentCoordinator))
 	adapter.pipeline = pipeline
 	if decisionService != nil {
 		decisionService.WithDiagnosticRecovery(adapter)

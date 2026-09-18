@@ -7,10 +7,12 @@ import (
 )
 
 type Candidate struct {
-	ClipHash string
-	Path     string
-	Name     string
-	Kind     string
+	ClipHash    string
+	Path        string
+	Name        string
+	Kind        string
+	Transcript  string
+	VisibleText string
 }
 
 type Repository interface {
@@ -40,6 +42,7 @@ func NewRunner(repository Repository, load SignalLoader, limit func() int, now f
 type RunResult struct {
 	Considered int
 	Updated    int
+	Failed     int
 }
 
 // Run performs one bounded, provider-free pass. Missing sidecars are handled by the loader as

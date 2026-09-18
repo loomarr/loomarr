@@ -14,7 +14,7 @@ func TestClipPipelineLifecycle(t *testing.T) {
 	}{
 		{
 			name: "queued and due is runnable",
-			row: ClipPipeline{Disposition: DispositionRunning, Stage: StageTag,
+			row: ClipPipeline{Disposition: DispositionRunning, Stage: StageTranscribe,
 				Status: StatusQueued, NextRun: now.Add(-time.Minute)},
 			want: PipelineLifecycle{State: LifecycleRunnable},
 		},
