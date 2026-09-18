@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { MovieCollectionChoices } from "@/suggest/movie-collection-choices";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
 import { SearchCommand } from "../../shell";
 import { episodeSelectionLabel } from "../episode-selection-label";
@@ -43,6 +44,20 @@ const seasonLabel = (item: ProposalItem) => {
   if (lo > 0 && hi > 0) return lo === hi ? `Season ${lo}` : `Seasons ${lo}–${hi}`;
   return lo > 0 ? `From season ${lo}` : `Through season ${hi}`;
 };
+
+const proposalItemFromCandidate = (candidate: SearchCandidate): ProposalItem => ({
+  name: candidate.name,
+  mediaType: candidate.mediaType,
+  inLibrary: candidate.inLibrary,
+  ...(candidate.libraryItemId ? { libraryItemId: candidate.libraryItemId } : {}),
+  ...(candidate.year ? { year: candidate.year } : {}),
+  ...(candidate.tmdbId ? { tmdbId: candidate.tmdbId } : {}),
+  ...(candidate.tvdbId ? { tvdbId: candidate.tvdbId } : {}),
+  ...(candidate.genres ? { genres: candidate.genres } : {}),
+  ...(candidate.officialRating ? { officialRating: candidate.officialRating } : {}),
+  ...(candidate.overview ? { overview: candidate.overview } : {}),
+  ...(candidate.runtimeMinutes ? { runtimeMinutes: candidate.runtimeMinutes } : {}),
+});
 
 const PickRow = ({
   pick,
@@ -125,6 +140,9 @@ const ProposalEdit = (props: ProposalEditProps) => {
     acquisitions,
     alternates = [],
     optionalSuggestions = [],
+    movieCollections = [],
+    movieCollectionsLoading = false,
+    movieCollectionsIncomplete = false,
     onFindMore,
     findingMore = false,
     episodeSelectionPreview,
@@ -203,19 +221,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
   };
 
   const addCandidate = (candidate: SearchCandidate) => {
-    const item: ProposalItem = {
-      name: candidate.name,
-      mediaType: candidate.mediaType,
-      inLibrary: candidate.inLibrary,
-      ...(candidate.libraryItemId ? { libraryItemId: candidate.libraryItemId } : {}),
-      ...(candidate.year ? { year: candidate.year } : {}),
-      ...(candidate.tmdbId ? { tmdbId: candidate.tmdbId } : {}),
-      ...(candidate.tvdbId ? { tvdbId: candidate.tvdbId } : {}),
-      ...(candidate.genres ? { genres: candidate.genres } : {}),
-      ...(candidate.officialRating ? { officialRating: candidate.officialRating } : {}),
-      ...(candidate.overview ? { overview: candidate.overview } : {}),
-      ...(candidate.runtimeMinutes ? { runtimeMinutes: candidate.runtimeMinutes } : {}),
-    };
+    const item = proposalItemFromCandidate(candidate);
     const next = [...added, item];
     emit(dropped, next, note);
     setQuery("");
@@ -237,6 +243,30 @@ const ProposalEdit = (props: ProposalEditProps) => {
     ...suggestions.map((pick) => pick.key),
     ...added.map(provisionKey),
   ]);
+  const baseKeys = new Set(picks.map((pick) => pick.key));
+  const selectedKeys = new Set([
+    ...picks.filter((pick) => !dropped.includes(pick.key)).map((pick) => pick.key),
+    ...added.map(provisionKey),
+  ]);
+
+  const addCollectionMembers = (members: SearchCandidate[]) => {
+    let nextDropped = [...dropped];
+    const nextAdded = [...added];
+    const nextAddedKeys = new Set(nextAdded.map(provisionKey));
+    for (const member of members) {
+      const key = provisionKey(member);
+      if (key === "") continue;
+      if (baseKeys.has(key)) {
+        nextDropped = nextDropped.filter((value) => value !== key);
+        continue;
+      }
+      if (nextAddedKeys.has(key)) continue;
+      if (suggestionKeys.has(key) && !nextDropped.includes(key)) nextDropped.push(key);
+      nextAdded.push(proposalItemFromCandidate(member));
+      nextAddedKeys.add(key);
+    }
+    emit(nextDropped, nextAdded, note);
+  };
   const edited = dropped.length > 0 || added.length > 0 || note.trim() !== "";
 
   return (
@@ -290,6 +320,17 @@ const ProposalEdit = (props: ProposalEditProps) => {
           );
         })}
       </ul>
+
+      <MovieCollectionChoices
+        collections={movieCollections}
+        selectedKeys={selectedKeys}
+        editable={editable}
+        disabled={disabled}
+        loading={movieCollectionsLoading}
+        incomplete={movieCollectionsIncomplete}
+        onAddCollection={(collection) => addCollectionMembers(collection.members)}
+        onAddMember={(member) => addCollectionMembers([member])}
+      />
 
       {editable &&
         (adding ? (

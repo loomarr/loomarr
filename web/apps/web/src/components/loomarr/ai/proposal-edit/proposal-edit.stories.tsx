@@ -2,6 +2,7 @@ import type { ProposalItem, SearchOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui";
+import type { MovieCollectionChoice } from "@/suggest/movie-collection-choices";
 import { widthFrame } from "@/test/story-utils";
 import { ProposalEdit } from "./proposal-edit";
 
@@ -49,6 +50,45 @@ const acquisitions: ProposalItem[] = [
   { name: "The Simpsons", year: 1989, mediaType: "series", tvdbId: 71663, inLibrary: false },
 ];
 
+const philosopherStone: ProposalItem = {
+  name: "Harry Potter and the Philosopher's Stone",
+  year: 2001,
+  mediaType: "movie",
+  tmdbId: 671,
+  inLibrary: true,
+  libraryItemId: "library-671",
+};
+
+const harryPotterCollection: MovieCollectionChoice = {
+  tmdbId: 1241,
+  name: "Harry Potter Collection",
+  members: [
+    philosopherStone,
+    {
+      name: "Harry Potter and the Chamber of Secrets",
+      year: 2002,
+      mediaType: "movie",
+      tmdbId: 672,
+      inLibrary: false,
+    },
+    {
+      name: "Harry Potter and the Prisoner of Azkaban",
+      year: 2004,
+      mediaType: "movie",
+      tmdbId: 673,
+      inLibrary: true,
+      libraryItemId: "library-673",
+    },
+    {
+      name: "Harry Potter and the Goblet of Fire",
+      year: 2005,
+      mediaType: "movie",
+      tmdbId: 674,
+      inLibrary: false,
+    },
+  ],
+};
+
 // Edit-before-approve (V25b): drop a title, add one via search, leave the requester a note. The
 // edit is a DELTA passed to the one approval gate, never a client-applied "final" list.
 const meta = {
@@ -66,5 +106,16 @@ const Default: Story = {};
 // Mid-approval: the controls lock so a click cannot race the request in flight.
 const Busy: Story = { args: { disabled: true } };
 
+// A proposal containing one franchise film exposes one restrained collection choice. The full
+// roster stays collapsed until the reviewer asks to choose individual films.
+const MovieCollection: Story = {
+  args: {
+    lineup: [philosopherStone],
+    acquisitions: [],
+    movieCollections: [harryPotterCollection],
+    showNote: false,
+  },
+};
+
 export default meta;
-export { Busy, Default };
+export { Busy, Default, MovieCollection };
