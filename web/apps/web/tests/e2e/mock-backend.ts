@@ -86,7 +86,15 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     enqueued: [] as string[],
     proposalJobRequests: [] as Record<string, unknown>[],
     proposalRevisionRequests: [] as Array<{ jobId: string; intent: Record<string, unknown> }>,
-    proposalRevisions: {} as Record<string, { intent: Record<string, unknown>; pendingJourneyReads: number }>,
+    proposalRevisions: {} as Record<
+      string,
+      {
+        intent: Record<string, unknown>;
+        previousIntent?: Record<string, unknown>;
+        pendingJourneyReads: number;
+        number: number;
+      }
+    >,
     channelCreationRequests: [] as Record<string, unknown>[],
     approvalRequests: [] as string[],
     approvalEdits: [] as Record<string, unknown>[],
@@ -232,7 +240,13 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       // The first authoritative read after the accepted mutation is still
       // generating and retains the submitted fallback. A later poll swaps in
       // the replacement, just as the durable Job does in production.
-      state.proposalRevisions[jobId] = { intent, pendingJourneyReads: 1 };
+      const previousRevision = state.proposalRevisions[jobId];
+      state.proposalRevisions[jobId] = {
+        intent,
+        ...(previousRevision ? { previousIntent: previousRevision.intent } : {}),
+        pendingJourneyReads: 1,
+        number: (previousRevision?.number ?? 0) + 1,
+      };
       return json(route, { jobId });
     }
     if (path.startsWith("/v1/proposal-jobs/") && method === "GET") {
@@ -271,6 +285,48 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         if (revisionRunning && revisionState) revisionState.pendingJourneyReads -= 1;
         const replacementReady = revisionState !== undefined && !revisionRunning;
         const currentIntent = revisionState?.intent ?? submission;
+        const displayedRevision = revisionState
+          ? revisionRunning
+            ? Math.max(0, revisionState.number - 1)
+            : revisionState.number
+          : 0;
+        const displayedIntent =
+          displayedRevision === 0
+            ? submission
+            : revisionRunning
+              ? revisionState?.previousIntent
+              : currentIntent;
+        const expansion =
+          typeof displayedIntent?.refineText === "string" &&
+          displayedIntent.refineText.startsWith("Find 6–8 additional titles that match this brief.");
+        const expansionNumber = displayedRevision;
+        const replacementAcquisitions = expansion
+          ? expansionNumber === 1
+            ? [
+                { name: "The Rock", year: 1996, mediaType: "movie", tmdbId: 9802, inLibrary: false },
+                { name: "Speed", year: 1994, mediaType: "movie", tmdbId: 1637, inLibrary: false },
+              ]
+            : [
+                { name: "Crimson Tide", year: 1995, mediaType: "movie", tmdbId: 8963, inLibrary: false },
+                { name: "Air Force One", year: 1997, mediaType: "movie", tmdbId: 9772, inLibrary: false },
+              ]
+          : [
+              { name: "The Matrix", year: 1999, mediaType: "movie", tmdbId: 603, inLibrary: false },
+              { name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false },
+            ];
+        const replacementAlternates = expansion
+          ? expansionNumber === 1
+            ? [{ name: "True Lies", year: 1994, mediaType: "movie", tmdbId: 36955, inLibrary: false }]
+            : [
+                {
+                  name: "Enemy of the State",
+                  year: 1998,
+                  mediaType: "movie",
+                  tmdbId: 9798,
+                  inLibrary: false,
+                },
+              ]
+          : [{ name: "Face/Off", year: 1997, mediaType: "movie", tmdbId: 754, inLibrary: false }];
         return json(route, {
           version: 1,
           jobId,
@@ -297,33 +353,30 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               : []),
           ],
           proposal: {
-            id: replacementReady ? `proposal-${jobId}-revision` : `proposal-${jobId}`,
+            id:
+              displayedRevision > 0 ? `proposal-${jobId}-revision-${displayedRevision}` : `proposal-${jobId}`,
             status: "submitted",
             proposal: {
-              intent: replacementReady ? currentIntent : submission,
-              channelName: replacementReady ? "Sci-Fi Action Mix" : "Friday Night Action",
+              intent: displayedIntent ?? submission,
+              channelName:
+                displayedRevision > 0
+                  ? expansion
+                    ? "Expanded 90s Action"
+                    : "Sci-Fi Action Mix"
+                  : "Friday Night Action",
               rationale: "A focused night of high-energy 90s action movies.",
               lineup: [
                 { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true },
                 { name: "Point Break", year: 1991, mediaType: "movie", tmdbId: 1089, inLibrary: true },
               ],
-              acquisitions: [
-                ...(replacementReady
-                  ? [
-                      {
-                        name: "The Matrix",
-                        year: 1999,
-                        mediaType: "movie",
-                        tmdbId: 603,
-                        inLibrary: false,
-                      },
-                    ]
-                  : []),
-                { name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false },
-              ],
-              alternates: [
-                { name: "Face/Off", year: 1997, mediaType: "movie", tmdbId: 754, inLibrary: false },
-              ],
+              acquisitions:
+                displayedRevision > 0
+                  ? replacementAcquisitions
+                  : [{ name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false }],
+              alternates:
+                displayedRevision > 0
+                  ? replacementAlternates
+                  : [{ name: "Face/Off", year: 1997, mediaType: "movie", tmdbId: 754, inLibrary: false }],
               scores: {
                 version: 1,
                 themeFit: 1,

@@ -124,7 +124,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
     lineup,
     acquisitions,
     alternates = [],
-    optionalSuggestionKeys = [],
+    optionalSuggestions = [],
     onFindMore,
     findingMore = false,
     episodeSelectionPreview,
@@ -145,7 +145,6 @@ const ProposalEdit = (props: ProposalEditProps) => {
   const added = currentEdit?.add ?? [];
   const note = currentEdit?.note ?? "";
 
-  const optionalKeys = new Set(optionalSuggestionKeys);
   const allPicks: Keyed[] = [
     ...lineup.map((item) => ({
       item,
@@ -154,11 +153,16 @@ const ProposalEdit = (props: ProposalEditProps) => {
     })),
     ...acquisitions.map((item) => ({ item, key: provisionKey(item), kind: "missing" as const })),
   ];
+  const optionalKeys = new Set(optionalSuggestions.map(provisionKey));
   const picks = allPicks.filter((pick) => !optionalKeys.has(pick.key));
   const addedKeys = new Set(added.map(provisionKey));
   const suggestionKeys = new Set<string>();
   const suggestions: Keyed[] = [
-    ...allPicks.filter((pick) => optionalKeys.has(pick.key)),
+    ...optionalSuggestions.map((item) => ({
+      item,
+      key: provisionKey(item),
+      kind: item.inLibrary ? ("ready" as const) : ("missing" as const),
+    })),
     ...alternates.map((item) => ({
       item,
       key: provisionKey(item),

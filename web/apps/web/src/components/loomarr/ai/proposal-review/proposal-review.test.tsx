@@ -183,7 +183,7 @@ describe("ProposalReview", () => {
         { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
       ],
       refineText:
-        "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
+        'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off".',
     });
 
     view.rerender(
@@ -201,6 +201,54 @@ describe("ProposalReview", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Find more suggestions" })).toBeEnabled();
     });
+  });
+
+  it("asks the next batch for titles that have not already been shown", async () => {
+    const onRevise = vi.fn();
+    renderReview(
+      <ProposalReview
+        proposal={proposal}
+        optionalSuggestions={[
+          { name: "Face/Off", year: 1997, mediaType: "movie", tmdbId: 754, inLibrary: false },
+          { name: "Point Break", year: 1991, mediaType: "movie", tmdbId: 1089, inLibrary: true },
+        ]}
+        selfService
+        onRevise={onRevise}
+      />,
+    );
+
+    await userEvent.click(screen.getByText("More suggestions"));
+    await userEvent.click(screen.getByRole("button", { name: "Find more suggestions" }));
+
+    expect(onRevise).toHaveBeenCalledWith(
+      expect.objectContaining({
+        refineText:
+          'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off" (1997); "Point Break" (1991).',
+      }),
+    );
+  });
+
+  it("stops offering another expansion when 24 options are ready to review", async () => {
+    const options = Array.from({ length: 24 }, (_, index) => ({
+      name: `Action option ${index + 1}`,
+      year: 1990 + index,
+      mediaType: "movie" as const,
+      tmdbId: 20_000 + index,
+      inLibrary: false,
+    }));
+    renderReview(
+      <ProposalReview
+        proposal={{ ...proposal, alternates: [] }}
+        optionalSuggestions={options}
+        selfService
+        onRevise={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByText("More suggestions"));
+
+    expect(screen.getByText("24 options")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Find more suggestions" })).not.toBeInTheDocument();
   });
 
   it("shows progress when finding more suggestions again after a failed attempt", async () => {

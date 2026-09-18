@@ -600,6 +600,221 @@ describe("ChannelSuggestPanel", () => {
     );
   });
 
+  it("keeps earlier options when another suggestion batch lands", async () => {
+    const faceOff = {
+      mediaType: "movie" as const,
+      tmdbId: 754,
+      name: "Face/Off",
+      year: 1997,
+      inLibrary: false,
+    };
+    const matrix = {
+      mediaType: "movie" as const,
+      tmdbId: 603,
+      name: "The Matrix",
+      year: 1999,
+      inLibrary: false,
+    };
+    const conAir = {
+      mediaType: "movie" as const,
+      tmdbId: 1701,
+      name: "Con Air",
+      year: 1997,
+      inLibrary: false,
+    };
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: PROPOSAL.id,
+        status: PROPOSAL.status,
+        proposal: { ...PROPOSAL.proposal, alternates: [faceOff] },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    stubSuggest();
+    const view = renderPanel(() => {});
+
+    await userEvent.click(await screen.findByText("More suggestions"));
+    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
+    await waitFor(() => {
+      if (!window.sessionStorage.getItem("loomarr.proposalReviewState.job-1")?.includes("Face/Off")) {
+        throw new Error("The initial review state has not settled yet");
+      }
+    });
+
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: "p-2",
+        status: "submitted",
+        proposal: {
+          ...PROPOSAL.proposal,
+          intent: {
+            ...PROPOSAL.proposal.intent,
+            refineText:
+              "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
+          },
+          lineup: [],
+          acquisitions: [matrix],
+          alternates: [conAir],
+        },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    view.rerenderPanel();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible());
+    expect(screen.getByRole("button", { name: "Add The Matrix" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Con Air" })).toBeVisible();
+    expect(screen.getByText("3 options")).toBeVisible();
+
+    view.unmount();
+    renderPanel(() => {});
+    await userEvent.click(await screen.findByText("More suggestions"));
+    expect(screen.getByText("3 options")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add The Matrix" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Con Air" })).toBeVisible();
+  });
+
+  it("keeps the option pool and explains when an expansion finds no new titles", async () => {
+    const faceOff = {
+      mediaType: "movie" as const,
+      tmdbId: 754,
+      name: "Face/Off",
+      year: 1997,
+      inLibrary: false,
+    };
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: PROPOSAL.id,
+        status: PROPOSAL.status,
+        proposal: { ...PROPOSAL.proposal, alternates: [faceOff] },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    stubSuggest();
+    const view = renderPanel(() => {});
+
+    await userEvent.click(await screen.findByText("More suggestions"));
+    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
+    await waitFor(() => {
+      if (!window.sessionStorage.getItem("loomarr.proposalReviewState.job-1")?.includes("Face/Off")) {
+        throw new Error("The initial review state has not settled yet");
+      }
+    });
+
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: "p-2",
+        status: "submitted",
+        proposal: {
+          ...PROPOSAL.proposal,
+          intent: {
+            ...PROPOSAL.proposal.intent,
+            refineText:
+              "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
+          },
+          alternates: [faceOff],
+        },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    view.rerenderPanel();
+
+    expect(
+      await screen.findByText(
+        "Loomarr didn’t find any new strong matches this time. Your existing options are still here.",
+      ),
+    ).toHaveAttribute("role", "status");
+    expect(screen.getByText("1 option")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
+  });
+
+  it("refreshes stale options when the channel brief changes", async () => {
+    const faceOff = {
+      mediaType: "movie" as const,
+      tmdbId: 754,
+      name: "Face/Off",
+      year: 1997,
+      inLibrary: false,
+    };
+    const matrix = {
+      mediaType: "movie" as const,
+      tmdbId: 603,
+      name: "The Matrix",
+      year: 1999,
+      inLibrary: false,
+    };
+    const conAir = {
+      mediaType: "movie" as const,
+      tmdbId: 1701,
+      name: "Con Air",
+      year: 1997,
+      inLibrary: false,
+    };
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: PROPOSAL.id,
+        status: PROPOSAL.status,
+        proposal: { ...PROPOSAL.proposal, alternates: [faceOff] },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    stubSuggest();
+    const view = renderPanel(() => {});
+    await userEvent.click(await screen.findByText("More suggestions"));
+    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
+    await waitFor(() => {
+      if (!window.sessionStorage.getItem("loomarr.proposalReviewState.job-1")?.includes("Face/Off")) {
+        throw new Error("The initial review state has not settled yet");
+      }
+    });
+
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: "p-2",
+        status: "submitted",
+        proposal: {
+          ...PROPOSAL.proposal,
+          intent: { description: "90s science-fiction action" },
+          lineup: [],
+          acquisitions: [matrix],
+          alternates: [conAir],
+        },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    view.rerenderPanel();
+
+    await waitFor(() => expect(screen.getByText("2 options")).toBeVisible());
+    expect(screen.queryByRole("button", { name: "Add Face/Off" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add The Matrix" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Con Air" })).toBeVisible();
+  });
+
   it("a member's approve is inert — no approve call fires (approval is admin-only, §7)", async () => {
     const user = userEvent.setup();
     // ProposalReview renders the Approve button off the proposal STATUS (same as /suggest);

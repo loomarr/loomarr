@@ -54,20 +54,67 @@ test("a first-time admin can shape the suggested channel before creating it", as
             { name: "The Matrix", year: 1999, key: "movie:tmdb:603" },
           ],
           refineText:
-            "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
+            'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off" (1997).',
         },
       },
     ]);
-  await expect(page.getByText("Sci-Fi Action Mix", { exact: true })).toBeVisible();
+  await expect(page.getByText("Expanded 90s Action", { exact: true })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Include Heat" })).not.toBeChecked();
   await expect(page.getByText("The Matrix", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("4 options", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add The Rock" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Speed" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add True Lies" })).toBeVisible();
+
+  // A second expansion adds another distinct batch instead of replacing the first.
+  await page.getByRole("button", { name: "Find more suggestions" }).click();
+  await expect(page.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
+  await expect
+    .poll(() => mock.state.proposalRevisionRequests)
+    .toEqual([
+      {
+        jobId: "proposal-job-1",
+        intent: {
+          description: "90s action movies",
+          currentLineup: [
+            { name: "Point Break", year: 1991, key: "movie:tmdb:1089" },
+            { name: "Con Air", year: 1997, key: "movie:tmdb:1701" },
+            { name: "The Matrix", year: 1999, key: "movie:tmdb:603" },
+          ],
+          refineText:
+            'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off" (1997).',
+        },
+      },
+      {
+        jobId: "proposal-job-1",
+        intent: {
+          description: "90s action movies",
+          currentLineup: [
+            { name: "Point Break", year: 1991, key: "movie:tmdb:1089" },
+            { name: "Con Air", year: 1997, key: "movie:tmdb:1701" },
+            { name: "The Matrix", year: 1999, key: "movie:tmdb:603" },
+          ],
+          refineText:
+            'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off" (1997); "The Rock" (1996); "Speed" (1994); "True Lies" (1994).',
+        },
+      },
+    ]);
+  await expect(page.getByText("7 options", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add The Rock" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Crimson Tide" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Air Force One" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Enemy of the State" })).toBeVisible();
 
   // A reload restores both the durable revision and the local selection delta.
   await page.reload();
   await expect(page.getByRole("heading", { name: "Review your channel" })).toBeVisible();
-  await expect(page.getByText("Sci-Fi Action Mix", { exact: true })).toBeVisible();
+  await expect(page.getByText("Expanded 90s Action", { exact: true })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Include Heat" })).not.toBeChecked();
   await expect(page.getByText("The Matrix", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("7 options", { exact: true })).toBeVisible();
+  await page.getByText("More suggestions", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Add The Rock" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add Enemy of the State" })).toBeVisible();
 
   // Editing the brief revises this Job in place. The current review remains on
   // screen while the replacement runs; it never falls back to the describe form.
@@ -90,7 +137,20 @@ test("a first-time admin can shape the suggested channel before creating it", as
             { name: "The Matrix", year: 1999, key: "movie:tmdb:603" },
           ],
           refineText:
-            "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
+            'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off" (1997).',
+        },
+      },
+      {
+        jobId: "proposal-job-1",
+        intent: {
+          description: "90s action movies",
+          currentLineup: [
+            { name: "Point Break", year: 1991, key: "movie:tmdb:1089" },
+            { name: "Con Air", year: 1997, key: "movie:tmdb:1701" },
+            { name: "The Matrix", year: 1999, key: "movie:tmdb:603" },
+          ],
+          refineText:
+            'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off" (1997); "The Rock" (1996); "Speed" (1994); "True Lies" (1994).',
         },
       },
       {
@@ -99,8 +159,8 @@ test("a first-time admin can shape the suggested channel before creating it", as
           description: "90s action with more sci-fi variety",
           currentLineup: [
             { name: "Point Break", year: 1991, key: "movie:tmdb:1089" },
-            { name: "The Matrix", year: 1999, key: "movie:tmdb:603" },
             { name: "Con Air", year: 1997, key: "movie:tmdb:1701" },
+            { name: "The Matrix", year: 1999, key: "movie:tmdb:603" },
           ],
         },
       },
@@ -140,6 +200,11 @@ test("the suggestion review remains usable on a phone with reduced motion", asyn
     .locator("svg")
     .evaluate((icon) => getComputedStyle(icon).animationDuration);
   expect(Number.parseFloat(animationDuration)).toBeLessThanOrEqual(0.001);
+
+  await expect(page.getByText("4 options", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Find more suggestions" }).click();
+  await expect(page.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
+  await expect(page.getByText("7 options", { exact: true })).toBeVisible();
 
   const review = page.getByRole("heading", { name: "Review your channel" }).locator("../..");
   const reviewBox = await review.boundingBox();

@@ -5,6 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import {
+  MAX_SUGGESTION_OPTIONS,
+  suggestionExpansionRequest,
+  suggestionIdentity,
+} from "@/suggest/suggestion-expansion";
 import { friendlyCandidateName, friendlyProposalRationale } from "@/suggest/suggestion-language";
 import { ProposalEdit } from "../proposal-edit";
 import { ProposalOutlook, ProposalOutlookDetails, ProposalOutlookDiagnostics } from "../proposal-outlook";
@@ -72,7 +77,8 @@ const selectedLineupContext = (
 
 const ProposalReview = ({
   proposal,
-  optionalSuggestionKeys,
+  optionalSuggestions,
+  expansionAdded,
   assessment,
   assessmentPending = false,
   edit,
@@ -99,6 +105,9 @@ const ProposalReview = ({
   const lineup = proposal.lineup ?? [];
   const acquisitions = proposal.acquisitions ?? [];
   const alternates = proposal.alternates ?? [];
+  const suggestionIdentities = new Set(
+    [...(optionalSuggestions ?? []), ...alternates].map(suggestionIdentity),
+  );
   const dropped = new Set(edit?.drop ?? []);
   const selectedReady =
     lineup.filter((item) => !dropped.has(provisionKey(item))).length +
@@ -257,6 +266,12 @@ const ProposalReview = ({
         </p>
       )}
 
+      {expansionAdded === 0 && !revising && !findingMore && !revisionError && (
+        <p role="status" className="text-muted-foreground text-sm">
+          Loomarr didn’t find any new strong matches this time. Your existing options are still here.
+        </p>
+      )}
+
       {partialTheme && (
         <p role="status" className="text-caution text-sm">
           <span className="font-medium">Some titles may be a loose match.</span> Remove anything that does not
@@ -268,16 +283,15 @@ const ProposalReview = ({
         lineup={lineup}
         acquisitions={acquisitions}
         alternates={alternates}
-        optionalSuggestionKeys={optionalSuggestionKeys}
+        optionalSuggestions={optionalSuggestions}
         onFindMore={
-          actionable && onRevise
+          actionable && onRevise && suggestionIdentities.size < MAX_SUGGESTION_OPTIONS
             ? () => {
                 setFindingMore(true);
                 onRevise({
                   ...requestIntent,
                   currentLineup,
-                  refineText:
-                    "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
+                  refineText: suggestionExpansionRequest([...(optionalSuggestions ?? []), ...alternates]),
                 });
               }
             : undefined
