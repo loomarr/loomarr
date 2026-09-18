@@ -17,6 +17,7 @@ import { Image } from "@/components/ui/image";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { ClipDetails } from "../clip-details";
+import { IncomingPreparationSummary } from "./incoming-preparation-summary";
 import { IncomingProcessingDetails } from "./incoming-processing-details";
 
 type IncomingView = Pick<
@@ -364,6 +365,7 @@ const Incoming = () => {
                       : "Preview is not available yet."}
                 </p>
               )}
+              <IncomingPreparationSummary preparation={selected.preparation} />
               <p className="text-muted-foreground text-xs">Updated {formatRelative(selected.updatedAt)}</p>
               <IncomingProcessingDetails key={selected.clipHash} processing={selected.processing} />
             </div>

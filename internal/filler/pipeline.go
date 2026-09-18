@@ -654,6 +654,9 @@ func (p *Pipeline) enrolMissing(ctx context.Context) (int, error) {
 		row := ClipPipeline{
 			ClipHash: c.Hash, Stage: StageProbe, Status: StatusQueued,
 			Disposition: DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+			PreparationAttempt: 1, PreparationStartedAt: now,
+			PreparationStartReason: PreparationStartedByEnrollment, PreparationProgress: 0,
+			StageQueuedAt: now,
 		}
 		if p.clipDir != "" && c.Path != "" {
 			if tags, ok := ReadSidecarTags(filepath.Join(p.clipDir, filepath.FromSlash(c.Path))); ok {
@@ -722,7 +725,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		if !known {
 			// Not wired in this build/install: skip and move on, recorded so the ladder says so.
 			row.Record(row.Stage, StatusSkipped, "not available on this install", row.Attempts, p.now().UTC())
-			if done := p.step(&row); done {
+			if done := p.step(&row, p.now().UTC()); done {
 				break
 			}
 			continue
@@ -746,7 +749,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		// is silent. One rule, stated once, and a new rung inherits it by existing.
 		if clip.IsComposite && row.Stage != StageProbe && row.Stage != StageSplit {
 			row.Record(row.Stage, StatusSkipped, "a compilation is completed after its segments are prepared", row.Attempts, p.now().UTC())
-			if done := p.step(&row); done {
+			if done := p.step(&row, p.now().UTC()); done {
 				break
 			}
 			continue
@@ -757,13 +760,14 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		// example, never classifying a compilation container) still win.
 		if applies, note := stage.Applies(ctx, clip); !applies && !row.ForceRun {
 			row.Record(row.Stage, StatusSkipped, note, row.Attempts, p.now().UTC())
-			if done := p.step(&row); done {
+			if done := p.step(&row, p.now().UTC()); done {
 				break
 			}
 			continue
 		}
 
 		row.Status, row.Attempts = StatusRunning, row.Attempts+1
+		row.StageStartedAt = p.now().UTC()
 		row.Progress = 0
 		if err := p.save(ctx, row, clip); err != nil {
 			return row.Disposition, err
@@ -813,7 +817,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 			if resolved := p.onFailure(&row, runErr); !resolved {
 				return row.Disposition, p.persist(ctx, row, clip)
 			}
-			if done := p.step(&row); done {
+			if done := p.step(&row, p.now().UTC()); done {
 				break
 			}
 			continue
@@ -869,7 +873,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		}
 
 		row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
-		if done := p.step(&row); done {
+		if done := p.step(&row, p.now().UTC()); done {
 			break
 		}
 	}
@@ -914,7 +918,7 @@ func (p *Pipeline) runStage(ctx context.Context, stage Stage, clip StoreClip) (o
 }
 
 // step advances to the next stage, returning true when the ladder is finished.
-func (p *Pipeline) step(row *ClipPipeline) bool {
+func (p *Pipeline) step(row *ClipPipeline, at time.Time) bool {
 	row.ForceRun = false
 	idx := StageIndex(row.Stage)
 	if idx < 0 || idx+1 >= len(StageOrder) {
@@ -925,6 +929,8 @@ func (p *Pipeline) step(row *ClipPipeline) bool {
 	row.Status = StatusQueued
 	row.Attempts = 0
 	row.Progress = 0
+	row.StageQueuedAt = at
+	row.StageStartedAt = time.Time{}
 	return false
 }
 
@@ -1093,6 +1099,9 @@ func (p *Pipeline) Enrol(ctx context.Context, hash string) error {
 	return p.store.UpsertClipPipeline(ctx, ClipPipeline{
 		ClipHash: hash, Stage: StageProbe, Status: StatusQueued,
 		Disposition: DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+		PreparationAttempt: 1, PreparationStartedAt: now,
+		PreparationStartReason: PreparationStartedByEnrollment, PreparationProgress: 0,
+		StageQueuedAt: now,
 	})
 }
 
@@ -1101,6 +1110,7 @@ func (p *Pipeline) Enrol(ctx context.Context, hash string) error {
 // could leave content the operator was explicitly asked to inspect eligible for a pod forever.
 func (p *Pipeline) save(ctx context.Context, row ClipPipeline, clip StoreClip) error {
 	row.UpdatedAt = p.now().UTC()
+	applyPreparationProgress(&row)
 	if row.Disposition.Terminal() {
 		// A terminal row is not due again; zero the schedule so the work list cannot re-pick it
 		// on a clock skew.

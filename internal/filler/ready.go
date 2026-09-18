@@ -91,6 +91,11 @@ func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
 		current.Disposition != DispositionRunning || current.Attempts != p.Attempts ||
 		current.ForceRun != p.ForceRun || current.RejectReason != p.RejectReason ||
 		current.RejectDetail != p.RejectDetail || !current.EnrolledAt.Equal(p.EnrolledAt) ||
+		current.PreparationAttempt != p.PreparationAttempt ||
+		!samePersistedSecond(current.PreparationStartedAt, p.PreparationStartedAt) ||
+		current.PreparationStartReason != p.PreparationStartReason ||
+		!samePersistedSecond(current.StageQueuedAt, p.StageQueuedAt) ||
+		!samePersistedSecond(current.StageStartedAt, p.StageStartedAt) ||
 		p.UpdatedAt.Before(current.UpdatedAt) {
 		return fmt.Errorf("%w: conveyor row is no longer the completed run", ErrReadyStale)
 	}
@@ -107,6 +112,18 @@ func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
 		return fmt.Errorf("%w: final score record is not complete", ErrReadyStale)
 	}
 	return nil
+}
+
+// samePersistedSecond compares timestamps at the precision owned by filler_clip_pipeline. The
+// pipeline retains sub-second stage timing in its JSON ladder, while the current-stage columns use
+// the store's Unix-second convention. A terminal commit still carries the in-memory nanoseconds
+// from the just-finished rung, so comparing those columns at nanosecond precision would reject the
+// exact row that the repository just read back.
+func samePersistedSecond(a, b time.Time) bool {
+	if a.IsZero() || b.IsZero() {
+		return a.IsZero() && b.IsZero()
+	}
+	return a.Unix() == b.Unix()
 }
 
 // ReadyRepository is the one publication seam. Ordinary clip and pipeline writers cannot clear a
@@ -160,6 +177,7 @@ func (t *TerminalReady) Commit(ctx context.Context, clip StoreClip, row ClipPipe
 	row.Disposition = DispositionReady
 	row.Status = StatusDone
 	row.Progress = 100
+	row.PreparationProgress = 100
 	row.NextRun = time.Time{}
 	row.UpdatedAt = at
 	event := ReadyEvent{

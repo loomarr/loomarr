@@ -16,6 +16,7 @@ const status = (over: Partial<IncomingStatusDTO> = {}): IncomingStatusDTO => ({
   durationMs: 30_000,
   statusLabel: "Adding details",
   updatedAt: "2026-09-14T20:00:00Z",
+  preparation: { state: "estimating", percent: 47 },
   processing: { attempts: 1, stages: [] },
   ...over,
 });
@@ -200,6 +201,11 @@ describe("Incoming", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /view details for tootsie pop/i }));
     expect(screen.getByRole("heading", { name: "Tootsie Pop classic commercial" })).toBeInTheDocument();
+    expect(screen.getByText("Estimating time remaining…")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Clip preparation" })).toHaveAttribute(
+      "aria-valuenow",
+      "47",
+    );
     expect(
       screen.queryByText("This step did not finish. Loomarr will try again automatically."),
     ).not.toBeVisible();

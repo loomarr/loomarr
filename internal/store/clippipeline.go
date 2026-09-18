@@ -20,7 +20,9 @@ import (
 // convention `UpsertClip`'s DO UPDATE list has to remember.
 
 const clipPipelineSelect = `SELECT clip_hash, acquisition_id, stage, status, progress, disposition,
-	reject_reason, reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at
+	reject_reason, reject_detail, attempts, force_run, next_run,
+	preparation_attempt, preparation_started_at, preparation_start_reason, preparation_progress,
+	stage_queued_at, stage_started_at, stages_json, enrolled_at, updated_at
 	FROM filler_clip_pipeline`
 
 // scanClipPipeline reads one row, decoding the ladder.
@@ -30,18 +32,24 @@ const clipPipelineSelect = `SELECT clip_hash, acquisition_id, stage, status, pro
 // every stage — the same call `ListSplitProposals` makes about corrupt segments.
 func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
 	var (
-		p          filler.ClipPipeline
-		stage      string
-		status     string
-		dispo      string
-		reason     string
-		raw        string
-		nextRun    int64
-		enrolledAt int64
-		updatedAt  int64
+		p                      filler.ClipPipeline
+		stage                  string
+		status                 string
+		dispo                  string
+		reason                 string
+		raw                    string
+		nextRun                int64
+		preparationStartedAt   int64
+		preparationStartReason string
+		stageQueuedAt          int64
+		stageStartedAt         int64
+		enrolledAt             int64
+		updatedAt              int64
 	)
 	if err := sc.Scan(&p.ClipHash, &p.AcquisitionID, &stage, &status, &p.Progress, &dispo,
-		&reason, &p.RejectDetail, &p.Attempts, &p.ForceRun, &nextRun, &raw, &enrolledAt, &updatedAt); err != nil {
+		&reason, &p.RejectDetail, &p.Attempts, &p.ForceRun, &nextRun,
+		&p.PreparationAttempt, &preparationStartedAt, &preparationStartReason, &p.PreparationProgress,
+		&stageQueuedAt, &stageStartedAt, &raw, &enrolledAt, &updatedAt); err != nil {
 		return filler.ClipPipeline{}, err
 	}
 	p.Stage = filler.StageID(stage)
@@ -49,6 +57,10 @@ func scanClipPipeline(sc scannable) (filler.ClipPipeline, error) {
 	p.Disposition = filler.Disposition(dispo)
 	p.RejectReason = filler.RejectReason(reason)
 	p.NextRun = fromEpoch(nextRun)
+	p.PreparationStartedAt = fromEpoch(preparationStartedAt)
+	p.PreparationStartReason = filler.PreparationStartReason(preparationStartReason)
+	p.StageQueuedAt = fromEpoch(stageQueuedAt)
+	p.StageStartedAt = fromEpoch(stageStartedAt)
 	p.EnrolledAt = fromEpoch(enrolledAt)
 	p.UpdatedAt = fromEpoch(updatedAt)
 	if raw != "" {
@@ -86,19 +98,28 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 	}
 	_, err = exec.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_clip_pipeline (clip_hash, acquisition_id, stage, status, progress, disposition,
-		   reject_reason, reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   reject_reason, reject_detail, attempts, force_run, next_run,
+		   preparation_attempt, preparation_started_at, preparation_start_reason, preparation_progress,
+		   stage_queued_at, stage_started_at, stages_json, enrolled_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(clip_hash) DO UPDATE SET
 		   acquisition_id=excluded.acquisition_id,
 		   stage=excluded.stage, status=excluded.status, progress=excluded.progress,
 		   disposition=excluded.disposition, reject_reason=excluded.reject_reason,
 		   reject_detail=excluded.reject_detail, attempts=excluded.attempts,
 		   force_run=excluded.force_run,
+		   preparation_attempt=excluded.preparation_attempt,
+		   preparation_started_at=excluded.preparation_started_at,
+		   preparation_start_reason=excluded.preparation_start_reason,
+		   preparation_progress=excluded.preparation_progress,
+		   stage_queued_at=excluded.stage_queued_at,
+		   stage_started_at=excluded.stage_started_at,
 		   next_run=excluded.next_run, stages_json=excluded.stages_json,
 		   updated_at=excluded.updated_at`),
 		p.ClipHash, p.AcquisitionID, string(p.Stage), string(p.Status), p.Progress, string(p.Disposition),
-		string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), string(raw),
-		epoch(p.EnrolledAt), epoch(p.UpdatedAt))
+		string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun),
+		p.PreparationAttempt, epoch(p.PreparationStartedAt), string(p.PreparationStartReason), p.PreparationProgress,
+		epoch(p.StageQueuedAt), epoch(p.StageStartedAt), string(raw), epoch(p.EnrolledAt), epoch(p.UpdatedAt))
 	if err != nil {
 		return err
 	}
@@ -136,11 +157,15 @@ func (s *sqlStore) RetryClipPipeline(ctx context.Context, failed, p filler.ClipP
 	}
 	res, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET
 		stage = ?, status = ?, progress = ?, disposition = ?, reject_reason = ?, reject_detail = ?,
-		attempts = ?, force_run = ?, next_run = ?, stages_json = ?, updated_at = ?
+		attempts = ?, force_run = ?, next_run = ?, preparation_attempt = ?, preparation_started_at = ?,
+		preparation_start_reason = ?, preparation_progress = ?, stage_queued_at = ?, stage_started_at = ?,
+		stages_json = ?, updated_at = ?
 		WHERE clip_hash = ? AND stage = ? AND status = ? AND disposition = ?
 		  AND reject_reason = ? AND attempts = ? AND updated_at = ?`),
 		string(p.Stage), string(p.Status), p.Progress, string(p.Disposition), string(p.RejectReason),
-		p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), string(raw), epoch(p.UpdatedAt),
+		p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), p.PreparationAttempt,
+		epoch(p.PreparationStartedAt), string(p.PreparationStartReason), p.PreparationProgress,
+		epoch(p.StageQueuedAt), epoch(p.StageStartedAt), string(raw), epoch(p.UpdatedAt),
 		failed.ClipHash, string(failed.Stage), string(failed.Status), string(failed.Disposition),
 		string(failed.RejectReason), failed.Attempts, epoch(failed.UpdatedAt))
 	if err != nil {
@@ -281,6 +306,45 @@ func (s *sqlStore) CountClipPipelines(ctx context.Context, f filler.PipelineFilt
 		return 0, fmt.Errorf("count clip pipelines: %w", err)
 	}
 	return n, nil
+}
+
+// ListPreparationWork keeps the pipeline read and its coarse duration join bounded without an
+// N+1 catalog lookup. Order remains ListClipPipelines' stable newest-first order.
+func (s *sqlStore) ListPreparationWork(ctx context.Context, f filler.PipelineFilter) ([]filler.PreparationWork, error) {
+	pipelines, err := s.ListClipPipelines(ctx, f)
+	if err != nil || len(pipelines) == 0 {
+		return nil, err
+	}
+	placeholders := make([]string, len(pipelines))
+	args := make([]any, len(pipelines))
+	for i, pipeline := range pipelines {
+		placeholders[i], args[i] = "?", pipeline.ClipHash
+	}
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT hash, duration_ms FROM clips WHERE hash IN (`+strings.Join(placeholders, `, `)+`)`), args...)
+	if err != nil {
+		return nil, fmt.Errorf("list preparation durations: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	durations := make(map[string]int64, len(pipelines))
+	for rows.Next() {
+		var hash string
+		var duration int64
+		if err := rows.Scan(&hash, &duration); err != nil {
+			return nil, fmt.Errorf("scan preparation duration: %w", err)
+		}
+		durations[hash] = duration
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]filler.PreparationWork, 0, len(pipelines))
+	for _, pipeline := range pipelines {
+		duration, ok := durations[pipeline.ClipHash]
+		if ok {
+			out = append(out, filler.PreparationWork{Pipeline: pipeline, DurationMs: duration})
+		}
+	}
+	return out, nil
 }
 
 func clipPipelineWhere(f filler.PipelineFilter, includeCursor bool) (string, []any, error) {

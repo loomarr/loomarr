@@ -119,10 +119,14 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 
 	pipelineResult, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET
 		stage = ?, status = ?, progress = ?, disposition = ?, reject_reason = ?, reject_detail = ?,
-		attempts = ?, force_run = ?, next_run = ?, stages_json = ?, updated_at = ?
+		attempts = ?, force_run = ?, next_run = ?, preparation_attempt = ?, preparation_started_at = ?,
+		preparation_start_reason = ?, preparation_progress = ?, stage_queued_at = ?, stage_started_at = ?,
+		stages_json = ?, updated_at = ?
 		WHERE clip_hash = ? AND acquisition_id = ? AND stage = ? AND status = ? AND disposition = ?`),
 		string(p.Stage), string(p.Status), p.Progress, string(p.Disposition), string(p.RejectReason),
-		p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), string(raw), epoch(p.UpdatedAt),
+		p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), p.PreparationAttempt,
+		epoch(p.PreparationStartedAt), string(p.PreparationStartReason), p.PreparationProgress,
+		epoch(p.StageQueuedAt), epoch(p.StageStartedAt), string(raw), epoch(p.UpdatedAt),
 		p.ClipHash, current.AcquisitionID, string(current.Stage), string(current.Status), string(current.Disposition))
 	if err != nil {
 		return fmt.Errorf("settle ready pipeline %s: %w", e.ClipHash, err)

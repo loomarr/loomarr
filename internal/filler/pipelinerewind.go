@@ -122,6 +122,13 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 		row = ClipPipeline{ClipHash: hash, EnrolledAt: now}
 	}
 	row = resetPipelineRow(row, from, now)
+	row.PreparationAttempt++
+	if row.PreparationAttempt <= 0 {
+		row.PreparationAttempt = 1
+	}
+	row.PreparationStartedAt = now
+	row.PreparationStartReason = PreparationStartedByRestart
+	row.PreparationProgress = 0
 	if err := p.store.UpsertClipPipeline(ctx, row); err != nil {
 		return err
 	}
@@ -200,6 +207,7 @@ func resetPipelineRow(row ClipPipeline, from StageID, now time.Time) ClipPipelin
 	}
 	row.Stages = kept
 	row.Stage, row.Status, row.Attempts, row.Progress = from, StatusQueued, 0, 0
+	row.StageQueuedAt, row.StageStartedAt = now, time.Time{}
 	row.ForceRun = true
 	row.Disposition = DispositionRunning
 	// ⚠ The reject is cleared as well. A rewound clip is no longer refused — leaving the reason
@@ -240,6 +248,7 @@ func (p *Pipeline) Requeue(ctx context.Context, hash string) (bool, error) {
 	// them would exhaust the budget on the way to succeeding.
 	now := p.now().UTC()
 	row.Disposition, row.Status, row.Attempts = DispositionRunning, StatusQueued, 0
+	row.StageQueuedAt, row.StageStartedAt = now, time.Time{}
 	row.NextRun = time.Time{} // zero is "due now" — ListPipelineWork's `next_run <= ?`
 	row.UpdatedAt = now
 	if err := p.store.UpsertClipPipeline(ctx, row); err != nil {

@@ -315,13 +315,17 @@ func asSlice(m map[filler.StageID]*fakeStage) []filler.Stage {
 }
 
 func seedEnrolled(st *pipeMemStore, hash string) {
+	at := time.Unix(1_799_999_000, 0).UTC()
 	st.put(filler.StoreClip{Clip: filler.Clip{
 		Hash: hash, Path: "a/b/" + hash + ".mp4", Name: hash,
 		Kind: filler.Unclassified, Source: "test-source", Held: true,
 	}})
 	st.rows[hash] = filler.ClipPipeline{
 		ClipHash: hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-		Disposition: filler.DispositionRunning,
+		Disposition: filler.DispositionRunning, EnrolledAt: at, UpdatedAt: at,
+		PreparationAttempt: 1, PreparationStartedAt: at,
+		PreparationStartReason: filler.PreparationStartedByEnrollment, PreparationProgress: 0,
+		StageQueuedAt: at,
 	}
 }
 
@@ -345,6 +349,9 @@ func TestPipeline_WalksEveryStageAndBecomesReady(t *testing.T) {
 	row := st.rows["c1"]
 	if row.Disposition != filler.DispositionReady {
 		t.Fatalf("disposition = %q, want ready", row.Disposition)
+	}
+	if row.PreparationProgress != 100 {
+		t.Fatalf("preparation progress = %d, want exact Ready completion", row.PreparationProgress)
 	}
 	if len(row.Stages) != len(filler.StageOrder) {
 		t.Errorf("ladder has %d rungs, want %d — every stage must be recorded, including the boring ones",
@@ -383,6 +390,9 @@ func TestPipeline_RewindResetsOnlyTheRequestedSuffix(t *testing.T) {
 	}
 	if len(got.Stages) != filler.StageIndex(filler.StageTag) {
 		t.Fatalf("kept %d stages, want only %d stages before tag", len(got.Stages), filler.StageIndex(filler.StageTag))
+	}
+	if got.PreparationAttempt != 2 || got.PreparationStartReason != filler.PreparationStartedByRestart || got.PreparationProgress != 0 {
+		t.Fatalf("rewind attempt = (%d, %q, %d), want generation 2 restart at zero", got.PreparationAttempt, got.PreparationStartReason, got.PreparationProgress)
 	}
 }
 
@@ -439,6 +449,7 @@ func TestPipeline_RetryFailureRestoresTerminalExecutionFailureHeld(t *testing.T)
 	row.Stage, row.Status = filler.StageTranscode, filler.StatusFailed
 	row.Attempts, row.Disposition = filler.MaxAttempts, filler.DispositionRejected
 	row.RejectReason, row.RejectDetail = filler.ReasonUnplayable, "ffmpeg exited 1"
+	row.PreparationProgress = 37
 	row.Stages = []filler.StageRecord{
 		{Stage: filler.StageProbe, Status: filler.StatusDone},
 		{Stage: filler.StageTranscode, Status: filler.StatusFailed},
@@ -456,6 +467,9 @@ func TestPipeline_RetryFailureRestoresTerminalExecutionFailureHeld(t *testing.T)
 	}
 	if len(got.Stages) != 1 || got.Stages[0].Stage != filler.StageProbe {
 		t.Fatalf("retry discarded completed upstream work: %+v", got.Stages)
+	}
+	if got.PreparationAttempt != row.PreparationAttempt || got.PreparationProgress != 37 || got.PreparationStartReason != row.PreparationStartReason {
+		t.Fatalf("retry changed whole attempt: before=%+v after=%+v", row, got)
 	}
 	clip := st.clips[c.Hash]
 	if !clip.RemovedAt.IsZero() || !clip.Held {

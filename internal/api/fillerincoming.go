@@ -53,14 +53,32 @@ type IncomingHelpGroupDTO struct {
 // IncomingStatusDTO is the calm row shared by Preparing and recently Ready. Processing is a
 // server-owned, browser-safe explanation revealed only after a deliberate details click.
 type IncomingStatusDTO struct {
-	ClipHash    string                `json:"clipHash"`
-	Name        string                `json:"name"`
-	From        string                `json:"from,omitempty"`
-	DurationMs  int64                 `json:"durationMs"`
-	ThumbImage  *ImageDTO             `json:"thumbImage,omitempty" doc:"Extracted still; absent while artwork is not ready"`
-	StatusLabel string                `json:"statusLabel"`
-	UpdatedAt   string                `json:"updatedAt" doc:"RFC3339"`
-	Processing  IncomingProcessingDTO `json:"processing"`
+	ClipHash    string                 `json:"clipHash"`
+	Name        string                 `json:"name"`
+	From        string                 `json:"from,omitempty"`
+	DurationMs  int64                  `json:"durationMs"`
+	ThumbImage  *ImageDTO              `json:"thumbImage,omitempty" doc:"Extracted still; absent while artwork is not ready"`
+	StatusLabel string                 `json:"statusLabel"`
+	UpdatedAt   string                 `json:"updatedAt" doc:"RFC3339"`
+	Preparation IncomingPreparationDTO `json:"preparation"`
+	Processing  IncomingProcessingDTO  `json:"processing"`
+}
+
+// IncomingPreparationDTO is the server-owned whole-attempt projection. Percent is distinct from
+// the current-stage value in Processing; the browser formats this object but never derives it.
+type IncomingPreparationDTO struct {
+	Attempt     int                       `json:"attempt,omitempty"`
+	StartedAt   string                    `json:"startedAt,omitempty" doc:"RFC3339"`
+	StartReason string                    `json:"startReason,omitempty" enum:"enrollment,restart"`
+	State       string                    `json:"state" enum:"working,estimating,estimated,waiting,retrying,restarted,ready,unavailable"`
+	Percent     *int                      `json:"percent,omitempty" minimum:"0" maximum:"100"`
+	ReadyIn     *IncomingReadyEstimateDTO `json:"readyIn,omitempty"`
+}
+
+// IncomingReadyEstimateDTO is an approximate duration range rather than a deadline.
+type IncomingReadyEstimateDTO struct {
+	LowerSeconds int64 `json:"lowerSeconds" minimum:"0"`
+	UpperSeconds int64 `json:"upperSeconds" minimum:"0"`
 }
 
 type IncomingProcessingDTO struct {
@@ -120,11 +138,14 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 	}
 	out := &fillerIncomingOutput{}
 	out.Body.ReadyWindowSeconds = int64(readyWindow / time.Second)
-	var err error
-	if out.Body.Preparing, err = s.incomingPipelineGroup(ctx, at, 0, in.PreparingCursor, false); err != nil {
+	estimates, err := s.incomingPreparationEstimates(ctx, at)
+	if err != nil {
 		return nil, incomingProjectionError(err)
 	}
-	if out.Body.RecentlyReady, err = s.incomingPipelineGroup(ctx, at, readyWindow, in.ReadyCursor, true); err != nil {
+	if out.Body.Preparing, err = s.incomingPipelineGroup(ctx, at, 0, in.PreparingCursor, false, estimates); err != nil {
+		return nil, incomingProjectionError(err)
+	}
+	if out.Body.RecentlyReady, err = s.incomingPipelineGroup(ctx, at, readyWindow, in.ReadyCursor, true, estimates); err != nil {
 		return nil, incomingProjectionError(err)
 	}
 	if out.Body.NeedsHelp, err = s.incomingHelpGroup(ctx, in.NeedsHelpCursor); err != nil {
@@ -133,7 +154,7 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 	return out, nil
 }
 
-func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyWindow time.Duration, cursorValue string, ready bool) (IncomingClipGroupDTO, error) {
+func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyWindow time.Duration, cursorValue string, ready bool, estimates map[string]filler.ReadyEstimate) (IncomingClipGroupDTO, error) {
 	beforeAt, beforeID, err := decodeIncomingCursor(cursorValue)
 	if err != nil {
 		return IncomingClipGroupDTO{}, err
@@ -177,7 +198,7 @@ func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyW
 		if ready {
 			label = "Ready"
 		}
-		group.Rows = append(group.Rows, incomingStatusDTO(clips[index], row, label, images, at))
+		group.Rows = append(group.Rows, incomingStatusDTO(clips[index], row, label, images, at, estimates[row.ClipHash]))
 	}
 	if more {
 		last := rows[len(rows)-1]
@@ -224,7 +245,7 @@ func (s *Server) incomingHelpGroup(ctx context.Context, cursorValue string) (Inc
 	return group, nil
 }
 
-func incomingStatusDTO(clip store.Clip, row filler.ClipPipeline, label string, image func(string) *ImageDTO, at time.Time) IncomingStatusDTO {
+func incomingStatusDTO(clip store.Clip, row filler.ClipPipeline, label string, image func(string) *ImageDTO, at time.Time, estimate filler.ReadyEstimate) IncomingStatusDTO {
 	var thumb *ImageDTO
 	if image != nil {
 		thumb = image(clip.Hash)
@@ -232,8 +253,83 @@ func incomingStatusDTO(clip store.Clip, row filler.ClipPipeline, label string, i
 	return IncomingStatusDTO{
 		ClipHash: clip.Hash, Name: clip.Name, From: clip.Source, DurationMs: clip.DurationMs,
 		ThumbImage: thumb, StatusLabel: label,
-		UpdatedAt: row.UpdatedAt.UTC().Format(time.RFC3339), Processing: incomingProcessingDTO(row, at),
+		UpdatedAt: row.UpdatedAt.UTC().Format(time.RFC3339), Preparation: incomingPreparationDTO(row, at, estimate),
+		Processing: incomingProcessingDTO(row, at),
 	}
+}
+
+func incomingPreparationDTO(row filler.ClipPipeline, at time.Time, estimate filler.ReadyEstimate) IncomingPreparationDTO {
+	out := IncomingPreparationDTO{Attempt: row.PreparationAttempt, State: "unavailable"}
+	if row.PreparationAttempt <= 0 || row.PreparationProgress < 0 {
+		return out
+	}
+	if !row.PreparationStartedAt.IsZero() {
+		out.StartedAt = row.PreparationStartedAt.UTC().Format(time.RFC3339)
+	}
+	out.StartReason = string(row.PreparationStartReason)
+	percent := row.PreparationProgress
+	if row.Disposition == filler.DispositionReady {
+		percent = 100
+		out.State = "ready"
+	} else if row.Disposition == filler.DispositionReview {
+		out.State = "waiting"
+	} else if row.Status == filler.StatusFailed && row.NextRun.After(at) {
+		out.State = "retrying"
+	} else if row.PreparationStartReason == filler.PreparationStartedByRestart && percent == 0 {
+		out.State = "restarted"
+	} else {
+		out.State = "estimating"
+	}
+	out.Percent = &percent
+	if estimate.Upper > 0 && out.State == "estimating" {
+		out.State = "estimated"
+		out.ReadyIn = &IncomingReadyEstimateDTO{LowerSeconds: int64(estimate.Lower / time.Second), UpperSeconds: int64(estimate.Upper / time.Second)}
+	}
+	return out
+}
+
+const maximumPreparationEvidenceRows = 200
+
+func (s *Server) incomingPreparationEstimates(ctx context.Context, at time.Time) (map[string]filler.ReadyEstimate, error) {
+	history, err := s.store.ListPreparationWork(ctx, filler.PipelineFilter{
+		Dispositions:     []filler.Disposition{filler.DispositionReady},
+		UpdatedAtOrAfter: at.Add(-filler.PreparationEvidenceWindow), Limit: maximumPreparationEvidenceRows,
+	})
+	if err != nil {
+		return nil, err
+	}
+	queue, err := s.store.ListPreparationWork(ctx, filler.PipelineFilter{
+		Dispositions: []filler.Disposition{filler.DispositionRunning}, Limit: maximumPreparationEvidenceRows + 1,
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]filler.ReadyEstimate)
+	if len(queue) > maximumPreparationEvidenceRows {
+		return result, nil
+	}
+	for _, current := range queue {
+		ahead := make([]filler.PreparationWork, 0)
+		for _, candidate := range queue {
+			if candidate.Pipeline.ClipHash == current.Pipeline.ClipHash || candidate.Pipeline.NextRun.After(at) {
+				continue
+			}
+			if pipelineScheduledBefore(candidate.Pipeline, current.Pipeline) {
+				ahead = append(ahead, candidate)
+			}
+		}
+		if estimate, ok := filler.EstimatePreparationReady(current, history, ahead, at); ok {
+			result[current.Pipeline.ClipHash] = estimate
+		}
+	}
+	return result, nil
+}
+
+func pipelineScheduledBefore(left, right filler.ClipPipeline) bool {
+	if left.NextRun.Equal(right.NextRun) {
+		return left.ClipHash < right.ClipHash
+	}
+	return left.NextRun.Before(right.NextRun)
 }
 
 func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProcessingDTO {

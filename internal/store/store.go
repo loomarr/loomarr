@@ -551,6 +551,9 @@ type SplitProposalStore interface {
 	// CountClipPipelines shares ListClipPipelines' lifecycle predicate while ignoring its cursor
 	// and limit, so a bounded page and its total cannot describe different populations.
 	CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error)
+	// ListPreparationWork joins bounded pipeline facts to only the clip duration needed for local
+	// progress calibration. It never exposes paths or descriptive media content.
+	ListPreparationWork(ctx context.Context, f filler.PipelineFilter) ([]filler.PreparationWork, error)
 	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
 	// lazy and self-healing rather than a data migration.
 	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error)
