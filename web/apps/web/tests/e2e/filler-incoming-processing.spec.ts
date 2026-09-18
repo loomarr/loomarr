@@ -11,6 +11,7 @@ const measured = {
   durationMs: 12_000,
   statusLabel: "Checking video",
   updatedAt: at,
+  preparation: { state: "estimated", percent: 47, readyIn: { lowerSeconds: 120, upperSeconds: 240 } },
   processing: {
     attempts: 1,
     stages: [
@@ -52,6 +53,7 @@ const unmeasured = {
   clipHash: "unmeasured",
   name: "Unmeasured details check",
   statusLabel: "Adding details",
+  preparation: { state: "estimating", percent: 33 },
   processing: {
     stages: [
       {
@@ -70,6 +72,7 @@ const ready = {
   clipHash: "ready",
   name: "Recently ready example",
   statusLabel: "Ready",
+  preparation: { state: "ready", percent: 100 },
   processing: {
     stages: [
       {
@@ -148,6 +151,11 @@ for (const viewport of [
     await trigger.focus();
     await trigger.click();
     const panel = page.getByRole("dialog", { name: "Measured video check" });
+    await expect(panel.getByText("About 2–4 minutes")).toBeVisible();
+    await expect(panel.getByRole("progressbar", { name: "Clip preparation" })).toHaveAttribute(
+      "aria-valuenow",
+      "47",
+    );
     const details = panel.locator("details");
     await expect(details).not.toHaveAttribute("open", "");
     await panel.getByText("Processing details", { exact: true }).click();
@@ -175,6 +183,7 @@ for (const viewport of [
 
     await page.getByRole("button", { name: "View details for Unmeasured details check" }).click();
     const unmeasuredPanel = page.getByRole("dialog", { name: "Unmeasured details check" });
+    await expect(unmeasuredPanel.getByText("Estimating time remaining…")).toBeVisible();
     await unmeasuredPanel.getByText("Processing details", { exact: true }).click();
     await expect(
       unmeasuredPanel.getByRole("progressbar", { name: "Current step in progress" }),
@@ -183,9 +192,13 @@ for (const viewport of [
 
     await page.getByRole("button", { name: "View details for Recently ready example" }).click();
     const readyPanel = page.getByRole("dialog", { name: "Recently ready example" });
+    await expect(readyPanel.getByRole("progressbar", { name: "Clip preparation" })).toHaveAttribute(
+      "aria-valuenow",
+      "100",
+    );
     await readyPanel.getByText("Processing details", { exact: true }).click();
     await expect(readyPanel.getByText("Finished", { exact: true })).toBeVisible();
-    await expect(readyPanel.getByRole("progressbar")).toHaveCount(0);
+    await expect(readyPanel.getByRole("progressbar", { name: /Current step/ })).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 }

@@ -11,6 +11,10 @@ const status = (index: number, statusLabel = "Adding details"): IncomingStatusDT
   durationMs: 25_000 + index * 1_000,
   statusLabel,
   updatedAt: "2026-09-14T20:00:00Z",
+  preparation:
+    statusLabel === "Ready"
+      ? { state: "ready", percent: 100 }
+      : { state: "estimated", percent: 47, readyIn: { lowerSeconds: 120, upperSeconds: 240 } },
   processing: {
     attempts: 1,
     stages: [

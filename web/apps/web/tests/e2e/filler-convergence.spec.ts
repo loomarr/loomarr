@@ -211,6 +211,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
         durationMs: clip.durationMs,
         statusLabel: preparing ? "Checking video" : "Ready",
         updatedAt: "2026-08-24T04:00:01Z",
+        preparation: preparing ? { state: "estimating", percent: 44 } : { state: "ready", percent: 100 },
         processing: { attempts: 1, stages: [] },
       };
       return reply({
