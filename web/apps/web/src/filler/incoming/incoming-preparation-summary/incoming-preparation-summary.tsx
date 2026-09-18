@@ -1,4 +1,4 @@
-import type { IncomingPreparationDTO } from "@loomarr/api";
+import type { IncomingPreparationDTO } from "@loomarr/api/models/incomingPreparationDTO";
 import { Progress } from "@/components/ui/progress";
 
 const readyRangeLabel = (lowerSeconds: number, upperSeconds: number): string => {

@@ -1,4 +1,4 @@
-import type { IncomingPreparationDTO } from "@loomarr/api";
+import type { IncomingPreparationDTO } from "@loomarr/api/models/incomingPreparationDTO";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { IncomingPreparationSummary, readyRangeLabel } from "./incoming-preparation-summary";
