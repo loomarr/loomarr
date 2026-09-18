@@ -525,8 +525,9 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
         <Card className="p-4 sm:col-span-2">
           <p className="font-medium">What belongs here</p>
           <p className="mt-1 text-muted-foreground text-sm">
-            Classification describes what a clip contains. Kind is the closed playout role; format and presentation
-            are optional browsing details. Era, audience, and grounded brand remain separate facts too.
+            Classification describes what a clip contains. Kind is the closed playout role; format and
+            presentation are optional browsing details. Era, audience, and grounded brand remain separate
+            facts too.
           </p>
           {data.totalClips === 0 ? (
             <p className="mt-2 text-muted-foreground text-sm">Nothing to classify yet.</p>
@@ -560,7 +561,8 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             Classification coverage
           </h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            These are independent signals. Missing presentation, seasonal, or audience cues can be perfectly normal.
+            These are independent signals. Missing presentation, seasonal, or audience cues can be perfectly
+            normal.
           </p>
         </div>
         {data.totalClips === 0 ? (
