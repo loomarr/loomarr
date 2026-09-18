@@ -13,6 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -510,7 +511,7 @@ type listFillerInput struct {
 	Market          string `query:"market"`
 	Taxon           string `query:"taxon" doc:"Match clips carrying this taxon directly or through a descendant rollup"`
 	Unclassified    bool   `query:"unclassified" doc:"Only playable clips with no directly asserted taxonomy tags on any axis"`
-	WithoutAxis     string `query:"withoutAxis" enum:"product,format,seasonal,audience-cue" doc:"Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes"`
+	WithoutAxis     string `query:"withoutAxis" enum:"product,format,seasonal,audience-cue,presentation" doc:"Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes"`
 	Untagged        bool   `query:"untagged" doc:"Only commercials missing match tags"`
 	// Q is the clip corpus's search box (§7.2). Clip search lives here rather than on
 	// /v1/search because a clip is not a provisionable title (§10) and cannot be a
@@ -690,6 +691,9 @@ type clipOutput struct{ Body ClipDTO }
 
 func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clipOutput, error) {
 	now := time.Now()
+	var operatorLeaves []string
+	var operatorTaxa []taxonomy.Taxon
+	var operatorGeography *fillerenrichment.Value
 	if in.Body.Hash == "" {
 		return nil, errUnprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
 	}
@@ -737,6 +741,8 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			}
 			return nil, err
 		}
+		operatorTaxa = taxa
+		operatorLeaves = append([]string(nil), leaves...)
 	}
 	// A manual edit clears the AI flag (a human tagged it). suggestedEra is 0 here —
 	// only the tagger writes suggestions — and the store's rule applies: setting era
@@ -790,11 +796,57 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			strings.TrimSpace(g.Network), strings.TrimSpace(g.Station), airDate, "operator", now); err != nil {
 			return nil, err
 		}
+		operatorGeography = &fillerenrichment.Value{Geography: fillerenrichment.Geography{
+			Scope: string(scope), Country: geo.Country, Market: geo.Market,
+			Network: strings.TrimSpace(g.Network), Station: strings.TrimSpace(g.Station), AirDate: airDate,
+		}}
 	}
 	if in.Body.Brand != nil {
 		brand := strings.TrimSpace(*in.Body.Brand)
 		if err := s.store.SetClipBrand(ctx, clip.Path, brand, now); err != nil {
 			return nil, err
+		}
+	}
+	record := func(axis fillerenrichment.Axis, value fillerenrichment.Value, taxonomyVersion string) error {
+		_, _, err := s.store.ApplyFillerEnrichment(ctx, fillerenrichment.State{
+			ClipHash: clip.Hash, Axis: axis, Status: fillerenrichment.StatusComplete, Value: value,
+			Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceOperator,
+				Reference: "operator.clip_edit", Confidence: 100, Producer: "operator",
+				ProducerVersion: "1", TaxonomyVersion: taxonomyVersion, ObservedAt: now.UTC()},
+		}, now)
+		return err
+	}
+	if err := record(fillerenrichment.AxisEra, fillerenrichment.Value{Year: in.Body.Era}, ""); err != nil {
+		return nil, err
+	}
+	if err := record(fillerenrichment.AxisAudience, fillerenrichment.Value{Text: in.Body.Audience}, ""); err != nil {
+		return nil, err
+	}
+	if in.Body.Brand != nil {
+		if err := record(fillerenrichment.AxisBrand, fillerenrichment.Value{Text: strings.TrimSpace(*in.Body.Brand)}, ""); err != nil {
+			return nil, err
+		}
+	}
+	if operatorGeography != nil {
+		if err := record(fillerenrichment.AxisGeography, *operatorGeography, ""); err != nil {
+			return nil, err
+		}
+	}
+	if in.Body.Tags != nil {
+		byAxis := make(map[fillerenrichment.Axis][]string)
+		forest := taxonomy.New(operatorTaxa)
+		for _, leaf := range operatorLeaves {
+			if taxon, ok := forest.Get(leaf); ok {
+				byAxis[fillerenrichment.Axis(taxon.Axis)] = append(byAxis[fillerenrichment.Axis(taxon.Axis)], leaf)
+			}
+		}
+		for _, axis := range []fillerenrichment.Axis{
+			fillerenrichment.AxisProduct, fillerenrichment.AxisFormat, fillerenrichment.AxisSeasonal,
+			fillerenrichment.AxisAudienceCue, fillerenrichment.AxisPresentation,
+		} {
+			if err := record(axis, fillerenrichment.Value{Tags: byAxis[axis]}, "operator-live"); err != nil {
+				return nil, err
+			}
 		}
 	}
 	c, err := s.store.GetClip(ctx, clip.Hash)

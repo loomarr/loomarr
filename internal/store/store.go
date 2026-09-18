@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
@@ -700,6 +701,16 @@ type FillerSourceStore interface {
 	SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error
 }
 
+// FillerEnrichmentStore owns the accepted per-axis descriptive evidence for clips. Applying a
+// candidate is rank-aware and idempotent inside the adapter so no caller can overwrite an item fact
+// with weaker inference by choosing a different write path.
+type FillerEnrichmentStore interface {
+	ListFillerEnrichment(ctx context.Context, clipHash string) ([]fillerenrichment.State, error)
+	ApplyFillerEnrichment(ctx context.Context, candidate fillerenrichment.State, updatedAt time.Time) (fillerenrichment.State, bool, error)
+	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error)
+	ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenrichment.Pass) (int, error)
+}
+
 // AiringStore records what actually went to air — written from playout only.
 type AiringStore interface {
 	// RecordClipPlay counts a filler clip having AIRED globally and on one channel (V58).
@@ -904,6 +915,7 @@ type Store interface {
 	ScheduledJobStore
 	UserStore
 	ClipStore
+	FillerEnrichmentStore
 	FillerSourceStore
 	FillerPullStore
 	FillerAcquisitionStore

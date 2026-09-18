@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -150,6 +151,41 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		// aiTagged=false: a human just made this decision, so it is no longer an AI tag. Hash-keyed.
 		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, string(audience), suggested, false, now); err != nil {
 			return nil, huma.Error500InternalServerError("retag clips", err)
+		}
+		record := func(axis fillerenrichment.Axis, value fillerenrichment.Value, taxonomyVersion string) error {
+			_, _, err := s.store.ApplyFillerEnrichment(ctx, fillerenrichment.State{
+				ClipHash: clip.Hash, Axis: axis, Status: fillerenrichment.StatusComplete, Value: value,
+				Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceOperator,
+					Reference: "operator.bulk_clip_edit", Confidence: 100, Producer: "operator",
+					ProducerVersion: "1", TaxonomyVersion: taxonomyVersion, ObservedAt: now},
+			}, now)
+			return err
+		}
+		if in.Body.Era != nil {
+			if err := record(fillerenrichment.AxisEra, fillerenrichment.Value{Year: era}, ""); err != nil {
+				return nil, huma.Error500InternalServerError("record era evidence", err)
+			}
+		}
+		if in.Body.Audience != nil {
+			if err := record(fillerenrichment.AxisAudience, fillerenrichment.Value{Text: string(audience)}, ""); err != nil {
+				return nil, huma.Error500InternalServerError("record audience evidence", err)
+			}
+		}
+		if in.Body.Tags != nil {
+			byAxis := make(map[fillerenrichment.Axis][]string)
+			for _, leaf := range leaves {
+				if taxon, ok := forest.Get(leaf); ok {
+					byAxis[fillerenrichment.Axis(taxon.Axis)] = append(byAxis[fillerenrichment.Axis(taxon.Axis)], leaf)
+				}
+			}
+			for _, axis := range []fillerenrichment.Axis{
+				fillerenrichment.AxisProduct, fillerenrichment.AxisFormat, fillerenrichment.AxisSeasonal,
+				fillerenrichment.AxisAudienceCue, fillerenrichment.AxisPresentation,
+			} {
+				if err := record(axis, fillerenrichment.Value{Tags: byAxis[axis]}, "operator-live"); err != nil {
+					return nil, huma.Error500InternalServerError("record taxonomy evidence", err)
+				}
+			}
 		}
 		if changed, err := s.store.GetClip(ctx, clip.Hash); err == nil {
 			snapshots = append(snapshots, changed.Clip)

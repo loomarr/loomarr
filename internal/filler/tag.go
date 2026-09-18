@@ -132,6 +132,7 @@ type tagOutput struct {
 	// `local` is on the PRODUCT axis. Each value is still untrusted and resolve-or-dropped below.
 	Product      string   `json:"product"`
 	Format       string   `json:"format"`
+	Presentation string   `json:"presentation"`
 	Seasonal     []string `json:"seasonal"`
 	AudienceCues []string `json:"audienceCues"`
 	// Tags is a compatibility input for providers/cached responses still returning the pre-axis
@@ -228,6 +229,7 @@ func validateTags(out tagOutput, forest *taxonomy.Forest, text string) TagSugges
 		}
 		add(out.Product, taxonomy.AxisProduct)
 		add(out.Format, taxonomy.AxisFormat)
+		add(out.Presentation, taxonomy.AxisPresentation)
 		for _, raw := range out.Seasonal {
 			add(raw, taxonomy.AxisSeasonal)
 		}
@@ -292,7 +294,7 @@ func foldForGrounding(s string) string {
 // tagSystemPrompt builds the classifier prompt, SERVING the taxonomy vocabulary (§10 V45a) so the
 // model picks tags from the same list the grounding will accept — the served set and the accepted set
 // are one set by construction (mirrors how the suggester serves schedule.BuildVocabulary). The vocab is
-// grouped by axis (product / format / seasonal / audience-cue); the model may return several tags
+// grouped by axis (product / format / presentation / seasonal / audience-cue); the model may return several tags
 // across axes (a Christmas beer ad is `beer` + `christmas`). A nil forest serves an empty vocabulary,
 // which yields no groundable tags — the safe direction for an install with no taxonomy.
 func tagSystemPrompt(forest *taxonomy.Forest) string {
@@ -302,7 +304,7 @@ func tagSystemPrompt(forest *taxonomy.Forest) string {
 	}
 	return `You classify a short TV filler clip (a commercial/bumper/PSA) from its text only.
 Return ONLY this JSON, no prose:
-{"era":<4-digit year or 0 if unknown>,"audience":"kids|family|general|late_night","product":"<one product slug or empty>","format":"<one format slug or empty>","seasonal":["<seasonal slug>", ...],"audienceCues":["<audience-cue slug>", ...],"brand":"<advertiser name or empty>","confidence":<0-100>}
+{"era":<4-digit year or 0 if unknown>,"audience":"kids|family|general|late_night","product":"<one product slug or empty>","format":"<one format slug or empty>","presentation":"<one presentation slug or empty>","seasonal":["<seasonal slug>", ...],"audienceCues":["<audience-cue slug>", ...],"brand":"<advertiser name or empty>","confidence":<0-100>}
 Choose values ONLY from this vocabulary, grouped by axis. Entries written as "child (under parent)"
 describe hierarchy; emit only the slug, never the annotation. Classify every identifiable axis
 independently. On each axis emit only the most-specific applicable taxon, never its ancestors:

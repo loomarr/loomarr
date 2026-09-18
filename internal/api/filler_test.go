@@ -18,6 +18,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -596,6 +597,19 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	if body.AITagged {
 		t.Error("a manual edit should clear the AI-tagged flag")
 	}
+	states, err := st.ListFillerEnrichment(context.Background(), "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byAxis := make(map[fillerenrichment.Axis]fillerenrichment.State, len(states))
+	for _, state := range states {
+		byAxis[state.Axis] = state
+	}
+	if byAxis[fillerenrichment.AxisEra].Evidence.Kind != fillerenrichment.EvidenceOperator ||
+		byAxis[fillerenrichment.AxisBrand].Value.Text != "Kellogg's" ||
+		len(byAxis[fillerenrichment.AxisProduct].Value.Tags) != 1 || byAxis[fillerenrichment.AxisProduct].Value.Tags[0] != "cereal" {
+		t.Fatalf("operator enrichment evidence = %+v", states)
+	}
 	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","brand":""}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("clear brand → %d", resp.StatusCode)
@@ -603,6 +617,15 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	cleared, err := st.GetClip(context.Background(), "u1")
 	if err != nil || cleared.Brand != "" {
 		t.Errorf("cleared brand = %q (%v), want empty", cleared.Brand, err)
+	}
+	states, err = st.ListFillerEnrichment(context.Background(), "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range states {
+		if state.Axis == fillerenrichment.AxisBrand && (state.Value.Text != "" || state.Evidence.Kind != fillerenrichment.EvidenceOperator) {
+			t.Fatalf("cleared brand evidence = %+v", state)
+		}
 	}
 	// Missing clip → 404.
 	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"nope","era":1990}`)
@@ -626,6 +649,24 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Market != "New York" ||
 		got.Network != "Fox" || got.Station != "WNYW" || got.AirDate != "1994-05-06" || got.GeoEvidence != "operator" {
 		t.Fatalf("stored geography = %+v", got.Clip)
+	}
+	states, err := st.ListFillerEnrichment(context.Background(), "geo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundGeography := false
+	for _, state := range states {
+		if state.Axis != fillerenrichment.AxisGeography {
+			continue
+		}
+		foundGeography = true
+		if state.Evidence.Kind != fillerenrichment.EvidenceOperator || state.Value.Geography.Country != "US" ||
+			state.Value.Geography.Market != "New York" || state.Value.Geography.AirDate != "1994-05-06" {
+			t.Fatalf("geography evidence = %+v", state)
+		}
+	}
+	if !foundGeography {
+		t.Fatal("operator geography evidence was not recorded")
 	}
 
 	bad := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,

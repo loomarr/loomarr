@@ -4,7 +4,7 @@ type FillerSearch = {
   audience?: string;
   taxon?: string;
   unclassified?: boolean;
-  withoutAxis?: "product" | "format" | "seasonal" | "audience-cue";
+  withoutAxis?: "product" | "format" | "seasonal" | "audience-cue" | "presentation";
   untagged?: boolean;
   view?: string;
   page?: number;
@@ -13,7 +13,7 @@ type FillerSearch = {
 
 const KINDS = ["unclassified", "commercial", "bumper", "station_id", "psa", "trailer", "interstitial"];
 const AUDIENCES = ["kids", "family", "general", "late_night"];
-const TAXONOMY_AXES = ["product", "format", "seasonal", "audience-cue"] as const;
+const TAXONOMY_AXES = ["product", "format", "seasonal", "audience-cue", "presentation"] as const;
 
 const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch => {
   const q = typeof search.q === "string" && search.q ? search.q : undefined;

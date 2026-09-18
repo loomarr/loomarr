@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -4064,6 +4065,96 @@ func testClipCreatedAt(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !got2.CreatedAt.Equal(arrived) {
 		t.Errorf("created_at = %v with none supplied, want the UpdatedAt fallback (%v)", got2.CreatedAt, arrived)
+	}
+}
+
+func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Unix(1_700_000_000, 0).UTC()
+	clip := sampleClip("enrichment-clip", "HP Sauce Advert", filler.Commercial, 0, "", "")
+	clip.UpdatedAt = at
+	if err := s.UpsertClip(ctx, clip); err != nil {
+		t.Fatal(err)
+	}
+	evidence := func(kind fillerenrichment.EvidenceKind, confidence int) fillerenrichment.Evidence {
+		return fillerenrichment.Evidence{Kind: kind, Reference: "fixture", Confidence: confidence,
+			Producer: "conformance", ProducerVersion: "1", ObservedAt: at}
+	}
+	item := fillerenrichment.State{ClipHash: clip.Hash, Axis: fillerenrichment.AxisEra,
+		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Year: 1999},
+		Evidence: evidence(fillerenrichment.EvidenceItem, 90)}
+	accepted, changed, err := s.ApplyFillerEnrichment(ctx, item, at)
+	if err != nil || !changed || accepted.Value.Year != 1999 {
+		t.Fatalf("first apply = %+v, changed %v, err %v", accepted, changed, err)
+	}
+	if _, changed, err := s.ApplyFillerEnrichment(ctx, item, at.Add(time.Second)); err != nil || changed {
+		t.Fatalf("idempotent apply changed = %v, err %v", changed, err)
+	}
+	weak := item
+	weak.Value.Year = 1980
+	weak.Evidence = evidence(fillerenrichment.EvidenceInference, 100)
+	accepted, changed, err = s.ApplyFillerEnrichment(ctx, weak, at.Add(2*time.Second))
+	if err != nil || changed || accepted.Value.Year != 1999 {
+		t.Fatalf("weak inference apply = %+v, changed %v, err %v", accepted, changed, err)
+	}
+	brand := fillerenrichment.State{ClipHash: clip.Hash, Axis: fillerenrichment.AxisBrand,
+		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "HP Sauce"},
+		Evidence: evidence(fillerenrichment.EvidenceItem, 100)}
+	if _, changed, err := s.ApplyFillerEnrichment(ctx, brand, at.Add(3*time.Second)); err != nil || !changed {
+		t.Fatalf("brand apply changed = %v, err %v", changed, err)
+	}
+	candidates, err := s.ListFillerEnrichmentCandidates(ctx, "deterministic-metadata", "1", "seed-v2", 10)
+	if err != nil || len(candidates) != 1 || candidates[0].Hash != clip.Hash {
+		t.Fatalf("candidates before pass = %+v, err %v", candidates, err)
+	}
+	pass := fillerenrichment.Pass{ClipHash: clip.Hash, Producer: "deterministic-metadata", ProducerVersion: "1",
+		TaxonomyVersion: "seed-v2", CompletedAt: at.Add(4 * time.Second), States: []fillerenrichment.State{item, brand, {
+			ClipHash: clip.Hash, Axis: fillerenrichment.AxisProduct, Status: fillerenrichment.StatusComplete,
+			Value: fillerenrichment.Value{Tags: []string{"condiments"}}, Evidence: fillerenrichment.Evidence{
+				Kind: fillerenrichment.EvidenceTrustedMap, Reference: "trusted.product_mapping:hp sauce", Confidence: 100,
+				Producer: "deterministic-metadata", ProducerVersion: "1", TaxonomyVersion: "seed-v2", ObservedAt: at,
+			},
+		}}}
+	pass.States[0].Evidence.Producer = pass.Producer
+	pass.States[0].Evidence.ProducerVersion = pass.ProducerVersion
+	pass.States[1].Evidence.Producer = pass.Producer
+	pass.States[1].Evidence.ProducerVersion = pass.ProducerVersion
+	if changed, err := s.ApplyFillerEnrichmentPass(ctx, pass); err != nil || changed != 1 {
+		t.Fatalf("pass changed = %d, err %v; only the new product axis should change", changed, err)
+	}
+	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("candidates after pass = %+v, err %v", candidates, err)
+	}
+	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, "2", pass.TaxonomyVersion, 10)
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("new producer version candidates = %+v, err %v", candidates, err)
+	}
+	states, err := s.ListFillerEnrichment(ctx, clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(states) != 3 || states[0].Axis != fillerenrichment.AxisBrand || states[1].Axis != fillerenrichment.AxisEra || states[1].Value.Year != 1999 || states[2].Axis != fillerenrichment.AxisProduct {
+		t.Fatalf("states = %+v", states)
+	}
+	projected, err := s.GetClip(ctx, clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projected.Era != 1999 || projected.Brand != "HP Sauce" || projected.Category != "condiments" ||
+		len(projected.AssertedTags) != 1 || projected.AssertedTags[0] != "condiments" {
+		t.Fatalf("projected clip = %+v", projected)
+	}
+	unworked := fillerenrichment.State{ClipHash: clip.Hash, Axis: fillerenrichment.AxisLanguage, Status: fillerenrichment.StatusMissing}
+	if _, _, err := s.ApplyFillerEnrichment(ctx, unworked, at); !errors.Is(err, fillerenrichment.ErrInvalidState) {
+		t.Fatalf("persist missing state error = %v, want ErrInvalidState", err)
+	}
+	missing := item
+	missing.ClipHash = "missing-clip"
+	if _, _, err := s.ApplyFillerEnrichment(ctx, missing, at); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing clip error = %v, want ErrNotFound", err)
 	}
 }
 

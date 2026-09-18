@@ -14,10 +14,11 @@ import type { ClipDetailsEditorProps } from "./clip-details-editor.type";
 
 // The taxonomy axes, in display order — the independent dimensions a clip is tagged on (§10 V45a).
 // Ordered product-first because it is the deepest and most-used; the labels are the human forms.
-const AXES = ["product", "format", "seasonal", "audience-cue"] as const;
+const AXES = ["product", "format", "presentation", "seasonal", "audience-cue"] as const;
 const AXIS_LABEL: Record<(typeof AXES)[number], string> = {
   product: "Products & topics",
   format: "Format",
+  presentation: "Presentation",
   seasonal: "Seasonal",
   "audience-cue": "Audience cue",
 };

@@ -17,6 +17,9 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 	if err := s.SeedTaxonomy(ctx, taxonomy.SeedForest(), now); err != nil {
 		return err
 	}
+	if err := s.convergeTaxonomySeed(ctx, taxonomy.SeedRevisions(), now); err != nil {
+		return err
+	}
 	// ⚠ Rebuild every taxonomy-derived projection on open, unlike the seed's empty-guard. This is the
 	// upgrade backstop for installs whose graph was edited before V55 made graph writes atomic, and it
 	// heals restored/manual data without an operator task. The work is set-based and commits under the
@@ -25,7 +28,10 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 	if err != nil {
 		return err
 	}
-	return s.rebuildTaxonomyDerived(ctx, taxonomy.New(taxa))
+	if err := s.rebuildTaxonomyDerived(ctx, taxonomy.New(taxa)); err != nil {
+		return err
+	}
+	return s.backfillFillerEnrichment(ctx, now)
 }
 
 // Open selects and opens a backend from the DATABASE_URL scheme (§5) and, when

@@ -286,6 +286,33 @@ An enrolled Clip whose required household runtime checks completed and whose pla
 Placement were committed. Ready is the only state eligible for a Pod.
 _Avoid_: filed, admitted, approved clip
 
+**Enrichment axis**:
+One independent descriptive question Loomarr may answer about a Clip after Enrollment, such as era,
+brand, target audience, geography, language, product, or presentation. Each axis has its own durable
+completion and evidence state; there is no clip-wide “AI tagged” answer.
+_Avoid_: tag pass, AI status, readiness check, safety axis
+
+**Enrichment evidence**:
+The exact, ranked provenance for one accepted Enrichment-axis answer: the source kind and reference,
+producer and version, controlled-vocabulary version where applicable, confidence, and observation
+time. Evidence describes why metadata is present; it never grants Airworthiness, Placement, or Ready.
+_Avoid_: model output, approval, certificate
+
+**Evidence rank**:
+The closed precedence Loomarr uses when two grounded Enrichment-evidence records disagree. Operator
+corrections outrank exact item evidence; exact item evidence outranks trusted source defaults; weak
+inference cannot replace a stronger fact. Confidence compares evidence at the same rank and never
+promotes a weaker source above a stronger one.
+_Avoid_: confidence score, model vote, trust score
+
+**Enrichment state**:
+The durable answer for one Enrichment axis: `missing`, `complete`, `unsupported`, or `stale`.
+`complete` may honestly contain no value when the applicable evidence was checked and found none;
+`unsupported` may wake when a capability appears; `stale` requires re-evaluation after a relevant
+producer or vocabulary change. Budget waits, retries, and provider failures are operational work
+state rather than additional semantic values.
+_Avoid_: pending review, Needs-help task, preparation state
+
 **Completed composite**:
 A Composite whose conveyor work finished without making the container playable. Its confirmed
 Segments continue independently toward Ready; the container itself never enters a Pod.

@@ -1893,6 +1893,7 @@ components:
             - format
             - seasonal
             - audience-cue
+            - presentation
           type: string
         label:
           type: string
@@ -9806,6 +9807,7 @@ components:
             - format
             - seasonal
             - audience-cue
+            - presentation
           type: string
         label:
           description: Human display form
@@ -9850,6 +9852,7 @@ components:
             - format
             - seasonal
             - audience-cue
+            - presentation
           type: string
         taggedClips:
           description: Playable clips with at least one direct assertion on this axis
@@ -9895,7 +9898,7 @@ components:
             - format
             - seasonal
             - audience-cue
-            - ""
+            - presentation
           type: string
         label:
           type: string
@@ -10255,6 +10258,7 @@ components:
             - format
             - seasonal
             - audience-cue
+            - presentation
           type: string
         label:
           type: string
@@ -12479,6 +12483,7 @@ paths:
               - format
               - seasonal
               - audience-cue
+              - presentation
             type: string
         - description: Only commercials missing match tags
           explode: false
