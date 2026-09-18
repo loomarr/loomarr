@@ -161,17 +161,17 @@ describe("ProposalReview", () => {
     });
   });
 
-  it("finds more ideas without changing the selected lineup", async () => {
+  it("finds more suggestions without changing the selected lineup", async () => {
     const user = userEvent.setup();
     const onRevise = vi.fn();
     const view = renderReview(<ProposalReview proposal={proposal} selfService onRevise={onRevise} />);
 
     await user.click(screen.getByText("More suggestions"));
-    await user.click(screen.getByRole("button", { name: "Find more ideas" }));
+    await user.click(screen.getByRole("button", { name: "Find more suggestions" }));
 
-    expect(screen.getByRole("button", { name: "Finding more ideas…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit brief" })).toBeDisabled();
-    expect(screen.getByText("Finding more ideas… Your selected titles won’t change.")).toHaveAttribute(
+    expect(screen.getByText("Finding more suggestions… Your selected titles won’t change.")).toHaveAttribute(
       "role",
       "status",
     );
@@ -182,7 +182,8 @@ describe("ProposalReview", () => {
         { key: "movie:tmdb:949", name: "Heat", year: 1995 },
         { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
       ],
-      refineText: "Find more titles that match this brief.",
+      refineText:
+        "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
     });
 
     view.rerender(
@@ -190,7 +191,7 @@ describe("ProposalReview", () => {
         <ProposalReview proposal={proposal} selfService revising onRevise={onRevise} />
       </QueryClientProvider>,
     );
-    expect(screen.getByRole("button", { name: "Finding more ideas…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
 
     view.rerender(
       <QueryClientProvider client={new QueryClient()}>
@@ -198,11 +199,11 @@ describe("ProposalReview", () => {
       </QueryClientProvider>,
     );
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Find more ideas" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Find more suggestions" })).toBeEnabled();
     });
   });
 
-  it("shows progress when finding more ideas again after a failed attempt", async () => {
+  it("shows progress when finding more suggestions again after a failed attempt", async () => {
     const user = userEvent.setup();
     const onRevise = vi.fn();
     renderReview(
@@ -215,9 +216,9 @@ describe("ProposalReview", () => {
     );
 
     await user.click(screen.getByText("More suggestions"));
-    await user.click(screen.getByRole("button", { name: "Find more ideas" }));
+    await user.click(screen.getByRole("button", { name: "Find more suggestions" }));
 
-    expect(screen.getByRole("button", { name: "Finding more ideas…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(onRevise).toHaveBeenCalledOnce();
   });

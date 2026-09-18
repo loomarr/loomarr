@@ -34,13 +34,12 @@ test("a first-time admin can shape the suggested channel before creating it", as
 
   // Finding more is an in-place refresh. It keeps the current choices visible,
   // explains what is happening, and sends the exact selected lineup as context.
-  await page.getByText("More suggestions").click();
-  await page.getByRole("button", { name: "Find more ideas" }).click();
-  await expect(page.getByRole("button", { name: "Finding more ideas…" })).toBeDisabled();
-  await expect(page.getByText("Finding more ideas… Your selected titles won’t change.")).toHaveAttribute(
-    "role",
-    "status",
-  );
+  await page.getByText("More suggestions", { exact: true }).click();
+  await page.getByRole("button", { name: "Find more suggestions" }).click();
+  await expect(page.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
+  await expect(
+    page.getByText("Finding more suggestions… Your selected titles won’t change."),
+  ).toHaveAttribute("role", "status");
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveCount(0);
   await expect
     .poll(() => mock.state.proposalRevisionRequests)
@@ -54,7 +53,8 @@ test("a first-time admin can shape the suggested channel before creating it", as
             { name: "Con Air", year: 1997, key: "movie:tmdb:1701" },
             { name: "The Matrix", year: 1999, key: "movie:tmdb:603" },
           ],
-          refineText: "Find more titles that match this brief.",
+          refineText:
+            "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
         },
       },
     ]);
@@ -89,7 +89,8 @@ test("a first-time admin can shape the suggested channel before creating it", as
             { name: "Con Air", year: 1997, key: "movie:tmdb:1701" },
             { name: "The Matrix", year: 1999, key: "movie:tmdb:603" },
           ],
-          refineText: "Find more titles that match this brief.",
+          refineText:
+            "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
         },
       },
       {
@@ -130,10 +131,10 @@ test("the suggestion review remains usable on a phone with reduced motion", asyn
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
 
   await expect(page.getByRole("heading", { name: "Review your channel" })).toBeVisible();
-  await page.getByText("More suggestions").click();
-  await page.getByRole("button", { name: "Find more ideas" }).click();
+  await page.getByText("More suggestions", { exact: true }).click();
+  await page.getByRole("button", { name: "Find more suggestions" }).click();
 
-  const progressButton = page.getByRole("button", { name: "Finding more ideas…" });
+  const progressButton = page.getByRole("button", { name: "Finding more suggestions…" });
   await expect(progressButton).toBeDisabled();
   const animationDuration = await progressButton
     .locator("svg")

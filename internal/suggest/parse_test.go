@@ -122,3 +122,25 @@ func TestUserPrompt_RefineFraming(t *testing.T) {
 		t.Error("refine prompt should NOT use the fresh build framing")
 	}
 }
+
+func TestUserPrompt_FindMoreRequestsANewBatchWithoutRepeatingTheLineup(t *testing.T) {
+	prompt := userPrompt(Intent{
+		Description:   "90s action",
+		RefineText:    "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
+		CurrentLineup: []LineupContext{{Name: "Heat", Year: 1995}, {Name: "Point Break", Year: 1991}},
+	})
+
+	for _, want := range []string{
+		"6-8 new well-matched titles",
+		"Do not return titles from the current lineup",
+		"selected lineup will be preserved separately",
+		"catalog tool",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("find-more prompt missing %q:\n%s", want, prompt)
+		}
+	}
+	if strings.Contains(prompt, "Keep the titles that still fit") {
+		t.Errorf("find-more prompt must not spend the bounded result set repeating selected titles:\n%s", prompt)
+	}
+}

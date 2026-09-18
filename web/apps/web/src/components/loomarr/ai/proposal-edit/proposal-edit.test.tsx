@@ -220,6 +220,38 @@ describe("ProposalEdit", () => {
     });
   });
 
+  it("offers an honest search action before any extra suggestions exist", async () => {
+    stubSearch([]);
+    const onFindMore = vi.fn();
+    const view = render(
+      <ProposalEdit
+        lineup={[heat]}
+        acquisitions={[]}
+        alternates={[]}
+        onChange={vi.fn()}
+        onFindMore={onFindMore}
+      />,
+    );
+
+    expect(screen.queryByText("0 options")).not.toBeInTheDocument();
+    expect(screen.queryByText("There aren't any extra options yet.")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Find more suggestions" }));
+    expect(onFindMore).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <ProposalEdit
+        lineup={[heat]}
+        acquisitions={[]}
+        alternates={[]}
+        onChange={vi.fn()}
+        onFindMore={onFindMore}
+        findingMore
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
+  });
+
   it("renders a read-only title summary when no edit handler is provided", () => {
     stubSearch([]);
     render(<ProposalEdit lineup={[heat]} acquisitions={[simpsons]} />);

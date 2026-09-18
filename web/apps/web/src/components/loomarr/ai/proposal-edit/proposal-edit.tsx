@@ -341,7 +341,20 @@ const ProposalEdit = (props: ProposalEditProps) => {
           </Button>
         ))}
 
-      {(suggestions.length > 0 || onFindMore) && (
+      {suggestions.length === 0 && onFindMore && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="self-start"
+          disabled={disabled || findingMore}
+          onClick={onFindMore}
+        >
+          {findingMore && <LoaderCircle aria-hidden className="animate-spin" />}
+          {findingMore ? "Finding more suggestions…" : "Find more suggestions"}
+        </Button>
+      )}
+
+      {suggestions.length > 0 && (
         <details className="rounded-md border border-border px-3 py-2.5">
           <summary className="cursor-pointer text-sm">
             <span className="font-medium">More suggestions</span>
@@ -349,27 +362,21 @@ const ProposalEdit = (props: ProposalEditProps) => {
               {suggestions.length} {suggestions.length === 1 ? "option" : "options"}
             </span>
           </summary>
-          <p className="mt-2 text-muted-foreground text-sm">
-            {suggestions.length > 0
-              ? "Add any that belong on your channel."
-              : "There aren't any extra options yet."}
-          </p>
-          {suggestions.length > 0 && (
-            <ul className="mt-2 border-border border-t">
-              {suggestions.map((pick) => (
-                <PickRow
-                  key={pick.key || `unkeyed-${pick.item.name}`}
-                  pick={pick}
-                  included
-                  editable={editable}
-                  disabled={disabled}
-                  episodeSelectionPreview={episodeSelectionPreview}
-                  feedback={renderFeedback?.(pick.item)}
-                  onAdd={() => addSuggestion(pick)}
-                />
-              ))}
-            </ul>
-          )}
+          <p className="mt-2 text-muted-foreground text-sm">Add any that belong on your channel.</p>
+          <ul className="mt-2 border-border border-t">
+            {suggestions.map((pick) => (
+              <PickRow
+                key={pick.key || `unkeyed-${pick.item.name}`}
+                pick={pick}
+                included
+                editable={editable}
+                disabled={disabled}
+                episodeSelectionPreview={episodeSelectionPreview}
+                feedback={renderFeedback?.(pick.item)}
+                onAdd={() => addSuggestion(pick)}
+              />
+            ))}
+          </ul>
           {onFindMore && (
             <Button
               variant="ghost"
@@ -379,7 +386,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
               onClick={onFindMore}
             >
               {findingMore && <LoaderCircle aria-hidden className="animate-spin" />}
-              {findingMore ? "Finding more ideas…" : "Find more ideas"}
+              {findingMore ? "Finding more suggestions…" : "Find more suggestions"}
             </Button>
           )}
         </details>

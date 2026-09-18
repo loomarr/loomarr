@@ -246,7 +246,7 @@ const ProposalReview = ({
       {(revising || findingMore) && (
         <p role="status" className="text-muted-foreground text-sm">
           {findingMore
-            ? "Finding more ideas… Your selected titles won’t change."
+            ? "Finding more suggestions… Your selected titles won’t change."
             : "Updating suggestions… Your current lineup will stay here until the new one is ready."}
         </p>
       )}
@@ -276,7 +276,8 @@ const ProposalReview = ({
                 onRevise({
                   ...requestIntent,
                   currentLineup,
-                  refineText: "Find more titles that match this brief.",
+                  refineText:
+                    "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
                 });
               }
             : undefined

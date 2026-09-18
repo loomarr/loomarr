@@ -70,6 +70,11 @@ const repairPrompt = `Your previous reply was not valid JSON matching the requir
 	`Reply now with ONLY the JSON object {"rationale":...,"dateMeaning":{"kind":...,"anchors":[...],"axes":[...]},"picks":[...]} and nothing else. ` +
 	`Use ONLY exact key strings that appeared in a catalog_search result; copy each key byte for byte.`
 
+func requestsAdditionalSuggestions(i Intent) bool {
+	text := strings.ToLower(strings.TrimSpace(i.RefineText))
+	return strings.Contains(text, "additional titles") && strings.Contains(text, "selected lineup")
+}
+
 // userPrompt renders the intent into the first user turn.
 func userPrompt(i Intent) string {
 	var b strings.Builder
@@ -92,8 +97,15 @@ func userPrompt(i Intent) string {
 		if i.RefineText != "" {
 			fmt.Fprintf(&b, "The user wants to change it: %s\n", i.RefineText)
 		}
-		b.WriteString("Keep the titles that still fit, drop the ones that don't, and add new ones as needed. " +
-			"Re-ground EVERY title (kept or new) through the catalog tool — copy only exact catalog keys the tool returns.\n")
+		if requestsAdditionalSuggestions(i) {
+			b.WriteString("This is an option-expansion request: the selected lineup will be preserved separately. " +
+				"Do not return titles from the current lineup. Return 6-8 new well-matched titles when catalog evidence supports that many; " +
+				"return fewer rather than padding with weak matches. Re-ground EVERY new title through the catalog tool — " +
+				"copy only exact catalog keys the tool returns.\n")
+		} else {
+			b.WriteString("Keep the titles that still fit, drop the ones that don't, and add new ones as needed. " +
+				"Re-ground EVERY title (kept or new) through the catalog tool — copy only exact catalog keys the tool returns.\n")
+		}
 		// Adjacency offers (§8.3): titles this channel's own lineup points at, with the
 		// consensus that surfaced them. Presented as SUGGESTIONS, not instructions — the
 		// model weighs them against the intent like any other candidate, and a weak
