@@ -92,9 +92,10 @@ func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
 		current.ForceRun != p.ForceRun || current.RejectReason != p.RejectReason ||
 		current.RejectDetail != p.RejectDetail || !current.EnrolledAt.Equal(p.EnrolledAt) ||
 		current.PreparationAttempt != p.PreparationAttempt ||
-		!current.PreparationStartedAt.Equal(p.PreparationStartedAt) ||
+		!samePersistedSecond(current.PreparationStartedAt, p.PreparationStartedAt) ||
 		current.PreparationStartReason != p.PreparationStartReason ||
-		!current.StageQueuedAt.Equal(p.StageQueuedAt) || !current.StageStartedAt.Equal(p.StageStartedAt) ||
+		!samePersistedSecond(current.StageQueuedAt, p.StageQueuedAt) ||
+		!samePersistedSecond(current.StageStartedAt, p.StageStartedAt) ||
 		p.UpdatedAt.Before(current.UpdatedAt) {
 		return fmt.Errorf("%w: conveyor row is no longer the completed run", ErrReadyStale)
 	}
@@ -111,6 +112,18 @@ func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
 		return fmt.Errorf("%w: final score record is not complete", ErrReadyStale)
 	}
 	return nil
+}
+
+// samePersistedSecond compares timestamps at the precision owned by filler_clip_pipeline. The
+// pipeline retains sub-second stage timing in its JSON ladder, while the current-stage columns use
+// the store's Unix-second convention. A terminal commit still carries the in-memory nanoseconds
+// from the just-finished rung, so comparing those columns at nanosecond precision would reject the
+// exact row that the repository just read back.
+func samePersistedSecond(a, b time.Time) bool {
+	if a.IsZero() || b.IsZero() {
+		return a.IsZero() && b.IsZero()
+	}
+	return a.Unix() == b.Unix()
 }
 
 // ReadyRepository is the one publication seam. Ordinary clip and pipeline writers cannot clear a

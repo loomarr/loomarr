@@ -121,6 +121,9 @@ func TestReadyCommitRejectsInvalidAuthorityAndPlacement(t *testing.T) {
 func TestReadyCommitRequiresExactTerminalLadderAdvance(t *testing.T) {
 	at := time.Date(2026, time.September, 13, 18, 0, 0, 0, time.UTC)
 	settled := completedReadyRow("clip-hash", at)
+	settled.PreparationStartedAt = at.Add(250 * time.Millisecond)
+	settled.StageQueuedAt = at.Add(350 * time.Millisecond)
+	settled.StageStartedAt = at.Add(450 * time.Millisecond)
 	settled.Disposition = filler.DispositionReady
 	commit := filler.ReadyCommit{Event: filler.ReadyEvent{
 		ID: "ready:clip-hash", ClipHash: "clip-hash", AcquisitionID: "acquisition-1",
@@ -131,6 +134,9 @@ func TestReadyCommitRequiresExactTerminalLadderAdvance(t *testing.T) {
 	current.Disposition = filler.DispositionRunning
 	current.Status = filler.StatusRunning
 	current.Progress = 0
+	current.PreparationStartedAt = current.PreparationStartedAt.Truncate(time.Second)
+	current.StageQueuedAt = current.StageQueuedAt.Truncate(time.Second)
+	current.StageStartedAt = current.StageStartedAt.Truncate(time.Second)
 	current.Stages = append([]filler.StageRecord(nil), settled.Stages[:len(settled.Stages)-1]...)
 	if err := commit.ValidateAgainst(current); err != nil {
 		t.Fatalf("exact terminal advance = %v", err)
@@ -143,6 +149,9 @@ func TestReadyCommitRequiresExactTerminalLadderAdvance(t *testing.T) {
 		{name: "different attempt", change: func(row *filler.ClipPipeline) { row.Attempts++ }},
 		{name: "changed prior record", change: func(row *filler.ClipPipeline) { row.Stages[0].Note = "changed" }},
 		{name: "already terminal", change: func(row *filler.ClipPipeline) { row.Disposition = filler.DispositionReady }},
+		{name: "different stage start second", change: func(row *filler.ClipPipeline) {
+			row.StageStartedAt = row.StageStartedAt.Add(time.Second)
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
