@@ -43,7 +43,7 @@ const ChannelSuggestPanel = ({
   const queryClient = useQueryClient();
   const [startedFresh, setStartedFresh] = useState(false);
   const run = useSuggestionRun(initialJobId);
-  const [edit, setEdit, optionalSuggestionKeys] = useProposalReviewEdit(run.jobId, run.proposal);
+  const [edit, setEdit, optionalSuggestions, expansionAdded] = useProposalReviewEdit(run.jobId, run.proposal);
   const elapsed = useElapsed(run.isRunning);
   const runProblem = run.error == null ? undefined : toProblem(run.error);
   const aiUnconfigured = runProblem?.type === "feature_not_configured";
@@ -218,7 +218,8 @@ const ChannelSuggestPanel = ({
         <div className="flex flex-col gap-4">
           <ProposalReview
             proposal={proposal.proposal}
-            optionalSuggestionKeys={optionalSuggestionKeys}
+            optionalSuggestions={optionalSuggestions}
+            expansionAdded={expansionAdded}
             showWorkflowHeading={false}
             edit={edit}
             assessment={

@@ -10,9 +10,9 @@ interface ProposalEditProps {
   lineup: ProposalItem[];
   acquisitions: ProposalItem[];
   alternates?: ProposalItem[];
-  // A revision may return new primary picks, but they remain optional until the
-  // reviewer explicitly adds them. Their keys are presented with alternates.
-  optionalSuggestionKeys?: string[];
+  // Successive revisions may contribute grounded picks to the Proposal Job's
+  // cumulative option pool. They remain optional until the reviewer adds them.
+  optionalSuggestions?: ProposalItem[];
   onFindMore?: () => void;
   findingMore?: boolean;
   // Read-only server projection from the trusted Proposal Intent. Used only to

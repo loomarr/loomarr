@@ -4,16 +4,25 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { ProposalJourneyProposalDTO } from "@loomarr/api/models/proposalJourneyProposalDTO";
 import { provisionKey } from "@loomarr/core/provision";
 import { useCallback, useEffect, useState } from "react";
+import { isSuggestionExpansion, MAX_SUGGESTION_OPTIONS } from "../suggestion-expansion";
 
 const keyFor = (jobId: string) => `loomarr.proposalReviewEdit.${jobId}`;
 const stateKeyFor = (jobId: string) => `loomarr.proposalReviewState.${jobId}`;
 
 interface ReviewState {
+  version: 2;
+  proposalId: string;
+  selected: ProposalItem[];
+  excluded: string[];
+  suggestions: ProposalItem[];
+  lastExpansionAdded?: number;
+}
+
+interface LegacyReviewState {
   version: 1;
   proposalId: string;
   selected: ProposalItem[];
   excluded: string[];
-  optional: string[];
 }
 
 const proposalItems = (items: ProposalItem[] | null | undefined) => items ?? [];
@@ -73,11 +82,11 @@ const initialReviewState = (
   return {
     edit: normalized,
     review: {
-      version: 1,
+      version: 2,
       proposalId: proposal.id,
       selected: selectedItems(proposal.proposal, normalized),
       excluded: (normalized?.drop ?? []).filter((key) => !added.has(key)),
-      optional: [],
+      suggestions: uniqueItems(proposalItems(proposal.proposal.alternates)).slice(0, MAX_SUGGESTION_OPTIONS),
     },
   };
 };
@@ -117,14 +126,29 @@ const reconcileReplacement = (
           ...(trimmedNote ? { note: trimmedNote } : {}),
         }
       : undefined;
+  const eligibleSuggestion = (item: ProposalItem) => {
+    const key = provisionKey(item);
+    return key !== "" && !selectedKeys.has(key) && !review.excluded.includes(key);
+  };
+  const expansion = isSuggestionExpansion(proposal.proposal.intent.refineText);
+  const retainedSuggestions = expansion ? uniqueItems(review.suggestions).filter(eligibleSuggestion) : [];
+  const retainedKeys = new Set(retainedSuggestions.map(provisionKey));
+  const suggestions = uniqueItems([
+    ...retainedSuggestions,
+    ...rawSelected,
+    ...proposalItems(proposal.proposal.alternates),
+  ])
+    .filter(eligibleSuggestion)
+    .slice(0, MAX_SUGGESTION_OPTIONS);
+  const expansionAdded = suggestions.filter((item) => !retainedKeys.has(provisionKey(item))).length;
+
   return {
     edit,
     review: {
       ...review,
       proposalId: proposal.id,
-      optional: rawSelected
-        .map(provisionKey)
-        .filter((key) => key !== "" && !selectedKeys.has(key) && !review.excluded.includes(key)),
+      suggestions,
+      lastExpansionAdded: expansion ? expansionAdded : undefined,
     },
   };
 };
@@ -145,12 +169,24 @@ const readEdit = (jobId?: string): ApprovalEditDTO | undefined => {
 const readReviewState = (jobId?: string): ReviewState | undefined => {
   if (!jobId || typeof window === "undefined") return undefined;
   try {
-    const value = JSON.parse(
-      window.sessionStorage.getItem(stateKeyFor(jobId)) ?? "null",
-    ) as ReviewState | null;
-    return value?.version === 1 && Array.isArray(value.selected) && Array.isArray(value.excluded)
-      ? { ...value, optional: Array.isArray(value.optional) ? value.optional : [] }
-      : undefined;
+    const value = JSON.parse(window.sessionStorage.getItem(stateKeyFor(jobId)) ?? "null") as
+      | ReviewState
+      | LegacyReviewState
+      | null;
+    if (!value || !Array.isArray(value.selected) || !Array.isArray(value.excluded)) return undefined;
+    if (value.version === 2) {
+      return { ...value, suggestions: Array.isArray(value.suggestions) ? value.suggestions : [] };
+    }
+    if (value.version === 1) {
+      return {
+        version: 2,
+        proposalId: "",
+        selected: value.selected,
+        excluded: value.excluded,
+        suggestions: [],
+      };
+    }
+    return undefined;
   } catch {
     window.sessionStorage.removeItem(stateKeyFor(jobId));
     return undefined;
@@ -216,11 +252,14 @@ const useProposalReviewEdit = (jobId?: string, proposal?: ProposalJourneyProposa
       for (const key of selectedKeys) excluded.delete(key);
       const review = proposal
         ? {
-            version: 1 as const,
+            version: 2 as const,
             proposalId: proposal.id,
             selected,
             excluded: [...excluded],
-            optional: (snapshot.review?.optional ?? []).filter((key) => !selectedKeys.has(key)),
+            suggestions: (snapshot.review?.suggestions ?? []).filter((item) => {
+              const key = provisionKey(item);
+              return !selectedKeys.has(key) && !excluded.has(key);
+            }),
           }
         : snapshot.review;
       persist(jobId, normalized, review);
@@ -232,7 +271,8 @@ const useProposalReviewEdit = (jobId?: string, proposal?: ProposalJourneyProposa
   return [
     snapshot.jobId === jobId ? snapshot.edit : undefined,
     setEdit,
-    snapshot.jobId === jobId ? (snapshot.review?.optional ?? []) : [],
+    snapshot.jobId === jobId ? (snapshot.review?.suggestions ?? []) : [],
+    snapshot.jobId === jobId ? snapshot.review?.lastExpansionAdded : undefined,
   ] as const;
 };
 
