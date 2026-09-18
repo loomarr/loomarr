@@ -381,6 +381,60 @@ func (s *sqlStore) SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at t
 	return nil
 }
 
+// convergeTaxonomySeed applies each shipped additive vocabulary revision once. Existing slugs and
+// edits always win; a new taxon that conflicts with an operator's graph or resolver namespace is
+// skipped rather than making startup fail. Recording the revision even when a term is skipped is
+// intentional: a later operator deletion must not make boot recreate product defaults forever.
+func (s *sqlStore) convergeTaxonomySeed(ctx context.Context, revisions []taxonomy.SeedRevision, at time.Time) error {
+	for _, revision := range revisions {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("converge taxonomy seed v%d: begin: %w", revision.Version, err)
+		}
+		var applied int
+		if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM taxonomy_seed_revisions WHERE version = ?`), revision.Version).Scan(&applied); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("converge taxonomy seed v%d: read marker: %w", revision.Version, err)
+		}
+		if applied > 0 {
+			_ = tx.Rollback()
+			continue
+		}
+		current, err := listTaxaFrom(ctx, tx)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("converge taxonomy seed v%d: list: %w", revision.Version, err)
+		}
+		bySlug := make(map[string]bool, len(current))
+		for _, taxon := range current {
+			bySlug[taxon.Slug] = true
+		}
+		for _, addition := range revision.Taxa {
+			if bySlug[addition.Slug] {
+				continue
+			}
+			prospective := append(append([]taxonomy.Taxon(nil), current...), addition)
+			if err := taxonomy.Validate(prospective); err != nil {
+				continue
+			}
+			if err := s.upsertTaxonTx(ctx, tx, addition, at); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("converge taxonomy seed v%d: insert %s: %w", revision.Version, addition.Slug, err)
+			}
+			current = prospective
+			bySlug[addition.Slug] = true
+		}
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO taxonomy_seed_revisions (version, applied_at) VALUES (?, ?)`), revision.Version, epoch(at)); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("converge taxonomy seed v%d: record marker: %w", revision.Version, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("converge taxonomy seed v%d: commit: %w", revision.Version, err)
+		}
+	}
+	return nil
+}
+
 // SetClipTags is the per-clip taxonomy transaction. It replaces asserted leaves, expands them
 // through the CURRENT closure, and refreshes the compatibility category shadow before commit.
 // Postgres takes a shared taxonomy lock so an operator graph edit cannot commit between those
@@ -451,14 +505,18 @@ func (s *sqlStore) setClipTagsTx(ctx context.Context, tx *sql.Tx, clipHash strin
 // GetClipTags returns a clip's tags. `leavesOnly` restricts to the asserted leaves (what to re-derive
 // rollups from); false returns the full leaf+rollup set (what curation matches against).
 func (s *sqlStore) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
-	q := `SELECT taxon FROM clip_tags WHERE clip_hash = ?`
+	return getClipTagsFrom(ctx, s.db, s.ph, clipHash, leavesOnly)
+}
+
+func getClipTagsFrom(ctx context.Context, queryer taxonomyQueryer, placeholder func(string) string, clipHash string, leavesOnly bool) ([]string, error) {
+	query := `SELECT taxon FROM clip_tags WHERE clip_hash = ?`
 	args := []any{clipHash}
 	if leavesOnly {
-		q += ` AND leaf = ?`
+		query += ` AND leaf = ?`
 		args = append(args, true)
 	}
-	q += ` ORDER BY taxon`
-	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	query += ` ORDER BY taxon`
+	rows, err := queryer.QueryContext(ctx, placeholder(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("get clip tags: %w", err)
 	}

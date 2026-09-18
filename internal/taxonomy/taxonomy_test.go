@@ -33,6 +33,24 @@ func TestSeedForest_Integrity(t *testing.T) {
 	}
 }
 
+func TestSeedForest_PresentationVocabularyHasOneAdditiveRevision(t *testing.T) {
+	f := seed()
+	for raw, want := range map[string]string{"animated": "animated", "cartoon": "animated", "live action": "live-action"} {
+		got, ok := f.Resolve(raw)
+		if !ok || got != want {
+			t.Errorf("Resolve(%q) = (%q,%v), want (%q,true)", raw, got, ok, want)
+		}
+		taxon, exists := f.Get(want)
+		if !exists || taxon.Axis != taxonomy.AxisPresentation {
+			t.Errorf("presentation taxon %q = %+v, %v", want, taxon, exists)
+		}
+	}
+	revisions := taxonomy.SeedRevisions()
+	if len(revisions) != 1 || revisions[0].Version != 2 || len(revisions[0].Taxa) != 3 {
+		t.Fatalf("SeedRevisions() = %+v, want one v2 presentation revision", revisions)
+	}
+}
+
 // Resolve grounds a raw model tag to a canonical slug, or drops it — the anti-fabrication gate.
 func TestResolve(t *testing.T) {
 	f := seed()

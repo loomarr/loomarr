@@ -371,6 +371,20 @@ classify() {
       known=true
       select_gate docs
       ;;
+    internal/releaseverify/testdata/*)
+      # Release verification is policy-only above; its golden inputs must retain that boundary
+      # instead of falling through to the generic Go-package fixture rule.
+      known=true
+      select_gate policy
+      ;;
+    internal/*/testdata/*)
+      # Go package fixtures belong to their owning package's tests. Treating a new fixture
+      # directory as unknown used to fan ordinary backend work out to every Apple/Android and
+      # browser gate even though no native client consumes the file.
+      known=true
+      select_gate contracts
+      select_gate go
+      ;;
     internal/web/dist/*)
       known=true
       select_gate contracts

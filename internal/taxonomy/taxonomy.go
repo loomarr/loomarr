@@ -1,5 +1,5 @@
 // Package taxonomy is the clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES
-// (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its
+// (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its
 // rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the
 // vocabulary.
 //
@@ -36,6 +36,10 @@ const (
 	// AxisAudienceCue is a HINT about who it suits, kept separate from the clip's `audience` verdict
 	// (a cue is a suggestion the tagger may read, not the authoritative audience enum).
 	AxisAudienceCue Axis = "audience-cue"
+	// AxisPresentation is how the pictures are presented — animated, live action, or another
+	// controlled visual treatment. It is deliberately separate from AxisFormat, which describes
+	// the clip's editorial role (commercial, PSA, ident), and from Airworthiness.
+	AxisPresentation Axis = "presentation"
 )
 
 // ErrInvalidForest marks an operator edit that would make the taxonomy ambiguous or malformed.
@@ -59,7 +63,7 @@ func Validate(taxa []Taxon) error {
 			return fmt.Errorf("%w: taxon %q needs a label", ErrInvalidForest, t.Slug)
 		}
 		switch t.Axis {
-		case AxisProduct, AxisFormat, AxisSeasonal, AxisAudienceCue:
+		case AxisProduct, AxisFormat, AxisSeasonal, AxisAudienceCue, AxisPresentation:
 		default:
 			return fmt.Errorf("%w: taxon %q has unsupported axis %q", ErrInvalidForest, t.Slug, t.Axis)
 		}

@@ -309,14 +309,14 @@ func TestClassify_PromptRequiresAnIdentifiableProductLeafWithoutForcingOne(t *te
 
 func TestClassify_GroundsAxisShapedTagsOnTheirDeclaredAxis(t *testing.T) {
 	llmMock := testkit.NewLLM(testkit.FinalResponse(
-		`{"era":1986,"audience":"kids","product":"soda","format":"commercial","seasonal":["holiday"],"audienceCues":["kids-cue"],"brand":"Mountain Dew","confidence":90}`,
+		`{"era":1986,"audience":"kids","product":"soda","format":"commercial","presentation":"animated","seasonal":["holiday"],"audienceCues":["kids-cue"],"brand":"Mountain Dew","confidence":90}`,
 	))
 	got, err := filler.Classify(context.Background(), llmMock, seedForest(),
 		"1986 Mountain Dew holiday TV Commercial", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"commercial", "holiday", "kids-cue", "soda"}
+	want := []string{"animated", "commercial", "holiday", "kids-cue", "soda"}
 	if !reflect.DeepEqual(got.Tags, want) || got.Category != "soda" {
 		t.Errorf("axis-shaped classification = tags %v category %q, want %v / soda", got.Tags, got.Category, want)
 	}

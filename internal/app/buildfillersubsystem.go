@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
@@ -139,6 +140,12 @@ func buildFillerSubsystem(
 	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, taggerProvider, wake,
 		processDiagnostics, storageGovernor, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
+	enrichment := fillerenrichment.NewRunner(
+		fillerEnrichmentRepository{st: st},
+		fillerEnrichmentSignals{store: st, files: layout.FS()}.Load,
+		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
+	)
+	jobs.Add(fillerEnrichmentJob(enrichment))
 	adapter.pipeline = pipeline
 	if decisionService != nil {
 		decisionService.WithDiagnosticRecovery(adapter)

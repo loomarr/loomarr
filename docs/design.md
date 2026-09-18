@@ -173,6 +173,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the immutable replacement-candidate-pool contract.
 - **`fillercorpus`** · 7 importers
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
+- **`fillerenrichment`** · 3 importers
+  Owns progressive descriptive understanding for filler clips.
 - **`fillereval`** · 7 importers
   Owns the hermetic certification contract for filler admission.
 - **`fillerstructure`** · 8 importers
@@ -206,7 +208,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 - **`storagegovernor`** · 5 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
 - **`taxonomy`** · 5 importers
-  Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
+  Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`testkit/execfixture`** · 1 importer
   Owns filesystem-backed executable test doubles without importing application packages.
 - **`testkit/httpfixture`** · 1 importer
@@ -329,7 +331,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`library`** · 10 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 15 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 15 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 9**
@@ -400,12 +402,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 13**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `images`, `installationlocation`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `images`, `installationlocation`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 14**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -9172,6 +9174,45 @@ in this install?* (no exec, re-evaluated while the Clip is on the conveyor) and 
 Missing optional capability records a skipped rung and does not block Ready. A later capability
 change enriches already-Ready Clips through the separate progressive-enrichment path; it never
 rewinds readiness or holds playable media (#1251).
+
+**Progressive enrichment is a separate, per-axis loop (#1251).** Readiness answers whether exact
+bytes may play; enrichment incrementally improves their descriptive matching metadata. The axes are
+era, brand, target audience, geography, language, and the controlled taxonomy dimensions product,
+format, seasonal, audience cue, and presentation. A missing descriptive answer never holds,
+unpublishes, duplicates, or removes a Ready Clip, and enrichment never creates an Incoming
+Needs-help task.
+
+One provider-neutral enrichment module owns the small interface: given a Clip's current axis states,
+available capabilities, and current producer/taxonomy versions, it returns only the bounded work
+still needed; given one grounded result, it applies the evidence-rank and idempotency rules and
+returns the accepted projection. Provider selection, retries, budget deferral, evidence precedence,
+and version invalidation stay behind that interface. The readiness conveyor, catalog UI, and
+scheduler do not reimplement them.
+
+Each axis persists `missing`, `complete`, `unsupported`, or `stale` independently, together with the
+accepted value and its exact evidence kind/reference, Evidence rank, confidence, producer/version,
+taxonomy version where applicable, and observation time. `complete` may carry no value after an
+applicable pass found none; this prevents an honest absence from becoming endless work.
+`unsupported` wakes when a capability becomes available, while `stale` is re-evaluated after a
+relevant producer or vocabulary version changes. Backoff, budget waits, and provider failures are
+queue state rather than invented semantic states.
+
+Evidence precedence is closed and deterministic: an operator correction outranks exact item
+metadata or content evidence, which outranks a trusted provider/network mapping, which outranks a
+registered-source default, which outranks a weak inference. Confidence breaks ties only inside one
+rank. An explicit broadcast date therefore survives a later guess; an upload date is never an era;
+item evidence beats source geography; and a model cannot replace a stronger fact merely by reporting
+high confidence. Target audience and presentation remain descriptions, not Airworthiness: a
+child-directed or animated Clip with unknown Airworthiness remains ineligible for kids/family Pods.
+
+The first pass is always local and free. It reads the preserved original title, provider
+description, original filename, durable source/item provenance, explicit dates, registered-source
+geography, and a small versioned set of trusted provider/network and controlled brand/product
+mappings. Only unresolved axes are eligible for text, transcript, or vision work, using the
+household's already-enabled AI capability and existing egress/cost controls. There is no second
+Filler-specific enable switch. Ready Clips wake automatically when a relevant capability or
+taxonomy version appears; the manual whole-catalog tagging action and the clip-wide `ai_tagged` /
+`vision_tagged` authority retire once this loop owns catch-up.
 
 **The pipeline is sequential and budget-bounded, and that is not a limitation.** Whisper is ~341s
 per clip under QEMU and ffmpeg competes with playout for the GPU, so one clip at a time is what

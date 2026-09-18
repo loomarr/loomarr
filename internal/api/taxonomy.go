@@ -25,7 +25,7 @@ type TaxonDTO struct {
 	Slug   string `json:"slug" doc:"Stable machine id — the token the tagger emits and clip_tags references"`
 	Label  string `json:"label" doc:"Human display form"`
 	Parent string `json:"parent,omitempty" doc:"Parent slug on the same axis; empty for an axis root"`
-	Axis   string `json:"axis" enum:"product,format,seasonal,audience-cue" doc:"The independent dimension this taxon lives on"`
+	Axis   string `json:"axis" enum:"product,format,seasonal,audience-cue,presentation" doc:"The independent dimension this taxon lives on"`
 	// Synonyms/RetiredAliases are the resolve index: near-miss forms and former slugs that still
 	// ground to this Slug, so the tagger is LLM-friendly and a rename never drops tagged clips.
 	Synonyms       []string `json:"synonyms,omitempty"`
@@ -42,7 +42,7 @@ type CreateTaxonDTO struct {
 	Slug           string   `json:"slug" doc:"Stable machine id — immutable after creation"`
 	Label          string   `json:"label"`
 	Parent         string   `json:"parent,omitempty"`
-	Axis           string   `json:"axis" enum:"product,format,seasonal,audience-cue"`
+	Axis           string   `json:"axis" enum:"product,format,seasonal,audience-cue,presentation"`
 	Synonyms       []string `json:"synonyms,omitempty"`
 	RetiredAliases []string `json:"retiredAliases,omitempty"`
 }
@@ -52,7 +52,7 @@ type CreateTaxonDTO struct {
 type UpdateTaxonDTO struct {
 	Label          string   `json:"label"`
 	Parent         string   `json:"parent,omitempty"`
-	Axis           string   `json:"axis" enum:"product,format,seasonal,audience-cue"`
+	Axis           string   `json:"axis" enum:"product,format,seasonal,audience-cue,presentation"`
 	Synonyms       []string `json:"synonyms,omitempty"`
 	RetiredAliases []string `json:"retiredAliases,omitempty"`
 }
@@ -65,7 +65,7 @@ type TaxonomyImpactCommandDTO struct {
 	Slug           string   `json:"slug" doc:"The new slug for create, or existing slug for update/delete"`
 	Label          string   `json:"label,omitempty"`
 	Parent         string   `json:"parent,omitempty"`
-	Axis           string   `json:"axis,omitempty" enum:"product,format,seasonal,audience-cue,"`
+	Axis           string   `json:"axis,omitempty" enum:"product,format,seasonal,audience-cue,presentation"`
 	Synonyms       []string `json:"synonyms,omitempty"`
 	RetiredAliases []string `json:"retiredAliases,omitempty"`
 }
@@ -96,7 +96,7 @@ type TaxonomyImpactDTO struct {
 // TaxonomyAxisCoverageDTO reports unique playable clips covered on one independent dimension.
 // It is not the sum of per-taxon counts because a clip may assert several tags on the same axis.
 type TaxonomyAxisCoverageDTO struct {
-	Axis          string `json:"axis" enum:"product,format,seasonal,audience-cue"`
+	Axis          string `json:"axis" enum:"product,format,seasonal,audience-cue,presentation"`
 	TaggedClips   int    `json:"taggedClips" doc:"Playable clips with at least one direct assertion on this axis"`
 	UntaggedClips int    `json:"untaggedClips" doc:"Playable clips without a direct assertion on this axis; absence may be valid for sparse cue axes"`
 }
@@ -250,6 +250,7 @@ func (s *Server) listTaxonomy(ctx context.Context, _ *listTaxonomyInput) (*listT
 		taxonomy.AxisFormat,
 		taxonomy.AxisSeasonal,
 		taxonomy.AxisAudienceCue,
+		taxonomy.AxisPresentation,
 	} {
 		covered := usage.ByAxis[axis]
 		out.Body.AxisCoverage = append(out.Body.AxisCoverage, TaxonomyAxisCoverageDTO{

@@ -1,5 +1,28 @@
 package taxonomy
 
+// SeedRevision is one additive shipped vocabulary update for established installations. Revisions
+// are applied once and recorded by the store, so an operator may later edit or remove the added
+// terms without boot silently recreating them.
+type SeedRevision struct {
+	Version int
+	Taxa    []Taxon
+}
+
+func progressiveEnrichmentSeed() []Taxon {
+	return []Taxon{
+		{Slug: "condiments", Label: "Condiments & sauces", Parent: "food", Axis: AxisProduct, Synonyms: []string{"condiment", "sauce", "sauces"}},
+		{Slug: "animated", Label: "Animated", Axis: AxisPresentation, Synonyms: []string{"animation", "cartoon"}},
+		{Slug: "live-action", Label: "Live action", Axis: AxisPresentation, Synonyms: []string{"live action"}},
+	}
+}
+
+// SeedRevisions returns additive vocabulary revisions after the original V45a seed. The store
+// records each version after inserting only missing slugs; this is the convergence path for an
+// installation whose non-empty, operator-owned taxonomy cannot be reseeded wholesale.
+func SeedRevisions() []SeedRevision {
+	return []SeedRevision{{Version: 2, Taxa: progressiveEnrichmentSeed()}}
+}
+
 // The shipped default forest (§10 V45a) — what an install starts with before any operator edit. It
 // covers the composites-design taxonomy and the original flat-12 `category` values, arranged on axes.
 //
@@ -16,7 +39,7 @@ package taxonomy
 
 // SeedForest returns the default taxonomy. Build it into a *Forest with New.
 func SeedForest() []Taxon {
-	return []Taxon{
+	seed := []Taxon{
 		// ── product axis ────────────────────────────────────────────────────────────────────────
 		// Roots
 		{Slug: "drinks", Label: "Drinks", Axis: AxisProduct, Synonyms: []string{"beverage", "beverages"}},
@@ -78,4 +101,7 @@ func SeedForest() []Taxon {
 		{Slug: "family-cue", Label: "Family cue", Axis: AxisAudienceCue, Synonyms: []string{"family-values"}},
 		{Slug: "late-night-cue", Label: "Late-night cue", Axis: AxisAudienceCue, Synonyms: []string{"adult-cue", "late-night-adult"}},
 	}
+	// Keep the full fresh-install seed and the one-time established-install revision sourced from
+	// the same values. A copied list here would eventually drift from the convergence path.
+	return append(seed, progressiveEnrichmentSeed()...)
 }

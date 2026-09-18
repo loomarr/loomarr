@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-const AXES = ["product", "format", "seasonal", "audience-cue"] as const;
+const AXES = ["product", "format", "presentation", "seasonal", "audience-cue"] as const;
 type Axis = (typeof AXES)[number];
 
 const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> = {
@@ -31,6 +31,11 @@ const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> 
     label: "Format",
     help: "Descriptive browsing tags. Clip kind separately controls how Loomarr may play it.",
     example: "For example: commercial, promo, station ident",
+  },
+  presentation: {
+    label: "Presentation",
+    help: "How the pictures are made, separate from what the clip is about or who may watch it.",
+    example: "For example: animated, live action",
   },
   seasonal: {
     label: "Seasonal",
@@ -520,8 +525,8 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
         <Card className="p-4 sm:col-span-2">
           <p className="font-medium">What belongs here</p>
           <p className="mt-1 text-muted-foreground text-sm">
-            Classification describes what a clip contains. Kind is the closed playout role; format signals are
-            optional browsing vocabulary. Era, audience, and grounded brand remain separate facts too.
+            Classification describes what a clip contains. Kind is the closed playout role; format and presentation
+            are optional browsing details. Era, audience, and grounded brand remain separate facts too.
           </p>
           {data.totalClips === 0 ? (
             <p className="mt-2 text-muted-foreground text-sm">Nothing to classify yet.</p>
@@ -555,7 +560,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             Classification coverage
           </h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            These are independent signals. Missing seasonal or audience cues can be perfectly normal.
+            These are independent signals. Missing presentation, seasonal, or audience cues can be perfectly normal.
           </p>
         </div>
         {data.totalClips === 0 ? (
@@ -563,7 +568,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             Coverage will appear after clips are ready. The vocabulary below is ready when they are.
           </Card>
         ) : (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {AXES.map((axis) => {
               const coverage = data.axisCoverage?.find((item) => item.axis === axis);
               return (

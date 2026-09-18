@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
@@ -26,6 +27,16 @@ func fillerSyncJob(s *filler.Syncer) scheduler.Job {
 		Description: "Scans configured folders and libraries so new filler becomes available for channel breaks.",
 		DefaultCron: "0 */15 * * * *", ScheduleKey: "job.filler_sync.schedule",
 		Run: func(ctx context.Context) error { _, err := s.Sync(ctx); return err },
+	}
+}
+
+func fillerEnrichmentJob(runner *fillerenrichment.Runner) scheduler.Job {
+	return scheduler.Job{
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "filler-enrichment", Group: scheduler.GroupFiller, Title: "Add filler details",
+		Description: "Adds useful details from source metadata in the background without delaying playback.",
+		DefaultCron: "30 */2 * * * *",
+		Run:         func(ctx context.Context) error { _, err := runner.Run(ctx); return err },
 	}
 }
 

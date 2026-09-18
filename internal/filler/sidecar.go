@@ -46,6 +46,19 @@ type sidecarInfo struct {
 	License string `json:"license"`
 }
 
+// SourceMetadata is the preserved provider/item metadata progressive enrichment may inspect without
+// receiving the entire yt-dlp document. UploadDate is exposed explicitly so the enrichment module
+// can retain—and test—the rule that it never becomes broadcast era.
+type SourceMetadata struct {
+	Title        string
+	Description  string
+	Uploader     string
+	Channel      string
+	UploadDate   string
+	OriginalName string
+	SourceID     string
+}
+
 // sidecarPathFor returns the info-JSON path for a media file: "clip.mp4" →
 // "clip.info.json". Mirrors how both writers name them.
 func sidecarPathFor(mediaPath string) string {
@@ -541,6 +554,32 @@ func SidecarText(fsys fs.FS, mediaPath string) string {
 		return "" // malformed sidecar degrades to filename-only, never fails the tag
 	}
 	return info.text()
+}
+
+// ReadSourceMetadataFS returns the bounded item/source signals from one info-JSON sidecar. Missing
+// or malformed sidecars are the ordinary false result; callers fall back to catalog name/path facts.
+func ReadSourceMetadataFS(fsys fs.FS, mediaPath string) (SourceMetadata, bool) {
+	if fsys == nil {
+		return SourceMetadata{}, false
+	}
+	raw, err := fs.ReadFile(fsys, sidecarPathFor(mediaPath))
+	if err != nil {
+		return SourceMetadata{}, false
+	}
+	var info sidecarInfo
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return SourceMetadata{}, false
+	}
+	tags, state, _ := decodeSidecarTags(raw)
+	if state == SidecarInvalid {
+		return SourceMetadata{}, false
+	}
+	return SourceMetadata{
+		Title: strings.TrimSpace(info.Title), Description: strings.TrimSpace(info.Description),
+		Uploader: strings.TrimSpace(info.Uploader), Channel: strings.TrimSpace(info.Channel),
+		UploadDate: strings.TrimSpace(info.UploadDate), OriginalName: strings.TrimSpace(tags.OriginalName),
+		SourceID: strings.TrimSpace(tags.SourceID),
+	}, true
 }
 
 // text renders the parsed sidecar into the prompt fragment. Kept separate from the

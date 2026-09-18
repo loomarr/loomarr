@@ -28,6 +28,7 @@ describe("TaxonomyTab", () => {
         axisCoverage: [
           { axis: "product", taggedClips: 7, untaggedClips: 5 },
           { axis: "format", taggedClips: 3, untaggedClips: 9 },
+          { axis: "presentation", taggedClips: 4, untaggedClips: 8 },
           { axis: "seasonal", taggedClips: 1, untaggedClips: 11 },
           { axis: "audience-cue", taggedClips: 2, untaggedClips: 10 },
         ],
@@ -42,6 +43,15 @@ describe("TaxonomyTab", () => {
             assertedClips: 2,
             matchedClips: 2,
             storedClips: 2,
+          },
+          {
+            slug: "animated",
+            label: "Animated",
+            axis: "presentation",
+            synonyms: ["cartoon"],
+            assertedClips: 4,
+            matchedClips: 4,
+            storedClips: 4,
           },
         ],
       }),
@@ -61,6 +71,7 @@ describe("TaxonomyTab", () => {
 
     expect(await screen.findByText("10 / 12")).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { name: "Products & topics" })).toHaveLength(2);
+    expect(screen.getAllByRole("heading", { name: "Presentation" })).toHaveLength(2);
     expect(screen.getByRole("link", { name: /browse 5 without/i })).toBeInTheDocument();
 
     await userEvent.click(screen.getByText("Manage vocabulary"));
@@ -92,7 +103,7 @@ describe("TaxonomyTab", () => {
     expect(await screen.findByRole("heading", { name: "Classification coverage" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /review 3 unclassified clips/i })).toBeInTheDocument();
     await userEvent.click(screen.getByText("Browse vocabulary"));
-    expect(screen.getAllByText("No terms yet.")).toHaveLength(4);
+    expect(screen.getAllByText("No terms yet.")).toHaveLength(5);
     expect(screen.queryByRole("button", { name: /add/i })).not.toBeInTheDocument();
   });
 
