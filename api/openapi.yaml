@@ -4727,6 +4727,41 @@ components:
         - rows
         - total
       type: object
+    IncomingPreparationDTO:
+      additionalProperties: false
+      properties:
+        attempt:
+          format: int64
+          type: integer
+        percent:
+          format: int64
+          maximum: 100
+          minimum: 0
+          type: integer
+        readyIn:
+          $ref: "#/components/schemas/IncomingReadyEstimateDTO"
+        startReason:
+          enum:
+            - enrollment
+            - restart
+          type: string
+        startedAt:
+          description: RFC3339
+          type: string
+        state:
+          enum:
+            - working
+            - estimating
+            - estimated
+            - waiting
+            - retrying
+            - restarted
+            - ready
+            - unavailable
+          type: string
+      required:
+        - state
+      type: object
     IncomingProcessingDTO:
       additionalProperties: false
       properties:
@@ -4782,6 +4817,21 @@ components:
         - note
         - at
       type: object
+    IncomingReadyEstimateDTO:
+      additionalProperties: false
+      properties:
+        lowerSeconds:
+          format: int64
+          minimum: 0
+          type: integer
+        upperSeconds:
+          format: int64
+          minimum: 0
+          type: integer
+      required:
+        - lowerSeconds
+        - upperSeconds
+      type: object
     IncomingStatusDTO:
       additionalProperties: false
       properties:
@@ -4794,6 +4844,8 @@ components:
           type: string
         name:
           type: string
+        preparation:
+          $ref: "#/components/schemas/IncomingPreparationDTO"
         processing:
           $ref: "#/components/schemas/IncomingProcessingDTO"
         statusLabel:
@@ -4810,6 +4862,7 @@ components:
         - durationMs
         - statusLabel
         - updatedAt
+        - preparation
         - processing
       type: object
     IngestFillerInputBody:

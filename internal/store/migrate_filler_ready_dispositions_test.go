@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -40,7 +41,7 @@ func testFillerReadyDispositionsMigration(t *testing.T, s *sqlStore, migrationDi
 			hash, hash+".mp4", hash, !composite, composite, at.Unix()); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
+		if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
 			ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusDone, Progress: 100,
 			Disposition: filler.Disposition("filed"), EnrolledAt: at, UpdatedAt: at,
 		}); err != nil {
@@ -56,9 +57,9 @@ func testFillerReadyDispositionsMigration(t *testing.T, s *sqlStore, migrationDi
 	for hash, want := range map[string]filler.Disposition{
 		"playable": filler.DispositionReady, "container": filler.DispositionComplete,
 	} {
-		row, found, err := s.GetClipPipeline(ctx, hash)
-		if err != nil || !found || row.Disposition != want {
-			t.Fatalf("%s pipeline = %+v, found=%v err=%v; want %q", hash, row, found, err, want)
+		var got string
+		if err := s.db.QueryRowContext(ctx, s.ph(`SELECT disposition FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).Scan(&got); err != nil || filler.Disposition(got) != want {
+			t.Fatalf("%s disposition = %q, err=%v; want %q", hash, got, err, want)
 		}
 	}
 }
@@ -92,7 +93,7 @@ func testRemoveFillerAdmissionRungMigration(t *testing.T, s *sqlStore, migration
 		hash, hash+".mp4", true, at.Unix()); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
+	if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
 		ClipHash: hash, Stage: filler.StageID("admission"), Status: filler.StatusRunning,
 		Disposition: filler.DispositionRunning, Attempts: 2, ForceRun: true,
 		Stages: []filler.StageRecord{
@@ -107,15 +108,44 @@ func testRemoveFillerAdmissionRungMigration(t *testing.T, s *sqlStore, migration
 	if _, err := provider.UpTo(ctx, 109); err != nil {
 		t.Fatalf("apply admission-rung removal: %v", err)
 	}
-	row, found, err := s.GetClipPipeline(ctx, hash)
-	if err != nil || !found {
-		t.Fatalf("pipeline = %+v, found=%t err=%v", row, found, err)
+	var stage, status, disposition, stagesJSON string
+	var attempts int
+	var forceRun bool
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT stage, status, disposition, attempts, force_run, stages_json
+		FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).Scan(
+		&stage, &status, &disposition, &attempts, &forceRun, &stagesJSON); err != nil {
+		t.Fatal(err)
 	}
-	if row.Stage != filler.StageScore || row.Status != filler.StatusQueued || row.Attempts != 0 ||
-		row.ForceRun || row.Disposition != filler.DispositionRunning {
-		t.Fatalf("interrupted legacy row = %+v", row)
+	if filler.StageID(stage) != filler.StageScore || filler.StageStatus(status) != filler.StatusQueued || attempts != 0 ||
+		forceRun || filler.Disposition(disposition) != filler.DispositionRunning {
+		t.Fatalf("interrupted legacy row = stage=%s status=%s disposition=%s attempts=%d force=%t", stage, status, disposition, attempts, forceRun)
 	}
-	if len(row.Stages) != 1 || row.Stages[0].Stage != filler.StageProbe {
-		t.Fatalf("legacy admission record survived: %+v", row.Stages)
+	var stages []filler.StageRecord
+	if err := json.Unmarshal([]byte(stagesJSON), &stages); err != nil {
+		t.Fatal(err)
 	}
+	if len(stages) != 1 || stages[0].Stage != filler.StageProbe {
+		t.Fatalf("legacy admission record survived: %+v", stages)
+	}
+}
+
+// insertLegacyClipPipeline deliberately writes the pre-00113 shape used by migration fixtures.
+// The production writer always speaks the current schema and must not grow a compatibility path.
+func insertLegacyClipPipeline(ctx context.Context, s *sqlStore, p filler.ClipPipeline) error {
+	raw := "[]"
+	if len(p.Stages) > 0 {
+		encoded, err := json.Marshal(p.Stages)
+		if err != nil {
+			return err
+		}
+		raw = string(encoded)
+	}
+	_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO filler_clip_pipeline
+		(clip_hash, acquisition_id, stage, status, progress, disposition, reject_reason,
+		 reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		p.ClipHash, p.AcquisitionID, string(p.Stage), string(p.Status), p.Progress,
+		string(p.Disposition), string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun,
+		epoch(p.NextRun), raw, epoch(p.EnrolledAt), epoch(p.UpdatedAt))
+	return err
 }

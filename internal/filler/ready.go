@@ -91,6 +91,10 @@ func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
 		current.Disposition != DispositionRunning || current.Attempts != p.Attempts ||
 		current.ForceRun != p.ForceRun || current.RejectReason != p.RejectReason ||
 		current.RejectDetail != p.RejectDetail || !current.EnrolledAt.Equal(p.EnrolledAt) ||
+		current.PreparationAttempt != p.PreparationAttempt ||
+		!current.PreparationStartedAt.Equal(p.PreparationStartedAt) ||
+		current.PreparationStartReason != p.PreparationStartReason ||
+		!current.StageQueuedAt.Equal(p.StageQueuedAt) || !current.StageStartedAt.Equal(p.StageStartedAt) ||
 		p.UpdatedAt.Before(current.UpdatedAt) {
 		return fmt.Errorf("%w: conveyor row is no longer the completed run", ErrReadyStale)
 	}
@@ -160,6 +164,7 @@ func (t *TerminalReady) Commit(ctx context.Context, clip StoreClip, row ClipPipe
 	row.Disposition = DispositionReady
 	row.Status = StatusDone
 	row.Progress = 100
+	row.PreparationProgress = 100
 	row.NextRun = time.Time{}
 	row.UpdatedAt = at
 	event := ReadyEvent{

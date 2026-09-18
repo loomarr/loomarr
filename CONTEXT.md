@@ -249,6 +249,23 @@ stage begins and never claims how close the Clip is to Ready. When a stage canno
 Stage progress is unknown rather than zero.
 _Avoid_: Preparation progress, overall progress, percent Ready, ETA
 
+**Preparation attempt**:
+One durable run from Enrollment toward Ready. Automatic retries and bounded pass deferrals remain
+inside the same attempt; an explicit restart begins a new attempt and records that reset.
+_Avoid_: stage attempt, retry count, pipeline run
+
+**Preparation progress**:
+An optional server-owned, monotonic percentage across the applicable work in one Preparation
+attempt. Completed and not-needed stages contribute once, measured Stage progress contributes only
+inside the active stage, and Ready is exactly 100%. Unknown remains absent rather than becoming 0%.
+_Avoid_: Stage progress, elapsed-time progress, browser-calculated progress
+
+**Ready estimate**:
+An optional approximate local time range until a Clip becomes Ready, derived from comparable
+completed Preparation attempts and current queued work. It is omitted when evidence is stale or
+insufficient, or while work is waiting, retrying, or needs a person.
+_Avoid_: deadline, completion time, ETA promise
+
 **Filler role**:
 What kind of non-program item a Clip is, such as commercial, promo, bumper, PSA, station ID,
 trailer, or interstitial. A Filler role says nothing about Media quality or Airworthiness.

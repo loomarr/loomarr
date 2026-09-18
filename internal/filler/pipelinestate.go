@@ -135,10 +135,20 @@ type StageRecord struct {
 	Status StageStatus `json:"status"`
 	// Note is the operator-facing sentence for a skip or a failure ("the description already says
 	// enough"). Empty for an ordinary success — a row that needs no explanation gets none.
-	Note     string    `json:"note,omitempty"`
-	Attempts int       `json:"attempts,omitempty"`
-	At       time.Time `json:"at"`
+	Note      string    `json:"note,omitempty"`
+	Attempts  int       `json:"attempts,omitempty"`
+	StartedAt time.Time `json:"startedAt,omitempty"`
+	At        time.Time `json:"at"`
 }
+
+// PreparationStartReason explains why the current whole-preparation attempt began. It is
+// deliberately separate from a stage's retry count.
+type PreparationStartReason string
+
+const (
+	PreparationStartedByEnrollment PreparationStartReason = "enrollment"
+	PreparationStartedByRestart    PreparationStartReason = "restart"
+)
 
 // ClipPipeline is one clip's pipeline row.
 type ClipPipeline struct {
@@ -159,10 +169,20 @@ type ClipPipeline struct {
 	// durable so a restart between the click and the worker does not turn the request into a skip.
 	ForceRun bool
 	// NextRun is when this row is next eligible. Zero means "now".
-	NextRun    time.Time
-	Stages     []StageRecord
-	EnrolledAt time.Time
-	UpdatedAt  time.Time
+	NextRun time.Time
+	// PreparationAttempt is the durable generation of the whole run toward Ready. Zero identifies
+	// rows created before measurement existed; their preparation progress remains unavailable.
+	PreparationAttempt     int
+	PreparationStartedAt   time.Time
+	PreparationStartReason PreparationStartReason
+	// PreparationProgress is the persisted monotonic whole-attempt percentage. -1 is unknown.
+	PreparationProgress int
+	// StageQueuedAt and StageStartedAt describe only the current bounded rung.
+	StageQueuedAt  time.Time
+	StageStartedAt time.Time
+	Stages         []StageRecord
+	EnrolledAt     time.Time
+	UpdatedAt      time.Time
 }
 
 // Record appends (or replaces) this stage's entry on the ladder, and moves the row's own Status
@@ -191,11 +211,11 @@ func (p *ClipPipeline) Record(stage StageID, status StageStatus, note string, at
 	}
 	for i := range p.Stages {
 		if p.Stages[i].Stage == stage {
-			p.Stages[i] = StageRecord{Stage: stage, Status: status, Note: note, Attempts: attempts, At: at}
+			p.Stages[i] = StageRecord{Stage: stage, Status: status, Note: note, Attempts: attempts, StartedAt: p.StageStartedAt, At: at}
 			return
 		}
 	}
-	p.Stages = append(p.Stages, StageRecord{Stage: stage, Status: status, Note: note, Attempts: attempts, At: at})
+	p.Stages = append(p.Stages, StageRecord{Stage: stage, Status: status, Note: note, Attempts: attempts, StartedAt: p.StageStartedAt, At: at})
 }
 
 // PipelineFilter narrows a pipeline listing.

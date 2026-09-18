@@ -3507,8 +3507,11 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 		ClipHash: clip.Hash, Stage: filler.StageTag, Status: filler.StatusRunning,
 		Progress: 40, Disposition: filler.DispositionRunning,
 		Attempts: 1, ForceRun: true, NextRun: now, EnrolledAt: now, UpdatedAt: now,
+		PreparationAttempt: 2, PreparationStartedAt: now.Add(-5 * time.Minute),
+		PreparationStartReason: filler.PreparationStartedByRestart, PreparationProgress: 61,
+		StageQueuedAt: now.Add(-2 * time.Minute), StageStartedAt: now.Add(-time.Minute),
 		Stages: []filler.StageRecord{
-			{Stage: filler.StageProbe, Status: filler.StatusDone, At: now},
+			{Stage: filler.StageProbe, Status: filler.StatusDone, StartedAt: now.Add(-4 * time.Minute), At: now},
 			{Stage: filler.StageTranscribe, Status: filler.StatusSkipped, Note: "the description already says enough", At: now},
 		},
 	}
@@ -3532,11 +3535,21 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	if !got.ForceRun {
 		t.Error("pipeline round-trip lost the explicit rerun marker")
 	}
+	if got.PreparationAttempt != 2 || got.PreparationProgress != 61 ||
+		got.PreparationStartReason != filler.PreparationStartedByRestart ||
+		!got.PreparationStartedAt.Equal(p.PreparationStartedAt) || !got.StageQueuedAt.Equal(p.StageQueuedAt) ||
+		!got.StageStartedAt.Equal(p.StageStartedAt) || !got.Stages[0].StartedAt.Equal(p.Stages[0].StartedAt) {
+		t.Errorf("preparation evidence round-trip lost fields: %+v", got)
+	}
 	// The LADDER is what the Incoming tab renders as history — including WHY a stage was skipped.
 	// A skip with no note reads as "nothing happened", which is a different and false claim.
 	if len(got.Stages) != 2 || got.Stages[1].Status != filler.StatusSkipped ||
 		got.Stages[1].Note != "the description already says enough" {
 		t.Errorf("ladder round-trip = %+v", got.Stages)
+	}
+	preparation, err := s.ListPreparationWork(ctx, filler.PipelineFilter{Dispositions: []filler.Disposition{filler.DispositionRunning}, Limit: 1})
+	if err != nil || len(preparation) != 1 || preparation[0].Pipeline.ClipHash != clip.Hash || preparation[0].DurationMs != 30_000 {
+		t.Fatalf("ListPreparationWork = %+v, err=%v", preparation, err)
 	}
 
 	// --- An absent row is ordinary, not an error. An un-enrolled clip is the common case. ---

@@ -962,6 +962,9 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		if err := sp.store.UpsertClipPipeline(ctx, ClipPipeline{
 			ClipHash: c.hash, Stage: StageProbe, Status: StatusQueued,
 			Disposition: DispositionReview, EnrolledAt: now, UpdatedAt: now,
+			PreparationAttempt: 1, PreparationStartedAt: now,
+			PreparationStartReason: PreparationStartedByEnrollment, PreparationProgress: 0,
+			StageQueuedAt: now,
 		}); err != nil {
 			return nil, err
 		}

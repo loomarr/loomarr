@@ -9253,6 +9253,29 @@ Intra-stage progress is throttled in the emitter (≥1s and ≥5 points since th
 clip) and in the database; status *transitions* always publish and always write. The percentage is
 decoration — what has to survive a reload is which stage, and whether it is running.
 
+**Preparation progress is a separate server projection (V68).** A Preparation attempt begins at
+Enrollment and receives a durable generation, start time, and start reason. Automatic stage retries
+and pass deferrals remain in that attempt; an explicit recovery rewind increments the generation,
+records `restart`, and visibly resets its progress. The bounded ladder stores each rung's latest
+start and finish time, plus the current rung's queued and started times. It remains one record per
+stage rather than becoming an event log.
+
+The server owns the applicable-work plan. Every rung in `StageOrder` is one possible unit until the
+pipeline proves it done or not needed; a completed skip remains in the denominator and contributes
+exactly once. A measured current rung contributes only its measured fraction. The persisted maximum
+within one attempt prevents retries, setting changes, and concurrent snapshots from moving the
+number backward; only a new attempt may reset it, and Ready is exactly 100. Rows predating this
+evidence expose unknown progress rather than reconstructing a plausible-looking value.
+
+**A Ready estimate is local evidence, not a countdown.** Loomarr may return a structured lower and
+upper duration only after this installation has enough recent Ready attempts with complete timing,
+no retries, the same applicable-stage signature, and a comparable coarse clip-duration bucket. The
+range is derived from those observed stage durations plus bounded older work ahead in the
+oldest-first queue. It disappears when evidence is stale or insufficient, while a retry is
+scheduled, or while the Clip waits for a person. The browser formats only the server's range (for
+example, “About 2–4 minutes”); it never counts stages, extrapolates elapsed time, or invents a
+deadline.
+
 ⚠ **The database throttle is `percent >= lastWritten + 10` OR `>= 2s since the last write`, and
 `lastWritten` is the last value actually PERSISTED (V54).** Both halves of that sentence are load-
 bearing, because the obvious reading of "≥2s / ≥10 points" produced a throttle that could never
