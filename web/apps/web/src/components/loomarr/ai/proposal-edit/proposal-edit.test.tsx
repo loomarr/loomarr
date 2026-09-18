@@ -268,6 +268,32 @@ describe("ProposalEdit", () => {
     expect(screen.getAllByText("Harry Potter and the Chamber of Secrets")[0]).toBeVisible();
   });
 
+  it("checks the visible TMDB movies and renders the grounded collection response", async () => {
+    const fetch = vi.fn((url: string) => {
+      if (url.includes("/v1/movie-collections")) {
+        return Promise.resolve(jsonResponse({ collections: [harryPotter], complete: true }));
+      }
+      return Promise.resolve(jsonResponse({ candidates: [] }));
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    render(
+      <ProposalEdit
+        lineup={[philosopherStone]}
+        acquisitions={[]}
+        optionalSuggestions={[prisonerAzkaban]}
+        value={{ add: [chamberSecrets] }}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Harry Potter Collection")).toBeVisible();
+    const request = fetch.mock.calls.map(([url]) => url).find((url) => url.includes("/v1/movie-collections"));
+    expect(request).toBeDefined();
+    const params = new URL(request ?? "", "http://loomarr.test").searchParams;
+    expect(params.getAll("key")).toEqual(["movie:tmdb:671", "movie:tmdb:672", "movie:tmdb:673"]);
+  });
+
   it("shows calm progress while collection choices are being checked", () => {
     stubSearch([]);
     render(

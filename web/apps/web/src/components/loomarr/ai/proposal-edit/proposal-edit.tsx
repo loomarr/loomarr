@@ -20,6 +20,7 @@ import type { ProposalEditProps } from "./proposal-edit.type";
 
 type PickKind = "ready" | "missing";
 type Keyed = { item: ProposalItem; key: string; kind: PickKind };
+const MAX_COLLECTION_LOOKUP_KEYS = 24;
 
 const mediaLabel = (item: ProposalItem) => (item.mediaType === "series" ? "Series" : "Movie");
 
@@ -154,6 +155,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
     className,
   } = props;
   const controlled = Object.hasOwn(props, "value");
+  const injectedMovieCollections = Object.hasOwn(props, "movieCollections");
   const [localEdit, setLocalEdit] = useState<ApprovalEditDTO | undefined>(value);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -192,6 +194,41 @@ const ProposalEdit = (props: ProposalEditProps) => {
     suggestionKeys.add(pick.key);
     return true;
   });
+
+  // The visible review is the lookup boundary: collection suggestions must be
+  // grounded in a movie the reviewer can already see, never in an unrelated
+  // model guess. Current picks take precedence over optional suggestions when
+  // the API's bounded request is full.
+  const collectionKeys: string[] = [];
+  const seenCollectionKeys = new Set<string>();
+  for (const item of [...lineup, ...acquisitions, ...added, ...optionalSuggestions, ...alternates]) {
+    const key = provisionKey(item);
+    if (!key.startsWith("movie:tmdb:") || seenCollectionKeys.has(key)) continue;
+    seenCollectionKeys.add(key);
+    collectionKeys.push(key);
+    if (collectionKeys.length === MAX_COLLECTION_LOOKUP_KEYS) break;
+  }
+  const collectionResolution = searchApi.useResolveMovieCollections(
+    { key: collectionKeys },
+    {
+      query: {
+        enabled: editable && !injectedMovieCollections && collectionKeys.length > 0,
+        retry: false,
+        placeholderData: (previous) => previous,
+      },
+    },
+  );
+  const resolvedMovieCollections =
+    unwrap(collectionResolution.data, (body) => body)?.collections.filter((collection) =>
+      collection.members.some((member) => seenCollectionKeys.has(provisionKey(member))),
+    ) ?? [];
+  const displayedMovieCollections = injectedMovieCollections ? movieCollections : resolvedMovieCollections;
+  const displayedMovieCollectionsLoading =
+    movieCollectionsLoading ||
+    (!injectedMovieCollections && collectionResolution.isFetching && collectionResolution.data === undefined);
+  const displayedMovieCollectionsIncomplete =
+    movieCollectionsIncomplete ||
+    (!injectedMovieCollections && unwrap(collectionResolution.data, (body) => body)?.complete === false);
 
   const search = searchApi.useSearch(
     { q: query, scope: "all", limit: 8 },
@@ -322,12 +359,12 @@ const ProposalEdit = (props: ProposalEditProps) => {
       </ul>
 
       <MovieCollectionChoices
-        collections={movieCollections}
+        collections={displayedMovieCollections}
         selectedKeys={selectedKeys}
         editable={editable}
         disabled={disabled}
-        loading={movieCollectionsLoading}
-        incomplete={movieCollectionsIncomplete}
+        loading={displayedMovieCollectionsLoading}
+        incomplete={displayedMovieCollectionsIncomplete}
         onAddCollection={(collection) => addCollectionMembers(collection.members)}
         onAddMember={(member) => addCollectionMembers([member])}
       />
