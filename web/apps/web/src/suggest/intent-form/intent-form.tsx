@@ -85,7 +85,7 @@ const IntentForm = ({
         onClick={() => setRefining((v) => !v)}
         className="w-fit cursor-pointer text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
       >
-        {refining ? "Hide constraints" : "Add constraints"}
+        {refining ? "Hide details" : "Add details"}
       </button>
 
       {refining && (
@@ -104,7 +104,7 @@ const IntentForm = ({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="intent-runtime">Target runtime (minutes)</Label>
+            <Label htmlFor="intent-runtime">Target length (minutes)</Label>
             <Input
               id="intent-runtime"
               type="number"
@@ -114,7 +114,7 @@ const IntentForm = ({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="intent-max">Max titles to acquire</Label>
+            <Label htmlFor="intent-max">Maximum new titles</Label>
             <Input
               id="intent-max"
               type="number"

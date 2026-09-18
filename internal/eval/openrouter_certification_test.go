@@ -4,15 +4,85 @@ package eval
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+func TestDeriveOpenRouterReservationUsesWorstEligiblePinnedRoutePrice(t *testing.T) {
+	snapshot := pinnedGeminiSnapshot(t)
+	reservation, err := DeriveOpenRouterReservation(OpenRouterReservationConfig{
+		Snapshot: snapshot, SnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(snapshot),
+		At: snapshot.RetrievedAt.Add(time.Hour), Model: "google/gemini-3.7-flash", UpstreamProvider: "Google",
+		MaxInputTokens: 4700, MaxCompletionTokens: 2048,
+		RequiredParameters: []string{"response_format", "structured_outputs", "tools"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reservation.Tokens != 6748 || reservation.Spend != "0.020169" {
+		t.Fatalf("derived reservation = %+v, want 6748 tokens and USD 0.020169", reservation)
+	}
+}
+
+func TestPrepareCertificationRunDerivesOpenRouterReservationsFromSnapshot(t *testing.T) {
+	snapshot := pinnedGeminiSnapshot(t)
+	role := &OpenRouterReservationConfig{
+		Snapshot: snapshot, SnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(snapshot),
+		At: snapshot.RetrievedAt.Add(time.Hour), Model: "google/gemini-3.7-flash", UpstreamProvider: "Google",
+		MaxInputTokens: 4700, MaxCompletionTokens: 2048,
+		RequiredParameters: []string{"response_format", "structured_outputs", "tools"},
+	}
+	options := withRequiredResourceBudget(CertificationOptions{
+		Required: true, FrozenCatalog: true, Trials: 1,
+		GeneratorProvider: "openrouter", JudgeProvider: "openrouter",
+		GeneratorBaseURL: OpenRouterCertificationBaseURL, JudgeBaseURL: OpenRouterCertificationBaseURL,
+		GeneratorModel: "google/gemini-3.7-flash", JudgeModel: "google/gemini-3.7-flash",
+		GeneratorUpstream: "Google", JudgeUpstream: "Google",
+		GeneratorOpenRouterReservation: role, JudgeOpenRouterReservation: role,
+	})
+	options.MaxTokensPerRun, options.MaxTokensPerSuite = "200000", "500000"
+	options.MaxSpendPerRun, options.MaxSpendPerSuite = "1.00", "5.00"
+	options.GeneratorTokensPerCall, options.GeneratorSpendPerCall = "1", "0.000000001"
+	options.JudgeTokensPerCall, options.JudgeSpendPerCall = "1", "0.000000001"
+
+	budget, err := PrepareCertificationRun(1, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := InferenceReservation{
+		Tokens: 6748, Spend: "0.020169", MaxInputTokens: 4700, MaxCompletionTokens: 2048,
+	}
+	if budget.GeneratorReservation != want || budget.JudgeReservation != want {
+		t.Fatalf("snapshot-derived reservations = generator %+v judge %+v, want %+v", budget.GeneratorReservation, budget.JudgeReservation, want)
+	}
+
+	options.GeneratorOpenRouterReservation = nil
+	if _, err := PrepareCertificationRun(1, options); err == nil || !strings.Contains(err.Error(), "snapshot-derived") {
+		t.Fatalf("missing snapshot-backed generator reservation error = %v", err)
+	}
+}
+
+func pinnedGeminiSnapshot(t *testing.T) fillerbakeoff.OpenRouterSnapshot {
+	t.Helper()
+	blob, err := queryPilotFiles.ReadFile("testdata/query-mood-review-openrouter-snapshot-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot fillerbakeoff.OpenRouterSnapshot
+	if err := json.Unmarshal(blob, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
 
 func TestPrepareCertificationRunRequiresPinnedOpenRouterRoleRoutes(t *testing.T) {
 	base := withRequiredResourceBudget(CertificationOptions{
@@ -73,6 +143,8 @@ func TestPrepareCertificationRunRequiresCanonicalOpenRouterRoleURLs(t *testing.T
 	custom := base
 	custom.GeneratorProvider = "openai"
 	custom.GeneratorBaseURL = "https://private-gateway.invalid/v1"
+	custom.JudgeProvider = "openai"
+	custom.JudgeBaseURL = "https://private-judge.invalid/v1"
 	if _, err := PrepareCertificationRun(1, custom); err != nil {
 		t.Fatalf("generic OpenAI-compatible provider lost custom URL flexibility: %v", err)
 	}

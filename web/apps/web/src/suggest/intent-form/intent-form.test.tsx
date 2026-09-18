@@ -10,7 +10,7 @@ import { IntentForm } from "./intent-form";
 // These assert on the SUBMITTED INTENT rather than on the inputs, because the defect
 // was never that a field looked wrong — it was that a field never travelled.
 
-const openConstraints = () => fireEvent.click(screen.getByRole("button", { name: /add constraints/i }));
+const openConstraints = () => fireEvent.click(screen.getByRole("button", { name: /add details/i }));
 
 describe("IntentForm", () => {
   it("submits a description on its own", () => {
@@ -116,8 +116,8 @@ describe("IntentForm", () => {
     openConstraints();
     fireEvent.change(screen.getByLabelText(/^era$/i), { target: { value: "1990s" } });
     fireEvent.change(screen.getByLabelText(/^tone$/i), { target: { value: "high-energy" } });
-    fireEvent.change(screen.getByLabelText(/target runtime/i), { target: { value: "180" } });
-    fireEvent.change(screen.getByLabelText(/max titles/i), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText(/target length/i), { target: { value: "180" } });
+    fireEvent.change(screen.getByLabelText(/maximum new titles/i), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
     expect(onSubmit).toHaveBeenCalledWith(

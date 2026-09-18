@@ -33,6 +33,9 @@ type Story = StoryObj<typeof meta>;
 
 const Draft: Story = { args: { status: "draft" } };
 const Submitted: Story = { args: { status: "submitted" } };
+const NoSuggestionsYet: Story = {
+  args: { status: "submitted", proposal: { ...proposal, alternates: [] } },
+};
 const Approved: Story = { args: { status: "approved" } };
 const Denied: Story = { args: { status: "denied" } };
 const PartiallyEdited: Story = { args: { status: "partially-edited" } };
@@ -42,4 +45,4 @@ const RevisionFailed: Story = {
 };
 
 export default meta;
-export { Approved, Denied, Draft, PartiallyEdited, RevisionFailed, Submitted, Updating };
+export { Approved, Denied, Draft, NoSuggestionsYet, PartiallyEdited, RevisionFailed, Submitted, Updating };

@@ -145,6 +145,7 @@ type StructuralBounds struct {
 	MaxModelCalls         int
 	MaxToolCalls          int
 	MaxCandidatesSurfaced int
+	MaxCompletionTokens   int
 }
 
 // ProductionBounds returns the one authoritative structural/call envelope for a
@@ -154,7 +155,7 @@ func ProductionBounds() StructuralBounds {
 	maxCalls := maxToolRounds * (maxRepairs + 2)
 	return StructuralBounds{
 		MaxModelCalls: maxCalls, MaxToolCalls: maxCalls,
-		MaxCandidatesSurfaced: maxCalls * catalogSearchLimit,
+		MaxCandidatesSurfaced: maxCalls * catalogSearchLimit, MaxCompletionTokens: groundedMaxTokens,
 	}
 }
 

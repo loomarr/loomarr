@@ -155,6 +155,7 @@ type certificationScheduleExpectation struct {
 
 type certificationFixtureResponse struct {
 	Operation  string              `json:"operation"`
+	Occurrence int                 `json:"occurrence,omitempty"`
 	Candidates []catalog.Candidate `json:"candidates"`
 	Error      string              `json:"error"`
 }
@@ -778,13 +779,14 @@ func certificationIntentKey(description string, mustInclude []string) string {
 }
 
 type embeddedCatalogFixture struct {
-	operations   int
-	latencyNanos int64
-	mu           sync.RWMutex
-	current      string
-	fixtureID    string
-	cases        map[string]certificationFixtureCase
-	byID         map[int]catalog.Candidate
+	operations    int
+	latencyNanos  int64
+	mu            sync.RWMutex
+	current       string
+	fixtureID     string
+	cases         map[string]certificationFixtureCase
+	responseCalls map[string]int
+	byID          map[int]catalog.Candidate
 	// Optional observation at the actual catalog boundary, after the Suggester
 	// has validated and projected its model-facing date interpretation.
 	onDiscover func(catalog.DiscoveryQuery)
@@ -792,9 +794,10 @@ type embeddedCatalogFixture struct {
 
 func newEmbeddedCatalogFixture(decoded certificationCatalogFixture) *embeddedCatalogFixture {
 	f := &embeddedCatalogFixture{
-		fixtureID: decoded.FixtureID,
-		cases:     make(map[string]certificationFixtureCase, len(decoded.Cases)),
-		byID:      make(map[int]catalog.Candidate),
+		fixtureID:     decoded.FixtureID,
+		cases:         make(map[string]certificationFixtureCase, len(decoded.Cases)),
+		responseCalls: make(map[string]int),
+		byID:          make(map[int]catalog.Candidate),
 	}
 	for _, c := range decoded.Cases {
 		f.cases[c.ID] = c
@@ -810,6 +813,7 @@ func newEmbeddedCatalogFixture(decoded certificationCatalogFixture) *embeddedCat
 func (f *embeddedCatalogFixture) selectCase(id string) {
 	f.mu.Lock()
 	f.current = id
+	clear(f.responseCalls)
 	f.mu.Unlock()
 }
 
@@ -821,11 +825,13 @@ func (f *embeddedCatalogFixture) response(operation string) ([]catalog.Candidate
 		f.latencyNanos += time.Since(started).Nanoseconds()
 		f.mu.Unlock()
 	}()
-	f.mu.RLock()
+	f.mu.Lock()
 	c := f.cases[f.current]
-	f.mu.RUnlock()
+	f.responseCalls[operation]++
+	occurrence := f.responseCalls[operation]
+	f.mu.Unlock()
 	for _, response := range c.Responses {
-		if response.Operation != operation {
+		if response.Operation != operation || (response.Occurrence != 0 && response.Occurrence != occurrence) {
 			continue
 		}
 		if response.Error != "" {

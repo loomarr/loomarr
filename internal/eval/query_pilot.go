@@ -24,7 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json testdata/query-expansion-v4.json testdata/query-expansion-catalog-v4.json testdata/query-expansion-v5.json testdata/query-expansion-catalog-v5.json testdata/query-expansion-v6.json testdata/query-expansion-v7.json testdata/query-expansion-catalog-v7.json testdata/query-mood-review-packet-v1.json testdata/query-mood-review-map-v1.json testdata/query-mood-review-submission-qwen-v1.json testdata/query-mood-review-submission-gemini-v1.json testdata/query-mood-review-submission-gemma-v1.json testdata/query-mood-review-authority-v1.json testdata/query-mood-review-openrouter-snapshot-v1.json testdata/query-mood-review-packet-v2.json testdata/query-mood-review-map-v2.json testdata/query-mood-review-submission-qwen-v2.json testdata/query-mood-review-submission-gemini-v2.json testdata/query-mood-review-submission-gemma-v2.json testdata/query-mood-review-authority-v2.json
+//go:embed testdata/query-pilot-v1.json testdata/query-pilot-catalog-v1.json testdata/query-pilot-sources-v1.json testdata/query-expansion-v1.json testdata/query-expansion-catalog-v1.json testdata/query-expansion-sources-v1.json testdata/query-expansion-v2.json testdata/query-expansion-catalog-v2.json testdata/query-expansion-sources-v2.json testdata/query-expansion-v3.json testdata/query-expansion-catalog-v3.json testdata/query-expansion-v4.json testdata/query-expansion-catalog-v4.json testdata/query-expansion-v5.json testdata/query-expansion-catalog-v5.json testdata/query-expansion-v6.json testdata/query-expansion-v7.json testdata/query-expansion-catalog-v7.json testdata/query-expansion-v8.json testdata/query-expansion-catalog-v8.json testdata/query-mood-review-packet-v1.json testdata/query-mood-review-map-v1.json testdata/query-mood-review-submission-qwen-v1.json testdata/query-mood-review-submission-gemini-v1.json testdata/query-mood-review-submission-gemma-v1.json testdata/query-mood-review-authority-v1.json testdata/query-mood-review-openrouter-snapshot-v1.json testdata/query-mood-review-packet-v2.json testdata/query-mood-review-map-v2.json testdata/query-mood-review-submission-qwen-v2.json testdata/query-mood-review-submission-gemini-v2.json testdata/query-mood-review-submission-gemma-v2.json testdata/query-mood-review-authority-v2.json
 var queryPilotFiles embed.FS
 
 // QueryPilotCorpus is exposed development evidence, never a release holdout.
@@ -68,6 +68,7 @@ type QueryPilotCase struct {
 	ForbidRatingsAbove    string                  `json:"forbidRatingsAbove,omitempty"`
 	AudienceAuthority     string                  `json:"audienceAuthority,omitempty"`
 	ExpectAbstention      bool                    `json:"expectAbstention,omitempty"`
+	RecoveryExpected      bool                    `json:"recoveryExpected,omitempty"`
 	AcceptableKeys        []provision.Key         `json:"acceptableKeys"`
 	RequireKeys           []provision.Key         `json:"requireKeys,omitempty"`
 	ForbidKeys            []provision.Key         `json:"forbidKeys,omitempty"`
@@ -517,7 +518,7 @@ func queryDevelopmentCases(corpus QueryPilotCorpus) []Case {
 			ExpectCeiling: authored.ExpectCeiling, ForbidRatingsAbove: authored.ForbidRatingsAbove,
 			AcceptableKeys: authored.AcceptableKeys, MinAcceptableKeys: authored.MinGrounded,
 			RequireKeys: authored.RequireKeys, ForbidKeys: authored.ForbidKeys, ExpectedDateScope: dates,
-			ExpectedProposalAbstention: authored.ExpectAbstention,
+			ExpectedProposalAbstention: authored.ExpectAbstention, RecoveryExpected: authored.RecoveryExpected,
 		})
 	}
 	return withProductionStructuralBounds(cases)

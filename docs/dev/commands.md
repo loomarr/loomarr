@@ -78,6 +78,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make eval-cert` |  | certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard |
 | `make eval-planner-cert` |  | compare one model against the frozen planner corpus; explicit, inference-spending, non-CI |
 | `make eval-planner-smoke` |  | replay one frozen base Intent per planner family; explicit, inference-spending, non-CI |
+| `make eval-query-expansion-diagnostic-dry-run` |  | preflight the ten-case Gemini query diagnostic without inference |
+| `make eval-query-expansion-diagnostic` |  | run the authorized ten-case Gemini query diagnostic (paid/manual) |
 | `make planner-tool-diagnostic` |  | probe the exact post-catalog-result model turn; explicit, inference-spending, non-CI |
 | `make channel-recommend-cert` |  | certify inert channel concepts on the frozen recommendation corpus; explicit, inference-spending, non-CI |
 | `make channel-recommend-cert-dry-run` |  | emit the provider-free recommendation certification contract; no inference |

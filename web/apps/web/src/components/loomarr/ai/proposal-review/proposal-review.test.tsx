@@ -1,6 +1,6 @@
 import type { Proposal } from "@loomarr/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -93,6 +93,8 @@ describe("ProposalReview", () => {
             era: "1990s",
             runtimeTargetMin: 180,
             mustInclude: ["Heat"],
+            refineText: "Find more grounded options that match this brief.",
+            currentLineup: [{ key: "movie:tmdb:1", name: "Stale title", year: 1980 }],
           },
         }}
         selfService
@@ -115,7 +117,110 @@ describe("ProposalReview", () => {
       era: "1990s",
       runtimeTargetMin: 180,
       mustInclude: ["Heat"],
+      currentLineup: [
+        { key: "movie:tmdb:949", name: "Heat", year: 1995 },
+        { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
+      ],
     });
+  });
+
+  it("revises from the exact lineup currently visible to the reviewer", async () => {
+    const user = userEvent.setup();
+    const onRevise = vi.fn();
+    renderReview(
+      <ProposalReview
+        proposal={proposal}
+        edit={{
+          drop: ["movie:tmdb:949"],
+          add: [
+            {
+              name: "The Matrix",
+              year: 1999,
+              mediaType: "movie",
+              tmdbId: 603,
+              inLibrary: false,
+            },
+          ],
+        }}
+        selfService
+        onRevise={onRevise}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Edit brief" }));
+    await user.clear(screen.getByLabelText("Channel brief"));
+    await user.type(screen.getByLabelText("Channel brief"), "90s action with more science fiction");
+    await user.click(screen.getByRole("button", { name: "Update suggestions" }));
+
+    expect(onRevise).toHaveBeenCalledWith({
+      description: "90s action with more science fiction",
+      currentLineup: [
+        { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
+        { key: "movie:tmdb:603", name: "The Matrix", year: 1999 },
+      ],
+    });
+  });
+
+  it("finds more suggestions without changing the selected lineup", async () => {
+    const user = userEvent.setup();
+    const onRevise = vi.fn();
+    const view = renderReview(<ProposalReview proposal={proposal} selfService onRevise={onRevise} />);
+
+    await user.click(screen.getByText("More suggestions"));
+    await user.click(screen.getByRole("button", { name: "Find more suggestions" }));
+
+    expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit brief" })).toBeDisabled();
+    expect(screen.getByText("Finding more suggestions… Your selected titles won’t change.")).toHaveAttribute(
+      "role",
+      "status",
+    );
+
+    expect(onRevise).toHaveBeenCalledWith({
+      description: "90s action movies",
+      currentLineup: [
+        { key: "movie:tmdb:949", name: "Heat", year: 1995 },
+        { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
+      ],
+      refineText:
+        "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
+    });
+
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProposalReview proposal={proposal} selfService revising onRevise={onRevise} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
+
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProposalReview proposal={proposal} selfService onRevise={onRevise} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Find more suggestions" })).toBeEnabled();
+    });
+  });
+
+  it("shows progress when finding more suggestions again after a failed attempt", async () => {
+    const user = userEvent.setup();
+    const onRevise = vi.fn();
+    renderReview(
+      <ProposalReview
+        proposal={proposal}
+        selfService
+        revisionError="The previous search did not finish."
+        onRevise={onRevise}
+      />,
+    );
+
+    await user.click(screen.getByText("More suggestions"));
+    await user.click(screen.getByRole("button", { name: "Find more suggestions" }));
+
+    expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(onRevise).toHaveBeenCalledOnce();
   });
 
   it("lets an admin choose titles and creates with the exact edited count", async () => {
@@ -200,13 +305,13 @@ describe("ProposalReview", () => {
 
   it("puts deterministic evidence behind progressive disclosure", async () => {
     renderReview(<ProposalReview proposal={proposal} />);
-    const evidence = screen.getByText("Suggestion details").closest("details");
+    const evidence = screen.getByText("How these suggestions were chosen").closest("details");
     expect(evidence).not.toHaveAttribute("open");
-    await userEvent.click(screen.getByText("Suggestion details"));
+    await userEvent.click(screen.getByText("How these suggestions were chosen"));
     expect(evidence).toHaveAttribute("open");
     expect(screen.getByRole("heading", { name: "Why these titles" })).toBeVisible();
     expect(screen.getByText(proposal.rationale!)).not.toBeVisible();
-    await userEvent.click(screen.getByText("Technical details"));
+    await userEvent.click(screen.getByText("Troubleshooting details"));
     expect(screen.getByText("Included in the original suggestions")).toBeVisible();
     expect(screen.queryByText(/matched request, era/)).not.toBeInTheDocument();
   });
@@ -230,7 +335,7 @@ describe("ProposalReview", () => {
         })}
       />,
     );
-    await userEvent.click(screen.getByText("Suggestion details"));
+    await userEvent.click(screen.getByText("How these suggestions were chosen"));
     expect(
       screen.getByText("These suggestions are listed as part of the lineup you asked for."),
     ).toBeVisible();
@@ -240,8 +345,13 @@ describe("ProposalReview", () => {
     ).toBeVisible();
     expect(screen.queryByText(/You did not ask/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Core 8/)).not.toBeInTheDocument();
-    expect(screen.getByText(/constituent evidence/)).not.toBeVisible();
-    expect(screen.getByText(/recorded policy relaxation/)).not.toBeVisible();
+    expect(screen.queryByText(/constituent evidence/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/recorded policy relaxation/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText("Troubleshooting details"));
+    expect(
+      screen.getByText("These titles are part of the lineup or collection you asked for."),
+    ).toBeVisible();
+    expect(screen.queryByText(/constituent|public-reference|catalog decisions/i)).not.toBeInTheDocument();
   });
 
   it("does not imply lexical candidates were verified members or expose unnamed identities as titles", async () => {
@@ -270,14 +380,14 @@ describe("ProposalReview", () => {
         }}
       />,
     );
-    await userEvent.click(screen.getByText("Suggestion details"));
+    await userEvent.click(screen.getByText("How these suggestions were chosen"));
     expect(screen.getByText("The Great Indian Family")).not.toBeVisible();
-    await userEvent.click(screen.getByText("Technical details"));
+    await userEvent.click(screen.getByText("Troubleshooting details"));
     expect(screen.getByText("Considered, but not chosen")).toBeVisible();
-    expect(screen.getByText("Unidentified catalog entry")).toBeVisible();
+    expect(screen.getByText("Unidentified title")).toBeVisible();
     expect(screen.queryByText(/matched request/)).not.toBeInTheDocument();
     expect(screen.getByText(/series:tmdb:3921/)).not.toBeVisible();
-    await userEvent.click(screen.getByText("Raw diagnostic evidence"));
+    await userEvent.click(screen.getByText("Raw search data"));
     expect(screen.getByText(/series:tmdb:3921/)).toBeVisible();
   });
 
@@ -290,7 +400,7 @@ describe("ProposalReview", () => {
         assessment={outlook()}
       />,
     );
-    await userEvent.click(screen.getByText("Suggestion details"));
+    await userEvent.click(screen.getByText("How these suggestions were chosen"));
     expect(
       screen.getByText("You changed the title list. Check any titles you added against your brief."),
     ).toBeVisible();

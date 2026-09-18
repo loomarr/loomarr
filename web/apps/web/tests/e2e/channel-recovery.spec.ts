@@ -22,7 +22,7 @@ test("missing TMDB keeps connected AI truthful and preserves the channel draft t
   await page.goto("/guide");
   await page.getByRole("button", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("Saturday morning cartoons");
-  await page.getByRole("button", { name: "Add constraints" }).click();
+  await page.getByRole("button", { name: "Add details" }).click();
   await page.getByLabel("Era").fill("1990s");
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
 
@@ -40,7 +40,7 @@ test("missing TMDB keeps connected AI truthful and preserves the channel draft t
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue(
     "Saturday morning cartoons",
   );
-  await page.getByRole("button", { name: "Add constraints" }).click();
+  await page.getByRole("button", { name: "Add details" }).click();
   await expect(page.getByLabel("Era")).toHaveValue("1990s");
 
   await page.getByRole("button", { name: "Close" }).click();
@@ -57,15 +57,18 @@ test("a failed builder journey preserves the complete intent through authorized 
   await page.goto("/guide");
   await page.getByRole("button", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("90s action movies");
-  await page.getByRole("button", { name: "Add constraints" }).click();
+  await page.getByRole("button", { name: "Add details" }).click();
   await page.getByLabel("Era").fill("1990s");
-  await page.getByLabel("Target runtime (minutes)").fill("180");
+  await page.getByLabel("Target length (minutes)").fill("180");
   await page.getByLabel("Must include").fill("Heat, Point Break");
   await page.getByLabel("Must exclude").fill("clowns");
 
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
-  await expect(page.getByText("Adjust your description")).toBeVisible();
-  await expect(page.getByText("No grounded titles matched this request.")).toBeVisible();
+  await expect(page.getByText("No matches yet")).toBeVisible();
+  await expect(
+    page.getByText("Loomarr couldn't confidently match any titles to this description."),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).not.toContainText(/grounded|catalog/i);
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit description" })).toBeVisible();
   await expect.poll(() => mock.state.proposalJobRequests).toHaveLength(1);
@@ -74,9 +77,9 @@ test("a failed builder journey preserves the complete intent through authorized 
   // persisted constraint before the operator sends the next request.
   await page.getByRole("button", { name: "Edit description" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("90s action movies");
-  await page.getByRole("button", { name: "Add constraints" }).click();
+  await page.getByRole("button", { name: "Add details" }).click();
   await expect(page.getByLabel("Era")).toHaveValue("1990s");
-  await expect(page.getByLabel("Target runtime (minutes)")).toHaveValue("180");
+  await expect(page.getByLabel("Target length (minutes)")).toHaveValue("180");
   await expect(page.getByLabel("Must include")).toHaveValue("Heat, Point Break");
   await expect(page.getByLabel("Must exclude")).toHaveValue("clowns");
 
@@ -140,10 +143,9 @@ test("a bounded-discovery failure preserves the draft without exposing an intern
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
 
   const recovery = page.getByRole("alert");
-  await expect(recovery).toContainText("We couldn't finish the lineup");
-  await expect(recovery).toContainText(
-    "Your description is still here. Try again, or edit it if you want to.",
-  );
+  await expect(recovery).toContainText("Search stopped early");
+  await expect(recovery).toContainText("The search ended before Loomarr found enough good matches.");
+  await expect(recovery).toContainText("Try again. If this keeps happening, add a few example titles.");
   await expect(recovery).not.toContainText(/budget|more specific|too many possible directions/i);
   await page.getByRole("button", { name: "Edit description" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("Create a TGIF channel");

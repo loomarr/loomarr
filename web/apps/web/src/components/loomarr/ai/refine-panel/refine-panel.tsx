@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { suggestionFailureCopy } from "@/suggest/suggestion-failure-copy";
 import { useChannelRefine } from "@/suggest/use-channel-refine";
 import { useElapsed } from "@/suggest/use-elapsed";
 import type { RefinePanelProps } from "./refine-panel.type";
@@ -70,6 +71,7 @@ const RefinePanel = ({
   // and nothing was applied. (`refine.error` below covers the separate case where the
   // refine REQUEST itself failed before any job started.)
   const generationFailed = state === "open" && refine.phase === "failed" && !refine.proposal;
+  const failureCopy = refine.failure ? suggestionFailureCopy(refine.failure) : undefined;
 
   return (
     <section className={cn("flex flex-col gap-3 rounded-lg border border-suggest-tint-15 p-4", className)}>
@@ -96,13 +98,23 @@ const RefinePanel = ({
       {state === "open" && (
         <div className="flex flex-col gap-3">
           {generationFailed && (
-            <p className="flex items-start gap-2 rounded-lg border border-onair-tint-15 bg-onair-tint-10 px-3 py-2 text-onair-300 text-sm">
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-onair-tint-15 bg-onair-tint-10 px-3 py-2 text-onair-300 text-sm"
+            >
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>
-                {refine.failure?.message ??
-                  "Refine couldn't complete. The model didn't return a lineup. Try again or rephrase your change."}
-              </span>
-            </p>
+              {failureCopy ? (
+                <span className="flex flex-col gap-0.5">
+                  <span className="font-medium">{failureCopy.title}</span>
+                  <span>{failureCopy.message}</span>
+                  <span>{failureCopy.guidance}</span>
+                </span>
+              ) : (
+                <span>
+                  Loomarr couldn't update this channel. Try again or describe the change another way.
+                </span>
+              )}
+            </div>
           )}
           <textarea
             value={change}

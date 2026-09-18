@@ -125,9 +125,9 @@ func (p *observedProvider) Begin() {
 	p.mu.Unlock()
 }
 
-func (p *observedProvider) beginResourceRun(limits ResourceBudget, run, suite *resourceAccumulator) {
+func (p *observedProvider) beginResourceRun(limits ResourceBudget, reservation InferenceReservation, run, suite *resourceAccumulator) {
 	p.mu.Lock()
-	p.ledger = &providerResourceLedger{limits: limits, run: run, suite: suite}
+	p.ledger = &providerResourceLedger{limits: limits, reservation: reservation, run: run, suite: suite}
 	p.mu.Unlock()
 }
 
@@ -137,7 +137,7 @@ func (p *observedProvider) Chat(ctx context.Context, messages []llm.Message, opt
 	p.mu.Lock()
 	ledger := p.ledger
 	if ledger != nil {
-		if message := ledger.beforeCall(); message != "" {
+		if message := ledger.beforeCall(messages, opts); message != "" {
 			p.obs.generatorBudgetErr = message
 			p.mu.Unlock()
 			return llm.Response{}, fmt.Errorf("generator provider call blocked: %w", errProviderBudgetExhausted)

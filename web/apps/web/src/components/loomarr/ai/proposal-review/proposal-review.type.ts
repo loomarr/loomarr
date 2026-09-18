@@ -10,6 +10,7 @@ type ProposalStatus = "draft" | "submitted" | "approved" | "denied" | "supersede
 
 interface ProposalReviewProps {
   proposal: Proposal;
+  optionalSuggestionKeys?: string[];
   assessment?: Assessment;
   assessmentPending?: boolean;
   edit?: ApprovalEditDTO;

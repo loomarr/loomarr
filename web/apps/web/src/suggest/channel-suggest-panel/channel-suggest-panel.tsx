@@ -1,9 +1,6 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
-import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { Intent } from "@loomarr/api/models/intent";
-import type { Proposal } from "@loomarr/api/models/proposal";
 import { toProblem } from "@loomarr/api/mutator";
-import { provisionKey } from "@loomarr/core/provision";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -15,6 +12,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useProposalOutlook } from "../live-proposal-outlook";
+import { suggestionFailureCopy } from "../suggestion-failure-copy";
 import { useElapsed } from "../use-elapsed";
 import { useProposalReviewEdit } from "../use-proposal-review-edit";
 import { useSuggestionRun } from "../use-suggestion-run";
@@ -33,34 +31,6 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // One expanding surface over useSuggestionRun's three states: idle → describe form; running →
 // live phases; a landed proposal → review with Approve/Deny. A successful approve or
 // "Create another" resets back to the form.
-const normalizeReviewEdit = (edit: ApprovalEditDTO, proposal: Proposal): ApprovalEditDTO | undefined => {
-  const selectedKeys = new Set(
-    [...(proposal.lineup ?? []), ...(proposal.acquisitions ?? [])].map(provisionKey),
-  );
-  const alternateKeys = new Set((proposal.alternates ?? []).map(provisionKey));
-  const proposalKeys = new Set([...selectedKeys, ...alternateKeys]);
-  const originallyAddedKeys = new Set((edit.add ?? []).map(provisionKey));
-  const add = edit.add?.filter((item) => !selectedKeys.has(provisionKey(item)));
-  const drop = (edit.drop ?? []).filter(
-    (key) => proposalKeys.has(key) && !(selectedKeys.has(key) && originallyAddedKeys.has(key)),
-  );
-
-  // If the model demotes a user-added title to an alternate, the explicit add
-  // still wins: keep it selected and remove the duplicate backup at approval.
-  for (const item of add ?? []) {
-    const key = provisionKey(item);
-    if (alternateKeys.has(key) && !drop.includes(key)) drop.push(key);
-  }
-
-  const note = edit.note?.trim();
-  if (drop.length === 0 && (add?.length ?? 0) === 0 && !note) return undefined;
-  return {
-    ...(drop.length ? { drop } : {}),
-    ...(add?.length ? { add } : {}),
-    ...(note ? { note } : {}),
-  };
-};
-
 const ChannelSuggestPanel = ({
   onCreated,
   initialIntent,
@@ -73,7 +43,7 @@ const ChannelSuggestPanel = ({
   const queryClient = useQueryClient();
   const [startedFresh, setStartedFresh] = useState(false);
   const run = useSuggestionRun(initialJobId);
-  const [edit, setEdit] = useProposalReviewEdit(run.jobId);
+  const [edit, setEdit, optionalSuggestionKeys] = useProposalReviewEdit(run.jobId, run.proposal);
   const elapsed = useElapsed(run.isRunning);
   const runProblem = run.error == null ? undefined : toProblem(run.error);
   const aiUnconfigured = runProblem?.type === "feature_not_configured";
@@ -125,15 +95,6 @@ const ChannelSuggestPanel = ({
     proposal: proposal?.proposal,
     edit,
   });
-  useEffect(() => {
-    if (!proposal || !edit) return;
-    const normalized = normalizeReviewEdit(edit, proposal.proposal);
-    // Normalize on every restored review, not only while this component happens
-    // to observe the Proposal id change. A revision may finish while the panel is
-    // closed or the page is reloading; the stable Job-scoped edit still must not
-    // duplicate a user-added title the replacement now suggests itself.
-    if (JSON.stringify(normalized) !== JSON.stringify(edit)) setEdit(normalized);
-  }, [edit, proposal, setEdit]);
   const startFresh = () => {
     setEdit(undefined);
     run.reset();
@@ -152,16 +113,8 @@ const ChannelSuggestPanel = ({
     setEdit(undefined);
     run.retry();
   };
-  const discoveryBudgetExhausted = run.failure?.reason === "discovery_budget_exhausted";
   const failureNeedsEdit = run.failure?.recoveryAction !== "retry_later";
-  const failureTitle = discoveryBudgetExhausted
-    ? "We couldn't finish the lineup"
-    : failureNeedsEdit
-      ? "Adjust your description"
-      : "We couldn't finish this channel";
-  const failureMessage = discoveryBudgetExhausted
-    ? "Your description is still here. Try again, or edit it if you want to."
-    : (run.failure?.message ?? "Something interrupted this channel. Your description is still here.");
+  const failureCopy = run.failure ? suggestionFailureCopy(run.failure) : undefined;
 
   return (
     <section className={cn("flex flex-col gap-4", className)}>
@@ -190,7 +143,7 @@ const ChannelSuggestPanel = ({
                   ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
                   : "AI is connected, but an administrator needs to connect TMDB before Loomarr can match your description to real titles. Your draft is saved."
                 : isAdmin
-                  ? "Connect a provider and choose a lineup model. Your draft is saved."
+                  ? "Connect an AI service and choose a model for channel suggestions. Your draft is saved."
                   : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
             </p>
             {isAdmin &&
@@ -228,8 +181,13 @@ const ChannelSuggestPanel = ({
           className="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-lg border border-border bg-muted/35 p-4"
         >
           <div>
-            <h3 className="font-medium">{failureTitle}</h3>
-            <p className="mt-1 text-muted-foreground text-sm">{failureMessage}</p>
+            <h3 className="font-medium">{failureCopy?.title ?? "Something went wrong"}</h3>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {failureCopy?.message ?? "Loomarr couldn't finish this request."}
+            </p>
+            {failureCopy?.guidance && (
+              <p className="mt-1 text-muted-foreground text-sm">{failureCopy.guidance}</p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {run.actions.includes("edit") && (
@@ -238,7 +196,7 @@ const ChannelSuggestPanel = ({
                 size="sm"
                 onClick={editFailedDescription}
               >
-                {run.failure?.recoveryAction === "edit_reference" ? "Change reference" : "Edit description"}
+                {run.failure?.recoveryAction === "edit_reference" ? "Change link" : "Edit description"}
               </Button>
             )}
             {run.actions.includes("retry") && (
@@ -260,6 +218,7 @@ const ChannelSuggestPanel = ({
         <div className="flex flex-col gap-4">
           <ProposalReview
             proposal={proposal.proposal}
+            optionalSuggestionKeys={optionalSuggestionKeys}
             showWorkflowHeading={false}
             edit={edit}
             assessment={
@@ -293,8 +252,8 @@ const ChannelSuggestPanel = ({
             <div className="flex flex-col items-start gap-2">
               <p role="status" className="text-lock text-sm">
                 {user?.autoApprove
-                  ? "Automatically approved using your account setting. The channel has already been created."
-                  : "This proposal is already approved. The channel has already been created."}
+                  ? "Created automatically using your account setting."
+                  : "This channel has already been created."}
               </p>
               <Button variant="outline" size="sm" onClick={startFresh}>
                 Create another

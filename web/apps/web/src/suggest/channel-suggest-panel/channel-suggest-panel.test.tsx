@@ -38,7 +38,7 @@ const failedRun = (over: Partial<SuggestionRun> = {}): SuggestionRun => ({
   proposal: undefined,
   failure: {
     code: "generation_failed",
-    message: "Loomarr couldn't generate this channel.",
+    message: "Loomarr couldn't finish this channel.",
     reason: "provider_unavailable",
     recoveryAction: "retry_later",
     guidance: "Try again later. If this continues, ask an administrator to check AI.",
@@ -160,15 +160,17 @@ const renderPanel = (onCreated: (id: string) => void) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const panel = () => (
     <RouterHarness
       content={
         <QueryClientProvider client={client}>
           <ChannelSuggestPanel onCreated={onCreated} />
         </QueryClientProvider>
       }
-    />,
+    />
   );
+  const view = render(panel());
+  return { ...view, rerenderPanel: () => view.rerender(panel()) };
 };
 
 describe("ChannelSuggestPanel", () => {
@@ -223,7 +225,9 @@ describe("ChannelSuggestPanel", () => {
     await user.type(intent, "Saturday morning cartoons");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/connect a provider.*choose a lineup model/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /connect an AI service.*choose a model for channel suggestions/i,
+    );
     expect(screen.getByRole("link", { name: /set up ai/i })).toHaveAttribute("href", "/settings/ai");
     expect(intent).toHaveValue("Saturday morning cartoons");
   });
@@ -296,8 +300,8 @@ describe("ChannelSuggestPanel", () => {
     renderPanel(() => {});
 
     await user.type(await screen.findByLabelText("Channel intent"), "90s action movies");
-    await user.click(screen.getByRole("button", { name: /add constraints/i }));
-    await user.type(screen.getByLabelText(/target runtime/i), "180");
+    await user.click(screen.getByRole("button", { name: /add details/i }));
+    await user.type(screen.getByLabelText(/target length/i), "180");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
 
     await waitFor(() => {
@@ -343,7 +347,7 @@ describe("ChannelSuggestPanel", () => {
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
     await user.click(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" }));
-    await user.click(screen.getByText("Suggestion details"));
+    await user.click(screen.getByText("How these suggestions were chosen"));
     expect(
       screen.getByText("You changed the title list. Check any titles you added against your brief."),
     ).toBeVisible();
@@ -368,7 +372,20 @@ describe("ChannelSuggestPanel", () => {
     await user.type(screen.getByLabelText("Channel brief"), "80s teen comedies with more variety");
     await user.click(screen.getByRole("button", { name: "Update suggestions" }));
 
-    await waitFor(() => expect(revisions).toEqual([{ description: "80s teen comedies with more variety" }]));
+    await waitFor(() =>
+      expect(revisions).toEqual([
+        {
+          description: "80s teen comedies with more variety",
+          currentLineup: [
+            {
+              key: "movie:tmdb:9377",
+              name: "Ferris Bueller's Day Off",
+              year: 1986,
+            },
+          ],
+        },
+      ]),
+    );
     expect(submissions).toHaveLength(1);
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
     expect(screen.getByText("Ferris Bueller's Day Off")).toBeVisible();
@@ -399,7 +416,7 @@ describe("ChannelSuggestPanel", () => {
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
 
     expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
-    expect(screen.getByText(/automatically approved/i)).toBeInTheDocument();
+    expect(screen.getByText(/created automatically/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /start over/i })).not.toBeInTheDocument();
     expect(approvals).toEqual([]);
     expect(onCreated).not.toHaveBeenCalled();
@@ -524,6 +541,65 @@ describe("ChannelSuggestPanel", () => {
     view.unmount();
   });
 
+  it("keeps the reviewer's selected lineup when a replacement proposes different primary titles", async () => {
+    const ferris = PROPOSAL.proposal.lineup[0]!;
+    const matrix = {
+      mediaType: "movie",
+      tmdbId: 603,
+      name: "The Matrix",
+      year: 1999,
+      inLibrary: false,
+    };
+    const { approvals } = stubSuggest();
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: { id: PROPOSAL.id, status: PROPOSAL.status, proposal: PROPOSAL.proposal },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    const view = renderPanel(() => {});
+
+    expect(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" })).toBeChecked();
+
+    runOverride = failedRun({
+      jobId: "job-1",
+      proposal: {
+        id: "p-2",
+        status: "submitted",
+        proposal: {
+          ...PROPOSAL.proposal,
+          lineup: [],
+          acquisitions: [matrix],
+        },
+      },
+      failure: undefined,
+      actions: ["review", "edit"],
+      isRunning: false,
+      failed: false,
+    });
+    view.rerenderPanel();
+
+    expect(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" })).toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "Include The Matrix" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText("More suggestions"));
+    expect(screen.getByRole("button", { name: "Add The Matrix" })).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "Create channel" }));
+    await waitFor(() =>
+      expect(approvals).toEqual([
+        {
+          id: "p-2",
+          edit: {
+            drop: ["movie:tmdb:603"],
+            add: [ferris],
+          },
+        },
+      ]),
+    );
+  });
+
   it("a member's approve is inert — no approve call fires (approval is admin-only, §7)", async () => {
     const user = userEvent.setup();
     // ProposalReview renders the Approve button off the proposal STATUS (same as /suggest);
@@ -591,7 +667,8 @@ describe("ChannelSuggestPanel", () => {
 
     // The failure replaces progress with one recovery surface.
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText(/couldn't generate this channel/i)).toBeInTheDocument();
+    expect(screen.getByText("AI is temporarily unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/couldn't reach the AI service/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /check ai settings/i })).toHaveAttribute("href", "/settings/ai");
     // …and the describe form is NOT rendered underneath it (the silent-drop bug).
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
@@ -601,11 +678,11 @@ describe("ChannelSuggestPanel", () => {
     expect(retry).toHaveBeenCalled();
   });
 
-  it("presents a catalog failure once with a direct retry action", async () => {
+  it("presents a title-source failure once with a direct retry action", async () => {
     runOverride = failedRun({
       failure: {
         code: "generation_failed",
-        message: "Loomarr couldn't retrieve the catalog information needed for this request.",
+        message: "Loomarr couldn't check the title sources right now.",
         reason: "retrieval_unavailable",
         recoveryAction: "retry_later",
         guidance: "If this keeps happening, check the title sources in Connections.",
@@ -615,8 +692,9 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     renderPanel(() => {});
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/We couldn't finish this channel/);
-    expect(screen.getByText(/couldn't retrieve the catalog information/i)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Title search is unavailable/);
+    expect(screen.getByText(/couldn't reach the title sources/i)).toBeInTheDocument();
+    expect(screen.queryByText(/catalog|retrieval/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /check ai settings/i })).not.toBeInTheDocument();
   });
@@ -638,12 +716,33 @@ describe("ChannelSuggestPanel", () => {
     renderPanel(() => {});
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("We couldn't finish this channel");
-    expect(alert).toHaveTextContent("Loomarr found titles but couldn't finish the lineup.");
+    expect(alert).toHaveTextContent("Something went wrong");
+    expect(alert).toHaveTextContent("Loomarr couldn't finish these suggestions.");
     expect(alert).not.toHaveTextContent(/more specific|too many possible directions/i);
     expect(screen.queryByRole("button", { name: "Edit description" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(retry).toHaveBeenCalled();
+  });
+
+  it("explains an empty search without exposing grounding or catalog language", async () => {
+    runOverride = failedRun({
+      failure: {
+        code: "generation_failed",
+        message: "No grounded titles matched this request.",
+        reason: "no_catalog_match",
+        recoveryAction: "broaden_request",
+        guidance: "Try a broader description or add a few example titles.",
+      },
+      actions: ["edit", "retry"],
+    });
+    stubSuggest();
+    renderPanel(() => {});
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("No matches yet");
+    expect(alert).toHaveTextContent("Loomarr couldn't confidently match any titles to this description.");
+    expect(alert).toHaveTextContent("Try a broader description or add a few example titles.");
+    expect(alert).not.toHaveTextContent(/grounded|catalog/i);
   });
 
   it("does not expose discovery budgets or blame the description", async () => {
@@ -663,8 +762,9 @@ describe("ChannelSuggestPanel", () => {
     renderPanel(() => {});
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("We couldn't finish the lineup");
-    expect(alert).toHaveTextContent("Your description is still here. Try again, or edit it if you want to.");
+    expect(alert).toHaveTextContent("Search stopped early");
+    expect(alert).toHaveTextContent("The search ended before Loomarr found enough good matches.");
+    expect(alert).toHaveTextContent("add a few example titles");
     expect(alert).not.toHaveTextContent(/budget|more specific|too many possible directions/i);
     await userEvent.click(screen.getByRole("button", { name: "Edit description" }));
     expect(reset).toHaveBeenCalledWith(true);

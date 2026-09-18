@@ -4,6 +4,7 @@ import { Check, Download, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { friendlyTitleRationale } from "@/suggest/suggestion-language";
 import type { CurrentLineupItem, RefineReviewProps } from "./refine-review.type";
 
 // --- programming-policy deltas (§8.2) --------------------------------------------------
@@ -184,7 +185,7 @@ const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "remo
         title was the operator's pick in the first place — but "Adding: Predator" with no
         reason is the refine asking for trust it hasn't earned. */}
     {tone === "added" && row.rationale && (
-      <p className="pl-6 text-muted-foreground text-xs">{row.rationale}</p>
+      <p className="pl-6 text-muted-foreground text-xs">{friendlyTitleRationale(row.rationale)}</p>
     )}
   </li>
 );
@@ -254,7 +255,7 @@ const RefineReview = ({
       </header>
 
       {noChanges ? (
-        <p className="text-sm">Everything the model proposed is already on this channel.</p>
+        <p className="text-sm">The suggestions are already on this channel.</p>
       ) : (
         <div className="flex flex-col gap-4">
           <Group title="Keeping" rows={kept} tone="kept" />

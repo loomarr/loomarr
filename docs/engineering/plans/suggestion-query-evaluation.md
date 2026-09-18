@@ -430,6 +430,52 @@ authoritative and cannot be overridden by model scores. All 130 requests cross
 the production Suggester and Runner with independently authored replies, remain
 non-certifying, and use no live model judge.
 
+### Eighth executable expansion batch
+
+Issue [#1302](https://github.com/loomarr/loomarr/issues/1302) advances the
+cumulative development snapshot to `query-expansion-v8.json`. It retains all
+130 v7 requests byte-for-byte and adds one injected catalog-recovery case, for
+131 cumulative expansion requests and 203 requests when the immutable
+72-request pilot is counted separately.
+
+The v8 catalog fixture adds an explicit one-based occurrence to repeated
+responses for the same operation. In the new case, the first real `keyword`
+catalog boundary returns a timeout and the second returns a grounded result.
+Per-case operation counters reset before each production Suggester run. The
+Runner gives recovery credit only after observing both tool calls and a valid,
+grounded completion. This is hermetic development evidence for the actual
+failure path; it does not establish hosted-provider reliability and makes no
+paid inference claim.
+
+The same issue adds a local-only representative provider diagnostic over ten
+fixed v8 cases: TGIF, History editorial epoch, movie release era, mood, audience,
+exclusion, thin, empty, add-refinement and remove-refinement. A provider-free dry
+run constructs no client and records the exact ordered selection, corpus contract,
+fresh OpenRouter snapshot identity, concrete Gemini route, and resource envelope.
+The live command requires a second explicit authorization latch and writes the
+ordinary per-call scorecard plus a capability-oriented summary. It is development
+evidence only.
+
+The request-size preflight found that the earlier 4,700-token generator estimate
+could not contain the production prompt and tool schemas. The enforced conservative
+bound is therefore 40,000 input plus 2,048 completion tokens per generator call;
+all ten cooperative production-path scripts fit, with the largest at 39,540 under
+the byte-derived estimator. Under the pinned route snapshot, one generator call
+reserves 42,048 tokens and USD 0.067824. The structural 250-call maximum would
+demand up to 10,143,640 tokens and USD 16.375770, so independent runtime ceilings
+of 2.5 million tokens and USD 5 may stop the run before the structural maximum.
+The preflight publishes that limitation directly. No hosted inference was used to
+derive or verify this envelope.
+
+The same checkpoint exercises the complete Guide review with an isolated mocked
+backend. The browser journey removes a suggested title, manually adds another,
+requests more ideas in place, reloads the active Job, edits the brief, and approves
+the exact retained selection. Separate recovery cases cover missing TMDB, empty
+results, exhausted discovery, retry, and discard. A phone-sized reduced-motion run
+verifies the sticky approval action, selectable titles, bounded layout, persistent
+status text, and suppressed spinner motion. These are application-contract checks;
+they make no hosted inference or model-quality claim.
+
 ### Remaining expansion checkpoints
 
 The source-review checkpoint is tracked in [#1278](https://github.com/loomarr/loomarr/issues/1278).
