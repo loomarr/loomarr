@@ -295,13 +295,14 @@ type ApprovalEditDTO struct {
 	// indexes: an index means "the third one in the list I was looking at", which is wrong the
 	// moment anything reorders between render and submit.
 	Drop []string `json:"drop,omitempty" doc:"Provisioning keys to remove from the proposal before approving"`
-	// Add lists titles the approver added via search. They become acquisitions and go through
-	// the same idempotent enqueue as anything the model proposed.
+	// Add lists titles the approver added via search or a grounded collection. The approval
+	// gate rechecks Library presence: owned titles join the Lineup and only missing titles
+	// become acquisitions.
 	//
 	// The DOMAIN type, not a hand-written mirror — the same call this file already makes for
 	// ProposalDTO.Proposal, and for the same reason recorded there: the previous mirror had
 	// already drifted from what it mirrored.
-	Add []suggest.ProposalItem `json:"add,omitempty" doc:"Titles to add as acquisitions"`
+	Add []suggest.ProposalItem `json:"add,omitempty" doc:"Titles to add; current Library presence determines Lineup or acquisition placement"`
 	// Note is the message to whoever requested this — why it came back altered.
 	Note string `json:"note,omitempty" doc:"A message to the requester, stored with the approval"`
 }

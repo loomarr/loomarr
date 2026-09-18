@@ -70,6 +70,48 @@ func TestPrepareApprovalDropsExcludedBackup(t *testing.T) {
 	}
 }
 
+func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T) {
+	body := suggest.Proposal{Lineup: []suggest.ProposalItem{
+		{MediaType: provision.Movie, TMDBID: 1, Name: "Existing", InLibrary: true, LibraryItemID: "library-1"},
+	}}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := store.Proposal{ID: "p-owned-add", Status: "submitted", ProposalJSON: string(raw)}
+	edit := &suggest.ApprovalEdit{Add: []suggest.ProposalItem{
+		{MediaType: provision.Movie, TMDBID: 2, Name: "Owned addition", InLibrary: true, LibraryItemID: "library-2"},
+		{MediaType: provision.Movie, TMDBID: 3, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged-library-id"},
+		{MediaType: provision.Movie, TMDBID: 2, Name: "Duplicate owned addition", InLibrary: false},
+		{MediaType: provision.Movie, TMDBID: 1, Name: "Duplicate existing title", InLibrary: false},
+	}}
+	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+		{Item: edit.Add[0], Owned: true},
+		{Item: edit.Add[1], Owned: false},
+		{Item: suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 1, Name: "Existing", InLibrary: true, LibraryItemID: "library-1"}, Owned: true},
+	}}
+	resolvedEdit, err := suggest.ResolveApprovalEdit(context.Background(), edit, resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, decoded, err := suggest.PrepareApproval(p, resolvedEdit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Lineup) != 2 || decoded.Lineup[1].Name != "Owned addition" {
+		t.Fatalf("lineup = %+v, want the owned review addition placed with available titles", decoded.Lineup)
+	}
+	if len(decoded.Acquisitions) != 1 || decoded.Acquisitions[0].Name != "Missing addition" {
+		t.Fatalf("acquisitions = %+v, want only the missing review addition", decoded.Acquisitions)
+	}
+	if prepared.ModSummary != "added 2" {
+		t.Fatalf("modification summary = %q, want only effective additions counted", prepared.ModSummary)
+	}
+	if calls := resolver.Calls(); len(calls) != 3 {
+		t.Fatalf("resolver calls = %+v, want one per distinct added title", calls)
+	}
+}
+
 func TestPrepareApprovalRejectsAnEmptyEffectiveChannel(t *testing.T) {
 	body := suggest.Proposal{Acquisitions: []suggest.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 1, Name: "Only title"},

@@ -27,12 +27,13 @@ type Preview interface {
 
 // Config supplies existing read-only adapters and the approval/scheduling authorities.
 type Config struct {
-	Titles   Titles
-	Library  Library
-	Episodes channels.EpisodeResolver
-	Planner  Planner
-	Preview  Preview
-	Now      func() time.Time
+	Titles    Titles
+	Library   Library
+	Episodes  channels.EpisodeResolver
+	Planner   Planner
+	Preview   Preview
+	Additions suggest.ApprovalAdditionResolver
+	Now       func() time.Time
 }
 
 // Service owns one bounded observation and its explanation; it cannot commit approval.
@@ -82,7 +83,11 @@ func (s *Service) Assess(ctx context.Context, proposal store.Proposal, edit *sug
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	prepared, body, err := suggest.PrepareApproval(proposal, edit)
+	resolvedEdit, err := suggest.ResolveApprovalEdit(ctx, edit, s.config.Additions)
+	if err != nil {
+		return Assessment{}, err
+	}
+	prepared, body, err := suggest.PrepareApproval(proposal, resolvedEdit)
 	if err != nil {
 		return Assessment{}, err
 	}

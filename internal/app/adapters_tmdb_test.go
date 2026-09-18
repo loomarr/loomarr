@@ -6,7 +6,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
@@ -29,6 +31,34 @@ func TestSearchAdapterCarriesGroundedEditorialEvidence(t *testing.T) {
 		len(got[0].OriginCountries) != 1 || got[0].OriginCountries[0] != "US" || got[0].RuntimeMinutes != 136 ||
 		got[0].VoteAverage != 8.2 || got[0].VoteCount != 27_000 || len(got[0].Keywords) != 1 {
 		t.Fatalf("search API candidate lost grounded evidence: %+v", got)
+	}
+}
+
+func TestMovieCollectionAdapterUsesAuthoritativeTMDBRoster(t *testing.T) {
+	tmdbServer := testkit.NewTMDB(t)
+	tmdbServer.AddMovie(671, "Harry Potter and the Philosopher's Stone", 2001, []int{12, 14}, "A young wizard begins school.")
+	tmdbServer.AddMovie(672, "Harry Potter and the Chamber of Secrets", 2002, []int{12, 14}, "The second school year.")
+	tmdbServer.AddMovie(673, "Harry Potter and the Prisoner of Azkaban", 2004, []int{12, 14}, "An escaped prisoner shadows the school.")
+	tmdbServer.SetMovieCollection(1241, "Harry Potter Collection", 671, 672, 673)
+	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
+		672: {LibraryItemID: "library-672", OfficialRating: "PG"},
+	}}
+	client := tmdb.NewWithBase(tmdbServer.URL, "key")
+	adapter := movieCollectionAdapter{resolver: moviecollections.New(client).WithPresenceSource(
+		func() catalog.LibraryPresence { return presence },
+	)}
+
+	got, err := adapter.ResolveMovieCollections(context.Background(), api.MovieCollectionRequest{
+		Keys: []string{"movie:tmdb:671", "movie:tmdb:673"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Complete || len(got.Collections) != 1 || got.Collections[0].TMDBID != 1241 {
+		t.Fatalf("resolution = %+v, want one complete authoritative collection", got)
+	}
+	if members := got.Collections[0].Members; len(members) != 3 || members[1].TMDBID != 672 || !members[1].InLibrary || members[1].LibraryItemID != "library-672" {
+		t.Fatalf("members = %+v, want release order and Library presence", members)
 	}
 }
 

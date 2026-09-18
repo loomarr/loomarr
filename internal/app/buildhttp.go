@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -59,13 +60,16 @@ func buildHTTP(deps httpBuild) http.Handler {
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
 	var proposalOutlook api.ProposalOutlook
 	if preview, ok := channelSvc.(proposaloutlook.Preview); ok && chBinder != nil && deps.foundation.libraryClient != nil {
+		additionResolver := approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
+			return libraryPresence{lib: deps.foundation.libraryClient.Snapshot()}
+		}}
 		proposalOutlook = proposaloutlook.New(proposaloutlook.Config{
 			Titles: st, Library: deps.foundation.libraryClient, Episodes: episodeResolver(deps.foundation.libraryClient),
-			Planner: chBinder, Preview: preview,
+			Planner: chBinder, Preview: preview, Additions: additionResolver,
 		})
 	}
 	suggestSvc, proposalWorkflow := deps.suggestions.suggest, deps.suggestions.workflow
-	searchSvc, collectionsSvc := deps.suggestions.search, deps.suggestions.collections
+	searchSvc, movieCollectionsSvc, collectionsSvc := deps.suggestions.search, deps.suggestions.movieCollections, deps.suggestions.collections
 	systemLLM, iconSvc, imageSvc := deps.suggestions.systemLLM, deps.suggestions.icons, deps.suggestions.images
 	timelineThumbs := deps.suggestions.timelineThumbs
 	fillerSvc, podPreview, taxonomyEditor := deps.fillers.service, deps.fillers.preview, deps.fillers.taxonomy
@@ -118,6 +122,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Suggest:             suggestSvc,
 		ProposalWorkflow:    proposalWorkflow,
 		Search:              searchSvc,
+		MovieCollections:    movieCollectionsSvc,
 		Collections:         collectionsSvc,
 		Icons:               iconSvc,
 		Images:              imageService(imageSvc),

@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/recurate"
 	"github.com/loomarr/loomarr/internal/reference"
@@ -27,16 +28,17 @@ import (
 )
 
 type suggestionBuild struct {
-	suggest         api.SuggestService
-	workflow        api.ProposalWorkflow
-	durableWorkflow *proposalworkflow.Workflow
-	search          api.SearchService
-	collections     api.CollectionService
-	systemLLM       api.SystemLLMService
-	icons           api.IconService
-	images          *images.Service
-	imageFetcher    *images.Fetcher
-	timelineThumbs  api.TimelineThumbResolver
+	suggest          api.SuggestService
+	workflow         api.ProposalWorkflow
+	durableWorkflow  *proposalworkflow.Workflow
+	search           api.SearchService
+	movieCollections api.MovieCollectionService
+	collections      api.CollectionService
+	systemLLM        api.SystemLLMService
+	icons            api.IconService
+	images           *images.Service
+	imageFetcher     *images.Fetcher
+	timelineThumbs   api.TimelineThumbResolver
 }
 
 func buildSuggestions(
@@ -92,6 +94,9 @@ func buildSuggestions(
 		return libraryPresence{lib: libraryClient.Snapshot()}
 	})
 	result.search = searchAdapter{catalogService}
+	result.movieCollections = movieCollectionAdapter{resolver: moviecollections.New(tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
+		return libraryPresence{lib: libraryClient.Snapshot()}
+	})}
 	result.collections = libraryCollections{lib: libraryClient}
 	result.icons = iconAdapter{
 		store: st, tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher, log: log,

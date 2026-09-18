@@ -2,11 +2,13 @@ package suggest_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -14,6 +16,50 @@ import (
 )
 
 const validApprovalProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed"}]}`
+
+func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
+	st := &testkit.ApprovalStore{}
+	channels := &testkit.ApprovalChannels{}
+	owned := suggest.ProposalItem{
+		MediaType: provision.Movie, TMDBID: 672, Name: "Owned addition",
+		InLibrary: true, LibraryItemID: "library-672", OfficialRating: "PG",
+	}
+	missing := suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 673, Name: "Missing addition"}
+	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+		{Item: owned, Owned: true},
+		{Item: missing, Owned: false},
+	}}
+	approver := suggest.NewApprover(st, channels, time.Now).WithApprovalAdditionResolver(resolver)
+	p := store.Proposal{
+		ID: "p-owned-add", JobID: "job-owned-add", Status: "submitted",
+		ProposalJSON: `{"lineup":[{"mediaType":"movie","tmdbId":671,"name":"Existing","inLibrary":true,"libraryItemId":"library-671"}]}`,
+	}
+	edit := &suggest.ApprovalEdit{Add: []suggest.ProposalItem{
+		{MediaType: provision.Movie, TMDBID: 672, Name: "Owned addition", InLibrary: false},
+		{MediaType: provision.Movie, TMDBID: 673, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged"},
+	}}
+
+	if _, err := approver.Approve(context.Background(), p, edit, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Commits) != 1 || len(st.Commits[0].Titles) != 3 {
+		t.Fatalf("commits = %+v, want existing + owned available and one missing wanted", st.Commits)
+	}
+	records := st.Commits[0].Titles
+	if records[1].Key != "movie:tmdb:672" || records[1].State != provision.Available || records[1].LibraryID != "library-672" {
+		t.Fatalf("owned record = %+v, want available authoritative Library item", records[1])
+	}
+	if records[2].Key != "movie:tmdb:673" || records[2].State != provision.Wanted || records[2].LibraryID != "" {
+		t.Fatalf("missing record = %+v, want wanted without forged Library id", records[2])
+	}
+	var committed suggest.Proposal
+	if err := json.Unmarshal([]byte(st.Commits[0].Proposal.ProposalJSON), &committed); err != nil {
+		t.Fatal(err)
+	}
+	if len(committed.Lineup) != 2 || len(committed.Acquisitions) != 1 {
+		t.Fatalf("committed proposal = %+v, want owned addition in lineup and missing addition in acquisitions", committed)
+	}
+}
 
 func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 	for _, conflict := range []error{store.ErrChannelConflict, store.ErrChannelStale} {

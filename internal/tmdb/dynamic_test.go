@@ -91,6 +91,8 @@ func TestDynamicAPIKey_EmptyFailsEveryOperationWithoutHTTP(t *testing.T) {
 			return err
 		}},
 		{"Exists", func() error { _, err := client.Exists(context.Background(), provision.Movie, 0); return err }},
+		{"CollectionForMovie", func() error { _, err := client.CollectionForMovie(context.Background(), 0); return err }},
+		{"MovieCollection", func() error { _, err := client.MovieCollection(context.Background(), 0); return err }},
 		{"CollectionID", func() error { _, err := client.CollectionID(context.Background(), provision.Series, 0); return err }},
 		{"ContentRating", func() error { _, err := client.ContentRating(context.Background(), provision.Movie, 0); return err }},
 		{"PosterURL", func() error { _, err := client.PosterURL(context.Background(), provision.Movie, 0); return err }},

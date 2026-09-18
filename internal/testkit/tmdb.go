@@ -37,15 +37,22 @@ type TMDB struct {
 	// (programming-design §8.3): seed tmdb id → the ids it recommends. Empty for a
 	// seed the test didn't wire, which is the real API's behaviour for an obscure
 	// title — an unproductive seed, not an error.
-	recommends map[int][]int
-	people     map[int]string
-	networks   map[int]tmdbNetwork
+	recommends  map[int][]int
+	people      map[int]string
+	networks    map[int]tmdbNetwork
+	collections map[int]tmdbCollection
 }
 
 type tmdbNetwork struct {
 	ID            int
 	Name          string
 	OriginCountry string
+}
+
+type tmdbCollection struct {
+	ID       int
+	Name     string
+	MovieIDs []int
 }
 
 // TMDBRequest is one request observed by the shared TMDB adapter. It records
@@ -82,6 +89,7 @@ func (m *TMDB) WithRecommendations(graph map[int][]int) *TMDB {
 type tmdbTitle struct {
 	ID               int
 	CollectionID     int
+	CollectionName   string
 	Name             string
 	Year             int
 	Date             string
@@ -125,6 +133,19 @@ func (m *TMDB) SetCollectionID(movieID, collectionID int) {
 	t := m.movies[movieID]
 	t.ID, t.CollectionID = movieID, collectionID
 	m.movies[movieID] = t
+}
+
+// SetMovieCollection scripts TMDB's authoritative belongs_to_collection
+// references and /collection/{id} roster on the repository-wide service double.
+func (m *TMDB) SetMovieCollection(collectionID int, name string, movieIDs ...int) {
+	m.collections[collectionID] = tmdbCollection{
+		ID: collectionID, Name: strings.TrimSpace(name), MovieIDs: append([]int(nil), movieIDs...),
+	}
+	for _, movieID := range movieIDs {
+		title := m.movies[movieID]
+		title.ID, title.CollectionID, title.CollectionName = movieID, collectionID, strings.TrimSpace(name)
+		m.movies[movieID] = title
+	}
 }
 
 // SetRating scripts a title's US content rating so a test can drive the §389
@@ -225,8 +246,9 @@ func NewTMDB(t testing.TB) *TMDB {
 		series: map[int]tmdbTitle{
 			1396: {ID: 1396, Name: "Breaking Bad", Year: 2008, Date: "2008-01-20", GenreIDs: []int{18, 80}, Overview: "A chemistry teacher turns to making meth."},
 		},
-		people:   map[int]string{},
-		networks: map[int]tmdbNetwork{},
+		people:      map[int]string{},
+		networks:    map[int]tmdbNetwork{},
+		collections: map[int]tmdbCollection{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /search/multi", func(w http.ResponseWriter, r *http.Request) {
@@ -340,6 +362,22 @@ func NewTMDB(t testing.TB) *TMDB {
 	mux.HandleFunc("GET /movie/{id}", func(w http.ResponseWriter, r *http.Request) {
 		m.existsHandler(w, r, m.movies)
 	})
+	mux.HandleFunc("GET /collection/{id}", func(w http.ResponseWriter, r *http.Request) {
+		collection, ok := m.collections[atoiPath(r.PathValue("id"))]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		parts := make([]map[string]any, 0, len(collection.MovieIDs))
+		for _, movieID := range collection.MovieIDs {
+			if title, exists := m.movies[movieID]; exists {
+				parts = append(parts, movieRow(title))
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": collection.ID, "name": collection.Name, "parts": parts,
+		})
+	})
 	mux.HandleFunc("GET /tv/{id}", func(w http.ResponseWriter, r *http.Request) {
 		m.existsHandler(w, r, m.series)
 	})
@@ -382,7 +420,7 @@ func (m *TMDB) existsHandler(w http.ResponseWriter, r *http.Request, cat map[int
 	if t, ok := cat[id]; ok {
 		row := map[string]any{"id": t.ID, "title": t.Name, "belongs_to_collection": nil}
 		if t.CollectionID > 0 {
-			row["belongs_to_collection"] = map[string]any{"id": t.CollectionID}
+			row["belongs_to_collection"] = map[string]any{"id": t.CollectionID, "name": t.CollectionName}
 		}
 		_ = json.NewEncoder(w).Encode(row)
 		return
