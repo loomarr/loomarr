@@ -58,9 +58,6 @@ func TestResearchKeepsCampaignContextAsACitedSuggestion(t *testing.T) {
 	if retriever.query != "Tootsie Pop Classic Commercial" || !provider.options.JSONMode || len(provider.messages) != 2 {
 		t.Fatalf("query/options/messages = %q %+v %#v", retriever.query, provider.options, provider.messages)
 	}
-	if strings.Contains(provider.messages[0].Content, "tool") && !strings.Contains(provider.messages[0].Content, "no general web") {
-		// The material assertion is the empty Tools list below; keep prompt wording free to evolve.
-	}
 	if len(provider.options.Tools) != 0 {
 		t.Fatalf("model received tools: %+v", provider.options.Tools)
 	}
