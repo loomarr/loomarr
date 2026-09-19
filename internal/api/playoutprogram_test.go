@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"strings"
@@ -761,25 +760,17 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	st := openTestStore(t, t.TempDir()+"/zero.db")
-	t.Cleanup(func() { _ = st.Close() })
-
-	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
-	srv := httptest.NewServer(api.Router(logger, api.Options{
-		Store: st, Auth: api.NewTokenAuthorizer(adminToken), Log: logger,
-		PlayoutSecret:   func() string { return playoutToken },
-		Playout:         &testkit.Playout{},
-		PlayoutResolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+	harness := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Logger:   logger,
+		Resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
 		// An "encoder" that exits immediately without writing anything — exactly what a
 		// hardware encoder does when its device is missing.
-		PlayoutEncoder: func(ctx context.Context, _ []string, _ func(playout.Progress)) (*playout.Process, error) {
+		Encoder: func(ctx context.Context, _ []string, _ func(playout.Progress)) (*playout.Process, error) {
 			return playout.Start(ctx, "sh", []string{"-c", "exit 0"}, nil, nil)
 		},
-		LiveConfig: func(k string) string { return cfg[k] },
-	}))
-	t.Cleanup(srv.Close)
+	})
 
-	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, harness.Server, "/v1/playout/program/ch1?token="+playoutToken)
 	_, _ = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 

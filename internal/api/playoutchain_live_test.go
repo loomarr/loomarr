@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,7 +21,6 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // This is the complete production transport shape: a real Go block supervisor repeatedly opens
@@ -34,33 +32,27 @@ func TestLiveChain_BlockSupervisorAdvancesThroughPrograms(t *testing.T) {
 		t.Skip("no ffmpeg")
 	}
 
-	st := openTestStore(t, t.TempDir()+"/chain.db")
-	t.Cleanup(func() { _ = st.Close() })
 	var requests atomic.Int64
 	profile := playout.DefaultProfile()
 	profile.Width, profile.Height = 320, 180
 
 	srcFile := buildLiveSourceClip(t, bin)
 
-	opts := api.Options{
-		Store: st, Auth: api.NewTokenAuthorizer(adminToken), Log: slog.New(slog.DiscardHandler),
-		PlayoutSecret: func() string { return playoutToken }, Playout: &testkit.Playout{},
-		PlayoutResolver: &chainResolver{profile: profile, requests: &requests, src: srcFile},
-		PlayoutEncoder: func(ctx context.Context, args []string, progress func(playout.Progress)) (*playout.Process, error) {
+	harness := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &chainResolver{profile: profile, requests: &requests, src: srcFile},
+		Encoder: func(ctx context.Context, args []string, progress func(playout.Progress)) (*playout.Process, error) {
 			return playout.Start(ctx, bin, args, nil, progress)
 		},
-	}
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
-	t.Cleanup(srv.Close)
+	})
 
 	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", Name: "Chain", Number: 1}}
 	ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: "internal"}
-	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+	if _, err := harness.Store.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	channel, err := playout.BlockSpawner(bin, playout.BlockProfile{AudioBitrate: 128}, liveHTTPBlockSource(srv), nil)(ctx, "ch1", playout.PlanBaseline)
+	channel, err := playout.BlockSpawner(bin, playout.BlockProfile{AudioBitrate: 128}, liveHTTPBlockSource(harness.Server), nil)(ctx, "ch1", playout.PlanBaseline)
 	if err != nil {
 		cancel()
 		t.Fatal(err)
