@@ -54,11 +54,6 @@ var testServerConstructors = map[string]string{
 	"settings_test.go:newAutoWireServerWithChannels":      "settings channel wiring",
 	"settings_test.go:newSettingsServer":                  "settings",
 	"ssoroutes_test.go:serverWithSSO":                     "single sign-on",
-	"system_backups_test.go:serverWithBackups":            "system backups",
-	"system_database_test.go:serverWithDatabase":          "system database",
-	"system_llm_test.go:serverWithSystemLLM":              "system language model",
-	"system_llm_test.go:serverWithSystemLLMStore":         "system language model storage",
-	"system_restart_test.go:serverWithRestart":            "system restart",
 }
 
 func TestAPITestServerConstructorsStayClassified(t *testing.T) {

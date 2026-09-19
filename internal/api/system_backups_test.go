@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,19 +48,18 @@ func writeFile(t *testing.T, dir, name, content string) string {
 	return path
 }
 
-func serverWithBackups(t *testing.T, svc api.BackupsService) *httptest.Server {
+// newSystemBackupsHarness hides the fixed backup-route assembly behind the
+// common API lifecycle. Tests vary only backup-service behavior.
+func newSystemBackupsHarness(t *testing.T, svc api.BackupsService) *apiHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/api.db")
-	t.Cleanup(func() { _ = st.Close() })
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:   st,
-		Auth:    testAuthorizer{},
-		Log:     slog.New(slog.DiscardHandler),
-		Backups: svc,
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store:   defaults.Store,
+			Auth:    defaults.Auth,
+			Log:     defaults.Log,
+			Backups: svc,
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv
 }
 
 // §19 negative: a backup is the whole instance including every generated secret, so
@@ -70,7 +67,7 @@ func serverWithBackups(t *testing.T, svc api.BackupsService) *httptest.Server {
 // and therefore does NOT inherit Huma's requireAdmin.
 func TestSystemBackups_RequiresAdmin(t *testing.T) {
 	fake := &fakeBackups{content: api.BackupContent{Name: "loomarr-2026-07-29-033000.db"}}
-	srv := serverWithBackups(t, fake)
+	srv := newSystemBackupsHarness(t, fake).Server
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/system/backups"},
 		{http.MethodPost, "/v1/system/backups"},
@@ -93,7 +90,7 @@ func TestSystemBackups_RequiresAdmin(t *testing.T) {
 // because "no backups" and "in-app backup is not offered on this backend" are different
 // facts and only one of them means something is wrong.
 func TestSystemBackups_NotConfigured501(t *testing.T) {
-	srv := serverWithBackups(t, nil)
+	srv := newSystemBackupsHarness(t, nil).Server
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/system/backups"},
 		{http.MethodPost, "/v1/system/backups"},
@@ -109,12 +106,12 @@ func TestSystemBackups_NotConfigured501(t *testing.T) {
 // The list carries the policy alongside the files: the page has to say "nightly at 03:30,
 // keeps 7" and neither number is derivable from the file list.
 func TestSystemBackups_ListReportsFilesAndPolicy(t *testing.T) {
-	srv := serverWithBackups(t, &fakeBackups{list: api.BackupList{
+	srv := newSystemBackupsHarness(t, &fakeBackups{list: api.BackupList{
 		Supported: true, Dir: "/data/backups", Schedule: "0 30 3 * * *", Retain: 7,
 		Backups: []api.BackupEntry{
 			{Name: "loomarr-2026-07-29-033000.db", Bytes: 4096, WrittenAt: 1_700_000_000},
 		},
-	}})
+	}}).Server
 	resp := do(t, srv, http.MethodGet, "/v1/system/backups", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list → %d, want 200", resp.StatusCode)
@@ -138,9 +135,9 @@ func TestSystemBackups_ListReportsFilesAndPolicy(t *testing.T) {
 func TestSystemBackups_DownloadServesTheFile(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "loomarr-2026-07-29-033000.db", "snapshot-bytes")
-	srv := serverWithBackups(t, &fakeBackups{content: api.BackupContent{
+	srv := newSystemBackupsHarness(t, &fakeBackups{content: api.BackupContent{
 		Name: "loomarr-2026-07-29-033000.db", Path: path, Bytes: 14,
-	}})
+	}}).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/backups/loomarr-2026-07-29-033000.db", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -157,7 +154,7 @@ func TestSystemBackups_DownloadServesTheFile(t *testing.T) {
 
 // A pruned backup is gone, and the endpoint says so plainly rather than 500ing.
 func TestSystemBackups_DownloadMissingIs404(t *testing.T) {
-	srv := serverWithBackups(t, &fakeBackups{openErr: errors.New("not found")})
+	srv := newSystemBackupsHarness(t, &fakeBackups{openErr: errors.New("not found")}).Server
 	resp := do(t, srv, http.MethodGet, "/v1/system/backups/loomarr-2026-07-29-033000.db", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("download of a pruned backup → %d, want 404", resp.StatusCode)
@@ -168,7 +165,7 @@ func TestSystemBackups_DownloadMissingIs404(t *testing.T) {
 // without a second round trip.
 func TestSystemBackups_RunWritesAndReports(t *testing.T) {
 	fake := &fakeBackups{}
-	srv := serverWithBackups(t, fake)
+	srv := newSystemBackupsHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/backups", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("run → %d, want 200", resp.StatusCode)
