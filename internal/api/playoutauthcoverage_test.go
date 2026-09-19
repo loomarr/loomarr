@@ -41,7 +41,8 @@ func TestEveryPlayoutRouteRefusesAnonymousCallers(t *testing.T) {
 	// ⚠ The channel MUST exist. Without it a streaming route 404s because the channel is
 	// missing, which is the same status an auth refusal produces — the test would pass while
 	// proving nothing about authorization. Seeding it means 404 can only come from the guard.
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	for _, path := range paths {

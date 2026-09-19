@@ -77,7 +77,8 @@ func putClip(t *testing.T, st store.Store, clip filler.Clip) {
 }
 
 func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWork(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	now := time.Now().UTC().Truncate(time.Second)
 	for _, clip := range []filler.Clip{
 		{Hash: "preparing", Path: "preparing.mp4", Name: "Preparing clip", Held: true},
@@ -126,7 +127,8 @@ func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWo
 }
 
 func TestFillerIncoming_ProjectsSafeOrderedProcessingDetailsAndMeasuredCurrentStage(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	now := time.Now().UTC().Truncate(time.Second)
 	putClip(t, st, filler.Clip{Hash: "retrying", Path: "retrying.mp4", Name: "Retrying clip", Held: true})
 	if err := st.UpsertClipPipeline(t.Context(), filler.ClipPipeline{
@@ -174,7 +176,8 @@ func TestFillerIncoming_ProjectsSafeOrderedProcessingDetailsAndMeasuredCurrentSt
 }
 
 func TestFillerIncoming_ShowsNextTryOnlyWhileTheCurrentStepWaitsForRetry(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	now := time.Now().UTC().Truncate(time.Second)
 	for _, clip := range []filler.Clip{
 		{Hash: "active", Path: "active.mp4", Name: "Active clip", Held: true},
@@ -229,7 +232,8 @@ func TestFillerIncoming_UsesTheLiveReadyWindowForRowsAndTotals(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Date(2026, time.September, 16, 12, 0, 0, 0, time.UTC)
-			srv, st, _ := newFillerServerWithIncomingConfig(t, tc.window, now)
+			harness := newFillerIncomingHarness(t, tc.window, now)
+			srv, st := harness.Server, harness.Store
 			for _, clip := range []filler.Clip{
 				{Hash: "at-cutoff", Path: "at-cutoff.mp4", Name: "At cutoff"},
 				{Hash: "before-cutoff", Path: "before-cutoff.mp4", Name: "Before cutoff"},
@@ -261,7 +265,8 @@ func TestFillerIncoming_UsesTheLiveReadyWindowForRowsAndTotals(t *testing.T) {
 }
 
 func TestFillerIncoming_PagesPreparingWithTheSamePredicateAsItsTotal(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	now := time.Now().UTC().Truncate(time.Second)
 	for i := range 22 {
 		hash := fmt.Sprintf("preparing-%02d", i)
@@ -297,7 +302,8 @@ func TestFillerIncoming_PagesPreparingWithTheSamePredicateAsItsTotal(t *testing.
 }
 
 func TestFillerIncoming_ProjectsAndPagesOnlyReadySplitsAsDurableHelp(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	now := time.Now().UTC().Truncate(time.Second)
 	for i := range 22 {
 		hash := fmt.Sprintf("compilation-%02d", i)
@@ -325,7 +331,8 @@ func TestFillerIncoming_ProjectsAndPagesOnlyReadySplitsAsDurableHelp(t *testing.
 }
 
 func TestFillerIncoming_RejectsInvalidCursorAndRequiresAdmin(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	if res, _ := readIncoming(t, srv.URL, "/v1/filler/incoming?preparingCursor=not-a-cursor", adminToken); res.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid cursor status = %d, want 422", res.StatusCode)
 	}

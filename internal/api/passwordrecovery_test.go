@@ -3,9 +3,7 @@ package api_test
 import (
 	"context"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -36,18 +34,19 @@ func (f *fakePasswordRecovery) Redeem(context.Context, string, string, string) e
 	return f.redeemErr
 }
 
-func passwordRecoveryServer(t *testing.T, service api.PasswordRecoveryService) *httptest.Server {
+func newPasswordRecoveryHarness(t *testing.T, service api.PasswordRecoveryService) *apiHarness {
 	t.Helper()
-	server := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		PasswordRecovery: service,
-	}))
-	t.Cleanup(server.Close)
-	return server
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
+			PasswordRecovery: service,
+		})
+	})
 }
 
 func TestPasswordRecoveryRequest_PublicResponseIsIdentical(t *testing.T) {
 	service := &fakePasswordRecovery{}
-	server := passwordRecoveryServer(t, service)
+	server := newPasswordRecoveryHarness(t, service).Server
 	var expected string
 	for _, username := range []string{"unknown", "disabled", "imported", "eligible"} {
 		response := do(t, server, http.MethodPost, "/v1/auth/password-recovery/request", "",
@@ -67,7 +66,7 @@ func TestPasswordRecoveryRequest_PublicResponseIsIdentical(t *testing.T) {
 func TestPasswordRecoveryBearerEndpointsAreSafeAndBodyOnly(t *testing.T) {
 	const bearer = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 	service := &fakePasswordRecovery{previewErr: auth.ErrInvalidPasswordRecovery}
-	server := passwordRecoveryServer(t, service)
+	server := newPasswordRecoveryHarness(t, service).Server
 	invalid := do(t, server, http.MethodPost, "/v1/auth/password-recovery/preview", "",
 		`{"grant":"`+bearer+`"}`)
 	invalidBody, _ := io.ReadAll(invalid.Body)
@@ -101,7 +100,7 @@ func TestPasswordRecoveryBearerEndpointsAreSafeAndBodyOnly(t *testing.T) {
 
 func TestPasswordRecoveryRateLimitsHaveDedicatedPublicErrors(t *testing.T) {
 	service := &fakePasswordRecovery{requestErr: auth.ErrRateLimited}
-	server := passwordRecoveryServer(t, service)
+	server := newPasswordRecoveryHarness(t, service).Server
 	request := do(t, server, http.MethodPost, "/v1/auth/password-recovery/request", "", `{"username":"Ada"}`)
 	if request.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("request limit = %d, want 429", request.StatusCode)
