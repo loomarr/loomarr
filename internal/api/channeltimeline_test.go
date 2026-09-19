@@ -3,7 +3,6 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -15,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // fakeTimelineThumbs is a canned TimelineThumbResolver — it records the keys it was asked about and
@@ -45,26 +43,31 @@ func (f *fakeTimelineThumbs) askedCount() int {
 	return len(f.asked)
 }
 
-func newTimelineServer(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver) (*httptest.Server, store.Store) {
-	return newTimelineServerWithImages(t, g, thumbs, nil)
+type channelTimelineHarness struct {
+	*apiHarness
 }
 
-func newTimelineServerWithImages(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver, imageService api.ImageService) (*httptest.Server, store.Store) {
+type channelTimelineHarnessOptions struct {
+	Guide  api.PlayoutGuide
+	Thumbs api.TimelineThumbResolver
+	Images api.ImageService
+}
+
+func newChannelTimelineHarness(t *testing.T, options channelTimelineHarnessOptions) *channelTimelineHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/timeline.db")
-	t.Cleanup(func() { _ = st.Close() })
 	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:          st,
-		Auth:           api.NewTokenAuthorizer(adminToken),
-		Log:            slog.New(slog.DiscardHandler),
-		PlayoutGuide:   g,
-		TimelineThumbs: thumbs,
-		Images:         imageService,
-		LiveConfig:     func(k string) string { return cfg[k] },
-	}))
-	t.Cleanup(srv.Close)
-	return srv, st
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store:          defaults.Store,
+			Auth:           api.NewTokenAuthorizer(adminToken),
+			Log:            defaults.Log,
+			PlayoutGuide:   options.Guide,
+			TimelineThumbs: options.Thumbs,
+			Images:         options.Images,
+			LiveConfig:     func(k string) string { return cfg[k] },
+		})
+	})
+	return &channelTimelineHarness{apiHarness: base}
 }
 
 // Watch consumes the same image-service record as Guide and Filler. Pinning the public timeline
@@ -82,7 +85,10 @@ func TestChannelTimeline_ProgrammeCarriesImageServiceRecord(t *testing.T) {
 		Hash: "watch-art", Role: images.RoleBackdrop, Width: 640, Height: 360,
 		Visibility: images.VisibilityMember,
 	}
-	srv, st := newTimelineServerWithImages(t, g, &fakeTimelineThumbs{hash: "watch-art"}, imageService)
+	harness := newChannelTimelineHarness(t, channelTimelineHarnessOptions{
+		Guide: g, Thumbs: &fakeTimelineThumbs{hash: "watch-art"}, Images: imageService,
+	})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
 
 	airings := getTimeline(t, srv, "ch1")
@@ -138,7 +144,8 @@ func TestChannelTimeline_EpisodesAndBreaks(t *testing.T) {
 		},
 	}}
 	thumbs := &fakeTimelineThumbs{}
-	srv, st := newTimelineServer(t, g, thumbs)
+	harness := newChannelTimelineHarness(t, channelTimelineHarnessOptions{Guide: g, Thumbs: thumbs})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
 
 	airings := getTimeline(t, srv, "ch1")
@@ -177,7 +184,8 @@ func TestChannelTimeline_EpisodesAndBreaks(t *testing.T) {
 }
 
 func TestChannelTimelineCarriesServerClock(t *testing.T) {
-	srv, st := newTimelineServer(t, &fakeXMLTVGuide{}, nil)
+	harness := newChannelTimelineHarness(t, channelTimelineHarnessOptions{Guide: &fakeXMLTVGuide{}})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
 	before := time.Now().UnixMilli()
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/channels/ch1/timeline", nil)
@@ -202,7 +210,8 @@ func TestChannelTimelineCarriesServerClock(t *testing.T) {
 // No internal-playout guide wired ⇒ an empty strip, not an error — the player falls back to its
 // status line rather than the page failing.
 func TestChannelTimeline_NoGuideIsEmptyNotError(t *testing.T) {
-	srv, st := newTimelineServer(t, nil, nil)
+	harness := newChannelTimelineHarness(t, channelTimelineHarnessOptions{})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
 	if airings := getTimeline(t, srv, "ch1"); len(airings) != 0 {
 		t.Errorf("no guide should yield an empty strip, got %d airings", len(airings))
@@ -211,7 +220,8 @@ func TestChannelTimeline_NoGuideIsEmptyNotError(t *testing.T) {
 
 func TestChannelTimelineIncludesTheSharedDVRLookbehind(t *testing.T) {
 	g := &fakeXMLTVGuide{}
-	srv, st := newTimelineServer(t, g, nil)
+	harness := newChannelTimelineHarness(t, channelTimelineHarnessOptions{Guide: g})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
 
 	_ = getTimeline(t, srv, "ch1")

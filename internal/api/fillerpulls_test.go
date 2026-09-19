@@ -54,9 +54,8 @@ func seedSource(t *testing.T, st store.Store, id, uri string, enabled bool) {
 }
 
 func TestProposeFillerPull_UsesOnlyGeographicallyEligibleSources(t *testing.T) {
-	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		return map[string]string{"filler.home_country": "US", "filler.home_market": "New York"}[key]
-	})
+	harness := newFillerLocationHarness(t, "US", "New York")
+	srv, st := harness.Server, harness.Store
 	for _, tc := range []struct {
 		id, country, market string
 	}{
@@ -90,7 +89,8 @@ func TestProposeFillerPull_UsesOnlyGeographicallyEligibleSources(t *testing.T) {
 // ⚠ THE safety property. §10's rule is "the machine proposes, a human commits", and this is what
 // makes the first half true: proposing writes a row and downloads NOTHING.
 func TestProposeFillerPull_DownloadsNothing(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken)
@@ -112,7 +112,8 @@ func TestProposeFillerPull_DownloadsNothing(t *testing.T) {
 }
 
 func TestProposeFillerPull_BindsExactRankedCandidatesAndEvidence(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	ff.Candidates = []filler.AcquisitionCandidate{
 		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "low"}, URL: "https://archive.org/details/low", Title: "Low copy", Height: 480},
@@ -145,7 +146,8 @@ func TestProposeFillerPull_BindsExactRankedCandidatesAndEvidence(t *testing.T) {
 }
 
 func TestApproveFillerPull_DropsOneCandidateWithoutDroppingItsSource(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	ff.Candidates = []filler.AcquisitionCandidate{
 		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "one"}, URL: "https://archive.org/details/one"},
@@ -170,7 +172,8 @@ func TestApproveFillerPull_DropsOneCandidateWithoutDroppingItsSource(t *testing.
 // composed from a switched-off source is one that can never run, and finding that out AFTER a
 // human approved it is the worst moment.
 func TestProposeFillerPull_RefusedWhenEverySourceIsOff(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedSource(t, st, "classic", "https://archive.org/details/classic", false)
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken)
@@ -183,7 +186,8 @@ func TestProposeFillerPull_RefusedWhenEverySourceIsOff(t *testing.T) {
 }
 
 func TestProposeFillerPull_RejectsUnknownIntentVocabulary(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls",
@@ -199,7 +203,8 @@ func TestProposeFillerPull_RejectsUnknownIntentVocabulary(t *testing.T) {
 // The commit point. Approving is the ONLY path that enqueues, and it enqueues through the
 // existing ingest job rather than a downloader of its own.
 func TestApproveFillerPull_IsTheOnlyPathThatDownloads(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
@@ -230,7 +235,8 @@ func TestApproveFillerPull_IsTheOnlyPathThatDownloads(t *testing.T) {
 // A retry after the first decision is durable must not enqueue the same downloads twice.
 // The concurrent boundary is covered separately with two requests held at the commit point.
 func TestApproveFillerPull_CannotBeApprovedTwice(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
 
@@ -246,7 +252,8 @@ func TestApproveFillerPull_CannotBeApprovedTwice(t *testing.T) {
 }
 
 func TestApproveFillerPull_RevalidatesCandidateAgainstOtherQueuedWork(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	ff.Candidates = []filler.AcquisitionCandidate{{
 		Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "same"},
@@ -277,7 +284,8 @@ func TestApproveFillerPull_RevalidatesCandidateAgainstOtherQueuedWork(t *testing
 // what was proposed as well as what was agreed to, or "we approved this" loses the half that
 // matters.
 func TestApproveFillerPull_DroppedRowsAreExcludedButRecorded(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "keep", "https://archive.org/details/keep", true)
 	seedSource(t, st, "drop", "https://archive.org/details/drop", true)
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
@@ -305,7 +313,8 @@ func TestApproveFillerPull_DroppedRowsAreExcludedButRecorded(t *testing.T) {
 // Approving with everything dropped is refused, not recorded as an approval that fetched
 // nothing: in the history those two are indistinguishable.
 func TestApproveFillerPull_RefusesAnEmptyCommit(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
 
@@ -322,7 +331,8 @@ func TestApproveFillerPull_RefusesAnEmptyCommit(t *testing.T) {
 // ⚠ Re-checked at the COMMIT point. A source can be switched off while a pull sits in the queue,
 // and approving into it would fetch from something the operator turned off.
 func TestApproveFillerPull_RefusesASourceDisabledSinceProposal(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
 
@@ -340,7 +350,8 @@ func TestApproveFillerPull_RefusesASourceDisabledSinceProposal(t *testing.T) {
 }
 
 func TestApproveFillerPull_RefusesAProviderPausedSinceProposal(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
 
@@ -360,7 +371,8 @@ func TestApproveFillerPull_RefusesAProviderPausedSinceProposal(t *testing.T) {
 // Dismissing records the decision and downloads nothing. The row is KEPT — the history answers
 // what was declined, too.
 func TestDismissFillerPull_RecordsAndDownloadsNothing(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
 
@@ -379,7 +391,8 @@ func TestDismissFillerPull_RecordsAndDownloadsNothing(t *testing.T) {
 // §19 negatives. These routes decide what gets downloaded, so a member must not reach any of
 // them — least of all approve.
 func TestFillerPullRoutes_RequireAdmin(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
 
@@ -400,7 +413,8 @@ func TestFillerPullRoutes_RequireAdmin(t *testing.T) {
 
 // Both requests pass the read-side guard before either reaches durable approval.
 func TestApproveFillerPull_ConcurrentDecision(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
 	entered, release := make(chan struct{}, 2), make(chan struct{})
@@ -443,7 +457,8 @@ func TestApproveFillerPull_ConcurrentDecision(t *testing.T) {
 }
 
 func TestApproveFillerPull_HistoricalSourcePlan(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	p := filler.Pull{ID: "historical-source-plan", Status: filler.PullPending, CreatedAt: time.Now().UTC(), Plan: []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}}}
 	if err := st.UpsertPull(t.Context(), p); err != nil {
@@ -459,7 +474,8 @@ func TestApproveFillerPull_HistoricalSourcePlan(t *testing.T) {
 }
 
 func TestApproveFillerPull_ConcurrentDismissalWins(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
 	entered, release := make(chan struct{}), make(chan struct{})

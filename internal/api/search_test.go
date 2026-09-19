@@ -1,7 +1,6 @@
 package api_test
 
 import (
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,27 +9,33 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func newConfiguredSearchHandler(
-	t *testing.T,
-	cfg map[string]string,
-) (http.Handler, *testkit.SearchService[api.SearchRequest, api.SearchCandidate]) {
+type searchHarness struct {
+	*apiHarness
+	Handler http.Handler
+	Search  *testkit.SearchService[api.SearchRequest, api.SearchCandidate]
+}
+
+func newSearchHarness(t *testing.T, config map[string]string) *searchHarness {
 	t.Helper()
 	search := &testkit.SearchService[api.SearchRequest, api.SearchCandidate]{Results: []api.SearchCandidate{{
 		MediaType: "movie", TMDBID: 603, Name: "The Matrix",
 	}}}
-	log := slog.New(slog.DiscardHandler)
-	handler := api.Router(log, api.Options{
-		Auth:   testAuthorizer{},
-		Log:    log,
-		Search: search,
-		LiveConfig: func(key string) string {
-			return cfg[key]
-		},
-		LibraryConfigured: func() bool {
-			return cfg["library.flavor"] != "" && cfg["library.url"] != "" && cfg["library.token"] != ""
-		},
+	var handler http.Handler
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		handler = api.Router(defaults.Log, api.Options{
+			Auth:   defaults.Auth,
+			Log:    defaults.Log,
+			Search: search,
+			LiveConfig: func(key string) string {
+				return config[key]
+			},
+			LibraryConfigured: func() bool {
+				return config["library.flavor"] != "" && config["library.url"] != "" && config["library.token"] != ""
+			},
+		})
+		return handler
 	})
-	return handler, search
+	return &searchHarness{apiHarness: base, Handler: handler, Search: search}
 }
 
 func searchRequest(handler http.Handler, path string) *httptest.ResponseRecorder {
@@ -62,7 +67,8 @@ func TestSearchScopesFollowLiveConfiguration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, search := newConfiguredSearchHandler(t, tt.cfg)
+			harness := newSearchHarness(t, tt.cfg)
+			handler, search := harness.Handler, harness.Search
 			resp := searchRequest(handler, tt.path)
 			if resp.Code != tt.wantCode {
 				t.Fatalf("search status = %d, want %d", resp.Code, tt.wantCode)
@@ -93,7 +99,8 @@ func libraryConfig(extra ...string) map[string]string {
 
 func TestSearchConfigurationHotApplies(t *testing.T) {
 	cfg := map[string]string{}
-	handler, search := newConfiguredSearchHandler(t, cfg)
+	harness := newSearchHarness(t, cfg)
+	handler, search := harness.Handler, harness.Search
 
 	resp := searchRequest(handler, "/v1/search?q=matrix")
 	if resp.Code != http.StatusNotImplemented {
@@ -122,7 +129,8 @@ func TestSearchConfigurationHotApplies(t *testing.T) {
 }
 
 func TestSearchStructuredDiscoveryUsesPublicCatalogPath(t *testing.T) {
-	handler, search := newConfiguredSearchHandler(t, libraryConfig("tmdb.api_key", "key"))
+	harness := newSearchHarness(t, libraryConfig("tmdb.api_key", "key"))
+	handler, search := harness.Handler, harness.Search
 
 	resp := searchRequest(handler, "/v1/search?scope=all&limit=12&media_type=series&genres=Comedy&keywords=family&year_from=1990&year_to=1999&original_language=en&origin_country=us&runtime_min=20&runtime_max=45&vote_average_min=7.5&vote_count_min=100&network=ABC")
 	if resp.Code != http.StatusOK {
@@ -148,7 +156,8 @@ func TestSearchStructuredDiscoveryUsesPublicCatalogPath(t *testing.T) {
 }
 
 func TestSearchStructuredDiscoveryPreservesPeopleArguments(t *testing.T) {
-	handler, search := newConfiguredSearchHandler(t, map[string]string{"tmdb.api_key": "key"})
+	harness := newSearchHarness(t, map[string]string{"tmdb.api_key": "key"})
+	handler, search := harness.Handler, harness.Search
 
 	resp := searchRequest(handler, "/v1/search?scope=tmdb&media_type=movie&cast=Jamie%20Lee%20Curtis&cast=Daniel%20Kaluuya&creators=Jordan%20Peele")
 	if resp.Code != http.StatusOK {
@@ -164,7 +173,8 @@ func TestSearchStructuredDiscoveryPreservesPeopleArguments(t *testing.T) {
 }
 
 func TestSearchTitleModeAllowsMediaTypeNarrowing(t *testing.T) {
-	handler, search := newConfiguredSearchHandler(t, map[string]string{"tmdb.api_key": "key"})
+	harness := newSearchHarness(t, map[string]string{"tmdb.api_key": "key"})
+	handler, search := harness.Handler, harness.Search
 
 	resp := searchRequest(handler, "/v1/search?q=Alien&scope=tmdb&media_type=movie")
 	if resp.Code != http.StatusOK {
@@ -193,7 +203,8 @@ func TestSearchRejectsAmbiguousOperationOrUnsupportedDiscoveryScope(t *testing.T
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, search := newConfiguredSearchHandler(t, libraryConfig("tmdb.api_key", "key"))
+			harness := newSearchHarness(t, libraryConfig("tmdb.api_key", "key"))
+			handler, search := harness.Handler, harness.Search
 			resp := searchRequest(handler, tt.path)
 			if resp.Code != http.StatusBadRequest {
 				t.Fatalf("search status = %d, want 400: %s", resp.Code, resp.Body.String())
@@ -206,7 +217,8 @@ func TestSearchRejectsAmbiguousOperationOrUnsupportedDiscoveryScope(t *testing.T
 }
 
 func TestSearchStructuredDiscoveryRequiresConfiguredTMDB(t *testing.T) {
-	handler, search := newConfiguredSearchHandler(t, libraryConfig())
+	harness := newSearchHarness(t, libraryConfig())
+	handler, search := harness.Handler, harness.Search
 
 	resp := searchRequest(handler, "/v1/search?scope=all&media_type=series&network=ABC")
 	if resp.Code != http.StatusNotImplemented {

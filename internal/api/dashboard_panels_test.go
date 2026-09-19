@@ -3,9 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -13,22 +11,40 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, store.Store) {
+type dashboardPanelsHarness struct {
+	*apiHarness
+}
+
+func newDashboardPanelsHarness(t *testing.T) *dashboardPanelsHarness {
+	return startDashboardPanelsHarness(t, nil, "")
+}
+
+func newFailingDashboardPanelsHarness(t *testing.T, requesterURL string) *dashboardPanelsHarness {
+	return startDashboardPanelsHarness(t, &fakeSettings{}, requesterURL)
+}
+
+func startDashboardPanelsHarness(t *testing.T, settings api.SettingsService, requesterURL string) *dashboardPanelsHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/p.db")
-	t.Cleanup(func() { _ = st.Close() })
-	opts.Store = st
-	opts.Auth = api.NewTokenAuthorizer(adminToken)
-	opts.Log = slog.New(slog.DiscardHandler)
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
-	t.Cleanup(srv.Close)
-	return srv, st
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: api.NewTokenAuthorizer(adminToken), Log: defaults.Log,
+			Settings: settings,
+			LiveConfig: func(key string) string {
+				if key == "seerr.url" {
+					return requesterURL
+				}
+				return ""
+			},
+		})
+	})
+	return &dashboardPanelsHarness{apiHarness: base}
 }
 
 // §19 negative: these operational projections expose machine state (what is broken, what the
 // install has been doing), which §11 keeps to admins.
 func TestDashboardPanels_RequireAdmin(t *testing.T) {
-	srv, _ := serverWithPanels(t, api.Options{})
+	harness := newDashboardPanelsHarness(t)
+	srv := harness.Server
 	for _, path := range []string{"/v1/system/services", "/v1/activity", "/v1/playout/status"} {
 		resp := do(t, srv, http.MethodGet, path, "", "") // no token
 		if resp.StatusCode != http.StatusUnauthorized {
@@ -40,7 +56,8 @@ func TestDashboardPanels_RequireAdmin(t *testing.T) {
 // The panel always reports Loomarr's own row, even with nothing else configured — it is the
 // one component that must be up for anything else to be reported at all.
 func TestSystemServices_AlwaysReportsLoomarrItself(t *testing.T) {
-	srv, _ := serverWithPanels(t, api.Options{})
+	harness := newDashboardPanelsHarness(t)
+	srv := harness.Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -69,10 +86,8 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	// Reuses settings_test.go's fakeSettings, which already scripts media_server as passing
 	// and everything else as failing — a second double would be one more thing to keep in
 	// agreement with the real interface.
-	srv, _ := serverWithPanels(t, api.Options{
-		Settings:   &fakeSettings{},
-		LiveConfig: func(key string) string { return map[string]string{"seerr.url": "http://seerr.lan:5055"}[key] },
-	})
+	harness := newFailingDashboardPanelsHarness(t, "http://seerr.lan:5055")
+	srv := harness.Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
 	var view api.ServicesView
@@ -108,7 +123,8 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 // The feed reads the PERSISTED table, so it survives a restart — which is V32's gate. A feed
 // tapping the in-memory SSE bus could satisfy neither half of that.
 func TestListActivity_ReadsPersistedRowsNewestFirst(t *testing.T) {
-	srv, st := serverWithPanels(t, api.Options{})
+	harness := newDashboardPanelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 
 	for i, text := range []string{"older entry", "newer entry"} {
@@ -141,7 +157,8 @@ func TestListActivity_ReadsPersistedRowsNewestFirst(t *testing.T) {
 // A fresh install has no history. That is an empty array, never null — a client should not
 // have to special-case its first run.
 func TestListActivity_EmptyIsAnArray(t *testing.T) {
-	srv, _ := serverWithPanels(t, api.Options{})
+	harness := newDashboardPanelsHarness(t)
+	srv := harness.Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/activity", adminToken, "")
 	var raw map[string]json.RawMessage

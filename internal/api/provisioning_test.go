@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -19,43 +17,53 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// provServer builds the provisioning stack (bootstrap + import + login) over a
-// mock media server, with NO users seeded (so bootstrap is open).
-func provServer(t *testing.T) (*httptest.Server, store.Store) {
-	return provServerWithUsers(t, nil)
+type provisioningHarnessConfig struct {
+	Users []testkit.MediaServerUser
 }
 
-func provServerWithUsers(t *testing.T, users []testkit.MediaServerUser) (*httptest.Server, store.Store) {
+// provisioningHarness hides the fixed bootstrap, import, login, and user-sync
+// assembly behind the common API lifecycle. Tests vary only the media-server
+// users visible to provisioning.
+type provisioningHarness struct {
+	*apiHarness
+}
+
+func newProvisioningHarness(t *testing.T, configs ...provisioningHarnessConfig) *provisioningHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/prov.db")
-	t.Cleanup(func() { _ = st.Close() })
+	if len(configs) > 1 {
+		t.Fatalf("newProvisioningHarness accepts at most one configuration, got %d", len(configs))
+	}
+	config := provisioningHarnessConfig{}
+	if len(configs) == 1 {
+		config = configs[0]
+	}
 
 	ms := testkit.NewMediaServer(t)
-	ms.Users = users
+	ms.Users = config.Users
 	t.Cleanup(ms.Close)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
-	mgr := auth.NewManager(st, time.Hour, time.Now)
-	n := 0
-	newID := func() string { n++; return "local-" + string(rune('a'+n-1)) }
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
+		n := 0
+		newID := func() string { n++; return "local-" + string(rune('a'+n-1)) }
 
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:        st,
-		Auth:         api.NewSessionAuthorizer(mgr, adminToken),
-		Log:          slog.New(slog.DiscardHandler),
-		Login:        auth.NewLoginService(lib, st, mgr, nil, time.Now),
-		Sessions:     mgr,
-		UserSync:     auth.NewUserSync(lib, st, time.Now),
-		Provision:    auth.NewProvisioner(st, lib, newID, time.Now),
-		CookieSecure: "false",
+		return api.Router(defaults.Log, api.Options{
+			Store:        defaults.Store,
+			Auth:         api.NewSessionAuthorizer(mgr, adminToken),
+			Log:          defaults.Log,
+			Login:        auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+			Sessions:     mgr,
+			UserSync:     auth.NewUserSync(lib, defaults.Store, time.Now),
+			Provision:    auth.NewProvisioner(defaults.Store, lib, newID, time.Now),
+			CookieSecure: "false",
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st
+	return &provisioningHarness{apiHarness: base}
 }
 
 // Bootstrap is UNAUTHENTICATED and succeeds once; a second call 409s (§11).
 func TestBootstrap_OnceViaAPI(t *testing.T) {
-	srv, _ := provServer(t)
+	srv := newProvisioningHarness(t).Server
 
 	// First bootstrap: no auth needed, creates the owning admin.
 	resp := do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"owner","password":"s3cret-pw"}`)
@@ -82,7 +90,7 @@ func TestBootstrap_OnceViaAPI(t *testing.T) {
 // to log in with. The maintainer smoke walked into that dead end (FINDING 1); only an
 // operator who guessed the /wizard URL could escape it.
 func TestSetupState_UnauthenticatedAndFlipsOnBootstrap(t *testing.T) {
-	srv, _ := provServer(t)
+	srv := newProvisioningHarness(t).Server
 
 	state := func() bool {
 		t.Helper()
@@ -117,7 +125,7 @@ func TestSetupState_UnauthenticatedAndFlipsOnBootstrap(t *testing.T) {
 
 // Empty username/password → 422 (§11).
 func TestBootstrap_Invalid(t *testing.T) {
-	srv, _ := provServer(t)
+	srv := newProvisioningHarness(t).Server
 	resp := do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"","password":""}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("empty bootstrap → %d, want 422", resp.StatusCode)
@@ -126,7 +134,7 @@ func TestBootstrap_Invalid(t *testing.T) {
 
 // Import is admin-only: a non-admin (no token) → 403 (§11, §19).
 func TestImport_RequiresAdmin(t *testing.T) {
-	srv, _ := provServer(t)
+	srv := newProvisioningHarness(t).Server
 	resp := do(t, srv, http.MethodPost, "/v1/users/import", "", `{"ids":["00000000000000000000000000000007"]}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member import → %d, want 401", resp.StatusCode)
@@ -140,7 +148,8 @@ func TestImport_AdminCreatesAllowlist(t *testing.T) {
 		adminID  = "00000000000000000000000000000007" // admin in the fixture
 		memberID = "00000000000000000000000000000002" // member
 	)
-	srv, st := provServer(t)
+	harness := newProvisioningHarness(t)
+	srv, st := harness.Server, harness.Store
 
 	resp := do(t, srv, http.MethodPost, "/v1/users/import", adminToken,
 		`{"ids":["`+memberID+`"]}`)
@@ -171,11 +180,12 @@ func TestImport_BulkMapsSourceRoles(t *testing.T) {
 		chrisID    = "media-member"
 		disabledID = "media-disabled"
 	)
-	srv, st := provServerWithUsers(t, []testkit.MediaServerUser{
+	harness := newProvisioningHarness(t, provisioningHarnessConfig{Users: []testkit.MediaServerUser{
 		{ID: mattID, Name: "Matt", IsAdmin: true},
 		{ID: chrisID, Name: "Chris"},
 		{ID: disabledID, Name: "Disabled", Disabled: true},
-	})
+	}})
+	srv, st := harness.Server, harness.Store
 
 	resp := do(t, srv, http.MethodPost, "/v1/users/import", adminToken,
 		`{"ids":["`+mattID+`","`+chrisID+`","`+disabledID+`","`+chrisID+`","unknown"]}`)
@@ -255,7 +265,10 @@ func TestImport_BulkMapsSourceRoles(t *testing.T) {
 
 func TestImport_RejectsAccountReservedByInvitation(t *testing.T) {
 	const accountID = "media-invited"
-	srv, st := provServerWithUsers(t, []testkit.MediaServerUser{{ID: accountID, Name: "Invited"}})
+	harness := newProvisioningHarness(t, provisioningHarnessConfig{Users: []testkit.MediaServerUser{{
+		ID: accountID, Name: "Invited",
+	}}})
+	srv, st := harness.Server, harness.Store
 	now := time.Unix(1_900_000_000, 0).UTC()
 	if err := st.CreateInvitation(context.Background(), invitation.Invitation{
 		ID: "pending-import", Kind: invitation.KindLibrary, LibraryUserID: accountID,
@@ -280,7 +293,7 @@ func TestImport_RejectsAccountReservedByInvitation(t *testing.T) {
 // the ones already allowlisted so the picker can show them as done.
 func TestImportCandidates(t *testing.T) {
 	const adminID = "00000000000000000000000000000007" // admin in the fixture
-	srv, _ := provServer(t)
+	srv := newProvisioningHarness(t).Server
 
 	// Admin-only (§19).
 	if resp := do(t, srv, http.MethodGet, "/v1/users/candidates", "", ""); resp.StatusCode != http.StatusUnauthorized {

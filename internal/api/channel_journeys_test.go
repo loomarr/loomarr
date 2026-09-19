@@ -3,8 +3,8 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"testing"
 	"time"
@@ -21,6 +21,25 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit/channeljourney"
 	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
 )
+
+type channelJourneyHarness struct {
+	*apiHarness
+	Log *slog.Logger
+}
+
+func newChannelJourneyHarness(t *testing.T, now func() time.Time) *channelJourneyHarness {
+	t.Helper()
+	var log *slog.Logger
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		log = defaults.Log
+		channelBinder := binder.New(defaults.Store, nil, nil, log)
+		return api.Router(log, api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: log, Binder: channelBinder,
+			Approver: suggest.NewApprover(defaults.Store, channelBinder, now),
+		})
+	})
+	return &channelJourneyHarness{apiHarness: base, Log: log}
+}
 
 // These fixtures start at a submitted, controlled Proposal. They prove the
 // approval-to-schedule seam, not inference or historical membership accuracy.
@@ -62,14 +81,9 @@ func TestReferenceChannelJourneys(t *testing.T) {
 func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channel, []schedule.Slot, api.ChannelDTO) {
 	t.Helper()
 	ctx := context.Background()
-	st := testkit.MigratedSQLiteStore(t)
-	log := testkit.Logger()
-	b := binder.New(st, nil, nil, log)
-	srv := httptest.NewServer(api.Router(log, api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
-		Approver: suggest.NewApprover(st, b, channeljourney.Clock),
-	}))
-	t.Cleanup(srv.Close)
+	harness := newChannelJourneyHarness(t, channeljourney.Clock)
+	st := harness.Store
+	log := harness.Log
 	body, err := json.Marshal(tc.Proposal)
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +99,7 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channe
 	if err != nil || len(before) != 0 {
 		t.Fatalf("before approval: %v, %v", before, err)
 	}
-	resp := do(t, srv, http.MethodPost, "/v1/proposals/reference/approve", adminToken, "")
+	resp := harness.Do(http.MethodPost, "/v1/proposals/reference/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve: %d", resp.StatusCode)
 	}
@@ -122,7 +136,7 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channe
 		t.Fatalf("clock drift: %v", at)
 	}
 
-	response := do(t, srv, http.MethodGet, "/v1/channels/"+ch.ID, adminToken, "")
+	response := harness.Do(http.MethodGet, "/v1/channels/"+ch.ID, adminToken, "")
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("read Channel: %d", response.StatusCode)
 	}
@@ -142,14 +156,9 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			now := channeljourney.Clock()
-			st := testkit.MigratedSQLiteStore(t)
-			log := testkit.Logger()
-			b := binder.New(st, nil, nil, log)
-			srv := httptest.NewServer(api.Router(log, api.Options{
-				Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
-				Approver: suggest.NewApprover(st, b, func() time.Time { return now }),
-			}))
-			t.Cleanup(srv.Close)
+			harness := newChannelJourneyHarness(t, func() time.Time { return now })
+			st := harness.Store
+			log := harness.Log
 			// An entirely acquisition-dependent sparse library must not appear live.
 			fixture := channeljourney.Cases()[1]
 			pick := fixture.Proposal.Lineup[0]
@@ -163,7 +172,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			if err := st.CreateProposal(ctx, store.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", ProposalJSON: string(raw)}); err != nil {
 				t.Fatal(err)
 			}
-			resp := do(t, srv, http.MethodPost, "/v1/proposals/sparse/approve", adminToken, "")
+			resp := harness.Do(http.MethodPost, "/v1/proposals/sparse/approve", adminToken, "")
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("approve: %d", resp.StatusCode)
 			}

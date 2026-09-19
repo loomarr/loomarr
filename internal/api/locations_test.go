@@ -2,10 +2,7 @@ package api_test
 
 import (
 	"encoding/json"
-	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -29,11 +26,14 @@ type locationResult struct {
 	Attribution string `json:"attribution"`
 }
 
-func locationServer(t *testing.T, trustProxy bool) *httptest.Server {
+func newLocationHarness(t *testing.T, trustProxy bool) *apiHarness {
 	t.Helper()
-	return httptest.NewServer(api.Router(slog.New(slog.NewTextHandler(io.Discard, nil)), api.Options{
-		Auth: testAuthorizer{}, TrustProxy: trustProxy,
-	}))
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
+			TrustProxy: trustProxy,
+		})
+	})
 }
 
 func locationRequest(t *testing.T, client *http.Client, method, rawURL, body string, headers map[string]string) (*http.Response, locationBody) {
@@ -62,8 +62,7 @@ func locationRequest(t *testing.T, client *http.Client, method, rawURL, body str
 }
 
 func TestLocationsSearchAndResolveUseTheEmbeddedIndex(t *testing.T) {
-	server := locationServer(t, false)
-	defer server.Close()
+	server := newLocationHarness(t, false).Server
 
 	response, body := locationRequest(t, server.Client(), http.MethodGet,
 		server.URL+"/v1/locations?q="+url.QueryEscape("New York City")+"&limit=3", "", nil)
@@ -79,8 +78,7 @@ func TestLocationsSearchAndResolveUseTheEmbeddedIndex(t *testing.T) {
 }
 
 func TestLocationsSearchIncludesPopulatedMunicipalityContext(t *testing.T) {
-	server := locationServer(t, false)
-	defer server.Close()
+	server := newLocationHarness(t, false).Server
 
 	response, body := locationRequest(t, server.Client(), http.MethodGet,
 		server.URL+"/v1/locations?q="+url.QueryEscape("North Greenbush")+"&limit=3", "", nil)
@@ -91,8 +89,7 @@ func TestLocationsSearchIncludesPopulatedMunicipalityContext(t *testing.T) {
 }
 
 func TestLocationSuggestionAcceptsKnownAndNeutralHeadersOnlyBehindTrustProxy(t *testing.T) {
-	trusted := locationServer(t, true)
-	defer trusted.Close()
+	trusted := newLocationHarness(t, true).Server
 
 	for _, test := range []struct {
 		name    string
@@ -113,8 +110,7 @@ func TestLocationSuggestionAcceptsKnownAndNeutralHeadersOnlyBehindTrustProxy(t *
 		})
 	}
 
-	untrusted := locationServer(t, false)
-	defer untrusted.Close()
+	untrusted := newLocationHarness(t, false).Server
 	response, body := locationRequest(t, untrusted.Client(), http.MethodGet, untrusted.URL+"/v1/locations/suggestion", "", map[string]string{"CF-IPCountry": "CA"})
 	if response.StatusCode != http.StatusOK || body.Suggestion != nil {
 		t.Fatalf("untrusted header suggestion = %d %#v, want none", response.StatusCode, body)
@@ -122,8 +118,7 @@ func TestLocationSuggestionAcceptsKnownAndNeutralHeadersOnlyBehindTrustProxy(t *
 }
 
 func TestLocationRoutesAreAdminOnly(t *testing.T) {
-	server := locationServer(t, true)
-	defer server.Close()
+	server := newLocationHarness(t, true).Server
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/v1/locations?q=London", nil)
 	if err != nil {
 		t.Fatal(err)

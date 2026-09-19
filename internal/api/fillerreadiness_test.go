@@ -12,7 +12,8 @@ import (
 )
 
 func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	ff.readiness = filler.ProjectReadiness(filler.ReadinessInput{
 		Fetch: filler.FetchStatus{Enabled: true, CatalogClips: 12, MaxCatalog: 500},
@@ -81,7 +82,8 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 }
 
 func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.cleanupPreview = filler.StorageCleanupPreview{Items: 3, Bytes: 4096}
 	ff.cleanupResult = filler.StorageCleanupResult{
 		RemovedItems: 2, RemovedBytes: 3072, FailedItems: 1,
@@ -118,7 +120,8 @@ func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.
 }
 
 func TestFillerAcquisitionReturnsDurableReconnectState(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	now := time.Date(2026, 9, 13, 14, 0, 0, 0, time.UTC)
 	if err := st.UpsertAcquisitionRun(context.Background(), filler.AcquisitionRun{
 		ID: "acq-found-clip", Trigger: filler.AcquisitionSource, SourceID: "archive:classic",
