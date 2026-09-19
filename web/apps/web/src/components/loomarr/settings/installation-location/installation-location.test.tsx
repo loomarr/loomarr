@@ -83,6 +83,25 @@ describe("InstallationLocation", () => {
     expect(onChange).toHaveBeenNthCalledWith(2, "filler.home_market", "New York City");
   });
 
+  it("chooses the installation language by its friendly name beside Location", async () => {
+    const onChange = vi.fn();
+    render(
+      <InstallationLocation
+        entries={[...entries(), entry("filler.language", "en")]}
+        values={{}}
+        onChange={onChange}
+      />,
+    );
+
+    const language = screen.getByRole("combobox", { name: "Commercial language" });
+    await userEvent.clear(language);
+    await userEvent.type(language, "span");
+    await userEvent.click(screen.getByRole("option", { name: "Spanish" }));
+
+    expect(onChange).toHaveBeenCalledWith("filler.language", "es");
+    expect(language).toHaveValue("Spanish");
+  });
+
   it("waits for a typing pause before searching", async () => {
     render(<InstallationLocation entries={entries()} values={{}} onChange={vi.fn()} />);
 

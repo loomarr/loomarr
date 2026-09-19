@@ -1043,8 +1043,8 @@ func declared() []Setting {
 		{
 			// ⚠ A clip with NO speech is always kept — a wordless visual spot has no language, and
 			// those are often the best filler. Only confident non-target speech rejects (§10 V40).
-			Key: "filler.language", Label: "Expected spoken language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
-			Kind: KindString, Default: "en", Advanced: true,
+			Key: "filler.language", Label: "Commercial language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
+			Kind: KindString, Presentation: PresentationLanguage, Default: "en",
 			Doc: "The language filler is expected to be in. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept. Empty turns the language check off.",
 		},
 		{

@@ -110,13 +110,18 @@ const WizardScreen = () => {
   const playoutEntry = entries.find((e) => e.key === "playout.backend");
   const publicURLEntry = entries.find((e) => e.key === "server.public_url");
   const locationEntries = entries.filter(
-    (entry) => entry.key === "filler.home_country" || entry.key === "filler.home_market",
+    (entry) =>
+      entry.key === "filler.home_country" ||
+      entry.key === "filler.home_market" ||
+      entry.key === "filler.language",
   );
   const persistedCountry = locationEntries.find((entry) => entry.key === "filler.home_country")?.value ?? "";
   const persistedMarket = locationEntries.find((entry) => entry.key === "filler.home_market")?.value ?? "";
+  const persistedLanguage = locationEntries.find((entry) => entry.key === "filler.language")?.value ?? "en";
   const [locationEdits, setLocationEdits] = useState<Record<string, string>>({});
   const liveCountry = locationEdits["filler.home_country"] ?? persistedCountry;
   const liveMarket = locationEdits["filler.home_market"] ?? persistedMarket;
+  const liveLanguage = locationEdits["filler.language"] ?? persistedLanguage;
   const locationPatch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
@@ -211,6 +216,7 @@ const WizardScreen = () => {
             values={{
               "filler.home_country": liveCountry,
               "filler.home_market": liveMarket,
+              "filler.language": liveLanguage,
             }}
             onChange={(key, value) => setLocationEdits((previous) => ({ ...previous, [key]: value }))}
             results={unwrap(locationPatch.data, (body) => body.results) ?? undefined}

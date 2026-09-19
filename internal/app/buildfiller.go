@@ -336,6 +336,15 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, nil, time.Now),
 	}
 	if splitter != nil {
+		// A compilation can contain adverts in several languages, so the whole-clip language rung
+		// cannot make this decision. Attach the same detector and installation choice to the
+		// splitter: both scheduled and explicitly requested proposals finish bounded per-segment
+		// checks before becoming reviewable, and confirmed children reuse the result.
+		splitter.WithSegmentLanguage(filler.SegmentLanguagePolicy{
+			Detector: langDetect,
+			Want:     func() string { return set.str("filler.language") },
+			Budget:   func() int { return set.intv("filler.pipeline.max_whisper") },
+		})
 		autoSplitPolicy := &filler.AutoSplitPolicy{
 			Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
 			MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },

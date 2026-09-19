@@ -111,6 +111,13 @@ const stubWizard = (opts: {
         value: market,
       }),
       setting({
+        key: "filler.language",
+        label: "Expected spoken language",
+        group: "filler",
+        presentation: "language",
+        value: "en",
+      }),
+      setting({
         key: "setup.completed",
         group: "advanced",
         kind: "bool",
@@ -233,7 +240,7 @@ describe("first-run routing", () => {
 });
 
 describe("wizard", () => {
-  it("detects one location, saves country and market, and continues without a manual setup detour", async () => {
+  it("saves location and language together without a manual setup detour", async () => {
     const { seq, patches } = stubWizard({
       authed: true,
       setupCompleted: false,
@@ -251,12 +258,17 @@ describe("wizard", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Use my location" }));
     expect(screen.getByRole("combobox", { name: "Location" })).toHaveValue("New York City, United States");
+    const language = screen.getByRole("combobox", { name: "Commercial language" });
+    await userEvent.clear(language);
+    await userEvent.type(language, "span");
+    await userEvent.click(screen.getByRole("option", { name: "Spanish" }));
     expect(next).toBeEnabled();
     await userEvent.click(next);
 
     await vi.waitFor(() => expect(seq).toContain("patch"));
     expect(patches.join()).toMatch(/filler\.home_country/);
     expect(patches.join()).toMatch(/filler\.home_market/);
+    expect(patches.join()).toMatch(/filler\.language/);
     expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
   });
 

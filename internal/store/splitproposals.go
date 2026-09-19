@@ -24,14 +24,16 @@ const splitProposalSelect = `SELECT id, clip_hash, segments_json, created_at FRO
 // migration. Detection checkpoints are implementation state, not independently queryable data;
 // keeping them in the proposal's one authored/read document preserves that ownership.
 type splitProposalDocument struct {
-	Version           int                               `json:"version"`
-	Segments          []filler.SplitSegment             `json:"segments,omitempty"`
-	Detection         *filler.SplitDetectionProgress    `json:"detection,omitempty"`
-	Spawned           []string                          `json:"spawned,omitempty"`
-	Source            filler.SplitSourceAsset           `json:"source,omitempty"`
-	Structure         *filler.SourceStructureAssessment `json:"structure,omitempty"`
-	StructureDecision *fillerstructure.Artifact         `json:"structureDecision,omitempty"`
-	RoleEvidence      []filler.StructureRoleEvidence    `json:"roleEvidence,omitempty"`
+	Version            int                               `json:"version"`
+	Segments           []filler.SplitSegment             `json:"segments,omitempty"`
+	Detection          *filler.SplitDetectionProgress    `json:"detection,omitempty"`
+	Language           *filler.SplitLanguageProgress     `json:"language,omitempty"`
+	ExcludedByLanguage int                               `json:"excludedByLanguage,omitempty"`
+	Spawned            []string                          `json:"spawned,omitempty"`
+	Source             filler.SplitSourceAsset           `json:"source,omitempty"`
+	Structure          *filler.SourceStructureAssessment `json:"structure,omitempty"`
+	StructureDecision  *fillerstructure.Artifact         `json:"structureDecision,omitempty"`
+	RoleEvidence       []filler.StructureRoleEvidence    `json:"roleEvidence,omitempty"`
 	// Screenings reads and discards the short-lived V67 pre-child experiment. Screening now binds
 	// rendered child artifacts at terminal admission, never a split proposal.
 	Screenings []filler.SegmentScreeningEvidence `json:"screenings,omitempty"`
@@ -53,7 +55,8 @@ func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
 		}
 	}
 	return json.Marshal(splitProposalDocument{
-		Version: 9, Segments: p.Segments, Detection: p.Detection, Spawned: p.Spawned,
+		Version: 10, Segments: p.Segments, Detection: p.Detection, Language: p.Language,
+		ExcludedByLanguage: p.ExcludedByLanguage, Spawned: p.Spawned,
 		Source: p.Source, Structure: p.Structure, StructureDecision: p.StructureDecision,
 		RoleEvidence: splitProposalRoleEvidence(p),
 	})
@@ -70,7 +73,7 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 	if err := json.Unmarshal(trimmed, &doc); err != nil {
 		return err
 	}
-	p.Segments, p.Detection, p.Spawned, p.Source, p.Structure = doc.Segments, doc.Detection, doc.Spawned, doc.Source, doc.Structure
+	p.Segments, p.Detection, p.Language, p.ExcludedByLanguage, p.Spawned, p.Source, p.Structure = doc.Segments, doc.Detection, doc.Language, doc.ExcludedByLanguage, doc.Spawned, doc.Source, doc.Structure
 	p.StructureDecision = doc.StructureDecision
 	if err := attachSplitProposalRoleEvidence(p, doc.RoleEvidence); err != nil {
 		return err

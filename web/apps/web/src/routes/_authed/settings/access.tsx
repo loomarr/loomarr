@@ -57,7 +57,7 @@ const AccessSettings = () => {
   return (
     <SettingsPage
       title="Access and devices"
-      description="Manage how people and devices reach Loomarr, sign in, and use your location."
+      description="Manage how people and devices reach Loomarr, sign in, and set your household defaults."
       entries={entries}
       blocks={[
         {

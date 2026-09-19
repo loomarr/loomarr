@@ -786,7 +786,7 @@ describe("Settings honesty", () => {
     expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("4 unsaved changes");
   });
 
-  it("disables the spoken-language filter with the reason when its local model is missing", async () => {
+  it("keeps the household language choice available when the detector still needs setup", async () => {
     server.use(
       getMeMockHandler(me()),
       getSettingsListMockHandler({
@@ -809,12 +809,10 @@ describe("Settings honesty", () => {
       ...appHandlers(),
     );
 
-    renderAt("/filler/settings/playback");
+    renderAt("/settings/access");
 
-    expect(await screen.findByLabelText("Expected spoken language")).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Language filtering is off because no multilingual model is selected. Choose one in AI settings.",
-    );
+    expect(await screen.findByRole("combobox", { name: "Commercial language" })).toBeEnabled();
+    expect(screen.getByText(/wordless clips stay/i)).toBeInTheDocument();
   });
 
   it("keeps hosted language filtering available for a configured keyless endpoint", async () => {
@@ -841,9 +839,9 @@ describe("Settings honesty", () => {
       ...appHandlers(),
     );
 
-    renderAt("/filler/settings/playback");
+    renderAt("/settings/access");
 
-    expect(await screen.findByLabelText("Expected spoken language")).toBeEnabled();
+    expect(await screen.findByRole("combobox", { name: "Commercial language" })).toBeEnabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
