@@ -45,11 +45,15 @@ func TestProjectDetails_OwnsTheQuietUserFacingState(t *testing.T) {
 }
 
 func TestProjectDetails_StaleWorkIsAddingRatherThanAUserTask(t *testing.T) {
-	projection := fillerenrichment.ProjectDetails([]fillerenrichment.State{{
-		ClipHash: "clip", Axis: fillerenrichment.AxisAudience, Status: fillerenrichment.StatusStale,
-		Evidence: fillerenrichment.Evidence{},
-	}})
-	if projection.State != fillerenrichment.DetailAdding {
+	now := time.Unix(901, 0).UTC()
+	projection := fillerenrichment.ProjectDetails([]fillerenrichment.State{
+		{ClipHash: "clip", Axis: fillerenrichment.AxisAudience, Status: fillerenrichment.StatusStale},
+		{ClipHash: "clip", Axis: fillerenrichment.AxisKind, Status: fillerenrichment.StatusComplete,
+			Value: fillerenrichment.Value{Text: "commercial"}, Evidence: fillerenrichment.Evidence{
+				Kind: fillerenrichment.EvidenceItem, Producer: "fixture", ProducerVersion: "1", ObservedAt: now,
+			}},
+	})
+	if projection.State != fillerenrichment.DetailAdding || len(projection.Facts) != 1 {
 		t.Fatalf("stale projection = %+v", projection)
 	}
 }

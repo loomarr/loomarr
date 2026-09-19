@@ -30,10 +30,11 @@ func ProjectDetails(states []State) DetailProjection {
 		return DetailProjection{State: DetailAdding}
 	}
 	byAxis := make(map[Axis]State, len(states))
+	adding := false
 	for _, state := range states {
 		byAxis[state.Axis] = state
 		if state.Status == StatusMissing || state.Status == StatusStale {
-			return DetailProjection{State: DetailAdding}
+			adding = true
 		}
 	}
 	projection := DetailProjection{State: DetailLimited}
@@ -50,6 +51,10 @@ func ProjectDetails(states []State) DetailProjection {
 	}
 	hasTopic := known(AxisProduct) || known(AxisFormat) || known(AxisSeasonal) ||
 		known(AxisAudienceCue) || known(AxisPresentation)
+	if adding {
+		projection.State = DetailAdding
+		return projection
+	}
 	if known(AxisKind) && known(AxisEra) && known(AxisAudience) && known(AxisBrand) &&
 		known(AxisGeography) && hasTopic {
 		projection.State = DetailComplete
