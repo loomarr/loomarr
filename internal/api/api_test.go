@@ -166,23 +166,8 @@ func openTestStore(t *testing.T, path string) store.Store {
 
 func newServer(t *testing.T) (*httptest.Server, store.Store) {
 	t.Helper()
-	st := openTestStore(t, filepath.Join(t.TempDir(), "api.db"))
-	t.Cleanup(func() { _ = st.Close() })
-	decisions, err := fillerdecision.New(st)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decisions.WithDiagnosticRecovery(&apiDiagnosticRecovery{retrying: make(map[string]time.Time)})
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:           st,
-		Auth:            testAuthorizer{},
-		Log:             slog.New(slog.DiscardHandler),
-		BackupSQLite:    store.SQLiteBackuper(st),
-		FillerDecisions: decisions,
-	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st
+	harness := newAPIHarness(t)
+	return harness.Server, harness.Store
 }
 
 func do(t *testing.T, srv *httptest.Server, method, path, token, body string) *http.Response {
