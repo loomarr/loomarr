@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -187,6 +186,82 @@ func startChannelsHarness(t *testing.T, internalPlayout bool, suggester *fakeSug
 		})
 	})
 	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv, Suggest: suggester}
+}
+
+type channelConflictHarness struct {
+	*apiHarness
+}
+
+func newChannelDetachConflictHarness(t *testing.T) *channelConflictHarness {
+	t.Helper()
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		wrapped := &staleOnceChannelStore{Store: defaults.Store}
+		wrapped.before = func(ctx context.Context, _ store.Channel) error {
+			winner, err := defaults.Store.GetChannel(ctx, "c1")
+			if err != nil {
+				return err
+			}
+			winner.Group = "Concurrent edit"
+			_, err = defaults.Store.SaveChannel(ctx, winner)
+			return err
+		}
+		return api.Router(defaults.Log, api.Options{Store: wrapped, Auth: defaults.Auth, Log: defaults.Log})
+	})
+	if _, err := base.Store.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+		ID: "c1", Name: "Original", Number: 5, Strategy: schedule.Sequential, Status: schedule.StatusLive,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	return &channelConflictHarness{apiHarness: base}
+}
+
+type channelLifecycleHarness struct {
+	*apiHarness
+	Playout   *testkit.Playout
+	Rescanner *testkit.TunerRescanner
+}
+
+func newChannelLifecycleHarness(t *testing.T, preparedInternal bool) *channelLifecycleHarness {
+	t.Helper()
+	playback := &testkit.Playout{}
+	rescanner := &testkit.TunerRescanner{}
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		options := api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
+			Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
+		}
+		if preparedInternal {
+			options.BackendCheckpoint = func(context.Context) (api.BackendCheckpoint, error) {
+				return api.BackendCheckpoint{
+					Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
+					PublishedInternal: true,
+				}, nil
+			}
+		} else {
+			options.LiveConfig = func(key string) string {
+				if key == "playout.backend" {
+					return schedule.PlayoutBackendInternal
+				}
+				return ""
+			}
+		}
+		return api.Router(defaults.Log, options)
+	})
+	return &channelLifecycleHarness{apiHarness: base, Playout: playback, Rescanner: rescanner}
+}
+
+type channelGuideHarness struct {
+	*apiHarness
+}
+
+func newChannelGuideHarness(t *testing.T, guide api.GuideReader) *channelGuideHarness {
+	t.Helper()
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Guide: guide,
+		})
+	})
+	return &channelGuideHarness{apiHarness: base}
 }
 
 func TestCreateChannelAdmin(t *testing.T) {
@@ -824,26 +899,8 @@ func TestDeleteChannelDetaches(t *testing.T) {
 }
 
 func TestDeleteChannel_ConcurrentEditWinsAndDetachReturns409(t *testing.T) {
-	base := openTestStore(t, t.TempDir()+"/detach-race.db")
-	t.Cleanup(func() { _ = base.Close() })
-	if _, err := base.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
-		ID: "c1", Name: "Original", Number: 5, Strategy: schedule.Sequential, Status: schedule.StatusLive,
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	wrapped := &staleOnceChannelStore{Store: base}
-	wrapped.before = func(ctx context.Context, _ store.Channel) error {
-		winner, err := base.GetChannel(ctx, "c1")
-		if err != nil {
-			return err
-		}
-		winner.Group = "Concurrent edit"
-		_, err = base.SaveChannel(ctx, winner)
-		return err
-	}
-	log := slog.New(slog.DiscardHandler)
-	srv := httptest.NewServer(api.Router(log, api.Options{Store: wrapped, Auth: testAuthorizer{}, Log: log}))
-	t.Cleanup(srv.Close)
+	harness := newChannelDetachConflictHarness(t)
+	srv := harness.Server
 
 	resp := do(t, srv, http.MethodDelete, "/v1/channels/c1", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {
@@ -1288,23 +1345,8 @@ func TestUpdateChannel_PauseAndResume(t *testing.T) {
 }
 
 func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) {
-	st := openTestStore(t, t.TempDir()+"/lifecycle.db")
-	t.Cleanup(func() { _ = st.Close() })
-	channelSvc := &fakeChannelSvc{}
-	playback := &testkit.Playout{}
-	rescanner := &testkit.TunerRescanner{}
-	log := slog.New(slog.DiscardHandler)
-	srv := httptest.NewServer(api.Router(log, api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: log,
-		Channels: channelSvc, Playout: playback, TunerRescanner: rescanner,
-		LiveConfig: func(key string) string {
-			if key == "playout.backend" {
-				return schedule.PlayoutBackendInternal
-			}
-			return ""
-		},
-	}))
-	t.Cleanup(srv.Close)
+	harness := newChannelLifecycleHarness(t, false)
+	srv, st := harness.Server, harness.Store
 
 	for i, id := range []string{"pause", "detach", "switch", "remote", "join"} {
 		mkChannel(t, srv, id, id, 60+i)
@@ -1355,31 +1397,17 @@ func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) 
 		t.Fatalf("switch to internal → %d, want 200", joinInternal.StatusCode)
 	}
 
-	if got, want := playback.StoppedChannels(), []string{"pause", "detach", "switch"}; !slices.Equal(got, want) {
+	if got, want := harness.Playout.StoppedChannels(), []string{"pause", "detach", "switch"}; !slices.Equal(got, want) {
 		t.Fatalf("stopped channels = %v, want %v", got, want)
 	}
-	if got := rescanner.Calls(); got != 4 {
+	if got := harness.Rescanner.Calls(); got != 4 {
 		t.Fatalf("tuner rescans = %d, want one per internal membership change", got)
 	}
 }
 
 func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *testing.T) {
-	st := openTestStore(t, t.TempDir()+"/prepared-lifecycle.db")
-	t.Cleanup(func() { _ = st.Close() })
-	playback := &testkit.Playout{}
-	rescanner := &testkit.TunerRescanner{}
-	log := slog.New(slog.DiscardHandler)
-	srv := httptest.NewServer(api.Router(log, api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: log,
-		Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
-		BackendCheckpoint: func(context.Context) (api.BackendCheckpoint, error) {
-			return api.BackendCheckpoint{
-				Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
-				PublishedInternal: true,
-			}, nil
-		},
-	}))
-	t.Cleanup(srv.Close)
+	harness := newChannelLifecycleHarness(t, true)
+	srv, st := harness.Server, harness.Store
 
 	mkChannel(t, srv, "pause-prepared", "Pause Prepared", 70)
 	mkChannel(t, srv, "detach-prepared", "Detach Prepared", 71)
@@ -1394,10 +1422,10 @@ func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *test
 		t.Fatalf("detach prepared internal channel -> %d, want 204", detach.StatusCode)
 	}
 
-	if got, want := playback.StoppedChannels(), []string{"pause-prepared", "detach-prepared"}; !slices.Equal(got, want) {
+	if got, want := harness.Playout.StoppedChannels(), []string{"pause-prepared", "detach-prepared"}; !slices.Equal(got, want) {
 		t.Fatalf("stopped prepared channels = %v, want %v", got, want)
 	}
-	if got := rescanner.Calls(); got != 2 {
+	if got := harness.Rescanner.Calls(); got != 2 {
 		t.Fatalf("prepared tuner rescans = %d, want one per removal", got)
 	}
 }
@@ -1860,8 +1888,11 @@ func (f fakeGuide) Upcoming(_ context.Context, channelID string, _ time.Time, li
 // 1.22's ServeMux, but that is a routing detail worth pinning rather than assuming: if
 // precedence ever flipped, the page would 404 on a channel that does not exist.
 func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
-	st := openTestStore(t, t.TempDir()+"/nn.db")
-	t.Cleanup(func() { _ = st.Close() })
+	harness := newChannelGuideHarness(t, fakeGuide{byChannel: map[string]api.ChannelNowNext{
+		"ch-live": {Now: &api.NowNextEntry{Title: "On Now"}, Next: &api.NowNextEntry{Title: "Up Next", Gap: true}},
+		"ch-new":  {Now: &api.NowNextEntry{Title: "Internal Now"}},
+	}})
+	srv, st := harness.Server, harness.Store
 
 	// A remote-backed channel and one internal-only shape with no Tunarr id.
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
@@ -1874,18 +1905,6 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{byChannel: map[string]api.ChannelNowNext{
-			"ch-live": {Now: &api.NowNextEntry{Title: "On Now"}, Next: &api.NowNextEntry{Title: "Up Next", Gap: true}},
-			"ch-new":  {Now: &api.NowNextEntry{Title: "Internal Now"}},
-		}},
-	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/now-next", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -1912,21 +1931,15 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 }
 
 func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
-	st := openTestStore(t, t.TempDir()+"/upcoming.db")
-	t.Cleanup(func() { _ = st.Close() })
+	harness := newChannelGuideHarness(t, fakeGuide{upcoming: map[string][]api.NowNextEntry{
+		"ch-internal": {{Title: "Playing locally"}},
+	}})
+	srv, st := harness.Server, harness.Store
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-internal", Name: "Internal", Number: 42, Status: schedule.StatusLive},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{upcoming: map[string][]api.NowNextEntry{
-			"ch-internal": {{Title: "Playing locally"}},
-		}},
-	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-internal/upcoming", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
