@@ -1612,7 +1612,7 @@ func TestSplitStageRecordsStructureShadowBeforeCompatibilityPublication(t *testi
 // Confirm cuts, catalogs, and consumes — and leaves the compilation behind.
 func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	st := newSplitMemStore()
-	hash := seedCompilation(st, "comps/1987.mp4", 61_000)
+	hash := seedCompilation(st, "comps/1987.mp4", 91_000)
 	drop := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(drop, "comps"), 0o755); err != nil {
 		t.Fatal(err)
@@ -1623,8 +1623,21 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	hash = bindCompilationIdentity(t, st, hash, src)
 	stageParentForSplitReview(st, hash)
-	tools := &fakeTools{}
-	sp := newSplitter(st, tools, nil, drop)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
+		{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
+		{StartMs: 61_000, EndMs: 91_000, Title: "Boundary edit"},
+	}}
+	detector := &spanLanguageDetector{answers: map[[2]int64]string{
+		{1_000, 11_000}:  "en",
+		{31_000, 41_000}: filler.LangNone,
+		{62_000, 72_000}: "en",
+	}}
+	sp := newSplitter(st, tools, nil, drop).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func() string { return "en" },
+		Budget:   func() int { return 10 },
+	})
 	// ⚠ Capture the proposal id from Propose's return, NOT by ranging st.proposals — Go randomises map
 	// order, so if the store ever holds >1 proposal the range picked an arbitrary one and Confirm ran
 	// against the wrong id (an intermittent "compilation not marked composite" flake, now fixed
@@ -1635,17 +1648,20 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	propID := prop.ID
 
-	// The operator's EDITED list: era suggestion accepted on the second segment,
-	// and a third segment they added by hand.
+	// The operator's EDITED list accepts tags but also forges language evidence. Language is detector
+	// evidence, not an editable tag: Confirm must bind it back to the persisted exact intervals.
 	edited := []filler.SplitSegment{
-		{StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food", Language: "en", LanguageChecked: true},
-		{StartMs: 30000, EndMs: 61000, Name: "Lego", Era: 1987, Audience: filler.Kids, Category: "toys", Language: filler.LangNone, LanguageChecked: true},
+		{StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food", Language: "pl", LanguageChecked: true},
+		{StartMs: 30000, EndMs: 61000, Name: "Lego", Era: 1987, Audience: filler.Kids, Category: "toys", Language: "pl", LanguageChecked: true},
+		// Moving the start makes this a different audio span, so even a truthful copied answer must
+		// not bypass the child's downstream language check.
+		{StartMs: 62000, EndMs: 91000, Name: "Edited boundary", Era: 1987, Audience: filler.General, Category: "retail", Language: "en", LanguageChecked: true},
 	}
 	if _, err := sp.Confirm(context.Background(), propID, edited); err != nil {
 		t.Fatal(err)
 	}
 
-	if len(tools.cutCalls) != 2 {
+	if len(tools.cutCalls) != 3 {
 		t.Fatalf("cuts = %v", tools.cutCalls)
 	}
 	// ⚠ V45: the compilation is KEPT and marked a composite (NOT deleted — the reversal of V34). Its
@@ -1679,11 +1695,11 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		}
 		segments = append(segments, c)
 	}
-	if len(segments) != 2 {
+	if len(segments) != 3 {
 		t.Fatalf("segments = %+v", segments)
 	}
 	for _, seg := range segments {
-		wantLanguage := map[string]string{"McDonald's": "en", "Lego": filler.LangNone}[seg.Name]
+		wantLanguage := map[string]string{"McDonald's": "en", "Lego": filler.LangNone, "Edited boundary": ""}[seg.Name]
 		if seg.Language != wantLanguage {
 			t.Errorf("confirmed segment %q language = %q, want inherited %q", seg.Name, seg.Language, wantLanguage)
 		}

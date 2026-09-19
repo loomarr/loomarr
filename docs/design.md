@@ -9113,8 +9113,11 @@ unconfirmed suggestion.
    proposal receipt with its exact interval, detected and
    expected languages, name, and a stable mismatch reason; it is not placed back in the editable
    candidate list. Confirmed
-   children inherit known and wordless results so the post-confirm rung does not spend twice;
-   checked-but-unknown children leave the field empty so that rung remains a defence-in-depth retry.
+   children inherit known and wordless results so the post-confirm rung does not spend twice, but
+   only when the confirmed interval exactly matches the persisted proposal. The server ignores
+   language fields supplied by the confirm client; edited or merged intervals and
+   checked-but-unknown children leave the field empty so the post-confirm rung remains a
+   defence-in-depth retry.
 6. **Review — required unless the result is unambiguous (V43).** Because detection quality is a property of the source, an uncertain result is confirmed by a human before anything enters the catalog; auto-accepting a 69% result puts 3-minute "commercials" into 30-second breaks. Detection runs as a **job** (minutes per file) producing a **persisted split proposal** (§5) — review can happen long after detection, and a restart must not lose it — and an unconfirmed proposal writes nothing until `POST /v1/filler/splits/{id}/confirm` (§7) commits a cut list.
 
    ⚠ **The review PLAYS each proposed cut, in place (V54).** It did not, for as long as it existed: measured 2026-08-12 on a 52-segment reel, the screen offered a name field, two mm:ss fields, Merge, Drop and Confirm, and **no media element at all** — an operator was asked whether a cut at 04:17 was right with nothing to see or hear. V54 A7 had already deleted the mock's "click to preview" caption for being false; this is the other half.

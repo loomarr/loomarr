@@ -834,6 +834,12 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	if !p.Ready() {
 		return nil, fmt.Errorf("%w: proposal %s is still detecting boundaries", ErrSplitValidation, proposalID)
 	}
+	// Language is detector evidence, not an operator-editable field. The confirm body carries the
+	// whole segment shape for one generated contract, but only an exact persisted interval may
+	// reuse its answer. A hand-edited or merged interval is a different audio span and deliberately
+	// reaches the ordinary post-confirm language rung with no answer.
+	segments = bindSplitLanguageEvidence(segments, p.Segments)
+	hold = bindSplitLanguageEvidence(hold, p.Segments)
 	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
 	if err != nil {
 		return nil, err
@@ -1156,6 +1162,28 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	}
 	publication.retain()
 	return spawned, nil
+}
+
+func bindSplitLanguageEvidence(submitted, persisted []SplitSegment) []SplitSegment {
+	type span struct{ start, end int64 }
+	bySpan := make(map[span]SplitSegment, len(persisted))
+	for _, segment := range persisted {
+		bySpan[span{segment.StartMs, segment.EndMs}] = segment
+	}
+	out := append([]SplitSegment(nil), submitted...)
+	for i := range out {
+		out[i].Language = ""
+		out[i].LanguageChecked = false
+		out[i].LanguageNote = ""
+		original, ok := bySpan[span{out[i].StartMs, out[i].EndMs}]
+		if !ok {
+			continue
+		}
+		out[i].Language = original.Language
+		out[i].LanguageChecked = original.LanguageChecked
+		out[i].LanguageNote = original.LanguageNote
+	}
+	return out
 }
 
 func appendUniqueStrings(existing []string, values ...string) []string {
