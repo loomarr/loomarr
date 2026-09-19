@@ -309,15 +309,20 @@ type fillerHarness struct {
 
 func newFillerHarness(t *testing.T) *fillerHarness {
 	t.Helper()
-	srv, st, ff := newFillerServerWithImages(t, nil)
+	srv, st, ff := newFillerServerWithConfig(t, nil, nil)
 	return &fillerHarness{
 		apiHarness: &apiHarness{t: t, Server: srv, Store: st},
 		Filler:     ff,
 	}
 }
 
-func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, store.Store, *fakeFiller) {
-	return newFillerServerWithConfig(t, imageService, nil)
+func newFillerImageHarness(t *testing.T, imageService api.ImageService) *fillerHarness {
+	t.Helper()
+	srv, st, ff := newFillerServerWithConfig(t, imageService, nil)
+	return &fillerHarness{
+		apiHarness: &apiHarness{t: t, Server: srv, Store: st},
+		Filler:     ff,
+	}
 }
 
 func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, store.Store, *fakeFiller) {
@@ -384,7 +389,8 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		Hash: "hover-art", Role: images.RoleThumb, Width: 320, Height: 180, Animated: true,
 		Visibility: images.VisibilityMember,
 	}
-	srv, st, _ := newFillerServerWithImages(t, imageService)
+	harness := newFillerImageHarness(t, imageService)
+	srv, st := harness.Server, harness.Store
 	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
 		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Kind: filler.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "still-art", HoverImageHash: "hover-art",
