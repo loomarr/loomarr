@@ -2,9 +2,7 @@ package api_test
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,7 +16,16 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func TestFillerScreeningReturnsOneExactBrowserSafeFourAxisProjection(t *testing.T) {
+type fillerScreeningHarness struct {
+	*apiHarness
+	Hash    string
+	Path    string
+	Layout  filler.Layout
+	Service *testkit.FillerScreeningService
+}
+
+func newFillerScreeningHarness(t *testing.T) *fillerScreeningHarness {
+	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -27,21 +34,26 @@ func TestFillerScreeningReturnsOneExactBrowserSafeFourAxisProjection(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	st := openTestStore(t, filepath.Join(root, "api.db"))
-	t.Cleanup(func() { _ = st.Close() })
 	hash := strings.Repeat("a", 64)
 	path := filepath.Join("aa", "child.mp4")
-	if err := st.UpsertClip(t.Context(), store.Clip{Clip: filler.Clip{
+	service := &testkit.FillerScreeningService{Summary: apiScreeningSummaryFixture(t, hash)}
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
+			FillerLayout: layout, FillerScreening: service,
+		})
+	})
+	if err := base.Store.UpsertClip(t.Context(), store.Clip{Clip: filler.Clip{
 		Hash: hash, Path: path, Name: "Screened child", Kind: filler.Commercial, DurationMs: 30_000,
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	service := &testkit.FillerScreeningService{Summary: apiScreeningSummaryFixture(t, hash)}
-	server := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		FillerLayout: layout, FillerScreening: service,
-	}))
-	t.Cleanup(server.Close)
+	return &fillerScreeningHarness{apiHarness: base, Hash: hash, Path: path, Layout: layout, Service: service}
+}
+
+func TestFillerScreeningReturnsOneExactBrowserSafeFourAxisProjection(t *testing.T) {
+	harness := newFillerScreeningHarness(t)
+	server, hash, path, layout, service := harness.Server, harness.Hash, harness.Path, harness.Layout, harness.Service
 
 	response := do(t, server, http.MethodGet, "/v1/filler/screening?hash="+hash, adminToken, "")
 	defer func() { _ = response.Body.Close() }()

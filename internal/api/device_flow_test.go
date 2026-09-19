@@ -3,7 +3,6 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,37 +16,34 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// deviceServer builds the full stack with device pairing enabled.
-func deviceServer(t *testing.T, limiter *auth.RateLimiter) (*httptest.Server, store.Store) {
+// newDeviceHarness builds the full session-auth stack with device pairing and
+// an optional approval limiter enabled.
+func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/device.db")
-	t.Cleanup(func() { _ = st.Close() })
-
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	ms.Accounts = map[string]testkit.Account{
 		"boss": {Password: "pw", ID: "u-boss", IsAdmin: true},
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
-	mgr := auth.NewManager(st, time.Hour, time.Now)
-	devices := auth.NewDeviceManager(st, time.Now)
-	seedImported(t, st, "u-boss", "boss", store.RoleAdmin)
-	seedImported(t, st, "u-kid", "kid", store.RoleMember)
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
+		devices := auth.NewDeviceManager(defaults.Store, time.Now)
+		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
 
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:         st,
-		Auth:          api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
-		Log:           slog.New(slog.DiscardHandler),
-		Login:         auth.NewLoginService(lib, st, mgr, nil, time.Now),
-		Sessions:      mgr,
-		Devices:       devices,
-		DeviceLimiter: limiter,
-		CookieSecure:  "false",
+		return api.Router(defaults.Log, api.Options{
+			Store:         defaults.Store,
+			Auth:          api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
+			Log:           defaults.Log,
+			Login:         auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+			Sessions:      mgr,
+			Devices:       devices,
+			DeviceLimiter: limiter,
+			CookieSecure:  "false",
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st
 }
 
 func postJSON(t *testing.T, srv *httptest.Server, path string, body any, cookie *http.Cookie) (int, map[string]any) {
@@ -73,7 +69,7 @@ func postJSON(t *testing.T, srv *httptest.Server, path string, body any, cookie 
 // The whole handshake over HTTP: start, approve as a human, poll, then use the token.
 func TestDevicePairingEndToEndOverHTTP(t *testing.T) {
 	t.Parallel()
-	srv, _ := deviceServer(t, nil)
+	srv := newDeviceHarness(t, nil).Server
 
 	code, start := postJSON(t, srv, "/v1/auth/device/start", map[string]string{"deviceName": "Shield"}, nil)
 	if code != http.StatusOK {
@@ -129,7 +125,7 @@ func TestDevicePairingEndToEndOverHTTP(t *testing.T) {
 // Approving requires a session — an anonymous caller must not be able to approve its own pairing.
 func TestDeviceApproveRejectsAnonymous(t *testing.T) {
 	t.Parallel()
-	srv, _ := deviceServer(t, nil)
+	srv := newDeviceHarness(t, nil).Server
 	_, start := postJSON(t, srv, "/v1/auth/device/start", map[string]string{"deviceName": "Shield"}, nil)
 	userCode, _ := start["userCode"].(string)
 
@@ -145,7 +141,7 @@ func TestDeviceApproveRejectsAnonymous(t *testing.T) {
 // A wrong code must not be distinguishable from an expired one, and must not grant anything.
 func TestDeviceApproveRejectsUnknownCode(t *testing.T) {
 	t.Parallel()
-	srv, _ := deviceServer(t, nil)
+	srv := newDeviceHarness(t, nil).Server
 	session := login(t, srv, "kid", "pw")
 	code, _ := postJSON(t, srv, "/v1/auth/device/approve", map[string]string{"userCode": "BCDF-GHJK"}, session)
 	if code != http.StatusNotFound {
@@ -157,7 +153,7 @@ func TestDeviceApproveRejectsUnknownCode(t *testing.T) {
 func TestDeviceApproveIsRateLimited(t *testing.T) {
 	t.Parallel()
 	// Two attempts then throttle, so the test does not depend on production's numbers.
-	srv, _ := deviceServer(t, auth.NewRateLimiter(0.01, 2))
+	srv := newDeviceHarness(t, auth.NewRateLimiter(0.01, 2)).Server
 	session := login(t, srv, "kid", "pw")
 
 	seen := map[int]int{}
@@ -173,7 +169,7 @@ func TestDeviceApproveIsRateLimited(t *testing.T) {
 // A device is listed for its owner and revoking it kills the token immediately.
 func TestDeviceListAndRevoke(t *testing.T) {
 	t.Parallel()
-	srv, _ := deviceServer(t, nil)
+	srv := newDeviceHarness(t, nil).Server
 	_, start := postJSON(t, srv, "/v1/auth/device/start", map[string]string{"deviceName": "Shield"}, nil)
 	deviceCode, _ := start["deviceCode"].(string)
 	userCode, _ := start["userCode"].(string)
@@ -232,7 +228,7 @@ func TestDeviceListAndRevoke(t *testing.T) {
 // One user must not be able to revoke another's device.
 func TestDeviceRevokeIsScopedToOwner(t *testing.T) {
 	t.Parallel()
-	srv, _ := deviceServer(t, nil)
+	srv := newDeviceHarness(t, nil).Server
 	_, start := postJSON(t, srv, "/v1/auth/device/start", map[string]string{"deviceName": "Shield"}, nil)
 	deviceCode, _ := start["deviceCode"].(string)
 	userCode, _ := start["userCode"].(string)
@@ -275,7 +271,7 @@ func TestDeviceRevokeIsScopedToOwner(t *testing.T) {
 // is the native client's Disconnect action: server state dies before SecureStore is cleared.
 func TestDeviceCanRevokeItself(t *testing.T) {
 	t.Parallel()
-	srv, _ := deviceServer(t, nil)
+	srv := newDeviceHarness(t, nil).Server
 	_, start := postJSON(t, srv, "/v1/auth/device/start", map[string]string{"deviceName": "Shield"}, nil)
 	deviceCode, _ := start["deviceCode"].(string)
 	userCode, _ := start["userCode"].(string)
@@ -312,7 +308,7 @@ func TestDeviceCanRevokeItself(t *testing.T) {
 // break-glass API token has no paired-device identity either and must fail the same way.
 func TestDeviceSelfRevokeRejectsHumanSession(t *testing.T) {
 	t.Parallel()
-	srv, _ := deviceServer(t, nil)
+	srv := newDeviceHarness(t, nil).Server
 	_, start := postJSON(t, srv, "/v1/auth/device/start", map[string]string{"deviceName": "Shield"}, nil)
 	deviceCode, _ := start["deviceCode"].(string)
 	userCode, _ := start["userCode"].(string)

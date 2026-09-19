@@ -47,7 +47,8 @@ func getPool(t *testing.T, url, token string) (*http.Response, poolBody) {
 // load-bearing: the diagnosis line names `channels[0]`, so a reshuffle here tells the operator
 // to fix a channel that is fine.
 func TestFillerPool_RendersCountsAndChannelsInOrder(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.pool = filler.PoolReport{
 		Clips: 120, BreakBody: 90, Eligible: 61, Untagged: 14,
 		Channels: []filler.ChannelCoverage{
@@ -81,7 +82,8 @@ func TestFillerPool_RendersCountsAndChannelsInOrder(t *testing.T) {
 // state the strip's "Propose a pull" button exists for. The array must be `[]`, never `null`,
 // or every client has to guard before iterating.
 func TestFillerPool_EmptyChannelsIsAnArrayNotNull(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.pool = filler.PoolReport{Clips: 0}
 
 	res, err := http.DefaultClient.Do(mustGet(t, srv.URL+"/v1/filler/pool", memberToken))

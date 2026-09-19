@@ -13,7 +13,8 @@ import (
 )
 
 func TestFillerExactClipSourceProvenance(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	now := time.Now().UTC()
 	putClip(t, st, filler.Clip{Hash: "source-reel", Path: "reel.mp4", Name: "Source recording", Kind: filler.Commercial, IsComposite: true})
