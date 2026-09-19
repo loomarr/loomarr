@@ -17,8 +17,7 @@ import (
 // harnesses while their common lifecycle is migrated behind apiHarness. Every
 // entry needs a route-family rationale, and stale entries fail the test.
 var testServerConstructors = map[string]string{
-	"proposaljourneys_test.go:proposalJourneyServer": "proposal journeys",
-	"search_test.go:newConfiguredSearchHandler":      "search",
+	"search_test.go:newConfiguredSearchHandler": "search",
 }
 
 func TestAPITestServerConstructorsStayClassified(t *testing.T) {
