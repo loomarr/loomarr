@@ -151,7 +151,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 		if err != nil || !claimed {
 			t.Fatalf("seed check claim for %s = %v, %v", id, claimed, err)
 		}
-		if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, lastChecked); err != nil {
+		if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, filler.SourceCheckCompletion{CheckedAt: lastChecked}); err != nil {
 			t.Fatal(err)
 		}
 	}

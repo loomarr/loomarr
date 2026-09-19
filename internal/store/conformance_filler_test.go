@@ -2726,10 +2726,10 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if claimed, err := s.ClaimFillerSourceCheck(ctx, "src-1", time.Time{}, claimAt, leaseUntil); err != nil || claimed {
 		t.Fatalf("overlapping source check claim = %v, %v, want false/nil", claimed, err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil.Add(time.Second), checked); !errors.Is(err, filler.ErrSourceCheckClaimLost) {
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil.Add(time.Second), filler.SourceCheckCompletion{CheckedAt: checked}); !errors.Is(err, filler.ErrSourceCheckClaimLost) {
 		t.Fatalf("stale source check completion = %v, want claim lost", err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil, checked); err != nil {
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil, filler.SourceCheckCompletion{CheckedAt: checked}); err != nil {
 		t.Fatal(err)
 	}
 	if !src1(t, s).LastCheckedAt.Equal(checked) {
@@ -2760,7 +2760,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("retry source check claim = %v, %v", claimed, err)
 	}
 	checked = retryAt.Add(time.Minute)
-	if err := s.CompleteFillerSourceCheck(ctx, "src-1", retryLease, checked); err != nil {
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", retryLease, filler.SourceCheckCompletion{CheckedAt: checked}); err != nil {
 		t.Fatal(err)
 	}
 	recoveredSource := src1(t, s)
@@ -2865,7 +2865,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	// Restart durability is part of the scheduler contract, not merely a same-process read.
 	// Persist all three timing facts plus a source override, close the production store, reopen
 	// the same database, and prove the next process sees the exact state on both SQL backends.
-	restartSource := NewFillerSource("restart-policy", "archive", "restart_policy", "Restart policy", created)
+	restartSource := NewFillerSource("restart-policy", "youtube", "https://www.youtube.com/@restart/videos", "Restart policy", created)
 	if err := s.UpsertFillerSource(ctx, restartSource); err != nil {
 		t.Fatal(err)
 	}
@@ -2879,8 +2879,39 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !claimed {
 		t.Fatalf("restart source success claim = %v, %v", claimed, err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, restartChecked); err != nil {
+	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, filler.SourceCheckCompletion{
+		CheckedAt: restartChecked,
+		Checkpoint: filler.SourceScanCheckpoint{
+			Cursor: "video-10", PendingWatermark: "video-1", Watermark: "prior-video",
+		},
+		ReplaceOutcomes: true,
+		Outcomes: filler.SourceCheckSummary{
+			filler.SourceOutcomeQueued:      3,
+			filler.SourceOutcomeTooLong:     12,
+			filler.SourceOutcomeUnavailable: 2,
+		},
+	}); err != nil {
 		t.Fatal(err)
+	}
+	continuedAt := restartChecked.Add(time.Minute)
+	continuedLease := continuedAt.Add(30 * time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, restartSource.ID, restartChecked, continuedAt, continuedLease)
+	if err != nil || !claimed {
+		t.Fatalf("continuation source check claim = %v, %v", claimed, err)
+	}
+	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, continuedLease, filler.SourceCheckCompletion{
+		CheckedAt:  continuedAt,
+		Checkpoint: filler.SourceScanCheckpoint{Watermark: "video-1"},
+		Outcomes:   filler.SourceCheckSummary{filler.SourceOutcomeTooShort: 2},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	restartChecked = continuedAt
+	continuedSource, _ := findSource(t, s, restartSource.ID)
+	if continuedSource.LastCheckSummary[filler.SourceOutcomeQueued] != 3 ||
+		continuedSource.LastCheckSummary[filler.SourceOutcomeTooShort] != 2 ||
+		continuedSource.ScanCheckpoint != (filler.SourceScanCheckpoint{Watermark: "video-1"}) {
+		t.Fatalf("continued source summary/checkpoint = %+v / %+v", continuedSource.LastCheckSummary, continuedSource.ScanCheckpoint)
 	}
 	failureAt := restartChecked.Add(time.Hour)
 	failureLease := failureAt.Add(30 * time.Minute)
@@ -2902,9 +2933,33 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if restarted.FetchEverySeconds == nil || *restarted.FetchEverySeconds != restartEvery ||
 		restarted.FetchMaxPerRun == nil || *restarted.FetchMaxPerRun != restartMax ||
 		!restarted.LastCheckedAt.Equal(restartChecked) || restarted.CheckFailureCount != 1 ||
-		!restarted.CheckRetryAt.Equal(restartRetry) || !restarted.CheckLeaseUntil.IsZero() {
+		!restarted.CheckRetryAt.Equal(restartRetry) || !restarted.CheckLeaseUntil.IsZero() ||
+		restarted.ScanCheckpoint != (filler.SourceScanCheckpoint{Watermark: "video-1"}) ||
+		restarted.LastCheckSummary[filler.SourceOutcomeQueued] != 3 ||
+		restarted.LastCheckSummary[filler.SourceOutcomeTooShort] != 2 ||
+		restarted.LastCheckSummary[filler.SourceOutcomeTooLong] != 12 ||
+		restarted.LastCheckSummary[filler.SourceOutcomeUnavailable] != 2 {
 		_ = reopened.Close()
 		t.Fatalf("source policy/check state after restart = %+v", restarted)
+	}
+	newSweepAt, newSweepLease := restartRetry, restartRetry.Add(30*time.Minute)
+	claimed, err = reopened.ClaimFillerSourceCheck(ctx, restartSource.ID, restartChecked, newSweepAt, newSweepLease)
+	if err != nil || !claimed {
+		_ = reopened.Close()
+		t.Fatalf("new sweep claim after restart = %v, %v", claimed, err)
+	}
+	if err := reopened.CompleteFillerSourceCheck(ctx, restartSource.ID, newSweepLease, filler.SourceCheckCompletion{
+		CheckedAt: newSweepAt, Checkpoint: filler.SourceScanCheckpoint{Watermark: "new-video"},
+		ReplaceOutcomes: true,
+		Outcomes:        filler.SourceCheckSummary{filler.SourceOutcomeLive: 1},
+	}); err != nil {
+		_ = reopened.Close()
+		t.Fatal(err)
+	}
+	replaced, _ := findSource(t, reopened, restartSource.ID)
+	if len(replaced.LastCheckSummary) != 1 || replaced.LastCheckSummary[filler.SourceOutcomeLive] != 1 {
+		_ = reopened.Close()
+		t.Fatalf("new sweep outcomes = %+v, want only live:1", replaced.LastCheckSummary)
 	}
 	if err := reopened.Close(); err != nil {
 		t.Fatal(err)

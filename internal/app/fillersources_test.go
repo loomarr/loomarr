@@ -443,14 +443,16 @@ case "$*" in
   *--no-config*--flat-playlist*--skip-download*--dump-single-json*--playlist-end\ 4*https://www.youtube.com/@retroads/videos) ;;
   *) exit 9 ;;
 esac
-printf '%s\n' '{"entries":[{"id":"one","webpage_url":"https://www.youtube.com/watch?v=one"}]}'
+printf '%s\n' '{"entries":[{"id":"one","webpage_url":"https://www.youtube.com/watch?v=one","duration":31.5,"availability":"public","live_status":"not_live"}]}'
 `)
 	items, _, err := (registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(ytdlp)}).Enumerate(
 		t.Context(), filler.FetchSource{Kind: "youtube", URI: "https://www.youtube.com/@retroads/videos"}, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].ID != "one" || items[0].URL != "https://www.youtube.com/watch?v=one" {
+	if len(items) != 1 || items[0].ID != "one" || items[0].URL != "https://www.youtube.com/watch?v=one" ||
+		!items[0].DurationKnown || items[0].DurationMS != 31_500 ||
+		items[0].Availability != "public" || items[0].LiveStatus != "not_live" {
 		t.Fatalf("items = %+v, want bounded YouTube result", items)
 	}
 }

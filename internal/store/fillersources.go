@@ -55,7 +55,10 @@ type FillerSource struct {
 	CheckFailureCount int
 	CheckRetryAt      time.Time
 	CheckLeaseUntil   time.Time
-	CreatedAt         time.Time
+	// ScanCheckpoint and LastCheckSummary are the restart-safe automatic-acquisition read model.
+	ScanCheckpoint   filler.SourceScanCheckpoint
+	LastCheckSummary filler.SourceCheckSummary
+	CreatedAt        time.Time
 	// Enabled is the Sources tab's on/off switch (V35). A disabled source is not scanned, not
 	// searched and not downloaded from.
 	//
@@ -206,6 +209,7 @@ func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSou
 const fillerSourceSelect = `SELECT s.id, s.kind, s.uri, s.label, s.license, s.last_fetched_at, s.last_checked_at,
 	s.check_failure_count, s.check_retry_at, s.check_lease_until, s.created_at, s.enabled,
 	s.fetch_every_seconds, s.fetch_max_per_run, s.country, s.market,
+	s.scan_cursor, s.scan_watermark, s.scan_pending_watermark,
 	CASE WHEN s.kind IN ('archive', 'youtube') THEN COALESCE(p.enabled, FALSE) ELSE TRUE END
 	FROM filler_sources s LEFT JOIN filler_providers p ON p.kind = s.kind`
 
@@ -237,7 +241,9 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
 			&fetchedAt, &checkedAt, &src.CheckFailureCount, &retryAt, &leaseUntil,
 			&createdAt, &src.Enabled, &every, &perRun,
-			&src.Geography.Country, &src.Geography.Market, &src.ProviderEnabled); err != nil {
+			&src.Geography.Country, &src.Geography.Market,
+			&src.ScanCheckpoint.Cursor, &src.ScanCheckpoint.Watermark,
+			&src.ScanCheckpoint.PendingWatermark, &src.ProviderEnabled); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
@@ -255,7 +261,47 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 		}
 		out = append(out, src)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close filler source rows: %w", err)
+	}
+	if err := s.loadFillerSourceCheckSummaries(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *sqlStore) loadFillerSourceCheckSummaries(ctx context.Context, sources []FillerSource) error {
+	if len(sources) == 0 {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT source_id, disposition, item_count
+		FROM filler_source_check_outcomes`)
+	if err != nil {
+		return fmt.Errorf("list filler source check outcomes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	byID := make(map[string]*FillerSource, len(sources))
+	for i := range sources {
+		byID[sources[i].ID] = &sources[i]
+	}
+	for rows.Next() {
+		var id string
+		var disposition filler.SourceOutcome
+		var count int
+		if err := rows.Scan(&id, &disposition, &count); err != nil {
+			return fmt.Errorf("scan filler source check outcome: %w", err)
+		}
+		if source := byID[id]; source != nil {
+			if source.LastCheckSummary == nil {
+				source.LastCheckSummary = filler.SourceCheckSummary{}
+			}
+			source.LastCheckSummary[disposition] = count
+		}
+	}
+	return rows.Err()
 }
 
 // ListFillerProviders returns the two built-in remote providers in a stable UI order.
@@ -447,11 +493,19 @@ func (s *sqlStore) ClaimFillerSourceCheck(
 // CompleteFillerSourceCheck commits a successful check only for the lease that performed it.
 // The guarded completion prevents a timed-out stale worker from clearing a newer worker's claim.
 func (s *sqlStore) CompleteFillerSourceCheck(
-	ctx context.Context, id string, leaseUntil, checkedAt time.Time,
+	ctx context.Context, id string, leaseUntil time.Time, completion filler.SourceCheckCompletion,
 ) error {
-	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_sources
-		SET last_checked_at = ?, check_failure_count = 0, check_retry_at = 0, check_lease_until = 0
-		WHERE id = ? AND check_lease_until = ?`), epoch(checkedAt), id, epoch(leaseUntil))
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin filler source check completion %s: %w", id, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_sources
+		SET last_checked_at = ?, check_failure_count = 0, check_retry_at = 0, check_lease_until = 0,
+			scan_cursor = ?, scan_watermark = ?, scan_pending_watermark = ?
+		WHERE id = ? AND check_lease_until = ?`), epoch(completion.CheckedAt),
+		completion.Checkpoint.Cursor, completion.Checkpoint.Watermark,
+		completion.Checkpoint.PendingWatermark, id, epoch(leaseUntil))
 	if err != nil {
 		return fmt.Errorf("complete filler source check %s: %w", id, err)
 	}
@@ -461,6 +515,26 @@ func (s *sqlStore) CompleteFillerSourceCheck(
 	}
 	if n != 1 {
 		return filler.ErrSourceCheckClaimLost
+	}
+	if completion.ReplaceOutcomes {
+		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM filler_source_check_outcomes WHERE source_id = ?`), id); err != nil {
+			return fmt.Errorf("replace filler source check outcomes %s: %w", id, err)
+		}
+	}
+	for disposition, count := range completion.Outcomes {
+		if count <= 0 {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_source_check_outcomes
+			(source_id, disposition, item_count) VALUES (?, ?, ?)
+			ON CONFLICT(source_id, disposition) DO UPDATE SET
+			item_count = filler_source_check_outcomes.item_count + excluded.item_count`),
+			id, disposition, count); err != nil {
+			return fmt.Errorf("record filler source check outcome %s/%s: %w", id, disposition, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit filler source check completion %s: %w", id, err)
 	}
 	return nil
 }

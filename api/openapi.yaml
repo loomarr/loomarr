@@ -2970,6 +2970,8 @@ components:
           description: Effective clip limit for this selected source
           format: int64
           type: integer
+        outcomes:
+          $ref: "#/components/schemas/FillerSourceCheckSummaryDTO"
         pruned:
           format: int64
           type: integer
@@ -2992,6 +2994,7 @@ components:
           description: Capacity ceiling that stopped the pass
           enum:
             - catalog
+            - provider
           type: string
         total:
           format: int64
@@ -3784,6 +3787,47 @@ components:
             type: string
           type: array
       type: object
+    FillerSourceCheckSummaryDTO:
+      additionalProperties: false
+      properties:
+        alreadyKnown:
+          format: int64
+          type: integer
+        live:
+          format: int64
+          type: integer
+        metadataIncomplete:
+          format: int64
+          type: integer
+        private:
+          format: int64
+          type: integer
+        queued:
+          format: int64
+          type: integer
+        tooLong:
+          format: int64
+          type: integer
+        tooShort:
+          format: int64
+          type: integer
+        unavailable:
+          format: int64
+          type: integer
+        upcoming:
+          format: int64
+          type: integer
+      required:
+        - queued
+        - alreadyKnown
+        - tooShort
+        - tooLong
+        - live
+        - upcoming
+        - private
+        - unavailable
+        - metadataIncomplete
+      type: object
     FillerSourceDTO:
       additionalProperties: false
       properties:
@@ -3831,6 +3875,8 @@ components:
             - archive
             - youtube
           type: string
+        lastCheck:
+          $ref: "#/components/schemas/FillerSourceCheckSummaryDTO"
         lastCheckedAt:
           description: RFC3339; absent if never checked
           type: string

@@ -686,7 +686,7 @@ type FillerSourceStore interface {
 	// Claim/complete/fail are the durable source-check lease and retry boundary shared by the
 	// scheduler and the manual Look for new clips command.
 	ClaimFillerSourceCheck(ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time) (bool, error)
-	CompleteFillerSourceCheck(ctx context.Context, id string, leaseUntil, checkedAt time.Time) error
+	CompleteFillerSourceCheck(ctx context.Context, id string, leaseUntil time.Time, completion filler.SourceCheckCompletion) error
 	FailFillerSourceCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error
 	// SetFillerSourceFetchPolicy writes one source's per-source fetch overrides (§10 V38c).
 	//

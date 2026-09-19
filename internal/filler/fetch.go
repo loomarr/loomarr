@@ -32,12 +32,19 @@ type FetchLimits struct {
 	// MaxPerRun caps items ONE source may pull per poll. ⚠ The bound that stops "add a source"
 	// meaning "download a collection of thousands tonight".
 	MaxPerRun func() int
+	// MaxProviderPerRun caps the combined work of all Sources for one provider in one fetch
+	// pass. It is an internal protection rather than another operator-facing setting.
+	MaxProviderPerRun func() int
 	// MaxCatalogClips stops auto-fetch once the catalog reaches this size.
 	//
 	// ⚠ Bounds the UNATTENDED path only. An admin queueing a clip or approving a pull is a
 	// deliberate act that this must not block: a ceiling on what happens while nobody is looking
 	// is not a ceiling on what someone chooses to do.
 	MaxCatalogClips func() int
+	// MinDuration and MaxDuration are the existing filler envelope. They apply to automatic
+	// YouTube selection, whose flat listing can supply an honest known duration before download.
+	MinDuration func() time.Duration
+	MaxDuration func() time.Duration
 }
 
 // FetchSource is one pollable source.
@@ -64,9 +71,53 @@ type FetchSource struct {
 	// MaxPerRun is this source's resolved per-run cap — its override, or the global default.
 	// Zero means "use the global", which the caller has already applied.
 	MaxPerRun int
+	// ScanCheckpoint is durable progress through one bounded newest-first YouTube sweep.
+	// Archive ignores it because its collection enumeration keeps the existing tolerant path.
+	ScanCheckpoint SourceScanCheckpoint
+}
+
+// SourceScanCheckpoint resumes a bounded provider listing by stable item identity. Cursor is the
+// last item examined in the in-progress sweep; PendingWatermark is the newest item seen when that
+// sweep began; Watermark is the newest item committed by the prior completed sweep.
+type SourceScanCheckpoint struct {
+	Cursor           string
+	Watermark        string
+	PendingWatermark string
+}
+
+// SourceOutcome is a durable, user-explainable result of considering one discovered source item.
+// Keep this set closed with migration 00117; extractor-specific errors belong in diagnostics.
+type SourceOutcome string
+
+const (
+	SourceOutcomeQueued             SourceOutcome = "queued"
+	SourceOutcomeAlreadyKnown       SourceOutcome = "already_known"
+	SourceOutcomeTooShort           SourceOutcome = "too_short"
+	SourceOutcomeTooLong            SourceOutcome = "too_long"
+	SourceOutcomeLive               SourceOutcome = "live"
+	SourceOutcomeUpcoming           SourceOutcome = "upcoming"
+	SourceOutcomePrivate            SourceOutcome = "private"
+	SourceOutcomeUnavailable        SourceOutcome = "unavailable"
+	SourceOutcomeMetadataIncomplete SourceOutcome = "metadata_incomplete"
+)
+
+// SourceCheckSummary aggregates item outcomes for the current or most recently completed sweep.
+type SourceCheckSummary map[SourceOutcome]int
+
+// SourceCheckCompletion is committed atomically with lease release. ReplaceOutcomes begins a new
+// sweep; otherwise Outcomes extend the summary retained by an in-progress cursor.
+type SourceCheckCompletion struct {
+	CheckedAt       time.Time
+	Checkpoint      SourceScanCheckpoint
+	Outcomes        SourceCheckSummary
+	ReplaceOutcomes bool
 }
 
 const SourceCheckLease = 30 * time.Minute
+
+// YouTubeInitialLookback bounds one newest-first sweep. A cursor can spread that sweep over
+// several per-source checks, but registration never means walking an unbounded channel history.
+const YouTubeInitialLookback = 100
 
 var (
 	ErrSourceCheckInProgress = errors.New("filler: source check already in progress")
@@ -124,7 +175,7 @@ type FetchStore interface {
 	// much already on disk. That is the bug this comment exists to prevent.
 	CatalogPaths(ctx context.Context) ([]string, error)
 	ClaimCheck(ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time) (bool, error)
-	CompleteCheck(ctx context.Context, id string, leaseUntil, checkedAt time.Time) error
+	CompleteCheck(ctx context.Context, id string, leaseUntil time.Time, completion SourceCheckCompletion) error
 	FailCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error
 	// MarkFetched stamps a source that successfully queued at least one item.
 	//
@@ -151,10 +202,13 @@ type DiscoveredRef struct {
 	Title   string
 	License string
 	// ObservedYear is provider metadata used only to rank acquisition. It is not grounded clip era.
-	ObservedYear int
-	PublishedAt  string
-	DurationMS   int
-	Height       int
+	ObservedYear  int
+	PublishedAt   string
+	DurationMS    int
+	DurationKnown bool
+	Height        int
+	Availability  string
+	LiveStatus    string
 }
 
 // FetchIngestor hands URLs to the ordinary ingest path.
@@ -203,9 +257,11 @@ type FetchResult struct {
 	Queued        int
 	// Skipped counts items already in the catalog.
 	Skipped int
+	// Outcomes is the closed explanation of the items considered by this pass.
+	Outcomes SourceCheckSummary
 	// MaxPerCheck is the selected source's effective cap on a manual run.
 	MaxPerCheck int
-	// StoppedBy names the limit that ended the pass early ("catalog" or ""). ⚠ Reported
+	// StoppedBy names the limit that ended the pass early ("catalog", "provider", or ""). ⚠ Reported
 	// rather than logged-and-forgotten: an operator whose catalog stopped growing must be able
 	// to see which ceiling stopped it (§10).
 	StoppedBy string
@@ -267,6 +323,10 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 	if globalPerRun < 1 {
 		globalPerRun = 1
 	}
+	providerLimit := 50
+	if f.limits.MaxProviderPerRun != nil && f.limits.MaxProviderPerRun() > 0 {
+		providerLimit = f.limits.MaxProviderPerRun()
+	}
 	if sourceID != "" {
 		res.MaxPerCheck = globalPerRun
 		found := false
@@ -282,6 +342,9 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		}
 		if !found {
 			return res, ErrFetchSourceNotFound
+		}
+		if res.MaxPerCheck > providerLimit {
+			res.MaxPerCheck = providerLimit
 		}
 	}
 
@@ -337,11 +400,16 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		f.logStop("catalog", len(have), max)
 		return res, nil
 	}
+	providerQueued := map[string]int{}
 	for _, src := range due {
 		select {
 		case <-ctx.Done():
 			return res, ctx.Err()
 		default:
+		}
+		if providerQueued[src.Kind] >= providerLimit {
+			res.StoppedBy = "provider"
+			continue
 		}
 		// Property 1: only enabled sources, and only ones with somewhere to fetch FROM. The
 		// config-backed folder/library rows have no URI and are scanned, not fetched.
@@ -355,6 +423,11 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		perRun := src.MaxPerRun
 		if perRun < 1 {
 			perRun = globalPerRun
+		}
+		remaining := providerLimit - providerQueued[src.Kind]
+		providerBound := perRun > remaining
+		if providerBound {
+			perRun = remaining
 		}
 		checkAt := f.now()
 		leaseUntil := checkAt.Add(SourceCheckLease)
@@ -373,7 +446,11 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		// Over-list so that a page full of already-held items still yields new ones. Without
 		// this a source whose first N items are all catalogued would report "nothing new"
 		// forever while the rest of the collection sat unfetched.
-		items, _, derr := f.enum.Enumerate(ctx, src, perRun*4)
+		enumerationLimit := perRun * 4
+		if src.Kind == "youtube" {
+			enumerationLimit = YouTubeInitialLookback
+		}
+		items, _, derr := f.enum.Enumerate(ctx, src, enumerationLimit)
 		if derr != nil {
 			retryAt := f.now().Add(SourceCheckRetryDelay(src.CheckFailureCount + 1))
 			if failErr := f.store.FailCheck(ctx, src.ID, leaseUntil, retryAt); failErr != nil {
@@ -385,9 +462,23 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			f.log.Warn("filler auto-fetch: source could not be listed", "source", src.ID, "err", derr)
 			continue
 		}
+		outcomes := SourceCheckSummary{}
+		checkpoint := src.ScanCheckpoint
+		replaceOutcomes := true
 		completeCheck := func() error {
-			if completeErr := f.store.CompleteCheck(ctx, src.ID, leaseUntil, f.now()); completeErr != nil {
+			if completeErr := f.store.CompleteCheck(ctx, src.ID, leaseUntil, SourceCheckCompletion{
+				CheckedAt: f.now(), Checkpoint: checkpoint,
+				Outcomes: outcomes, ReplaceOutcomes: replaceOutcomes,
+			}); completeErr != nil {
 				return fmt.Errorf("complete source %q check: %w", src.ID, completeErr)
+			}
+			if len(outcomes) > 0 {
+				if res.Outcomes == nil {
+					res.Outcomes = SourceCheckSummary{}
+				}
+				for outcome, count := range outcomes {
+					res.Outcomes[outcome] += count
+				}
 			}
 			return nil
 		}
@@ -397,14 +488,72 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		// representation quality, era-observation diversity, and stable identity now choose the
 		// bounded prefix instead of whichever item the provider returned first.
 		candidates := make([]AcquisitionCandidate, 0, len(items))
-		for _, item := range items {
+		consider := items
+		if src.Kind == "youtube" {
+			start := 0
+			replaceOutcomes = checkpoint.Cursor == ""
+			if checkpoint.Cursor != "" {
+				found := false
+				for i, item := range items {
+					if item.ID == checkpoint.Cursor {
+						start, found = i+1, true
+						break
+					}
+				}
+				if !found {
+					// Provider lists can shift or remove an item. Restart the bounded sweep and rely
+					// on exact durable identity dedupe; guessing an offset could skip unseen work.
+					checkpoint.Cursor = ""
+					checkpoint.PendingWatermark = ""
+					replaceOutcomes = true
+				}
+			}
+			if start < len(items) && checkpoint.PendingWatermark == "" {
+				checkpoint.PendingWatermark = items[0].ID
+			}
+			consider = items[start:]
+		}
+		lastExamined := ""
+		reachedYouTubeCap := false
+		for i, item := range consider {
+			if src.Kind == "youtube" && checkpoint.Watermark != "" && item.ID == checkpoint.Watermark {
+				break
+			}
+			if item.ID != "" {
+				lastExamined = item.ID
+			}
+			if outcome, rejected := f.automaticRejection(src, item); rejected {
+				outcomes[outcome]++
+				continue
+			}
+			identity := RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID}
+			if src.Kind == "youtube" && inPass[identity.Key()] != "" {
+				res.Skipped++
+				outcomes[SourceOutcomeAlreadyKnown]++
+				continue
+			}
 			candidate := AcquisitionCandidate{
-				Identity: RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID},
+				Identity: identity,
 				URL:      item.URL, Title: item.Title, License: item.License,
 				ObservedYear: item.ObservedYear, PublishedAt: item.PublishedAt,
 				DurationMS: item.DurationMS, Height: item.Height,
 			}
 			candidates = append(candidates, candidate)
+			if src.Kind == "youtube" && len(candidates) == perRun {
+				reachedYouTubeCap = i < len(consider)-1
+				break
+			}
+		}
+		if src.Kind == "youtube" {
+			if reachedYouTubeCap {
+				checkpoint.Cursor = lastExamined
+			} else {
+				if checkpoint.PendingWatermark != "" {
+					checkpoint.Watermark = checkpoint.PendingWatermark
+				}
+				checkpoint.Cursor = ""
+				checkpoint.PendingWatermark = ""
+			}
 		}
 		selection, serr := PlanAcquisition(AcquisitionIntent{
 			Count:         perRun,
@@ -423,8 +572,10 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		var urls []string
 		selectedItems := make([]DiscoveredRef, 0, len(selection.Selected))
 		for _, decision := range selection.Rejected {
-			if decision.Disposition == CandidateAlreadyCatalogued {
+			switch decision.Disposition {
+			case CandidateAlreadyCatalogued, CandidateAlreadyQueued, CandidatePreviouslyDeclined:
 				res.Skipped++
+				outcomes[SourceOutcomeAlreadyKnown]++
 			}
 		}
 		for _, decision := range selection.Selected {
@@ -449,8 +600,9 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			_, ierr = f.ingest.IngestSource(ctx, src.ID, src.Kind, urls)
 		}
 		if ierr != nil {
-			if completeErr := completeCheck(); completeErr != nil {
-				return res, completeErr
+			retryAt := f.now().Add(SourceCheckRetryDelay(src.CheckFailureCount + 1))
+			if failErr := f.store.FailCheck(ctx, src.ID, leaseUntil, retryAt); failErr != nil {
+				return res, fmt.Errorf("record source %q queue failure: %w", src.ID, failErr)
 			}
 			if !scheduled {
 				return res, fmt.Errorf("queue source %q: %w", src.ID, ierr)
@@ -458,12 +610,14 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			f.log.Warn("filler auto-fetch: queueing failed", "source", src.ID, "err", ierr)
 			continue
 		}
+		outcomes[SourceOutcomeQueued] += len(urls)
 		// Only a successful queue becomes in-pass state. A failed queue must leave an exact
 		// identity eligible for a healthy retry later in this pass.
 		for _, decision := range selection.Selected {
 			inPass[decision.Candidate.Identity.Key()] = RemoteQueued
 		}
 		res.Queued += len(urls)
+		providerQueued[src.Kind] += len(urls)
 		// ⚠ Stamped only AFTER a successful queue, and only when something was actually queued —
 		// a source whose whole page was already catalogued `continue`s above without touching
 		// this. "Last fetched" must mean "last brought something in", or a source that has been
@@ -477,12 +631,54 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		if completeErr := completeCheck(); completeErr != nil {
 			return res, completeErr
 		}
+		if providerBound && providerQueued[src.Kind] >= providerLimit && checkpoint.Cursor != "" {
+			res.StoppedBy = "provider"
+		}
 	}
 
 	if res.Queued > 0 {
 		f.log.Info("filler auto-fetch", "sources", res.SourcesPolled, "queued", res.Queued, "skipped", res.Skipped)
 	}
+	if res.StoppedBy == "provider" && f.log != nil {
+		f.log.Info("filler auto-fetch paused at the provider pass limit",
+			"max_per_provider", providerLimit,
+			"note", "remaining due sources will be considered on the next scheduler pass")
+	}
 	return res, nil
+}
+
+func (f *Fetcher) automaticRejection(source FetchSource, item DiscoveredRef) (SourceOutcome, bool) {
+	if source.Kind != "youtube" {
+		return "", false
+	}
+	if item.ID == "" || item.URL == "" {
+		return SourceOutcomeMetadataIncomplete, true
+	}
+	switch item.Availability {
+	case "private":
+		return SourceOutcomePrivate, true
+	case "needs_auth", "premium_only", "subscriber_only", "unavailable":
+		return SourceOutcomeUnavailable, true
+	}
+	switch item.LiveStatus {
+	case "is_live", "post_live":
+		return SourceOutcomeLive, true
+	case "is_upcoming":
+		return SourceOutcomeUpcoming, true
+	}
+	if !item.DurationKnown {
+		return SourceOutcomeMetadataIncomplete, true
+	}
+	if f.limits.MinDuration != nil && time.Duration(item.DurationMS)*time.Millisecond < f.limits.MinDuration() {
+		return SourceOutcomeTooShort, true
+	}
+	if f.limits.MaxDuration != nil {
+		max := f.limits.MaxDuration()
+		if max > 0 && time.Duration(item.DurationMS)*time.Millisecond > max {
+			return SourceOutcomeTooLong, true
+		}
+	}
+	return "", false
 }
 
 // logStop reports a limit that ended a pass. ⚠ At Info, not Debug: this is the answer to "why

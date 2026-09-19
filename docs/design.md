@@ -4606,6 +4606,33 @@ all fail toward doing less:
 | `filler.fetch.max_catalog_clips` | `2000` | A **ceiling on the whole catalog**. At the limit, auto-fetch stops; manual queueing and approved pulls still work |
 | `filler.storage.library_budget_gb` | `0` (automatic) | A soft allowance for Loomarr-managed filler media. Automatic is `min(10% of filesystem capacity, 20 GiB)`; a positive value overrides that allowance but never the hard host reserve below |
 
+These user-facing limits compose with two internal provider protections. One fetch pass may
+queue at most **50 items from any one provider**, even when many enabled Sources for that provider
+are due. The limit is deliberately not another setting: it keeps one upstream service and one
+background pass bounded while the per-Source control remains the useful household choice. Sources
+left due by this aggregate limit are considered by the next scheduler pass; a provider cannot turn
+the limit into starvation by repeatedly restarting from its newest items.
+
+YouTube enumeration is newest-first and checkpointed. A newly registered Source examines at most
+the newest **100 entries** before yielding, and each successful check durably records both the last
+stable item identity it examined and the newest identity observed at the start of that sweep. A
+later check finds that item in the bounded listing and resumes after it; entries inserted above it
+are re-observed and removed by exact identity deduplication rather than making a numeric offset
+ambiguous. When it reaches the prior newest-item watermark, provider
+exhaustion, or the 100-entry lookback, it commits the new watermark and clears the in-progress
+cursor for the next refresh. A missing cursor safely restarts the bounded sweep and relies on durable
+provider/source/item deduplication rather than guessing where to continue. A failed listing or queue
+operation does not advance the checkpoint.
+
+Automatic YouTube acquisition rejects entries before download when their duration is unknown,
+shorter than `filler.min_duration`, longer than `filler.autosplit.max_duration`, or when yt-dlp
+identifies them as live, upcoming, private, unavailable, or otherwise too incomplete to fetch.
+Archive.org keeps its existing metadata-tolerant behavior because its bounded collection listing
+does not reliably expose the same fields. Successful Source checks persist a closed summary of
+queued, already-known, too-short, too-long, live, upcoming, private, unavailable, and incomplete
+outcomes. The ordinary UI may explain those counts in plain language; extractor logs, cursor
+coordinates, and provider implementation details remain diagnostics rather than controls.
+
 Incoming shows Ready clips only as recent activity. `filler.incoming.ready_window` defaults to
 `24h`, hot-applies on the next Incoming read, and accepts one hour through 30 days inclusive. It
 uses the Ready pipeline row's canonical update time for the same predicate that drives rows, totals,
@@ -8998,9 +9025,10 @@ Filler → Manage presents the global policy as **Automatic downloads**. The com
 Never, Every 6 hours, Every 12 hours, Daily, Weekly, and Custom; Custom reveals the duration editor.
 The per-source count is visible beside it rather than hidden as an expert-only limit. The section
 states the bounded consequence using the current number of enabled, configured remote Sources — for
-example, “3 sources means at most 30 new clips per check.” Catalog/storage protection remains under
-Advanced and is explained as a household-wide backstop. Environment-pinned values stay visibly
-locked through the ordinary settings contract.
+example, “3 sources means at most 30 new clips per check,” while never promising more than the
+internal 50-item provider-pass ceiling. Catalog/storage protection remains under Advanced and is
+explained as a household-wide backstop. Environment-pinned values stay visibly locked through the
+ordinary settings contract.
 
 ### What the Sources tab shows (V38c — the mock, read properly)
 

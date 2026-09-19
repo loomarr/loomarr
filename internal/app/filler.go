@@ -449,6 +449,7 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 			CheckRetryAt:      s.CheckRetryAt,
 			CheckLeaseUntil:   s.CheckLeaseUntil,
 			MaxPerRun:         s.MaxPerRun(0),
+			ScanCheckpoint:    s.ScanCheckpoint,
 		})
 	}
 	return out, nil
@@ -485,8 +486,10 @@ func (a fetchStoreAdapter) ClaimCheck(
 	return a.st.ClaimFillerSourceCheck(ctx, id, observedLastCheck, now, leaseUntil)
 }
 
-func (a fetchStoreAdapter) CompleteCheck(ctx context.Context, id string, leaseUntil, checkedAt time.Time) error {
-	return a.st.CompleteFillerSourceCheck(ctx, id, leaseUntil, checkedAt)
+func (a fetchStoreAdapter) CompleteCheck(
+	ctx context.Context, id string, leaseUntil time.Time, completion filler.SourceCheckCompletion,
+) error {
+	return a.st.CompleteFillerSourceCheck(ctx, id, leaseUntil, completion)
 }
 
 func (a fetchStoreAdapter) FailCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error {
@@ -526,7 +529,8 @@ func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler
 			out[i] = filler.DiscoveredRef{
 				ID: item.ID, URL: item.URL, Title: item.Title, License: item.License,
 				ObservedYear: item.ReleaseYear, PublishedAt: item.PublishedAt,
-				DurationMS: item.DurationMS, Height: item.Height,
+				DurationMS: item.DurationMS, DurationKnown: item.DurationKnown, Height: item.Height,
+				Availability: item.Availability, LiveStatus: item.LiveStatus,
 			}
 		}
 		return out, total, nil

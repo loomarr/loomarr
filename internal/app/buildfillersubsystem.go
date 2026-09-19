@@ -195,8 +195,11 @@ func buildFillerSubsystem(
 		},
 		sourceEnumerator, adapter,
 		filler.FetchLimits{
-			MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
-			MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
+			MaxPerRun:         func() int { return set.intv("filler.fetch.max_per_run") },
+			MaxProviderPerRun: func() int { return 50 },
+			MaxCatalogClips:   func() int { return set.intv("filler.fetch.max_catalog_clips") },
+			MinDuration:       func() time.Duration { return set.dur("filler.min_duration") },
+			MaxDuration:       func() time.Duration { return set.dur("filler.autosplit.max_duration") },
 		}, log,
 	)
 	adapter.autoFetch = autoFetch
