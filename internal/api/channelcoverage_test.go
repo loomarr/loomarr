@@ -45,7 +45,8 @@ func getCoverage(t *testing.T, url, token string) (*http.Response, coverageBody)
 // route renders the rungs verbatim — tightest first, with the level a break would actually
 // resolve at.
 func TestChannelFillerCoverage_RendersTheLadder(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.coverage = filler.CoverageReport{
 		Rungs: []filler.RungCoverage{
 			{Level: filler.MatchExact, Clips: 4},
@@ -86,7 +87,8 @@ func TestChannelFillerCoverage_RendersTheLadder(t *testing.T) {
 // other channel's coverage, which is exactly the class of wrong-but-plausible answer a meter
 // makes hardest to notice.
 func TestChannelFillerCoverage_AsksAboutTheRequestedChannel(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 
 	if res, _ := getCoverage(t, srv.URL+"/v1/channels/ch-1/filler/coverage", memberToken); res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
@@ -100,7 +102,8 @@ func TestChannelFillerCoverage_AsksAboutTheRequestedChannel(t *testing.T) {
 // guard before iterating, and "no rungs" is a real answer (nothing configured), not a missing
 // one.
 func TestChannelFillerCoverage_EmptyRungsAreAnArrayNotNull(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.coverage = filler.CoverageReport{Level: filler.MatchBumperCard}
 
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/channels/ch-1/filler/coverage", nil)
@@ -129,7 +132,8 @@ func TestChannelFillerCoverage_EmptyRungsAreAnArrayNotNull(t *testing.T) {
 }
 
 func TestChannelFillerCoverage_UnknownChannelIs404(t *testing.T) {
-	srv, _, _ := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv := harness.Server
 
 	res, _ := getCoverage(t, srv.URL+"/v1/channels/nope/filler/coverage", memberToken)
 	if res.StatusCode != http.StatusNotFound {
@@ -139,7 +143,8 @@ func TestChannelFillerCoverage_UnknownChannelIs404(t *testing.T) {
 
 // Read-only, so member-visible — the same rule as the pod preview it describes.
 func TestChannelFillerCoverage_RequiresAuth(t *testing.T) {
-	srv, _, _ := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv := harness.Server
 
 	anon, _ := getCoverage(t, srv.URL+"/v1/channels/ch-1/filler/coverage", "")
 	if anon.StatusCode == http.StatusOK {

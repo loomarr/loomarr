@@ -25,7 +25,6 @@ var testServerConstructors = map[string]string{
 	"icons_test.go:newIconsServer":                   "icons",
 	"icons_test.go:newIconsServerWithConfig":         "icon configuration",
 	"jobs_test.go:serverWithJobs":                    "jobs",
-	"pods_test.go:newPodsServer":                     "filler pods",
 	"proposaljourneys_test.go:proposalJourneyServer": "proposal journeys",
 	"search_test.go:newConfiguredSearchHandler":      "search",
 }
