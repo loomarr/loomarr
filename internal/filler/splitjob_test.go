@@ -1048,6 +1048,37 @@ func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 	}
 }
 
+func TestPropose_UnavailableLanguageBackendLeavesCandidatesReviewable(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/unavailable-language.mp4", 40_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "First advert"},
+		{StartMs: 20_000, EndMs: 40_000, Title: "Second advert"},
+	}}
+	detector := &spanLanguageDetector{unavailable: "the language model is not installed"}
+	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func() string { return "en" },
+		Budget:   func() int { return 10 },
+	})
+
+	proposal, err := sp.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.LanguageExclusions) != 0 || len(proposal.Segments) != 2 {
+		t.Fatalf("unavailable backend removed reviewable clips: %+v", proposal)
+	}
+	if len(detector.spans) != 0 {
+		t.Fatalf("unavailable detector was still called for %v", detector.spans)
+	}
+	for _, segment := range proposal.Segments {
+		if !segment.LanguageChecked || segment.Language != "" || segment.LanguageNote != detector.unavailable {
+			t.Errorf("unavailable outcome was not explained on %+v", segment)
+		}
+	}
+}
+
 func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 	st := newSplitMemStore()
 	st.roundTripProposals = true
