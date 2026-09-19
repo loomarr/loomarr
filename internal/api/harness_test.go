@@ -23,26 +23,45 @@ type apiHarness struct {
 	Store  store.Store
 }
 
-func newAPIHarness(t *testing.T) *apiHarness {
+// apiHarnessDefaults is the invariant input available to focused route-family
+// harnesses. It intentionally does not expose api.Options: each family still
+// names only the production dependency and behavior it varies.
+type apiHarnessDefaults struct {
+	Store store.Store
+	Auth  api.Authorizer
+	Log   *slog.Logger
+}
+
+func startAPIHarness(t *testing.T, build func(apiHarnessDefaults) http.Handler) *apiHarness {
 	t.Helper()
 	st := openTestStore(t, filepath.Join(t.TempDir(), "api.db"))
 	t.Cleanup(func() { _ = st.Close() })
-
-	decisions, err := fillerdecision.New(st)
-	if err != nil {
-		t.Fatal(err)
+	defaults := apiHarnessDefaults{
+		Store: st,
+		Auth:  testAuthorizer{},
+		Log:   slog.New(slog.DiscardHandler),
 	}
-	decisions.WithDiagnosticRecovery(&apiDiagnosticRecovery{retrying: make(map[string]time.Time)})
-	log := slog.New(slog.DiscardHandler)
-	server := httptest.NewServer(api.Router(log, api.Options{
-		Store:           st,
-		Auth:            testAuthorizer{},
-		Log:             log,
-		BackupSQLite:    store.SQLiteBackuper(st),
-		FillerDecisions: decisions,
-	}))
+	server := httptest.NewServer(build(defaults))
 	t.Cleanup(server.Close)
 	return &apiHarness{t: t, Server: server, Store: st}
+}
+
+func newAPIHarness(t *testing.T) *apiHarness {
+	t.Helper()
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		decisions, err := fillerdecision.New(defaults.Store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decisions.WithDiagnosticRecovery(&apiDiagnosticRecovery{retrying: make(map[string]time.Time)})
+		return api.Router(defaults.Log, api.Options{
+			Store:           defaults.Store,
+			Auth:            defaults.Auth,
+			Log:             defaults.Log,
+			BackupSQLite:    store.SQLiteBackuper(defaults.Store),
+			FillerDecisions: decisions,
+		})
+	})
 }
 
 func (h *apiHarness) Do(method, path, token, body string) *http.Response {

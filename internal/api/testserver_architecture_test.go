@@ -26,7 +26,6 @@ var testServerConstructors = map[string]string{
 	"channels_test.go:newServerWithSchedulerAndSuggest":                "channels suggestions",
 	"channeltimeline_test.go:newTimelineServer":                        "channel timeline",
 	"channeltimeline_test.go:newTimelineServerWithImages":              "channel timeline images",
-	"collections_test.go:collectionsServer":                            "library collections",
 	"dashboard_panels_test.go:serverWithPanels":                        "dashboard panels",
 	"dashboard_test.go:newDashboardServer":                             "dashboard playout",
 	"device_flow_test.go:deviceServer":                                 "device authentication",

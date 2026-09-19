@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -22,34 +20,31 @@ func (f fakeCollections) Collections(context.Context) ([]api.LibraryCollection, 
 	return f.colls, f.err
 }
 
-// collectionsServer wires a server with a collections service AND the live-config seam
+// newCollectionsHarness wires a collections service AND the live-config seam
 // reporting a configured library — the handler gates on both, so a test that sets only the
 // service would 501 and prove nothing about the happy path.
-func collectionsServer(t *testing.T, svc api.CollectionService) *httptest.Server {
+func newCollectionsHarness(t *testing.T, svc api.CollectionService) *apiHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/coll.db")
-	t.Cleanup(func() { _ = st.Close() })
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:             st,
-		Auth:              testAuthorizer{},
-		Log:               slog.New(slog.DiscardHandler),
-		Collections:       svc,
-		LiveConfig:        func(key string) string { return "http://media.local" },
-		LibraryConfigured: func() bool { return true },
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store:             defaults.Store,
+			Auth:              defaults.Auth,
+			Log:               defaults.Log,
+			Collections:       svc,
+			LiveConfig:        func(key string) string { return "http://media.local" },
+			LibraryConfigured: func() bool { return true },
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv
 }
 
 func TestCollections_ListsForMember(t *testing.T) {
-	srv := collectionsServer(t, fakeCollections{colls: []api.LibraryCollection{
+	harness := newCollectionsHarness(t, fakeCollections{colls: []api.LibraryCollection{
 		{ID: "bs-1", Name: "Halloween", ChildCount: 12},
 	}})
 
 	// A member may read this: it is read-only and exposes no more than the media server
 	// already shows them (§7.2), the same posture as /v1/search.
-	resp := do(t, srv, http.MethodGet, "/v1/library/collections", memberToken, "")
+	resp := harness.Do(http.MethodGet, "/v1/library/collections", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -73,9 +68,9 @@ func TestCollections_ListsForMember(t *testing.T) {
 // client to treat two shapes as one, and the picker's empty state is the whole point of the
 // distinction — "you have no collections yet" is a real answer, not a missing one.
 func TestCollections_EmptyIsArrayNotNull(t *testing.T) {
-	srv := collectionsServer(t, fakeCollections{colls: nil})
+	harness := newCollectionsHarness(t, fakeCollections{colls: nil})
 
-	resp := do(t, srv, http.MethodGet, "/v1/library/collections", memberToken, "")
+	resp := harness.Do(http.MethodGet, "/v1/library/collections", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	var raw map[string]json.RawMessage
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
@@ -94,9 +89,9 @@ func TestCollections_EmptyIsArrayNotNull(t *testing.T) {
 // property matters (this must never be an unauthenticated window onto the library), but the
 // marker itself is pinned by the member test below, which is the one that can fail.
 func TestCollections_AnonymousRefused(t *testing.T) {
-	srv := collectionsServer(t, fakeCollections{colls: []api.LibraryCollection{{ID: "bs-1"}}})
+	harness := newCollectionsHarness(t, fakeCollections{colls: []api.LibraryCollection{{ID: "bs-1"}}})
 
-	resp := do(t, srv, http.MethodGet, "/v1/library/collections", "", "")
+	resp := harness.Do(http.MethodGet, "/v1/library/collections", "", "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
 		t.Errorf("anonymous status = %d, want 401/403", resp.StatusCode)
@@ -111,9 +106,9 @@ func TestCollections_AnonymousRefused(t *testing.T) {
 // Member-readable is the §7.2 posture: read-only, showing no more than the media server
 // already shows that user, and picking a collection still routes through submit→approve.
 func TestCollections_MemberIsNotForbidden(t *testing.T) {
-	srv := collectionsServer(t, fakeCollections{colls: []api.LibraryCollection{{ID: "bs-1"}}})
+	harness := newCollectionsHarness(t, fakeCollections{colls: []api.LibraryCollection{{ID: "bs-1"}}})
 
-	resp := do(t, srv, http.MethodGet, "/v1/library/collections", memberToken, "")
+	resp := harness.Do(http.MethodGet, "/v1/library/collections", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusForbidden {
 		t.Error("member got 403 — the route is admin-gated, but a read-only library list is " +
@@ -124,9 +119,9 @@ func TestCollections_MemberIsNotForbidden(t *testing.T) {
 // A media server that errors is a 502 with an explanation, never a 500 and never an empty list
 // — an empty list would read as "you have no collections", which is a different and false claim.
 func TestCollections_UpstreamErrorIs502(t *testing.T) {
-	srv := collectionsServer(t, fakeCollections{err: errors.New("dial tcp: connection refused")})
+	harness := newCollectionsHarness(t, fakeCollections{err: errors.New("dial tcp: connection refused")})
 
-	resp := do(t, srv, http.MethodGet, "/v1/library/collections", memberToken, "")
+	resp := harness.Do(http.MethodGet, "/v1/library/collections", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", resp.StatusCode)
@@ -136,9 +131,9 @@ func TestCollections_UpstreamErrorIs502(t *testing.T) {
 // No service wired (no library configured) ⇒ 501, the same nil-semantics every other optional
 // service uses — not a 404, which would read as "this feature does not exist".
 func TestCollections_UnwiredIs501(t *testing.T) {
-	srv, _ := newServer(t) // no Collections option
+	harness := newAPIHarness(t) // no Collections option
 
-	resp := do(t, srv, http.MethodGet, "/v1/library/collections", memberToken, "")
+	resp := harness.Do(http.MethodGet, "/v1/library/collections", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("status = %d, want 501", resp.StatusCode)
