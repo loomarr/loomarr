@@ -46,16 +46,26 @@ var (
 // pushes people toward reuse. Argon2id handles the rest.
 const MinPasswordLen = 8
 
+// PasswordStore is the local-credential mutation surface. It includes session
+// revocation because every successful password change invalidates prior access.
+type PasswordStore interface {
+	GetUser(ctx context.Context, id string) (store.User, error)
+	ListUsers(ctx context.Context) ([]store.User, error)
+	CreateUserUnlessInvited(ctx context.Context, u store.User, now time.Time) error
+	UpsertUser(ctx context.Context, u store.User) error
+	RevokeSessionsForUser(ctx context.Context, userID string) error
+}
+
 // PasswordService owns local-credential mutations. Split from LoginService because
 // that one verifies credentials and this one changes them — different authority.
 type PasswordService struct {
-	store store.Store
+	store PasswordStore
 	newID IDGen
 	now   func() time.Time
 }
 
 // NewPasswordService builds the local-account service.
-func NewPasswordService(st store.Store, newID IDGen, now func() time.Time) *PasswordService {
+func NewPasswordService(st PasswordStore, newID IDGen, now func() time.Time) *PasswordService {
 	if now == nil {
 		now = time.Now
 	}
