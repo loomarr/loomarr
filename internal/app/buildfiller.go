@@ -423,7 +423,8 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	log.Info("filler ingest pipeline registered",
 		"stages", len(pipelineStages), "language", set.str("filler.language"),
 		"transcribe", set.boolv("filler.transcribe.enabled"),
-		"vision", set.boolv("filler.vision.enabled"), "vision_provider", visionProvider != nil,
+		"vision", set.boolv("filler.vision.enabled"),
+		"vision_provider", activeFillerVisionCapability(set).Available,
 		"autosplit", set.boolv("filler.autosplit.enabled"))
 	return fillerPipeline, transcribeStage, visionStage
 }
