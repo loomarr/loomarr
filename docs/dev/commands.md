@@ -191,6 +191,13 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make dev-docs` |  | generate docs/dev/commands.md from this Makefile + the CI workflows |
 | `make dev-docs-verify` | ✅ | regenerated command reference must match committed (CI red on drift) <br>*runs:* `dev-docs` |
 
+## Repository knowledge graph
+
+| Target | CI | What it does |
+| --- | --- | --- |
+| `make graphify` |  | rebuild the committed code and GitHub Actions knowledge graph |
+| `make graphify-verify` |  | verify the committed graph matches every maintained source and workflow |
+
 ## Documentation lint
 
 | Target | CI | What it does |
@@ -200,7 +207,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make docs-lint` |  | D2 + markdownlint + lychee (offline) + Vale <br>*runs:* `diagrams-verify` `docs-lint-md` `docs-lint-links` `docs-lint-prose` |
 | `make docs-lint-md` |  | markdown structure (globs + rules live in .markdownlint-cli2.jsonc) |
 | `make docs-lint-links` |  | relative-link check, offline, over the WIDE set (see lychee.toml for why) |
-| `make docs-lint-prose` |  | repo vocabulary + proper-noun casing (.vale.ini — no stock style package) |
+| `make docs-lint-prose` | ✅ | repo vocabulary + proper-noun casing (.vale.ini — no stock style package) |
 
 ## Frontend (Phase 13)
 
@@ -250,7 +257,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `docs-lint-prose` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository
