@@ -22,9 +22,8 @@ var aggregateStoreExceptions = map[string]string{
 
 // Aggregate store references are deliberately rare. The full store exists for construction,
 // migration, conformance and process lifecycle; domain modules should name only the persistence
-// role they consume. Keeping the temporary migration checkpoints explicit makes this gate useful
-// before the refactor is complete: a new package cannot silently join the aggregate surface, and
-// every completed slice removes its own exception.
+// role they consume. The package allowlist keeps those retained seams explicit and prevents a
+// new domain package from silently inheriting the aggregate surface.
 func TestAggregateStoreReferencesStayAtApprovedSeams(t *testing.T) {
 	refs := aggregateStoreReferences(t, loomarrPackages(t))
 	seen := map[string]bool{}
