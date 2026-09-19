@@ -123,13 +123,16 @@ describe("ClipDetails", () => {
         }}
       />,
     );
-    expect(screen.getByText("Likely 1970s · United States")).toBeInTheDocument();
-    expect(screen.getByText(/not confirmed details for this exact clip/i)).toBeInTheDocument();
+    expect(screen.getByText("Year")).toBeInTheDocument();
+    expect(screen.getByText("1970s · Likely")).toBeInTheDocument();
+    expect(screen.getByText("Location")).toBeInTheDocument();
+    expect(screen.getByText("United States · Likely")).toBeInTheDocument();
+    expect(screen.getByText("Context")).toBeInTheDocument();
+    expect(screen.getByText("The campaign debuted then; this exact cut is not proven.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Tootsie Pop/ })).toHaveAttribute(
       "href",
       "https://en.wikipedia.org/wiki/Tootsie_Pop",
     );
-    expect(screen.queryByText("Year")).not.toBeInTheDocument();
-    expect(screen.queryByText("Location")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Background context, not confirmed/i)).not.toBeInTheDocument();
   });
 });
