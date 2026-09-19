@@ -3,7 +3,6 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,40 +13,50 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func newIconsServer(t *testing.T) (*httptest.Server, store.Store, *testkit.IconService[api.IconSuggestion]) {
-	return newIconsServerWithConfig(t, nil)
+type iconsHarness struct {
+	*apiHarness
+	Handler http.Handler
+	Icons   *testkit.IconService[api.IconSuggestion]
 }
 
-func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, store.Store, *testkit.IconService[api.IconSuggestion]) {
-	t.Helper()
-	handler, st, fi := newIconsHandlerWithConfig(t, cfg)
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-	return srv, st, fi
+func newIconsHarness(t *testing.T) *iconsHarness {
+	return startIconsHarness(t, nil, true)
 }
 
-func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, store.Store, *testkit.IconService[api.IconSuggestion]) {
+func newConfiguredIconsHarness(t *testing.T, config map[string]string) *iconsHarness {
+	return startIconsHarness(t, config, true)
+}
+
+func newIconsWithoutServiceHarness(t *testing.T) *iconsHarness {
+	return startIconsHarness(t, nil, false)
+}
+
+func startIconsHarness(t *testing.T, config map[string]string, withService bool) *iconsHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/icons.db")
-	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	var icons *testkit.IconService[api.IconSuggestion]
+	var iconService api.IconService
+	if withService {
+		icons = &testkit.IconService[api.IconSuggestion]{}
+		iconService = icons
+	}
+	var handler http.Handler
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		var liveConfig func(string) string
+		if config != nil {
+			liveConfig = func(key string) string { return config[key] }
+		}
+		handler = api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
+			Icons: iconService, LiveConfig: liveConfig,
+		})
+		return handler
+	})
+	if _, err := base.Store.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	fi := &testkit.IconService[api.IconSuggestion]{}
-	var liveConfig func(string) string
-	if cfg != nil {
-		liveConfig = func(key string) string { return cfg[key] }
-	}
-	handler := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:      st,
-		Auth:       testAuthorizer{},
-		Log:        slog.New(slog.DiscardHandler),
-		Icons:      fi,
-		LiveConfig: liveConfig,
-	})
-	return handler, st, fi
+	return &iconsHarness{apiHarness: base, Handler: handler, Icons: icons}
 }
 
 func iconsRequest(handler http.Handler, path string) *httptest.ResponseRecorder {
@@ -61,7 +70,8 @@ func iconsRequest(handler http.Handler, path string) *httptest.ResponseRecorder 
 // The endpoint renders the candidate posters the service resolved from the channel's
 // own lineup — e.g. a Star Trek channel offering its five series' posters (§icon P2).
 func TestChannelIconSuggestions_RendersCandidates(t *testing.T) {
-	srv, _, fi := newIconsServer(t)
+	harness := newIconsHarness(t)
+	srv, fi := harness.Server, harness.Icons
 	fi.Results = []api.IconSuggestion{
 		{Title: "Star Trek: The Next Generation", URL: "https://image.tmdb.org/t/p/w500/tng.jpg"},
 		{Title: "Star Trek: Deep Space Nine", URL: "https://image.tmdb.org/t/p/w500/ds9.jpg"},
@@ -91,7 +101,8 @@ func TestChannelIconSuggestions_RendersCandidates(t *testing.T) {
 // An empty candidate set must render as [] rather than null, so the FE renders an
 // empty state instead of guarding a case that never means failure.
 func TestChannelIconSuggestions_EmptyIsEmptyArray(t *testing.T) {
-	srv, _, fi := newIconsServer(t)
+	harness := newIconsHarness(t)
+	srv, fi := harness.Server, harness.Icons
 	fi.Results = nil
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/icon-suggestions", adminToken, "")
@@ -109,14 +120,14 @@ func TestChannelIconSuggestions_EmptyIsEmptyArray(t *testing.T) {
 
 // Read-only: any authenticated user may fetch icon suggestions, matching get-channel.
 func TestChannelIconSuggestions_VisibleToAnyAuthenticatedUser(t *testing.T) {
-	srv, _, _ := newIconsServer(t)
+	srv := newIconsHarness(t).Server
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/icon-suggestions", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member request → %d, want 200 (read-only)", resp.StatusCode)
 	}
 }
 
 func TestChannelIconSuggestions_UnknownChannelIs404(t *testing.T) {
-	srv, _, _ := newIconsServer(t)
+	srv := newIconsHarness(t).Server
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/nope/icon-suggestions", adminToken, ""); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown channel → %d, want 404", resp.StatusCode)
 	}
@@ -126,20 +137,7 @@ func TestChannelIconSuggestions_UnknownChannelIs404(t *testing.T) {
 // rather than 500 — the same nil-service contract every optional TMDB-gated feature
 // follows (search, suggest, …).
 func TestChannelIconSuggestions_501WhenNoService(t *testing.T) {
-	st := openTestStore(t, t.TempDir()+"/icons2.db")
-	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
-		// Icons intentionally omitted (nil).
-	}))
-	t.Cleanup(srv.Close)
+	srv := newIconsWithoutServiceHarness(t).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/icon-suggestions", adminToken, "")
 	if resp.StatusCode != http.StatusNotImplemented {
@@ -149,7 +147,8 @@ func TestChannelIconSuggestions_501WhenNoService(t *testing.T) {
 
 func TestChannelIconSuggestionsFollowLiveTMDBKey(t *testing.T) {
 	cfg := map[string]string{}
-	handler, _, icons := newIconsHandlerWithConfig(t, cfg)
+	harness := newConfiguredIconsHarness(t, cfg)
+	handler, icons := harness.Handler, harness.Icons
 
 	resp := iconsRequest(handler, "/v1/channels/ch-1/icon-suggestions")
 	if resp.Code != http.StatusNotImplemented {
