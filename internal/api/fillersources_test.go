@@ -3,7 +3,6 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,31 +15,82 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-// serverWithClips builds a server over a real SQLite store seeded with clips, so the
-// per-source counts are counted rather than stubbed — the read-model's whole job.
-func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *httptest.Server {
+// fillerSourcesHarness uses the real store for per-source counts — the read-model's whole job.
+type fillerSourcesHarness struct {
+	*apiHarness
+	config map[string]string
+}
+
+func newFillerSourcesHarness(t *testing.T, fillerDir, watchDir string, clips []store.Clip) *fillerSourcesHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/api.db")
-	t.Cleanup(func() { _ = st.Close() })
-	for _, c := range clips {
-		if err := st.UpsertClip(context.Background(), c); err != nil {
-			t.Fatalf("seed clip %s: %v", c.Path, err)
-		}
-	}
-	layout, err := filler.NewLayout(cfg["filler.dir"], cfg["filler.watch_dir"])
+	config := map[string]string{"filler.dir": fillerDir, "filler.watch_dir": watchDir}
+	layout, err := filler.NewLayout(fillerDir, watchDir)
 	if err != nil {
 		t.Fatalf("filler.NewLayout: %v", err)
 	}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:        st,
-		Auth:         api.NewTokenAuthorizer(adminToken),
-		Log:          slog.New(slog.DiscardHandler),
-		FillerLayout: layout,
-		LiveConfig:   func(k string) string { return cfg[k] },
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store:        defaults.Store,
+			Auth:         api.NewTokenAuthorizer(adminToken),
+			Log:          defaults.Log,
+			FillerLayout: layout,
+			LiveConfig:   func(k string) string { return config[k] },
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv
+	for _, c := range clips {
+		if err := base.Store.UpsertClip(context.Background(), c); err != nil {
+			t.Fatalf("seed clip %s: %v", c.Path, err)
+		}
+	}
+	return &fillerSourcesHarness{apiHarness: base, config: config}
+}
+
+func (h *fillerSourcesHarness) SetDesiredDir(dir string) {
+	h.config["filler.dir"] = dir
+}
+
+type fillerSourcesSettingsHarness struct {
+	*apiHarness
+	Settings *settings.Service
+}
+
+func newFillerSourcesSettingsHarness(t *testing.T) *fillerSourcesSettingsHarness {
+	t.Helper()
+	var service *settings.Service
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
+			rows, err := defaults.Store.ListSettings(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]settings.SettingRow, len(rows))
+			for i, row := range rows {
+				out[i] = settings.SettingRow{Key: row.Key, Value: row.Value, UpdatedBy: row.UpdatedBy}
+			}
+			return out, nil
+		}}
+		var err error
+		service, err = settings.New(t.Context(), settings.NewRegistry(), loader, nil)
+		if err != nil {
+			t.Fatalf("settings.New: %v", err)
+		}
+		layout, err := filler.NewLayout(service.String("filler.dir"), service.String("filler.watch_dir"))
+		if err != nil {
+			t.Fatalf("filler.NewLayout: %v", err)
+		}
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: api.NewTokenAuthorizer(adminToken), Log: defaults.Log,
+			FillerLayout: layout,
+			LiveConfig:   func(k string) string { return service.String(k) },
+			LiveConfigBoolOn: func(k string) bool {
+				if value, ok := service.Resolve(k).Value.(bool); ok {
+					return value
+				}
+				return true
+			},
+		})
+	})
+	return &fillerSourcesSettingsHarness{apiHarness: base, Settings: service}
 }
 
 func clip(path, source string) store.Clip {
@@ -279,11 +329,12 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 
 // The read-model's reason for existing: counts come from the CATALOG, not from a table.
 func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
+	harness := newFillerSourcesHarness(t, "/data/filler", "", []store.Clip{
 		clip("a.mp4", "filler-dir"),
 		clip("b.mp4", "filler-dir"),
 		clip("c.mp4", "library"),
 	})
+	srv := harness.Server
 	body := getSources(t, srv)
 
 	byKind := map[string]api.FillerSourceDTO{}
@@ -307,7 +358,8 @@ func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
 func TestFillerSources_CountsHeldClipsByProvenance(t *testing.T) {
 	held := clip("incoming.mp4", "filler-dir")
 	held.Held = true
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{held})
+	harness := newFillerSourcesHarness(t, "/data/filler", "", []store.Clip{held})
+	srv := harness.Server
 	body := getSources(t, srv)
 
 	folder := sourceOfKind(t, body, "folder")
@@ -357,10 +409,11 @@ func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
 // ⚠ Total is sent rather than summed client-side: a clip whose `source` matches no known row
 // still belongs to the catalog, and a client adding up the rows would under-report it.
 func TestFillerSources_TotalIncludesUnrecognizedProvenance(t *testing.T) {
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
+	harness := newFillerSourcesHarness(t, "/data/filler", "", []store.Clip{
 		clip("a.mp4", "filler-dir"),
 		clip("weird.mp4", "hand-copied-by-an-operator"),
 	})
+	srv := harness.Server
 	body := getSources(t, srv)
 
 	var summed int
@@ -378,7 +431,8 @@ func TestFillerSources_TotalIncludesUnrecognizedProvenance(t *testing.T) {
 // An unconfigured source is RETURNED with configured:false, not omitted. "No drop-folder
 // configured" is the answer to "why is my catalog empty"; hiding the row leaves that unanswered.
 func TestFillerSources_UnconfiguredSourceIsShownNotHidden(t *testing.T) {
-	srv := serverWithClips(t, map[string]string{}, nil) // no filler.dir
+	harness := newFillerSourcesHarness(t, "", "", nil) // no filler.dir
+	srv := harness.Server
 	body := getSources(t, srv)
 
 	var folder *api.FillerSourceDTO
@@ -405,40 +459,14 @@ func TestFillerSources_UnconfiguredSourceIsShownNotHidden(t *testing.T) {
 // must keep describing the applied generation, or its Fetch action would claim to target a path
 // that scan and intake do not yet use.
 func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
-	cfg := map[string]string{"filler.dir": "/data/filler"}
-	st := openTestStore(t, t.TempDir()+"/api.db")
-	t.Cleanup(func() { _ = st.Close() })
-	layout, err := filler.NewLayout(cfg["filler.dir"], "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:        st,
-		Auth:         api.NewTokenAuthorizer(adminToken),
-		Log:          slog.New(slog.DiscardHandler),
-		FillerLayout: layout,
-		LiveConfig:   func(k string) string { return cfg[k] },
-	})
-	readSources := func() sourcesBody {
-		req := httptest.NewRequest(http.MethodGet, "/v1/filler/sources", nil)
-		req.Header.Set("Authorization", "Bearer "+adminToken)
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("GET sources → %d, want 200: %s", rec.Code, rec.Body.String())
-		}
-		var body sourcesBody
-		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-			t.Fatal(err)
-		}
-		return body
-	}
+	harness := newFillerSourcesHarness(t, "/data/filler", "", nil)
+	srv := harness.Server
 
-	if got := readSources().Sources[0].Target; got != "/data/filler" {
+	if got := getSources(t, srv).Sources[0].Target; got != "/data/filler" {
 		t.Fatalf("target = %q, want the configured dir", got)
 	}
-	cfg["filler.dir"] = "/srv/clips" // saved desired state; this generation remains on /data/filler
-	if got := readSources().Sources[0].Target; got != "/data/filler" {
+	harness.SetDesiredDir("/srv/clips") // saved desired state; this generation remains on /data/filler
+	if got := getSources(t, srv).Sources[0].Target; got != "/data/filler" {
 		t.Errorf("target = %q after a settings change, want applied /data/filler until restart", got)
 	}
 }
@@ -451,48 +479,8 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 // real service is the point of this test — a fake that cannot panic would only prove the fake
 // does not panic. Sabotage it by pointing folderEnabled back at s.liveConfig.
 func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
-	ctx := context.Background()
-	st := openTestStore(t, t.TempDir()+"/api.db")
-	t.Cleanup(func() { _ = st.Close() })
-
-	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
-		rows, err := st.ListSettings(ctx)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]settings.SettingRow, len(rows))
-		for i, r := range rows {
-			out[i] = settings.SettingRow{Key: r.Key, Value: r.Value, UpdatedBy: r.UpdatedBy}
-		}
-		return out, nil
-	}}
-	svc, err := settings.New(ctx, settings.NewRegistry(), loader, nil)
-	if err != nil {
-		t.Fatalf("settings.New: %v", err)
-	}
-
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
-		Log:   slog.New(slog.DiscardHandler),
-		FillerLayout: func() filler.Layout {
-			layout, layoutErr := filler.NewLayout(svc.String("filler.dir"), svc.String("filler.watch_dir"))
-			if layoutErr != nil {
-				t.Fatalf("filler.NewLayout: %v", layoutErr)
-			}
-			return layout
-		}(),
-		// Wired exactly as the composition root wires them, typed per Kind.
-		LiveConfig: func(k string) string { return svc.String(k) },
-		LiveConfigBoolOn: func(k string) bool {
-			if b, ok := svc.Resolve(k).Value.(bool); ok {
-				return b
-			}
-			return true
-		},
-	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
+	harness := newFillerSourcesSettingsHarness(t)
+	srv, svc := harness.Server, harness.Settings
 
 	// Declared default is true, so the folder row reports itself enabled.
 	folder := sourceOfKind(t, getSources(t, srv), "folder")
@@ -542,7 +530,8 @@ func TestFillerSources_RequiresAdmin(t *testing.T) {
 
 // With no filler service wired, Fetch now reports 501 rather than pretending to work.
 func TestFillerSources_FetchWithoutAServiceIs501(t *testing.T) {
-	srv := serverWithClips(t, nil, nil)
+	harness := newFillerSourcesHarness(t, "", "", nil)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("fetch with no filler service → %d, want 501", resp.StatusCode)
