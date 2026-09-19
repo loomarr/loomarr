@@ -162,7 +162,7 @@ func buildHandler(
 	playoutRes, chanNumbers := channelsBuilt.playoutResolver, channelsBuilt.channelNumbers
 	setResidentVRAM := channelsBuilt.setResidentVRAM
 
-	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, log)
+	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, log)
 	proposalApprover := approval.approver
 
 	suggestions, err := buildSuggestions(

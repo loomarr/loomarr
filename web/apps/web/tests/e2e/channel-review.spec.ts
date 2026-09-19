@@ -1,6 +1,70 @@
 import { expect, test } from "@playwright/test";
 import { installMockBackend } from "./mock-backend";
 
+test("a movie collection can be added, trimmed, and restored before approval", async ({ page }) => {
+  const mock = await installMockBackend(page, {
+    authed: true,
+    role: "admin",
+    movieCollectionJourney: true,
+  });
+
+  await page.goto("/guide");
+  await page.getByRole("button", { name: "Add a channel" }).click();
+  await page.getByRole("textbox", { name: "Channel intent" }).fill("Harry Potter movie marathon");
+  await page.getByRole("button", { name: "Suggest a lineup" }).click();
+
+  await expect(page.getByRole("heading", { name: "Review your channel" })).toBeVisible();
+  await expect(page.getByText("Wizarding World Marathon", { exact: true })).toBeVisible();
+  await expect(page.getByText("Harry Potter Collection", { exact: true })).toBeVisible();
+  await expect.poll(() => mock.state.movieCollectionRequests).toEqual([["movie:tmdb:671"]]);
+
+  await page.getByRole("button", { name: "Add all films from Harry Potter Collection" }).click();
+  await expect(page.getByRole("region", { name: "Movie collections" })).toHaveCount(0);
+  await expect(
+    page.getByRole("checkbox", { name: "Include Harry Potter and the Prisoner of Azkaban" }),
+  ).toBeChecked();
+
+  await page.getByRole("checkbox", { name: "Include Harry Potter and the Prisoner of Azkaban" }).click();
+  await expect(page.getByText("Harry Potter Collection", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Review your channel" })).toBeVisible();
+  await expect(page.getByText("Harry Potter Collection", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: "Include Harry Potter and the Chamber of Secrets" }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: "Include Harry Potter and the Goblet of Fire" }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: "Include Harry Potter and the Prisoner of Azkaban" }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Create channel" }).click();
+  await expect
+    .poll(() => mock.state.approvalEdits)
+    .toEqual([
+      {
+        add: [
+          {
+            name: "Harry Potter and the Chamber of Secrets",
+            mediaType: "movie",
+            inLibrary: false,
+            year: 2002,
+            tmdbId: 672,
+          },
+          {
+            name: "Harry Potter and the Goblet of Fire",
+            mediaType: "movie",
+            inLibrary: false,
+            year: 2005,
+            tmdbId: 674,
+          },
+        ],
+      },
+    ]);
+});
+
 test("a first-time admin can shape the suggested channel before creating it", async ({ page }) => {
   const mock = await installMockBackend(page, { authed: true, role: "admin", proposalJourney: true });
 

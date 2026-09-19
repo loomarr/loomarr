@@ -4,6 +4,7 @@ import {
   getGetProposalJobMockHandler,
   getGetProposalOutlookMockHandler,
   getMeMockHandler,
+  getResolveMovieCollectionsMockHandler,
   getReviseProposalJobMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
@@ -176,6 +177,7 @@ const renderPanel = (onCreated: (id: string) => void) => {
 describe("ChannelSuggestPanel", () => {
   beforeEach(() => {
     server.use(
+      getResolveMovieCollectionsMockHandler({ collections: [], complete: true }),
       getGetProposalOutlookMockHandler(
         outlook({
           state: "uncertain",

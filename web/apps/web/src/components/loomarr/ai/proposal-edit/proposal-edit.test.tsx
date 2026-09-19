@@ -1,10 +1,12 @@
 import type { ProposalItem } from "@loomarr/api";
+import { getResolveMovieCollectionsMockHandler, getSearchMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { server } from "@/test/msw/server";
 import { ProposalEdit } from "./proposal-edit";
 
 const makeWrapper = () => {
@@ -18,22 +20,12 @@ const makeWrapper = () => {
 
 const render = (ui: ReactElement) => rtlRender(ui, { wrapper: makeWrapper() });
 
-const jsonResponse = (body: unknown) =>
-  new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-
-const stubSearch = (candidates: unknown[]) => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string) => {
-      if (typeof url === "string" && url.includes("/v1/search")) {
-        return Promise.resolve(jsonResponse({ candidates }));
-      }
-      return Promise.resolve(jsonResponse({}));
-    }),
+const stubSearch = (candidates: ProposalItem[]) => {
+  server.use(
+    getSearchMockHandler({ candidates }),
+    getResolveMovieCollectionsMockHandler({ collections: [], complete: true }),
   );
 };
-
-afterEach(() => vi.unstubAllGlobals());
 
 const heat: ProposalItem = { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true };
 const simpsons: ProposalItem = {
@@ -42,6 +34,34 @@ const simpsons: ProposalItem = {
   mediaType: "series",
   tvdbId: 71663,
   inLibrary: false,
+};
+const philosopherStone: ProposalItem = {
+  name: "Harry Potter and the Philosopher's Stone",
+  year: 2001,
+  mediaType: "movie",
+  tmdbId: 671,
+  inLibrary: true,
+  libraryItemId: "library-671",
+};
+const chamberSecrets: ProposalItem = {
+  name: "Harry Potter and the Chamber of Secrets",
+  year: 2002,
+  mediaType: "movie",
+  tmdbId: 672,
+  inLibrary: false,
+};
+const prisonerAzkaban: ProposalItem = {
+  name: "Harry Potter and the Prisoner of Azkaban",
+  year: 2004,
+  mediaType: "movie",
+  tmdbId: 673,
+  inLibrary: true,
+  libraryItemId: "library-673",
+};
+const harryPotter = {
+  tmdbId: 1241,
+  name: "Harry Potter Collection",
+  members: [philosopherStone, chamberSecrets, prisonerAzkaban],
 };
 
 describe("ProposalEdit", () => {
@@ -218,6 +238,170 @@ describe("ProposalEdit", () => {
       drop: ["movie:tmdb:754"],
       add: [backup],
     });
+  });
+
+  it("offers one compact collection choice when visible films share it", async () => {
+    stubSearch([]);
+    render(
+      <ProposalEdit
+        lineup={[philosopherStone, prisonerAzkaban]}
+        acquisitions={[]}
+        movieCollections={[harryPotter]}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("Harry Potter Collection")).toHaveLength(1);
+    expect(screen.getByText("2 of 3 selected")).toBeVisible();
+    expect(screen.getByText("2 in your library")).toBeVisible();
+    expect(screen.getAllByText("Harry Potter and the Chamber of Secrets")[0]).not.toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose films from Harry Potter Collection" }));
+    expect(screen.getAllByText("Harry Potter and the Chamber of Secrets")[0]).toBeVisible();
+  });
+
+  it("checks the visible TMDB movies and renders the grounded collection response", async () => {
+    let requestedKeys: string[] = [];
+    server.use(
+      getSearchMockHandler({ candidates: [] }),
+      getResolveMovieCollectionsMockHandler(({ request }) => {
+        requestedKeys = new URL(request.url).searchParams.getAll("key");
+        return { collections: [harryPotter], complete: true };
+      }),
+    );
+
+    render(
+      <ProposalEdit
+        lineup={[philosopherStone]}
+        acquisitions={[]}
+        optionalSuggestions={[prisonerAzkaban]}
+        value={{ add: [chamberSecrets] }}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Harry Potter Collection")).toBeVisible();
+    expect(requestedKeys).toEqual(["movie:tmdb:671", "movie:tmdb:672", "movie:tmdb:673"]);
+  });
+
+  it("shows calm progress while collection choices are being checked", () => {
+    stubSearch([]);
+    render(
+      <ProposalEdit
+        lineup={[philosopherStone]}
+        acquisitions={[]}
+        movieCollectionsLoading
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Checking for movie collections…");
+  });
+
+  it("adds only missing collection members through the existing approval edit", async () => {
+    stubSearch([]);
+    const onChange = vi.fn();
+    render(
+      <ProposalEdit
+        lineup={[philosopherStone]}
+        acquisitions={[]}
+        movieCollections={[harryPotter]}
+        onChange={onChange}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Add all films from Harry Potter Collection" }));
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      add: [
+        {
+          name: "Harry Potter and the Chamber of Secrets",
+          mediaType: "movie",
+          inLibrary: false,
+          year: 2002,
+          tmdbId: 672,
+        },
+        {
+          name: "Harry Potter and the Prisoner of Azkaban",
+          mediaType: "movie",
+          inLibrary: true,
+          libraryItemId: "library-673",
+          year: 2004,
+          tmdbId: 673,
+        },
+      ],
+    });
+    expect(screen.queryByRole("region", { name: "Movie collections" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Include Harry Potter and the Prisoner of Azkaban" }),
+    ).toBeChecked();
+  });
+
+  it("lets the reviewer choose one collection film without adding the rest", async () => {
+    stubSearch([]);
+    const onChange = vi.fn();
+    render(
+      <ProposalEdit
+        lineup={[philosopherStone]}
+        acquisitions={[]}
+        movieCollections={[harryPotter]}
+        onChange={onChange}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose films from Harry Potter Collection" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add Harry Potter and the Chamber of Secrets" }),
+    );
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      add: [expect.objectContaining({ name: "Harry Potter and the Chamber of Secrets", tmdbId: 672 })],
+    });
+    expect(onChange.mock.lastCall?.[0].add).toHaveLength(1);
+  });
+
+  it("re-includes an excluded installment instead of adding a duplicate", async () => {
+    stubSearch([]);
+    const onChange = vi.fn();
+    render(
+      <ProposalEdit
+        lineup={[philosopherStone]}
+        acquisitions={[]}
+        movieCollections={[harryPotter]}
+        onChange={onChange}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Include Harry Potter and the Philosopher's Stone" }),
+    );
+    expect(onChange).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:671"] });
+
+    await userEvent.click(screen.getByRole("button", { name: "Add all films from Harry Potter Collection" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      add: [expect.objectContaining({ tmdbId: 672 }), expect.objectContaining({ tmdbId: 673 })],
+    });
+  });
+
+  it("promotes a collection member out of optional suggestions exactly once", async () => {
+    stubSearch([]);
+    const onChange = vi.fn();
+    render(
+      <ProposalEdit
+        lineup={[philosopherStone]}
+        acquisitions={[]}
+        optionalSuggestions={[chamberSecrets]}
+        movieCollections={[harryPotter]}
+        onChange={onChange}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Add all films from Harry Potter Collection" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      drop: ["movie:tmdb:672"],
+      add: [expect.objectContaining({ tmdbId: 672 }), expect.objectContaining({ tmdbId: 673 })],
+    });
+    expect(onChange.mock.lastCall?.[0].add).toHaveLength(2);
   });
 
   it("offers an honest search action before any extra suggestions exist", async () => {

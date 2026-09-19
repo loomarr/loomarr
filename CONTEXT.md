@@ -161,6 +161,12 @@ The ordered set of Titles a Channel draws from. Editing it is a whole-list repla
 server-side (§7).
 _Avoid_: playlist, schedule (a schedule is the time-bound result, not the source set)
 
+**Movie collection**:
+TMDB's authoritative `belongs_to_collection` franchise roster for related movies. It is a
+review-time way to choose several ordinary Titles, not a persisted Lineup object and not a media
+server collection (§7, §7.2).
+_Avoid_: Library collection, playlist, model-inferred franchise
+
 **Policy** (`ChannelPolicy`):
 The per-channel programming rules: scope, audience, ordering, separation, seasonal, filler,
 window (`programming-design.md` §2).

@@ -78,6 +78,7 @@ type Server struct {
 	suggest          SuggestService
 	proposalWorkflow ProposalWorkflow
 	search           SearchService
+	movieCollections MovieCollectionService
 	// collections backs the scope.collections picker; nil ⇒ the route 501s, the same
 	// nil-semantics every other optional service here uses.
 	collections CollectionService
@@ -664,6 +665,32 @@ type SearchService interface {
 	Search(ctx context.Context, request SearchRequest) ([]SearchCandidate, error)
 }
 
+// MovieCollectionService resolves authoritative TMDB movie-collection rosters
+// for the bounded Title Keys visible in proposal review. The returned members
+// are ordinary grounded candidates so choosing them still uses the existing
+// per-title approval gate.
+type MovieCollectionService interface {
+	ResolveMovieCollections(context.Context, MovieCollectionRequest) (MovieCollectionResolution, error)
+}
+
+type MovieCollectionRequest struct {
+	Keys []string
+}
+
+type MovieCollectionResolution struct {
+	Collections []MovieCollection `json:"collections"`
+	// Complete is false when a requested Key or referenced roster could not be
+	// resolved or validated. That keeps incomplete evidence distinct from an
+	// authoritative standalone.
+	Complete bool `json:"complete"`
+}
+
+type MovieCollection struct {
+	TMDBID  int               `json:"tmdbId" minimum:"1"`
+	Name    string            `json:"name" minLength:"1"`
+	Members []SearchCandidate `json:"members" minItems:"2"`
+}
+
 // SearchRequest selects exactly one Catalog operation. Query uses federated title
 // search; Discovery uses the provider-neutral structured discovery path. The API
 // handler rejects requests that provide both or neither.
@@ -975,19 +1002,20 @@ type Options struct {
 	// DeviceLimiter bounds pairing starts and code-approval attempts; nil ⇒ unlimited, which is
 	// acceptable only in tests. Production wires it at composition beside Devices.
 	DeviceLimiter    *auth.RateLimiter
-	CookieSecure     string            // COOKIE_SECURE: auto|true|false (§11)
-	TrustProxy       bool              // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
-	DevLogin         bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
-	Pprof            bool              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
-	Channels         ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV           LiveTVService     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	TunerRescanner   TunerRescanner    // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
-	TunarrConnect    TunarrConnector   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
-	Suggest          SuggestService    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
-	ProposalWorkflow ProposalWorkflow  // authoritative /v1/proposal-jobs Journey reads
-	Search           SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
-	Collections      CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
-	Icons            IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
+	CookieSecure     string                 // COOKIE_SECURE: auto|true|false (§11)
+	TrustProxy       bool                   // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
+	DevLogin         bool                   // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
+	Pprof            bool                   // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
+	Channels         ChannelService         // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV           LiveTVService          // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	TunerRescanner   TunerRescanner         // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
+	TunarrConnect    TunarrConnector        // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
+	Suggest          SuggestService         // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
+	ProposalWorkflow ProposalWorkflow       // authoritative /v1/proposal-jobs Journey reads
+	Search           SearchService          // /v1/search (Phase 11); nil ⇒ search route 501
+	MovieCollections MovieCollectionService // /v1/movie-collections; nil ⇒ route 501
+	Collections      CollectionService      // /v1/library/collections (§2.2); nil ⇒ route 501
+	Icons            IconService            // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.

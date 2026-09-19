@@ -121,7 +121,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
-| `catalog` | 6 | `library`, `provision` |
+| `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | `storagegovernor` |
 | `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `storagegovernor`, `taxonomy` |
@@ -141,7 +141,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `openroutermedia` | 7 | `fillereval` |
-| `provision` | 21 | — |
+| `provision` | 22 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 5 | — |
 | `schedule` | 18 | `provision` |
@@ -191,7 +191,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Drives Loomarr's public playout transports through a bounded, credential-redacted production-path certification run.
 - **`proctree`** · 4 importers
   Supervises one child process and every descendant it starts.
-- **`provision`** · 21 importers
+- **`provision`** · 22 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`recovery`** · 5 importers
   Owns local-password recovery records and their bearer grants (§11).
@@ -342,7 +342,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Issues and validates Loomarr sessions (design §11).
 - **`backendtransition`** · 1 importer · → `schedule`, `store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
-- **`catalog`** · 6 importers · → `library`, `provision`
+- **`catalog`** · 7 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`fillerreview`** · 3 importers · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerreference`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
   Materializes identity-blind evidence for independent semantic review.
@@ -367,25 +367,32 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
 - **`images`** · 2 importers · → `images/rustgen`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
+- **`moviecollections`** · 3 importers · → `catalog`, `provision`
+  Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
   Provisioning backstop (design §4, §7, §18).
 - **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `recovery`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`testkit/catalogfixture`** · → `catalog`, `provision`
   Shared no-network adapters for catalog tests.
-- **`tmdb`** · 3 importers · → `catalog`, `httpx`, `metrics`, `provision`
-  TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
 **Layer 11**
 
 - **`fillercandidatepool/build`** · → `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerquarantine`, `fillerreview`
   Composes the independent corpus, quarantine, review, and prior-exposure authorities into one replacement candidate pool.
-- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
-  Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`testkit`** · 1 importer · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
+- **`testkit/moviecollectionsfixture`** · → `moviecollections`
+  The shared deterministic source for movie-collection resolver tests.
+- **`tmdb`** · 3 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
+  TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
 **Layer 12**
+
+- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
+  Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
+
+**Layer 13**
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
@@ -400,14 +407,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 - **`testkit/channeljourney`** · → `provision`, `schedule`, `suggest`
   The public synthetic approval-to-schedule fixtures for #1103.
 
-**Layer 13**
+**Layer 14**
 
 - **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `images`, `installationlocation`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
-**Layer 14**
+**Layer 15**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -694,7 +701,23 @@ delta remains valid because it means “keep the existing Channel” rather than
 Search additions remain grounded catalog identities
 and ride the same approval transaction as generated picks. The browser holds the delta locally and
 the exact edited outlook may be queried before approval, but no edit acquires, schedules, or persists
-anything before the existing approval gate commits it.
+anything before the existing approval gate commits it. At both outlook and commit, that gate
+re-resolves every addition against the current Library snapshot: an owned title joins the Lineup,
+a missing title becomes an acquisition, and client-supplied ownership or Library ids are never
+authority.
+
+For movies, Proposal review may also expose one compact **complete the collection** choice. This is
+not a model inference and it does not group by title text: for the bounded movie Keys already visible
+in review, Loomarr resolves TMDB's authoritative `belongs_to_collection`, fetches each distinct
+collection roster once, and returns its canonical movie members in release order with current Library
+presence. Authoritative standalone movies produce no choice. Duplicate, malformed, non-movie, or
+under-identified roster rows are omitted rather than repaired or padded and mark the answer incomplete;
+a partially unavailable upstream result is likewise marked incomplete, while a total referenced-roster
+failure is an error rather than an empty authoritative answer. The review renders one collection affordance even when several visible
+movies share it. **Add all films** or an individual member choice becomes the same per-title
+`ApprovalEdit` add/drop delta used by generated picks and manual search, so dedupe, explicit exclusion,
+acquisition disclosure, authorization, reload recovery, and the final approval transaction remain the
+sole behavior and authority. Merely discovering or expanding a collection changes nothing.
 
 The scheduler applies the selector after its never-relaxed audience, era, and season filters and
 before seeded ordering/windowing. A standalone episode or detected multi-part story is one atomic
@@ -1184,6 +1207,7 @@ private-address, and cancellation outcomes fail the lookup without yielding evid
 | GET | `/v1/system/llm/pull-operations/{jobId}` | Read one model-pull operation (admin): model, byte/percent progress, and queued/running/terminal outcome. This is authoritative after reconnect or restart; SSE is optional. |
 | GET | `/v1/system/llm/discover` | The **downloadable** local models that are **compatible with this machine**, ranked best-first (admin, §8.1). Takes the most-popular GGUF repos from a live source (Hugging Face, §14), sizes each against detected VRAM (the repo's Q4_K_M-class build — what Ollama's `latest` resolves to and what actually downloads), drops repos too big for the machine, and returns each with a bare `pullRef` (`hf.co/<repo>`, implicit `:latest`) to hand to `/pull`. Tool-capability is confirmed only **after** pull + probe. No keyword — it's the compatible set. Best-effort — a source outage returns an empty list (browse on huggingface.co instead), never a 5xx. |
 | GET | `/v1/search?q=&scope=` | Federated search (§7.2): library + TMDB. Any authenticated user. Clips are not a scope — see §7.2; use `/v1/filler?q=`. |
+| GET | `/v1/movie-collections?key=` | Resolve the distinct authoritative TMDB movie collections represented by up to 24 repeated movie Keys, including release-ordered grounded members and Library presence (member-readable; §7.2). |
 | GET | `/v1/backup` | Stream a consistent DB snapshot (admin; SQLite backend — §16). Postgres → 501 + pg_dump docs. Generates a fresh snapshot and keeps nothing; see `/v1/system/backups` for the ones on disk. |
 | POST | `/v1/system/restart` | Restart Loomarr in place (admin, §9.2, V13). Drains HTTP, tears down every playout process tree, closes the store, and rebuilds every subsystem in the **same process** — no re-exec and no supervisor needed on the supported Linux deployment. Responds **before** the drain begins, since a client that never gets a reply cannot tell "restarting" from "crashed". |
 | GET | `/v1/system/restart` | What a restart would cost right now (admin, §9.2, V13), so the confirm dialog states consequences rather than guessing: the count of channels **Loomarr is currently streaming** (from `/v1/playout/sessions`) which drop for a few seconds, versus Tunarr-backed channels which keep playing (§9.1), plus whether any restart-scoped setting is pending (`restartRequired`, with the specific desired-vs-applied keys). |
@@ -1249,6 +1273,15 @@ Two consequences worth stating, because both look like details and are not:
 **Decision: Loomarr builds no search index.** Every searchable corpus is already indexed by its owner: the media server exposes `SearchTerm` on the same `/Items` surface as §6 (with `IncludeItemTypes` + `Recursive=true`, flavor auth as usual); TMDB has `/search/multi`; the clip catalog is thousands of rows where a `name LIKE` filter in the store suffices. Dual-dialect full-text (SQLite FTS5 *and* Postgres tsvector, which diverge substantially) to re-index data we don't own is explicitly rejected — revisit only if enormous filler catalogs demand it (§20).
 
 `GET /v1/search?q=&scope=library|tmdb|all` fans out accordingly and returns unified `Candidate` results (external ids, library item id when present, `in_library` flag). The same route also exposes the Catalog's structured discovery path when `q` is omitted: `media_type`, `genres`, `keywords`, `year_from`, `year_to`, `original_language`, `origin_country`, `runtime_min`, `runtime_max`, `vote_average_min`, `vote_count_min`, `network`, `cast`, and `creators` map directly to the provider-neutral `DiscoveryQuery`. Title text and discovery qualifiers are mutually exclusive. Structured discovery requires the TMDB or `all` scope because Library title search has no equivalent filter surface; the returned candidates still carry authoritative Library-presence evidence. **Clips are deliberately NOT a search scope (revised).** `Candidate` models a *provisionable title* — its `MediaType` admits only `movie|series`, and it flows through the same dedupe/identity machinery that grounds the LLM. A clip is not a title (§10: commercials "are not 'titles,' so the provisioning loop does not apply"), so representing one as a `Candidate` would push an unprovisionable row with an invalid media type through the grounding path — the exact filler-into-programming leak §10 is built to prevent. Clip search therefore lives where clips live: `GET /v1/filler?q=` applies the `name LIKE` filter this section prescribes and returns real `ClipDTO`s, so a result carries a Tunarr program id and can be deep-linked. *The `clips` scope was advertised in the enum but never implemented — the catalog was always constructed with a nil clip searcher, so it silently returned nothing. Removing it corrects the contract rather than shipping a leak to satisfy it.* Crucially, **this is the same implementation as the Catalog boundary (§8)** — title mode calls the same `Catalog.Search` path as the LLM's `query` tool mode, and structured mode calls the same `Catalog.Discover` path as its typed discovery mode. An operator can therefore reproduce "why did the suggester pick/miss X" through the public search contract instead of relying on a second retrieval implementation. Results feed the lineup editor: adding an `in_library` result places it; adding a missing one creates an acquisition — which flows through the existing approval gate, so search adds **no new privilege surface and no new config**.
+
+`GET /v1/movie-collections?key=movie:tmdb:…` is the narrower review-time expansion path.
+It accepts one to 24 repeated TMDB movie Keys, resolves each distinct movie's authoritative
+`belongs_to_collection`, and fetches each distinct `/collection/{id}` roster once. Its members use
+the same grounded `Candidate` representation and Library-presence backfill as search. A successful
+empty array means the visible movies are authoritatively standalone or do not form a useful
+multi-title choice; `complete:false` means at least one requested or referenced lookup was unavailable.
+The route never performs fuzzy collection discovery and never turns a collection into an approved
+Lineup by itself.
 
 **A federated result is a bounded blend, not “Library until the page is full.”** After identity
 deduplication, an `all` search that has both owned and missing matches uses the Catalog's candidate

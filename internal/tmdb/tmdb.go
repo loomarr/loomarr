@@ -17,6 +17,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -609,6 +611,97 @@ func (c *Client) Exists(ctx context.Context, mt provision.MediaType, tmdbID int)
 	}
 }
 
+// CollectionForMovie returns TMDB's authoritative belongs_to_collection reference
+// for one movie. A zero reference with no error means TMDB resolved the movie as
+// standalone; an error means membership is unknown.
+func (c *Client) CollectionForMovie(ctx context.Context, tmdbID int) (moviecollections.CollectionRef, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return moviecollections.CollectionRef{}, err
+	}
+	return c.collectionForMovie(ctx, tmdbID)
+}
+
+func (c *Client) collectionForMovie(ctx context.Context, tmdbID int) (moviecollections.CollectionRef, error) {
+	if tmdbID <= 0 {
+		return moviecollections.CollectionRef{}, nil
+	}
+	var body struct {
+		BelongsToCollection *struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"belongs_to_collection"`
+	}
+	if err := c.get(ctx, "/movie/"+strconv.Itoa(tmdbID), &body); err != nil {
+		return moviecollections.CollectionRef{}, err
+	}
+	if body.BelongsToCollection == nil {
+		return moviecollections.CollectionRef{}, nil
+	}
+	return moviecollections.CollectionRef{
+		TMDBID: body.BelongsToCollection.ID,
+		Name:   strings.TrimSpace(body.BelongsToCollection.Name),
+	}, nil
+}
+
+// MovieCollection returns the canonical collection name and its grounded movie
+// parts from GET /collection/{id}. Membership comes from TMDB's roster, never a
+// title-name heuristic or model output.
+func (c *Client) MovieCollection(ctx context.Context, collectionID int) (moviecollections.SourceCollection, error) {
+	ctx, err := c.operation(ctx)
+	if err != nil {
+		return moviecollections.SourceCollection{}, err
+	}
+	if collectionID <= 0 {
+		return moviecollections.SourceCollection{}, fmt.Errorf("movie collection id must be positive")
+	}
+	var body struct {
+		ID    int           `json:"id"`
+		Name  string        `json:"name"`
+		Parts []multiResult `json:"parts"`
+	}
+	if err := c.get(ctx, "/collection/"+strconv.Itoa(collectionID), &body); err != nil {
+		return moviecollections.SourceCollection{}, err
+	}
+	sort.SliceStable(body.Parts, func(i, j int) bool {
+		left := strings.TrimSpace(body.Parts[i].ReleaseDate)
+		right := strings.TrimSpace(body.Parts[j].ReleaseDate)
+		switch {
+		case left == right:
+			return body.Parts[i].ID < body.Parts[j].ID
+		case left == "":
+			return false
+		case right == "":
+			return true
+		default:
+			return left < right
+		}
+	})
+	members := make([]catalog.Candidate, 0, len(body.Parts))
+	for _, part := range body.Parts {
+		if part.ID <= 0 || strings.TrimSpace(part.Title) == "" {
+			continue
+		}
+		members = append(members, catalog.Candidate{
+			MediaType:        provision.Movie,
+			TMDBID:           part.ID,
+			Name:             strings.TrimSpace(part.Title),
+			Year:             yearFromDate(part.ReleaseDate),
+			Genres:           genreNames(part.GenreIDs),
+			Overview:         part.Overview,
+			OriginalLanguage: normalizedLanguage(part.OriginalLanguage),
+			OriginCountries:  normalizedCodes(part.OriginCountries),
+			VoteAverage:      validVoteAverage(part.VoteAverage, part.VoteCount),
+			VoteCount:        validVoteCount(part.VoteAverage, part.VoteCount),
+			Source:           catalog.ScopeTMDB,
+			RelevanceRank:    len(members) + 1,
+		})
+	}
+	return moviecollections.SourceCollection{
+		TMDBID: body.ID, Name: strings.TrimSpace(body.Name), Members: members,
+	}, nil
+}
+
 // CollectionID returns the TMDB collection (franchise) a MOVIE belongs to — the id of
 // belongs_to_collection on GET /movie/{id} — so the scheduler can keep a franchise's films
 // together, in release order (§5). Returns 0 (no error) for a standalone movie or a series
@@ -624,18 +717,8 @@ func (c *Client) CollectionID(ctx context.Context, mt provision.MediaType, tmdbI
 	if tmdbID <= 0 || mt == provision.Series {
 		return 0, nil
 	}
-	var body struct {
-		BelongsToCollection *struct {
-			ID int `json:"id"`
-		} `json:"belongs_to_collection"`
-	}
-	if err := c.get(ctx, "/movie/"+strconv.Itoa(tmdbID), &body); err != nil {
-		return 0, err
-	}
-	if body.BelongsToCollection != nil {
-		return body.BelongsToCollection.ID, nil
-	}
-	return 0, nil
+	ref, err := c.collectionForMovie(ctx, tmdbID)
+	return ref.TMDBID, err
 }
 
 // ContentRating returns the US content rating for a title — TV series via

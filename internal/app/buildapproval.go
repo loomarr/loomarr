@@ -7,6 +7,8 @@ import (
 	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -25,6 +27,7 @@ func buildApproval(
 	activityRecorder *activity.Recorder,
 	channelNumbers binder.NumberSource,
 	notifier suggest.ProposalNotifier,
+	libraryClient *library.Client,
 	log *slog.Logger,
 ) approvalBuild {
 	if st == nil {
@@ -46,11 +49,17 @@ func buildApproval(
 		channelBinder = channelBinder.WithChannelNumbers(channelNumbers)
 	}
 	decisionQuality := quality.NewProposalDecisionRecorder(st, log)
+	approver := suggest.NewApprover(st, channelBinder, time.Now).
+		WithProposalNotifier(notifier).
+		WithDecisionQuality(decisionQuality)
+	if libraryClient != nil {
+		approver = approver.WithApprovalAdditionResolver(approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
+			return libraryPresence{lib: libraryClient.Snapshot()}
+		}})
+	}
 	return approvalBuild{
-		binder: channelBinder,
-		approver: suggest.NewApprover(st, channelBinder, time.Now).
-			WithProposalNotifier(notifier).
-			WithDecisionQuality(decisionQuality),
+		binder:          channelBinder,
+		approver:        approver,
 		decisionQuality: decisionQuality,
 	}
 }

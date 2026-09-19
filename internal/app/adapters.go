@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -12,12 +13,14 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reconcile"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -240,17 +243,93 @@ func (a searchAdapter) Search(ctx context.Context, request api.SearchRequest) ([
 	}
 	out := make([]api.SearchCandidate, 0, len(cands))
 	for _, c := range cands {
-		out = append(out, api.SearchCandidate{
-			MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
-			Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
-			Genres: c.Genres, Overview: c.Overview,
-			OriginalLanguage: c.OriginalLanguage, OriginCountries: c.OriginCountries,
-			RuntimeMinutes: c.RuntimeMinutes, VoteAverage: c.VoteAverage, VoteCount: c.VoteCount,
-			Keywords: c.Keywords, Networks: c.Networks, Cast: c.Cast, Creators: c.Creators,
-			OfficialRating: c.OfficialRating,
+		out = append(out, searchCandidateFromCatalog(c))
+	}
+	return out, nil
+}
+
+type movieCollectionAdapter struct{ resolver *moviecollections.Resolver }
+
+func (a movieCollectionAdapter) ResolveMovieCollections(
+	ctx context.Context,
+	request api.MovieCollectionRequest,
+) (api.MovieCollectionResolution, error) {
+	keys := make([]provision.Key, 0, len(request.Keys))
+	for _, key := range request.Keys {
+		keys = append(keys, provision.Key(key))
+	}
+	resolved, err := a.resolver.Resolve(ctx, keys)
+	if err != nil {
+		return api.MovieCollectionResolution{}, err
+	}
+	out := api.MovieCollectionResolution{
+		Collections: make([]api.MovieCollection, 0, len(resolved.Collections)),
+		Complete:    resolved.Complete,
+	}
+	for _, collection := range resolved.Collections {
+		members := make([]api.SearchCandidate, 0, len(collection.Members))
+		for _, member := range collection.Members {
+			members = append(members, searchCandidateFromCatalog(member))
+		}
+		out.Collections = append(out.Collections, api.MovieCollection{
+			TMDBID: collection.TMDBID, Name: collection.Name, Members: members,
 		})
 	}
 	return out, nil
+}
+
+func searchCandidateFromCatalog(c catalog.Candidate) api.SearchCandidate {
+	return api.SearchCandidate{
+		MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
+		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
+		Genres: c.Genres, Overview: c.Overview,
+		OriginalLanguage: c.OriginalLanguage, OriginCountries: c.OriginCountries,
+		RuntimeMinutes: c.RuntimeMinutes, VoteAverage: c.VoteAverage, VoteCount: c.VoteCount,
+		Keywords: c.Keywords, Networks: c.Networks, Cast: c.Cast, Creators: c.Creators,
+		OfficialRating: c.OfficialRating,
+	}
+}
+
+type approvalAdditionAdapter struct {
+	presence catalog.LibraryPresenceSource
+}
+
+func (a approvalAdditionAdapter) ResolveApprovalAddition(
+	ctx context.Context,
+	item suggest.ProposalItem,
+) (suggest.ProposalItem, bool, error) {
+	key, err := (provision.Title{
+		MediaType: item.MediaType, TMDBID: item.TMDBID, TVDBID: item.TVDBID,
+	}).Key()
+	if err != nil {
+		return suggest.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
+	}
+	mediaType, _, _, ok := provision.ParseKey(key)
+	if !ok {
+		return suggest.ProposalItem{}, false, errors.New("invalid title key")
+	}
+	item.InLibrary = false
+	item.LibraryItemID = ""
+	item.OfficialRating = ""
+	if a.presence == nil {
+		return item, false, nil
+	}
+	presence := a.presence()
+	if presence == nil {
+		return item, false, nil
+	}
+	owned, found, err := presence.Present(ctx, mediaType, item.TMDBID, item.TVDBID)
+	if err != nil {
+		return suggest.ProposalItem{}, false, err
+	}
+	if !found {
+		return item, false, nil
+	}
+	item.InLibrary = true
+	item.LibraryItemID = owned.LibraryItemID
+	item.OfficialRating = owned.OfficialRating
+	item.Genres = append([]string(nil), owned.Genres...)
+	return item, true, nil
 }
 
 // tunarrNumbers adapts a Programmer to binder.NumberSource: it answers "which channel numbers

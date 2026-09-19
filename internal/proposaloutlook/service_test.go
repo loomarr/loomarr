@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/outlookfixture"
 )
 
@@ -59,6 +60,31 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 			t.Fatalf("outlook wrote title %s: %v", key, err)
 		}
 	}
+	t.Run("owned review addition uses the same resolved placement as approval", func(t *testing.T) {
+		media.Metadata = map[string]library.ItemMetadata{"movie-added": {RuntimeMs: 80 * minute}}
+		addition := suggest.ProposalItem{
+			MediaType: provision.Movie, TMDBID: 4, Name: "Owned addition",
+			InLibrary: true, LibraryItemID: "movie-added",
+		}
+		resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+			{Item: addition, Owned: true},
+		}}
+		ownedService := proposaloutlook.New(proposaloutlook.Config{
+			Titles: st, Library: media, Episodes: media.ResolveEpisodes,
+			Planner: planner, Preview: engine, Additions: resolver,
+		})
+		ownedProposal := p
+		ownedProposal.ProposalJSON = `{"intent":{"description":"An owned movie"},"lineup":[]}`
+		got, err := ownedService.Assess(ctx, ownedProposal, &suggest.ApprovalEdit{Add: []suggest.ProposalItem{
+			{MediaType: provision.Movie, TMDBID: 4, Name: "Owned addition", InLibrary: false},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.State != "ready" || got.Programs != 1 || got.MissingAcquisitions != 0 || got.UniqueRuntimeMs != 80*minute {
+			t.Fatalf("owned addition outlook = %+v, want immediately schedulable without acquisition", got)
+		}
+	})
 	t.Run("series airing selector controls actual episode runway", func(t *testing.T) {
 		media.Metadata = map[string]library.ItemMetadata{"show": {}}
 		media.Episodes = map[string][]schedule.ResolvedProgram{"show": {

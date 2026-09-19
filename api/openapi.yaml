@@ -299,7 +299,7 @@ components:
           readOnly: true
           type: string
         add:
-          description: Titles to add as acquisitions
+          description: Titles to add; current Library presence determines Lineup or acquisition placement
           items:
             $ref: "#/components/schemas/ProposalItem"
           type: array
@@ -5945,6 +5945,46 @@ components:
         - adjacent
         - discovery
         - unknown
+      type: object
+    MovieCollection:
+      additionalProperties: false
+      properties:
+        members:
+          items:
+            $ref: "#/components/schemas/SearchCandidate"
+          minItems: 2
+          type: array
+        name:
+          minLength: 1
+          type: string
+        tmdbId:
+          format: int64
+          minimum: 1
+          type: integer
+      required:
+        - tmdbId
+        - name
+        - members
+      type: object
+    MovieCollectionResolution:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/MovieCollectionResolution.json
+          format: uri
+          readOnly: true
+          type: string
+        collections:
+          items:
+            $ref: "#/components/schemas/MovieCollection"
+          type: array
+        complete:
+          type: boolean
+      required:
+        - collections
+        - complete
       type: object
     NotificationDestinationDeleteInputBody:
       additionalProperties: false
@@ -14380,6 +14420,36 @@ paths:
       summary: Prometheus metrics
       tags:
         - ops
+  /v1/movie-collections:
+    get:
+      operationId: resolveMovieCollections
+      parameters:
+        - description: Visible movie provisioning Keys; repeat for multiple titles
+          explode: true
+          in: query
+          name: key
+          schema:
+            description: Visible movie provisioning Keys; repeat for multiple titles
+            items:
+              type: string
+            maxItems: 24
+            type: array
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MovieCollectionResolution"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Resolve grounded movie collections
+      tags:
+        - search
   /v1/notifications/provider-types:
     get:
       description: Returns the server-owned provider fields and compatible events used to render the Add provider form. No configured values or credentials are returned.

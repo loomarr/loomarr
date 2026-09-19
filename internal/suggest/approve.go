@@ -41,12 +41,80 @@ type ApprovalEdit struct {
 	// DropKeys are provisioning keys the approver removed. Applied to lineup, acquisitions,
 	// and alternates: a dropped title should not be acquired, scheduled, or restored as a backup.
 	DropKeys []provision.Key
-	// Add are titles the approver added via search. They join the acquisitions list and go
-	// through the same idempotent enqueue as anything the model proposed — an
-	// admin-added title is not privileged, it is just another acquisition.
+	// Add are titles the approver added via search or a grounded collection.
+	// ResolveApprovalEdit rechecks current Library presence before applyEdit places
+	// each one in the Lineup or acquisitions; client presence fields are not authority.
 	Add []ProposalItem
 	// Note is the approver's message to the requester, persisted for the audit trail.
 	Note string
+	// ownedAddKeys is server-resolved authority, never populated from the wire.
+	// It lets applyEdit place an owned addition without trusting a client-supplied
+	// InLibrary flag or LibraryItemID.
+	ownedAddKeys map[provision.Key]bool
+}
+
+// ApprovalAdditionResolver re-resolves a human-added title at the approval
+// boundary. Production uses the current Library snapshot; clients cannot grant
+// themselves ownership or choose the Library item that will be scheduled.
+type ApprovalAdditionResolver interface {
+	ResolveApprovalAddition(context.Context, ProposalItem) (ProposalItem, bool, error)
+}
+
+// ResolveApprovalEdit returns a detached edit whose additions carry current,
+// server-owned Library presence. A nil resolver fails safe: additions remain
+// acquisitions even if the client claimed they were already owned.
+func ResolveApprovalEdit(
+	ctx context.Context,
+	edit *ApprovalEdit,
+	resolver ApprovalAdditionResolver,
+) (*ApprovalEdit, error) {
+	if edit == nil {
+		return nil, nil
+	}
+	resolved := &ApprovalEdit{
+		DropKeys:     append([]provision.Key(nil), edit.DropKeys...),
+		Add:          make([]ProposalItem, 0, len(edit.Add)),
+		Note:         edit.Note,
+		ownedAddKeys: make(map[provision.Key]bool),
+	}
+	seen := make(map[provision.Key]bool, len(edit.Add))
+	for _, addition := range edit.Add {
+		requestedKey, err := acquisitionKey(addition)
+		if err != nil {
+			return nil, fmt.Errorf("approve: added title %q is not identifiable: %w", addition.Name, err)
+		}
+		if seen[requestedKey] {
+			continue
+		}
+		canonical := addition
+		owned := false
+		if resolver != nil {
+			var err error
+			canonical, owned, err = resolver.ResolveApprovalAddition(ctx, addition)
+			if err != nil {
+				return nil, fmt.Errorf("approve: resolve added title %q: %w", addition.Name, err)
+			}
+		}
+		key, err := acquisitionKey(canonical)
+		if err != nil {
+			return nil, fmt.Errorf("approve: added title %q is not identifiable: %w", canonical.Name, err)
+		}
+		if key != requestedKey {
+			return nil, fmt.Errorf("approve: resolved added title %q changed identity from %s to %s", canonical.Name, requestedKey, key)
+		}
+		seen[key] = true
+		canonical.InLibrary = owned
+		if owned {
+			if strings.TrimSpace(canonical.LibraryItemID) == "" {
+				return nil, fmt.Errorf("approve: owned added title %q has no library item id", canonical.Name)
+			}
+			resolved.ownedAddKeys[key] = true
+		} else {
+			canonical.LibraryItemID = ""
+		}
+		resolved.Add = append(resolved.Add, canonical)
+	}
+	return resolved, nil
 }
 
 // isEmpty reports whether this edit changes nothing, so an unmodified approval records an
@@ -93,11 +161,17 @@ type ApprovalResult struct {
 // the plan -> local transaction -> post-commit ordering is implementation detail that callers
 // cannot accidentally duplicate or rearrange.
 type Approver struct {
-	store    ApproveStore
-	channels ChannelBinder
-	now      func() time.Time
-	notify   ProposalNotifier
-	quality  ProposalApprovalQuality
+	store     ApproveStore
+	channels  ChannelBinder
+	now       func() time.Time
+	notify    ProposalNotifier
+	quality   ProposalApprovalQuality
+	additions ApprovalAdditionResolver
+}
+
+func (a *Approver) WithApprovalAdditionResolver(resolver ApprovalAdditionResolver) *Approver {
+	a.additions = resolver
+	return a
 }
 
 // ProposalApprovalQuality receives only the authoritative identity and time of
@@ -169,7 +243,11 @@ func (a *Approver) approveDurably(
 	if a.channels == nil {
 		return ApprovalResult{}, errors.New("approve: channel binder is not configured")
 	}
-	p, body, err := PrepareApproval(p, edit)
+	resolvedEdit, err := ResolveApprovalEdit(ctx, edit, a.additions)
+	if err != nil {
+		return ApprovalResult{}, err
+	}
+	p, body, err := PrepareApproval(p, resolvedEdit)
 	if err != nil {
 		return ApprovalResult{}, err
 	}
@@ -384,11 +462,32 @@ func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON s
 	body.Alternates, n = keep(body.Alternates)
 	droppedTotal += n
 
+	existing := make(map[provision.Key]bool)
+	for _, items := range [][]ProposalItem{body.Lineup, body.Acquisitions, body.Alternates} {
+		for _, item := range items {
+			if key, keyErr := acquisitionKey(item); keyErr == nil {
+				existing[key] = true
+			}
+		}
+	}
+	addedTotal := 0
 	for _, added := range edit.Add {
 		// A review addition has no evidence from this proposal's original run.
 		// The caller cannot grant itself a grounded editorial role.
 		added.EditorialRole = ""
-		body.Acquisitions = append(body.Acquisitions, added)
+		key, keyErr := acquisitionKey(added)
+		if keyErr == nil && existing[key] {
+			continue
+		}
+		if keyErr == nil && edit.ownedAddKeys[key] {
+			body.Lineup = append(body.Lineup, added)
+		} else {
+			body.Acquisitions = append(body.Acquisitions, added)
+		}
+		if keyErr == nil {
+			existing[key] = true
+		}
+		addedTotal++
 	}
 
 	raw, merr := json.Marshal(body)
@@ -400,8 +499,8 @@ func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON s
 	if droppedTotal > 0 {
 		parts = append(parts, fmt.Sprintf("dropped %d", droppedTotal))
 	}
-	if len(edit.Add) > 0 {
-		parts = append(parts, fmt.Sprintf("added %d", len(edit.Add)))
+	if addedTotal > 0 {
+		parts = append(parts, fmt.Sprintf("added %d", addedTotal))
 	}
 	return strings.Join(parts, ", "), string(raw), nil
 }

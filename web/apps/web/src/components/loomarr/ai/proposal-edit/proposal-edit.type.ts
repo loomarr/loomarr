@@ -2,6 +2,7 @@ import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { ReactNode } from "react";
+import type { MovieCollectionChoice } from "@/suggest/movie-collection-choices";
 
 interface ProposalEditProps {
   // The proposal's two pick lists, as the queue already renders them. Both are needed:
@@ -15,6 +16,9 @@ interface ProposalEditProps {
   optionalSuggestions?: ProposalItem[];
   onFindMore?: () => void;
   findingMore?: boolean;
+  movieCollections?: MovieCollectionChoice[];
+  movieCollectionsLoading?: boolean;
+  movieCollectionsIncomplete?: boolean;
   // Read-only server projection from the trusted Proposal Intent. Used only to
   // explain series added in this local edit; it is never copied into the edit DTO.
   episodeSelectionPreview?: EpisodeSelection;
