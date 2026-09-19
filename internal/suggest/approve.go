@@ -462,7 +462,7 @@ func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON s
 	body.Alternates, n = keep(body.Alternates)
 	droppedTotal += n
 
-	existing := make(map[provision.Key]bool, len(body.Lineup)+len(body.Acquisitions)+len(body.Alternates))
+	existing := make(map[provision.Key]bool)
 	for _, items := range [][]ProposalItem{body.Lineup, body.Acquisitions, body.Alternates} {
 		for _, item := range items {
 			if key, keyErr := acquisitionKey(item); keyErr == nil {
