@@ -1,67 +1,15 @@
 import { Check, Lock } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { commonLanguages, languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import type { LanguagePickerProps } from "./language-picker.type";
-
-const languages = [
-  ["", "Any language"],
-  ["en", "English"],
-  ["es", "Spanish"],
-  ["fr", "French"],
-  ["de", "German"],
-  ["it", "Italian"],
-  ["pt", "Portuguese"],
-  ["nl", "Dutch"],
-  ["pl", "Polish"],
-  ["ru", "Russian"],
-  ["uk", "Ukrainian"],
-  ["ar", "Arabic"],
-  ["he", "Hebrew"],
-  ["hi", "Hindi"],
-  ["bn", "Bengali"],
-  ["pa", "Punjabi"],
-  ["ur", "Urdu"],
-  ["zh", "Chinese"],
-  ["ja", "Japanese"],
-  ["ko", "Korean"],
-  ["vi", "Vietnamese"],
-  ["th", "Thai"],
-  ["id", "Indonesian"],
-  ["ms", "Malay"],
-  ["tl", "Filipino"],
-  ["tr", "Turkish"],
-  ["el", "Greek"],
-  ["sv", "Swedish"],
-  ["no", "Norwegian"],
-  ["da", "Danish"],
-  ["fi", "Finnish"],
-  ["cs", "Czech"],
-  ["sk", "Slovak"],
-  ["hu", "Hungarian"],
-  ["ro", "Romanian"],
-  ["bg", "Bulgarian"],
-  ["hr", "Croatian"],
-  ["sr", "Serbian"],
-  ["sl", "Slovenian"],
-  ["et", "Estonian"],
-  ["lv", "Latvian"],
-  ["lt", "Lithuanian"],
-  ["is", "Icelandic"],
-  ["ga", "Irish"],
-  ["cy", "Welsh"],
-  ["ca", "Catalan"],
-  ["eu", "Basque"],
-  ["gl", "Galician"],
-] as const;
-
-const labelFor = (code: string): string => languages.find(([value]) => value === code)?.[1] ?? code;
 
 // One friendly installation-language control. Provider and model choices stay in Advanced;
 // this asks only the household question needed by the automatic gate.
 const LanguagePicker = ({ value, onChange, locked = false, lockedLabel }: LanguagePickerProps) => {
   const listID = useId();
-  const selectedLabel = labelFor(value);
+  const selectedLabel = languageName(value);
   const [query, setQuery] = useState(selectedLabel);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -70,8 +18,8 @@ const LanguagePicker = ({ value, onChange, locked = false, lockedLabel }: Langua
 
   const choices = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    if (!needle || query === selectedLabel) return languages;
-    return languages.filter(
+    if (!needle || query === selectedLabel) return commonLanguages;
+    return commonLanguages.filter(
       ([code, label]) => label.toLocaleLowerCase().includes(needle) || code.toLocaleLowerCase() === needle,
     );
   }, [query, selectedLabel]);
