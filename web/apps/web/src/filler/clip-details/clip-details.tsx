@@ -48,11 +48,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
   const suggestion = clip.contextSuggestion;
   const likelyContext = suggestion
     ? [
-        suggestion.year
-          ? String(suggestion.year)
-          : suggestion.decade
-            ? `${suggestion.decade}s`
-            : undefined,
+        suggestion.year ? String(suggestion.year) : suggestion.decade ? `${suggestion.decade}s` : undefined,
         suggestion.country,
       ]
         .filter(Boolean)
