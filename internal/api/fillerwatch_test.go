@@ -100,14 +100,14 @@ type watchBody struct {
 	} `json:"autoFetch"`
 }
 
-func newFillerWatchServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
+func newFillerWatchHarness(t *testing.T) *fillerHarness {
 	t.Helper()
-	harness := newFillerLocationHarness(t, "US", "")
-	return harness.Server, harness.Store, harness.Filler
+	return newFillerLocationHarness(t, "US", "")
 }
 
 func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
-	srv, _, ff := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.fetchStatus = filler.FetchStatus{
 		Enabled: true, StoppedBy: "catalog",
 		CatalogClips: 2000, MaxCatalog: 2000,
@@ -148,7 +148,8 @@ func getWatch(t *testing.T, srvURL, token string) (watchBody, int) {
 // WHERE it comes from. The sources listing stays admin-only because it names filesystem paths and
 // library targets — this carries counts and a verdict, and nothing else.
 func TestFillerWatch_IsMemberReadable(t *testing.T) {
-	srv, st, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 
 	body, code := getWatch(t, srv.URL, memberToken)
@@ -175,7 +176,8 @@ func TestFillerWatch_IsMemberReadable(t *testing.T) {
 // A fresh install is UNCONFIGURED, not broken. An amber warning on first boot reads as a fault
 // the operator caused, which is the opposite of the truth: there is simply work still to do.
 func TestFillerWatch_FreshInstallIsUnconfiguredNotBroken(t *testing.T) {
-	srv, _, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv := harness.Server
 
 	body, code := getWatch(t, srv.URL, adminToken)
 	if code != http.StatusOK {
@@ -189,7 +191,8 @@ func TestFillerWatch_FreshInstallIsUnconfiguredNotBroken(t *testing.T) {
 // THE failure the hardcoded green dot hid: every source switched off, nothing scanning, and a
 // reassuring pulse claiming otherwise.
 func TestFillerWatch_AllSourcesOffAsksForAttention(t *testing.T) {
-	srv, st, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 
@@ -213,7 +216,8 @@ func TestFillerWatch_AllSourcesOffAsksForAttention(t *testing.T) {
 // Sources on, catalog empty — usually an empty folder or a mount that did not come up. Worth
 // flagging on day one rather than after someone notices a channel playing silence.
 func TestFillerWatch_OnButEmptyAsksForAttention(t *testing.T) {
-	srv, st, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, st := harness.Server, harness.Store
 	if err := st.UpsertFillerSource(t.Context(),
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -227,7 +231,8 @@ func TestFillerWatch_OnButEmptyAsksForAttention(t *testing.T) {
 
 // The healthy path, and the counts the header renders.
 func TestFillerWatch_ReportsCountsAndHealth(t *testing.T) {
-	srv, st, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	seedClip(t, st, "b.mp4", filler.Commercial, 1994, filler.Kids, "cereal")
@@ -264,7 +269,8 @@ func TestFillerWatch_ReportsCountsAndHealth(t *testing.T) {
 //
 // Found live: an install that had just pulled 12 clips showed "5 of 5 sources on · 0 clips".
 func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
-	srv, st, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, st := harness.Server, harness.Store
 	if err := st.UpsertFillerSource(t.Context(),
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -291,7 +297,8 @@ func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
 // The mirror, so the healthy-on-held rule above cannot be satisfied by never flagging anything:
 // sources on, and genuinely NOTHING anywhere, is still attention.
 func TestFillerWatch_NoClipsAtAllIsStillAttention(t *testing.T) {
-	srv, st, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, st := harness.Server, harness.Store
 	if err := st.UpsertFillerSource(t.Context(),
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -310,7 +317,8 @@ func TestFillerWatch_NoClipsAtAllIsStillAttention(t *testing.T) {
 // than fetched, so an absent timestamp is the ordinary state — treating it as stale would light
 // every drop-folder install amber forever, which is how an operator learns to ignore the dot.
 func TestFillerWatch_NeverFetchedIsNotStale(t *testing.T) {
-	srv, st, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	if err := st.UpsertFillerSource(t.Context(),
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
@@ -328,7 +336,8 @@ func TestFillerWatch_NeverFetchedIsNotStale(t *testing.T) {
 
 // Everything that reports a fetch time went quiet days ago.
 func TestFillerWatch_LongSilenceAsksForAttention(t *testing.T) {
-	srv, st, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	if err := st.UpsertFillerSource(ctx,
@@ -349,7 +358,8 @@ func TestFillerWatch_LongSilenceAsksForAttention(t *testing.T) {
 // A recent fetch on ONE source is enough. A stale archive collection beside a folder that ran
 // this morning is not a problem worth a warning.
 func TestFillerWatch_OneCurrentSourceKeepsItHealthy(t *testing.T) {
-	srv, st, _ := newFillerWatchServer(t)
+	harness := newFillerWatchHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	for _, id := range []string{"stale", "fresh"} {

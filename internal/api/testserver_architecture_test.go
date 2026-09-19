@@ -22,7 +22,6 @@ var testServerConstructors = map[string]string{
 	"events_test.go:newEventsServer":                 "events",
 	"fillermedia_test.go:newMediaServer":             "filler media",
 	"fillersources_test.go:serverWithClips":          "filler sources",
-	"fillerwatch_test.go:newFillerWatchServer":       "filler watch",
 	"help_test.go:newHelpServer":                     "help",
 	"icons_test.go:newIconsHandlerWithConfig":        "icon handler configuration",
 	"icons_test.go:newIconsServer":                   "icons",
