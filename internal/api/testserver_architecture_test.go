@@ -20,7 +20,6 @@ var testServerConstructors = map[string]string{
 	"dashboard_panels_test.go:serverWithPanels":        "dashboard panels",
 	"dashboard_test.go:newDashboardServer":             "dashboard playout",
 	"events_test.go:newEventsServer":                   "events",
-	"filler_test.go:newFillerServerWithConfig":         "filler configuration",
 	"filler_test.go:newFillerServerWithIncomingConfig": "filler incoming configuration",
 	"filler_test.go:newFillerServerWithRuntimeConfig":  "filler runtime configuration",
 	"fillermedia_test.go:newMediaServer":               "filler media",

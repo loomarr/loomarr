@@ -54,9 +54,8 @@ func seedSource(t *testing.T, st store.Store, id, uri string, enabled bool) {
 }
 
 func TestProposeFillerPull_UsesOnlyGeographicallyEligibleSources(t *testing.T) {
-	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		return map[string]string{"filler.home_country": "US", "filler.home_market": "New York"}[key]
-	})
+	harness := newFillerLocationHarness(t, "US", "New York")
+	srv, st := harness.Server, harness.Store
 	for _, tc := range []struct {
 		id, country, market string
 	}{

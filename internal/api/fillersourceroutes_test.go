@@ -327,12 +327,8 @@ func TestSetFillerSourceEnabled_RefusesRowsWithNothingToStop(t *testing.T) {
 // actually express what the column can hold — the columns shipped in an earlier V38c step with
 // no route reaching them, which is the declared-but-unconsumed shape §15 forbids.
 func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
-	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		if key == "filler.home_country" {
-			return "US"
-		}
-		return ""
-	})
+	harness := newFillerLocationHarness(t, "US", "")
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	source := store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
 	source.Geography.Country = "US"
@@ -465,12 +461,8 @@ func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 }
 
 func TestListFillerSources_ProjectsDurableRetryAsTheNextAutomaticCheck(t *testing.T) {
-	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		if key == "filler.home_country" {
-			return "US"
-		}
-		return ""
-	})
+	harness := newFillerLocationHarness(t, "US", "")
+	srv, st := harness.Server, harness.Store
 	ctx := t.Context()
 	src := store.NewFillerSource("retrying", "archive", "retrying", "Retrying", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
@@ -636,12 +628,8 @@ func TestListFillerSources_ShowsOperatorAddedFoldersAndLibraries(t *testing.T) {
 // rather than "does this row have anything to fetch". A control that cannot work is worse than no
 // control, and this is the shape §10 forbids by name.
 func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
-	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		if key == "filler.home_country" {
-			return "US"
-		}
-		return ""
-	})
+	harness := newFillerLocationHarness(t, "US", "")
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 
 	// A YouTube row with no playlist yet — exactly how migration 00034 seeds it.
@@ -680,9 +668,8 @@ func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
 }
 
 func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
-	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		return map[string]string{"filler.home_country": "US", "filler.home_market": "New York"}[key]
-	})
+	harness := newFillerLocationHarness(t, "US", "New York")
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 
 	inherited := store.NewFillerSource("archive:inherited", "archive", "inherited", "Inherited", time.Now().UTC())

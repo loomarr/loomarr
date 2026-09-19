@@ -309,7 +309,7 @@ type fillerHarness struct {
 
 func newFillerHarness(t *testing.T) *fillerHarness {
 	t.Helper()
-	srv, st, ff := newFillerServerWithConfig(t, nil, nil)
+	srv, st, ff := newFillerServerWithRuntimeConfig(t, nil, nil, nil, nil)
 	return &fillerHarness{
 		apiHarness: &apiHarness{t: t, Server: srv, Store: st},
 		Filler:     ff,
@@ -318,15 +318,26 @@ func newFillerHarness(t *testing.T) *fillerHarness {
 
 func newFillerImageHarness(t *testing.T, imageService api.ImageService) *fillerHarness {
 	t.Helper()
-	srv, st, ff := newFillerServerWithConfig(t, imageService, nil)
+	srv, st, ff := newFillerServerWithRuntimeConfig(t, imageService, nil, nil, nil)
 	return &fillerHarness{
 		apiHarness: &apiHarness{t: t, Server: srv, Store: st},
 		Filler:     ff,
 	}
 }
 
-func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, store.Store, *fakeFiller) {
-	return newFillerServerWithRuntimeConfig(t, imageService, liveConfig, nil, nil)
+func newFillerLocationHarness(t *testing.T, homeCountry, homeMarket string) *fillerHarness {
+	t.Helper()
+	liveConfig := func(key string) string {
+		return map[string]string{
+			"filler.home_country": homeCountry,
+			"filler.home_market":  homeMarket,
+		}[key]
+	}
+	srv, st, ff := newFillerServerWithRuntimeConfig(t, nil, liveConfig, nil, nil)
+	return &fillerHarness{
+		apiHarness: &apiHarness{t: t, Server: srv, Store: st},
+		Filler:     ff,
+	}
 }
 
 func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, store.Store, *fakeFiller) {
