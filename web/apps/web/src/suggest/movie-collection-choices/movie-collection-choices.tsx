@@ -1,7 +1,8 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { provisionKey } from "@loomarr/core/provision";
 import { Check, LoaderCircle, Plus } from "lucide-react";
-import { Button, Disclosure } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import type { MovieCollectionChoicesProps } from "./movie-collection-choices.type";
 
 const MAX_MOVIE_COLLECTION_KEYS = 24;
