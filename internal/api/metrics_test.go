@@ -2,15 +2,20 @@ package api_test
 
 import (
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/metrics"
 )
+
+func newGenerationMetricsHarness(t *testing.T, recorder *metrics.Recorder) *apiHarness {
+	t.Helper()
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{Metrics: recorder})
+	})
+}
 
 // /metrics is unauthenticated on the LAN (§7) and exposes both the Go runtime
 // collectors and Loomarr's own HTTP series (§18).
@@ -83,21 +88,12 @@ func TestRouterUsesItsGenerationRecorderForTrafficAndScrapes(t *testing.T) {
 	recorder := metrics.New(metrics.Options{
 		Version: "v9.8.7", Revision: "generation-a", Database: "postgres",
 	})
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Metrics: recorder,
-	}))
-	t.Cleanup(srv.Close)
+	harness := newGenerationMetricsHarness(t, recorder)
 
-	health, err := http.Get(srv.URL + "/v1/healthz")
-	if err != nil {
-		t.Fatalf("GET /v1/healthz: %v", err)
-	}
+	health := harness.Do(http.MethodGet, "/v1/healthz", "", "")
 	_ = health.Body.Close()
 
-	response, err := http.Get(srv.URL + "/v1/metrics")
-	if err != nil {
-		t.Fatalf("GET /v1/metrics: %v", err)
-	}
+	response := harness.Do(http.MethodGet, "/v1/metrics", "", "")
 	defer func() { _ = response.Body.Close() }()
 	body, _ := io.ReadAll(response.Body)
 	text := string(body)
