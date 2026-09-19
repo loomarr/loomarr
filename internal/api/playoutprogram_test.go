@@ -172,58 +172,57 @@ func (f *fakeEncoder) processSpec() diagnostics.ProcessSpec {
 	return f.spec
 }
 
-type programOpts struct {
-	resolver api.PlayoutResolver
-	encoder  api.PlayoutEncoder
-	logger   *slog.Logger
-	font     string
-	playout  api.Playout
-	noToken  bool
-	sessions api.PlayoutObserver
-	// config overlays LiveConfig, for tests about a setting the handler reads live —
-	// `filler.target_lufs` (§10 V40) is the first.
-	config map[string]string
+type playoutProgramHarnessConfig struct {
+	Resolver api.PlayoutResolver
+	Encoder  api.PlayoutEncoder
+	Logger   *slog.Logger
+	FontPath string
+	Playout  api.Playout
+	Observer api.PlayoutObserver
+	// FillerTargetLUFS controls the one live setting exercised by program-route
+	// tests without exposing a generic settings map through the harness interface.
+	FillerTargetLUFS string
 	// reclaimVRAM is the LLM-eviction seam the retry ladder calls (§9.1 V47) — set by ladder tests
 	// to observe that eviction fired; nil for every other test (the ladder then skips that step).
-	reclaimVRAM func(ctx context.Context)
+	ReclaimVRAM func(ctx context.Context)
 }
 
-func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/prog.db")
-	t.Cleanup(func() { _ = st.Close() })
+// playoutProgramHarness owns program-stream routing and lifecycle while its
+// configuration exposes only the adapters and behavior individual tests vary.
+type playoutProgramHarness struct {
+	*apiHarness
+}
 
-	cfg := map[string]string{
-		"server.public_url": "http://loomarr.local:8080",
-		"playout.backend":   "internal",
+func newPlayoutProgramHarness(t *testing.T, config playoutProgramHarnessConfig) *playoutProgramHarness {
+	t.Helper()
+	if config.Playout == nil {
+		config.Playout = &testkit.Playout{}
 	}
-	for k, v := range o.config {
-		cfg[k] = v
-	}
-	if o.playout == nil {
-		o.playout = &testkit.Playout{}
-	}
-	if o.logger == nil {
-		o.logger = slog.New(slog.DiscardHandler)
-	}
-	opts := api.Options{
-		Store:           st,
-		Auth:            api.NewTokenAuthorizer(adminToken),
-		Log:             o.logger,
-		PlayoutResolver: o.resolver,
-		PlayoutEncoder:  o.encoder,
-		PlayoutObserver: o.sessions,
-		PlayoutFont:     func() string { return o.font },
-		Playout:         o.playout,
-		LiveConfig:      func(k string) string { return cfg[k] },
-		ReclaimVRAM:     o.reclaimVRAM,
-	}
-	if !o.noToken {
-		opts.PlayoutSecret = func() string { return playoutToken }
-	}
-	srv := httptest.NewServer(api.Router(o.logger, opts))
-	t.Cleanup(srv.Close)
-	return srv
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		logger := defaults.Log
+		if config.Logger != nil {
+			logger = config.Logger
+		}
+		cfg := map[string]string{
+			"server.public_url":  "http://loomarr.local:8080",
+			"playout.backend":    "internal",
+			"filler.target_lufs": config.FillerTargetLUFS,
+		}
+		return api.Router(logger, api.Options{
+			Store:           defaults.Store,
+			Auth:            api.NewTokenAuthorizer(adminToken),
+			Log:             logger,
+			PlayoutResolver: config.Resolver,
+			PlayoutEncoder:  config.Encoder,
+			PlayoutObserver: config.Observer,
+			PlayoutFont:     func() string { return config.FontPath },
+			Playout:         config.Playout,
+			LiveConfig:      func(key string) string { return cfg[key] },
+			ReclaimVRAM:     config.ReclaimVRAM,
+			PlayoutSecret:   func() string { return playoutToken },
+		})
+	})
+	return &playoutProgramHarness{apiHarness: base}
 }
 
 func TestPlayoutProgramAdmissionFailureDoesNoResolverOrEncoderWork(t *testing.T) {
@@ -248,11 +247,11 @@ func TestPlayoutProgramAdmissionFailureDoesNoResolverOrEncoderWork(t *testing.T)
 		t.Run(tc.name, func(t *testing.T) {
 			resolver := &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"}
 			encoder := &fakeEncoder{output: "must-not-run"}
-			srv := newProgramServer(t, programOpts{
-				resolver: resolver,
-				encoder:  encoder.start,
-				playout:  tc.admission,
-			})
+			srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+				Resolver: resolver,
+				Encoder:  encoder.start,
+				Playout:  tc.admission,
+			}).Server
 
 			resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 			if resp.StatusCode != tc.status {
@@ -271,10 +270,10 @@ func TestPlayoutProgramAdmissionFailureDoesNoResolverOrEncoderWork(t *testing.T)
 func TestPlayoutProgram_DoesNotSpawnWhenPreparedFallbackCannotClaimCapacity(t *testing.T) {
 	encoder := &fakeEncoder{output: "must-not-run"}
 	sessions := &fakePlayoutSessions{denyProgram: true}
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
-		encoder:  encoder.start, sessions: sessions,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		Encoder:  encoder.start, Observer: sessions,
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusBadGateway {
@@ -301,11 +300,11 @@ func TestPlayoutProgramAdmissionCannotEscapeConcurrentStopAll(t *testing.T) {
 		LiveSessions: &playout.Manager{},
 		LiveHLS:      &playout.HLSManager{},
 	})
-	srv := newProgramServer(t, programOpts{
-		resolver: resolver,
-		encoder:  encoder.start,
-		playout:  origin,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: resolver,
+		Encoder:  encoder.start,
+		Playout:  origin,
+	}).Server
 
 	done := make(chan *http.Response, 1)
 	go func() {
@@ -333,10 +332,10 @@ func playableAiring(offset, remaining time.Duration) playout.Airing {
 
 // The device token gates this route like every other playout route (§11).
 func TestPlayoutProgram_RequiresTheDeviceToken(t *testing.T) {
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
-		encoder:  (&fakeEncoder{output: "ts"}).start,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		Encoder:  (&fakeEncoder{output: "ts"}).start,
+	}).Server
 	for _, q := range []string{"", "?token=wrong", "?token=" + playoutToken[:8]} {
 		resp := getPlayout(t, srv, "/v1/playout/program/ch1"+q)
 		if resp.StatusCode != http.StatusNotFound {
@@ -350,10 +349,10 @@ func TestPlayoutProgram_RequiresTheDeviceToken(t *testing.T) {
 // channel to one program forever.
 func TestPlayoutProgram_StreamsOneProgramThenEnds(t *testing.T) {
 	enc := &fakeEncoder{output: "program-bytes"}
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
-		encoder:  enc.start,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		Encoder:  enc.start,
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
@@ -387,13 +386,13 @@ func TestPlayoutProgram_StreamsOneProgramThenEnds(t *testing.T) {
 // restarts the show and a program overruns its slot.
 func TestPlayoutProgram_PassesTheSeekAndTheSlotBound(t *testing.T) {
 	enc := &fakeEncoder{output: "x"}
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{
 			airing: playableAiring(40*time.Minute, 20*time.Minute),
 			url:    "http://emby/Videos/abc/stream?static=true",
 		},
-		encoder: enc.start,
-	})
+		Encoder: enc.start,
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	_, _ = io.ReadAll(resp.Body)
@@ -415,9 +414,9 @@ func TestPlayoutProgramSharedClockKeepsSeekAndAbsoluteSourceEnd(t *testing.T) {
 	airing := playableAiring(2*time.Second, 3*time.Second)
 	airing.StartedAt = time.Unix(1000, 0).UTC()
 	origin := airing.StartedAt.Add(-10 * time.Second)
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: airing, url: "http://media.invalid/original"}, encoder: enc.start,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{airing: airing, url: "http://media.invalid/original"}, Encoder: enc.start,
+	}).Server
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -458,7 +457,7 @@ func TestPlayoutProgramRejectsMalformedClockBeforeSourceEffects(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			resolver := &fakeResolver{airing: playableAiring(0, time.Minute), url: "http://media.invalid/original"}
 			enc := &fakeEncoder{output: "x"}
-			srv := newProgramServer(t, programOpts{resolver: resolver, encoder: enc.start})
+			srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{Resolver: resolver, Encoder: enc.start}).Server
 			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
 			if err != nil {
 				t.Fatal(err)
@@ -484,11 +483,11 @@ func TestPlayoutProgramRejectsMalformedClockBeforeSourceEffects(t *testing.T) {
 // instantly and it re-requests in a tight loop, spinning a core on an empty channel.
 func TestPlayoutProgram_NothingAiringServesABoundedCard(t *testing.T) {
 	enc := &fakeEncoder{output: "card"}
-	srv := newProgramServer(t, programOpts{
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
 		// A flex Airing with no item: "nothing is on".
-		resolver: &fakeResolver{airing: playout.Airing{Kind: schedule.SlotFlex}},
-		encoder:  enc.start,
-	})
+		Resolver: &fakeResolver{airing: playout.Airing{Kind: schedule.SlotFlex}},
+		Encoder:  enc.start,
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
@@ -521,13 +520,13 @@ func TestPlayoutProgram_NothingAiringServesABoundedCard(t *testing.T) {
 // seconds of the next episode and tell the viewer, incorrectly, that nothing was scheduled.
 func TestPlayoutProgram_UnfilledBreakStopsAtTheProgrammeBoundary(t *testing.T) {
 	enc := &fakeEncoder{output: "card"}
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: playout.Airing{
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{airing: playout.Airing{
 			Kind: schedule.SlotFiller, Remaining: 10 * time.Second,
 		}},
-		encoder: enc.start,
-		font:    "/font.ttf",
-	})
+		Encoder:  enc.start,
+		FontPath: "/font.ttf",
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
@@ -555,10 +554,10 @@ func TestPlayoutProgram_UnfilledBreakStopsAtTheProgrammeBoundary(t *testing.T) {
 // usually passed.
 func TestPlayoutProgram_ResolverFailureShowsTheCard(t *testing.T) {
 	enc := &fakeEncoder{output: "card-bytes"}
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{err: errors.New("emby unreachable")},
-		encoder:  enc.start,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{err: errors.New("emby unreachable")},
+		Encoder:  enc.start,
+	}).Server
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
@@ -585,10 +584,10 @@ func TestPlayoutProgram_ResolverFailureShowsTheCard(t *testing.T) {
 
 // A channel that does not exist is a 404, so the demuxer stops rather than retrying forever.
 func TestPlayoutProgram_UnknownChannelIs404(t *testing.T) {
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{err: store.ErrNotFound},
-		encoder:  (&fakeEncoder{}).start,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{err: store.ErrNotFound},
+		Encoder:  (&fakeEncoder{}).start,
+	}).Server
 	resp := getPlayout(t, srv, "/v1/playout/program/nope?token="+playoutToken)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status %d, want 404", resp.StatusCode)
@@ -597,10 +596,10 @@ func TestPlayoutProgram_UnknownChannelIs404(t *testing.T) {
 
 // An encoder that fails to start must report it, not hang or serve a truncated 200.
 func TestPlayoutProgram_EncoderStartFailureIsReported(t *testing.T) {
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
-		encoder:  (&fakeEncoder{failErr: errors.New("no such binary")}).start,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		Encoder:  (&fakeEncoder{failErr: errors.New("no such binary")}).start,
+	}).Server
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status %d, want 502", resp.StatusCode)
@@ -617,7 +616,7 @@ func TestPlayoutProgram_MapsTheResolvedAudioTrack(t *testing.T) {
 		audioTrack: 2,
 	}
 	enc := &fakeEncoder{output: "chunk"}
-	srv := newProgramServer(t, programOpts{resolver: res, encoder: enc.start})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{Resolver: res, Encoder: enc.start}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
@@ -636,7 +635,7 @@ func TestPlayoutProgram_MapsTheResolvedAudioTrack(t *testing.T) {
 
 // Playout not running is a 501 that explains itself, not a 404 that reads as a wiring mistake.
 func TestPlayoutProgram_NotRunningExplainsItself(t *testing.T) {
-	srv := newProgramServer(t, programOpts{resolver: nil, encoder: nil})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{Resolver: nil, Encoder: nil}).Server
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("status %d, want 501", resp.StatusCode)
@@ -648,7 +647,7 @@ func TestPlayoutProgram_NotRunningExplainsItself(t *testing.T) {
 func TestPlayoutProgram_IsCalledRepeatedlyAndStaysConsistent(t *testing.T) {
 	res := &fakeResolver{airing: playableAiring(10*time.Second, time.Minute), url: "http://emby/v/1"}
 	enc := &fakeEncoder{output: "chunk"}
-	srv := newProgramServer(t, programOpts{resolver: res, encoder: enc.start})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{Resolver: res, Encoder: enc.start}).Server
 
 	for i := 0; i < 5; i++ {
 		resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
@@ -674,7 +673,7 @@ func TestPlayoutProgram_PinsTheFirstBlocksBroadcastFormat(t *testing.T) {
 		},
 	}
 	enc := &fakeEncoder{output: "chunk"}
-	srv := newProgramServer(t, programOpts{resolver: res, encoder: enc.start})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{Resolver: res, Encoder: enc.start}).Server
 
 	first := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	_, _ = io.Copy(io.Discard, first.Body)
@@ -719,10 +718,10 @@ func TestPlayoutProgram_DisconnectStopsTheEncoder(t *testing.T) {
 			"; while :; do printf x; sleep 0.05; done"
 		return playout.Start(ctx, "sh", []string{"-c", script}, nil, nil)
 	})
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
-		encoder:  enc,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		Encoder:  enc,
+	}).Server
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
@@ -863,16 +862,16 @@ func (e *ladderEncoder) cardPath() []string {
 func TestPlayoutProgram_TranscodeFallsBackToSoftware(t *testing.T) {
 	enc := &ladderEncoder{hwEnc: "h264_vulkan", output: "software-bytes"}
 	var evicted int
-	srv := newProgramServer(t, programOpts{
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
 		// A hardware profile + the default transcode plan (CopyVideo=false) → the ladder applies.
-		resolver: &fakeResolver{
+		Resolver: &fakeResolver{
 			airing:  playableAiring(0, time.Hour),
 			url:     "http://emby/v/1",
 			profile: playout.Profile{Width: 1280, Height: 720, Framerate: 30, Encoder: "h264_vulkan", VideoBitrate: 4000, AudioBitrate: 128},
 		},
-		encoder:     enc.start,
-		reclaimVRAM: func(context.Context) { evicted++ },
-	})
+		Encoder:     enc.start,
+		ReclaimVRAM: func(context.Context) { evicted++ },
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	body, _ := io.ReadAll(resp.Body)
@@ -897,9 +896,9 @@ func TestPlayoutProgram_FallbackLogNamesEncodersWithoutSourceCredentials(t *test
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	enc := &ladderEncoder{hwEnc: "hevc_videotoolbox", output: "software-bytes"}
-	srv := newProgramServer(t, programOpts{
-		logger: logger,
-		resolver: &fakeResolver{
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Logger: logger,
+		Resolver: &fakeResolver{
 			airing: playableAiring(0, time.Hour),
 			url:    "http://library-user:do-not-log@emby.invalid/video?api_key=do-not-log",
 			profile: playout.Profile{
@@ -908,9 +907,9 @@ func TestPlayoutProgram_FallbackLogNamesEncodersWithoutSourceCredentials(t *test
 			},
 			channelCodec: "hevc",
 		},
-		encoder:     enc.start,
-		reclaimVRAM: func(context.Context) {},
-	})
+		Encoder:     enc.start,
+		ReclaimVRAM: func(context.Context) {},
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken+"&plan=full")
 	_, _ = io.Copy(io.Discard, resp.Body)
@@ -936,8 +935,8 @@ func TestPlayoutProgram_CopyPlanIsNotLaddered(t *testing.T) {
 	// An encoder that always produces nothing, and a resolver whose plan COPIES the video.
 	enc := &ladderEncoder{hwEnc: "h264_vulkan", output: "never"}
 	var evicted int
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{
 			airing: playableAiring(0, time.Hour),
 			url:    "http://emby/v/1",
 			plan:   playout.CopyPlan{CopyVideo: true, CopyAudio: true}, // direct play
@@ -946,9 +945,9 @@ func TestPlayoutProgram_CopyPlanIsNotLaddered(t *testing.T) {
 				AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000,
 			},
 		},
-		encoder:     enc.start,
-		reclaimVRAM: func(context.Context) { evicted++ },
-	})
+		Encoder:     enc.start,
+		ReclaimVRAM: func(context.Context) { evicted++ },
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	_, _ = io.ReadAll(resp.Body)
@@ -993,11 +992,11 @@ func TestProgramEncoder_ReportsProgressToTheSession(t *testing.T) {
 		// emits on, so anything before it must arrive as ONE sample, never half-updated.
 		progressScript: `{ printf 'frame=120\nspeed=12.4x\nout_time_ms=4000000\nprogress=continue\n' >&3; }`,
 	}
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
-		encoder:  enc.start,
-		sessions: sessions,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		Encoder:  enc.start,
+		Observer: sessions,
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
@@ -1050,11 +1049,11 @@ func TestProgramEncoder_ReportsTheResolvedEncoder(t *testing.T) {
 		output:         "ts",
 		progressScript: `{ printf 'speed=1.0x\nprogress=continue\n' >&3; }`,
 	}
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
-		encoder:  enc.start,
-		sessions: sessions,
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		Encoder:  enc.start,
+		Observer: sessions,
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	_, _ = io.Copy(io.Discard, resp.Body)
@@ -1086,11 +1085,11 @@ func fillerAiring(remaining time.Duration) playout.Airing {
 // clip-to-clip jump, which is what an operator hears as "some of these are too quiet".
 func TestPlayoutProgram_NormalisesFillerLoudness(t *testing.T) {
 	enc := &fakeEncoder{output: "ts"}
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: fillerAiring(30 * time.Second), url: "http://emby/v/1"},
-		encoder:  enc.start,
-		config:   map[string]string{"filler.target_lufs": "-23"},
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver:         &fakeResolver{airing: fillerAiring(30 * time.Second), url: "http://emby/v/1"},
+		Encoder:          enc.start,
+		FillerTargetLUFS: "-23",
+	}).Server
 
 	if resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -1106,12 +1105,12 @@ func TestPlayoutProgram_NormalisesFillerLoudness(t *testing.T) {
 // even with the setting on.
 func TestPlayoutProgram_LeavesLibraryProgramsAlone(t *testing.T) {
 	enc := &fakeEncoder{output: "ts"}
-	srv := newProgramServer(t, programOpts{
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
 		// A library title: LibraryItemID set, Source empty.
-		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
-		encoder:  enc.start,
-		config:   map[string]string{"filler.target_lufs": "-23"},
-	})
+		Resolver:         &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		Encoder:          enc.start,
+		FillerTargetLUFS: "-23",
+	}).Server
 
 	if resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -1125,11 +1124,11 @@ func TestPlayoutProgram_LeavesLibraryProgramsAlone(t *testing.T) {
 // and it keeps the pre-V40 behaviour reachable.
 func TestPlayoutProgram_EmptyTargetDisablesNormalisation(t *testing.T) {
 	enc := &fakeEncoder{output: "ts"}
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{airing: fillerAiring(30 * time.Second), url: "http://emby/v/1"},
-		encoder:  enc.start,
-		config:   map[string]string{"filler.target_lufs": ""},
-	})
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver:         &fakeResolver{airing: fillerAiring(30 * time.Second), url: "http://emby/v/1"},
+		Encoder:          enc.start,
+		FillerTargetLUFS: "",
+	}).Server
 
 	if resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -1156,9 +1155,9 @@ func TestPlayoutProgramPartialFailureIsNotCleanHTTPCompletion(t *testing.T) {
 				starts.Add(1)
 				return playout.Start(ctx, os.Args[0], []string{"-test.run=^TestPlayoutProgramChildExitHelper$", "--", mode}, nil, onProgress)
 			})
-			srv := newProgramServer(t, programOpts{
-				resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"}, encoder: encoder,
-			})
+			srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+				Resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"}, Encoder: encoder,
+			}).Server
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
@@ -1200,7 +1199,7 @@ func TestPlayoutProgramUnsafeCopyStartUsesAtomicTranscodeAdmission(t *testing.T)
 			resolver := &fakeResolver{airing: playableAiring(11*time.Second, time.Second), url: "http://emby/long-gop", plan: playout.CopyPlan{CopyVideo: true, CopyAudio: true}, copyStartDenied: unsafe, profile: profile, sourceFormat: playout.MediaFormat{VideoCodec: "h264", Width: 320, Height: 180, FrameRate: float64(profile.Framerate), PixelFormat: "yuv420p", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000}}
 			encoder := &fakeEncoder{output: "programme"}
 			sessions := &fakePlayoutSessions{denyProgram: mode == "unsafe seek at capacity"}
-			server := newProgramServer(t, programOpts{resolver: resolver, encoder: encoder.start, sessions: sessions})
+			server := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{Resolver: resolver, Encoder: encoder.start, Observer: sessions}).Server
 			response := getPlayout(t, server, "/v1/playout/program/ch1?token="+playoutToken)
 			_, _ = io.Copy(io.Discard, response.Body)
 			if len(sessions.programCosts) == 0 {
