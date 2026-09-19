@@ -24,12 +24,24 @@ func TestPlanMediaWork_OnlyRequestsCapabilitiesThatCanCloseAnUnresolvedAxis(t *t
 			Confidence: 100, Producer: "metadata", ProducerVersion: "1", ObservedAt: now},
 	}
 	work := fillerenrichment.PlanMediaWork(
-		fillerenrichment.Candidate{ClipHash: "clip"},
+		fillerenrichment.Candidate{ClipHash: "clip", Transcript: "an older transcript", VisionTagged: true},
 		[]fillerenrichment.State{operatorEmpty, product},
 		fillerenrichment.MediaCapabilities{Transcript: true, Vision: true},
 	)
 	if !work.Transcript || !work.Vision {
-		t.Fatalf("work = %+v, want both capabilities for the still-unresolved descriptive axes", work)
+		t.Fatalf("work = %+v, want a newly selected capability to revisit still-unresolved axes", work)
+	}
+
+	weakAudience := fillerenrichment.State{
+		ClipHash: "clip", Axis: fillerenrichment.AxisAudience, Status: fillerenrichment.StatusComplete,
+		Value: fillerenrichment.Value{Text: "general"},
+		Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceInference,
+			Reference: "text", Confidence: 35, Producer: "text", ProducerVersion: "1", ObservedAt: now},
+	}
+	work = fillerenrichment.PlanMediaWork(fillerenrichment.Candidate{ClipHash: "clip"},
+		[]fillerenrichment.State{weakAudience}, fillerenrichment.MediaCapabilities{Vision: true})
+	if !work.Vision {
+		t.Fatalf("work = %+v, want grounded frames to be able to improve weak inference", work)
 	}
 
 	states := make([]fillerenrichment.State, 0, len(fillerenrichment.Axes()))

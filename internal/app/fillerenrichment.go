@@ -175,6 +175,15 @@ func (e fillerMediaExecutor) Run(ctx context.Context, candidate fillerenrichment
 
 func (r fillerEnrichmentRepository) ListCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]fillerenrichment.Candidate, error) {
 	clips, err := r.st.ListFillerEnrichmentCandidates(ctx, producer, producerVersion, taxonomyVersion, limit)
+	return fillerEnrichmentCandidates(clips, err)
+}
+
+func (r fillerEnrichmentRepository) ListCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]fillerenrichment.Candidate, error) {
+	clips, err := r.st.ListFillerEnrichmentCapabilityCandidates(ctx, producer, producerVersion, taxonomyVersion, limit)
+	return fillerEnrichmentCandidates(clips, err)
+}
+
+func fillerEnrichmentCandidates(clips []store.Clip, err error) ([]fillerenrichment.Candidate, error) {
 	if err != nil {
 		return nil, err
 	}

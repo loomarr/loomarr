@@ -57,30 +57,36 @@ func taxonomyAxis(axis Axis) bool {
 }
 
 // PlanMediaWork returns only media work that can still improve an unresolved descriptive axis.
-// Existing media signals and operator answers, including intentional empty answers, are terminal
-// for automation. A completed empty answer from a weaker automated pass is not: a richer signal is
-// allowed one versioned attempt to replace that honest absence.
-func PlanMediaWork(candidate Candidate, states []State, available MediaCapabilities) MediaWork {
+// The runner has already established that this exact capability identity has not completed, so an
+// older transcript or frame pass does not suppress a newly selected model/prompt. Operator answers,
+// including intentional empty answers, remain terminal. Grounded frames may also improve weaker
+// inference or source defaults; transcription only opens axes that still lack a useful value.
+func PlanMediaWork(_ Candidate, states []State, available MediaCapabilities) MediaWork {
 	current := make(map[Axis]State, len(states))
 	for _, state := range states {
 		current[state.Axis] = state
 	}
-	unresolved := func(capabilityAxes map[Axis]bool) bool {
+	unresolved := func(capabilityAxes map[Axis]bool, replaceBelow EvidenceRank) bool {
 		for axis := range capabilityAxes {
 			state, found := current[axis]
 			if !found || state.Status == StatusMissing || state.Status == StatusUnsupported || state.Status == StatusStale {
 				return true
 			}
-			if state.Evidence.Kind == EvidenceOperator || !state.Value.empty() {
+			if state.Evidence.Kind == EvidenceOperator {
 				continue
 			}
-			return true
+			if state.Value.empty() {
+				return true
+			}
+			if rank, ok := state.Evidence.Kind.Rank(); ok && rank < replaceBelow {
+				return true
+			}
 		}
 		return false
 	}
 	return MediaWork{
-		Transcript: available.Transcript && strings.TrimSpace(candidate.Transcript) == "" && unresolved(transcriptAxes),
-		Vision:     available.Vision && !candidate.VisionTagged && unresolved(visionAxes),
+		Transcript: available.Transcript && unresolved(transcriptAxes, RankInference),
+		Vision:     available.Vision && unresolved(visionAxes, RankContent),
 	}
 }
 
@@ -94,6 +100,7 @@ type CapabilitySelection struct {
 
 type capabilityRepository interface {
 	Repository
+	ListCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Candidate, error)
 	ListStates(ctx context.Context, clipHash string) ([]State, error)
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 }
@@ -151,7 +158,7 @@ func (r *CapabilityRunner) Run(ctx context.Context) (RunResult, error) {
 			return result, err
 		}
 	}
-	candidates, err := r.repository.ListCandidates(ctx, selection.Producer, selection.ProducerVersion, taxonomyVersion, limit)
+	candidates, err := r.repository.ListCapabilityCandidates(ctx, selection.Producer, selection.ProducerVersion, taxonomyVersion, limit)
 	if err != nil {
 		return result, fmt.Errorf("list %s enrichment candidates: %w", r.kind, err)
 	}

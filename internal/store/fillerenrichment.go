@@ -38,14 +38,30 @@ func (s *sqlStore) ListFillerEnrichment(ctx context.Context, clipHash string) ([
 }
 
 func (s *sqlStore) ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error) {
+	return s.listFillerEnrichmentCandidates(ctx, producer, producerVersion, taxonomyVersion, limit, true)
+}
+
+// ListFillerEnrichmentCapabilityCandidates selects an exact paid-capability identity only once.
+// Unlike free/text projections, transcript and frame work does not become payable again merely
+// because another descriptive input advanced the clip revision. A changed provider/model/prompt or
+// taxonomy has a different identity and is therefore selected once in its own right.
+func (s *sqlStore) ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error) {
+	return s.listFillerEnrichmentCandidates(ctx, producer, producerVersion, taxonomyVersion, limit, false)
+}
+
+func (s *sqlStore) listFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int, currentRevision bool) ([]Clip, error) {
 	if limit <= 0 {
 		return []Clip{}, nil
+	}
+	revisionPredicate := ""
+	if currentRevision {
+		revisionPredicate = " AND p.input_revision = clips.enrichment_revision"
 	}
 	query := clipSelect + ` WHERE removed_at = 0 AND is_composite = false
 		AND NOT EXISTS (
 			SELECT 1 FROM filler_enrichment_passes p
 			WHERE p.clip_hash = clips.hash AND p.producer = ? AND p.producer_version = ? AND p.taxonomy_version = ?
-			  AND p.input_revision = clips.enrichment_revision
+			  ` + revisionPredicate + `
 		)
 		ORDER BY created_at, hash LIMIT ?`
 	rows, err := s.db.QueryContext(ctx, s.ph(query), producer, producerVersion, taxonomyVersion, limit)

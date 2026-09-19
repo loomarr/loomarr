@@ -4165,6 +4165,16 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(candidates) != 1 || candidates[0].Hash != clip.Hash {
 		t.Fatalf("candidates after new frame text = %+v, err %v", candidates, err)
 	}
+	capabilityCandidates, err := s.ListFillerEnrichmentCapabilityCandidates(ctx,
+		pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
+	if err != nil || len(capabilityCandidates) != 0 {
+		t.Fatalf("paid capability was selected again after another input changed = %+v, err %v", capabilityCandidates, err)
+	}
+	capabilityCandidates, err = s.ListFillerEnrichmentCapabilityCandidates(ctx,
+		pass.Producer, "2", pass.TaxonomyVersion, 10)
+	if err != nil || len(capabilityCandidates) != 1 || capabilityCandidates[0].Hash != clip.Hash {
+		t.Fatalf("new paid capability identity candidates = %+v, err %v", capabilityCandidates, err)
+	}
 	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, "2", pass.TaxonomyVersion, 10)
 	if err != nil || len(candidates) != 1 {
 		t.Fatalf("new producer version candidates = %+v, err %v", candidates, err)
