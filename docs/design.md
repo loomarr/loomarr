@@ -9289,6 +9289,26 @@ the same identity does not pay for another call. An absent provider does not que
 create a visible problem. Operator evidence, including an intentional empty correction, is never
 reopened by automation.
 
+**Context research is a suggestion path, not another evidence rank.** When a publicly acquired
+Clip still lacks verified era or geography after the ordinary passes, Loomarr may use its public
+item title and description to retrieve a bounded evidence packet from a documented, adapter-owned
+knowledge API. A configured text model may interpret only that packet; it receives no general web
+tool, returns no fetch targets, and cannot introduce a citation Loomarr did not retrieve. Local
+paths, private-library metadata, transcripts, and household data never become public lookup queries.
+The first adapter is MediaWiki search, with an identifying User-Agent, HTTPS, fixed host, three-result
+and response-size ceilings, cache/version identity, provider etiquette, and scheduled retry rather
+than bot evasion. Arbitrary pages and consumer search interfaces are not fetched.
+
+A context report persists separately from accepted axes and records the Clip/input revision,
+retrieval adapter/version, interpreting provider/model/prompt, completion time, confidence,
+explanation, and exact titled citation URLs. Campaign-level context may render as, for example,
+`Likely 1970s · United States`; it never writes verified `era` or geography, affects scheduling,
+or changes readiness, Placement, Airworthiness, or admission. Exact item/content evidence and
+operator corrections suppress or supersede the corresponding suggestion. The ordinary UI stays
+quiet when no model, network, or useful result exists; evidence detail is progressive disclosure in
+the exact-Clip panel. Commercial discovery adapters remain behind the same interface and require a
+fresh terms/retention review before selection.
+
 Transcript and frame catch-up use that same coordinator rather than putting a Ready Clip back on
 the readiness conveyor. Each enabled capability has its own provider/model/prompt identity and the
 existing `MaxWhisper` or `MaxVision` per-pass bound. A Clip is eligible only while at least one axis
