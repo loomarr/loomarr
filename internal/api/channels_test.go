@@ -143,50 +143,50 @@ type channelsHarness struct {
 	*apiHarness
 	Channels *fakeChannelSvc
 	LiveTV   *fakeLiveTVSvc
+	Suggest  *fakeSuggest
 }
 
 func newChannelsHarness(t *testing.T) *channelsHarness {
+	return startChannelsHarness(t, false, nil)
+}
+
+func newInternalChannelsHarness(t *testing.T) *channelsHarness {
+	return startChannelsHarness(t, true, nil)
+}
+
+func newRefineChannelsHarness(t *testing.T) *channelsHarness {
+	return startChannelsHarness(t, false, &fakeSuggest{})
+}
+
+func startChannelsHarness(t *testing.T, internalPlayout bool, suggester *fakeSuggest) *channelsHarness {
 	t.Helper()
 	chSvc := &fakeChannelSvc{}
 	ltv := &fakeLiveTVSvc{}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		var liveConfig func(string) string
+		if internalPlayout {
+			liveConfig = func(key string) string {
+				if key == "playout.backend" {
+					return schedule.PlayoutBackendInternal
+				}
+				return "" // in particular: tunarr.url is unconfigured
+			}
+		}
 		return api.Router(defaults.Log, api.Options{
-			Store:    defaults.Store,
-			Auth:     defaults.Auth,
-			Log:      defaults.Log,
-			Channels: chSvc,
-			LiveTV:   ltv,
+			Store:      defaults.Store,
+			Auth:       defaults.Auth,
+			Log:        defaults.Log,
+			Channels:   chSvc,
+			LiveTV:     ltv,
+			Suggest:    suggester,
+			LiveConfig: liveConfig,
 			// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
 			// lineupFromIntent/policyFromIntent (which now go through the binder) resolve real
 			// approved proposals in these tests, same as production wiring.
 			Binder: binder.New(defaults.Store, chSvc, nil, defaults.Log),
 		})
 	})
-	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv}
-}
-
-// newInternalServerWithoutTunarr exercises the production-facing setting shape that exposed the
-// bug: internal playout is selected and tunarr.url is empty, but channel convergence is still a
-// real local operation rather than an unconfigured route.
-func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, store.Store, *fakeChannelSvc) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/internal-no-tunarr.db")
-	t.Cleanup(func() { _ = st.Close() })
-	chSvc := &fakeChannelSvc{}
-	log := slog.New(slog.DiscardHandler)
-	h := api.Router(log, api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: log, Channels: chSvc,
-		Binder: binder.New(st, chSvc, nil, log),
-		LiveConfig: func(key string) string {
-			if key == "playout.backend" {
-				return schedule.PlayoutBackendInternal
-			}
-			return "" // in particular: tunarr.url is unconfigured
-		},
-	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st, chSvc
+	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv, Suggest: suggester}
 }
 
 func TestCreateChannelAdmin(t *testing.T) {
@@ -212,7 +212,8 @@ func TestCreateChannelAdmin(t *testing.T) {
 }
 
 func TestInternalChannelActionsDoNotRequireTunarrURL(t *testing.T) {
-	srv, st, chSvc := newInternalServerWithoutTunarr(t)
+	harness := newInternalChannelsHarness(t)
+	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"internal","name":"Internal","number":42,"strategy":"sequential"}`)
@@ -250,7 +251,8 @@ func TestInternalChannelActionsDoNotRequireTunarrURL(t *testing.T) {
 }
 
 func TestChannelActionErrorsUseAccurateBackendCopy(t *testing.T) {
-	srv, _, chSvc := newInternalServerWithoutTunarr(t)
+	harness := newInternalChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	_ = do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"internal","name":"Internal","number":42,"strategy":"sequential"}`)
 	chSvc.err = errors.New("selected backend unavailable")
@@ -282,7 +284,8 @@ func TestChannelActionErrorsUseAccurateBackendCopy(t *testing.T) {
 }
 
 func TestPurgeConflictReturnsConflictInsteadOfBadGateway(t *testing.T) {
-	srv, _, chSvc := newInternalServerWithoutTunarr(t)
+	harness := newInternalChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"internal","name":"Internal","number":42,"strategy":"sequential"}`)
 	if resp.StatusCode != http.StatusOK {
@@ -887,27 +890,9 @@ func itoa(n int) string { return strconv.Itoa(n) }
 
 // --- refine (POST /v1/channels/{id}/refine) ---
 
-// newServerWithSchedulerAndSuggest wires BOTH the channel service and a fake suggest
-// service, so refine (which needs the suggester) can be exercised end to end.
-func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/refine.db")
-	t.Cleanup(func() { _ = st.Close() })
-	fs := &fakeSuggest{}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      slog.New(slog.DiscardHandler),
-		Channels: &fakeChannelSvc{},
-		Suggest:  fs,
-	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st, fs
-}
-
 func TestRefineChannel_RequiresAdmin(t *testing.T) {
-	srv, _, _ := newServerWithSchedulerAndSuggest(t)
+	harness := newRefineChannelsHarness(t)
+	srv := harness.Server
 	for _, tok := range []string{"", "wrong"} {
 		resp := do(t, srv, http.MethodPost, "/v1/channels/c1/refine", tok, `{"change":"more action"}`)
 		if resp.StatusCode != http.StatusUnauthorized {
@@ -917,7 +902,8 @@ func TestRefineChannel_RequiresAdmin(t *testing.T) {
 }
 
 func TestRefineChannel_HandMadeChannel422(t *testing.T) {
-	srv, st, _ := newServerWithSchedulerAndSuggest(t)
+	harness := newRefineChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	// A channel with NO IntentRef (hand-made) can't be refined — there's no job to re-run.
 	ch := store.Channel{}
 	ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "handmade", "Hand", 3, schedule.Sequential, schedule.StatusBuilding
@@ -931,7 +917,8 @@ func TestRefineChannel_HandMadeChannel422(t *testing.T) {
 }
 
 func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
-	srv, st, fs := newServerWithSchedulerAndSuggest(t)
+	harness := newRefineChannelsHarness(t)
+	srv, st, fs := harness.Server, harness.Store, harness.Suggest
 	ctx := context.Background()
 
 	// A channel bound to a suggestion job, with a current lineup.
@@ -982,7 +969,8 @@ func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
 }
 
 func TestRefineChannel_NotFound(t *testing.T) {
-	srv, _, _ := newServerWithSchedulerAndSuggest(t)
+	harness := newRefineChannelsHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodPost, "/v1/channels/nope/refine", adminToken, `{"change":"x"}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("refine missing channel → %d, want 404", resp.StatusCode)
