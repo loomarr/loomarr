@@ -3,9 +3,7 @@ package api_test
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -33,24 +31,25 @@ func (f *fakeNumberSource) TakenChannelNumbers(context.Context) (map[int]bool, e
 	return f.taken, nil
 }
 
-// newServerWithNumbers is newServerWithScheduler plus a Tunarr number source, so the create
-// and renumber paths can be exercised against numbers that exist ONLY in Tunarr.
-func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Server, store.Store) {
+type channelNumberHarness struct {
+	*apiHarness
+}
+
+// newChannelNumberHarness adds a Tunarr number source to the channel route seam, so create
+// and renumber can exercise numbers that exist only in Tunarr.
+func newChannelNumberHarness(t *testing.T, nums *fakeNumberSource) *channelNumberHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/api.db")
-	t.Cleanup(func() { _ = st.Close() })
-	log := slog.New(slog.DiscardHandler)
-	chSvc := &fakeChannelSvc{}
-	h := api.Router(log, api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      log,
-		Channels: chSvc,
-		Binder:   binder.New(st, chSvc, nil, log).WithChannelNumbers(nums),
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		chSvc := &fakeChannelSvc{}
+		return api.Router(defaults.Log, api.Options{
+			Store:    defaults.Store,
+			Auth:     defaults.Auth,
+			Log:      defaults.Log,
+			Channels: chSvc,
+			Binder:   binder.New(defaults.Store, chSvc, nil, defaults.Log).WithChannelNumbers(nums),
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st
+	return &channelNumberHarness{apiHarness: base}
 }
 
 // A number that exists only in TUNARR must be refused at create time, exactly as a number
@@ -63,7 +62,8 @@ func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Serve
 // a number into checking `GetChannelByNumber` alone.
 func TestCreateChannel_RejectsANumberOnlyTunarrHolds(t *testing.T) {
 	nums := &fakeNumberSource{taken: map[int]bool{7: true}}
-	srv, st := newServerWithNumbers(t, nums)
+	harness := newChannelNumberHarness(t, nums)
+	srv, st := harness.Server, harness.Store
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"c1","name":"A","number":7,"strategy":"sequential"}`)
@@ -84,7 +84,8 @@ func TestCreateChannel_RejectsANumberOnlyTunarrHolds(t *testing.T) {
 // mode a conflict-only assertion cannot distinguish from a correct one.
 func TestCreateChannel_AllowsANumberNeitherSideHolds(t *testing.T) {
 	nums := &fakeNumberSource{taken: map[int]bool{7: true}}
-	srv, _ := newServerWithNumbers(t, nums)
+	harness := newChannelNumberHarness(t, nums)
+	srv := harness.Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"c1","name":"A","number":8,"strategy":"sequential"}`)
@@ -99,7 +100,8 @@ func TestCreateChannel_AllowsANumberNeitherSideHolds(t *testing.T) {
 // best-effort bargain `nextFreeChannelNumber` makes.
 func TestCreateChannel_UnreachableTunarrFallsBackToStoreOnly(t *testing.T) {
 	nums := &fakeNumberSource{err: errors.New("tunarr unreachable")}
-	srv, _ := newServerWithNumbers(t, nums)
+	harness := newChannelNumberHarness(t, nums)
+	srv := harness.Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"c1","name":"A","number":7,"strategy":"sequential"}`)
@@ -117,7 +119,8 @@ func TestCreateChannel_UnreachableTunarrFallsBackToStoreOnly(t *testing.T) {
 // Renumbering onto a Tunarr-held number is refused the same way creating on one is.
 func TestUpdateChannel_RejectsRenumberOntoANumberOnlyTunarrHolds(t *testing.T) {
 	nums := &fakeNumberSource{taken: map[int]bool{7: true}}
-	srv, st := newServerWithNumbers(t, nums)
+	harness := newChannelNumberHarness(t, nums)
+	srv, st := harness.Server, harness.Store
 	_ = do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"c1","name":"A","number":3,"strategy":"sequential"}`)
 

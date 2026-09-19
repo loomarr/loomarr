@@ -17,7 +17,6 @@ import (
 // harnesses while their common lifecycle is migrated behind apiHarness. Every
 // entry needs a route-family rationale, and stale entries fail the test.
 var testServerConstructors = map[string]string{
-	"channelnumber_test.go:newServerWithNumbers":          "channel numbering",
 	"channeltimeline_test.go:newTimelineServer":           "channel timeline",
 	"channeltimeline_test.go:newTimelineServerWithImages": "channel timeline images",
 	"dashboard_panels_test.go:serverWithPanels":           "dashboard panels",
