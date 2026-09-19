@@ -1,6 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { installMockBackend } from "./mock-backend";
+
+const sourceReadinessShot = async (page: Page, name: string) => {
+  await page.evaluate(() => document.fonts.ready);
+  await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+};
 
 test("Archive source search stays in flow and registers only after confirmation", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
@@ -438,3 +443,167 @@ test("registered sources stay compact and open a scalable source workspace", asy
     await expect(provider.getByRole("switch", { name: "Use Paused collection" })).not.toBeChecked();
   }
 });
+
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 720 },
+  { name: "mobile", width: 390, height: 844 },
+]) {
+  test(`source readiness stays truthful through location recovery on ${viewport.name}`, async ({ page }) => {
+    const backend = await installMockBackend(page, {
+      authed: true,
+      role: "admin",
+      fillerEnabled: true,
+    });
+    let failLocationSave = true;
+
+    // The ordinary mock starts in a configured state. This test instead makes the Sources
+    // projection follow the persisted Installation location so the browser exercises the real
+    // blocked -> failed repair -> ready journey without teaching the UI to infer readiness.
+    await page.route("**/v1/filler/watch", async (route) => {
+      const locationReady = backend.state.edits["filler.home_country"] === "US";
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          health: locationReady ? "healthy" : "attention",
+          sourcesOn: 2,
+          sourcesReady: locationReady ? 2 : 1,
+          sourcesTotal: 2,
+          clips: 3,
+          held: 0,
+        }),
+      });
+    });
+    await page.route("**/v1/filler/sources", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const locationReady = backend.state.edits["filler.home_country"] === "US";
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          sources: [
+            {
+              id: "folder",
+              uri: "/data/filler",
+              kind: "folder",
+              target: "/data/filler",
+              detail: "watched directly — new files appear on the next pass",
+              count: 3,
+              incoming: 0,
+              configured: true,
+              fetchable: true,
+              enabled: true,
+              effectiveEnabled: true,
+              providerEnabled: true,
+              switchable: true,
+              removable: false,
+              searchable: false,
+              readiness: "ready",
+              ready: true,
+              locationSource: "installation",
+              actions: ["fetch", "disable"],
+            },
+            {
+              id: "provider:archive",
+              kind: "archive",
+              target: "Archive.org",
+              detail: "collections you added",
+              count: 0,
+              incoming: 0,
+              configured: true,
+              fetchable: false,
+              enabled: true,
+              effectiveEnabled: true,
+              providerEnabled: true,
+              switchable: true,
+              removable: false,
+              searchable: false,
+              group: true,
+              readiness: "ready",
+              ready: true,
+              locationSource: "missing",
+              actions: ["configure", "disable"],
+            },
+            {
+              id: "archive:classic_tv_commercials",
+              uri: "classic_tv_commercials",
+              kind: "archive",
+              target: "Classic TV Commercials",
+              detail: "an Archive.org collection",
+              count: 0,
+              incoming: 0,
+              configured: true,
+              fetchable: locationReady,
+              enabled: true,
+              effectiveEnabled: true,
+              providerEnabled: true,
+              switchable: true,
+              removable: true,
+              searchable: true,
+              parentId: "provider:archive",
+              readiness: locationReady ? "ready" : "needs_location",
+              ready: locationReady,
+              locationSource: locationReady ? "installation" : "missing",
+              ...(locationReady ? { effectiveCountry: "US", effectiveMarket: "New York City" } : {}),
+              actions: locationReady
+                ? ["fetch", "search", "disable", "remove", "edit_location"]
+                : ["set_location", "disable", "remove"],
+            },
+          ],
+          total: 3,
+        }),
+      });
+    });
+    await page.route("**/v1/settings", async (route) => {
+      if (route.request().method() !== "PATCH" || !failLocationSave) return route.fallback();
+      return route.fulfill({
+        status: 503,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          title: "Location wasn't saved",
+          detail: "Your previous location is still in use. Try saving again.",
+        }),
+      });
+    });
+
+    await page.setViewportSize(viewport);
+    await page.goto("/filler/sources");
+    await expect(page.getByText("1 of 2 ready")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Set location" })).toBeVisible();
+    await expect(page.getByText("Classic TV Commercials")).toBeVisible();
+    await sourceReadinessShot(page, `source-readiness-missing-${viewport.name}`);
+
+    await page.getByRole("button", { name: "Manage Classic TV Commercials" }).click();
+    const blockedSource = page.getByRole("dialog", { name: "Classic TV Commercials" });
+    await expect(blockedSource.getByRole("heading", { name: "Location needed" })).toBeVisible();
+    await expect(blockedSource.getByRole("button", { name: "Look for new clips" })).toHaveCount(0);
+    await blockedSource.getByRole("button", { name: "Close" }).click();
+
+    await page.getByRole("link", { name: "Set location" }).click();
+    await expect(page).toHaveURL(/\/settings\/access$/);
+    const location = page.getByRole("combobox", { name: "Location" });
+    await location.fill("New York");
+    await page.getByRole("option", { name: "New York City, United States" }).click();
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByRole("alert")).toContainText("Location wasn't saved");
+    await expect(page.getByRole("region", { name: "Unsaved changes" })).toContainText("2 unsaved changes");
+    await expect(location).toHaveValue("New York City, United States");
+    await sourceReadinessShot(page, `source-readiness-save-failed-${viewport.name}`);
+
+    failLocationSave = false;
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByRole("region", { name: "Unsaved changes" })).toHaveCount(0);
+    expect(backend.state.edits["filler.home_country"]).toBe("US");
+    expect(backend.state.edits["filler.home_market"]).toBe("New York City");
+
+    await page.goto("/filler/sources");
+    await expect(page.getByText("2 of 2 ready")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Set location" })).toHaveCount(0);
+    await sourceReadinessShot(page, `source-readiness-ready-${viewport.name}`);
+    await page.getByRole("button", { name: "Manage Classic TV Commercials" }).click();
+    const readySource = page.getByRole("dialog", { name: "Classic TV Commercials" });
+    await expect(readySource.getByRole("heading", { name: "Ready" })).toBeVisible();
+    await expect(readySource.getByRole("button", { name: "Look for new clips" })).toBeVisible();
+    await readySource.getByRole("button", { name: "Close" }).click();
+  });
+}
