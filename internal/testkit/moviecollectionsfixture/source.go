@@ -1,3 +1,6 @@
+// Package moviecollectionsfixture provides the shared deterministic source for
+// movie-collection resolver tests. It records authoritative reference and
+// roster lookups separately so tests can assert bounded, deduplicated access.
 package moviecollectionsfixture
 
 import (
