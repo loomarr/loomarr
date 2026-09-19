@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -105,69 +104,53 @@ func (f *slowGuideThumbs) ThumbFor(_ context.Context, key string, season, episod
 	return "/v1/images/" + id + "/w300.jpg", ""
 }
 
-func newGridServerWithArtwork(
-	t *testing.T, g api.PlayoutGuide, p api.PodPreviewer, thumbs api.TimelineThumbResolver, imgs api.ImageService,
-) (*httptest.Server, store.Store) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/grid-artwork.db")
-	t.Cleanup(func() { _ = st.Close() })
-	log := slog.New(slog.DiscardHandler)
-	srv := httptest.NewServer(api.Router(log, api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: log, PlayoutGuide: g, Pods: p,
-		TimelineThumbs: thumbs, Images: imgs,
-	}))
-	t.Cleanup(srv.Close)
-	return srv, st
+type guideHarnessConfig struct {
+	Guide          api.PlayoutGuide
+	Pods           api.PodPreviewer
+	TimelineThumbs api.TimelineThumbResolver
+	Images         api.ImageService
+	Timezone       string
+	RetentionHours int
 }
 
-func newGridServer(t *testing.T, g api.PlayoutGuide) (*httptest.Server, store.Store) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/grid.db")
-	t.Cleanup(func() { _ = st.Close() })
-
-	log := slog.New(slog.DiscardHandler)
-	srv := httptest.NewServer(api.Router(log, api.Options{
-		Store:        st,
-		Auth:         testAuthorizer{},
-		Log:          log,
-		PlayoutGuide: g,
-	}))
-	t.Cleanup(srv.Close)
-	return srv, st
+// guideHarness hides the Guide route's production wiring behind the common API
+// lifecycle. Its configuration names observable Guide behavior rather than
+// exposing the generic api.Options bag to each test.
+type guideHarness struct {
+	*apiHarness
 }
 
-// newGridServerWithPods wires the pod assembler so filler blocks carry their composition.
-func newGridServerWithPods(t *testing.T, g api.PlayoutGuide, p api.PodPreviewer) (*httptest.Server, store.Store) {
+func newGuideHarness(t *testing.T, config guideHarnessConfig) *guideHarness {
 	t.Helper()
-	return newGridServerWithConfig(t, g, p, nil, nil)
-}
-
-// newGridServerWithConfig is the full knob set: pods plus live string/int settings, so the
-// timezone and retention tests can drive `guide.*` without a settings subsystem.
-func newGridServerWithConfig(
-	t *testing.T, g api.PlayoutGuide, p api.PodPreviewer, cfg map[string]string, cfgInt map[string]int,
-) (*httptest.Server, store.Store) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/grid.db")
-	t.Cleanup(func() { _ = st.Close() })
-
-	log := slog.New(slog.DiscardHandler)
-	opts := api.Options{
-		Store:        st,
-		Auth:         testAuthorizer{},
-		Log:          log,
-		PlayoutGuide: g,
-		Pods:         p,
-	}
-	if cfg != nil {
-		opts.LiveConfig = func(k string) string { return cfg[k] }
-	}
-	if cfgInt != nil {
-		opts.LiveConfigInt = func(k string) int { return cfgInt[k] }
-	}
-	srv := httptest.NewServer(api.Router(log, opts))
-	t.Cleanup(srv.Close)
-	return srv, st
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		opts := api.Options{
+			Store:          defaults.Store,
+			Auth:           defaults.Auth,
+			Log:            defaults.Log,
+			PlayoutGuide:   config.Guide,
+			Pods:           config.Pods,
+			TimelineThumbs: config.TimelineThumbs,
+			Images:         config.Images,
+		}
+		if config.Timezone != "" {
+			opts.LiveConfig = func(key string) string {
+				if key == "guide.timezone" {
+					return config.Timezone
+				}
+				return ""
+			}
+		}
+		if config.RetentionHours != 0 {
+			opts.LiveConfigInt = func(key string) int {
+				if key == "guide.retention_hours" {
+					return config.RetentionHours
+				}
+				return 0
+			}
+		}
+		return api.Router(defaults.Log, opts)
+	})
+	return &guideHarness{apiHarness: base}
 }
 
 func seedGridChannel(t *testing.T, st store.Store, id string, number int) {
@@ -222,7 +205,8 @@ func TestGuide_PendingAndFillerAreDistinguishable(t *testing.T) {
 			},
 		},
 	}}
-	srv, st := newGridServer(t, g)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	body := getGuide(t, srv, "")
@@ -254,7 +238,8 @@ func TestGuide_PendingBlocksAreMarkedNominal(t *testing.T) {
 			},
 		},
 	}}
-	srv, st := newGridServer(t, g)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	for _, a := range getGuide(t, srv, "").Channels[0].Airings {
@@ -279,7 +264,8 @@ func TestGuide_GapsArePreservedNotFiltered(t *testing.T) {
 			gridBlock(schedule.SlotProgram, "Predator", 62*time.Minute, 30),
 		},
 	}}
-	srv, st := newGridServer(t, g)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	airings := getGuide(t, srv, "").Channels[0].Airings
@@ -303,7 +289,8 @@ func TestGuide_WindowSpanningPastAndFutureReturnsTimelines(t *testing.T) {
 		"ch1": {gridBlock(schedule.SlotProgram, "Heat", -30*time.Minute, 60)},
 		"ch2": {gridBlock(schedule.SlotProgram, "Alien", -10*time.Minute, 90)},
 	}}
-	srv, st := newGridServer(t, g)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 	seedGridChannel(t, st, "ch2", 2)
 
@@ -328,7 +315,8 @@ func TestGuide_WindowSpanningPastAndFutureReturnsTimelines(t *testing.T) {
 // grid with a 400. The response echoes what was actually served so the client can tell.
 func TestGuide_OversizedWindowIsClampedNotRejected(t *testing.T) {
 	g := &fakeXMLTVGuide{}
-	srv, st := newGridServer(t, g)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	now := time.Now()
@@ -350,7 +338,8 @@ func TestGuide_OneChannelFailingKeepsTheRest(t *testing.T) {
 		},
 		errFor: map[string]error{"broken": errGridBoom},
 	}
-	srv, st := newGridServer(t, g)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ok", 1)
 	seedGridChannel(t, st, "broken", 2)
 
@@ -371,7 +360,8 @@ func TestGuide_OneChannelFailingKeepsTheRest(t *testing.T) {
 // With no timeline resolver wired the grid is EMPTY, not a 501: the page renders its "nothing
 // scheduled" state rather than an error.
 func TestGuide_NoResolverIsEmptyNotAnError(t *testing.T) {
-	srv, st := newGridServer(t, nil)
+	harness := newGuideHarness(t, guideHarnessConfig{})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	body := getGuide(t, srv, "")
@@ -387,7 +377,8 @@ func TestGuide_IncludesTunarrBackedChannels(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"tunarr-ch": {gridBlock(schedule.SlotProgram, "Heat", 0, 60)},
 	}}
-	srv, st := newGridServer(t, g)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
+	srv, st := harness.Server, harness.Store
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "tunarr-ch", Name: "Tunarr", Number: 7, Strategy: "sequential"},
 		Policy: schedule.ChannelPolicy{
@@ -416,7 +407,8 @@ func TestGuide_IsNotAdminGated(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
 		"ch1": {gridBlock(schedule.SlotProgram, "Heat", 0, 60)},
 	}}
-	srv, st := newGridServer(t, g)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	// A real MEMBER, not an anonymous caller. This previously passed "" and asserted the
@@ -447,7 +439,8 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 			{Name: "Sunny D", Kind: filler.Commercial, DurationMs: 30000, Era: 1994, Quality: "480p"},
 		},
 	}}
-	srv, st := newGridServerWithPods(t, g, fp)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	airings := getGuide(t, srv, "").Channels[0].Airings
@@ -506,7 +499,10 @@ func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 		Visibility: images.VisibilityMember,
 	}
 
-	srv, st := newGridServerWithArtwork(t, g, fp, fixedGuideThumbs{hash: "program-art"}, img)
+	harness := newGuideHarness(t, guideHarnessConfig{
+		Guide: g, Pods: fp, TimelineThumbs: fixedGuideThumbs{hash: "program-art"}, Images: img,
+	})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
 		Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial", Kind: filler.Commercial,
@@ -547,10 +543,11 @@ func TestGuide_BatchesProgrammeArtworkWithoutSerializingFirstPaint(t *testing.T)
 		})
 	}
 	thumbs := &slowGuideThumbs{delay: delay, calls: map[string]int{}}
-	srv, st := newGridServerWithArtwork(t,
-		&fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{"ch1": blocks}},
-		nil, thumbs, nil,
-	)
+	harness := newGuideHarness(t, guideHarnessConfig{
+		Guide:          &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{"ch1": blocks}},
+		TimelineThumbs: thumbs,
+	})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	started := time.Now()
@@ -597,7 +594,8 @@ func TestGuide_FillerPodCarriesRicherClipMetadata(t *testing.T) {
 			VisibleText: "KELLOGG'S FROSTED FLAKES",
 		}},
 	}}
-	srv, st := newGridServerWithPods(t, g, fp)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	airings := getGuide(t, srv, "").Channels[0].Airings
@@ -633,7 +631,8 @@ func TestGuide_UntaggedClipOmitsRicherMetadata(t *testing.T) {
 	fp := &fakePods{pod: filler.Pod{
 		Entries: []filler.PodEntry{{Name: "Mystery spot", Kind: filler.Commercial, DurationMs: 30000}},
 	}}
-	srv, st := newGridServerWithPods(t, g, fp)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	// Read the RAW JSON, not the decoded struct: omitempty is a wire fact, and decoding into a
@@ -665,7 +664,8 @@ func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
 	fp := &fakePods{pod: filler.Pod{
 		Entries: []filler.PodEntry{{Name: "Ad", Kind: filler.Commercial, DurationMs: 30000}},
 	}}
-	srv, st := newGridServerWithPods(t, g, fp)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 	_ = getGuide(t, srv, "")
 
@@ -685,7 +685,8 @@ func TestGuide_ProgrammesCarryNoPod(t *testing.T) {
 		"ch1": {gridBlock(schedule.SlotProgram, "Heat", 0, 60)},
 	}}
 	fp := &fakePods{pod: filler.Pod{Entries: []filler.PodEntry{{Name: "Ad", DurationMs: 30000}}}}
-	srv, st := newGridServerWithPods(t, g, fp)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	if pod := getGuide(t, srv, "").Channels[0].Airings[0].Pod; pod != nil {
@@ -700,7 +701,8 @@ func TestGuide_CarriesRuntimeAndProvenance(t *testing.T) {
 	b.RuntimeMs = 170 * 60 * 1000
 	b.Provenance = "in library"
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{"ch1": {b}}}
-	srv, st := newGridServer(t, g)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	a := getGuide(t, srv, "").Channels[0].Airings[0]
@@ -716,9 +718,8 @@ func TestGuide_CarriesRuntimeAndProvenance(t *testing.T) {
 // absolute epoch ms — a timezone is a formatting choice, not a reinterpretation.
 func TestGuide_ReportsTheConfiguredTimezone(t *testing.T) {
 	g := &fakeXMLTVGuide{}
-	srv, st := newGridServerWithConfig(t, g, nil, map[string]string{
-		"guide.timezone": "America/New_York",
-	}, nil)
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Timezone: "America/New_York"})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	if tz := getGuide(t, srv, "").Timezone; tz != "America/New_York" {
@@ -730,9 +731,8 @@ func TestGuide_ReportsTheConfiguredTimezone(t *testing.T) {
 // CURRENT lineup, so an unbounded lookback would render fiction as history.
 func TestGuide_ClampsToTheConfiguredRetention(t *testing.T) {
 	g := &fakeXMLTVGuide{}
-	srv, st := newGridServerWithConfig(t, g, nil, nil, map[string]int{
-		"guide.retention_hours": 2,
-	})
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, RetentionHours: 2})
+	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
 
 	now := time.Now()
