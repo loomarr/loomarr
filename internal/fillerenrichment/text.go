@@ -45,11 +45,22 @@ type TextRepository interface {
 // interface so a Ready clip can gain details without being held or replaying its conveyor.
 type Coordinator struct {
 	deterministic *Runner
+	capabilities  []*CapabilityRunner
 	repository    TextRepository
 	selection     func() TextSelection
 	load          SignalLoader
 	limit         func() int
 	now           func() time.Time
+}
+
+// WithCapabilities adds optional media catch-up passes. They run before deterministic and text
+// analysis so a transcript or frame observation written in this cycle is immediately visible to
+// the cheaper passes; none of these runners has a readiness mutation in its interface.
+func (c *Coordinator) WithCapabilities(runners ...*CapabilityRunner) *Coordinator {
+	if c != nil {
+		c.capabilities = append(c.capabilities, runners...)
+	}
+	return c
 }
 
 func NewCoordinator(deterministic *Runner, repository TextRepository, selection func() TextSelection,
@@ -69,20 +80,30 @@ func (c *Coordinator) Run(ctx context.Context) (RunResult, error) {
 	if c == nil {
 		return result, nil
 	}
+	var passErrors []error
+	for _, capability := range c.capabilities {
+		media, err := capability.Run(ctx)
+		result.Considered += media.Considered
+		result.Updated += media.Updated
+		result.Failed += media.Failed
+		if err != nil {
+			passErrors = append(passErrors, err)
+		}
+	}
 	if c.deterministic != nil {
 		free, err := c.deterministic.Run(ctx)
 		if err != nil {
-			return result, err
+			return result, errors.Join(append(passErrors, err)...)
 		}
 		result.Considered += free.Considered
 		result.Updated += free.Updated
 	}
 	if c.repository == nil || c.selection == nil || c.load == nil || c.limit() <= 0 {
-		return result, nil
+		return result, errors.Join(passErrors...)
 	}
 	selection := c.selection()
 	if selection.Provider == nil || strings.TrimSpace(selection.Model) == "" {
-		return result, nil
+		return result, errors.Join(passErrors...)
 	}
 	providerName := strings.TrimSpace(selection.ProviderName)
 	if providerName == "" {
@@ -145,7 +166,7 @@ func (c *Coordinator) Run(ctx context.Context) (RunResult, error) {
 		}
 		result.Updated += changed
 	}
-	return result, errors.Join(modelErrors...)
+	return result, errors.Join(append(passErrors, modelErrors...)...)
 }
 
 func unresolvedTextAxes(states []State, producer, producerVersion, taxonomyVersion string) []Axis {

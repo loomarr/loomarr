@@ -708,6 +708,7 @@ type FillerEnrichmentStore interface {
 	ListFillerEnrichment(ctx context.Context, clipHash string) ([]fillerenrichment.State, error)
 	ApplyFillerEnrichment(ctx context.Context, candidate fillerenrichment.State, updatedAt time.Time) (fillerenrichment.State, bool, error)
 	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error)
+	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error)
 	ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenrichment.Pass) (int, error)
 }
 

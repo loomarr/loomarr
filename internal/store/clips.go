@@ -269,7 +269,10 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// in the update list would blank every clip's artwork on re-sync.
 		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, placement, era, audience, category, geographic_scope, country, market, network, station, air_date, geo_evidence, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, updated_at, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(hash) DO UPDATE SET
+			 ON CONFLICT(hash) DO UPDATE SET
+		   enrichment_revision=CASE
+		     WHEN clips.name <> excluded.name OR clips.kind <> excluded.kind OR clips.source <> excluded.source
+		     THEN clips.enrichment_revision + 1 ELSE clips.enrichment_revision END,
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
 		   name=excluded.name, kind=excluded.kind,
@@ -1542,8 +1545,10 @@ func (s *sqlStore) SetClipConfidence(ctx context.Context, path string, confidenc
 // is what stops the selective job from re-visiting a silent clip forever.
 func (s *sqlStore) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
 	_, err := s.db.ExecContext(ctx,
-		s.ph(`UPDATE clips SET transcript = ?, updated_at = ? WHERE path = ?`),
-		transcript, epoch(at), path)
+		s.ph(`UPDATE clips SET
+			enrichment_revision = CASE WHEN transcript <> ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
+			transcript = ?, updated_at = ? WHERE path = ?`),
+		transcript, transcript, epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("set clip transcript %s: %w", path, err)
 	}
@@ -1601,11 +1606,13 @@ func (s *sqlStore) ApplyClipVision(ctx context.Context, hash, path, brand, visib
 	}
 	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE clips SET
+		   enrichment_revision = CASE WHEN visible_text <> ? OR vision_tagged = ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
 		   brand = CASE WHEN ? <> '' THEN ? ELSE brand END,
 		   visible_text = ?, vision_tagged = ?,
 		   era = CASE WHEN ? > 0 THEN ? ELSE era END,
 		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 AND era = 0 AND suggested_era = 0 THEN ? ELSE suggested_era END,
 		   updated_at = ? WHERE hash = ? AND path = ?`),
+		visibleText, false,
 		brand, brand, visibleText, true,
 		era, era,
 		era, suggestedEra, suggestedEra,
@@ -1659,7 +1666,8 @@ func (s *sqlStore) ApplyClipVision(ctx context.Context, hash, path, brand, visib
 // empty-argument trick works by accident today and breaks the first time it learns to gap-fill.
 func (s *sqlStore) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE clips SET visible_text = '', vision_tagged = ?, updated_at = ? WHERE path = ?`),
+		`UPDATE clips SET enrichment_revision = enrichment_revision + 1,
+		 visible_text = '', vision_tagged = ?, updated_at = ? WHERE path = ?`),
 		false, epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("clear clip vision tags %s: %w", path, err)

@@ -11,11 +11,23 @@ const fillerRefinementKnownClip: ClipDTO = {
   tags: ["soft_drinks", "food_drink"],
   source: "classic-ads",
   sourceUrl: "https://archive.org/details/classic-commercials",
+  enrichment: {
+    state: "complete",
+    facts: [
+      { axis: "kind", evidence: "item_metadata" },
+      { axis: "era", evidence: "item_metadata" },
+      { axis: "audience", evidence: "inference" },
+      { axis: "brand", evidence: "content_observation" },
+      { axis: "geography", evidence: "trusted_mapping" },
+      { axis: "product", evidence: "item_metadata" },
+    ],
+  },
 };
 const fillerRefinementUnknownClip: ClipDTO = {
   ...untaggedClip,
   kind: "unclassified",
   source: "filler-dir",
+  enrichment: { state: "details_limited" },
 };
 
 const fillerRefinementTaxonomy: ListTaxonomyOutputBody = {

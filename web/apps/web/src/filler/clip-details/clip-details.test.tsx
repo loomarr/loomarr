@@ -75,4 +75,19 @@ describe("ClipDetails", () => {
     expect(screen.getByText("Airings aren't counted on this setup")).toBeInTheDocument();
     expect(screen.queryByText("Never aired")).not.toBeInTheDocument();
   });
+
+  it.each([
+    ["adding_details", "Adding details", "checking this clip in the background"],
+    ["details_limited", "Details limited", "couldn't be confirmed"],
+  ] as const)("renders the server-owned %s state without making it a task", (state, title, detail) => {
+    render(<ClipDetails clip={{ ...clip, enrichment: { state } }} />);
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(detail, "i"))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /fix|retry|review/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps a complete enrichment state quiet", () => {
+    render(<ClipDetails clip={{ ...clip, enrichment: { state: "complete" } }} />);
+    expect(screen.queryByText(/Adding details|Details limited/)).not.toBeInTheDocument();
+  });
 });

@@ -37,6 +37,11 @@ import (
 // migration states as its whole point.
 const TranscriptNone = "[no speech]"
 
+// TranscriptionPassVersion changes when the media-to-transcript semantics change. Progressive
+// enrichment binds completion to this identity so a changed implementation may revisit eligible
+// clips without making the readiness conveyor authoritative for catch-up.
+const TranscriptionPassVersion = "filler-transcription-v1"
+
 // ThinSourceRunes is the description length below which a clip's source text is "thin" and Whisper
 // earns its cost (§10 V44).
 //
@@ -97,8 +102,9 @@ func (s *TranscribeStage) Applies(_ context.Context, c StoreClip) (bool, string)
 	return true, ""
 }
 
-// Run transcribes the clip and records the result.
-func (s *TranscribeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+// Observe transcribes without persisting. Progressive catch-up uses this half so the transcript,
+// accepted facts, and completion identity can commit atomically in its own store transaction.
+func (s *TranscribeStage) Observe(ctx context.Context, c StoreClip) (StageResult, string, error) {
 	start, end := LanguageSpan(c.DurationMs)
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
 
@@ -107,7 +113,7 @@ func (s *TranscribeStage) Run(ctx context.Context, c StoreClip) (StageResult, er
 		// Not recorded: a backend failure says nothing about the clip, so the runner retries and
 		// then skips. ⚠ A missing transcript must never strand a clip — `transcribe` is not in
 		// `fatalStages` for exactly this reason.
-		return StageResult{}, fmt.Errorf("transcribe %s: %w", c.Path, err)
+		return StageResult{}, "", fmt.Errorf("transcribe %s: %w", c.Path, err)
 	}
 	reportProgress(ctx, StageTranscribe, 100)
 
@@ -119,17 +125,26 @@ func (s *TranscribeStage) Run(ctx context.Context, c StoreClip) (StageResult, er
 		// it again forever.
 		text = TranscriptNone
 	}
-	if s.store != nil && c.Path != "" {
-		if err := s.store.SetClipTranscript(ctx, c.Path, text, s.now().UTC()); err != nil {
-			return StageResult{}, err
-		}
-	}
 	updated := c
 	updated.Transcript = text
 	if wordless {
-		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "no speech in it"}, nil
+		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "no speech in it"}, text, nil
 	}
-	return StageResult{Clip: updated, Verdict: VerdictContinue}, nil
+	return StageResult{Clip: updated, Verdict: VerdictContinue}, text, nil
+}
+
+// Run is the readiness-stage adapter around Observe.
+func (s *TranscribeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+	result, transcript, err := s.Observe(ctx, c)
+	if err != nil {
+		return StageResult{}, err
+	}
+	if s.store != nil && c.Path != "" {
+		if err := s.store.SetClipTranscript(ctx, c.Path, transcript, s.now().UTC()); err != nil {
+			return StageResult{}, err
+		}
+	}
+	return result, nil
 }
 
 // needsTranscription decides whether a clip earns Whisper (§10 V44 "selective by design"): its

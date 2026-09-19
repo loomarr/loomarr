@@ -180,6 +180,20 @@ type Pass struct {
 	TaxonomyVersion string
 	CompletedAt     time.Time
 	States          []State
+	Observation     *MediaObservation
+}
+
+// MediaObservation is the raw, bounded signal produced by an optional capability. It commits in
+// the same transaction as the pass stamp and accepted axis facts so a crash cannot leave expensive
+// media work persisted but absent from the progressive evidence model.
+type MediaObservation struct {
+	Transcript *string
+	Vision     *VisionObservation
+}
+
+type VisionObservation struct {
+	VisibleText  string
+	SuggestedEra int
 }
 
 func (p Pass) Validate() error {
@@ -188,6 +202,9 @@ func (p Pass) Validate() error {
 		return fmt.Errorf("%w: pass identity and completion time are required", ErrInvalidState)
 	}
 	seen := make(map[Axis]bool, len(p.States))
+	if p.Observation != nil && p.Observation.Transcript != nil && strings.TrimSpace(*p.Observation.Transcript) == "" {
+		return fmt.Errorf("%w: a transcript observation must record speech or the wordless sentinel", ErrInvalidState)
+	}
 	for _, state := range p.States {
 		if state.Status == StatusMissing {
 			return fmt.Errorf("%w: a completed pass cannot persist a missing state", ErrInvalidState)

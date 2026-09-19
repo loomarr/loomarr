@@ -136,7 +136,7 @@ func buildFillerSubsystem(
 	jobs.Add(fillerSyncJob(syncer))
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"))
-	pipeline := buildPipeline(st, set, layout, log, emitter, splitter, wake,
+	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
 	enrichment := fillerenrichment.NewRunner(
@@ -149,6 +149,21 @@ func buildFillerSubsystem(
 		func() fillerenrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
 		fillerEnrichmentSignals{store: st, files: layout.FS()}.Load,
 		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
+	).WithCapabilities(
+		fillerenrichment.NewCapabilityRunner(
+			fillerenrichment.CapabilityTranscript, fillerEnrichmentRepository{st: st},
+			func() fillerenrichment.CapabilitySelection { return activeFillerTranscriptCapability(set) },
+			fillerMediaExecutor{store: st, transcript: transcribeStage,
+				kind: fillerenrichment.CapabilityTranscript}.Run,
+			func() int { return set.intv("filler.pipeline.max_whisper") }, time.Now,
+		),
+		fillerenrichment.NewCapabilityRunner(
+			fillerenrichment.CapabilityVision, fillerEnrichmentRepository{st: st},
+			func() fillerenrichment.CapabilitySelection { return activeFillerVisionCapability(set) },
+			fillerMediaExecutor{store: st, vision: visionStage,
+				kind: fillerenrichment.CapabilityVision}.Run,
+			func() int { return set.intv("filler.pipeline.max_vision") }, time.Now,
+		),
 	)
 	jobs.Add(fillerEnrichmentJob(enrichmentCoordinator))
 	adapter.pipeline = pipeline

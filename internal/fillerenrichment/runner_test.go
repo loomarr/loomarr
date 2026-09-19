@@ -22,6 +22,10 @@ func (r *runnerRepository) ListCandidates(_ context.Context, producer, version, 
 	r.queries = append(r.queries, producer+"|"+version+"|"+taxonomyVersion)
 	return r.candidates, nil
 }
+func (r *runnerRepository) ListCapabilityCandidates(_ context.Context, producer, version, taxonomyVersion string, _ int) ([]fillerenrichment.Candidate, error) {
+	r.queries = append(r.queries, producer+"|"+version+"|"+taxonomyVersion)
+	return r.candidates, nil
+}
 func (r *runnerRepository) ApplyPass(_ context.Context, pass fillerenrichment.Pass) (int, error) {
 	r.passes = append(r.passes, pass)
 	return len(pass.States), nil

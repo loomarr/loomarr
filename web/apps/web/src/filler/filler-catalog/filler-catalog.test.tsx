@@ -35,8 +35,15 @@ const Wrapper = ({ children }: { children: ReactNode }) => (
 
 describe("FillerCatalog", () => {
   it("opens the exact clip panel before optional editing", async () => {
+    const detailedClip: ClipDTO = {
+      ...clip,
+      enrichment: {
+        state: "details_limited",
+        facts: [{ axis: "kind", evidence: "item_metadata" }],
+      },
+    };
     server.use(
-      getListFillerMockHandler({ clips: [clip], total: 1 }),
+      getListFillerMockHandler({ clips: [detailedClip], total: 1 }),
       getListTaxonomyMockHandler({
         taxa: [],
         totalClips: 1,
@@ -53,6 +60,9 @@ describe("FillerCatalog", () => {
     expect(await screen.findByText("Local soda commercial")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "View details for Local soda commercial" }));
     const panel = await screen.findByRole("dialog", { name: "Local soda commercial" });
+    expect(within(panel).getByText("Details limited")).toBeInTheDocument();
+    await userEvent.click(within(panel).getByText("More about this clip"));
+    expect(within(panel).getByText("Item details")).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "Edit details" })).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: "Edit details" }));
     expect(
