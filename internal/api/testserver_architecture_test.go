@@ -21,7 +21,6 @@ var testServerConstructors = map[string]string{
 	"channelicon_test.go:newIconUploadServer":                          "channel icons",
 	"channelnumber_test.go:newServerWithNumbers":                       "channel numbering",
 	"channels_test.go:newInternalServerWithoutTunarr":                  "channels internal backend",
-	"channels_test.go:newServerWithScheduler":                          "channels scheduling",
 	"channels_test.go:newServerWithSchedulerAndSuggest":                "channels suggestions",
 	"channeltimeline_test.go:newTimelineServer":                        "channel timeline",
 	"channeltimeline_test.go:newTimelineServerWithImages":              "channel timeline images",

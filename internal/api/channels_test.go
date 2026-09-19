@@ -137,27 +137,32 @@ func (f *fakeLiveTVSvc) Reconnect(ctx context.Context) (int, error) {
 	return 1, nil // one tuner reset
 }
 
-func newServerWithScheduler(t *testing.T) (*httptest.Server, store.Store, *fakeChannelSvc, *fakeLiveTVSvc) {
+// channelsHarness adds only the behavioral adapters exercised by the channel
+// route family to the common API lifecycle.
+type channelsHarness struct {
+	*apiHarness
+	Channels *fakeChannelSvc
+	LiveTV   *fakeLiveTVSvc
+}
+
+func newChannelsHarness(t *testing.T) *channelsHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/api.db")
-	t.Cleanup(func() { _ = st.Close() })
 	chSvc := &fakeChannelSvc{}
 	ltv := &fakeLiveTVSvc{}
-	log := slog.New(slog.DiscardHandler)
-	h := api.Router(log, api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      log,
-		Channels: chSvc,
-		LiveTV:   ltv,
-		// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
-		// lineupFromIntent/policyFromIntent (which now go through the binder) resolve real
-		// approved proposals in these tests, same as production wiring.
-		Binder: binder.New(st, chSvc, nil, log),
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store:    defaults.Store,
+			Auth:     defaults.Auth,
+			Log:      defaults.Log,
+			Channels: chSvc,
+			LiveTV:   ltv,
+			// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
+			// lineupFromIntent/policyFromIntent (which now go through the binder) resolve real
+			// approved proposals in these tests, same as production wiring.
+			Binder: binder.New(defaults.Store, chSvc, nil, defaults.Log),
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st, chSvc, ltv
+	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv}
 }
 
 // newInternalServerWithoutTunarr exercises the production-facing setting shape that exposed the
@@ -185,7 +190,8 @@ func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, store.Store
 }
 
 func TestCreateChannelAdmin(t *testing.T) {
-	srv, _, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"ch1","name":"Cartoons","number":42,"strategy":"sequential"}`)
 	if resp.StatusCode != http.StatusOK {
@@ -303,7 +309,8 @@ func TestPurgeConflictReturnsConflictInsteadOfBadGateway(t *testing.T) {
 // so the "New channel" UI action needs no client-side id scheme. An explicit id is still
 // honored (the proposal-approval path relies on that), which TestCreateChannelAdmin covers.
 func TestCreateChannelServerAssignsIDWhenOmitted(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"name":"Hand-made","number":7,"strategy":"sequential"}`)
 	if resp.StatusCode != http.StatusOK {
@@ -328,7 +335,8 @@ func TestCreateChannelServerAssignsIDWhenOmitted(t *testing.T) {
 }
 
 func TestCreateChannel_DuplicateIDIsConflictAndPreservesOriginal(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	mkChannel(t, srv, "same-id", "Original", 7)
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
@@ -346,7 +354,8 @@ func TestCreateChannel_DuplicateIDIsConflictAndPreservesOriginal(t *testing.T) {
 }
 
 func TestCreateChannelRequiresAdmin(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	for _, tok := range []string{"", "wrong"} {
 		resp := do(t, srv, http.MethodPost, "/v1/channels", tok,
 			`{"id":"c","name":"n","number":1,"strategy":"sequential"}`)
@@ -357,7 +366,8 @@ func TestCreateChannelRequiresAdmin(t *testing.T) {
 }
 
 func TestCreateChannelDuplicateNumber(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	_ = do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"c1","name":"A","number":5,"strategy":"sequential"}`)
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
@@ -368,7 +378,8 @@ func TestCreateChannelDuplicateNumber(t *testing.T) {
 }
 
 func TestCreateChannelDuplicateIntentRef(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	if _, err := st.SaveChannel(ctx, store.Channel{
 		Channel: schedule.Channel{
@@ -394,7 +405,8 @@ func TestCreateChannelDuplicateIntentRef(t *testing.T) {
 }
 
 func TestListAndGetChannel(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	_ = do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"c1","name":"A","number":5,"strategy":"sequential"}`)
 
@@ -424,7 +436,8 @@ func TestListAndGetChannel(t *testing.T) {
 }
 
 func TestReconcileChannelAdmin(t *testing.T) {
-	srv, _, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	_ = do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"c1","name":"A","number":5,"strategy":"sequential"}`)
 	before := chSvc.reconciles
@@ -439,7 +452,8 @@ func TestReconcileChannelAdmin(t *testing.T) {
 }
 
 func TestReconcileChannelRequiresAdmin(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/reconcile", "", "")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member reconcile → %d, want 401", resp.StatusCode)
@@ -451,7 +465,8 @@ func TestReconcileChannelRequiresAdmin(t *testing.T) {
 // The cycle preview renders the resolved slots + the active-rule attribution + the window,
 // and echoes the resolved moment. It passes `at` through to the engine verbatim.
 func TestCyclePreview_RendersSlotsAndAttribution(t *testing.T) {
-	srv, _, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	mkChannel(t, srv, "c1", "Trek", 5)
 	chSvc.cycleSlots = []schedule.Slot{
 		{Kind: schedule.SlotProgram, Title: "Encounter at Farpoint", Key: "tv:655", PartIndex: 0},
@@ -514,7 +529,8 @@ func TestCyclePreview_RendersSlotsAndAttribution(t *testing.T) {
 }
 
 func TestCyclePreviews_ProjectTheSchedulerTraceWithoutReconstructingIt(t *testing.T) {
-	srv, _, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	mkChannel(t, srv, "c1", "Trek", 5)
 	chSvc.cycleTrace = schedule.ScheduleTrace{
 		Version: 1, Ordering: schedule.OrderShuffle, Seed: 42, WindowMs: 86_400_000,
@@ -560,7 +576,8 @@ func TestCyclePreviews_ProjectTheSchedulerTraceWithoutReconstructingIt(t *testin
 // No rule matching → the base-policy attribution (matched:false), so the UI can say
 // "no rule is active — base policy" rather than mislabel a moment.
 func TestCyclePreview_BasePolicyWhenNoRuleMatches(t *testing.T) {
-	srv, _, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	mkChannel(t, srv, "c1", "Trek", 5)
 	chSvc.cycleActive = schedule.ActiveRuleAttribution{Label: "Base policy", Matched: false}
 
@@ -590,7 +607,8 @@ func TestCyclePreview_BasePolicyWhenNoRuleMatches(t *testing.T) {
 
 // The preview is a READ — visible to any authenticated user (matching pod preview §8.1).
 func TestCyclePreview_VisibleToAnyAuthenticatedUser(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	mkChannel(t, srv, "c1", "Trek", 5)
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member cycle preview → %d, want 200 (read-only)", resp.StatusCode)
@@ -599,7 +617,8 @@ func TestCyclePreview_VisibleToAnyAuthenticatedUser(t *testing.T) {
 
 // A malformed `at` is a 400 — the model/UI must send RFC3339, not a re-implementation.
 func TestCyclePreview_BadTimeIs400(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	mkChannel(t, srv, "c1", "Trek", 5)
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle?at=saturday-9am", adminToken, ""); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("bad at → %d, want 400", resp.StatusCode)
@@ -608,7 +627,8 @@ func TestCyclePreview_BadTimeIs400(t *testing.T) {
 
 // An unknown channel is a 404 (the engine reports store.ErrNotFound, the handler maps it).
 func TestCyclePreview_UnknownChannelIs404(t *testing.T) {
-	srv, _, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	chSvc.cycleErr = store.ErrNotFound
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/nope/cycle", adminToken, ""); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown channel → %d, want 404", resp.StatusCode)
@@ -620,7 +640,8 @@ func TestCyclePreview_UnknownChannelIs404(t *testing.T) {
 // The whole-definition draft preview passes the DRAFT lineup + policy through to the engine
 // (so the preview reflects the unsaved edit) and renders slots + a never-null pods pool.
 func TestProgrammingPreview_PassesDraftToEngine(t *testing.T) {
-	srv, _, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	mkChannel(t, srv, "c1", "Trek", 5)
 	chSvc.cycleSlots = []schedule.Slot{{Kind: schedule.SlotProgram, Title: "Encounter at Farpoint", Key: "series:tvdb:655"}}
 	chSvc.cycleActive = schedule.ActiveRuleAttribution{Label: "Base policy"}
@@ -658,7 +679,8 @@ func TestProgrammingPreview_PassesDraftToEngine(t *testing.T) {
 // title the audience ceiling refused was invisible everywhere in the product, and diagnosing one
 // meant querying the media server by hand.
 func TestProgrammingPreview_RendersWhatTheHardFiltersRefused(t *testing.T) {
-	srv, _, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	mkChannel(t, srv, "c1", "Cartoons", 6)
 	chSvc.cycleActive = schedule.ActiveRuleAttribution{Label: "Base policy"}
 	chSvc.cycleExcluded = schedule.ExclusionReport{
@@ -712,7 +734,8 @@ func TestProgrammingPreview_RendersWhatTheHardFiltersRefused(t *testing.T) {
 // A channel that refused nothing still gets an ITEMS ARRAY, never a JSON null: the FE reads
 // "nothing was excluded" off the length, and null reads as neither empty nor present.
 func TestProgrammingPreview_EmptyExclusionReportIsAnArray(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	mkChannel(t, srv, "c1", "Clean", 7)
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, `{}`)
@@ -731,7 +754,8 @@ func TestProgrammingPreview_EmptyExclusionReportIsAnArray(t *testing.T) {
 
 // An invalid draft policy is a 422 (validated exactly like a policy write, §4).
 func TestProgrammingPreview_InvalidPolicyIs422(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	mkChannel(t, srv, "c1", "Trek", 5)
 	body := `{"policy":{"audience":{"ceiling":"TV-BOGUS"}}}`
 	if resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, body); resp.StatusCode != http.StatusUnprocessableEntity {
@@ -741,7 +765,8 @@ func TestProgrammingPreview_InvalidPolicyIs422(t *testing.T) {
 
 // The vocabulary endpoint serves the closed WHEN/WHAT/HOW presets to any authenticated user.
 func TestProgrammingVocabulary_ServesTheClosedPresets(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodGet, "/v1/programming/vocabulary", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("vocabulary → %d, want 200", resp.StatusCode)
@@ -780,7 +805,8 @@ func mustTime(t *testing.T, s string) time.Time {
 }
 
 func TestDeleteChannelDetaches(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	_ = do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"c1","name":"A","number":5,"strategy":"sequential"}`)
 
@@ -964,7 +990,8 @@ func TestRefineChannel_NotFound(t *testing.T) {
 }
 
 func TestUpdateChannel_RenameAndRenumber(t *testing.T) {
-	srv, st, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 	mkChannel(t, srv, "c1", "Old Name", 5)
 	before := chSvc.reconciles
 
@@ -984,7 +1011,8 @@ func TestUpdateChannel_RenameAndRenumber(t *testing.T) {
 }
 
 func TestUpdateChannel_OrdinaryEditPreservesSettledStatusAndIsDueForRetry(t *testing.T) {
-	srv, st, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 	mkChannel(t, srv, "c1", "Original", 5)
 	ctx := context.Background()
 	ch, err := st.GetChannel(ctx, "c1")
@@ -1031,7 +1059,8 @@ func TestUpdateChannel_ChannelListTransitionsPersistBuilding(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv, st, _, _ := newServerWithScheduler(t)
+			harness := newChannelsHarness(t)
+			srv, st := harness.Server, harness.Store
 			mkChannel(t, srv, "c1", "Original", 5)
 			ctx := context.Background()
 			ch, err := st.GetChannel(ctx, "c1")
@@ -1063,7 +1092,8 @@ func TestUpdateChannel_ChannelListTransitionsPersistBuilding(t *testing.T) {
 }
 
 func TestUpdateChannel_StaleRevisionIs409AndDoesNotReconcile(t *testing.T) {
-	srv, st, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 	mkChannel(t, srv, "c1", "Original", 5)
 	stale, err := st.GetChannel(context.Background(), "c1")
 	if err != nil {
@@ -1094,7 +1124,8 @@ func TestUpdateChannel_StaleRevisionIs409AndDoesNotReconcile(t *testing.T) {
 }
 
 func TestUpdateChannel_RequiresRevision(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	mkChannel(t, srv, "c1", "Original", 5)
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"name":"No revision"}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -1103,7 +1134,8 @@ func TestUpdateChannel_RequiresRevision(t *testing.T) {
 }
 
 func TestUpdateChannel_RenumberCollision409(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	mkChannel(t, srv, "c1", "A", 5)
 	mkChannel(t, srv, "c2", "B", 6)
 
@@ -1116,7 +1148,8 @@ func TestUpdateChannel_RenumberCollision409(t *testing.T) {
 }
 
 func TestUpdateChannel_RenumberToSelfOK(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	mkChannel(t, srv, "c1", "A", 5)
 
 	// Re-setting a channel to its OWN number must not false-positive as a collision.
@@ -1128,7 +1161,8 @@ func TestUpdateChannel_RenumberToSelfOK(t *testing.T) {
 }
 
 func TestUpdateChannel_PolicyMergePreservesApplied(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	mkChannel(t, srv, "c1", "A", 5)
 
 	// Seed a reconcile-owned relaxation on the channel (as a reconcile would).
@@ -1156,7 +1190,8 @@ func TestUpdateChannel_PolicyMergePreservesApplied(t *testing.T) {
 }
 
 func TestUpdateChannel_InvalidPolicyRejected(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	mkChannel(t, srv, "c1", "A", 5)
 
 	// An off-ladder audience ceiling is a §4 safety violation → 422.
@@ -1168,7 +1203,8 @@ func TestUpdateChannel_InvalidPolicyRejected(t *testing.T) {
 }
 
 func TestUpdateChannel_PersistsDateScopeAndDisjointFillerEraWindows(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	mkChannel(t, srv, "c1", "A", 5)
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1", `{
@@ -1196,7 +1232,8 @@ func TestUpdateChannel_PersistsDateScopeAndDisjointFillerEraWindows(t *testing.T
 }
 
 func TestUpdateChannel_RejectsMalformedDateScopes(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	mkChannel(t, srv, "c1", "A", 5)
 
 	for _, body := range []string{
@@ -1213,7 +1250,8 @@ func TestUpdateChannel_RejectsMalformedDateScopes(t *testing.T) {
 }
 
 func TestUpdateChannel_PauseAndResume(t *testing.T) {
-	srv, st, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 	mkChannel(t, srv, "c1", "A", 5)
 	ctx := context.Background()
 
@@ -1377,7 +1415,8 @@ func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *test
 }
 
 func TestUpdateChannel_RejectsBadStatus(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	mkChannel(t, srv, "c1", "A", 5)
 	// A client may only pause/resume — never force live/detached/drifted.
 	for _, s := range []string{"live", "detached", "drifted"} {
@@ -1390,7 +1429,8 @@ func TestUpdateChannel_RejectsBadStatus(t *testing.T) {
 }
 
 func TestUpdateChannel_RequiresAdmin(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	mkChannel(t, srv, "c1", "A", 5)
 	for _, tok := range []string{"", "wrong"} {
 		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", tok, `{"name":"X"}`)
@@ -1401,7 +1441,8 @@ func TestUpdateChannel_RequiresAdmin(t *testing.T) {
 }
 
 func TestUpdateChannel_NotFound(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/nope", adminToken, `{"revision":1,"name":"X"}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("patch missing → %d, want 404", resp.StatusCode)
@@ -1438,7 +1479,8 @@ func keysOf(entries []schedule.LineupEntry) []string {
 // A reorder is a whole-list replace with the same keys in a new order. The lineup order
 // must follow the payload (sequential/syndication play in order), and it auto-reconciles.
 func TestUpdateChannel_LineupReorder(t *testing.T) {
-	srv, st, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 	seedChannelWithLineup(t, st, "c1",
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999},
 		schedule.LineupEntry{Key: "movie:tmdb:165", Title: "Terminator 2", Year: 1991},
@@ -1466,7 +1508,8 @@ func TestUpdateChannel_LineupReorder(t *testing.T) {
 // Adding a key and removing another, in one payload. A newly-added key that isn't in the
 // library is accepted — it becomes a pending slot at reconcile (§9), the point of P3.
 func TestUpdateChannel_LineupAddAndRemove(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999},
 		schedule.LineupEntry{Key: "movie:tmdb:165", Title: "Terminator 2", Year: 1991},
@@ -1490,7 +1533,8 @@ func TestUpdateChannel_LineupAddAndRemove(t *testing.T) {
 // A non-nil empty array clears the lineup (distinct from omitting the field, which leaves
 // it unchanged — the pointer-optional partial contract).
 func TestUpdateChannel_LineupClearVsOmit(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
@@ -1520,7 +1564,8 @@ func TestUpdateChannel_LineupClearVsOmit(t *testing.T) {
 // A malformed key fails the WHOLE edit (422) — a junk entry must never land, and the
 // existing lineup must be untouched on rejection.
 func TestUpdateChannel_LineupMalformedKey422(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
@@ -1540,7 +1585,8 @@ func TestUpdateChannel_LineupMalformedKey422(t *testing.T) {
 // must PRESERVE those fields from the existing entry — a reorder must not silently reset a
 // series' season scope. This is the correctness crux of P3.
 func TestUpdateChannel_LineupPreservesRichFieldsByKey(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	// A series scoped to seasons 1–3 with a rating + runtime the DTO can't carry.
 	seedChannelWithLineup(t, st, "c1",
 		schedule.LineupEntry{
@@ -1582,7 +1628,8 @@ func TestUpdateChannel_LineupPreservesRichFieldsByKey(t *testing.T) {
 // A duplicate key in one payload is rejected (422) — a lineup is a set of distinct titles;
 // two entries for the same key would double-schedule and confuse the backfill correlation.
 func TestUpdateChannel_LineupRejectsDuplicateKey(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
@@ -1597,7 +1644,8 @@ func TestUpdateChannel_LineupRejectsDuplicateKey(t *testing.T) {
 // Keys are trimmed before validation + dedupe, so surrounding whitespace neither
 // smuggles a "distinct" duplicate past the set nor breaks ParseKey.
 func TestUpdateChannel_LineupTrimsKeys(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1")
 
 	// A padded key must validate (trimmed) and land canonicalized.
@@ -1621,7 +1669,8 @@ func TestUpdateChannel_LineupTrimsKeys(t *testing.T) {
 
 // Lineup editing is admin-only (same gate as every other channel mutation).
 func TestUpdateChannel_LineupRequiresAdmin(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
 		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
 
@@ -1637,7 +1686,8 @@ func TestUpdateChannel_LineupRequiresAdmin(t *testing.T) {
 // record reads `pending` (a manually-added title nothing has requested yet) — distinct
 // from `unavailable` (acquisition gave up).
 func TestGetChannel_LineupEntryStateFromRecords(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	seed := func(key provision.Key, state provision.State) {
 		if err := st.UpsertTitle(ctx, provision.Record{Key: key, State: state}); err != nil {
@@ -1691,7 +1741,8 @@ func TestGetChannel_LineupEntryStateFromRecords(t *testing.T) {
 // The LIST endpoint omits per-entry state (it shows counts, not entries) — so it must not
 // pay the per-key Record lookup. A listed channel's entries carry an empty state.
 func TestListChannels_OmitsLineupEntryState(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	if err := st.UpsertTitle(context.Background(),
 		provision.Record{Key: "movie:tmdb:603", State: provision.Available}); err != nil {
 		t.Fatal(err)
@@ -1723,7 +1774,8 @@ func TestListChannels_OmitsLineupEntryState(t *testing.T) {
 }
 
 func TestDeleteChannel_PurgeCallsEngine(t *testing.T) {
-	srv, _, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
 	mkChannel(t, srv, "c1", "A", 5)
 
 	resp := do(t, srv, http.MethodDelete, "/v1/channels/c1?purge=true", adminToken, "")
@@ -1743,7 +1795,8 @@ func TestDeleteChannel_PurgeCallsEngine(t *testing.T) {
 // auto-wire path (see settings_test.go) and the connector's own tests; here we only assert
 // the check reflects the wired state.
 func TestSetupStatusReportsLiveTVCheck(t *testing.T) {
-	srv, _, _, ltv := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, ltv := harness.Server, harness.LiveTV
 
 	// Before wiring: livetv check present and not OK, with a hint.
 	resp := do(t, srv, http.MethodGet, "/v1/setup/status", adminToken, "")
@@ -1788,7 +1841,8 @@ func TestSetupStatusReportsLiveTVCheck(t *testing.T) {
 }
 
 func TestSetupStatusRequiresAdmin(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodGet, "/v1/setup/status", "", "")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member status → %d, want 401", resp.StatusCode)
@@ -1904,7 +1958,8 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 // With no guide configured the page still loads: now/next is a nicety on a list view,
 // so an absent guide reads as "nothing airing", never an error.
 func TestChannelsNowNext_NoGuideConfiguredIsEmptyNotError(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t) // wired without a Guide
+	harness := newChannelsHarness(t)
+	srv := harness.Server // wired without a Guide
 	resp := do(t, srv, http.MethodGet, "/v1/channels/now-next", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("now-next without a guide → %d, want 200", resp.StatusCode)
