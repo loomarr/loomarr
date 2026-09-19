@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -48,48 +47,52 @@ func (f *fakeSuggest) Refine(_ context.Context, jobID string, intent suggest.Int
 	return jobID, nil // Refine re-runs the same job, so it returns the job id it was given
 }
 
-func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest) {
-	return newSuggestServerWithSettings(t, nil)
+type proposalHarnessConfig struct {
+	Settings        api.SettingsService
+	DecisionQuality api.ProposalDecisionQuality
 }
 
-func newSuggestServerWithSettings(t *testing.T, settings api.SettingsService) (*httptest.Server, store.Store, *fakeSuggest) {
-	return newSuggestServerWithSettingsAndDecisionQuality(t, settings, nil)
+// proposalHarness hides the fixed proposal-route assembly behind the common API
+// lifecycle. Tests vary only settings and decision-quality behavior.
+type proposalHarness struct {
+	*apiHarness
+	Suggest *fakeSuggest
 }
 
-func newSuggestServerWithSettingsAndDecisionQuality(
-	t *testing.T,
-	settings api.SettingsService,
-	decisionQuality api.ProposalDecisionQuality,
-) (*httptest.Server, store.Store, *fakeSuggest) {
+func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposalHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/s.db")
-	t.Cleanup(func() { _ = st.Close() })
+	if len(configs) > 1 {
+		t.Fatalf("newProposalHarness accepts at most one configuration, got %d", len(configs))
+	}
+	config := proposalHarnessConfig{}
+	if len(configs) == 1 {
+		config = configs[0]
+	}
 	fs := &fakeSuggest{}
 	search := &testkit.SearchService[api.SearchRequest, api.SearchCandidate]{Results: []api.SearchCandidate{{
 		MediaType: "movie", TMDBID: 603, Name: "The Matrix", InLibrary: true,
 	}}}
-	log := slog.New(slog.DiscardHandler)
-	chBinder := binder.New(st, nil, nil, log)
-	workflow := proposalworkflow.New(st, func() string { return "test-proposal-job" }, time.Now)
-	h := api.Router(log, api.Options{
-		Store:            st,
-		Auth:             testAuthorizer{},
-		Log:              log,
-		Suggest:          fs,
-		Search:           search,
-		Events:           events.NewBus(),
-		ProposalWorkflow: workflow,
-		DecisionQuality:  decisionQuality,
-		// No Reconciler wired here (channels isn't under test) — mirrors the
-		// composition root's nil-guard: the bind still creates/patches the
-		// channel row and just skips the immediate Tunarr reconcile push.
-		Approver: suggest.NewApprover(st, chBinder, time.Now),
-		Binder:   chBinder,
-		Settings: settings,
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
+		workflow := proposalworkflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now)
+		return api.Router(defaults.Log, api.Options{
+			Store:            defaults.Store,
+			Auth:             defaults.Auth,
+			Log:              defaults.Log,
+			Suggest:          fs,
+			Search:           search,
+			Events:           events.NewBus(),
+			ProposalWorkflow: workflow,
+			DecisionQuality:  config.DecisionQuality,
+			// No Reconciler wired here (channels isn't under test) — mirrors the
+			// composition root's nil-guard: the bind still creates/patches the
+			// channel row and just skips the immediate Tunarr reconcile push.
+			Approver: suggest.NewApprover(defaults.Store, chBinder, time.Now),
+			Binder:   chBinder,
+			Settings: config.Settings,
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st, fs
+	return &proposalHarness{apiHarness: base, Suggest: fs}
 }
 
 // seedProposal writes a submitted proposal with one acquisition (Speed).
@@ -115,7 +118,8 @@ func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) 
 // "the approved lineup feeds the scheduler"). Approval must create an available
 // Record (with the library item id) for each in-library pick.
 func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	// A proposal whose lineup has one in-library pick (The Matrix) and no acquisitions.
 	body := `{"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
@@ -143,7 +147,8 @@ func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
 }
 
 func TestSubmit_AnyAuthenticatedUser(t *testing.T) {
-	srv, _, fs := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, fs := harness.Server, harness.Suggest
 	resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, `{"description":"90s action"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit → %d, want 200", resp.StatusCode)
@@ -154,7 +159,8 @@ func TestSubmit_AnyAuthenticatedUser(t *testing.T) {
 }
 
 func TestSubmit_UnconfiguredAIFailsBeforeCreatingJob(t *testing.T) {
-	srv, _, fs := newSuggestServerWithSettings(t, &fakeSettings{})
+	harness := newProposalHarness(t, proposalHarnessConfig{Settings: &fakeSettings{}})
+	srv, fs := harness.Server, harness.Suggest
 	resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, `{"description":"90s action"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("submit → %d, want 409 feature-not-configured", resp.StatusCode)
@@ -176,11 +182,10 @@ func TestSubmit_UnconfiguredAIFailsBeforeCreatingJob(t *testing.T) {
 }
 
 func TestSubmit_ConfiguredAIWithMissingTMDBNamesGroundingBlocker(t *testing.T) {
-	srv, _, fs := newSuggestServerWithSettingsAndDecisionQuality(
-		t,
-		&fakeSettings{missing: map[string][]string{"suggestions": {"tmdb.api_key"}}},
-		nil,
-	)
+	harness := newProposalHarness(t, proposalHarnessConfig{
+		Settings: &fakeSettings{missing: map[string][]string{"suggestions": {"tmdb.api_key"}}},
+	})
+	srv, fs := harness.Server, harness.Suggest
 	resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, `{"description":"Saturday cartoons"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("submit → %d, want 409 feature-not-configured", resp.StatusCode)
@@ -204,7 +209,8 @@ func TestSubmit_ConfiguredAIWithMissingTMDBNamesGroundingBlocker(t *testing.T) {
 }
 
 func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	intent := `{"description":"Classic Simpson Episodes"}`
 	now := time.Now()
 	err := st.CreateJob(context.Background(), store.Job{
@@ -259,7 +265,8 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 }
 
 func TestGetProposalJobRequiresOwnerOrAdmin(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	if err := st.CreateJob(context.Background(), store.Job{
 		ID: "job-owned", Kind: "suggest", Status: "queued", IntentJSON: `{"description":"Comedy"}`,
 		IntentHash: "hash", CreatedBy: "alice", CreatedAt: time.Now(), UpdatedAt: time.Now(),
@@ -276,7 +283,8 @@ func TestGetProposalJobRequiresOwnerOrAdmin(t *testing.T) {
 }
 
 func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	body := `{"trace":{"version":1,"surfacedTotal":1,"recordedTotal":1,"truncated":false,"candidates":[{"key":"movie:tmdb:1","ownership":"library","disposition":"selected","reason":"selected"}]}}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
 		t.Fatal(err)
@@ -296,7 +304,8 @@ func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing
 }
 
 func TestGetProposalPreservesUnassessedEraBalanceAsJSONNull(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	body := `{"scores":{"themeFit":1,"availabilityRatio":0.5,"eraBalance":null,"overall":0.7941176470588235}}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{ID: "era-proposal", JobID: "era-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
 		t.Fatal(err)
@@ -318,7 +327,8 @@ func TestGetProposalPreservesUnassessedEraBalanceAsJSONNull(t *testing.T) {
 // THE APPROVAL GATE (§19): approve requires admin. A member (anonymous here /
 // wrong token) gets 403 — and crucially, no title is enqueued.
 func TestApprove_RequiresAdmin_NothingEnqueued(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", "", "")
@@ -340,7 +350,8 @@ func TestApprove_RequiresAdmin_NothingEnqueued(t *testing.T) {
 // Admin approve enqueues the acquisitions as wanted titles (the ONLY path from a
 // proposal to /v1/titles) and flips the proposal to approved.
 func TestApprove_Admin_EnqueuesAcquisitions(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
@@ -379,7 +390,8 @@ func TestApprove_Admin_EnqueuesAcquisitions(t *testing.T) {
 // Approve is idempotent-ish: re-approving an already-approved proposal 409s
 // (can't double-enqueue).
 func TestApprove_AlreadyApproved409(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 	_ = do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
@@ -389,7 +401,8 @@ func TestApprove_AlreadyApproved409(t *testing.T) {
 }
 
 func TestDeny_RequiresAdmin(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", "", `{"reason":"no"}`)
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -398,7 +411,8 @@ func TestDeny_RequiresAdmin(t *testing.T) {
 }
 
 func TestDeny_AlreadyApproved409AndPreservesAudit(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 	approved := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
 	if approved.StatusCode != http.StatusOK {
@@ -423,7 +437,8 @@ func TestDeny_AlreadyApproved409AndPreservesAudit(t *testing.T) {
 }
 
 func TestDeny_StampsDecisionUpdateTime(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 	before, err := st.GetProposal(context.Background(), "p1")
 	if err != nil {
@@ -445,7 +460,8 @@ func TestDeny_StampsDecisionUpdateTime(t *testing.T) {
 func TestDeny_RecordsOnlyCommittedDecisionAsWorkflowOutcome(t *testing.T) {
 	qualitySink := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
 	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
-	srv, st, _ := newSuggestServerWithSettingsAndDecisionQuality(t, nil, decisionQuality)
+	harness := newProposalHarness(t, proposalHarnessConfig{DecisionQuality: decisionQuality})
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", adminToken, `{"reason":"not a fit"}`)
@@ -468,7 +484,8 @@ func TestDeny_RecordsOnlyCommittedDecisionAsWorkflowOutcome(t *testing.T) {
 }
 
 func TestListProposals_ApprovalQueue(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 	seedProposal(t, st, "p2")
 	resp := do(t, srv, http.MethodGet, "/v1/proposals?status=submitted", adminToken, "")
@@ -485,7 +502,8 @@ func TestListProposals_ApprovalQueue(t *testing.T) {
 }
 
 func TestSearch_AnyAuthenticatedUser(t *testing.T) {
-	srv, _, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodGet, "/v1/search?q=matrix", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("search → %d", resp.StatusCode)
@@ -503,7 +521,8 @@ func TestSearch_AnyAuthenticatedUser(t *testing.T) {
 }
 
 func TestSearch_RequiresQuery(t *testing.T) {
-	srv, _, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodGet, "/v1/search", adminToken, "")
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("search without q → %d, want 400", resp.StatusCode)
@@ -511,7 +530,8 @@ func TestSearch_RequiresQuery(t *testing.T) {
 }
 
 func TestEvents_RequiresAuth(t *testing.T) {
-	srv, _, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv := harness.Server
 	// Anonymous → 401.
 	resp := do(t, srv, http.MethodGet, "/v1/events", "", "")
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -526,7 +546,8 @@ func TestEvents_RequiresAuth(t *testing.T) {
 // runtime target among the constraints a user may set. Typing the body from the domain
 // fixed it; this keeps any future Intent field from going missing the same way.
 func TestSubmit_CarriesTheWholeIntent(t *testing.T) {
-	srv, _, fs := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, fs := harness.Server, harness.Suggest
 	body := `{"description":"90s action movies","era":"1990s","tone":"high-energy",
 	          "runtimeTargetMin":180,"maxAcquisitions":7,
 	          "mustInclude":["Speed"],"mustExclude":["Cats"]}`
@@ -563,7 +584,8 @@ func TestSubmit_CarriesTheWholeIntent(t *testing.T) {
 // not catch it: it asserts the acquisition is enqueued, which is exactly what the code
 // did do.
 func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	body := `{"intent":{"description":"90s Saturday morning cartoons for the kids"},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
@@ -609,7 +631,8 @@ func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
 }
 
 func TestApprove_PersistsProposalEpisodeSelectionToChannelLineup(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	body := `{"intent":{"description":"Classic Simpsons"},` +
 		`"lineup":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons",` +
 		`"inLibrary":true,"libraryItemId":"lib-simpsons",` +
@@ -665,7 +688,8 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv, st, _ := newSuggestServer(t)
+			harness := newProposalHarness(t)
+			srv, st := harness.Server, harness.Store
 			body := fmt.Sprintf(`{"intent":{"description":%q},"lineup":[`+
 				`{"mediaType":"movie","tmdbId":603,"name":"The Matrix","inLibrary":true,"libraryItemId":"matrix"}],`+
 				`"acquisitions":[]}`, tt.intent)
@@ -732,7 +756,8 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 }
 
 func TestApprove_ReplacesCraftedSeriesModeFromOriginalIntent(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	body := `{"intent":{"description":"Watch The Simpsons chronologically from start to finish"},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix",` +
 		`"inLibrary":true,"libraryItemId":"matrix"}],` +
@@ -784,7 +809,8 @@ func TestApprove_ReplacesCraftedSeriesModeFromOriginalIntent(t *testing.T) {
 }
 
 func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	body := `{"intent":{"description":"Classic highlights"},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix",` +
 		`"inLibrary":true,"libraryItemId":"matrix"}],"acquisitions":[],` +
@@ -829,7 +855,8 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 // A new channel seeds its FILLER era from its PROGRAM scope era (§10 default-from-theme),
 // so a "90s" channel gets 90s ads out of the box without the operator touching filler.
 func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	// The proposal's policy scopes programs to the 1990s — the filler era should follow.
 	body := `{"intent":{"description":"90s action"},"policy":{"scope":{"era":{"from":1990,"to":1999}}},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,` +
@@ -861,7 +888,8 @@ func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
 // channel — and must not clobber the fields the OPERATOR owns. Name and number are
 // ordinary editable fields; silently reverting an edit on re-approve is data loss.
 func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	body := `{"intent":{"description":"90s cartoons"},"lineup":[{"mediaType":"movie",` +
 		`"tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],` +
@@ -927,7 +955,8 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 // BOTH proposals are approved and coexist, so the test actually exercises the
 // created_at DESC ordering that the binding leans on.
 func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 
 	// Both proposals belong to the SAME job — as a refine re-run would produce.
@@ -1002,7 +1031,8 @@ func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
 }
 
 func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	const job = "job-stale-refine"
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -1052,7 +1082,8 @@ func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
 // to think about numbering to get on air — and an approval can never collide with a
 // channel they numbered by hand.
 func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	// A hand-made channel already occupies number 1.
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{
@@ -1092,7 +1123,8 @@ func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 // A dropped title is NOT acquired. This is the whole feature: an approver who removes a pick
 // before approving must not have it enqueued behind their back.
 func TestApprove_DroppedTitleIsNotEnqueued(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	body := `{"acquisitions":[
 		{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994},
 		{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}]}`
@@ -1119,7 +1151,8 @@ func TestApprove_DroppedTitleIsNotEnqueued(t *testing.T) {
 // An added title goes through the SAME idempotent enqueue as anything the model proposed. An
 // admin-added pick is not privileged; it is just another acquisition.
 func TestApprove_AddedTitleIsEnqueued(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p-add")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-add/approve", adminToken,
@@ -1141,7 +1174,8 @@ func TestApprove_AddedTitleIsEnqueued(t *testing.T) {
 // types is a claim, one the code writes is a record — and `note` is their message to whoever
 // requested it, which is why a request coming back altered is explicable.
 func TestApprove_PersistsTheAuditTrail(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p-audit")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-audit/approve", adminToken,
@@ -1178,7 +1212,8 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 // The STORED proposal reflects what was actually approved, not what the model first proposed.
 // Otherwise the audit trail describes a lineup that never existed.
 func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p-stored")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-stored/approve", adminToken,
@@ -1204,7 +1239,8 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 }
 
 func TestApprove_RejectsAnEditThatRemovesEveryTitle(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p-empty-edit")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-empty-edit/approve", adminToken,
@@ -1225,7 +1261,8 @@ func TestApprove_RejectsAnEditThatRemovesEveryTitle(t *testing.T) {
 // An UNMODIFIED approval must be indistinguishable from the pre-edit behaviour: same bytes,
 // empty summary. "Approved with modifications: none" is a different and false claim.
 func TestApprove_UnmodifiedLeavesTheProposalUntouched(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p-plain")
 	before, err := st.GetProposal(context.Background(), "p-plain")
 	if err != nil {
@@ -1249,7 +1286,8 @@ func TestApprove_UnmodifiedLeavesTheProposalUntouched(t *testing.T) {
 
 // The gate is still admin-only WITH a body. An edit is not a way in.
 func TestApprove_MemberCannotEditAndApprove(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p-member")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-member/approve", "",
@@ -1268,7 +1306,8 @@ func TestApprove_MemberCannotEditAndApprove(t *testing.T) {
 // could list decisions in no verifiable order. Stamped at the ONE chokepoint, so every path
 // that approves — human, auto-approve grant, auto-curate, bulk — records a time.
 func TestApprove_StampsApprovedAt(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 
 	before := time.Now().Add(-time.Second)
@@ -1293,7 +1332,8 @@ func TestApprove_StampsApprovedAt(t *testing.T) {
 // A proposal that was never approved must carry NO approval time. Emitting the zero time as
 // "0001-01-01T00:00:00Z" would put a date on a decision that never happened.
 func TestProposalDTO_OmitsApprovedAtWhileUnapproved(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 
 	resp := do(t, srv, http.MethodGet, "/v1/proposals?status=submitted", adminToken, "")
@@ -1305,7 +1345,8 @@ func TestProposalDTO_OmitsApprovedAtWhileUnapproved(t *testing.T) {
 }
 
 func TestProposalDTO_CarriesApprovedAtOnceApproved(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 	_ = do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "").Body.Close()
 
@@ -1332,7 +1373,8 @@ func TestProposalDTO_CarriesApprovedAtOnceApproved(t *testing.T) {
 // could be mistaken for an id is worth pinning: if the router ever resolved "approve" as an
 // {id}, bulk would 404 as a missing proposal instead of approving anything.
 func TestBulkApprove_DoesNotCollideWithSingleApprove(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 	seedProposal(t, st, "p2")
 
@@ -1349,7 +1391,8 @@ func TestBulkApprove_DoesNotCollideWithSingleApprove(t *testing.T) {
 // asserted through its OBSERVABLE effects: status flipped, acquisitions enqueued as `wanted`
 // titles, and the audit stamps written.
 func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	// DISTINCT titles per proposal. `seedProposal` gives every proposal the same acquisition
 	// (tmdbId 100), and enqueue is idempotent by provisioning key — so two seeded proposals
 	// would produce ONE wanted title and the count below could not distinguish "both went
@@ -1415,7 +1458,8 @@ func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
 // failing the whole call would hide them. But the caller has to learn which failed, or
 // "approve 3" silently becoming "approved 2" is invisible.
 func TestBulkApprove_PartialFailureReportsPerID(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	seedProposalAt(t, st, "p1", base)
 	seedProposalAt(t, st, "p2", base.Add(time.Hour))
@@ -1459,7 +1503,8 @@ func TestBulkApprove_PartialFailureReportsPerID(t *testing.T) {
 
 // §19: the gate is admin-only, and bulk is still the gate. A member must approve NOTHING.
 func TestBulkApprove_MemberIsRejected(t *testing.T) {
-	srv, st, _ := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposal(t, st, "p1")
 
 	for _, tok := range []string{"", "not-the-admin-token"} {
