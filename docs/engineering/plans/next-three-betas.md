@@ -29,7 +29,7 @@ can move without weakening the release's promised outcome.
 | Release | Viewer/operator outcome | Primary gate owners |
 | --- | --- | --- |
 | **beta.5 — Trustworthy creation and playback** | Understand the request, explain uncertainty and launch readiness, recover cleanly, and watch the accepted changes on the declared household setup. | #1103, #1044, #1098/#1068, #1015/#494, #1097/#1037; approval safety #955 and applicable release prerequisites #688/#661/#1162 |
-| **beta.6 — Complete certified filler journey** | Take an intentional source through exact approval, preparation, complete screening, review and deterministic admission into a real eligible break, with useful provenance and enrichment. | #945/#548, #955, #952/#1111, #908/#909/#951/#1086, #947, #946/#1110, #965/#1112, #741 |
+| **beta.6 — Complete certified filler journey** | Take an intentional source through exact approval, preparation, complete screening, review and deterministic admission into a real eligible break, with useful provenance and enrichment. | #945/#548, #955, #952/#1111, #908/#909/#951/#1086, #947, #946/#1110, #1112, #741 |
 | **beta.7 — Sustained household use** | Preserve explicit preferences through repeated curation and ordinary maintenance, replenish filler from measured gaps, and complete the remaining Web parity work. | #498/#497, #749, #970, integrated acceptance #1104; carry forward the exact #1037/#1097 and filler certificates |
 
 These are release outcomes, not a serial queue of one PR per issue. The many filler issues include
@@ -147,10 +147,10 @@ Run corpus/rights/truth work alongside production integration and the operator j
 - **Finish enrichment after screening — #946/#1110.** Produce evidence-grounded entities,
   categories and campaign/creative relationships from supported source evidence. Preserve unknowns;
   useful metadata never grants rights, safety, child-role or admission authority.
-- **Complete one operator lifecycle — #965/#1112.** Extend accepted Incoming/Sources/Library
+- **Complete one operator lifecycle — #1112.** Extend accepted Incoming/Sources/Library
   surfaces so planning, exact approval, quarantine, preparation, screening, exact-child review,
   admission and on-air usage are understandable as one journey. Retain typed retries, holds and
-  rights remediation; routine confirmations must not replace automated deterministic authority.
+  evidence remediation; routine confirmations must not replace automated deterministic authority.
 - **Qualify exact reference outputs — #741.** Record the human-reviewed 32-clip cohort and an
   eligible-break playback journey through the normal authority. This is product acceptance in
   addition to the full applicable #549/#555/#548 certification and shadow gates.
@@ -308,7 +308,7 @@ optimizations can move without relaxing required release gates.
 | [#1011](https://github.com/loomarr/loomarr/issues/1011) | Filler: build and certify the visual clean-control cohort | beta.6 |
 | [#995](https://github.com/loomarr/loomarr/issues/995) | Filler: bridge approved media into visual-corpus nominations | beta.6 |
 | [#993](https://github.com/loomarr/loomarr/issues/993) | Filler: add a Met Museum corpus inventory lane and private materializer | beta.6 |
-| [#965](https://github.com/loomarr/loomarr/issues/965) | Make Filler one coherent source-to-admission workflow | beta.6 |
+| [#965](https://github.com/loomarr/loomarr/issues/965) | Historical Filler workflow plan; current lifecycle authority is #1112 | Superseded by #1112 |
 | [#963](https://github.com/loomarr/loomarr/issues/963) | Certify complete-coverage structure assessment for long compilation reels | beta.6 |
 | [#962](https://github.com/loomarr/loomarr/issues/962) | Bind structure certification to the production media profile and source envelope | beta.6 |
 | [#961](https://github.com/loomarr/loomarr/issues/961) | Run certified independent structure assessments in production shadow | beta.6 |
