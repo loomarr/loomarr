@@ -140,8 +140,8 @@ func (s *Scheduler) isPaused(ctx context.Context, name string) (bool, error) {
 // ⚠ SQLite support is officially EXPERIMENTAL (§14) — a stated, accepted risk, not an
 // oversight. Postgres uses the database/sql driver rather than pgx because that is the pool
 // shape the store already holds.
-func riverDriverFor(st store.Store, db *sql.DB) (riverdriver.Driver[*sql.Tx], error) {
-	switch store.DialectOf(st) {
+func riverDriverFor(dialect store.Dialect, db *sql.DB) (riverdriver.Driver[*sql.Tx], error) {
+	switch dialect {
 	case store.DialectSQLite:
 		return riversqlite.New(db), nil
 	case store.DialectPostgres:
@@ -158,8 +158,8 @@ func riverDriverFor(st store.Store, db *sql.DB) (riverdriver.Driver[*sql.Tx], er
 // goose owns the application catalog; River owns its own tables. Two migration LIBRARIES is a
 // stated cost of adopting River — two migration SYSTEMS an operator must run would not be
 // shippable, and the programmatic path is what avoids it.
-func (s *Scheduler) StartRiver(ctx context.Context, st store.Store, db *sql.DB, log *slog.Logger) (func(context.Context) error, error) {
-	driver, err := riverDriverFor(st, db)
+func (s *Scheduler) StartRiver(ctx context.Context, dialect store.Dialect, db *sql.DB, log *slog.Logger) (func(context.Context) error, error) {
+	driver, err := riverDriverFor(dialect, db)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (s *Scheduler) StartRiver(ctx context.Context, st store.Store, db *sql.DB, 
 		// second producer** — see `riverQueues`. A long media job spends its time inside
 		// `exec.Command` holding no connection at all, so a second worker running beside it
 		// contends for nothing.
-		Queues:       s.riverQueues(st),
+		Queues:       s.riverQueues(dialect),
 		Workers:      workers,
 		PeriodicJobs: periodic,
 		Logger:       log,
@@ -311,9 +311,9 @@ func queueFor(j Job) string {
 // into a live-channel outage (the argument `filler.Pipeline` already records). Total concurrency
 // goes 1→2 on SQLite and 4→5 on Postgres: one more slot, reserved for work that spends its time
 // in `exec.Command` rather than on the database connection.
-func (s *Scheduler) riverQueues(st store.Store) map[string]river.QueueConfig {
+func (s *Scheduler) riverQueues(dialect store.Dialect) map[string]river.QueueConfig {
 	out := map[string]river.QueueConfig{
-		river.QueueDefault: {MaxWorkers: maxWorkersFor(st)},
+		river.QueueDefault: {MaxWorkers: maxWorkersFor(dialect)},
 	}
 	for _, j := range s.jobs {
 		if q := queueFor(j); q != river.QueueDefault {
@@ -325,8 +325,8 @@ func (s *Scheduler) riverQueues(st store.Store) map[string]river.QueueConfig {
 
 // maxWorkersFor keeps SQLite single-threaded (one connection in the pool) and lets Postgres
 // run a few jobs at once.
-func maxWorkersFor(st store.Store) int {
-	if store.DialectOf(st) == store.DialectPostgres {
+func maxWorkersFor(dialect store.Dialect) int {
+	if dialect == store.DialectPostgres {
 		return 4
 	}
 	return 1

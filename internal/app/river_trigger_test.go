@@ -43,7 +43,7 @@ func TestRiverTrigger_IsNotOnTheSlowSchedulePath(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s.SeedRegistry(ctx)
-	if _, err := s.StartRiver(ctx, st, store.PoolOf(st), log); err != nil {
+	if _, err := s.StartRiver(ctx, store.DialectOf(st), store.PoolOf(st), log); err != nil {
 		t.Fatalf("StartRiver: %v", err)
 	}
 

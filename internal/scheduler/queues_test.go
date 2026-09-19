@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/riverqueue/river"
+
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // The queue split (§18.1): a job's ceiling must bound only the jobs that share its queue.
@@ -45,7 +47,7 @@ func TestRiverQueues_EveryJobRoutesToAQueueThatHasAProducer(t *testing.T) {
 		Add(queueTestJob("slow", LongJobTimeout))
 	s := New(newFakeStore(), reg, nil, time.Now, testLog())
 
-	queues := s.riverQueues(nil)
+	queues := s.riverQueues(store.DialectSQLite)
 
 	for _, j := range s.jobs {
 		if _, ok := queues[queueFor(j)]; !ok {
@@ -70,7 +72,7 @@ func TestRiverQueues_NoLongJobsMeansNoLongQueue(t *testing.T) {
 		Add(queueTestJob("quick", 0)).
 		Add(queueTestJob("bounded", 10*time.Second)), nil, time.Now, testLog())
 
-	queues := s.riverQueues(nil)
+	queues := s.riverQueues(store.DialectSQLite)
 
 	if _, ok := queues[longQueue]; ok {
 		t.Errorf("queues = %v, want no `long` producer when no ceiling exceeds River's default", queues)

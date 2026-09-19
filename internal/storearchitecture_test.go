@@ -17,7 +17,6 @@ var aggregateStoreExceptions = map[string]string{
 	modulePath + "/internal/api":          "retains complete HTTP dependency assembly outside this refactor",
 	modulePath + "/internal/app":          "is the composition root that narrows the store for domain modules",
 	modulePath + "/internal/devbootstrap": "is a migration checkpoint while development bootstrap is narrowed",
-	modulePath + "/internal/scheduler":    "is a migration checkpoint while backend selection is made explicit",
 	modulePath + "/internal/suggest":      "contains compile-time conformance assertions for its narrow store roles",
 	modulePath + "/internal/testkit":      "owns shared complete-store factories for tests",
 }

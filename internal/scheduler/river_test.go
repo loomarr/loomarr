@@ -166,7 +166,7 @@ func TestRiverHistoryRecordsTheLoomarrOutcome(t *testing.T) {
 		},
 	}), nil, time.Now, log).WithNotifier(changed)
 	s.SeedRegistry(ctx)
-	wait, err := s.StartRiver(ctx, st, store.PoolOf(st), log)
+	wait, err := s.StartRiver(ctx, store.DialectOf(st), store.PoolOf(st), log)
 	if err != nil {
 		t.Fatal(err)
 	}
