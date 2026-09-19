@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 const Username = "developer"
@@ -40,10 +39,18 @@ type Result struct {
 	User    string
 }
 
+// Store is the small persistence surface needed by the development harness.
+// The production bootstrap capability remains owned by auth; this command adds
+// only the setting write that completes its isolated first-run flow.
+type Store interface {
+	auth.ProvisionerStore
+	SetSetting(ctx context.Context, key, value string) error
+}
+
 // Ensure creates the first admin through the production bootstrap service, then
 // marks the first-run flow complete. Existing worktree databases keep their admin;
 // the harness only needs an allowlisted account for dev-login to borrow.
-func Ensure(ctx context.Context, st store.Store) (Result, error) {
+func Ensure(ctx context.Context, st Store) (Result, error) {
 	admins, err := st.CountAdmins(ctx)
 	if err != nil {
 		return Result{}, fmt.Errorf("count admins: %w", err)
