@@ -232,7 +232,8 @@ func TestFillerIncoming_UsesTheLiveReadyWindowForRowsAndTotals(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Date(2026, time.September, 16, 12, 0, 0, 0, time.UTC)
-			srv, st, _ := newFillerServerWithIncomingConfig(t, tc.window, now)
+			harness := newFillerIncomingHarness(t, tc.window, now)
+			srv, st := harness.Server, harness.Store
 			for _, clip := range []filler.Clip{
 				{Hash: "at-cutoff", Path: "at-cutoff.mp4", Name: "At cutoff"},
 				{Hash: "before-cutoff", Path: "before-cutoff.mp4", Name: "Before cutoff"},

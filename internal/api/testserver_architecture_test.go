@@ -17,22 +17,20 @@ import (
 // harnesses while their common lifecycle is migrated behind apiHarness. Every
 // entry needs a route-family rationale, and stale entries fail the test.
 var testServerConstructors = map[string]string{
-	"dashboard_panels_test.go:serverWithPanels":        "dashboard panels",
-	"dashboard_test.go:newDashboardServer":             "dashboard playout",
-	"events_test.go:newEventsServer":                   "events",
-	"filler_test.go:newFillerServerWithIncomingConfig": "filler incoming configuration",
-	"filler_test.go:newFillerServerWithRuntimeConfig":  "filler runtime configuration",
-	"fillermedia_test.go:newMediaServer":               "filler media",
-	"fillersources_test.go:serverWithClips":            "filler sources",
-	"fillerwatch_test.go:newFillerWatchServer":         "filler watch",
-	"help_test.go:newHelpServer":                       "help",
-	"icons_test.go:newIconsHandlerWithConfig":          "icon handler configuration",
-	"icons_test.go:newIconsServer":                     "icons",
-	"icons_test.go:newIconsServerWithConfig":           "icon configuration",
-	"jobs_test.go:serverWithJobs":                      "jobs",
-	"pods_test.go:newPodsServer":                       "filler pods",
-	"proposaljourneys_test.go:proposalJourneyServer":   "proposal journeys",
-	"search_test.go:newConfiguredSearchHandler":        "search",
+	"dashboard_panels_test.go:serverWithPanels":      "dashboard panels",
+	"dashboard_test.go:newDashboardServer":           "dashboard playout",
+	"events_test.go:newEventsServer":                 "events",
+	"fillermedia_test.go:newMediaServer":             "filler media",
+	"fillersources_test.go:serverWithClips":          "filler sources",
+	"fillerwatch_test.go:newFillerWatchServer":       "filler watch",
+	"help_test.go:newHelpServer":                     "help",
+	"icons_test.go:newIconsHandlerWithConfig":        "icon handler configuration",
+	"icons_test.go:newIconsServer":                   "icons",
+	"icons_test.go:newIconsServerWithConfig":         "icon configuration",
+	"jobs_test.go:serverWithJobs":                    "jobs",
+	"pods_test.go:newPodsServer":                     "filler pods",
+	"proposaljourneys_test.go:proposalJourneyServer": "proposal journeys",
+	"search_test.go:newConfiguredSearchHandler":      "search",
 }
 
 func TestAPITestServerConstructorsStayClassified(t *testing.T) {

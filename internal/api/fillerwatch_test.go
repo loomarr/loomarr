@@ -102,12 +102,8 @@ type watchBody struct {
 
 func newFillerWatchServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
 	t.Helper()
-	return newFillerServerWithRuntimeConfig(t, nil, func(key string) string {
-		if key == "filler.home_country" {
-			return "US"
-		}
-		return ""
-	}, nil, nil)
+	harness := newFillerLocationHarness(t, "US", "")
+	return harness.Server, harness.Store, harness.Filler
 }
 
 func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {

@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
@@ -307,73 +305,86 @@ type fillerHarness struct {
 	Filler *fakeFiller
 }
 
+type fillerHarnessLocation struct {
+	Country string
+	Market  string
+}
+
+type fillerHarnessIncoming struct {
+	ReadyWindow time.Duration
+	Now         time.Time
+}
+
+type fillerHarnessOptions struct {
+	Images   api.ImageService
+	Location *fillerHarnessLocation
+	Incoming *fillerHarnessIncoming
+}
+
 func newFillerHarness(t *testing.T) *fillerHarness {
-	t.Helper()
-	srv, st, ff := newFillerServerWithRuntimeConfig(t, nil, nil, nil, nil)
-	return &fillerHarness{
-		apiHarness: &apiHarness{t: t, Server: srv, Store: st},
-		Filler:     ff,
-	}
+	return startFillerHarness(t, fillerHarnessOptions{})
 }
 
 func newFillerImageHarness(t *testing.T, imageService api.ImageService) *fillerHarness {
-	t.Helper()
-	srv, st, ff := newFillerServerWithRuntimeConfig(t, imageService, nil, nil, nil)
-	return &fillerHarness{
-		apiHarness: &apiHarness{t: t, Server: srv, Store: st},
-		Filler:     ff,
-	}
+	return startFillerHarness(t, fillerHarnessOptions{Images: imageService})
 }
 
 func newFillerLocationHarness(t *testing.T, homeCountry, homeMarket string) *fillerHarness {
-	t.Helper()
-	liveConfig := func(key string) string {
-		return map[string]string{
-			"filler.home_country": homeCountry,
-			"filler.home_market":  homeMarket,
-		}[key]
-	}
-	srv, st, ff := newFillerServerWithRuntimeConfig(t, nil, liveConfig, nil, nil)
-	return &fillerHarness{
-		apiHarness: &apiHarness{t: t, Server: srv, Store: st},
-		Filler:     ff,
-	}
-}
-
-func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, store.Store, *fakeFiller) {
-	return newFillerServerWithRuntimeConfig(t, nil, nil, func(key string) time.Duration {
-		if key != "filler.incoming.ready_window" {
-			t.Fatalf("unexpected duration setting %q", key)
-		}
-		return readyWindow
-	}, func() time.Time { return now })
-}
-
-func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string, liveConfigDuration func(string) time.Duration, now func() time.Time) (*httptest.Server, store.Store, *fakeFiller) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/f.db")
-	t.Cleanup(func() { _ = st.Close() })
-	ff := &fakeFiller{
-		FillerAcquisitionPlanner: testkit.FillerAcquisitionPlanner{Store: st},
-		fetchResult:              filler.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
-	}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		// ⚠ `testAuthorizer`, not `NewTokenAuthorizer(adminToken)`. The production authorizer
-		// resolves admin-or-ANONYMOUS only (API_TOKEN is a break-glass admin credential, §11), so
-		// with it a test that passes `memberToken` is really testing an anonymous caller — which
-		// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
-		// is member-readable and that has to be provable.
-		Auth:               testAuthorizer{},
-		Log:                slog.New(slog.DiscardHandler),
-		Filler:             ff,
-		Images:             imageService,
-		LiveConfig:         liveConfig,
-		LiveConfigDuration: liveConfigDuration,
-		Now:                now,
+	return startFillerHarness(t, fillerHarnessOptions{
+		Location: &fillerHarnessLocation{Country: homeCountry, Market: homeMarket},
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
+}
+
+func newFillerIncomingHarness(t *testing.T, readyWindow time.Duration, now time.Time) *fillerHarness {
+	return startFillerHarness(t, fillerHarnessOptions{
+		Incoming: &fillerHarnessIncoming{ReadyWindow: readyWindow, Now: now},
+	})
+}
+
+func startFillerHarness(t *testing.T, options fillerHarnessOptions) *fillerHarness {
+	t.Helper()
+	var ff *fakeFiller
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		ff = &fakeFiller{
+			FillerAcquisitionPlanner: testkit.FillerAcquisitionPlanner{Store: defaults.Store},
+			fetchResult:              filler.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
+		}
+		var liveConfig func(string) string
+		if options.Location != nil {
+			liveConfig = func(key string) string {
+				return map[string]string{
+					"filler.home_country": options.Location.Country,
+					"filler.home_market":  options.Location.Market,
+				}[key]
+			}
+		}
+		var liveConfigDuration func(string) time.Duration
+		var now func() time.Time
+		if options.Incoming != nil {
+			liveConfigDuration = func(key string) time.Duration {
+				if key != "filler.incoming.ready_window" {
+					t.Fatalf("unexpected duration setting %q", key)
+				}
+				return options.Incoming.ReadyWindow
+			}
+			now = func() time.Time { return options.Incoming.Now }
+		}
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store,
+			// ⚠ `testAuthorizer`, not `NewTokenAuthorizer(adminToken)`. The production authorizer
+			// resolves admin-or-ANONYMOUS only (API_TOKEN is a break-glass admin credential, §11), so
+			// with it a test that passes `memberToken` is really testing an anonymous caller — which
+			// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
+			// is member-readable and that has to be provable.
+			Auth:               defaults.Auth,
+			Log:                defaults.Log,
+			Filler:             ff,
+			Images:             options.Images,
+			LiveConfig:         liveConfig,
+			LiveConfigDuration: liveConfigDuration,
+			Now:                now,
+		})
+	})
 	// ⚠ **Start with an EMPTY source registry, deliberately.** Migration 00034 seeds four default
 	// sources so a real install can fetch on day one — correct there, and fatal to every assertion
 	// here phrased as an absolute ("want 1", "registered sources = 1", "unconfigured"). Eleven
@@ -383,8 +394,8 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageServic
 	// them honest when the seeded set changes again — which it will. The seeding itself is not
 	// untested: `TestMigrations_SeedDefaultSources` owns exactly that, and is the ONLY test that
 	// should ever depend on what 00034 inserts.
-	clearSeededSources(t, st)
-	return srv, st, ff
+	clearSeededSources(t, base.Store)
+	return &fillerHarness{apiHarness: base, Filler: ff}
 }
 
 // The catalog's still and hover loop are both public image-service records. The animated bit and
