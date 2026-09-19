@@ -17,7 +17,6 @@ import (
 // harnesses while their common lifecycle is migrated behind apiHarness. Every
 // entry needs a route-family rationale, and stale entries fail the test.
 var testServerConstructors = map[string]string{
-	"events_test.go:newEventsServer":                 "events",
 	"help_test.go:newHelpServer":                     "help",
 	"icons_test.go:newIconsHandlerWithConfig":        "icon handler configuration",
 	"icons_test.go:newIconsServer":                   "icons",
