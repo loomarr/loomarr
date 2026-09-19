@@ -22,10 +22,19 @@ var ErrInvalidBootstrap = errors.New("username and password are required")
 // from media-server ids). Injected for determinism in tests.
 type IDGen func() string
 
+// ProvisionerStore is the allowlist mutation surface needed by bootstrap and
+// explicit media-server import.
+type ProvisionerStore interface {
+	CountAdmins(ctx context.Context) (int, error)
+	CreateUserUnlessInvited(ctx context.Context, u store.User, now time.Time) error
+	GetUser(ctx context.Context, id string) (store.User, error)
+	UpsertUser(ctx context.Context, u store.User) error
+}
+
 // Provisioner owns local-admin bootstrap and explicit media-server import (§11).
 // It is the ONLY path that creates users — login never does (the allowlist).
 type Provisioner struct {
-	store store.Store
+	store ProvisionerStore
 	lib   UserLister // may be nil (import unavailable without a media server)
 	newID IDGen
 	now   func() time.Time
@@ -33,7 +42,7 @@ type Provisioner struct {
 
 // NewProvisioner builds the bootstrap+import service (lib is the media-server
 // user lister shared with UserSync; nil disables import).
-func NewProvisioner(st store.Store, lib UserLister, newID IDGen, now func() time.Time) *Provisioner {
+func NewProvisioner(st ProvisionerStore, lib UserLister, newID IDGen, now func() time.Time) *Provisioner {
 	if now == nil {
 		now = time.Now
 	}
