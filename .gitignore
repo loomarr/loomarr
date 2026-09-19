@@ -74,3 +74,12 @@ scratch-*.png
 .filler-smoke/
 # Rust build output.
 /target/
+
+# Graphify's portable outputs are tracked. These sidecars contain machine-local
+# interpreter/root paths or per-run accounting and must stay local.
+/graphify-out/.graphify_python
+/graphify-out/.graphify_root
+/graphify-out/cost.json
+/graphify-out/.graphify_health.json
+/graphify-out/cache/
+/graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/

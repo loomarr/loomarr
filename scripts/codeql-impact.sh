@@ -55,7 +55,7 @@ classify() {
 	*.md | *.sh | *.css | *.html | *.svg | *.png | *.jpg | *.jpeg | *.webp | *.ico | *.woff | *.woff2 | \
 		*.sql | *.xml | *.plist | *.xcconfig | *.pbxproj | *.storyboard | *.strings | *.gradle | *.properties | \
 		*.json | *.toml | *.yml | *.yaml | *.lock | .gitignore | .gitattributes | .editorconfig | .dockerignore | \
-		Dockerfile | Makefile | *.mk | LICENSE)
+		.graphifyignore | graphify-out/.graphify_labels.json.sig | Dockerfile | Makefile | *.mk | LICENSE)
 		;;
 	*)
 		echo "codeql-impact: unknown path $path; selecting every language" >&2
