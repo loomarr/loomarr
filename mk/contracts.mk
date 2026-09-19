@@ -52,3 +52,20 @@ dev-docs: ## generate docs/dev/commands.md from this Makefile + the CI workflows
 dev-docs-verify: dev-docs ## regenerated command reference must match committed (CI red on drift)
 	@git diff --exit-code docs/dev/commands.md
 
+## ---- repository knowledge graph ----------------------------------------
+
+GRAPHIFY_CLI_VERSION := graphify 0.9.64
+
+.PHONY: graphify
+graphify: ## rebuild the committed code and GitHub Actions knowledge graph
+	@command -v graphify >/dev/null || { echo "graphify is required; see docs/dev/graphify.md" >&2; exit 1; }
+	@test "$$(graphify --version)" = "$(GRAPHIFY_CLI_VERSION)" || { echo "expected $(GRAPHIFY_CLI_VERSION); see docs/dev/graphify.md" >&2; exit 1; }
+	graphify extract . --code-only --force --no-cluster
+	$(GO) run ./cmd/graphify-sync -root . -graph graphify-out/graph.json inject
+	graphify cluster-only . --no-viz
+	graphify export html
+	$(GO) run ./cmd/graphify-sync -root . -graph graphify-out/graph.json stamp
+
+.PHONY: graphify-verify
+graphify-verify: ## verify the committed graph matches every maintained source and workflow
+	$(GO) run ./cmd/graphify-sync -root . -graph graphify-out/graph.json verify
