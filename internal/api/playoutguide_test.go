@@ -5,9 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -16,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // fakeXMLTVGuide answers programme timelines without a store or a scheduler.
@@ -71,25 +68,29 @@ func (f *fakeXMLTVGuide) BroadcastsWithPending(
 	return f.byChannel[channelID], nil
 }
 
-func newGuideServer(t *testing.T, g api.PlayoutGuide) (*httptest.Server, store.Store) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/guide.db")
-	t.Cleanup(func() { _ = st.Close() })
+// playoutGuideHarness owns the device-authenticated XMLTV route's fixed
+// production wiring while leaving only the guide behavior variable.
+type playoutGuideHarness struct {
+	*apiHarness
+}
 
-	cfg := map[string]string{
-		"server.public_url": "http://loomarr.local:8080",
-		"playout.backend":   "internal",
-	}
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:         st,
-		Auth:          api.NewTokenAuthorizer(adminToken),
-		Log:           slog.New(slog.DiscardHandler),
-		PlayoutSecret: func() string { return playoutToken },
-		PlayoutGuide:  g,
-		LiveConfig:    func(k string) string { return cfg[k] },
-	}))
-	t.Cleanup(srv.Close)
-	return srv, st
+func newPlayoutGuideHarness(t *testing.T, guide api.PlayoutGuide) *playoutGuideHarness {
+	t.Helper()
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		cfg := map[string]string{
+			"server.public_url": "http://loomarr.local:8080",
+			"playout.backend":   "internal",
+		}
+		return api.Router(defaults.Log, api.Options{
+			Store:         defaults.Store,
+			Auth:          api.NewTokenAuthorizer(adminToken),
+			Log:           defaults.Log,
+			PlayoutSecret: func() string { return playoutToken },
+			PlayoutGuide:  guide,
+			LiveConfig:    func(key string) string { return cfg[key] },
+		})
+	})
+	return &playoutGuideHarness{apiHarness: base}
 }
 
 func nowProgramme(title string, offset time.Duration, mins int) playout.Broadcast {
@@ -102,7 +103,8 @@ func nowProgramme(title string, offset time.Duration, mins int) playout.Broadcas
 
 // The guide is a playout route, so it is gated by the device token like every other one.
 func TestPlayoutGuide_RequiresTheDeviceToken(t *testing.T) {
-	srv, st := newGuideServer(t, &fakeXMLTVGuide{})
+	harness := newPlayoutGuideHarness(t, &fakeXMLTVGuide{})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Classic Sci-Fi", 50, "internal")
 
 	for _, q := range []string{"", "?token=wrong", "?token=" + playoutToken[:8]} {
@@ -120,7 +122,8 @@ func TestPlayoutGuide_ServesRealListings(t *testing.T) {
 			nowProgramme("The Transformers: The Movie", 90*time.Minute, 84),
 		},
 	}}
-	srv, st := newGuideServer(t, g)
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Classic Sci-Fi", 50, "internal")
 
 	resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
@@ -166,7 +169,8 @@ func TestPlayoutGuide_ChannelIDsMatchTheTuner(t *testing.T) {
 	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
 		"classic-simpsons": {nowProgramme("Bart the Genius", 0, 22)},
 	}}
-	srv, st := newGuideServer(t, g)
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "classic-simpsons", "Classic Simpsons", 52, "internal")
 
 	tuner, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken).Body)
@@ -188,7 +192,8 @@ func TestPlayoutGuide_ExcludesTunarrBackedChannels(t *testing.T) {
 		"mine":   {nowProgramme("Heat", 0, 60)},
 		"theirs": {nowProgramme("Predator", 0, 60)},
 	}}
-	srv, st := newGuideServer(t, g)
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "mine", "Internal", 1, "internal")
 	seedChannel(t, st, "theirs", "Tunarr", 2, "tunarr")
 
@@ -208,7 +213,8 @@ func TestPlayoutGuide_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
 		"detached": {nowProgramme("Detached", 0, 60)},
 		"empty":    {nowProgramme("Empty", 0, 60)},
 	}}
-	srv, st := newGuideServer(t, g)
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "live", "Live Channel", 1, "internal")
 	seedChannel(t, st, "paused", "Paused Channel", 2, "internal")
 	seedChannel(t, st, "detached", "Detached Channel", 3, "internal")
@@ -236,7 +242,8 @@ func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {
 		byChannel: map[string][]playout.Broadcast{"good": {nowProgramme("Heat", 0, 60)}},
 		errFor:    map[string]error{"bad": errors.New("scheduler exploded")},
 	}
-	srv, st := newGuideServer(t, g)
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "good", "Good", 1, "internal")
 	seedChannel(t, st, "bad", "Bad", 2, "internal")
 
@@ -259,7 +266,8 @@ func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {
 // start time to draw it, which requires asking from before now.
 func TestPlayoutGuide_WindowCoversPastAndFuture(t *testing.T) {
 	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{"ch1": {}}}
-	srv, st := newGuideServer(t, g)
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Ch", 1, "internal")
 
 	_ = getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
@@ -276,7 +284,8 @@ func TestPlayoutGuide_WindowCoversPastAndFuture(t *testing.T) {
 // A guide must never be cached: it changes as the wall clock advances, and a copy served an
 // hour later lists programmes that already finished.
 func TestPlayoutGuide_IsNotCacheable(t *testing.T) {
-	srv, st := newGuideServer(t, &fakeXMLTVGuide{})
+	harness := newPlayoutGuideHarness(t, &fakeXMLTVGuide{})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Ch", 1, "internal")
 
 	resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
@@ -287,7 +296,8 @@ func TestPlayoutGuide_IsNotCacheable(t *testing.T) {
 
 // Playout not running is a 501 that explains itself, not a 404 that reads as a wiring mistake.
 func TestPlayoutGuide_NotRunningExplainsItself(t *testing.T) {
-	srv, st := newGuideServer(t, nil)
+	harness := newPlayoutGuideHarness(t, nil)
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Ch", 1, "internal")
 
 	if resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken); resp.StatusCode != http.StatusNotImplemented {

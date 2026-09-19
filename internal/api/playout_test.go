@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -168,52 +167,45 @@ func (f *fakePlayoutSessions) tuneCount() int {
 	return f.tunes
 }
 
-type playoutOpts struct {
-	sessions   *fakePlayoutSessions
-	token      string
-	publicURL  string
-	backend    string
-	noSecret   bool
-	skipConfig bool
+type playoutHarnessConfig struct {
+	Sessions      *fakePlayoutSessions
+	Backend       string
+	WithoutSecret bool
 }
 
-func newPlayoutServer(t *testing.T, o playoutOpts) (*httptest.Server, store.Store) {
+// playoutHarness owns the tuner and stream routes' token authorization, live
+// configuration, store, and HTTP lifecycle. Tests vary only session behavior,
+// backend selection, or the deliberate absence of a device secret.
+type playoutHarness struct {
+	*apiHarness
+}
+
+func newPlayoutHarness(t *testing.T, config playoutHarnessConfig) *playoutHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/playout.db")
-	t.Cleanup(func() { _ = st.Close() })
-
-	if o.token == "" {
-		o.token = playoutToken
+	if config.Backend == "" {
+		config.Backend = "internal"
 	}
-	if o.publicURL == "" {
-		o.publicURL = "http://loomarr.local:8080"
-	}
-	if o.backend == "" {
-		o.backend = "internal"
-	}
-
-	opts := api.Options{
-		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
-		Log:   slog.New(slog.DiscardHandler),
-	}
-	if o.sessions != nil {
-		opts.Playout = o.sessions
-		opts.PlayoutObserver = o.sessions
-	}
-	if !o.noSecret {
-		opts.PlayoutSecret = func() string { return o.token }
-	}
-	if !o.skipConfig {
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		cfg := map[string]string{
-			"server.public_url": o.publicURL,
-			"playout.backend":   o.backend,
+			"server.public_url": "http://loomarr.local:8080",
+			"playout.backend":   config.Backend,
 		}
-		opts.LiveConfig = func(k string) string { return cfg[k] }
-	}
-
-	srv := httptest.NewTestServer(t, api.Router(slog.New(slog.DiscardHandler), opts))
-	return srv, st
+		opts := api.Options{
+			Store:      defaults.Store,
+			Auth:       api.NewTokenAuthorizer(adminToken),
+			Log:        defaults.Log,
+			LiveConfig: func(key string) string { return cfg[key] },
+		}
+		if config.Sessions != nil {
+			opts.Playout = config.Sessions
+			opts.PlayoutObserver = config.Sessions
+		}
+		if !config.WithoutSecret {
+			opts.PlayoutSecret = func() string { return playoutToken }
+		}
+		return api.Router(defaults.Log, opts)
+	})
+	return &playoutHarness{apiHarness: base}
 }
 
 func getPlayout(t *testing.T, srv *httptest.Server, path string) *http.Response {
@@ -254,7 +246,8 @@ func setChannelStatus(t *testing.T, st store.Store, id string, status schedule.C
 // EVERY playout route must reject a missing or wrong token. A television is the client, so
 // there is no session to fall back on — the token is the only auth these routes have.
 func TestPlayout_RejectsMissingOrWrongToken(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	for _, path := range []string{
@@ -285,7 +278,8 @@ func TestPlayout_RejectsMissingOrWrongToken(t *testing.T) {
 // leak into logs and screenshots; an enumerable "real channel, wrong password" tells an
 // attacker where to aim.
 func TestPlayout_WrongTokenIsIndistinguishableFromNoRoute(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	real := getPlayout(t, srv, "/v1/playout/stream/ch1?token=wrong")
@@ -301,7 +295,8 @@ func TestPlayout_WrongTokenIsIndistinguishableFromNoRoute(t *testing.T) {
 // No token configured ⇒ fail CLOSED. Serving streams unauthenticated because a secret failed
 // to mint would silently remove the only auth these routes have.
 func TestPlayout_NoConfiguredTokenRefusesEverything(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}, noSecret: true})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}, WithoutSecret: true})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	for _, path := range []string{"/v1/playout/tuner.m3u", "/v1/playout/stream/ch1", "/v1/playout/program/ch1"} {
@@ -320,7 +315,8 @@ func TestPlayout_NoConfiguredTokenRefusesEverything(t *testing.T) {
 // secrets with opposite authority — playout_token grants no API access, api_token is
 // break-glass admin.
 func TestPlayout_AdminTokenIsNotAPlayoutToken(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	if resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+adminToken); resp.StatusCode != http.StatusNotFound {
@@ -348,7 +344,8 @@ func TestPlayout_AdminTokenIsNotAPlayoutToken(t *testing.T) {
 // /v1/ prefix guard, ffmpeg would read index.html as a transport stream and report a
 // corrupt stream naming neither the URL nor the typo.
 func TestPlayout_UnknownPathDoesNotServeTheSPA(t *testing.T) {
-	srv, _ := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, _ := harness.Server, harness.Store
 
 	resp := getPlayout(t, srv, "/v1/playout/not-a-route?token="+playoutToken)
 	if resp.StatusCode != http.StatusNotFound {
@@ -378,7 +375,8 @@ func TestPlayoutHLS_PreparedAssetMatchesTheRegisteredRoute(t *testing.T) {
 		asset:   playout.Asset{Content: file, Modified: time.Unix(1_000, 0), Immutable: true},
 		assetOK: true,
 	}
-	srv, _ := newPlayoutServer(t, playoutOpts{sessions: f})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, _ := harness.Server, harness.Store
 	const token = "p-aGVsbG8.mp4"
 
 	resp := getPlayout(t, srv, "/v1/playout/hls/ch1/"+token+"?token="+playoutToken)
@@ -406,7 +404,8 @@ func TestPlayoutHLS_PreparedAssetMatchesTheRegisteredRoute(t *testing.T) {
 // never comes, and advertising ranges invites a seek that is meaningless here.
 func TestPlayoutStream_LooksLikeALiveStreamNotAFile(t *testing.T) {
 	f := &fakePlayoutSessions{}
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: f})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	// A real request would never end, so drive it with a cancellable context and stop after
@@ -458,7 +457,8 @@ func TestPlayoutStream_LooksLikeALiveStreamNotAFile(t *testing.T) {
 func TestPlayoutStream_SessionClosingBeforeFirstChunkFailsBeforeCommitting(t *testing.T) {
 	f := &fakePlayoutSessions{chunks: make(chan []byte)}
 	close(f.chunks)
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: f})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	resp, err := srv.Client().Get(playoutTestURL + "/v1/playout/stream/ch1?token=" + playoutToken)
@@ -487,7 +487,8 @@ func TestPlayoutStream_FullPlanWithoutTransportFallsBackToBaseline(t *testing.T)
 	f := &fakePlayoutSessions{streams: map[playout.EncodePlan]chan []byte{
 		playout.PlanFull: full, playout.PlanBaseline: baseline,
 	}}
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: f})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
@@ -516,7 +517,8 @@ func TestPlayoutStream_FullPlanWithoutTransportFallsBackToBaseline(t *testing.T)
 // re-requests — and a leaked viewer keeps the channel encoding forever.
 func TestPlayoutStream_ClientDisconnectDetaches(t *testing.T) {
 	f := &fakePlayoutSessions{chunks: make(chan []byte, 1)}
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: f})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -550,7 +552,8 @@ func TestPlayoutStream_ClientDisconnectDetaches(t *testing.T) {
 // end the response rather than hanging the client.
 func TestPlayoutStream_SessionEndEndsTheResponse(t *testing.T) {
 	f := &fakePlayoutSessions{chunks: make(chan []byte, 1)}
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: f})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	f.chunks <- []byte("y")
@@ -575,9 +578,10 @@ func TestPlayoutStream_SessionEndEndsTheResponse(t *testing.T) {
 // safety boundary, so the response may suggest waiting or lowering quality but must never claim
 // that raising a configured cap creates hardware headroom.
 func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{
-		sessions: &fakePlayoutSessions{err: playout.ErrAtCapacity},
+	harness := newPlayoutHarness(t, playoutHarnessConfig{
+		Sessions: &fakePlayoutSessions{err: playout.ErrAtCapacity},
 	})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
@@ -599,7 +603,8 @@ func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
 
 // Playout not running is a 501 with an explanation, not a 404 that looks like a wiring bug.
 func TestPlayoutStream_NotRunningExplainsItself(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: nil})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: nil})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
@@ -613,7 +618,8 @@ func TestPlayoutStream_NotRunningExplainsItself(t *testing.T) {
 // tvg-id must match the guide's channel id, tvg-chno carries the operator's numbering, and the
 // stream URL must be absolute + tokenized.
 func TestPlayoutTuner_CarriesGuideCorrelationAttributes(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 3, "internal")
 
 	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
@@ -646,7 +652,8 @@ func TestPlayoutTuner_CarriesGuideCorrelationAttributes(t *testing.T) {
 // two tuners offering the same channel and picks unpredictably — presenting as a channel that
 // plays sometimes and not others.
 func TestPlayoutTuner_ExcludesTunarrBackedChannels(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "mine", "Internal Channel", 1, "internal")
 	seedChannel(t, st, "theirs", "Tunarr Channel", 2, "tunarr")
 
@@ -664,7 +671,8 @@ func TestPlayoutTuner_ExcludesTunarrBackedChannels(t *testing.T) {
 }
 
 func TestPlayoutTuner_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "live", "Live Channel", 1, "internal")
 	seedChannel(t, st, "paused", "Paused Channel", 2, "internal")
 	seedChannel(t, st, "detached", "Detached Channel", 3, "internal")
@@ -688,7 +696,8 @@ func TestPlayoutTuner_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
 
 func TestPlayoutTune_RejectsChannelsOutsideTheSurfableCatalog(t *testing.T) {
 	sessions := &fakePlayoutSessions{err: errors.New("Tune must not be called")}
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: sessions})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: sessions})
+	srv, st := harness.Server, harness.Store
 	for i, tc := range []struct {
 		id     string
 		status schedule.ChannelStatus
@@ -717,7 +726,8 @@ func TestPlayoutTune_RejectsChannelsOutsideTheSurfableCatalog(t *testing.T) {
 // A channel with no explicit backend INHERITS the global (§15 nil-means-inherit). With the
 // global set to tunarr, an unconfigured channel must not be served.
 func TestPlayoutTuner_InheritsTheGlobalBackend(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}, backend: "tunarr"})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}, Backend: "tunarr"})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "inherits", "Inherits Global", 1, "")  // no policy
 	seedChannel(t, st, "opted-in", "Opted In", 2, "internal") // explicit override
 
@@ -736,7 +746,8 @@ func TestPlayoutTuner_InheritsTheGlobalBackend(t *testing.T) {
 
 // A channel name is operator text and lands in an M3U attribute. A quote must not escape it.
 func TestPlayoutTuner_QuotesInChannelNamesDoNotBreakTheM3U(t *testing.T) {
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", `Bob's "Best" Movies`, 1, "internal")
 
 	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
