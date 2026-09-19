@@ -118,12 +118,12 @@ func TestLiveProgram_HEVCNoOutputFallbackMatchesBroadcastFormat(t *testing.T) {
 	profile.Width, profile.Height = 320, 180
 	profile.Encoder = playout.EncoderVideoToolbox
 	var attempts []playout.Encoder
-	srv := newProgramServer(t, programOpts{
-		resolver: &fakeResolver{
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver: &fakeResolver{
 			airing: playableAiring(0, 2*time.Second), url: srcFile,
 			profile: profile, channelCodec: "hevc",
 		},
-		encoder: func(ctx context.Context, args []string, progress func(playout.Progress)) (*playout.Process, error) {
+		Encoder: func(ctx context.Context, args []string, progress func(playout.Progress)) (*playout.Process, error) {
 			enc := playout.Encoder("")
 			for _, candidate := range []playout.Encoder{
 				playout.EncoderVTHEVC, playout.EncoderSoftwareHEVC,
@@ -146,8 +146,8 @@ func TestLiveProgram_HEVCNoOutputFallbackMatchesBroadcastFormat(t *testing.T) {
 			}
 			return playout.Start(ctx, bin, args, nil, progress)
 		},
-		reclaimVRAM: func(context.Context) {},
-	})
+		ReclaimVRAM: func(context.Context) {},
+	}).Server
 
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken+"&plan=full")
 	body, err := io.ReadAll(resp.Body)
@@ -221,7 +221,8 @@ func TestLiveRaw_NoOutputFullPlanFallsBackToPlayableBaseline(t *testing.T) {
 	sessions := &fakePlayoutSessions{streams: map[playout.EncodePlan]chan []byte{
 		playout.PlanFull: fullStream, playout.PlanBaseline: baselineStream,
 	}}
-	srv, st := newPlayoutServer(t, playoutOpts{sessions: sessions})
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: sessions})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
