@@ -41,7 +41,8 @@ func sourceReq(t *testing.T, method, url, body, token string) *http.Response {
 // Registering a source records that it EXISTS and is allowed. It must not download anything —
 // that is the ingest path, and a composed pull goes through the approval gate.
 func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
 		`{"kind":"archive","uri":"https://archive.org/details/classic_tv_commercials","country":"us","market":" New   York "}`, adminToken)
@@ -85,7 +86,8 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 }
 
 func TestAddFillerSource_RejectsMarketWithoutCountry(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
 		`{"kind":"archive","uri":"classic_tv_commercials","market":"New York"}`, adminToken)
 	if res.StatusCode != http.StatusUnprocessableEntity {
@@ -120,7 +122,8 @@ func registeredSources(t *testing.T, st store.Store) []store.FillerSource {
 
 // An unparseable paste must be refused, not turned into a row that can never fetch.
 func TestAddFillerSource_RefusesSomethingThatIsNotACollection(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
 		`{"kind":"archive","uri":"https://example.com/some/page"}`, adminToken)
@@ -136,7 +139,8 @@ func TestAddFillerSource_RefusesSomethingThatIsNotACollection(t *testing.T) {
 // hardcoded kind="archive" and ran every URI through `archiveIdentifier`, which rejects anything
 // containing a dot — so a playlist URL 400'd with a message about archive.org collections.
 func TestAddFillerSource_RegistersAYouTubePlaylist(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
 		`{"kind":"youtube","uri":"https://www.youtube.com/playlist?list=PL123"}`, adminToken)
@@ -165,7 +169,8 @@ func TestAddFillerSource_RegistersAYouTubePlaylist(t *testing.T) {
 // The host check is exact for a security reason as well as a correctness one: "youtube.com.evil
 // .test" CONTAINS the string, and a substring check would register an attacker-chosen host.
 func TestAddFillerSource_RefusesANearMissYouTubeHost(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 
 	for _, uri := range []string{
 		"https://youtube.com.evil.test/playlist?list=PL1",
@@ -191,7 +196,8 @@ func TestAddFillerSource_RefusesANearMissYouTubeHost(t *testing.T) {
 // the maintainer's 2026-08-02 decision returned `library` to being scanned for real — so the
 // dialog offering three kinds must not be refused by two of them.
 func TestAddFillerSource_AcceptsFoldersAndLibraries(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 
 	for _, tc := range []struct{ kind, uri, want string }{
 		{"folder", "/data/other", "/data/other"},
@@ -237,7 +243,8 @@ func TestAddFillerSource_AcceptsFoldersAndLibraries(t *testing.T) {
 // `go run` — so "ads" would silently mean different directories in dev and in production, and the
 // only symptom would be an empty catalog.
 func TestAddFillerSource_RefusesUnusableFolderPaths(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 
 	before := len(registeredSources(t, st))
 	for _, uri := range []string{
@@ -261,7 +268,8 @@ func TestAddFillerSource_RefusesUnusableFolderPaths(t *testing.T) {
 // The switch flips the column, and — the part worth pinning — leaves the clips alone. The
 // Sources tab tells the operator "clips already in the catalog stay put"; that is a promise.
 func TestSetFillerSourceEnabled_DisablingKeepsTheClips(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	if err := st.UpsertFillerSource(ctx, store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -302,7 +310,8 @@ func TestSetFillerSourceEnabled_DisablingKeepsTheClips(t *testing.T) {
 // The container reasoning was right all along and is unchanged: a group's children carry the
 // switches, so storing a flag on the group would be a control that changes nothing.
 func TestSetFillerSourceEnabled_RefusesRowsWithNothingToStop(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 
 	for _, id := range []string{"provider:archive", "provider:youtube"} {
 		res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/"+id, `{"enabled":false}`, adminToken)
@@ -440,7 +449,8 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 // says, and letting it be said twice invites the two to disagree —
 // a source scheduled to poll but capped at nothing looks enabled and does nothing.
 func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	if err := st.UpsertFillerSource(ctx,
 		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
@@ -492,7 +502,8 @@ func TestListFillerSources_ProjectsDurableRetryAsTheNextAutomaticCheck(t *testin
 // Deleting forgets the registration. ⚠ It must NOT take the clips: they are real files, already
 // tagged and possibly pinned into a channel.
 func TestDeleteFillerSource_ForgetsTheSourceNotTheClips(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	if err := st.UpsertFillerSource(ctx, store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
@@ -513,7 +524,8 @@ func TestDeleteFillerSource_ForgetsTheSourceNotTheClips(t *testing.T) {
 // The derived rows describe configuration; deleting one would have to mean "unset filler.dir",
 // which belongs in Settings where the consequence is legible.
 func TestDeleteFillerSource_RefusesTheDerivedRows(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 
 	// ⚠ `remote` is NOT in this list any more (V37). It was the CONTAINER row the archive
 	// collections nested under; the flat list has no container, so there is no such id to
@@ -528,7 +540,8 @@ func TestDeleteFillerSource_RefusesTheDerivedRows(t *testing.T) {
 
 // §19 negatives: these routes name filesystem paths and change what gets downloaded.
 func TestFillerSourceRoutes_RequireAdmin(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/filler/sources", `{"uri":"classic"}`},
@@ -552,7 +565,8 @@ func TestFillerSourceRoutes_RequireAdmin(t *testing.T) {
 // once V38c made them addable, that filter hid every source an operator added. They would POST,
 // get a 200, and never see the row again.
 func TestListFillerSources_ShowsOperatorAddedFoldersAndLibraries(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 
 	for _, body := range []string{
 		`{"kind":"folder","uri":"/mnt/extra-ads"}`,

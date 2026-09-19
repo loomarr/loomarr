@@ -15,7 +15,8 @@ import (
 // writes are admin-only.
 
 func TestTaxonomy_ListIsSeededAndMemberReadable(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	// A member (not admin) may READ the vocabulary — the catalog UI shows tags.
 	resp := do(t, srv, http.MethodGet, "/v1/taxonomy", memberToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -45,7 +46,8 @@ func TestTaxonomy_ListIsSeededAndMemberReadable(t *testing.T) {
 // ⚠ §19 auth negatives: EVERY taxonomy write is admin-only. A member must be refused on create,
 // update, and delete — the tag vocabulary is an operator concern.
 func TestTaxonomy_WritesRequireAdmin(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	cases := []struct {
 		method, path, body string
 	}{
@@ -63,7 +65,8 @@ func TestTaxonomy_WritesRequireAdmin(t *testing.T) {
 }
 
 func TestTaxonomy_ImpactPreviewExplainsConsequencesWithoutMutation(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "b1", filler.Commercial, 1994, filler.General, "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"b1","tags":["beer"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag beer → %d", p.StatusCode)
@@ -100,7 +103,8 @@ func TestTaxonomy_ImpactPreviewExplainsConsequencesWithoutMutation(t *testing.T)
 }
 
 func TestTaxonomy_ImpactPreviewKeepsEmptyCollectionsAsArrays(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodPost, "/v1/taxonomy/impact", adminToken,
 		`{"operation":"delete","slug":"apparel"}`)
 	if resp.StatusCode != http.StatusOK {
@@ -120,7 +124,8 @@ func TestTaxonomy_ImpactPreviewKeepsEmptyCollectionsAsArrays(t *testing.T) {
 // Create a taxon, then confirm it is queryable AND that a clip tagged under it rolls up through the
 // new node — i.e. the create REINDEXED. This is the whole point of the write path.
 func TestTaxonomy_CreateReindexesRollups(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 
 	// A clip tagged `energy-drink` before the taxon exists cannot be tagged — so create it first.
@@ -159,7 +164,8 @@ func TestTaxonomy_CreateReindexesRollups(t *testing.T) {
 
 // ⚠ A parent that does not exist is rejected (an orphaned taxon would emit a dangling rollup).
 func TestTaxonomy_CreateRejectsUnknownParent(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodPost, "/v1/taxonomy", adminToken,
 		`{"slug":"widget","label":"Widget","axis":"product","parent":"does-not-exist"}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -168,7 +174,8 @@ func TestTaxonomy_CreateRejectsUnknownParent(t *testing.T) {
 }
 
 func TestTaxonomy_EditRejectsCycleAndCrossAxisParent(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	for name, tc := range map[string][2]string{
 		"cycle":      {"/v1/taxonomy/drinks", `{"label":"Drinks","axis":"product","parent":"beer"}`},
 		"cross-axis": {"/v1/taxonomy/beer", `{"label":"Beer","axis":"product","parent":"promo"}`},
@@ -183,7 +190,8 @@ func TestTaxonomy_EditRejectsCycleAndCrossAxisParent(t *testing.T) {
 }
 
 func TestTaxonomy_ListReportsWholeCatalogUsageAndProtectsAssertedDelete(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "b1", filler.Commercial, 1994, filler.General, "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"b1","tags":["beer"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag beer → %d", p.StatusCode)
@@ -234,7 +242,8 @@ func TestTaxonomy_ListReportsWholeCatalogUsageAndProtectsAssertedDelete(t *testi
 // ⚠ Tagging a clip with an off-vocabulary slug is REJECTED (the grounding gate at the API boundary):
 // the taxonomy is the one vocabulary, and a slug not in it is never silently persisted.
 func TestTaxonomy_ClipPatchRejectsUnknownTag(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "u1", filler.Commercial, 1990, filler.General, "")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","tags":["cryptocurrency"]}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -245,7 +254,8 @@ func TestTaxonomy_ClipPatchRejectsUnknownTag(t *testing.T) {
 // Delete a MIDDLE taxon: its children reparent to the grandparent (not orphaned), and a clip tagged
 // under a survivor rolls up correctly against the shrunk graph. Exercises delete + reindex + reparent.
 func TestTaxonomy_DeleteReparentsAndReindexes(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 
 	// Insert energy-drink under drinks, tag a clip, then delete drinks' child chain is not needed —
@@ -276,7 +286,8 @@ func TestTaxonomy_DeleteReparentsAndReindexes(t *testing.T) {
 
 // Deleting a taxon that does not exist is a 404.
 func TestTaxonomy_DeleteMissingIs404(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodDelete, "/v1/taxonomy/no-such-taxon", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("delete missing taxon → %d, want 404", resp.StatusCode)
@@ -284,7 +295,8 @@ func TestTaxonomy_DeleteMissingIs404(t *testing.T) {
 }
 
 func TestTaxonomy_UpdateMissingIs404(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodPut, "/v1/taxonomy/no-such-taxon", adminToken,
 		`{"label":"Missing","axis":"product"}`)
 	if resp.StatusCode != http.StatusNotFound {

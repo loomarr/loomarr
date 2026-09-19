@@ -67,7 +67,8 @@ type sourceSuggestionsBody struct {
 }
 
 func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	if err := st.UpsertFillerSource(context.Background(), store.NewFillerSource(
 		"archive:classic_tv_commercials", "archive", "classic_tv_commercials", "Classic TV Commercials", time.Now(),
 	)); err != nil {
@@ -102,7 +103,8 @@ func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testi
 }
 
 func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	ff.resolvedSource = filler.SourceSuggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
@@ -130,7 +132,8 @@ func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 }
 
 func TestAddArchiveSourceRevalidatesItsCanonicalTarget(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	ff.resolvedSource = filler.SourceSuggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
@@ -153,7 +156,8 @@ func TestAddArchiveSourceRevalidatesItsCanonicalTarget(t *testing.T) {
 }
 
 func TestAddArchiveSourcePersistsNothingWhenRevalidationFails(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	ff.sourceResolutionErr = filler.ErrInvalidSourceReference
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources", adminToken,
 		`{"kind":"archive","uri":"one_video"}`)
@@ -166,7 +170,8 @@ func TestAddArchiveSourcePersistsNothingWhenRevalidationFails(t *testing.T) {
 }
 
 func TestAddYouTubeSourceRevalidatesAndStoresItsCanonicalTarget(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	ff.resolvedSource = filler.SourceSuggestion{
 		Provider: "youtube", TargetType: "channel", CanonicalID: "UC-vault",
 		CanonicalURL: "https://www.youtube.com/channel/UC-vault/videos", Title: "Broadcast Vault",
@@ -189,7 +194,8 @@ func TestAddYouTubeSourceRevalidatesAndStoresItsCanonicalTarget(t *testing.T) {
 }
 
 func TestFillerSourceSuggestionsStopAtDisabledProvider(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	if err := st.SetFillerProviderEnabled(context.Background(), "archive", false); err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +217,8 @@ func TestFillerSourceSuggestionsStopAtDisabledProvider(t *testing.T) {
 }
 
 func TestYouTubeSourceSearchFailureKeepsManualInputActionable(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.sourceSuggestionErr = filler.ErrSourceProvider
 	resp := do(t, srv, http.MethodGet, "/v1/filler/providers/youtube/suggestions?q=retro+ads", adminToken, "")
 	if resp.StatusCode != http.StatusBadGateway {
@@ -242,7 +249,8 @@ func getSources(t *testing.T, srv *httptest.Server) sourcesBody {
 }
 
 func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	src := store.NewFillerSource("archive:local", "archive", "local", "Local collection", time.Now().UTC())
 	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 		t.Fatal(err)
@@ -312,7 +320,8 @@ func TestFillerSources_CountsHeldClipsByProvenance(t *testing.T) {
 }
 
 func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	registered := store.NewFillerSource(
 		"archive:tv_ads", "archive", "tv_ads", "TV Ads", time.Unix(1_700_000_000, 0).UTC(),
@@ -514,7 +523,8 @@ func sourceOfKind(t *testing.T, body sourcesBody, kind string) api.FillerSourceD
 // Admin-only: the rows name filesystem paths and library targets, which is infrastructure
 // detail a member has no business reading.
 func TestFillerSources_RequiresAdmin(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/filler/sources"},
 		{http.MethodPost, "/v1/filler/sources/fetch"},
@@ -540,7 +550,8 @@ func TestFillerSources_FetchWithoutAServiceIs501(t *testing.T) {
 }
 
 func TestFillerSources_FetchRequiresOneSelectedSource(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch", adminToken, "")
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("fetch without a source → %d, want 422", resp.StatusCode)
@@ -550,7 +561,8 @@ func TestFillerSources_FetchRequiresOneSelectedSource(t *testing.T) {
 // The beta's per-source "Fetch now" only ran the local catalog scan. For remote Archive/YouTube
 // rows that meant a successful 200 with no download ever queued — exactly the reported symptom.
 func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("fetch → %d, want 200", resp.StatusCode)
@@ -576,7 +588,8 @@ func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 }
 
 func TestFillerSources_FetchNowReportsAnActiveCheck(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.fetchErr = filler.ErrSourceCheckInProgress
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
@@ -589,7 +602,8 @@ func TestFillerSources_FetchNowReportsAnActiveCheck(t *testing.T) {
 }
 
 func TestFillerSources_FetchNowReportsTheEffectiveCapAndCatalogStop(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.fetchResult = filler.FetchResult{MaxPerCheck: 3, StoppedBy: "catalog"}
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
@@ -609,7 +623,8 @@ func TestFillerSources_FetchNowReportsTheEffectiveCapAndCatalogStop(t *testing.T
 }
 
 func TestFillerSources_FetchNowRefusesADisabledSourceBeforeSync(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.fetchErr = filler.ErrSourceDisabled
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
@@ -622,7 +637,8 @@ func TestFillerSources_FetchNowRefusesADisabledSourceBeforeSync(t *testing.T) {
 }
 
 func TestFillerSources_FetchNowReturnsNotFoundForRemovedSource(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.fetchErr = filler.ErrFetchSourceNotFound
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=removed", adminToken, "")
@@ -635,7 +651,8 @@ func TestFillerSources_FetchNowReturnsNotFoundForRemovedSource(t *testing.T) {
 }
 
 func TestFillerSources_FetchNowReportsUnavailableIngestTooling(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.fetchErr = api.ErrIngestUnavailable
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")

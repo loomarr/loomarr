@@ -29,7 +29,8 @@ func seedForDecision(t *testing.T, st interface {
 // "Don't use it" wrote `removed_at` and nothing else. `GetClip` carries no `removed_at` predicate,
 // so the belt's fallback loop re-resolved the clip and put it straight back on the queue.
 func TestBulkRemoveFiller_DismissalTakesTheClipOffTheBelt(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	const hash = "hash-dismissed"
 	seedForDecision(t, st, func() {
 		putClip(t, st, filler.Clip{
@@ -55,7 +56,8 @@ func TestBulkRemoveFiller_DismissalTakesTheClipOffTheBelt(t *testing.T) {
 // Restore is ONE endpoint and has to undo BOTH halves — the tombstone and the refusal — for a
 // dismissal exactly as it already did for a machine rejection.
 func TestBulkRemoveFiller_RestoreUndoesADismissal(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	const hash = "hash-restored"
 	seedForDecision(t, st, func() {
 		putClip(t, st, filler.Clip{

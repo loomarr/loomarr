@@ -12,7 +12,8 @@ import (
 )
 
 func TestFillerExactClipIncludesServerOwnedEnrichmentPresentation(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	putClip(t, st, filler.Clip{Hash: "details", Path: "details.mp4", Name: "Details", Kind: filler.Commercial})
 	now := time.Unix(1_700_000_500, 0).UTC()
 	state := fillerenrichment.State{
