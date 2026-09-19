@@ -26,7 +26,23 @@ for (const width of [1440, 390]) {
       const rows = hash
         ? clips
             .filter((clip) => clip.hash === hash)
-            .map((clip) => ({ ...clip, sourceUrl: "https://archive.org/details/exact-item" }))
+            .map((clip) => ({
+              ...clip,
+              sourceUrl: "https://archive.org/details/exact-item",
+              enrichment:
+                clip.hash === "clip-0"
+                  ? {
+                      state: "details_limited",
+                      facts: [{ axis: "kind", evidence: "item_metadata" }],
+                    }
+                  : {
+                      state: "complete",
+                      facts: [
+                        { axis: "kind", evidence: "item_metadata" },
+                        { axis: "brand", evidence: "content_observation" },
+                      ],
+                    },
+            }))
         : clips;
       return route.fulfill({ json: { clips: rows, total: rows.length } });
     });
@@ -57,6 +73,9 @@ for (const width of [1440, 390]) {
       "href",
       "https://archive.org/details/exact-item",
     );
+    await expect(panel.getByText("Details limited", { exact: true })).toBeVisible();
+    await panel.getByText("More about this clip", { exact: true }).click();
+    await expect(panel.getByText("Item details", { exact: true })).toBeVisible();
     await expect(panel.getByText(/Untagged|review required|Geography unknown/)).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Use in a channel" })).toHaveCount(0);
     expect(writes).toEqual([]);
@@ -87,6 +106,7 @@ for (const width of [1440, 390]) {
     const knownPanel = page.getByRole("dialog", { name: "Candy commercial 1", exact: true });
     await expect(knownPanel.getByText("1977", { exact: true })).toBeVisible();
     await expect(knownPanel.getByText("Tootsie Pop", { exact: true })).toBeVisible();
+    await expect(knownPanel.getByText(/Adding details|Details limited/)).toHaveCount(0);
     await knownPanel.getByRole("button", { name: "Close", exact: true }).click();
     await expect(knownPanel).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

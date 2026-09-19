@@ -21,7 +21,7 @@ const Unknown: Story = {
   args: { clip: { ...fillerRefinementUnknownClip, hash: TINY_MP4 } },
 };
 const Preparing: Story = {
-  args: { clip: { ...fillerRefinementUnknownClip, held: true } },
+  args: { clip: { ...fillerRefinementUnknownClip, held: true, enrichment: { state: "adding_details" } } },
   play: async ({ canvasElement }) => {
     await expect(canvasElement.querySelector("video")).toBeNull();
   },

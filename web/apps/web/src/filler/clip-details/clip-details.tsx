@@ -26,6 +26,18 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
     ],
     ["Topics", clip.assertedTags?.join(", ")],
   ].filter(([, value]) => value);
+  const enrichmentMessage =
+    clip.enrichment?.state === "adding_details"
+      ? {
+          title: "Adding details",
+          detail: "Loomarr is checking this clip in the background.",
+        }
+      : clip.enrichment?.state === "details_limited"
+        ? {
+            title: "Details limited",
+            detail: "Some details couldn't be confirmed. That won't block playback.",
+          }
+        : undefined;
 
   return (
     <div className="space-y-5">
@@ -43,6 +55,12 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
           </div>
         )}
       </div>
+      {enrichmentMessage ? (
+        <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm">
+          <p className="font-medium">{enrichmentMessage.title}</p>
+          <p className="mt-1 text-muted-foreground">{enrichmentMessage.detail}</p>
+        </div>
+      ) : null}
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted-foreground">Length</dt>
         <dd>{formatClipDuration(clip.durationMs)}</dd>

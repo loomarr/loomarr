@@ -68,6 +68,29 @@ const VIEWS = [
   { id: "list", label: "List", icon: List, title: "A dense row per clip, for scanning and selecting" },
 ] as const;
 
+const ENRICHMENT_AXIS_LABEL: Record<string, string> = {
+  kind: "Type",
+  era: "Year",
+  audience: "Audience",
+  brand: "Advertiser",
+  geography: "Location",
+  language: "Language",
+  product: "Product",
+  format: "Format",
+  seasonal: "Season",
+  "audience-cue": "Audience cue",
+  presentation: "Presentation",
+};
+
+const ENRICHMENT_EVIDENCE_LABEL: Record<string, string> = {
+  operator: "You set this",
+  item_metadata: "Item details",
+  content_observation: "Clip audio or frames",
+  trusted_mapping: "A recognized source",
+  source_default: "Source settings",
+  inference: "Automatic analysis",
+};
+
 interface CompositeCatalogGroupProps {
   clip: ClipDTO;
   onManage: () => void;
@@ -807,7 +830,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                       {...(isAdmin ? { onEdit: () => setEditing(true) } : {})}
                     />
                     <details className="rounded-lg border border-border p-4 text-sm">
-                      <summary className="cursor-pointer font-medium">Technical details</summary>
+                      <summary className="cursor-pointer font-medium">More about this clip</summary>
                       <dl className="mt-3 space-y-2">
                         {inspectedClip.quality ? (
                           <div>
@@ -829,8 +852,28 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                             <dd className="break-words">{inspectedClip.license}</dd>
                           </div>
                         ) : null}
-                        {!inspectedClip.quality && !inspectedClip.language && !inspectedClip.license ? (
-                          <p className="text-muted-foreground">No technical details recorded yet.</p>
+                        {inspectedClip.enrichment?.facts?.length ? (
+                          <div>
+                            <dt className="text-muted-foreground">How details were found</dt>
+                            <dd>
+                              <ul className="mt-1 space-y-1">
+                                {inspectedClip.enrichment.facts.map((fact) => (
+                                  <li key={fact.axis} className="flex justify-between gap-4">
+                                    <span>{ENRICHMENT_AXIS_LABEL[fact.axis] ?? fact.axis}</span>
+                                    <span className="text-right text-muted-foreground">
+                                      {ENRICHMENT_EVIDENCE_LABEL[fact.evidence] ?? fact.evidence}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </dd>
+                          </div>
+                        ) : null}
+                        {!inspectedClip.quality &&
+                        !inspectedClip.language &&
+                        !inspectedClip.license &&
+                        !inspectedClip.enrichment?.facts?.length ? (
+                          <p className="text-muted-foreground">No additional details recorded yet.</p>
                         ) : null}
                       </dl>
                     </details>

@@ -1451,6 +1451,9 @@ components:
         durationMs:
           format: int64
           type: integer
+        enrichment:
+          $ref: "#/components/schemas/ClipEnrichmentDTO"
+          description: Quiet server-owned detail state and provenance. Available on exact single-hash reads only; omitted from catalog pages.
         era:
           format: int64
           type: integer
@@ -1551,6 +1554,52 @@ components:
         - playsCounted
         - aiTagged
         - tagged
+      type: object
+    ClipEnrichmentDTO:
+      additionalProperties: false
+      properties:
+        facts:
+          items:
+            $ref: "#/components/schemas/ClipEnrichmentFactDTO"
+          type: array
+        state:
+          enum:
+            - adding_details
+            - details_limited
+            - complete
+          type: string
+      required:
+        - state
+      type: object
+    ClipEnrichmentFactDTO:
+      additionalProperties: false
+      properties:
+        axis:
+          enum:
+            - kind
+            - era
+            - audience
+            - brand
+            - geography
+            - language
+            - product
+            - format
+            - seasonal
+            - audience-cue
+            - presentation
+          type: string
+        evidence:
+          enum:
+            - inference
+            - source_default
+            - trusted_mapping
+            - content_observation
+            - item_metadata
+            - operator
+          type: string
+      required:
+        - axis
+        - evidence
       type: object
     ClipFitOutputBody:
       additionalProperties: false
