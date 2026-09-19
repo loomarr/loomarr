@@ -26,18 +26,28 @@ type Limiter interface {
 	Allow(key string) bool
 }
 
+// LoginStore is the allowlist and session-revocation surface needed by login.
+// Session creation stays behind Manager's separate SessionStore seam.
+type LoginStore interface {
+	GetUser(ctx context.Context, id string) (store.User, error)
+	GetUserByName(ctx context.Context, name string) (store.User, error)
+	ListUsers(ctx context.Context) ([]store.User, error)
+	UpsertUser(ctx context.Context, u store.User) error
+	RevokeSessionsForUser(ctx context.Context, userID string) error
+}
+
 // LoginService ties credential verification, user upsert + bootstrap, and
 // session issuance together (§11).
 type LoginService struct {
 	lib     Authenticator
-	store   store.Store
+	store   LoginStore
 	mgr     *Manager
 	limiter Limiter
 	now     func() time.Time
 }
 
 // NewLoginService builds the login flow.
-func NewLoginService(lib Authenticator, st store.Store, mgr *Manager, limiter Limiter, now func() time.Time) *LoginService {
+func NewLoginService(lib Authenticator, st LoginStore, mgr *Manager, limiter Limiter, now func() time.Time) *LoginService {
 	if now == nil {
 		now = time.Now
 	}

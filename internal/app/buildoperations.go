@@ -434,7 +434,7 @@ func buildScheduler(
 	}, time.Now, log).WithNotifier(emitter).WithObserver(metricRecorder)
 	service.SeedRegistry(rootCtx)
 	if pool := store.PoolOf(st); pool != nil {
-		stop, err := service.StartRiver(rootCtx, st, pool, log)
+		stop, err := service.StartRiver(rootCtx, store.DialectOf(st), pool, log)
 		if err != nil {
 			log.Error("scheduler: River did not start — no job will run on its schedule", "err", err)
 		} else {

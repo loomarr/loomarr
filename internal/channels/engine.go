@@ -40,6 +40,29 @@ type Availability interface {
 	schedule.Availability
 }
 
+// EngineStore is the durable state the reconcile engine consumes. Keeping this
+// interface with the consumer makes new persistence dependencies an explicit
+// channels-package decision instead of inheriting the aggregate store surface.
+type EngineStore interface {
+	ListChannels(ctx context.Context) ([]store.Channel, error)
+	GetChannel(ctx context.Context, id string) (store.Channel, error)
+	AttachTunarrChannel(ctx context.Context, id, expectedTunarrID, newTunarrID string, expectedNumber, newNumber int) (int64, error)
+	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
+	GetJob(ctx context.Context, id string) (store.Job, error)
+	SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error)
+	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+	LastAiredByChannel(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
+}
+
+// AvailabilityStore is the title and episode cache used to resolve scheduled
+// content. It is separate from EngineStore because availability is independently
+// replaceable in tests and at composition time.
+type AvailabilityStore interface {
+	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+	GetSeriesEpisodes(ctx context.Context, libraryID string) (store.SeriesEpisodes, error)
+	UpsertSeriesEpisodes(ctx context.Context, episodes store.SeriesEpisodes) error
+}
+
 // PodFiller answers the backend-specific views of a channel's matched filler
 // pool (§10). Implemented by the filler package; nil = flex-only (no pods).
 // Internal playout needs the playable duration because it resolves local clip paths per gap.
@@ -72,7 +95,7 @@ type PodFiller interface {
 // per-channel mutex map serializes reconciles of the *same* channel (§18) while
 // allowing different channels to reconcile concurrently.
 type Engine struct {
-	store store.Store
+	store EngineStore
 	prog  programmer.Programmer
 	avail Availability
 	guide GuidePoker
@@ -161,7 +184,7 @@ type Config struct {
 
 // New builds an Engine. guide may be nil (no guide poke). now defaults to
 // time.Now.
-func New(st store.Store, prog programmer.Programmer, avail Availability, guide GuidePoker, cfg Config, now func() time.Time, log *slog.Logger) *Engine {
+func New(st EngineStore, prog programmer.Programmer, avail Availability, guide GuidePoker, cfg Config, now func() time.Time, log *slog.Logger) *Engine {
 	if cfg.Policy == "" {
 		cfg.Policy = schedule.PodFill
 	}
@@ -334,7 +357,7 @@ func (e *Engine) lockFor(id string) *sync.Mutex {
 // the item to play. This is the concrete Availability the engine uses in
 // production; tests can substitute a map.
 type storeAvailability struct {
-	store    store.Store
+	store    AvailabilityStore
 	ctx      context.Context
 	duration DurationResolver // optional; nil ⇒ duration unknown (0), caller falls back
 	// durations is the BULK form of `duration`, used to prewarm durMemo before a layout so the
@@ -424,7 +447,7 @@ type EpisodeResolver func(ctx context.Context, showItemID string) ([]schedule.Re
 // The ctx bounds the lookups (they run inside a reconcile's context). dur/eps may
 // be nil (e.g. tests): a nil dur ⇒ movies resolve with duration 0 (caller falls
 // back to the entry's); a nil eps ⇒ series resolve to a pending slot.
-func NewStoreAvailability(ctx context.Context, st store.Store, dur DurationResolver, eps EpisodeResolver) Availability {
+func NewStoreAvailability(ctx context.Context, st AvailabilityStore, dur DurationResolver, eps EpisodeResolver) Availability {
 	return &storeAvailability{
 		store: st, ctx: ctx, duration: dur, episodes: eps,
 		titleMemo: map[provision.Key]titleLookup{},
