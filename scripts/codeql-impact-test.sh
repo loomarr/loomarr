@@ -12,7 +12,7 @@ assert_language() {
 	}
 }
 
-docs="$(printf '%s\n' docs/dev/ci.md scripts/test-affected.sh | "$CLASSIFIER")"
+docs="$(printf '%s\n' docs/dev/ci.md scripts/test-affected.sh .graphifyignore graphify-out/.graphify_labels.json.sig | "$CLASSIFIER")"
 for language in actions go javascript-typescript python ruby rust; do
 	assert_language "$docs" "$language" false
 done

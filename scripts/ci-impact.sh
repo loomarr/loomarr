@@ -311,6 +311,12 @@ classify() {
       known=true
       select_gate docs
       ;;
+    .graphifyignore|graphify-out/*)
+      # The committed graph is developer documentation and query data. It cannot
+      # affect a product binary, native client, database, or runtime contract.
+      known=true
+      select_gate docs
+      ;;
     design/*)
       known=true
       select_gate docs

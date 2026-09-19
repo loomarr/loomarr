@@ -149,7 +149,7 @@ jobs:
           # DOC_GLOBS/LINK_GLOBS never include .github/workflows), so only a ci.yml edit that
           # changes how the docs job itself runs needs to re-trigger it. release.yml / pages.yml
           # carry no prose this job checks. (Go keeps the broad glob — it actionlints every one.)
-          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^CLAUDE\.md$|^AGENTS\.md$|^CONTEXT\.md$|^PROGRESS\.md$|^design/.*\.md$|^\.agents/|^\.claude/|^docs-site/|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/ci\.yml$'; then
+          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^CLAUDE\.md$|^AGENTS\.md$|^CONTEXT\.md$|^PROGRESS\.md$|^design/.*\.md$|^\.agents/|^\.claude/|^docs-site/|^\.graphifyignore$|^graphify-out/|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/ci\.yml$'; then
             echo "docs=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs=false" >> "$GITHUB_OUTPUT"

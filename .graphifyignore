@@ -1,0 +1,20 @@
+# Graphify indexes maintained source, not build products or dependency trees.
+graphify-out/
+**/graphify-out/
+node_modules/
+**/node_modules/
+.turbo/
+target/
+.agent-data/
+.artifacts/
+
+# Generated frontend artifacts are reproducible from their checked-in sources.
+web/packages/api/generated/
+web/packages/tokens/generated/
+web/apps/web/src/routeTree.gen.ts
+internal/web/dist/
+
+# Browser and Storybook output is evidence, not source architecture.
+web/apps/web/storybook-static/
+web/apps/web/test-results/
+web/apps/web/playwright-report/
