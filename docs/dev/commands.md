@@ -191,6 +191,13 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make dev-docs` |  | generate docs/dev/commands.md from this Makefile + the CI workflows |
 | `make dev-docs-verify` | ✅ | regenerated command reference must match committed (CI red on drift) <br>*runs:* `dev-docs` |
 
+## Repository knowledge graph
+
+| Target | CI | What it does |
+| --- | --- | --- |
+| `make graphify` |  | rebuild the committed code and GitHub Actions knowledge graph |
+| `make graphify-verify` |  | verify the committed graph matches every maintained source and workflow |
+
 ## Documentation lint
 
 | Target | CI | What it does |

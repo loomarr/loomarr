@@ -311,9 +311,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"ci-policy": {
 					condition: "always()",
 					steps: map[string]workflowStepAuthority{
-						"make ci-lint release-verify":                                                exactWorkflowStep(3, "Workflow and publication policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify"}}),
-						"make agent-harness-test shellcheck":                                         exactWorkflowStep(4, "Agent harness and shell policy", workflowStepAuthority{targets: []string{"agent-harness-test", "shellcheck"}}),
-						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify": exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify"}}),
+						"make ci-lint release-verify":        exactWorkflowStep(3, "Workflow and publication policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify"}}),
+						"make agent-harness-test shellcheck": exactWorkflowStep(4, "Agent harness and shell policy", workflowStepAuthority{targets: []string{"agent-harness-test", "shellcheck"}}),
+						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify graphify-verify": exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify", "graphify-verify"}}),
 					},
 				},
 				"ci-ok": {

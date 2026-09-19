@@ -1590,8 +1590,8 @@
     "semantic_hash": "d3cec3e8ff5450836471fc8a613cc44b"
   },
   "docs/engineering/evidence/redistribution-manifest-v1.json": {
-    "mtime": 1789827757.5409336,
-    "seen": 1789827898.022033,
+    "mtime": 1789832459.8042889,
+    "seen": 1789832496.1239932,
     "ast_hash": "5396eb00f7ae3e43740c0d2f45aba02c",
     "semantic_hash": "5396eb00f7ae3e43740c0d2f45aba02c"
   },
@@ -12426,10 +12426,10 @@
     "semantic_hash": "b3cd455bdbbe305ea4a9cce8df5bebba"
   },
   "internal/releaseverify/ci_container_bootstrap.go": {
-    "mtime": 1789826572.9955513,
-    "seen": 1789827043.017884,
-    "ast_hash": "dcdac53c8c7f3b8c1cd36e0989e9728c",
-    "semantic_hash": "dcdac53c8c7f3b8c1cd36e0989e9728c"
+    "mtime": 1789831286.0391407,
+    "seen": 1789831745.106128,
+    "ast_hash": "373667559b10ba4575752a4fe5408b3c",
+    "semantic_hash": "373667559b10ba4575752a4fe5408b3c"
   },
   "internal/releaseverify/ci_container_bootstrap_test.go": {
     "mtime": 1789826572.9957626,
@@ -12630,10 +12630,10 @@
     "semantic_hash": "7a4e15b96948e47762b85bd7ae13aef0"
   },
   "internal/releaseverify/ci_container_workflow_authority.go": {
-    "mtime": 1789826572.999204,
-    "seen": 1789827043.017895,
-    "ast_hash": "f6a254cd0e887ebd1767bd1f45eabf8b",
-    "semantic_hash": "f6a254cd0e887ebd1767bd1f45eabf8b"
+    "mtime": 1789831020.8854394,
+    "seen": 1789831745.107108,
+    "ast_hash": "b3b6aafefa7f04255b36c3a9d8f8dfa6",
+    "semantic_hash": "b3b6aafefa7f04255b36c3a9d8f8dfa6"
   },
   "internal/releaseverify/ci_container_workflow_catalog.go": {
     "mtime": 1789826572.9993541,
@@ -26566,5 +26566,17 @@
     "seen": 1789827043.018966,
     "ast_hash": "6ac0a46454648bcb8df9646e24efa367",
     "semantic_hash": "6ac0a46454648bcb8df9646e24efa367"
+  },
+  "cmd/graphify-sync/main.go": {
+    "mtime": 1789832447.045935,
+    "seen": 1789832496.1217642,
+    "ast_hash": "7725bcd2458f07e83ba3a6fb8f95f3a1",
+    "semantic_hash": "7725bcd2458f07e83ba3a6fb8f95f3a1"
+  },
+  "cmd/graphify-sync/main_test.go": {
+    "mtime": 1789832197.4775534,
+    "seen": 1789832291.491743,
+    "ast_hash": "27fbe04d89834bda375e4def20e1ccf4",
+    "semantic_hash": "27fbe04d89834bda375e4def20e1ccf4"
   }
 }

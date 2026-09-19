@@ -5,6 +5,9 @@ architecture and symbol relationships without loading the entire repository into
 context. The graph covers maintained Go, TypeScript, JavaScript, Rust, shell, SQL,
 and configuration sources. It deliberately excludes dependencies, generated
 clients, build output, browser baselines, documents, images, and runtime data.
+GitHub Actions YAML is the deliberate exception: `cmd/graphify-sync` projects
+workflows, jobs, dependencies, triggers, and action uses into deterministic
+structural nodes after Graphify's code extraction.
 
 The committed outputs are:
 
@@ -46,15 +49,36 @@ therefore a community-level view; command-line queries retain node-level detail.
 For a complete rebuild, start from a clean current-main worktree and run:
 
 ```sh
-graphify extract . --code-only --force --no-cluster
-graphify cluster-only . --no-viz
-graphify export html
+make graphify
+```
+
+The target runs the pinned code-only extraction, injects the deterministic
+GitHub Actions projection, reclusters, exports HTML, and stamps the finished
+graph with a digest of every maintained source and workflow input. Review every
+skipped-sensitive and parser warning before committing. Keep the persisted
+community labels when updating an existing graph; Graphify uses their membership
+signatures to retain valid names and replaces stale communities with current hub
+labels.
+
+CI does not install Graphify or write commits. Its always-on policy job runs:
+
+```sh
+make graphify-verify
+```
+
+That Go-only check recomputes the input digest and workflow projection. Any
+source addition, deletion, edit, `.graphifyignore` change, or GitHub Actions
+change fails until `make graphify` is run and the refreshed artifacts are
+committed. The report's `built_at_commit` is informational because a committed
+artifact cannot contain its own final commit hash; the embedded input digest is
+the freshness authority.
+
+Optional read-only diagnostics remain available:
+
+```sh
 graphify diagnose multigraph --graph graphify-out/graph.json --undirected
 graphify benchmark graphify-out/graph.json
 ```
 
-Review every skipped-sensitive and parser warning before committing. Keep the
-persisted community labels when updating an existing graph; Graphify uses their
-membership signatures to retain valid names and replaces stale communities with
-current hub labels. Never commit `.graphify_python`, `.graphify_root`, `cost.json`,
-or `.graphify_health.json`.
+Never commit `.graphify_python`, `.graphify_root`, `cost.json`, or
+`.graphify_health.json`.
