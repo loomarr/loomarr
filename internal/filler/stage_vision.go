@@ -82,31 +82,39 @@ func (s *VisionStage) Applies(_ context.Context, c StoreClip) (bool, string) {
 	return true, ""
 }
 
-// Run extracts keyframes, asks the model, and persists only what the frames support.
-func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+// VisionObservation is the exact grounded result of one bounded frame pass.
+type VisionObservation struct {
+	Brand, VisibleText string
+	Era, SuggestedEra  int
+	Tags               []string
+}
+
+// Observe extracts keyframes and grounds the answer without persisting it. Progressive catch-up
+// uses this half so its raw signal, accepted axes, and completion identity commit atomically.
+func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, VisionObservation, error) {
 	// ⚠ Loaded per clip rather than cached on the stage, and the vision BUDGET is what makes that
 	// affordable: at most `MaxVision` clips reach this rung in a pass. The alternative — a forest
 	// cached for the process — goes stale the moment an operator edits the taxonomy, and a
 	// category silently failing to resolve is far more expensive to diagnose than a small query.
 	taxa, err := s.store.ListTaxa(ctx)
 	if err != nil {
-		return StageResult{}, err
+		return StageResult{}, VisionObservation{}, err
 	}
 	forest := taxonomy.New(taxa)
 
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
 	frames, err := s.tools.KeyframesIn(ctx, file, 0, c.DurationMs, VisionKeyframes)
 	if err != nil {
-		return StageResult{}, fmt.Errorf("keyframes for %s: %w", c.Path, err)
+		return StageResult{}, VisionObservation{}, fmt.Errorf("keyframes for %s: %w", c.Path, err)
 	}
 	if len(frames) == 0 {
-		return StageResult{}, fmt.Errorf("no keyframes could be extracted from %s", c.Path)
+		return StageResult{}, VisionObservation{}, fmt.Errorf("no keyframes could be extracted from %s", c.Path)
 	}
 	reportProgress(ctx, StageVision, NoMeasurement)
 
 	resp, err := s.provider.AskAboutImages(ctx, visionPrompt(forest), frames)
 	if err != nil {
-		return StageResult{}, fmt.Errorf("vision model for %s: %w", c.Path, err)
+		return StageResult{}, VisionObservation{}, fmt.Errorf("vision model for %s: %w", c.Path, err)
 	}
 	var out visionOutput
 	// ⚠ Unwrap a code fence before parsing (§10 V44, live-found): a vision model wraps its JSON in
@@ -114,7 +122,7 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 	if err := json.Unmarshal([]byte(llm.ExtractJSONObject(resp.Content)), &out); err != nil {
 		// The model answered but not in JSON — we learned nothing we can trust, so this is a retry
 		// rather than a stamp. Persisting garbage would be worse than paying for the frames twice.
-		return StageResult{}, fmt.Errorf("vision output for %s is not JSON: %w", c.Path, err)
+		return StageResult{}, VisionObservation{}, fmt.Errorf("vision output for %s is not JSON: %w", c.Path, err)
 	}
 
 	v := groundVisionTags(out, forest)
@@ -127,11 +135,6 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 		suggestedEra = mediatools.SuggestedEraFrom(mediatools.AnalyzeFrames(frames))
 	}
 
-	if s.store != nil && c.Path != "" {
-		if err := s.store.ApplyClipVision(ctx, c.Hash, c.Path, v.Brand, v.VisibleText, v.Era, suggestedEra, v.Tags, s.now().UTC()); err != nil {
-			return StageResult{}, err
-		}
-	}
 	reportProgress(ctx, StageVision, 100)
 
 	updated := c
@@ -159,9 +162,28 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 	if v.Brand == "" && v.Era == 0 && len(v.Tags) == 0 {
 		// Read, but nothing the frames supported. Still stamped — the vision analogue of the
 		// wordless transcript sentinel: an outcome recorded precisely so it is never re-paid-for.
-		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "nothing on the frames could be grounded"}, nil
+		return StageResult{Clip: updated, Verdict: VerdictContinue, Note: "nothing on the frames could be grounded"},
+			VisionObservation{VisibleText: v.VisibleText, SuggestedEra: suggestedEra}, nil
 	}
-	return StageResult{Clip: updated, Verdict: VerdictContinue}, nil
+	return StageResult{Clip: updated, Verdict: VerdictContinue}, VisionObservation{
+		Brand: v.Brand, VisibleText: v.VisibleText, Era: v.Era, SuggestedEra: suggestedEra,
+		Tags: append([]string(nil), v.Tags...),
+	}, nil
+}
+
+// Run is the readiness-stage adapter around Observe.
+func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+	result, observation, err := s.Observe(ctx, c)
+	if err != nil {
+		return StageResult{}, err
+	}
+	if s.store != nil && c.Path != "" {
+		if err := s.store.ApplyClipVision(ctx, c.Hash, c.Path, observation.Brand, observation.VisibleText,
+			observation.Era, observation.SuggestedEra, observation.Tags, s.now().UTC()); err != nil {
+			return StageResult{}, err
+		}
+	}
+	return result, nil
 }
 
 // VisionKeyframes is how many stills one pass samples per clip (§10 V44). A commercial's brand
@@ -171,6 +193,9 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 const VisionKeyframes = 4
 
 const visionPromptVersion = "filler-vision-grounding-v2"
+
+// VisionPromptVersion is the semantic identity progressive enrichment records for frame catch-up.
+const VisionPromptVersion = visionPromptVersion
 
 // visionTags is a grounded vision classification for one clip — the fields ApplyClipVision
 // writes.

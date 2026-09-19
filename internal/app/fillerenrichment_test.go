@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -10,6 +11,164 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+type recordingTranscriptObserver struct{ clip filler.StoreClip }
+
+func (s *recordingTranscriptObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, string, error) {
+	s.clip = clip
+	return filler.StageResult{Clip: clip, Verdict: filler.VerdictContinue}, "spoken words", nil
+}
+
+type recordingVisionObserver struct {
+	clip        filler.StoreClip
+	observation filler.VisionObservation
+}
+
+func (s *recordingVisionObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, filler.VisionObservation, error) {
+	s.clip = clip
+	return filler.StageResult{Clip: clip, Verdict: filler.VerdictContinue}, s.observation, nil
+}
+
+func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) {
+	off := visionSet(t, map[string]string{})
+	if activeFillerTranscriptCapability(off).Available || activeFillerVisionCapability(off).Available {
+		t.Fatal("optional media capability became available without household opt-in")
+	}
+
+	local := visionSet(t, map[string]string{
+		"filler.transcribe.enabled":  "true",
+		"filler.transcribe.provider": "whisper",
+		"ingest.whisper_model":       "/models/ggml-small.en.bin",
+	})
+	transcript := activeFillerTranscriptCapability(local)
+	if !transcript.Available || transcript.Producer != "transcript:whisper" || transcript.ProducerVersion == "" {
+		t.Fatalf("local transcript capability = %+v", transcript)
+	}
+
+	hostedA := visionSet(t, map[string]string{
+		"filler.transcribe.enabled":  "true",
+		"filler.transcribe.provider": "hosted",
+		"filler.transcribe.model":    "openai/whisper-large-v3",
+		"llm.provider":               "openai",
+		"llm.hosted_provider":        "openrouter",
+		"llm.url":                    "https://openrouter.ai/api/v1",
+		"llm.model":                  "openai/gpt-4o-mini",
+	})
+	hostedB := visionSet(t, map[string]string{
+		"filler.transcribe.enabled":  "true",
+		"filler.transcribe.provider": "hosted",
+		"filler.transcribe.model":    "google/gemini-2.5-flash",
+		"llm.provider":               "openai",
+		"llm.hosted_provider":        "openrouter",
+		"llm.url":                    "https://openrouter.ai/api/v1",
+		"llm.model":                  "openai/gpt-4o-mini",
+	})
+	a, b := activeFillerTranscriptCapability(hostedA), activeFillerTranscriptCapability(hostedB)
+	if !a.Available || a.Producer != "transcript:openrouter" || a.ProducerVersion == b.ProducerVersion {
+		t.Fatalf("hosted transcript identities = %+v / %+v", a, b)
+	}
+
+	visionA := activeFillerVisionCapability(visionSet(t, map[string]string{
+		"filler.vision.enabled": "true", "llm.provider": "openai",
+		"llm.hosted_provider": "openrouter", "llm.url": "https://openrouter.ai/api/v1",
+		"llm.model": "openai/gpt-4o-mini", "filler.vision.model": "google/gemini-2.5-flash",
+	}))
+	visionB := activeFillerVisionCapability(visionSet(t, map[string]string{
+		"filler.vision.enabled": "true", "llm.provider": "openai",
+		"llm.hosted_provider": "openrouter", "llm.url": "https://openrouter.ai/api/v1",
+		"llm.model": "openai/gpt-4o-mini", "filler.vision.model": "qwen/qwen2.5-vl-72b",
+	}))
+	if !visionA.Available || visionA.Producer != "vision:openrouter" || visionA.ProducerVersion == visionB.ProducerVersion {
+		t.Fatalf("vision identities = %+v / %+v", visionA, visionB)
+	}
+}
+
+func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_100, 0).UTC()
+	clip := store.Clip{Clip: filler.Clip{
+		Hash: "ready", Path: "ready.mp4", Name: "Ready advert", Kind: filler.Commercial,
+		Placement: filler.PlacementBreakBody, Held: false, DurationMs: 30_000,
+	}, UpdatedAt: at, CreatedAt: at}
+	if err := st.UpsertClip(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+	observer := &recordingTranscriptObserver{}
+	executor := fillerMediaExecutor{store: st, transcript: observer, kind: fillerenrichment.CapabilityTranscript}
+	result, err := executor.Run(t.Context(), fillerenrichment.Candidate{ClipHash: clip.Hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observer.clip.Hash != clip.Hash || observer.clip.Held || observer.clip.Placement != filler.PlacementBreakBody {
+		t.Fatalf("stage clip = %+v", observer.clip)
+	}
+	if result.Observation == nil || result.Observation.Transcript == nil ||
+		*result.Observation.Transcript != "spoken words" {
+		t.Fatalf("capability result = %+v", result)
+	}
+	stored, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil || stored.Held || stored.Placement != filler.PlacementBreakBody {
+		t.Fatalf("stored clip = %+v, err %v", stored, err)
+	}
+}
+
+func TestFillerEnrichmentVisionPassCommitsObservationWithoutReplacingOperatorAnswers(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_200, 0).UTC()
+	clip := store.Clip{Clip: filler.Clip{
+		Hash: "operator", Path: "operator.mp4", Name: "Operator advert", Kind: filler.Commercial,
+		Brand: "Operator Brand", Era: 1987, Placement: filler.PlacementBreakBody,
+	}, UpdatedAt: at, CreatedAt: at}
+	if err := st.UpsertClip(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []fillerenrichment.State{
+		{ClipHash: clip.Hash, Axis: fillerenrichment.AxisBrand, Status: fillerenrichment.StatusComplete,
+			Value: fillerenrichment.Value{Text: "Operator Brand"}},
+		{ClipHash: clip.Hash, Axis: fillerenrichment.AxisEra, Status: fillerenrichment.StatusComplete,
+			Value: fillerenrichment.Value{Year: 1987}},
+		{ClipHash: clip.Hash, Axis: fillerenrichment.AxisProduct, Status: fillerenrichment.StatusComplete},
+	} {
+		state.Evidence = fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceOperator,
+			Reference: "operator", Confidence: 100, Producer: "operator", ProducerVersion: "1", ObservedAt: at}
+		if _, changed, err := st.ApplyFillerEnrichment(t.Context(), state, at); err != nil || !changed {
+			t.Fatalf("apply operator state = changed %v, err %v", changed, err)
+		}
+	}
+	observer := &recordingVisionObserver{observation: filler.VisionObservation{
+		Brand: "Model Brand", VisibleText: "MODEL BRAND 1999 CANDY", Era: 1999, Tags: []string{"candy"},
+	}}
+	runner := fillerenrichment.NewCapabilityRunner(
+		fillerenrichment.CapabilityVision,
+		fillerEnrichmentRepository{st: st},
+		func() fillerenrichment.CapabilitySelection {
+			return fillerenrichment.CapabilitySelection{
+				Available: true, Producer: "vision:test", ProducerVersion: "vision-v1:model",
+			}
+		},
+		fillerMediaExecutor{store: st, vision: observer, kind: fillerenrichment.CapabilityVision}.Run,
+		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
+	)
+	result, err := runner.Run(t.Context())
+	if err != nil || result.Considered != 1 || result.Failed != 0 {
+		t.Fatalf("vision catch-up = %+v, err %v", result, err)
+	}
+	if observer.clip.Hash != clip.Hash {
+		t.Fatalf("observed clip = %+v", observer.clip)
+	}
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Brand != "Operator Brand" || got.Era != 1987 || len(got.AssertedTags) != 0 ||
+		!got.VisionTagged || got.VisibleText != "MODEL BRAND 1999 CANDY" {
+		t.Fatalf("vision catch-up projection = %+v", got)
+	}
+	second, err := runner.Run(t.Context())
+	if err != nil || second.Considered != 0 {
+		t.Fatalf("completed frame observation woke its own pass: %+v, err %v", second, err)
+	}
+}
 
 func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)

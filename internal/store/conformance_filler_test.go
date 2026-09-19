@@ -4128,6 +4128,43 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(candidates) != 0 {
 		t.Fatalf("candidates after pass = %+v, err %v", candidates, err)
 	}
+	rescanned, err := s.GetClip(ctx, clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rescanned.UpdatedAt = at.Add(5 * time.Second)
+	if err := s.UpsertClip(ctx, rescanned); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("candidates after a routine catalog rescan = %+v, err %v", candidates, err)
+	}
+	if err := s.SetClipTranscript(ctx, clip.Path, "HP makes everything taste better", at.Add(6*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
+	if err != nil || len(candidates) != 1 || candidates[0].Hash != clip.Hash {
+		t.Fatalf("candidates after a new transcript = %+v, err %v", candidates, err)
+	}
+	pass.CompletedAt = at.Add(7 * time.Second)
+	if changed, err := s.ApplyFillerEnrichmentPass(ctx, pass); err != nil || changed != 0 {
+		t.Fatalf("refreshed pass changed = %d, err %v", changed, err)
+	}
+	if err := s.SetClipTranscript(ctx, clip.Path, "HP makes everything taste better", at.Add(8*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("candidates after the same transcript = %+v, err %v", candidates, err)
+	}
+	if err := s.ApplyClipVision(ctx, clip.Hash, clip.Path, "", "HP SAUCE", 0, 0, nil, at.Add(9*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
+	if err != nil || len(candidates) != 1 || candidates[0].Hash != clip.Hash {
+		t.Fatalf("candidates after new frame text = %+v, err %v", candidates, err)
+	}
 	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, "2", pass.TaxonomyVersion, 10)
 	if err != nil || len(candidates) != 1 {
 		t.Fatalf("new producer version candidates = %+v, err %v", candidates, err)

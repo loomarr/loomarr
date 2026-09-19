@@ -9257,6 +9257,18 @@ the same identity does not pay for another call. An absent provider does not que
 create a visible problem. Operator evidence, including an intentional empty correction, is never
 reopened by automation.
 
+Transcript and frame catch-up use that same coordinator rather than putting a Ready Clip back on
+the readiness conveyor. Each enabled capability has its own provider/model/prompt identity and the
+existing `MaxWhisper` or `MaxVision` per-pass bound. A Clip is eligible only while at least one axis
+that capability can inform remains unresolved, and an operator answer (including an intentional
+empty answer) closes that axis to automation. A successful media pass records its completion even
+when it found no usable signal, while a provider failure records no completion and may retry later;
+neither outcome changes Placement, `held`, or the terminal-ready event. When transcription or frame
+inspection changes the persisted transcript or visible-text signals, the free and text passes become
+eligible once more for that Clip. Their ordinary evidence precedence then decides whether the new
+signal improves an axis. The same capability identity is never paid for twice, while changing the
+selected provider/model or prompt version wakes only the bounded eligible work.
+
 **The pipeline is sequential and budget-bounded, and that is not a limitation.** Whisper is ~341s
 per clip under QEMU and ffmpeg competes with playout for the GPU, so one clip at a time is what
 keeps a catalog import from starving live channels. It is also the answer to SSE volume: at most

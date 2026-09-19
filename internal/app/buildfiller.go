@@ -206,7 +206,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
-	recorder *metrics.Recorder) *filler.Pipeline {
+	recorder *metrics.Recorder) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
 	// exists to be seen and paused.
@@ -256,15 +256,16 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 
 	// Vision: keyframes → a multimodal model, resolved LIVE (§10 V54a).
 	//
-	// ⚠ **`filler.vision.enabled` is the only part still read at boot**, and only to decide whether
-	// to wire anything at all; the endpoint itself is resolved per call by `hotVisionProvider`, so
-	// changing the provider, URL, key or model in Settings applies to the next clip. This used to
+	// The provider is wired even while the capability is off; the enabled closure still prevents
+	// calls. That lets a later opt-in wake Ready clips without a restart, while the endpoint itself
+	// remains resolved per call by `hotVisionProvider`, so changing the provider, URL, key or model
+	// applies to the next clip. This used to
 	// build the provider here, from `llm.url` and `llm.api_key`, behind an unlogged
 	// `&& set.str("llm.url") != ""` — so an install with vision enabled and no reachable endpoint
 	// was indistinguishable from one with vision switched off.
-	var visionProvider llm.VisionProvider
+	h := &hotVisionProvider{set: set, log: log, metrics: recorder}
+	var visionProvider llm.VisionProvider = h
 	if set.boolv("filler.vision.enabled") {
-		h := &hotVisionProvider{set: set, log: log, metrics: recorder}
 		// Resolve ONCE at boot purely to report it. A failure here is not fatal — the operator may
 		// fix the setting without restarting, which is the entire point of resolving per call —
 		// but it must not be silent, because this is the diagnosis for "grounding never runs".
@@ -272,7 +273,6 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 			log.Warn("filler vision enabled but not currently reachable; grounding will no-op until this is fixed",
 				"err", err)
 		}
-		visionProvider = h
 	}
 	// ── The ingest pipeline (§10 V51b) ────────────────────────────────────────────────────
 	//
@@ -290,6 +290,10 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	if screeningErr != nil {
 		log.Error("rendered-child screening qualification runtime was not activated", "err", screeningErr)
 	}
+	transcribeStage := filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
+		func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now)
+	visionStage := filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
+		func() bool { return set.boolv("filler.vision.enabled") }, time.Now)
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
 			filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
@@ -327,10 +331,8 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		filler.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
 			func() string { return set.str("filler.language") }, time.Now),
-		filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
-			func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now),
-		filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
-			func() bool { return set.boolv("filler.vision.enabled") }, time.Now),
+		transcribeStage,
+		visionStage,
 		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, nil, time.Now),
 	}
 	if splitter != nil {
@@ -423,7 +425,7 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		"transcribe", set.boolv("filler.transcribe.enabled"),
 		"vision", set.boolv("filler.vision.enabled"), "vision_provider", visionProvider != nil,
 		"autosplit", set.boolv("filler.autosplit.enabled"))
-	return fillerPipeline
+	return fillerPipeline, transcribeStage, visionStage
 }
 
 // hostedLanguageAsker resolves the canonical active selection on every call. Hosted credentials

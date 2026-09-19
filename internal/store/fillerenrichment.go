@@ -45,6 +45,7 @@ func (s *sqlStore) ListFillerEnrichmentCandidates(ctx context.Context, producer,
 		AND NOT EXISTS (
 			SELECT 1 FROM filler_enrichment_passes p
 			WHERE p.clip_hash = clips.hash AND p.producer = ? AND p.producer_version = ? AND p.taxonomy_version = ?
+			  AND p.input_revision = clips.enrichment_revision
 		)
 		ORDER BY created_at, hash LIMIT ?`
 	rows, err := s.db.QueryContext(ctx, s.ph(query), producer, producerVersion, taxonomyVersion, limit)
@@ -215,7 +216,7 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx *sql.Tx, st
 		}
 	case fillerenrichment.AxisEra:
 		if state.Value.Year > 0 {
-			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET era = ?, updated_at = ? WHERE hash = ? AND era = 0`), state.Value.Year, epoch(updatedAt), state.ClipHash)
+			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET era = ?, updated_at = ? WHERE hash = ?`), state.Value.Year, epoch(updatedAt), state.ClipHash)
 		}
 	case fillerenrichment.AxisAudience:
 		if audience := filler.AudienceFromString(state.Value.Text); audience != "" {
@@ -223,7 +224,7 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx *sql.Tx, st
 		}
 	case fillerenrichment.AxisBrand:
 		if state.Value.Text != "" {
-			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET brand = ?, updated_at = ? WHERE hash = ? AND brand = ''`), state.Value.Text, epoch(updatedAt), state.ClipHash)
+			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET brand = ?, updated_at = ? WHERE hash = ?`), state.Value.Text, epoch(updatedAt), state.ClipHash)
 		}
 	case fillerenrichment.AxisLanguage:
 		if state.Value.Text != "" {
@@ -283,6 +284,15 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 	if err := s.requireEnrichmentClipTx(ctx, tx, pass.ClipHash); err != nil {
 		return 0, err
 	}
+	revisionQuery := `SELECT enrichment_revision FROM clips WHERE hash = ?`
+	if s.dialect == DialectPostgres {
+		revisionQuery += ` FOR UPDATE`
+	}
+	var inputRevision int64
+	if err := tx.QueryRowContext(ctx, s.ph(revisionQuery),
+		pass.ClipHash).Scan(&inputRevision); err != nil {
+		return 0, fmt.Errorf("apply filler enrichment pass: read input revision: %w", err)
+	}
 	changed := 0
 	for _, candidate := range pass.States {
 		if _, applied, err := s.applyFillerEnrichmentTx(ctx, tx, candidate, pass.CompletedAt); err != nil {
@@ -291,12 +301,45 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 			changed++
 		}
 	}
+	if pass.Observation != nil && pass.Observation.Transcript != nil {
+		transcript := *pass.Observation.Transcript
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE clips SET
+			enrichment_revision = CASE WHEN transcript <> ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
+			transcript = ?, updated_at = ? WHERE hash = ?`),
+			transcript, transcript, epoch(pass.CompletedAt), pass.ClipHash); err != nil {
+			return 0, fmt.Errorf("apply filler enrichment pass: record transcript observation: %w", err)
+		}
+	}
+	if pass.Observation != nil && pass.Observation.Vision != nil {
+		vision := pass.Observation.Vision
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE clips SET
+			enrichment_revision = CASE
+				WHEN visible_text <> ? OR vision_tagged = ? THEN enrichment_revision + 1
+				ELSE enrichment_revision END,
+			visible_text = ?, vision_tagged = ?,
+			suggested_era = CASE
+				WHEN era > 0 THEN 0
+				WHEN ? > 0 AND suggested_era = 0 THEN ?
+				ELSE suggested_era END,
+			updated_at = ? WHERE hash = ?`),
+			vision.VisibleText, false, vision.VisibleText, true,
+			vision.SuggestedEra, vision.SuggestedEra, epoch(pass.CompletedAt), pass.ClipHash); err != nil {
+			return 0, fmt.Errorf("apply filler enrichment pass: record vision observation: %w", err)
+		}
+	}
+	// The pass owns the exact input revision it just committed. Reading again after raw media
+	// observations prevents that same expensive result from immediately waking its own runner.
+	if err := tx.QueryRowContext(ctx, s.ph(`SELECT enrichment_revision FROM clips WHERE hash = ?`),
+		pass.ClipHash).Scan(&inputRevision); err != nil {
+		return 0, fmt.Errorf("apply filler enrichment pass: refresh input revision: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_enrichment_passes
-		(clip_hash, producer, producer_version, taxonomy_version, completed_at)
-		VALUES (?, ?, ?, ?, ?)
+		(clip_hash, producer, producer_version, taxonomy_version, input_revision, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(clip_hash, producer, producer_version, taxonomy_version) DO UPDATE SET
-		 completed_at=excluded.completed_at`), pass.ClipHash, pass.Producer, pass.ProducerVersion,
-		pass.TaxonomyVersion, epoch(pass.CompletedAt)); err != nil {
+		 input_revision=excluded.input_revision, completed_at=excluded.completed_at`),
+		pass.ClipHash, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion,
+		inputRevision, epoch(pass.CompletedAt)); err != nil {
 		return 0, fmt.Errorf("apply filler enrichment pass: record completion: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
