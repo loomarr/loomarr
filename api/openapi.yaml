@@ -1407,6 +1407,43 @@ components:
         - event
         - occurredAt
       type: object
+    ClipContextSourceDTO:
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+      required:
+        - title
+        - url
+      type: object
+    ClipContextSuggestionDTO:
+      additionalProperties: false
+      properties:
+        confidence:
+          format: int64
+          type: integer
+        country:
+          type: string
+        countryCode:
+          type: string
+        decade:
+          format: int64
+          type: integer
+        explanation:
+          type: string
+        sources:
+          items:
+            $ref: "#/components/schemas/ClipContextSourceDTO"
+          type: array
+        year:
+          format: int64
+          type: integer
+      required:
+        - confidence
+        - sources
+      type: object
     ClipDTO:
       additionalProperties: false
       properties:
@@ -1445,6 +1482,9 @@ components:
           description: Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score
           format: int64
           type: integer
+        contextSuggestion:
+          $ref: "#/components/schemas/ClipContextSuggestionDTO"
+          description: Cited likely era/geography context. It is not verified metadata and never affects scheduling. Available on exact single-hash reads only.
         country:
           description: ISO 3166-1 alpha-2 country when grounded
           type: string

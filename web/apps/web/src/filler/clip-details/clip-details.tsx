@@ -45,6 +45,19 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             detail: "Some details couldn't be confirmed. That won't block playback.",
           }
         : undefined;
+  const suggestion = clip.contextSuggestion;
+  const likelyContext = suggestion
+    ? [
+        suggestion.year
+          ? String(suggestion.year)
+          : suggestion.decade
+            ? `${suggestion.decade}s`
+            : undefined,
+        suggestion.country,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
 
   return (
     <div className="space-y-5">
@@ -66,6 +79,32 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
         <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm">
           <p className="font-medium">{enrichmentMessage.title}</p>
           <p className="mt-1 text-muted-foreground">{enrichmentMessage.detail}</p>
+        </div>
+      ) : null}
+      {suggestion && likelyContext ? (
+        <div className="rounded-lg border border-border px-4 py-3 text-sm">
+          <p className="font-medium">Likely {likelyContext}</p>
+          {suggestion.explanation ? (
+            <p className="mt-1 text-muted-foreground">{suggestion.explanation}</p>
+          ) : null}
+          {suggestion.sources.length ? (
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              {suggestion.sources.map((source) => (
+                <a
+                  key={source.url}
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-signal underline underline-offset-4"
+                >
+                  {source.title} <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                </a>
+              ))}
+            </div>
+          ) : null}
+          <p className="mt-2 text-muted-foreground text-xs">
+            Background context, not confirmed details for this exact clip.
+          </p>
         </div>
       ) : null}
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">

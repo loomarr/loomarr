@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
@@ -712,6 +713,14 @@ type FillerEnrichmentStore interface {
 	ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenrichment.Pass) (int, error)
 }
 
+// FillerResearchStore owns cited context suggestions. Reports are deliberately separate from
+// FillerEnrichmentStore: no method here projects a suggestion into a catalog fact.
+type FillerResearchStore interface {
+	ListFillerResearchCandidates(ctx context.Context, producer, producerVersion, adapter, adapterVersion string, limit int) ([]fillerresearch.Candidate, error)
+	SaveFillerResearchReport(ctx context.Context, report fillerresearch.Report) error
+	LatestFillerResearchReport(ctx context.Context, clipHash string) (fillerresearch.Report, error)
+}
+
 // AiringStore records what actually went to air — written from playout only.
 type AiringStore interface {
 	// RecordClipPlay counts a filler clip having AIRED globally and on one channel (V58).
@@ -917,6 +926,7 @@ type Store interface {
 	UserStore
 	ClipStore
 	FillerEnrichmentStore
+	FillerResearchStore
 	FillerSourceStore
 	FillerPullStore
 	FillerAcquisitionStore

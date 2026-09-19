@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -14,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
@@ -168,7 +170,21 @@ func buildFillerSubsystem(
 			func() int { return set.intv("filler.pipeline.max_vision") }, time.Now,
 		),
 	)
-	jobs.Add(fillerEnrichmentJob(enrichmentCoordinator))
+	selection := activeFillerTextSelection(set, metricRecorder)
+	var researchRunner *fillerresearch.Runner
+	if selection.Provider != nil && strings.TrimSpace(selection.Model) != "" {
+		retriever, err := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
+			UserAgent: "Loomarr/1.0 (https://github.com/loomarr/loomarr)",
+		})
+		if err == nil {
+			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,
+				selection.Model, time.Now)
+			researchRunner = fillerresearch.NewRunner(fillerResearchRepository{st: st}, researcher,
+				fillerResearchSignals{files: layout.FS()}.Load,
+				func() int { return min(3, set.intv("filler.pipeline.max_clips")) })
+		}
+	}
+	jobs.Add(fillerEnrichmentJob(fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner}))
 	adapter.pipeline = pipeline
 	if decisionService != nil {
 		decisionService.WithDiagnosticRecovery(adapter)

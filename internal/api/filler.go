@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -412,9 +413,10 @@ type ClipDTO struct {
 	// ⚠ Deliberately NOT the transcript itself: it is kilobytes per clip that no grid renders, so
 	// at a 100-row page it would be roughly ten times the rest of the payload. The detail surface
 	// fetches the text; the listing only needs to know there is some.
-	HasTranscript bool               `json:"hasTranscript,omitempty" doc:"Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders."`
-	SourceURL     string             `json:"sourceUrl,omitempty" doc:"Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID."`
-	Enrichment    *ClipEnrichmentDTO `json:"enrichment,omitempty" doc:"Quiet server-owned detail state and provenance. Available on exact single-hash reads only; omitted from catalog pages."`
+	HasTranscript     bool                      `json:"hasTranscript,omitempty" doc:"Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders."`
+	SourceURL         string                    `json:"sourceUrl,omitempty" doc:"Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID."`
+	Enrichment        *ClipEnrichmentDTO        `json:"enrichment,omitempty" doc:"Quiet server-owned detail state and provenance. Available on exact single-hash reads only; omitted from catalog pages."`
+	ContextSuggestion *ClipContextSuggestionDTO `json:"contextSuggestion,omitempty" doc:"Cited likely era/geography context. It is not verified metadata and never affects scheduling. Available on exact single-hash reads only."`
 }
 
 // ClipMediaDTO is the small human-facing projection of the prepared playback lineage. The full
@@ -439,6 +441,41 @@ type ClipEnrichmentDTO struct {
 type ClipEnrichmentFactDTO struct {
 	Axis     string `json:"axis" enum:"kind,era,audience,brand,geography,language,product,format,seasonal,audience-cue,presentation"`
 	Evidence string `json:"evidence" enum:"inference,source_default,trusted_mapping,content_observation,item_metadata,operator"`
+}
+
+type ClipContextSuggestionDTO struct {
+	Year        int                    `json:"year,omitempty"`
+	Decade      int                    `json:"decade,omitempty"`
+	CountryCode string                 `json:"countryCode,omitempty"`
+	Country     string                 `json:"country,omitempty"`
+	Confidence  int                    `json:"confidence"`
+	Explanation string                 `json:"explanation,omitempty"`
+	Sources     []ClipContextSourceDTO `json:"sources"`
+}
+
+type ClipContextSourceDTO struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
+func clipContextSuggestionDTO(report fillerresearch.Report, verifiedEra int, verifiedCountry string) *ClipContextSuggestionDTO {
+	suggestion := report.Suggestion
+	if verifiedEra > 0 {
+		suggestion.Year, suggestion.Decade = 0, 0
+	}
+	if verifiedCountry != "" {
+		suggestion.CountryCode, suggestion.Country = "", ""
+	}
+	if suggestion.Year == 0 && suggestion.Decade == 0 && suggestion.Country == "" {
+		return nil
+	}
+	detail := &ClipContextSuggestionDTO{Year: suggestion.Year, Decade: suggestion.Decade,
+		CountryCode: suggestion.CountryCode, Country: suggestion.Country,
+		Confidence: suggestion.Confidence, Explanation: suggestion.Explanation}
+	for _, citation := range report.Cited() {
+		detail.Sources = append(detail.Sources, ClipContextSourceDTO{Title: citation.Title, URL: citation.URL})
+	}
+	return detail
 }
 
 func clipEnrichmentDTO(states []fillerenrichment.State) *ClipEnrichmentDTO {
@@ -706,6 +743,12 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read clip details", "The clip's background details could not be read. Try again.", err)
 			}
 			d.Enrichment = clipEnrichmentDTO(states)
+			report, err := s.store.LatestFillerResearchReport(ctx, c.Hash)
+			if err == nil {
+				d.ContextSuggestion = clipContextSuggestionDTO(report, c.Era, c.Country)
+			} else if !errors.Is(err, store.ErrNotFound) {
+				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read likely context", "The clip's likely context could not be read. Try again.", err)
+			}
 			provenanceClip := c
 			if c.ParentHash != "" {
 				parent, err := s.store.GetClip(ctx, c.ParentHash)

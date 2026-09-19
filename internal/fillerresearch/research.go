@@ -86,7 +86,8 @@ JSON keys: year, decade, countryCode, country, confidence, explanation, citation
 	if suggestion.Confidence > 80 {
 		suggestion.Confidence = 80
 	}
-	report := Report{ClipHash: input.ClipHash, Producer: r.producer, ProducerVersion: r.version,
+	report := Report{ClipHash: input.ClipHash, InputRevision: input.InputRevision,
+		Producer: r.producer, ProducerVersion: r.version,
 		CompletedAt: r.now().UTC(), Suggestion: suggestion, Packet: packet}
 	if err := report.Validate(); err != nil {
 		return Report{}, err

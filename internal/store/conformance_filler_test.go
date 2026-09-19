@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -4301,6 +4302,79 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	missing.ClipHash = "missing-clip"
 	if _, _, err := s.ApplyFillerEnrichment(ctx, missing, at); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing clip error = %v, want ErrNotFound", err)
+	}
+}
+
+func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Unix(1_700_000_500, 0).UTC()
+	clip := sampleClip("context-clip", "Tootsie Pop Classic Commercial", filler.Commercial, 0, "", "")
+	clip.Source = "archive:classic_tv_commercials"
+	clip.UpdatedAt = at
+	if err := s.UpsertClip(ctx, clip); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := s.ListFillerResearchCandidates(ctx, "context-model:fixture", "prompt:model",
+		"mediawiki", fillerresearch.MediaWikiAdapterVersion, 3)
+	if err != nil || len(candidates) != 1 || candidates[0].ClipHash != clip.Hash || candidates[0].InputRevision < 1 {
+		t.Fatalf("candidates = %+v, err %v", candidates, err)
+	}
+	report := fillerresearch.Report{ClipHash: clip.Hash, InputRevision: candidates[0].InputRevision,
+		Producer: "context-model:fixture", ProducerVersion: "prompt:model", CompletedAt: at.Add(time.Second),
+		Suggestion: fillerresearch.Suggestion{Decade: 1970, CountryCode: "US", Country: "United States",
+			Confidence: 70, Explanation: "Likely campaign context; the exact cut is not proven.", CitationIDs: []int{1}},
+		Packet: fillerresearch.Packet{Query: clip.Name, Adapter: "mediawiki",
+			AdapterVersion: fillerresearch.MediaWikiAdapterVersion, RetrievedAt: at,
+			Citations: []fillerresearch.Citation{{ID: 1, Title: "Tootsie Pop",
+				URL:     "https://en.wikipedia.org/wiki/Tootsie_Pop",
+				Extract: "The animated commercial debuted on US television in 1970."}}}}
+	if err := s.SaveFillerResearchReport(ctx, report); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LatestFillerResearchReport(ctx, clip.Hash)
+	if err != nil || !reflect.DeepEqual(got, report) {
+		t.Fatalf("latest report = %+v, err %v, want %+v", got, err, report)
+	}
+	candidates, err = s.ListFillerResearchCandidates(ctx, report.Producer, report.ProducerVersion,
+		report.Packet.Adapter, report.Packet.AdapterVersion, 3)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("same identity candidates after save = %+v, err %v", candidates, err)
+	}
+	candidates, err = s.ListFillerResearchCandidates(ctx, report.Producer, "prompt:new-model",
+		report.Packet.Adapter, report.Packet.AdapterVersion, 3)
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("changed model candidates = %+v, err %v", candidates, err)
+	}
+	if err := s.SetClipTranscript(ctx, clip.Path, "How many licks?", at.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveFillerResearchReport(ctx, report); !errors.Is(err, ErrFillerResearchStale) {
+		t.Fatalf("save stale report error = %v, want ErrFillerResearchStale", err)
+	}
+	candidates, err = s.ListFillerResearchCandidates(ctx, report.Producer, report.ProducerVersion,
+		report.Packet.Adapter, report.Packet.AdapterVersion, 3)
+	if err != nil || len(candidates) != 1 || candidates[0].InputRevision == report.InputRevision {
+		t.Fatalf("changed-input candidates = %+v, err %v", candidates, err)
+	}
+	verified := clip
+	verified.Hash = "known-context"
+	verified.Path = clipPathFor(verified.Hash)
+	verified.Era = 1999
+	verified.Country = "GB"
+	if err := s.UpsertClip(ctx, verified); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err = s.ListFillerResearchCandidates(ctx, report.Producer, report.ProducerVersion,
+		report.Packet.Adapter, report.Packet.AdapterVersion, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range candidates {
+		if candidate.ClipHash == verified.Hash {
+			t.Fatalf("fully verified clip was selected: %+v", candidate)
+		}
 	}
 }
 

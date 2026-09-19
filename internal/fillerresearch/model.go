@@ -27,13 +27,14 @@ var ErrInvalid = errors.New("invalid filler context research")
 // Input contains only metadata already published by a registered remote source. Callers must not
 // put a local filename, private library title, transcript, or household data in this envelope.
 type Input struct {
-	ClipHash     string
-	Title        string
-	Description  string
-	SourceKind   string
-	SourceID     string
-	KnownEra     int
-	KnownCountry string
+	ClipHash      string
+	InputRevision int64
+	Title         string
+	Description   string
+	SourceKind    string
+	SourceID      string
+	KnownEra      int
+	KnownCountry  string
 }
 
 func (in Input) Validate() error {
@@ -108,6 +109,7 @@ type Suggestion struct {
 // prompt while Packet binds the independently owned retrieval adapter.
 type Report struct {
 	ClipHash        string     `json:"clipHash"`
+	InputRevision   int64      `json:"inputRevision"`
 	Producer        string     `json:"producer"`
 	ProducerVersion string     `json:"producerVersion"`
 	CompletedAt     time.Time  `json:"completedAt"`
@@ -116,7 +118,7 @@ type Report struct {
 }
 
 func (r Report) Validate() error {
-	if strings.TrimSpace(r.ClipHash) == "" || strings.TrimSpace(r.Producer) == "" ||
+	if strings.TrimSpace(r.ClipHash) == "" || r.InputRevision < 1 || strings.TrimSpace(r.Producer) == "" ||
 		strings.TrimSpace(r.ProducerVersion) == "" || r.CompletedAt.IsZero() {
 		return fmt.Errorf("%w: report identity is required", ErrInvalid)
 	}

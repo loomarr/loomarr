@@ -46,7 +46,7 @@ func TestResearchKeepsCampaignContextAsACitedSuggestion(t *testing.T) {
 	at := time.Unix(200, 0).UTC()
 	researcher := New(retriever, provider, "openrouter", "model", func() time.Time { return at })
 	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Tootsie Pop Classic Commercial",
-		Description: "The classic commercial.", SourceKind: "archive", SourceID: "archive:classic"})
+		InputRevision: 1, Description: "The classic commercial.", SourceKind: "archive", SourceID: "archive:classic"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestResearchRejectsModelInventedCitation(t *testing.T) {
 	provider := &fixtureProvider{content: `{"decade":1970,"confidence":70,"explanation":"Likely.","citationIds":[99]}`}
 	researcher := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now)
 	_, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Tootsie Pop",
-		SourceKind: "archive", SourceID: "archive:classic"})
+		InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic"})
 	if err == nil || !strings.Contains(err.Error(), "outside its packet") {
 		t.Fatalf("invented citation error = %v", err)
 	}
@@ -80,7 +80,7 @@ func TestResearchOnlyRequestsStillMissingContext(t *testing.T) {
 	provider := &fixtureProvider{content: `{"year":1980,"decade":1980,"countryCode":"GB","country":"United Kingdom","confidence":70,"explanation":"Likely.","citationIds":[1]}`}
 	researcher := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now)
 	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "HP Sauce Advert",
-		SourceKind: "archive", SourceID: "archive:classic", KnownEra: 1999})
+		InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic", KnownEra: 1999})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,14 +92,14 @@ func TestResearchOnlyRequestsStillMissingContext(t *testing.T) {
 func TestResearchRefusesPrivateInputsBeforeRetrieval(t *testing.T) {
 	retriever := &fixtureRetriever{packet: researchPacket()}
 	researcher := New(retriever, &fixtureProvider{}, "fixture", "model", time.Now)
-	_, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Family recording", SourceKind: "folder", SourceID: "local"})
+	_, err := researcher.Research(t.Context(), Input{ClipHash: "hash", InputRevision: 1, Title: "Family recording", SourceKind: "folder", SourceID: "local"})
 	if err == nil || retriever.calls != 0 {
 		t.Fatalf("private input err=%v calls=%d", err, retriever.calls)
 	}
 }
 
 func TestReportRejectsUncitedClaims(t *testing.T) {
-	report := Report{ClipHash: "hash", Producer: "context-model:fixture", ProducerVersion: "v1",
+	report := Report{ClipHash: "hash", InputRevision: 1, Producer: "context-model:fixture", ProducerVersion: "v1",
 		CompletedAt: time.Now(), Packet: researchPacket(), Suggestion: Suggestion{Decade: 1970, Confidence: 60}}
 	if err := report.Validate(); err == nil || !strings.Contains(err.Error(), "requires a citation") {
 		t.Fatalf("uncited claim error = %v", err)

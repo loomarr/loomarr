@@ -106,4 +106,30 @@ describe("ClipDetails", () => {
     render(<ClipDetails clip={{ ...clip, enrichment: { state: "complete" } }} />);
     expect(screen.queryByText(/Adding details|Details limited/)).not.toBeInTheDocument();
   });
+
+  it("labels researched campaign context as likely and links its evidence", () => {
+    render(
+      <ClipDetails
+        clip={{
+          ...clip,
+          contextSuggestion: {
+            decade: 1970,
+            countryCode: "US",
+            country: "United States",
+            confidence: 70,
+            explanation: "The campaign debuted then; this exact cut is not proven.",
+            sources: [{ title: "Tootsie Pop", url: "https://en.wikipedia.org/wiki/Tootsie_Pop" }],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Likely 1970s · United States")).toBeInTheDocument();
+    expect(screen.getByText(/not confirmed details for this exact clip/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Tootsie Pop/ })).toHaveAttribute(
+      "href",
+      "https://en.wikipedia.org/wiki/Tootsie_Pop",
+    );
+    expect(screen.queryByText("Year")).not.toBeInTheDocument();
+    expect(screen.queryByText("Location")).not.toBeInTheDocument();
+  });
 });
