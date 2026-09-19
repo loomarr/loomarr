@@ -9107,7 +9107,10 @@ unconfirmed suggestion.
    single installation choice as the ordinary language rung. A confident mismatch is omitted and
    counted in the proposal receipt; wordless, unknown, unavailable-backend and failed-backend
    outcomes remain reviewable. The work is cursor-persisted and bounded by the existing whisper
-   allowance, and a proposal is not reviewable until every span has a terminal outcome. Confirmed
+   allowance, and a proposal is not reviewable until every span has a terminal outcome. Every
+   confident mismatch remains in the proposal receipt with its exact interval, detected and
+   expected languages, name, and a stable mismatch reason; it is not placed back in the editable
+   candidate list. Confirmed
    children inherit known and wordless results so the post-confirm rung does not spend twice;
    checked-but-unknown children leave the field empty so that rung remains a defence-in-depth retry.
 6. **Review — required unless the result is unambiguous (V43).** Because detection quality is a property of the source, an uncertain result is confirmed by a human before anything enters the catalog; auto-accepting a 69% result puts 3-minute "commercials" into 30-second breaks. Detection runs as a **job** (minutes per file) producing a **persisted split proposal** (§5) — review can happen long after detection, and a restart must not lose it — and an unconfirmed proposal writes nothing until `POST /v1/filler/splits/{id}/confirm` (§7) commits a cut list.

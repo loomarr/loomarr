@@ -221,7 +221,14 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 	kept := make([]SplitSegment, 0, len(p.Segments))
 	for _, segment := range p.Segments {
 		if LanguageRejects(segment.Language, want) {
-			p.ExcludedByLanguage++
+			p.LanguageExclusions = append(p.LanguageExclusions, SplitLanguageExclusion{
+				StartMs:          segment.StartMs,
+				EndMs:            segment.EndMs,
+				Name:             segment.Name,
+				DetectedLanguage: segment.Language,
+				ExpectedLanguage: want,
+				Reason:           SplitExclusionLanguageMismatch,
+			})
 			continue
 		}
 		kept = append(kept, segment)

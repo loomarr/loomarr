@@ -983,8 +983,12 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if proposal.ExcludedByLanguage != 1 {
-		t.Fatalf("excluded by language = %d, want 1", proposal.ExcludedByLanguage)
+	if len(proposal.LanguageExclusions) != 1 {
+		t.Fatalf("language exclusions = %+v, want one exact receipt", proposal.LanguageExclusions)
+	}
+	excluded := proposal.LanguageExclusions[0]
+	if excluded.StartMs != 20_000 || excluded.EndMs != 40_000 || excluded.Name != "Spanish advert" || excluded.DetectedLanguage != "es" || excluded.ExpectedLanguage != "en" || excluded.Reason != filler.SplitExclusionLanguageMismatch {
+		t.Fatalf("language exclusion = %+v, want the omitted interval and reason", excluded)
 	}
 	if len(proposal.Segments) != 2 {
 		t.Fatalf("review segments = %+v, want English and wordless only", proposal.Segments)
@@ -1004,7 +1008,7 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(persisted.Segments, proposal.Segments) || persisted.ExcludedByLanguage != 1 {
+	if !reflect.DeepEqual(persisted.Segments, proposal.Segments) || !reflect.DeepEqual(persisted.LanguageExclusions, proposal.LanguageExclusions) {
 		t.Fatalf("persisted proposal lost the pre-review language decision: %+v", persisted)
 	}
 }
@@ -1030,7 +1034,7 @@ func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if proposal.ExcludedByLanguage != 0 || len(proposal.Segments) != 2 {
+	if len(proposal.LanguageExclusions) != 0 || len(proposal.Segments) != 2 {
 		t.Fatalf("uncertain checks removed reviewable clips: %+v", proposal)
 	}
 	if !proposal.Segments[0].LanguageChecked || proposal.Segments[0].Language != "" {
@@ -1087,7 +1091,7 @@ func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 			t.Fatalf("final proposal = %+v, %v", proposals, listErr)
 		}
 		proposal := proposals[0]
-		if !proposal.Ready() || proposal.ExcludedByLanguage != 1 || len(proposal.Segments) != 2 {
+		if !proposal.Ready() || len(proposal.LanguageExclusions) != 1 || len(proposal.Segments) != 2 {
 			t.Fatalf("final proposal = %+v", proposal)
 		}
 		for _, segment := range proposal.Segments {

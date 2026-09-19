@@ -325,6 +325,20 @@ type SplitLanguageProgress struct {
 	Next int    `json:"next"`
 }
 
+const SplitExclusionLanguageMismatch = "language_mismatch"
+
+// SplitLanguageExclusion is the durable, user-visible receipt for one detected span that the
+// installation language kept out of review. It retains the exact interval and the evidence behind
+// the decision without putting the excluded span back into the editable candidate list.
+type SplitLanguageExclusion struct {
+	StartMs          int64  `json:"startMs"`
+	EndMs            int64  `json:"endMs"`
+	Name             string `json:"name"`
+	DetectedLanguage string `json:"detectedLanguage"`
+	ExpectedLanguage string `json:"expectedLanguage"`
+	Reason           string `json:"reason"`
+}
+
 // SplitProposal is the persisted, operator-reviewable result of detecting cuts
 // in a compilation clip (§10 V34). It is NOT a clip: nothing here is visible to
 // pod matching, and the only way segments become clips is Confirm.
@@ -355,9 +369,9 @@ type SplitProposal struct {
 	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
-	// ExcludedByLanguage counts confidently mismatched spans omitted before review. It is receipt
-	// data, not an admission signal: unknown and wordless spans remain in Segments.
-	ExcludedByLanguage int `json:"excludedByLanguage,omitempty"`
+	// LanguageExclusions accounts for confidently mismatched spans omitted before review. It is
+	// receipt data, not an admission signal: unknown and wordless spans remain in Segments.
+	LanguageExclusions []SplitLanguageExclusion `json:"languageExclusions,omitempty"`
 	// Source binds detection and confirmation to one exact derivative. It is internal durable
 	// state rather than review UI; zero is a pre-V66 proposal that resolves through legacy rules.
 	Source SplitSourceAsset `json:"-"`
