@@ -36,9 +36,24 @@ const userCodeLength = 8
 // device must stop and show a fresh code.
 var ErrPairingNotApproved = errors.New("auth: pairing not approved")
 
+// DeviceStore is the pairing, device-token, and owning-user surface needed by
+// device authentication. Session and unrelated identity mutations stay outside it.
+type DeviceStore interface {
+	CreateDevicePairing(ctx context.Context, pairing store.DevicePairing) error
+	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
+	GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (store.DevicePairing, error)
+	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (store.DevicePairing, error)
+	DeleteDevicePairing(ctx context.Context, codeHash string) error
+	CreateDeviceToken(ctx context.Context, token store.DeviceToken) error
+	GetDeviceToken(ctx context.Context, tokenHash string) (store.DeviceToken, error)
+	ListDeviceTokensForUser(ctx context.Context, userID string) ([]store.DeviceToken, error)
+	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
+	GetUser(ctx context.Context, id string) (store.User, error)
+}
+
 // DeviceManager runs the pairing handshake and issues device credentials.
 type DeviceManager struct {
-	store store.Store
+	store DeviceStore
 	now   func() time.Time
 }
 
@@ -50,7 +65,7 @@ type DevicePrincipal struct {
 }
 
 // NewDeviceManager builds a device manager. now defaults to time.Now.
-func NewDeviceManager(st store.Store, now func() time.Time) *DeviceManager {
+func NewDeviceManager(st DeviceStore, now func() time.Time) *DeviceManager {
 	if now == nil {
 		now = time.Now
 	}

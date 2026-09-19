@@ -92,6 +92,11 @@ type SSOConfig struct {
 	RedirectURL string
 }
 
+// SSOStore is the allowlist lookup needed after the provider proves identity.
+type SSOStore interface {
+	GetUserByName(ctx context.Context, name string) (store.User, error)
+}
+
 // ready reports whether every field a login needs is present. Enabled alone is not enough —
 // a half-configured provider must refuse rather than fail mid-redirect with the operator
 // wondering which field is missing.
@@ -102,7 +107,7 @@ func (c SSOConfig) ready() bool {
 // SSOService runs the OIDC authorization-code flow and lands it on §11's allowlist.
 type SSOService struct {
 	cfg   func() SSOConfig
-	store store.Store
+	store SSOStore
 	mgr   *Manager
 	now   func() time.Time
 	log   *slog.Logger
@@ -140,7 +145,7 @@ const pendingTTL = 10 * time.Minute
 
 // NewSSOService builds the service. cfg is read per call so an operator's saved change takes
 // effect on the next login with no restart.
-func NewSSOService(cfg func() SSOConfig, st store.Store, mgr *Manager, now func() time.Time, log *slog.Logger) *SSOService {
+func NewSSOService(cfg func() SSOConfig, st SSOStore, mgr *Manager, now func() time.Time, log *slog.Logger) *SSOService {
 	if now == nil {
 		now = time.Now
 	}
