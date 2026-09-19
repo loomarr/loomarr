@@ -47,7 +47,8 @@ func TestAnonymousIsRefusedOnMemberRoutes(t *testing.T) {
 // for the wrong reason: it gets a 501 from the nil-service guard and never reaches
 // authorization at all, so it would keep passing with the role check deleted.
 func TestAnonymousCannotSpendLLMTokens(t *testing.T) {
-	srv, _, fs := newSuggestServer(t)
+	harness := newProposalHarness(t)
+	srv, fs := harness.Server, harness.Suggest
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals", "", `{"description":"90s sci-fi"}`)
 	defer func() { _ = resp.Body.Close() }()
