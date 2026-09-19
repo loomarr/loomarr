@@ -369,6 +369,10 @@ type SplitProposal struct {
 	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
+	// LanguagePreference is the installation choice this finished proposal was checked against.
+	// It lets review disclose a later settings change and offer an explicit recheck rather than
+	// silently presenting an old decision as current policy.
+	LanguagePreference string `json:"languagePreference,omitempty"`
 	// LanguageExclusions accounts for confidently mismatched spans omitted before review. It is
 	// receipt data, not an admission signal: unknown and wordless spans remain in Segments.
 	LanguageExclusions []SplitLanguageExclusion `json:"languageExclusions,omitempty"`

@@ -28,6 +28,7 @@ type splitProposalDocument struct {
 	Segments           []filler.SplitSegment             `json:"segments,omitempty"`
 	Detection          *filler.SplitDetectionProgress    `json:"detection,omitempty"`
 	Language           *filler.SplitLanguageProgress     `json:"language,omitempty"`
+	LanguagePreference string                            `json:"languagePreference,omitempty"`
 	LanguageExclusions []filler.SplitLanguageExclusion   `json:"languageExclusions,omitempty"`
 	Spawned            []string                          `json:"spawned,omitempty"`
 	Source             filler.SplitSourceAsset           `json:"source,omitempty"`
@@ -56,7 +57,7 @@ func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
 	}
 	return json.Marshal(splitProposalDocument{
 		Version: 10, Segments: p.Segments, Detection: p.Detection, Language: p.Language,
-		LanguageExclusions: p.LanguageExclusions, Spawned: p.Spawned,
+		LanguagePreference: p.LanguagePreference, LanguageExclusions: p.LanguageExclusions, Spawned: p.Spawned,
 		Source: p.Source, Structure: p.Structure, StructureDecision: p.StructureDecision,
 		RoleEvidence: splitProposalRoleEvidence(p),
 	})
@@ -73,7 +74,7 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 	if err := json.Unmarshal(trimmed, &doc); err != nil {
 		return err
 	}
-	p.Segments, p.Detection, p.Language, p.LanguageExclusions, p.Spawned, p.Source, p.Structure = doc.Segments, doc.Detection, doc.Language, doc.LanguageExclusions, doc.Spawned, doc.Source, doc.Structure
+	p.Segments, p.Detection, p.Language, p.LanguagePreference, p.LanguageExclusions, p.Spawned, p.Source, p.Structure = doc.Segments, doc.Detection, doc.Language, doc.LanguagePreference, doc.LanguageExclusions, doc.Spawned, doc.Source, doc.Structure
 	p.StructureDecision = doc.StructureDecision
 	if err := attachSplitProposalRoleEvidence(p, doc.RoleEvidence); err != nil {
 		return err

@@ -3347,6 +3347,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: clipHashFor("comps/1987.mp4"), CreatedAt: now,
 		Source: source, Structure: &structure, StructureDecision: &structureDecision,
+		LanguagePreference: "en",
 		LanguageExclusions: []filler.SplitLanguageExclusion{{StartMs: 149_000, EndMs: 179_000, Name: "Polish advert", DetectedLanguage: "pl", ExpectedLanguage: "en", Reason: filler.SplitExclusionLanguageMismatch}},
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence, Language: "en", LanguageChecked: true},
@@ -3361,7 +3362,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ClipHash != p.ClipHash || got.Source != p.Source || !reflect.DeepEqual(got.Structure, p.Structure) || !reflect.DeepEqual(got.StructureDecision, p.StructureDecision) || !reflect.DeepEqual(got.LanguageExclusions, p.LanguageExclusions) || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
+	if got.ClipHash != p.ClipHash || got.Source != p.Source || !reflect.DeepEqual(got.Structure, p.Structure) || !reflect.DeepEqual(got.StructureDecision, p.StructureDecision) || got.LanguagePreference != "en" || !reflect.DeepEqual(got.LanguageExclusions, p.LanguageExclusions) || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
 		t.Fatalf("proposal round-trip = %+v", got)
 	}
 	// Every segment field survives the JSON round-trip — including the V34-specific

@@ -983,6 +983,9 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if proposal.LanguagePreference != "en" {
+		t.Fatalf("proposal language preference = %q, want en", proposal.LanguagePreference)
+	}
 	if len(proposal.LanguageExclusions) != 1 {
 		t.Fatalf("language exclusions = %+v, want one exact receipt", proposal.LanguageExclusions)
 	}
@@ -1008,7 +1011,7 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(persisted.Segments, proposal.Segments) || !reflect.DeepEqual(persisted.LanguageExclusions, proposal.LanguageExclusions) {
+	if !reflect.DeepEqual(persisted.Segments, proposal.Segments) || persisted.LanguagePreference != "en" || !reflect.DeepEqual(persisted.LanguageExclusions, proposal.LanguageExclusions) {
 		t.Fatalf("persisted proposal lost the pre-review language decision: %+v", persisted)
 	}
 }

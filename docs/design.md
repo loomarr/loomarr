@@ -9108,7 +9108,9 @@ unconfirmed suggestion.
    counted in the proposal receipt; wordless, unknown, unavailable-backend and failed-backend
    outcomes remain reviewable. The work is cursor-persisted and bounded by the existing whisper
    allowance, and a proposal is not reviewable until every span has a terminal outcome. Every
-   confident mismatch remains in the proposal receipt with its exact interval, detected and
+   finished proposal also records the installation language it used, so review can identify a
+   later preference change and offer an explicit recheck. Every confident mismatch remains in the
+   proposal receipt with its exact interval, detected and
    expected languages, name, and a stable mismatch reason; it is not placed back in the editable
    candidate list. Confirmed
    children inherit known and wordless results so the post-confirm rung does not spend twice;
