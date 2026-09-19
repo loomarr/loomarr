@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -18,44 +16,44 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// devLoginServer builds the auth stack with the dev-login gate in a chosen state, so
-// the negative and positive cases below differ ONLY by that flag (§11/§19).
-func devLoginServer(t *testing.T, devLogin bool, seed func(store.Store)) *httptest.Server {
-	return gatedServer(t, devLogin, false, seed)
+type devAccessHarnessConfig struct {
+	DevLogin bool
+	Pprof    bool
+	Seed     func(store.Store)
 }
 
-func gatedServer(t *testing.T, devLogin, pprofOn bool, seed func(store.Store)) *httptest.Server {
+// newDevAccessHarness owns the auth stack for opt-in development route gates.
+// Negative and positive cases differ only by the named gate behavior (§11/§19).
+func newDevAccessHarness(t *testing.T, config devAccessHarnessConfig) *apiHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/devlogin.db")
-	t.Cleanup(func() { _ = st.Close() })
-
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
-	mgr := auth.NewManager(st, time.Hour, time.Now)
-
-	if seed != nil {
-		seed(st)
-	}
-
-	n := 0
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:    st,
-		Auth:     api.NewSessionAuthorizer(mgr, "break-glass-token"),
-		Log:      slog.New(slog.DiscardHandler),
-		Login:    auth.NewLoginService(lib, st, mgr, nil, time.Now),
-		Sessions: mgr,
-		// Provision is what mounts /v1/setup/state — without it that route is absent
-		// and TestSetupStateReportsDevLoginFlag would decode a 404 body into a zero
-		// struct, "passing" the off case for entirely the wrong reason.
-		Provision:    auth.NewProvisioner(st, lib, func() string { n++; return "local-" + string(rune('a'+n-1)) }, time.Now),
-		CookieSecure: "false",
-		DevLogin:     devLogin,
-		Pprof:        pprofOn,
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
+		if config.Seed != nil {
+			config.Seed(defaults.Store)
+		}
+		n := 0
+		return api.Router(defaults.Log, api.Options{
+			Store:    defaults.Store,
+			Auth:     api.NewSessionAuthorizer(mgr, "break-glass-token"),
+			Log:      defaults.Log,
+			Login:    auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+			Sessions: mgr,
+			// Provision mounts /v1/setup/state so the off case cannot pass by
+			// decoding a 404 response into a zero-valued state.
+			Provision:    auth.NewProvisioner(defaults.Store, lib, func() string { n++; return "local-" + string(rune('a'+n-1)) }, time.Now),
+			CookieSecure: "false",
+			DevLogin:     config.DevLogin,
+			Pprof:        config.Pprof,
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv
+}
+
+func newDevLoginHarness(t *testing.T, devLogin bool, seed func(store.Store)) *apiHarness {
+	t.Helper()
+	return newDevAccessHarness(t, devAccessHarnessConfig{DevLogin: devLogin, Seed: seed})
 }
 
 func seedAdmin(t *testing.T, st store.Store, id, name string, role store.Role) {
@@ -71,9 +69,9 @@ func seedAdmin(t *testing.T, st store.Store, id, name string, role store.Role) {
 // whole security property of the feature; if it ever regresses, a production binary
 // grows a credential-free admin door.
 func TestDevLoginAbsentByDefault(t *testing.T) {
-	srv := devLoginServer(t, false, func(st store.Store) {
+	srv := newDevLoginHarness(t, false, func(st store.Store) {
 		seedAdmin(t, st, "u-boss", "boss", store.RoleAdmin)
-	})
+	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
 	if err != nil {
@@ -94,9 +92,9 @@ func TestDevLoginAbsentByDefault(t *testing.T) {
 // would pass vacuously — a typo'd path or a server that registered no routes at all
 // would satisfy it just as well.
 func TestDevLoginIssuesAdminSessionWhenEnabled(t *testing.T) {
-	srv := devLoginServer(t, true, func(st store.Store) {
+	srv := newDevLoginHarness(t, true, func(st store.Store) {
 		seedAdmin(t, st, "u-boss", "boss", store.RoleAdmin)
-	})
+	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
 	if err != nil {
@@ -146,10 +144,10 @@ func TestDevLoginIssuesAdminSessionWhenEnabled(t *testing.T) {
 // install with no admin row must be refused, or the bypass would quietly become a
 // provisioning path around the wizard.
 func TestDevLoginRefusesWhenNoAdminExists(t *testing.T) {
-	srv := devLoginServer(t, true, func(st store.Store) {
+	srv := newDevLoginHarness(t, true, func(st store.Store) {
 		// A member exists, but no admin.
 		seedAdmin(t, st, "u-kid", "kid", store.RoleMember)
-	})
+	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
 	if err != nil {
@@ -168,12 +166,12 @@ func TestDevLoginRefusesWhenNoAdminExists(t *testing.T) {
 // A disabled admin is not a usable identity — Login rejects one, and dev login must
 // not become the way around that.
 func TestDevLoginSkipsDisabledAdmin(t *testing.T) {
-	srv := devLoginServer(t, true, func(st store.Store) {
+	srv := newDevLoginHarness(t, true, func(st store.Store) {
 		u := store.User{ID: "u-off", Name: "off", Role: store.RoleAdmin, Disabled: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 		if err := st.UpsertUser(context.Background(), u); err != nil {
 			t.Fatal(err)
 		}
-	})
+	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
 	if err != nil {
@@ -194,9 +192,9 @@ func TestSetupStateReportsDevLoginFlag(t *testing.T) {
 		on   bool
 	}{{"off", false}, {"on", true}} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := devLoginServer(t, tc.on, func(st store.Store) {
+			srv := newDevLoginHarness(t, tc.on, func(st store.Store) {
 				seedAdmin(t, st, "u-boss", "boss", store.RoleAdmin)
-			})
+			}).Server
 			res, err := http.Get(srv.URL + "/v1/setup/state")
 			if err != nil {
 				t.Fatal(err)
@@ -225,7 +223,7 @@ func TestSetupStateReportsDevLoginFlag(t *testing.T) {
 // handlers are unauthenticated by nature and expose stack traces and memory contents, so a
 // shipped install must not serve them.
 func TestPprofAbsentByDefault(t *testing.T) {
-	srv := devLoginServer(t, false, nil)
+	srv := newDevLoginHarness(t, false, nil).Server
 
 	// Both the canonical /v1 paths and the bare aliases: the profiler moved under /v1 like the
 	// rest of the ops surface, and an install without the flag must serve NEITHER. Checking only
@@ -246,7 +244,7 @@ func TestPprofAbsentByDefault(t *testing.T) {
 }
 
 func TestPprofGoroutineLeakProfileWhenEnabled(t *testing.T) {
-	srv := gatedServer(t, false, true, nil)
+	srv := newDevAccessHarness(t, devAccessHarnessConfig{Pprof: true}).Server
 
 	for _, p := range []string{"/v1/debug/pprof/goroutineleak", "/debug/pprof/goroutineleak"} {
 		res, err := http.Get(srv.URL + p + "?debug=1")
