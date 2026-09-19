@@ -50,7 +50,6 @@ var testServerConstructors = map[string]string{
 	"pods_test.go:newPodsServer":                          "filler pods",
 	"proposaljourneys_test.go:proposalJourneyServer":      "proposal journeys",
 	"search_test.go:newConfiguredSearchHandler":           "search",
-	"sessions_test.go:newSessionsServer":                  "sessions",
 	"settings_test.go:newAutoWireServer":                  "settings connector wiring",
 	"settings_test.go:newAutoWireServerWithChannels":      "settings channel wiring",
 	"settings_test.go:newSettingsServer":                  "settings",
