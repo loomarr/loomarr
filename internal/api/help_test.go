@@ -3,9 +3,7 @@ package api_test
 import (
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"runtime"
 	"strings"
 	"testing"
@@ -25,23 +23,33 @@ func readBody(t *testing.T, resp *http.Response) string {
 	return string(b)
 }
 
-func newHelpServer(t *testing.T, ready api.ReadyFunc) *httptest.Server {
+type helpHarness struct {
+	*apiHarness
+}
+
+func newHelpHarness(t *testing.T, ready api.ReadyFunc) *helpHarness {
+	return startHelpHarness(t, ready, true)
+}
+
+func newStorelessHelpHarness(t *testing.T) *helpHarness {
+	return startHelpHarness(t, nil, false)
+}
+
+func startHelpHarness(t *testing.T, ready api.ReadyFunc, withStore bool) *helpHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/h.db")
-	t.Cleanup(func() { _ = st.Close() })
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
-		Ready: ready,
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		options := api.Options{Auth: defaults.Auth, Log: defaults.Log, Ready: ready}
+		if withStore {
+			options.Store = defaults.Store
+		}
+		return api.Router(defaults.Log, options)
+	})
+	return &helpHarness{apiHarness: base}
 }
 
 // Help ships inside the binary (§13), so it works air-gapped — no network, no CDN.
 func TestHelp_ListsEmbeddedPages(t *testing.T) {
-	srv := newHelpServer(t, nil)
+	srv := newHelpHarness(t, nil).Server
 	resp := do(t, srv, http.MethodGet, "/v1/docs", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list docs → %d, want 200", resp.StatusCode)
@@ -72,7 +80,7 @@ func TestHelp_ListsEmbeddedPages(t *testing.T) {
 // Markdown, not HTML: the FE renders it AND searches it client-side (§7.2), which needs
 // the source rather than a pre-rendered blob.
 func TestHelp_ServesMarkdownSource(t *testing.T) {
-	srv := newHelpServer(t, nil)
+	srv := newHelpHarness(t, nil).Server
 	resp := do(t, srv, http.MethodGet, "/v1/docs/troubleshooting", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get doc → %d, want 200", resp.StatusCode)
@@ -90,7 +98,7 @@ func TestHelp_ServesMarkdownSource(t *testing.T) {
 }
 
 func TestHelp_UnknownPageIs404(t *testing.T) {
-	srv := newHelpServer(t, nil)
+	srv := newHelpHarness(t, nil).Server
 	if resp := do(t, srv, http.MethodGet, "/v1/docs/nope", adminToken, ""); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown page → %d, want 404", resp.StatusCode)
 	}
@@ -99,7 +107,7 @@ func TestHelp_UnknownPageIs404(t *testing.T) {
 // Help is readable by members: it is documentation, and a member hitting a problem needs
 // it at least as much as an admin does.
 func TestHelp_VisibleToMembers(t *testing.T) {
-	srv := newHelpServer(t, nil)
+	srv := newHelpHarness(t, nil).Server
 	if resp := do(t, srv, http.MethodGet, "/v1/docs", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member list docs → %d, want 200", resp.StatusCode)
 	}
@@ -108,7 +116,7 @@ func TestHelp_VisibleToMembers(t *testing.T) {
 // The version endpoint carries readiness too, so the Settings health view has one typed
 // call instead of an untyped fetch to /readyz.
 func TestSystemVersion_ReportsVersionAndReadiness(t *testing.T) {
-	srv := newHelpServer(t, func() (bool, string) { return false, "migrations pending" })
+	srv := newHelpHarness(t, func() (bool, string) { return false, "migrations pending" }).Server
 	resp := do(t, srv, http.MethodGet, "/v1/system/version", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("version → %d, want 200", resp.StatusCode)
@@ -138,7 +146,7 @@ func TestSystemVersion_ReportsVersionAndReadiness(t *testing.T) {
 // schema version the frontend guessed would describe the frontend, which is exactly the
 // wrong answer when the two are out of step.
 func TestSystemVersion_ReportsRuntimeAndSchema(t *testing.T) {
-	srv := newHelpServer(t, nil)
+	srv := newHelpHarness(t, nil).Server
 	resp := do(t, srv, http.MethodGet, "/v1/system/version", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("version → %d, want 200", resp.StatusCode)
@@ -197,7 +205,7 @@ func TestSystemVersion_ReportsRuntimeAndSchema(t *testing.T) {
 // var cannot do.
 func TestSystemVersion_StartedAtIsPerGeneration(t *testing.T) {
 	read := func() string {
-		srv := newHelpServer(t, nil)
+		srv := newHelpHarness(t, nil).Server
 		resp := do(t, srv, http.MethodGet, "/v1/system/version", adminToken, "")
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("version → %d, want 200", resp.StatusCode)
@@ -226,11 +234,7 @@ func TestSystemVersion_StartedAtIsPerGeneration(t *testing.T) {
 // WHY the install is unhealthy. The two store-derived rows are absent rather than the whole
 // call failing.
 func TestSystemVersion_WithoutStoreOmitsSchemaRows(t *testing.T) {
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Auth: testAuthorizer{},
-		Log:  slog.New(slog.DiscardHandler),
-	}))
-	t.Cleanup(srv.Close)
+	srv := newStorelessHelpHarness(t).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/version", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -267,7 +271,7 @@ func TestSystemVersion_WithoutStoreOmitsSchemaRows(t *testing.T) {
 // Both paths are checked. `/v1/...` is canonical; the bare path is a permanent alias, because a
 // healthcheck configured in someone's compose file cannot be migrated by editing this repo.
 func TestOpsProbesStayUnauthenticated(t *testing.T) {
-	srv := newHelpServer(t, func() (bool, string) { return true, "ok" })
+	srv := newHelpHarness(t, func() (bool, string) { return true, "ok" }).Server
 	for _, path := range []string{
 		"/v1/healthz", "/v1/readyz",
 		"/healthz", "/readyz",
@@ -281,7 +285,7 @@ func TestOpsProbesStayUnauthenticated(t *testing.T) {
 // The alias must be the SAME endpoint, not merely another 200 — a probe that reports readiness
 // on one path and something else on the other is worse than having one path.
 func TestOpsProbeAliasesAgreeWithTheCanonicalPaths(t *testing.T) {
-	srv := newHelpServer(t, func() (bool, string) { return false, "no store configured" })
+	srv := newHelpHarness(t, func() (bool, string) { return false, "no store configured" }).Server
 
 	for _, pair := range [][2]string{
 		{"/v1/healthz", "/healthz"},

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,42 +18,38 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// authServer builds the full session-auth stack over a mock media server with an
-// admin and a member account.
-func authServer(t *testing.T) (*httptest.Server, store.Store, *testkit.MediaServer) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/auth.db")
-	t.Cleanup(func() { _ = st.Close() })
+// authFlowHarness owns the full session-auth stack over a mock media server
+// with imported admin and member accounts.
+type authFlowHarness struct {
+	*apiHarness
+}
 
+func newAuthFlowHarness(t *testing.T) *authFlowHarness {
+	t.Helper()
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	ms.Accounts = map[string]testkit.Account{
 		"boss": {Password: "pw", ID: "u-boss", IsAdmin: true},
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
-	mgr := auth.NewManager(st, time.Hour, time.Now)
-	loginSvc := auth.NewLoginService(lib, st, mgr, nil, time.Now)
-	userSync := auth.NewUserSync(lib, st, time.Now)
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
+		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
 
-	// §11 rework: identity is the allowlist — users must be imported before they
-	// can log in (no lazy self-provision). Seed boss (admin) + kid (member).
-	seedImported(t, st, "u-boss", "boss", store.RoleAdmin)
-	seedImported(t, st, "u-kid", "kid", store.RoleMember)
-
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:        st,
-		Auth:         api.NewSessionAuthorizer(mgr, "break-glass-token"),
-		Log:          slog.New(slog.DiscardHandler),
-		Login:        loginSvc,
-		Sessions:     mgr,
-		Passwords:    auth.NewPasswordService(st, func() string { return "u-new" }, time.Now),
-		UserSync:     userSync,
-		CookieSecure: "false",
+		return api.Router(defaults.Log, api.Options{
+			Store:        defaults.Store,
+			Auth:         api.NewSessionAuthorizer(mgr, "break-glass-token"),
+			Log:          defaults.Log,
+			Login:        auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+			Sessions:     mgr,
+			Passwords:    auth.NewPasswordService(defaults.Store, func() string { return "u-new" }, time.Now),
+			UserSync:     auth.NewUserSync(lib, defaults.Store, time.Now),
+			CookieSecure: "false",
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st, ms
+	return &authFlowHarness{apiHarness: base}
 }
 
 // seedImported allowlists a media-server user directly (§11: the store IS the
@@ -117,7 +112,7 @@ func authed(t *testing.T, method, url string, cookie *http.Cookie, body string) 
 
 // The login cookie is HttpOnly + SameSite=Strict (§11).
 func TestLoginCookieFlags(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	c := login(t, srv, "boss", "pw")
 	if !c.HttpOnly {
 		t.Error("session cookie not HttpOnly (§11)")
@@ -129,7 +124,7 @@ func TestLoginCookieFlags(t *testing.T) {
 
 // /v1/auth/me reflects the signed-in user and role.
 func TestMe(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	c := login(t, srv, "kid", "pw")
 	resp := authed(t, http.MethodGet, srv.URL+"/v1/auth/me", c, "")
 	if resp.StatusCode != http.StatusOK {
@@ -150,7 +145,7 @@ func TestMe(t *testing.T) {
 }
 
 func TestLoginFailureRedactsSubmittedPassword(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	const secret = "credential-must-not-appear"
 	body, _ := json.Marshal(map[string]string{"username": "kid", "password": secret})
 	resp, err := http.Post(srv.URL+"/v1/auth/login", "application/json", strings.NewReader(string(body)))
@@ -169,7 +164,7 @@ func TestLoginFailureRedactsSubmittedPassword(t *testing.T) {
 
 // THE GATE (§19 negative): a member is 403'd on admin routes.
 func TestMemberForbiddenOnAdminRoutes(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	member := login(t, srv, "kid", "pw")
 
 	cases := []struct{ method, path, body string }{
@@ -190,7 +185,8 @@ func TestMemberForbiddenOnAdminRoutes(t *testing.T) {
 }
 
 func TestUserContactAddressLifecycle(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	admin := login(t, srv, "boss", "pw")
 	ctx := context.Background()
 
@@ -274,7 +270,7 @@ func TestUserContactAddressLifecycle(t *testing.T) {
 }
 
 func TestContactEmailIsNotALoginIdentifier(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	admin := login(t, srv, "boss", "pw")
 	resp := authed(t, http.MethodPut, srv.URL+"/v1/users/u-kid/contact-address", admin,
 		`{"email":"kid@example.com"}`)
@@ -296,7 +292,7 @@ func TestContactEmailIsNotALoginIdentifier(t *testing.T) {
 
 // An admin passes the same routes.
 func TestAdminAllowedOnAdminRoutes(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	admin := login(t, srv, "boss", "pw")
 	resp := authed(t, http.MethodGet, srv.URL+"/v1/users", admin, "")
 	if resp.StatusCode != http.StatusOK {
@@ -311,7 +307,7 @@ func TestAdminAllowedOnAdminRoutes(t *testing.T) {
 // THE GATE (§19): disabling a user kills their session immediately — the next
 // request with the old cookie is unauthenticated.
 func TestSessionDiesOnDisable(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	admin := login(t, srv, "boss", "pw")
 	member := login(t, srv, "kid", "pw")
 
@@ -333,7 +329,7 @@ func TestSessionDiesOnDisable(t *testing.T) {
 
 // CSRF: a cookie-authenticated mutation without X-Loomarr-Csrf is rejected (§11).
 func TestCSRFRequiredForCookieMutations(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	admin := login(t, srv, "boss", "pw")
 	// POST with cookie but NO csrf header.
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/titles", strings.NewReader(`{"mediaType":"movie","tmdbId":9}`))
@@ -354,7 +350,8 @@ func TestCSRFRequiredForCookieMutations(t *testing.T) {
 // media-server users, but only the 2 seeded (imported) ones exist locally; sync
 // must leave the count at 2, not balloon it to 10.
 func TestUserSyncAdmin(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	before, _ := st.ListUsers(context.Background())
 	admin := login(t, srv, "boss", "pw")
 	contactResp := authed(t, http.MethodPut, srv.URL+"/v1/users/u-kid/contact-address", admin,
@@ -382,7 +379,7 @@ func TestUserSyncAdmin(t *testing.T) {
 
 // A member cannot trigger user sync.
 func TestUserSyncMemberForbidden(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	member := login(t, srv, "kid", "pw")
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/users/sync", member, "")
 	if resp.StatusCode != http.StatusForbidden {
@@ -392,7 +389,7 @@ func TestUserSyncMemberForbidden(t *testing.T) {
 
 // Logout revokes the session.
 func TestLogout(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	c := login(t, srv, "boss", "pw")
 	if resp := authed(t, http.MethodPost, srv.URL+"/v1/auth/logout", c, ""); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("logout → %d, want 204", resp.StatusCode)
@@ -404,7 +401,7 @@ func TestLogout(t *testing.T) {
 
 // The API_TOKEN Bearer still works as admin break-glass, and is CSRF-exempt.
 func TestBreakGlassToken(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/titles", strings.NewReader(`{"mediaType":"movie","tmdbId":77}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer break-glass-token")
@@ -437,7 +434,7 @@ func seedLocalUser(t *testing.T, st store.Store, id, name, password string, role
 // §19: a member gets 403 on both admin password routes. Creating an account and
 // resetting someone else's credential are admin actions.
 func TestMemberForbiddenOnPasswordAdminRoutes(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	member := login(t, srv, "kid", "pw")
 
 	cases := []struct{ method, path, body string }{
@@ -455,7 +452,8 @@ func TestMemberForbiddenOnPasswordAdminRoutes(t *testing.T) {
 // A member CAN change their own password — the self route is not admin-gated, and
 // must not be. It simply has no way to name a different target.
 func TestChangeOwnPassword_MemberAllowed(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedLocalUser(t, st, "u-local", "localkid", "original-pw", store.RoleMember)
 	sess := login(t, srv, "localkid", "original-pw")
 
@@ -477,7 +475,8 @@ func TestChangeOwnPassword_MemberAllowed(t *testing.T) {
 
 // The wrong current password is refused, and the stored credential is untouched.
 func TestChangeOwnPassword_WrongCurrentRejected(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedLocalUser(t, st, "u-local", "localkid", "original-pw", store.RoleMember)
 	sess := login(t, srv, "localkid", "original-pw")
 
@@ -494,7 +493,7 @@ func TestChangeOwnPassword_WrongCurrentRejected(t *testing.T) {
 // §19: an imported user may have an offline verifier, but does not own an
 // independent Loomarr password. The route must not imply it changed Emby/Jellyfin.
 func TestChangeOwnPassword_ImportedUserConflicts(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	member := login(t, srv, "kid", "pw") // imported; login captures an offline verifier
 
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/auth/password", member,
@@ -507,7 +506,7 @@ func TestChangeOwnPassword_ImportedUserConflicts(t *testing.T) {
 // An admin mints a local account, and it can sign in immediately — the install is no
 // longer stuck with the single bootstrap admin.
 func TestCreateLocalUser_AdminCanMintAnAccount(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	admin := login(t, srv, "boss", "pw")
 
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/users", admin,
@@ -523,7 +522,8 @@ func TestCreateLocalUser_AdminCanMintAnAccount(t *testing.T) {
 // Role defaults to member: minting an admin must be deliberate, never what happens
 // when a field is omitted (§11 — roles gate the actions that spend real resources).
 func TestCreateLocalUser_DefaultsToMember(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	admin := login(t, srv, "boss", "pw")
 
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/users", admin,
@@ -543,7 +543,8 @@ func TestCreateLocalUser_DefaultsToMember(t *testing.T) {
 // An admin resets a local user's password without knowing the current one — the
 // "someone forgot theirs" path — and the target's sessions die.
 func TestResetUserPassword_AdminPath(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedLocalUser(t, st, "u-local", "localkid", "original-pw", store.RoleMember)
 	admin := login(t, srv, "boss", "pw")
 	victim := login(t, srv, "localkid", "original-pw")
@@ -563,7 +564,7 @@ func TestResetUserPassword_AdminPath(t *testing.T) {
 
 // §19: resetting an imported user's password conflicts — Loomarr never held it.
 func TestResetUserPassword_ImportedUserConflicts(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 	admin := login(t, srv, "boss", "pw")
 
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/users/u-kid/password", admin,
@@ -613,7 +614,8 @@ func proposalIDs(t *testing.T, resp *http.Response) []string {
 // parameter — the design sketch read `ListProposals(status[, user])`, and a
 // client-supplied id would let any member read another's requests by editing a URL.
 func TestListProposals_MineScopesToTheCaller(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
 	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
 
@@ -633,7 +635,8 @@ func TestListProposals_MineScopesToTheCaller(t *testing.T) {
 // is global for authenticated users (§342), so this is not a leak — but it must stay
 // a DELIBERATE choice rather than something `mine` accidentally changed.
 func TestListProposals_WithoutMineIsUnscoped(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
 	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
 
@@ -648,7 +651,8 @@ func TestListProposals_WithoutMineIsUnscoped(t *testing.T) {
 // `mine` spans statuses: "what have I asked for?" includes the denied ones. The status
 // filter still applies, so each tab asks for one status at a time.
 func TestListProposals_MineHonoursTheStatusFilter(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposalFor(t, st, "p-open", "u-kid", "submitted", store.Proposal{})
 	seedProposalFor(t, st, "p-denied", "u-kid", "denied", store.Proposal{DenyReason: "over the cap"})
 
@@ -665,7 +669,8 @@ func TestListProposals_MineHonoursTheStatusFilter(t *testing.T) {
 // requests. (Submit stamps the same "" for a token-submitted proposal, so "mine" for a
 // token means "what this token submitted" — usually nothing.)
 func TestListProposals_MineOnTokenDoesNotSeeEveryone(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
 	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
 
@@ -685,7 +690,8 @@ func TestListProposals_MineOnTokenDoesNotSeeEveryone(t *testing.T) {
 // nowhere: the note an approver wrote to explain an edited request reached the database
 // and nothing could display it. This asserts the read path carries all three.
 func TestListProposals_CarriesApprovalProvenance(t *testing.T) {
-	srv, st, _ := authServer(t)
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedProposalFor(t, st, "p-edited", "u-kid", "approved", store.Proposal{
 		ApprovedBy: "u-boss",
 		ModSummary: "dropped 2, added 1",

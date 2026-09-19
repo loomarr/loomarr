@@ -32,7 +32,7 @@ func decodeProblem(t *testing.T, r io.Reader) problem {
 // (not huma's "Unauthorized" / "invalid username or password"), plus a correlation id — and
 // it must NOT reveal whether the username or the password was wrong (§11).
 func TestLoginError_IsFriendlyAndCorrelated(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 
 	body, _ := json.Marshal(map[string]string{"username": "boss", "password": "wrong"})
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/auth/login", strings.NewReader(string(body)))
@@ -73,7 +73,7 @@ func TestLoginError_IsFriendlyAndCorrelated(t *testing.T) {
 // An inbound X-Request-Id from a trusted proxy is propagated (so the id spans hops), while a
 // hostile one (control chars) is rejected and replaced — never echoed into logs/response.
 func TestRequestID_PropagatesGoodRejectsBad(t *testing.T) {
-	srv, _, _ := authServer(t)
+	srv := newAuthFlowHarness(t).Server
 
 	// A clean inbound id is honored end to end.
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/auth/me", nil)

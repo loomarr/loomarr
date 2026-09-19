@@ -45,7 +45,8 @@ func listPaths(t *testing.T, st store.Store, f store.ClipFilter) []string {
 // The bulk bar has three INDEPENDENT dropdowns. Setting only the audience must not blank the era
 // an operator (or the tagger) already established.
 func TestBulkTagFiller_OmittedFieldsAreLeftAlone(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	putClip(t, st, filler.Clip{
 		Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000,
 		Era: 1992, Audience: filler.General, Category: "cars",
@@ -83,7 +84,8 @@ func TestBulkTagFiller_OmittedFieldsAreLeftAlone(t *testing.T) {
 // ⚠ Setting an era CONFIRMS an outstanding suggestion (§10 V34). Bulk and single-clip editing
 // must agree about what confirming means, or the grounding invariant has two rules.
 func TestBulkTagFiller_SettingAnEraConfirmsTheSuggestion(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	putClip(t, st, filler.Clip{
 		Path: "guess.mp4", Name: "guess.mp4", Kind: filler.Commercial, DurationMs: 30_000,
 		Audience: filler.Kids, Category: "toys", SuggestedEra: 1988,
@@ -107,7 +109,8 @@ func TestBulkTagFiller_SettingAnEraConfirmsTheSuggestion(t *testing.T) {
 // A selection made minutes ago races a re-scan. Failing the whole batch for one stale row would
 // be worse than applying the rest, so a missing clip is counted rather than fatal.
 func TestBulkTagFiller_CountsMissingRatherThanFailing(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 
 	_, body := postBulk(t, srv.URL, "/v1/filler/bulk/tag",
@@ -121,7 +124,8 @@ func TestBulkTagFiller_CountsMissingRatherThanFailing(t *testing.T) {
 // Removing hides the clip from the catalog. The file is NOT touched — nothing in Loomarr deletes
 // an operator's media — and the row survives so a restore can put it back.
 func TestBulkRemoveFiller_HidesTheClipButKeepsTheRow(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 	putClip(t, st, filler.Clip{Path: "b.mp4", Name: "b.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 
@@ -147,7 +151,8 @@ func TestBulkRemoveFiller_HidesTheClipButKeepsTheRow(t *testing.T) {
 // file still on disk and upserts it. If the tombstone rode along in that upsert it would reset to
 // zero and the clip would silently reappear — the operator's removal quietly undone.
 func TestBulkRemoveFiller_SurvivesAReScan(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	ctx := context.Background()
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["`+clipHashFor("a.mp4")+`"]}`, adminToken)
@@ -171,7 +176,8 @@ func TestBulkRemoveFiller_SurvivesAReScan(t *testing.T) {
 
 // Restore is the same write with the zero time, so undo cannot drift from removal.
 func TestBulkRemoveFiller_RestorePutsItBack(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["`+clipHashFor("a.mp4")+`"]}`, adminToken)
 	if got := listPaths(t, st, store.ClipFilter{}); len(got) != 0 {
@@ -188,7 +194,8 @@ func TestBulkRemoveFiller_RestorePutsItBack(t *testing.T) {
 
 // §19 negatives: both routes edit the catalog.
 func TestFillerBulkRoutes_RequireAdmin(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 
 	for _, path := range []string{"/v1/filler/bulk/tag", "/v1/filler/bulk/remove"} {

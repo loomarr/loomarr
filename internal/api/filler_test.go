@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
@@ -302,52 +300,91 @@ func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments
 	return nil
 }
 
-func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
-	return newFillerServerWithImages(t, nil)
+type fillerHarness struct {
+	*apiHarness
+	Filler *fakeFiller
 }
 
-func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, store.Store, *fakeFiller) {
-	return newFillerServerWithConfig(t, imageService, nil)
+type fillerHarnessLocation struct {
+	Country string
+	Market  string
 }
 
-func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, store.Store, *fakeFiller) {
-	return newFillerServerWithRuntimeConfig(t, imageService, liveConfig, nil, nil)
+type fillerHarnessIncoming struct {
+	ReadyWindow time.Duration
+	Now         time.Time
 }
 
-func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, store.Store, *fakeFiller) {
-	return newFillerServerWithRuntimeConfig(t, nil, nil, func(key string) time.Duration {
-		if key != "filler.incoming.ready_window" {
-			t.Fatalf("unexpected duration setting %q", key)
-		}
-		return readyWindow
-	}, func() time.Time { return now })
+type fillerHarnessOptions struct {
+	Images   api.ImageService
+	Location *fillerHarnessLocation
+	Incoming *fillerHarnessIncoming
 }
 
-func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string, liveConfigDuration func(string) time.Duration, now func() time.Time) (*httptest.Server, store.Store, *fakeFiller) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/f.db")
-	t.Cleanup(func() { _ = st.Close() })
-	ff := &fakeFiller{
-		FillerAcquisitionPlanner: testkit.FillerAcquisitionPlanner{Store: st},
-		fetchResult:              filler.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
-	}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		// ⚠ `testAuthorizer`, not `NewTokenAuthorizer(adminToken)`. The production authorizer
-		// resolves admin-or-ANONYMOUS only (API_TOKEN is a break-glass admin credential, §11), so
-		// with it a test that passes `memberToken` is really testing an anonymous caller — which
-		// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
-		// is member-readable and that has to be provable.
-		Auth:               testAuthorizer{},
-		Log:                slog.New(slog.DiscardHandler),
-		Filler:             ff,
-		Images:             imageService,
-		LiveConfig:         liveConfig,
-		LiveConfigDuration: liveConfigDuration,
-		Now:                now,
+func newFillerHarness(t *testing.T) *fillerHarness {
+	return startFillerHarness(t, fillerHarnessOptions{})
+}
+
+func newFillerImageHarness(t *testing.T, imageService api.ImageService) *fillerHarness {
+	return startFillerHarness(t, fillerHarnessOptions{Images: imageService})
+}
+
+func newFillerLocationHarness(t *testing.T, homeCountry, homeMarket string) *fillerHarness {
+	return startFillerHarness(t, fillerHarnessOptions{
+		Location: &fillerHarnessLocation{Country: homeCountry, Market: homeMarket},
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
+}
+
+func newFillerIncomingHarness(t *testing.T, readyWindow time.Duration, now time.Time) *fillerHarness {
+	return startFillerHarness(t, fillerHarnessOptions{
+		Incoming: &fillerHarnessIncoming{ReadyWindow: readyWindow, Now: now},
+	})
+}
+
+func startFillerHarness(t *testing.T, options fillerHarnessOptions) *fillerHarness {
+	t.Helper()
+	var ff *fakeFiller
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		ff = &fakeFiller{
+			FillerAcquisitionPlanner: testkit.FillerAcquisitionPlanner{Store: defaults.Store},
+			fetchResult:              filler.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
+		}
+		var liveConfig func(string) string
+		if options.Location != nil {
+			liveConfig = func(key string) string {
+				return map[string]string{
+					"filler.home_country": options.Location.Country,
+					"filler.home_market":  options.Location.Market,
+				}[key]
+			}
+		}
+		var liveConfigDuration func(string) time.Duration
+		var now func() time.Time
+		if options.Incoming != nil {
+			liveConfigDuration = func(key string) time.Duration {
+				if key != "filler.incoming.ready_window" {
+					t.Fatalf("unexpected duration setting %q", key)
+				}
+				return options.Incoming.ReadyWindow
+			}
+			now = func() time.Time { return options.Incoming.Now }
+		}
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store,
+			// ⚠ `testAuthorizer`, not `NewTokenAuthorizer(adminToken)`. The production authorizer
+			// resolves admin-or-ANONYMOUS only (API_TOKEN is a break-glass admin credential, §11), so
+			// with it a test that passes `memberToken` is really testing an anonymous caller — which
+			// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
+			// is member-readable and that has to be provable.
+			Auth:               defaults.Auth,
+			Log:                defaults.Log,
+			Filler:             ff,
+			Images:             options.Images,
+			LiveConfig:         liveConfig,
+			LiveConfigDuration: liveConfigDuration,
+			Now:                now,
+		})
+	})
 	// ⚠ **Start with an EMPTY source registry, deliberately.** Migration 00034 seeds four default
 	// sources so a real install can fetch on day one — correct there, and fatal to every assertion
 	// here phrased as an absolute ("want 1", "registered sources = 1", "unconfigured"). Eleven
@@ -357,8 +394,8 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageServic
 	// them honest when the seeded set changes again — which it will. The seeding itself is not
 	// untested: `TestMigrations_SeedDefaultSources` owns exactly that, and is the ONLY test that
 	// should ever depend on what 00034 inserts.
-	clearSeededSources(t, st)
-	return srv, st, ff
+	clearSeededSources(t, base.Store)
+	return &fillerHarness{apiHarness: base, Filler: ff}
 }
 
 // The catalog's still and hover loop are both public image-service records. The animated bit and
@@ -374,7 +411,8 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		Hash: "hover-art", Role: images.RoleThumb, Width: 320, Height: 180, Animated: true,
 		Visibility: images.VisibilityMember,
 	}
-	srv, st, _ := newFillerServerWithImages(t, imageService)
+	harness := newFillerImageHarness(t, imageService)
+	srv, st := harness.Server, harness.Store
 	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
 		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Kind: filler.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "still-art", HoverImageHash: "hover-art",
@@ -439,7 +477,8 @@ func seedClip(t *testing.T, st store.Store, id string, kind filler.Kind, era int
 }
 
 func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "c1", filler.Commercial, 1992, filler.Kids, "cereal")
 	seedClip(t, st, "c2", filler.Commercial, 1994, filler.Kids, "toys")
 	seedClip(t, st, "b1", filler.Bumper, 1992, filler.General, "")
@@ -466,7 +505,8 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 }
 
 func TestListFiller_TaxonFilterIncludesDescendantMatches(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "cereal-ad", filler.Commercial, 1992, filler.Kids, "")
 	seedClip(t, st, "beer-ad", filler.Commercial, 1994, filler.General, "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
@@ -493,7 +533,8 @@ func TestListFiller_TaxonFilterIncludesDescendantMatches(t *testing.T) {
 }
 
 func TestListFiller_UnclassifiedMeansNoTaxonomyRows(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "classified-bumper", filler.Bumper, 0, "", "")
 	seedClip(t, st, "unclassified-bumper", filler.Bumper, 0, "", "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
@@ -516,7 +557,8 @@ func TestListFiller_UnclassifiedMeansNoTaxonomyRows(t *testing.T) {
 }
 
 func TestListFiller_WithoutAxisIgnoresTagsOnOtherAxes(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "format-only", filler.Bumper, 0, "", "")
 	seedClip(t, st, "product-and-format", filler.Commercial, 0, "", "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
@@ -543,7 +585,8 @@ func TestListFiller_WithoutAxisIgnoresTagsOnOtherAxes(t *testing.T) {
 }
 
 func TestPatchClip_RequiresAdmin(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", "", `{"hash":"u1","era":1994,"audience":"kids","tags":["cereal"]}`)
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -552,7 +595,8 @@ func TestPatchClip_RequiresAdmin(t *testing.T) {
 }
 
 func TestPatchClip_AdminEditsTags(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
 	// §10 V45a: the PATCH carries a taxonomy TAG SET, not a flat category. `cereal` is a product leaf
 	// in the seeded forest, so it grounds; `category` in the response is the DERIVED product-leaf shadow.
@@ -631,7 +675,8 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 }
 
 func TestPatchClip_AdminGroundsGeography(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "geo", filler.Commercial, 1994, "kids", "cereal")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
 		`{"hash":"geo","era":1994,"audience":"kids","geography":{"scope":"local","country":"us","market":" New York ","network":"Fox","station":"WNYW","airDate":"1994-05-06"}}`)
@@ -673,7 +718,8 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 }
 
 func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedClip(t, st, "stuck", filler.Commercial, 0, "", "")
 
 	member := do(t, srv, http.MethodPost, "/v1/filler/rewind", memberToken, `{"hash":"stuck","from":"vision"}`)
@@ -695,7 +741,8 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 }
 
 func TestRetryFillerFailures_IsAdminOnlyBoundedAndServerSelected(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	member := do(t, srv, http.MethodPost, "/v1/filler/retry", memberToken, `{"hashes":["failed"]}`)
 	if member.StatusCode != http.StatusForbidden {
 		t.Fatalf("member retry → %d, want 403", member.StatusCode)
@@ -738,7 +785,8 @@ func TestRetryFillerFailures_IsAdminOnlyBoundedAndServerSelected(t *testing.T) {
 // Era suggestions (§10, V34): the list surfaces an unconfirmed suggestion, and
 // PATCHing era CONFIRMS it — the suggestion clears in the same write.
 func TestPatchClip_ConfirmsEraSuggestion(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
 	if err := st.SetClipTags(context.Background(), "u1", []string{"cereal"}); err != nil {
 		t.Fatal(err)
@@ -775,7 +823,8 @@ func TestPatchClip_ConfirmsEraSuggestion(t *testing.T) {
 }
 
 func TestSyncFiller_AdminOnly(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	// Member → 403.
 	if resp := do(t, srv, http.MethodPost, "/v1/filler/sync", "", ""); resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member sync → %d, want 401", resp.StatusCode)
@@ -799,7 +848,8 @@ func TestSyncFiller_AdminOnly(t *testing.T) {
 // title, so it cannot be a federated Candidate without pushing a non-title through the
 // LLM grounding path — the leak §10 exists to prevent.
 func TestFiller_NameSearch(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "c1", filler.Commercial, 1992, filler.Kids, "cereal")
 	seedClip(t, st, "c2", filler.Commercial, 1994, filler.Kids, "toys")
 
@@ -827,7 +877,8 @@ func TestFiller_NameSearch(t *testing.T) {
 // commercial often enough to matter, and kind drives pod ROLE, so a wrong kind produces
 // structurally wrong pods rather than merely a mis-tagged clip.
 func TestFiller_PatchCorrectsKind(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "t1", filler.Commercial, 1994, filler.Kids, "toys")
 
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
@@ -869,7 +920,8 @@ func TestFiller_PatchCorrectsKind(t *testing.T) {
 // Ingest is admin-only, returns a job id rather than blocking, and reports the
 // image-variant gate as something a setting cannot fix.
 func TestFiller_Ingest(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	// §19 negative: downloading arbitrary URLs onto the host is admin-only.
 	if resp := do(t, srv, http.MethodPost, "/v1/filler/ingest", "", `{"urls":["https://archive.org/details/x"]}`); resp.StatusCode != http.StatusUnauthorized {
@@ -899,7 +951,8 @@ func TestFiller_Ingest(t *testing.T) {
 // that item's URL as another recurring source. The route derives provider policy from the parent
 // source and preserves the provider's stable item id for deduplication and provenance.
 func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	source := store.NewFillerSource(
 		"archive:classic",
 		"archive",
@@ -958,7 +1011,8 @@ func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
 // On loomarr:latest the gate is NOT a configuration problem, and the error must not
 // send the operator to a Settings page that cannot help them.
 func TestFiller_IngestUnavailableOnDefaultImage(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.unavailable = true
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/ingest", adminToken, `{"urls":["https://youtube.com/playlist?list=x"]}`)
@@ -1015,7 +1069,8 @@ func decodeDiscover(t *testing.T, resp *http.Response) struct {
 }
 
 func TestDiscoverFiller_ReturnsCandidatesWithTheSourcesTotal(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=1980s+cereal+commercial", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -1042,7 +1097,8 @@ func TestDiscoverFiller_ReturnsCandidatesWithTheSourcesTotal(t *testing.T) {
 }
 
 func TestDiscoverFiller_ProviderPauseBlocksSearch(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	if err := st.SetFillerProviderEnabled(t.Context(), "archive", false); err != nil {
 		t.Fatal(err)
 	}
@@ -1065,7 +1121,8 @@ func TestDiscoverFiller_ProviderPauseBlocksSearch(t *testing.T) {
 // licence on ~8% of items and yt-dlp on none, so a per-result chip would read "unknown" on
 // nearly every row — implying a per-item check that never happened (build plan §6.3).
 func TestDiscoverFiller_StatesTheLicenceCaveatOnceNotPerItem(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 
 	body := decodeDiscover(t, do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", adminToken, ""))
 	if body.LicenceNote == "" {
@@ -1082,7 +1139,8 @@ func TestDiscoverFiller_StatesTheLicenceCaveatOnceNotPerItem(t *testing.T) {
 // An item with no year is the common case (Solr omits the field), and it must round-trip as
 // absent rather than as the year 0.
 func TestDiscoverFiller_OmitsAnUnknownYear(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", adminToken, "")
 	raw, err := io.ReadAll(resp.Body)
@@ -1097,7 +1155,8 @@ func TestDiscoverFiller_OmitsAnUnknownYear(t *testing.T) {
 // Upstream failures are archive.org's, not the caller's: a 502-shaped problem that names which
 // side broke rather than blaming the query.
 func TestDiscoverFiller_UpstreamFailureIsABadGateway(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.discoverErr = errors.New("dial tcp: connection refused")
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", adminToken, "")
@@ -1122,7 +1181,8 @@ func decodeDiscoverStats(t *testing.T, resp *http.Response) map[string]api.Disco
 // The route exists because a SEARCH cannot afford these fields: one upstream call per row,
 // measured at 22.6s for a page of 25. The handler must ask for exactly what it was sent.
 func TestDiscoverFillerStats_AsksForExactlyTheIdsRequested(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	// ⚠ REPEATED params, not `?id=a,b`. This test used to hand-write the comma form and pass,
 	// while the generated client sent the repeated form and had one id bound — the two sides
@@ -1145,7 +1205,8 @@ func TestDiscoverFillerStats_AsksForExactlyTheIdsRequested(t *testing.T) {
 // present-with-zeros: 0 renders as "0:00", which claims the clip is empty, and "unknown" is the
 // only honest answer. The fake withholds `unprobed` precisely so this can be asserted.
 func TestDiscoverFillerStats_OmitsWhatItCouldNotLearnRatherThanZeroingIt(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 
 	stats := decodeDiscoverStats(t,
 		do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=known&id=unprobed", adminToken, ""))
@@ -1160,7 +1221,8 @@ func TestDiscoverFillerStats_OmitsWhatItCouldNotLearnRatherThanZeroingIt(t *test
 }
 
 func TestDiscoverFillerStats_UpstreamFailureIsABadGateway(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 	ff.enrichErr = errors.New("dial tcp: connection refused")
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=a", adminToken, "")
@@ -1172,7 +1234,8 @@ func TestDiscoverFillerStats_UpstreamFailureIsABadGateway(t *testing.T) {
 // ⚠ The cap is a real defence, not tidiness: each id is one outbound request, so an uncapped
 // list is a way to make Loomarr hammer archive.org on someone else's behalf.
 func TestDiscoverFillerStats_CapsTheIdList(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	ids := make([]string, 40)
 	for i := range ids {
@@ -1193,7 +1256,8 @@ func TestDiscoverFillerStats_CapsTheIdList(t *testing.T) {
 }
 
 func TestDiscoverFillerStats_IsAdminOnly(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 
 	if resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=a", memberToken, ""); resp.StatusCode == http.StatusOK {
 		t.Error("a member could spend upstream requests")
@@ -1202,7 +1266,8 @@ func TestDiscoverFillerStats_IsAdminOnly(t *testing.T) {
 
 // Admin-only: it names an outbound integration and feeds the ingest path.
 func TestDiscoverFiller_IsAdminOnly(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 
 	if resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", memberToken, ""); resp.StatusCode == http.StatusOK {
 		t.Error("a member could search for clips to add")
@@ -1212,7 +1277,8 @@ func TestDiscoverFiller_IsAdminOnly(t *testing.T) {
 // An empty query would return archive.org's whole movies corpus ranked by nothing — refused at
 // the schema, so the request never reaches the service.
 func TestDiscoverFiller_RequiresAQuery(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler/discover", adminToken, "")
 	if resp.StatusCode == http.StatusOK {
@@ -1229,7 +1295,8 @@ func TestDiscoverFiller_RequiresAQuery(t *testing.T) {
 // modes are separately recorded on the fake, so a handler that routed a collection into
 // Search would fail here rather than pass on a shared call log.
 func TestDiscoverFiller_ListsACollectionWithoutSearching(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?collection=classic_tv_commercials", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -1260,7 +1327,8 @@ func TestDiscoverFiller_ListsACollectionWithoutSearching(t *testing.T) {
 // ⚠ A keyword search must NOT be answered by the collection lister. The mirror of the test
 // above — together they pin that each mode reaches exactly one method.
 func TestDiscoverFiller_SearchDoesNotListACollection(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", adminToken, "")
 	if len(ff.collections) != 0 {
@@ -1271,7 +1339,8 @@ func TestDiscoverFiller_SearchDoesNotListACollection(t *testing.T) {
 // Supplying both modes means search WITHIN the named collection. This is the request made by a
 // Sources-row search; treating q as global would make the row label a lie.
 func TestDiscoverFiller_SearchesWithinACollection(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal&collection=classic_tv_commercials", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -1293,7 +1362,8 @@ func TestDiscoverFiller_SearchesWithinACollection(t *testing.T) {
 // The propose route is admin-only (it writes a job against the catalog), 404s a
 // missing clip synchronously, and 409s when there is no drop-folder to cut into.
 func TestSplitFiller_Route(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	// Member negative (§19): a member must not start detection. §10 V45a: the clip path is in the BODY.
 	resp := do(t, srv, http.MethodPost, "/v1/filler/split", "", `{"hash":"comps/1987.mp4"}`)
@@ -1334,7 +1404,8 @@ func TestSplitFiller_Route(t *testing.T) {
 
 // The proposal read comes straight from the store — the review's reconnect truth.
 func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{
@@ -1382,7 +1453,8 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 }
 
 func TestGetFillerSplitOperation_RecoversTerminalResultWithoutEvents(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	now := time.Now().UTC()
 	operation := store.InteractiveOperation{
 		ID: "split-job-1", Kind: store.InteractiveOperationFillerSplit, Subject: "clip-hash",
@@ -1422,7 +1494,8 @@ func TestGetFillerSplitOperation_RecoversTerminalResultWithoutEvents(t *testing.
 // Confirm maps the splitter's sentinels: 422 for a rejected edit, 404 for a
 // missing proposal — and reports how many clips it wrote.
 func TestConfirmFillerSplit_Route(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, ff := harness.Server, harness.Filler
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/splits/sp_1/confirm", adminToken,
 		`{"segments":[{"index":0,"startMs":0,"endMs":30000,"name":"a"},{"index":1,"startMs":30000,"endMs":60000,"name":"b"}]}`)
@@ -1466,7 +1539,8 @@ func TestConfirmFillerSplit_Route(t *testing.T) {
 // silently truncates to 100 clips with no error and no log line. Asserting it at the HTTP edge is
 // what keeps the two layers honest about which one owns the number.
 func TestListFiller_DefaultsToOnePageAndReportsTheTotal(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	for i := range 120 {
 		seedClip(t, st, fmt.Sprintf("p%03d", i), filler.Commercial, 1992, filler.Kids, "cereal")
 	}
@@ -1499,7 +1573,8 @@ func TestListFiller_DefaultsToOnePageAndReportsTheTotal(t *testing.T) {
 // The cap and the floor are both real. ⚠ The floor matters as much: `limit=0` would otherwise
 // reach the store's "unbounded" sentinel and restore the exact behaviour paging removed.
 func TestListFiller_RejectsUnboundedAndOversizedPages(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	for _, q := range []string{"limit=0", "limit=501", "limit=-1", "sort=path", "order=sideways"} {
 		resp := do(t, srv, http.MethodGet, "/v1/filler?"+q, adminToken, "")
 		if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -1513,7 +1588,8 @@ func TestListFiller_RejectsUnboundedAndOversizedPages(t *testing.T) {
 // pair is the point: a client that can ASK for held clips but cannot TELL which they are renders
 // an unreviewed clip identically to a filed one.
 func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedClip(t, st, "filed", filler.Commercial, 1992, filler.Kids, "cereal")
 	seedClip(t, st, "waiting", filler.Commercial, 1992, filler.Kids, "cereal")
 	if _, err := st.HoldClips(context.Background(), []string{"waiting"}, time.Now()); err != nil {
@@ -1554,7 +1630,8 @@ func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
 
 // The batch read the pin/exclude editor uses instead of loading the catalog (§10 V51d).
 func TestListFiller_HashesResolvesExactlyThoseClips(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	for _, id := range []string{"k1", "k2", "k3"} {
 		seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "cereal")
 	}

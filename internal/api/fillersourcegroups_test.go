@@ -61,7 +61,8 @@ func indexOf(rows []api.FillerSourceDTO, id string) int {
 // shape by hiding rows whose parent is collapsed. If the ordering breaks, the UI interleaves one
 // provider's collections under another's header with nothing failing.
 func TestSourceGroups_ChildrenFollowTheirGroupInOrder(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	addArchive(t, st, "classic", "Classic TV", time.Time{})
 	addArchive(t, st, "vhs", "VHS Vault", time.Time{})
 
@@ -102,7 +103,8 @@ func rowID(rows []api.FillerSourceDTO, i int) string {
 // extracted: an empty provider is an INVITATION, a malformed remote is a FAULT, and the tab
 // renders them differently.
 func TestSourceGroups_EmptyProviderIsStillEmittedAsAnInvitation(t *testing.T) {
-	srv, _, _ := newFillerServer(t) // no sources at all
+	harness := newFillerHarness(t) // no sources at all
+	srv := harness.Server
 	rows := sourcesFrom(t, srv)
 
 	for _, id := range []string{"provider:archive", "provider:youtube"} {
@@ -121,7 +123,8 @@ func TestSourceGroups_EmptyProviderIsStillEmittedAsAnInvitation(t *testing.T) {
 
 // A provider switch pauses every child without rewriting the child's remembered choice.
 func TestSourceGroups_ProviderSwitchPausesAndRestoresChildren(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	addArchive(t, st, "classic", "Classic TV", time.Time{})
 	addArchive(t, st, "vhs", "VHS Vault", time.Time{})
 	if err := st.SetFillerSourceEnabled(context.Background(), "vhs", false); err != nil {
@@ -168,7 +171,8 @@ func TestSourceGroups_ProviderSwitchPausesAndRestoresChildren(t *testing.T) {
 }
 
 func TestSourceGroups_ProviderSwitchIsAdminOnly(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv := harness.Server
 	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/providers/archive", `{"enabled":false}`, memberToken)
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("member PATCH provider → %d, want 403", res.StatusCode)
@@ -182,7 +186,8 @@ func TestSourceGroups_ProviderSwitchIsAdminOnly(t *testing.T) {
 // Nothing records which SOURCE a downloaded clip came from today, so children legitimately report
 // 0 — and the group must report 0 too, rather than a plausible-looking total.
 func TestSourceGroups_RollsUpCountLastFetchedAndEnabled(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	older := time.Unix(1_700_000_000, 0).UTC()
 	newer := time.Unix(1_800_000_000, 0).UTC()
 	addArchive(t, st, "classic", "Classic TV", older)
@@ -215,7 +220,8 @@ func TestSourceGroups_RollsUpCountLastFetchedAndEnabled(t *testing.T) {
 // ⚠ **A group id is not addressable for writes.** One PREFIX guard covers every provider that
 // exists now and every one added later — a case-per-provider is a list that drifts.
 func TestSourceGroups_WritesToAGroupAreRefused(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	addArchive(t, st, "classic", "Classic TV", time.Time{})
 
 	for _, tc := range []struct {
@@ -242,7 +248,8 @@ func TestSourceGroups_WritesToAGroupAreRefused(t *testing.T) {
 // than a peer. It was always shaped like a provider root — no URI, nothing to fetch — and rendered
 // as a row with a blank target; V51c is what makes skipping it correct rather than a loss.
 func TestSourceGroups_SeededBlankProviderRowIsNotAPeer(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	blank := store.NewFillerSource("yt-seed", "youtube", "", "", time.Unix(1_700_000_000, 0).UTC())
 	if err := st.UpsertFillerSource(context.Background(), blank); err != nil {
 		t.Fatal(err)
@@ -265,7 +272,8 @@ func TestSourceGroups_SeededBlankProviderRowIsNotAPeer(t *testing.T) {
 // offers many targets; two watched folders are unrelated directories with no service in common, so
 // a "Folders" container would be a row that dims and changes nothing — §10's forbidden shape.
 func TestSourceGroups_FoldersDoNotRollUp(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st := harness.Server, harness.Store
 	extra := store.NewFillerSource("extra", "folder", "/mnt/more-ads", "More ads", time.Unix(1_700_000_000, 0).UTC())
 	if err := st.UpsertFillerSource(context.Background(), extra); err != nil {
 		t.Fatal(err)

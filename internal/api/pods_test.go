@@ -3,9 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -85,30 +83,35 @@ func (f *fakePods) Pool(context.Context) (filler.PoolReport, error) {
 	return f.pool, f.err
 }
 
-func newPodsServer(t *testing.T) (*httptest.Server, store.Store, *fakePods) {
+type podsHarness struct {
+	*apiHarness
+	Pods *fakePods
+}
+
+func newPodsHarness(t *testing.T) *podsHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/p.db")
-	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	fp := &fakePods{}
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store,
+			Auth:  defaults.Auth,
+			Log:   defaults.Log,
+			Pods:  fp,
+		})
+	})
+	if _, err := base.Store.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Cartoons", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	fp := &fakePods{}
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
-		Pods:  fp,
-	}))
-	t.Cleanup(srv.Close)
-	return srv, st, fp
+	return &podsHarness{apiHarness: base, Pods: fp}
 }
 
 // The preview renders the assembled pool, including the match level — the answer to
 // "why are my commercials wrong" (§10 fallback ladder).
 func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.pod = filler.Pod{
 		Entries: []filler.PodEntry{
 			{TunarrProgramID: "p1", Name: "Bumper", Kind: filler.Bumper, DurationMs: 5000},
@@ -161,7 +164,8 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 // carry [] rather than null so the FE renders an empty state instead of guarding a case
 // that never means failure.
 func TestPreviewPods_EmptyCatalogIsEmptyArray(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.pod = filler.Pod{}
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/pods", adminToken, "")
@@ -180,14 +184,16 @@ func TestPreviewPods_EmptyCatalogIsEmptyArray(t *testing.T) {
 // Preview is a READ. §12 puts it on the Filler view for anyone diagnosing a channel, and
 // it exposes nothing an authenticated user cannot already see via /v1/filler.
 func TestPreviewPods_VisibleToAnyAuthenticatedUser(t *testing.T) {
-	srv, _, _ := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv := harness.Server
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/pods", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member preview → %d, want 200 (preview is read-only)", resp.StatusCode)
 	}
 }
 
 func TestPreviewPods_UnknownChannelIs404(t *testing.T) {
-	srv, _, _ := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv := harness.Server
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/nope/pods", adminToken, ""); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown channel → %d, want 404", resp.StatusCode)
 	}
@@ -198,7 +204,8 @@ func TestPreviewPods_UnknownChannelIs404(t *testing.T) {
 // The draft preview assembles a proposed (unsaved) selection and passes it through to the
 // adapter, so the channel page can show exactly what a filler change would air before Apply.
 func TestPreviewDraftPods_AssemblesTheDraftSelection(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.pod = filler.Pod{Entries: []filler.PodEntry{
 		{TunarrProgramID: "p1", Name: "Pinned Ad", Kind: filler.Commercial, DurationMs: 30000},
 	}, TotalMs: 30000, MatchLevel: filler.MatchExact}
@@ -221,7 +228,8 @@ func TestPreviewDraftPods_AssemblesTheDraftSelection(t *testing.T) {
 }
 
 func TestPreviewDraftPods_PassesBreakDurationToAssembler(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken,
 		`{"filler":{},"breakDuration":"90s"}`)
 	if resp.StatusCode != http.StatusOK {
@@ -233,7 +241,8 @@ func TestPreviewDraftPods_PassesBreakDurationToAssembler(t *testing.T) {
 }
 
 func TestPreviewDraftPods_RejectsTooShortBreakDuration(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken,
 		`{"filler":{},"breakDuration":"10s"}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -250,7 +259,8 @@ func TestPreviewDraftPods_RejectsTooShortBreakDuration(t *testing.T) {
 // screen saying they disagreed. Asserting the two adapter calls received the SAME selection is
 // what makes that unrepresentable, rather than asserting a number the handler could compute twice.
 func TestPreviewDraftPods_MeterAndPodDescribeTheSameSelection(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.coverage = filler.CoverageReport{
 		Level: filler.MatchAudience,
 		Total: 7,
@@ -304,7 +314,8 @@ func TestPreviewDraftPods_MeterAndPodDescribeTheSameSelection(t *testing.T) {
 }
 
 func TestPreviewDraftPods_PreservesDisjointEraWindows(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken,
 		`{"filler":{"eraWindows":[{"from":1970,"to":1979},{"from":1990,"to":1999}]}}`)
 	if resp.StatusCode != http.StatusOK {
@@ -322,7 +333,8 @@ func TestPreviewDraftPods_PreservesDisjointEraWindows(t *testing.T) {
 // The draft preview is an authoring tool (it precedes an Apply that writes policy), so it
 // is admin-only — a member gets 403, not a sandbox.
 func TestPreviewDraftPods_RequiresAdmin(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", "", `{"filler":{}}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("member draft preview → %d, want 401", resp.StatusCode)
@@ -340,7 +352,8 @@ func TestPreviewDraftPods_InvalidSelection422(t *testing.T) {
 		`{"filler":{"eraWindows":[]}}`,
 		`{"filler":{"era":{"from":0,"to":0},"eraWindows":[{"from":1990,"to":1999}]}}`,
 	} {
-		srv, _, fp := newPodsServer(t)
+		harness := newPodsHarness(t)
+		srv, fp := harness.Server, harness.Pods
 		resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken, body)
 		if resp.StatusCode != http.StatusUnprocessableEntity {
 			t.Errorf("invalid draft %s → %d, want 422", body, resp.StatusCode)
@@ -352,7 +365,8 @@ func TestPreviewDraftPods_InvalidSelection422(t *testing.T) {
 }
 
 func TestPreviewDraftPods_UnknownChannelIs404(t *testing.T) {
-	srv, _, _ := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv := harness.Server
 	resp := do(t, srv, http.MethodPost, "/v1/channels/nope/pods/preview", adminToken, `{"filler":{}}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown channel draft → %d, want 404", resp.StatusCode)
@@ -364,7 +378,8 @@ func TestPreviewDraftPods_UnknownChannelIs404(t *testing.T) {
 // for a channel called "now-next" — pinned because it is the kind of routing bug that
 // only shows up in the browser.
 func TestPreviewPods_DoesNotShadowNowNext(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	resp := do(t, srv, http.MethodGet, "/v1/channels/now-next", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("now-next → %d, want 200", resp.StatusCode)
@@ -389,7 +404,8 @@ func decodeFit(t *testing.T, resp *http.Response) []api.ChannelFitDTO {
 
 // The route resolves the clip in the URL, and answers per channel.
 func TestClipFit_AnswersForEveryChannel(t *testing.T) {
-	srv, st, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, st, fp := harness.Server, harness.Store, harness.Pods
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-2", Name: "Late Night", Number: 7, Status: "live"},
 	}); err != nil {
@@ -433,7 +449,8 @@ func TestClipFit_AnswersForEveryChannel(t *testing.T) {
 // ⚠ Rows come out in the STORE's order (number-sorted), never Go's randomised map order — a
 // picker whose rows shuffle on every render is unusable.
 func TestClipFit_RowsAreOrderedNotShuffled(t *testing.T) {
-	srv, st, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, st, fp := harness.Server, harness.Store, harness.Pods
 	for _, ch := range []struct {
 		id  string
 		num int
@@ -475,7 +492,8 @@ func TestClipFit_RowsAreOrderedNotShuffled(t *testing.T) {
 // resolves it (excluded wins), and normalising here would show a state the database does not
 // hold, so an operator un-ticking "excluded" would see a pin they never made.
 func TestClipFit_ReportsPinAndExcludeAsStored(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.fits = map[string]filler.Fit{
 		"ch-1": {Level: filler.MatchBumperCard, Reason: filler.FitExcluded, Pinned: true, Excluded: true},
 	}
@@ -493,7 +511,8 @@ func TestClipFit_ReportsPinAndExcludeAsStored(t *testing.T) {
 }
 
 func TestClipFit_UnknownClipIs404(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.err = store.ErrNotFound
 
 	if resp := do(t, srv, http.MethodGet, "/v1/filler/fit?clip=gone.mp4", adminToken, ""); resp.StatusCode != http.StatusNotFound {
@@ -504,7 +523,8 @@ func TestClipFit_UnknownClipIs404(t *testing.T) {
 // Read-only, so a member may call it — the same posture as the coverage meter. A member sees
 // which channels a clip serves; they cannot change it (the write is admin-only).
 func TestClipFit_IsReadableByAMember(t *testing.T) {
-	srv, _, fp := newPodsServer(t)
+	harness := newPodsHarness(t)
+	srv, fp := harness.Server, harness.Pods
 	fp.fits = map[string]filler.Fit{"ch-1": {Level: filler.MatchExact}}
 
 	if resp := do(t, srv, http.MethodGet, "/v1/filler/fit?clip=a.mp4", memberToken, ""); resp.StatusCode != http.StatusOK {
