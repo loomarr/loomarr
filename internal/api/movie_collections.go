@@ -9,8 +9,6 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-const maxMovieCollectionKeys = 24
-
 func (s *Server) registerMovieCollections(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "resolveMovieCollections", Method: http.MethodGet, Path: "/v1/movie-collections",
