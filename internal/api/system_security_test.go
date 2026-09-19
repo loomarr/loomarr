@@ -3,9 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -22,23 +20,31 @@ func (f *fakeEncryption) RotateDataKey(context.Context) error {
 	return nil
 }
 
+func newSystemSecurityHarness(t *testing.T, encryption api.EncryptionService) *apiHarness {
+	t.Helper()
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Auth:       defaults.Auth,
+			Encryption: encryption,
+		})
+	})
+}
+
 func TestSystemEncryptionStatusAndRotationAreAdminOnly(t *testing.T) {
 	fake := &fakeEncryption{status: api.EncryptionStatus{
 		Enabled: true, InstallationKeyFingerprint: "sha256:1234", DataKeyCount: 2,
 	}}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{Auth: testAuthorizer{}, Encryption: fake})
-	srv := httptest.NewServer(h)
-	defer srv.Close()
+	harness := newSystemSecurityHarness(t, fake)
 	for _, path := range []string{"/v1/system/security/encryption", "/v1/system/security/encryption/rotate"} {
 		method := http.MethodGet
 		if path[len(path)-6:] == "rotate" {
 			method = http.MethodPost
 		}
-		if resp := do(t, srv, method, path, memberToken, ""); resp.StatusCode != http.StatusForbidden {
+		if resp := harness.Do(method, path, memberToken, ""); resp.StatusCode != http.StatusForbidden {
 			t.Fatalf("member %s %s = %d, want 403", method, path, resp.StatusCode)
 		}
 	}
-	resp := do(t, srv, http.MethodGet, "/v1/system/security/encryption", adminToken, "")
+	resp := harness.Do(http.MethodGet, "/v1/system/security/encryption", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -49,7 +55,7 @@ func TestSystemEncryptionStatusAndRotationAreAdminOnly(t *testing.T) {
 	if got != fake.status {
 		t.Fatalf("status = %#v, want %#v", got, fake.status)
 	}
-	resp = do(t, srv, http.MethodPost, "/v1/system/security/encryption/rotate", adminToken, "")
+	resp = harness.Do(http.MethodPost, "/v1/system/security/encryption/rotate", adminToken, "")
 	if resp.StatusCode != http.StatusNoContent || fake.rotated != 1 {
 		t.Fatalf("rotation = status %d calls %d", resp.StatusCode, fake.rotated)
 	}
