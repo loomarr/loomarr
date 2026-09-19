@@ -410,8 +410,31 @@ type ClipDTO struct {
 	// ⚠ Deliberately NOT the transcript itself: it is kilobytes per clip that no grid renders, so
 	// at a 100-row page it would be roughly ten times the rest of the payload. The detail surface
 	// fetches the text; the listing only needs to know there is some.
-	HasTranscript bool   `json:"hasTranscript,omitempty" doc:"Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders."`
-	SourceURL     string `json:"sourceUrl,omitempty" doc:"Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID."`
+	HasTranscript bool               `json:"hasTranscript,omitempty" doc:"Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders."`
+	SourceURL     string             `json:"sourceUrl,omitempty" doc:"Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID."`
+	Enrichment    *ClipEnrichmentDTO `json:"enrichment,omitempty" doc:"Quiet server-owned detail state and provenance. Available on exact single-hash reads only; omitted from catalog pages."`
+}
+
+type ClipEnrichmentDTO struct {
+	State string                  `json:"state" enum:"adding_details,details_limited,complete"`
+	Facts []ClipEnrichmentFactDTO `json:"facts,omitempty"`
+}
+
+type ClipEnrichmentFactDTO struct {
+	Axis     string `json:"axis" enum:"kind,era,audience,brand,geography,language,product,format,seasonal,audience-cue,presentation"`
+	Evidence string `json:"evidence" enum:"inference,source_default,trusted_mapping,content_observation,item_metadata,operator"`
+}
+
+func clipEnrichmentDTO(states []fillerenrichment.State) *ClipEnrichmentDTO {
+	projection := fillerenrichment.ProjectDetails(states)
+	detail := &ClipEnrichmentDTO{State: string(projection.State)}
+	if len(projection.Facts) > 0 {
+		detail.Facts = make([]ClipEnrichmentFactDTO, len(projection.Facts))
+		for i, fact := range projection.Facts {
+			detail.Facts[i] = ClipEnrichmentFactDTO{Axis: string(fact.Axis), Evidence: string(fact.Evidence)}
+		}
+	}
+	return detail
 }
 
 // playsCounted reports whether THIS install can observe a filler clip airing.
@@ -621,6 +644,11 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 	for _, c := range clips {
 		d := clipToDTO(c, s.playsCounted(), img)
 		if len(in.Hashes) == 1 {
+			states, err := s.store.ListFillerEnrichment(ctx, c.Hash)
+			if err != nil {
+				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read clip details", "The clip's background details could not be read. Try again.", err)
+			}
+			d.Enrichment = clipEnrichmentDTO(states)
 			provenanceClip := c
 			if c.ParentHash != "" {
 				parent, err := s.store.GetClip(ctx, c.ParentHash)
