@@ -49,8 +49,6 @@ var testServerConstructors = map[string]string{
 	"passwordrecovery_test.go:passwordRecoveryServer":     "password recovery",
 	"pods_test.go:newPodsServer":                          "filler pods",
 	"proposaljourneys_test.go:proposalJourneyServer":      "proposal journeys",
-	"provisioning_test.go:provServer":                     "provisioning",
-	"provisioning_test.go:provServerWithUsers":            "provisioning users",
 	"search_test.go:newConfiguredSearchHandler":           "search",
 	"sessions_test.go:newSessionsServer":                  "sessions",
 	"settings_test.go:newAutoWireServer":                  "settings connector wiring",
