@@ -214,7 +214,7 @@ func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *
 	}
 }
 
-func TestDeterministicFillerEnrichmentUsesInstallationGeographyForAnInheritingSource(t *testing.T) {
+func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallationLocation(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_300, 0).UTC()
 	source := store.NewFillerSource("youtube:inherited", "youtube", "https://youtube.example/channel",
@@ -234,9 +234,7 @@ func TestDeterministicFillerEnrichmentUsesInstallationGeographyForAnInheritingSo
 	}
 	runner := fillerenrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: files, home: func() filler.Geography {
-			return filler.Geography{Country: "US", Market: "Albany, NY"}
-		}}.Load,
+		fillerEnrichmentSignals{store: st, files: files}.Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	result, err := runner.Run(t.Context())
@@ -247,8 +245,8 @@ func TestDeterministicFillerEnrichmentUsesInstallationGeographyForAnInheritingSo
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Market != "Albany, NY" {
-		t.Fatalf("inherited source geography = %+v, want local US / Albany, NY", got.Clip)
+	if got.GeographicScope != filler.GeographicUnknown || got.Country != "" || got.Market != "" {
+		t.Fatalf("inherited source invented clip geography = %+v", got.Clip)
 	}
 }
 
@@ -273,9 +271,7 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 	}
 	runner := fillerenrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: files, home: func() filler.Geography {
-			return filler.Geography{Country: "US", Market: "Albany, NY"}
-		}}.Load,
+		fillerEnrichmentSignals{store: st, files: files}.Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	result, err := runner.Run(t.Context())

@@ -141,9 +141,6 @@ func buildFillerSubsystem(
 	jobs.Add(fillerPipelineJob(pipeline))
 	enrichmentSignals := fillerEnrichmentSignals{
 		store: st, files: layout.FS(),
-		home: func() filler.Geography {
-			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
-		},
 	}
 	enrichment := fillerenrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},

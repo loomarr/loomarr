@@ -111,8 +111,8 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
 	fp.pod = filler.Pod{
 		Entries: []filler.PodEntry{
-			{TunarrProgramID: "p1", Name: "Bumper", Kind: filler.Bumper, DurationMs: 5000},
-			{TunarrProgramID: "p2", Name: "Frosted Flakes", Kind: filler.Commercial, DurationMs: 30000},
+			{Hash: "h1", TunarrProgramID: "p1", Name: "Bumper", Kind: filler.Bumper, DurationMs: 5000},
+			{Hash: "h2", TunarrProgramID: "p2", Name: "Frosted Flakes", Kind: filler.Commercial, DurationMs: 30000},
 		},
 		TotalMs:    35000,
 		MatchLevel: filler.MatchExact,
@@ -124,6 +124,7 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	}
 	var body struct {
 		Entries []struct {
+			Hash            string `json:"hash"`
 			TunarrProgramID string `json:"tunarrProgramId"`
 			Name            string `json:"name"`
 			Kind            string `json:"kind"`
@@ -145,6 +146,9 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	}
 	if body.Entries[1].TunarrProgramID != "p2" {
 		t.Error("entry lost its Tunarr program id — the FE cannot deep-link the clip without it")
+	}
+	if body.Entries[1].Hash != "h2" {
+		t.Error("entry lost its clip hash — the FE cannot address the prepared media preview")
 	}
 	if body.TotalMs != 35000 {
 		t.Errorf("totalMs = %d, want 35000", body.TotalMs)

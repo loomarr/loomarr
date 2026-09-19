@@ -211,7 +211,6 @@ func (r fillerEnrichmentRepository) ApplyPass(ctx context.Context, pass filleren
 type fillerEnrichmentSignals struct {
 	store store.FillerSourceStore
 	files fs.FS
-	home  func() filler.Geography
 }
 
 func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenrichment.Candidate, observedAt time.Time) (fillerenrichment.Signals, error) {
@@ -238,9 +237,6 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenric
 			continue
 		}
 		geography := source.Geography.Normalize()
-		if geography.Country == "" && l.home != nil {
-			geography = l.home().Normalize()
-		}
 		scope := ""
 		if geography.Market != "" {
 			scope = string(filler.GeographicLocal)

@@ -1,9 +1,11 @@
 import type { PodEntryDTO } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { PodTimeline } from "./pod-timeline";
 
 const entry = (name: string, kind: PodEntryDTO["kind"], durationMs: number): PodEntryDTO => ({
+  hash: `${name}-hash`,
   name,
   kind,
   durationMs,
@@ -63,5 +65,22 @@ describe("PodTimeline", () => {
       />,
     );
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("offers a keyboard-accessible preview for a real clip but not the fallback card", async () => {
+    const onPreview = vi.fn();
+    const ad = entry("Sunny D", "commercial", 30000);
+    render(
+      <PodTimeline
+        entries={[
+          ad,
+          { name: "We'll be right back", kind: "bumper", durationMs: 5000, isFallbackCard: true },
+        ]}
+        onPreview={onPreview}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Preview Sunny D" }));
+    expect(onPreview).toHaveBeenCalledWith(ad);
+    expect(screen.queryByRole("button", { name: /Preview We'll be right back/i })).not.toBeInTheDocument();
   });
 });

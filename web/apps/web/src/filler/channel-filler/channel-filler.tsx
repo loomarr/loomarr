@@ -1,16 +1,19 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
+import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useChannelFillerDraft } from "../use-channel-filler-draft";
 import type { ChannelFillerProps } from "./channel-filler.type";
@@ -218,6 +221,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
 // Apply, which commits the draft to policy.filler and lets reconcile take over (seamless
 // for the effect; draft/apply for the authoring, the one deliberate §10 exception).
 const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFillerProps) => {
+  const [previewingClip, setPreviewingClip] = useState<PodEntryDTO>();
   const {
     draft,
     setDraft,
@@ -391,9 +395,9 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
           </p>
         ) : (
           <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
-            <PodTimeline entries={entries} matchLevel={preview?.matchLevel} />
+            <PodTimeline entries={entries} matchLevel={preview?.matchLevel} onPreview={setPreviewingClip} />
             <p className="mt-2 text-muted-foreground text-sm">
-              {`${pluralize(entries.length, "clip")} in this break, assembled exactly as the channel builds it.`}
+              {`${pluralize(entries.length, "clip")} in this break, assembled exactly as the channel builds it. Select a segment to play it.`}
             </p>
           </div>
         )}
@@ -412,6 +416,22 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
           <span className="ml-auto text-muted-foreground text-xs">Unsaved changes</span>
         </div>
       )}
+
+      <Sheet open={Boolean(previewingClip)} onOpenChange={(open) => !open && setPreviewingClip(undefined)}>
+        {previewingClip?.hash ? (
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>{previewingClip.name}</SheetTitle>
+              <SheetDescription>Preview from this assembled break</SheetDescription>
+            </SheetHeader>
+            <div className="p-6">
+              <div className="overflow-hidden rounded-lg border border-border">
+                <ClipPreview clip={{ hash: previewingClip.hash, name: previewingClip.name }} />
+              </div>
+            </div>
+          </SheetContent>
+        ) : null}
+      </Sheet>
     </div>
   );
 };

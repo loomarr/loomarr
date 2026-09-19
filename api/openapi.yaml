@@ -1502,6 +1502,9 @@ components:
         market:
           description: Local broadcast market when geographicScope is local
           type: string
+        media:
+          $ref: "#/components/schemas/ClipMediaDTO"
+          description: Prepared playback file facts; included only for an exact single-clip detail read
         name:
           type: string
         network:
@@ -1519,6 +1522,9 @@ components:
           description: Resolution label from the probed video height (1080p, 480p). Display-only by default; affects selection only when the filler.min_quality floor is set, which is off unless an operator turns it on.
           type: string
         source:
+          type: string
+        sourceLabel:
+          description: Human-readable registered source name; use this instead of the canonical source identity in ordinary UI
           type: string
         sourceUrl:
           description: Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID.
@@ -1644,6 +1650,34 @@ components:
           type: string
       required:
         - scope
+      type: object
+    ClipMediaDTO:
+      additionalProperties: false
+      properties:
+        audioChannels:
+          format: int64
+          type: integer
+        audioCodec:
+          type: string
+        audioRateHz:
+          format: int64
+          type: integer
+        bytes:
+          format: int64
+          type: integer
+        container:
+          type: string
+        frameRate:
+          description: Exact ffprobe cadence, usually a rational such as 24000/1001
+          type: string
+        height:
+          format: int64
+          type: integer
+        videoCodec:
+          type: string
+        width:
+          format: int64
+          type: integer
       type: object
     CollectionsOutputBody:
       additionalProperties: false
@@ -6759,6 +6793,9 @@ components:
           description: The clip's tagged era (1994); 0 when untagged
           format: int64
           type: integer
+        hash:
+          description: The Clip content hash used by the media route. Empty only for the embedded fallback card.
+          type: string
         isFallbackCard:
           description: The embedded default bumper card — the bottom of the fallback ladder
           type: boolean
@@ -6774,13 +6811,13 @@ components:
         name:
           type: string
         path:
-          description: The clip's identity, relative to FILLER_DIR. Empty for the embedded fallback bumper card, which is not a file.
+          description: The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card; clients address real clips by hash.
           type: string
         quality:
           description: Resolution label from the probed video height (1080p, 480p); empty when unknown or audio-only
           type: string
         tunarrProgramId:
-          description: Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card AND on installs without Tunarr — key on path, not this.
+          description: Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card and on installs without Tunarr; clients address real clips by hash.
           type: string
         visibleText:
           description: On-screen text a vision pass read off the frame (V44); empty when none

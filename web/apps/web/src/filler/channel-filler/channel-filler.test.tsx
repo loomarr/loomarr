@@ -57,6 +57,7 @@ const previewBody: PreviewDraftPodsOutputBody = {
   coverage: { level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }], criteria: HEALTHY },
   entries: [
     {
+      hash: "b1-hash",
       path: "b1.mp4",
       tunarrProgramId: "b1",
       name: "Bumper",
@@ -65,6 +66,7 @@ const previewBody: PreviewDraftPodsOutputBody = {
       isFallbackCard: false,
     },
     {
+      hash: "a1-hash",
       path: "a1.mp4",
       tunarrProgramId: "a1",
       name: "Toy Ad",
@@ -185,6 +187,15 @@ describe("ChannelFiller", () => {
     );
     // The mount preview assembles the (saved) selection and renders the pod timeline.
     await waitFor(() => expect(screen.getByLabelText("Pod segments")).toBeInTheDocument());
+  });
+
+  it("plays an exact clip from the assembled break in the shared preview sheet", async () => {
+    stubChannelFiller();
+    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Preview Toy Ad" }));
+    expect(await screen.findByRole("dialog", { name: "Toy Ad" })).toBeInTheDocument();
+    expect(document.querySelector('video[src="/v1/filler/media/a1-hash"]')).toBeInTheDocument();
   });
 
   it("shows saved coverage before controls and keeps clip overrides collapsed", async () => {

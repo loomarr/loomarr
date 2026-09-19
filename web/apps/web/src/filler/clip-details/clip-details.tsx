@@ -11,6 +11,13 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
   const [revealedHash, setRevealedHash] = useState<string>();
   const showPreview = !clip.held || revealedHash === clip.hash;
   const sourceURL = originalSourceURL(clip.sourceUrl);
+  const sourceLabel =
+    clip.sourceLabel ??
+    (clip.source === "filler-dir" || clip.source === "folder"
+      ? "Your clip folder"
+      : clip.source
+        ? "Imported source"
+        : undefined);
   const facts = [
     ["Type", clip.kind === "unclassified" ? undefined : KIND_LABEL[clip.kind]],
     ["Year", clip.era ? (clip.era % 10 === 0 ? `${clip.era}s` : String(clip.era)) : undefined],
@@ -70,10 +77,11 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             <dd className="break-words">{value}</dd>
           </div>
         ))}
-        {clip.source || sourceURL ? (
+        {sourceLabel || sourceURL ? (
           <>
             <dt className="text-muted-foreground">Source</dt>
-            <dd className="min-w-0 break-words">
+            <dd className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 break-words">
+              {sourceLabel ? <span>{sourceLabel}</span> : null}
               {sourceURL ? (
                 <a
                   href={sourceURL}
@@ -83,11 +91,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
                 >
                   View original <ExternalLink className="size-3.5 shrink-0" aria-hidden />
                 </a>
-              ) : clip.source === "filler-dir" || clip.source === "folder" ? (
-                "Your clip folder"
-              ) : (
-                clip.source
-              )}
+              ) : null}
             </dd>
           </>
         ) : null}

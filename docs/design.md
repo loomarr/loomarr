@@ -9061,6 +9061,10 @@ is inherited or overridden, and one closed readiness state (`ready`, `off`, `nee
 `not_configured`, or `out_of_area`); counts and available actions use that server-owned state rather
 than browser inference. Candidate-level geography remains a separate hard acquisition constraint,
 and an inherited source value does not turn missing or conflicting candidate evidence into a match.
+The same separation continues after admission: Installation geography and inherited effective source
+coverage are not Clip evidence and are never copied into a Clip's location. Only explicit item evidence,
+an explicit registered-source coverage override, or an operator correction may populate Clip geography;
+the catalog leaves Location absent when none of those facts exists.
 
 **A config disclosure per row** (V38c), on the same shelf as the search and URL expanders the mock
 already draws. It shows the source's target **read-only** and makes its *behaviour* editable —
@@ -10202,6 +10206,15 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   A channel's Filler section renders its saved coverage before matching controls, making inherited
   behavior the ordinary path. Per-clip overrides stay collapsed under explicit `Prefer on this
   channel` and `Exclude from this channel` language; they are never presented as required setup.
+  Every real Clip segment in the assembled break preview is individually playable through the same
+  content-hash media route and shared player as the catalog. The embedded fallback card is not
+  playable, and preview does not create a separately stitched Pod asset.
+
+  Exact Clip details resolve the registered source identity to its human label and keep the canonical
+  source id as transport/debug identity rather than primary UI. The detail response may also project
+  dimensions, cadence, codecs, container, channel/rate, and byte size from the already-validated
+  durable playback lineage in the sidecar. It does not run ffprobe during a read. These file facts sit
+  under progressive disclosure; the ordinary card keeps the short quality label.
 
   Acquisition is not readiness. These records and summaries do not weaken registered-source
   enablement, disk/catalog limits, grounding, required checks, or the held-to-Ready transition.

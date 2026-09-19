@@ -27,8 +27,9 @@ import (
 
 // PodEntryDTO is one clip placed in the previewed pool, in play order.
 type PodEntryDTO struct {
-	Path            string `json:"path,omitempty" doc:"The clip's identity, relative to FILLER_DIR. Empty for the embedded fallback bumper card, which is not a file."`
-	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card AND on installs without Tunarr — key on path, not this."`
+	Hash            string `json:"hash,omitempty" doc:"The Clip content hash used by the media route. Empty only for the embedded fallback card."`
+	Path            string `json:"path,omitempty" doc:"The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card; clients address real clips by hash."`
+	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card and on installs without Tunarr; clients address real clips by hash."`
 	Name            string `json:"name"`
 	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
 	DurationMs      int64  `json:"durationMs"`
@@ -387,6 +388,7 @@ func podToPoolDTO(pod filler.Pod) PodPoolDTO {
 	entries := make([]PodEntryDTO, 0, len(pod.Entries))
 	for _, e := range pod.Entries {
 		entries = append(entries, PodEntryDTO{
+			Hash:            e.Hash,
 			Path:            e.Path,
 			TunarrProgramID: e.TunarrProgramID,
 			Name:            e.Name,
