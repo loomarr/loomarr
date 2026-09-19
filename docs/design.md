@@ -121,7 +121,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
-| `catalog` | 6 | `library`, `provision` |
+| `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | `storagegovernor` |
 | `filler` | 11 | `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `storagegovernor`, `taxonomy` |
@@ -141,7 +141,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `openroutermedia` | 7 | `fillereval` |
-| `provision` | 21 | — |
+| `provision` | 22 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 5 | — |
 | `schedule` | 18 | `provision` |
@@ -191,7 +191,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Drives Loomarr's public playout transports through a bounded, credential-redacted production-path certification run.
 - **`proctree`** · 4 importers
   Supervises one child process and every descendant it starts.
-- **`provision`** · 21 importers
+- **`provision`** · 22 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`recovery`** · 5 importers
   Owns local-password recovery records and their bearer grants (§11).
@@ -342,7 +342,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Issues and validates Loomarr sessions (design §11).
 - **`backendtransition`** · 1 importer · → `schedule`, `store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
-- **`catalog`** · 6 importers · → `library`, `provision`
+- **`catalog`** · 7 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`fillerreview`** · 3 importers · → `filler`, `filleradmission`, `fillerbakeoff`, `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerreference`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
   Materializes identity-blind evidence for independent semantic review.
@@ -367,25 +367,32 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
 - **`images`** · 2 importers · → `images/rustgen`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
+- **`moviecollections`** · 3 importers · → `catalog`, `provision`
+  Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
   Provisioning backstop (design §4, §7, §18).
 - **`retention`** · 1 importer · → `diagnostics`, `invitation`, `notifications`, `recovery`, `scheduler`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`testkit/catalogfixture`** · → `catalog`, `provision`
   Shared no-network adapters for catalog tests.
-- **`tmdb`** · 3 importers · → `catalog`, `httpx`, `metrics`, `provision`
-  TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
 **Layer 11**
 
 - **`fillercandidatepool/build`** · → `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerquarantine`, `fillerreview`
   Composes the independent corpus, quarantine, review, and prior-exposure authorities into one replacement candidate pool.
-- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
-  Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`testkit`** · 1 importer · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
+- **`testkit/moviecollectionsfixture`** · → `moviecollections`
+  The shared deterministic source for movie-collection resolver tests.
+- **`tmdb`** · 3 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
+  TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 
 **Layer 12**
+
+- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
+  Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
+
+**Layer 13**
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
@@ -400,14 +407,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 - **`testkit/channeljourney`** · → `provision`, `schedule`, `suggest`
   The public synthetic approval-to-schedule fixtures for #1103.
 
-**Layer 13**
+**Layer 14**
 
 - **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `images`, `installationlocation`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
-**Layer 14**
+**Layer 15**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
