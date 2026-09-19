@@ -3,15 +3,12 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -54,15 +51,9 @@ func TestSettings_UsesDurableBackendTransitionAfterEffectiveWrites(t *testing.T)
 		},
 	}
 	live := &fakeConnector{}
-	st := openTestStore(t, t.TempDir()+"/transition.db")
-	t.Cleanup(func() { _ = st.Close() })
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: api.NewTokenAuthorizer(adminToken), Settings: settings,
-		LiveTV: live, BackendTransition: transition,
-		LiveConfig: func(key string) string { return cfg[key] },
-	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
+	srv := newSettingsHarness(t, settingsHarnessConfig{
+		Settings: settings, LiveTV: live, Config: cfg, BackendTransition: transition,
+	}).Server
 
 	requests := []struct {
 		method, path, body string
@@ -127,11 +118,9 @@ func TestSettings_BackendTransitionLockFailureDoesNotRunMutation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			settings := &fakeSettings{}
 			transition := &testkit.BackendTransition{BeforeMutationErr: context.DeadlineExceeded}
-			h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-				Auth: api.NewTokenAuthorizer(adminToken), Settings: settings, BackendTransition: transition,
-			})
-			srv := httptest.NewServer(h)
-			t.Cleanup(srv.Close)
+			srv := newSettingsHarness(t, settingsHarnessConfig{
+				Settings: settings, BackendTransition: transition,
+			}).Server
 
 			resp := do(t, srv, tc.method, tc.path, adminToken, tc.body)
 			if resp.StatusCode != http.StatusServiceUnavailable {
@@ -171,11 +160,9 @@ func TestSettings_MissingBackendTransitionDoesNotRunMutation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			settings := &fakeSettings{}
-			h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-				Auth: api.NewTokenAuthorizer(adminToken), Settings: settings,
-			})
-			srv := httptest.NewServer(h)
-			t.Cleanup(srv.Close)
+			srv := newSettingsHarness(t, settingsHarnessConfig{
+				Settings: settings, WithoutBackendTransition: true,
+			}).Server
 
 			resp := do(t, srv, tc.method, tc.path, adminToken, tc.body)
 			if resp.StatusCode != http.StatusNotImplemented {
@@ -274,26 +261,70 @@ func (f *fakeSettings) Test(_ context.Context, check string) (bool, string) {
 	return false, "not configured"
 }
 
-func newSettingsServer(t *testing.T) (*httptest.Server, *fakeSettings) {
+type settingsHarnessConfig struct {
+	Settings                 *fakeSettings
+	LiveTV                   *fakeConnector
+	Source                   *fakeConnector
+	Config                   map[string]string
+	Channels                 api.ChannelService
+	BackendTransition        api.BackendTransitioner
+	WithoutBackendTransition bool
+}
+
+// settingsHarness owns the complete settings-route assembly over the common
+// API lifecycle. Its configuration names settings, transition, connector, and
+// channel behavior without exposing the generic router options bag.
+type settingsHarness struct {
+	*apiHarness
+	Settings *fakeSettings
+}
+
+func newSettingsHarness(t *testing.T, configs ...settingsHarnessConfig) *settingsHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/s.db")
-	t.Cleanup(func() { _ = st.Close() })
-	fs := &fakeSettings{}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:             st,
-		Auth:              testAuthorizer{},
-		Log:               slog.New(slog.DiscardHandler),
-		Settings:          fs,
-		BackendTransition: &testkit.BackendTransition{},
+	if len(configs) > 1 {
+		t.Fatalf("newSettingsHarness accepts at most one configuration, got %d", len(configs))
+	}
+	config := settingsHarnessConfig{}
+	if len(configs) == 1 {
+		config = configs[0]
+	}
+	settings := config.Settings
+	if settings == nil {
+		settings = &fakeSettings{}
+	}
+	transition := config.BackendTransition
+	if transition == nil && !config.WithoutBackendTransition {
+		transition = &testkit.BackendTransition{Desired: func() string {
+			return config.Config["playout.backend"]
+		}}
+	}
+
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		opts := api.Options{
+			Store:             defaults.Store,
+			Auth:              defaults.Auth,
+			Log:               defaults.Log,
+			Settings:          settings,
+			Channels:          config.Channels,
+			LiveTV:            config.LiveTV,
+			BackendTransition: transition,
+			LiveConfig:        func(key string) string { return config.Config[key] },
+			LibraryConfigured: func() bool {
+				return config.Config["library.flavor"] != "" &&
+					config.Config["library.url"] != "" && config.Config["library.token"] != ""
+			},
+		}
+		if config.Source != nil {
+			opts.TunarrConnect = mediaSourceAdapter{inner: config.Source}
+		}
+		return api.Router(defaults.Log, opts)
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, fs
+	return &settingsHarness{apiHarness: base, Settings: settings}
 }
 
 // Every settings route is admin-only (config-design §8, §19): a non-admin → 403.
 func TestSettings_RequireAdmin(t *testing.T) {
-	srv, _ := newSettingsServer(t)
+	srv := newSettingsHarness(t).Server
 	for _, tc := range []struct {
 		method, path, body string
 	}{
@@ -317,7 +348,7 @@ func TestSettings_RequireAdmin(t *testing.T) {
 // GET /v1/settings masks secrets (no value; set+preview only) and returns the
 // computed feature set (config-design §7, §8).
 func TestSettings_ListMasksSecretsAndFeatures(t *testing.T) {
-	srv, _ := newSettingsServer(t)
+	srv := newSettingsHarness(t).Server
 	resp := do(t, srv, http.MethodGet, "/v1/settings", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list → %d", resp.StatusCode)
@@ -356,7 +387,8 @@ func TestSettings_ListMasksSecretsAndFeatures(t *testing.T) {
 
 // PATCH returns per-key results and threads the admin id (config-design §3, §8).
 func TestSettings_PatchResults(t *testing.T) {
-	srv, fs := newSettingsServer(t)
+	harness := newSettingsHarness(t)
+	srv, fs := harness.Server, harness.Settings
 	resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
 		`{"edits":{"library.url":"http://emby:8096","job.workers":"9"}}`)
 	if resp.StatusCode != http.StatusOK {
@@ -379,7 +411,7 @@ func TestSettings_PatchResults(t *testing.T) {
 }
 
 func TestSettings_GeneratedTokenRegenerationReturnsValue(t *testing.T) {
-	srv, _ := newSettingsServer(t)
+	srv := newSettingsHarness(t).Server
 	for _, name := range []string{"api_token", "playout_token"} {
 		resp := do(t, srv, http.MethodPost, "/v1/settings/secrets/"+name+"/regenerate", adminToken, "")
 		if resp.StatusCode != http.StatusOK {
@@ -409,7 +441,8 @@ func TestSettings_ClearOutcomes(t *testing.T) {
 		{"env-pinned key wins", "job.workers", http.StatusConflict},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv, fs := newSettingsServer(t)
+			harness := newSettingsHarness(t)
+			srv, fs := harness.Server, harness.Settings
 			resp := do(t, srv, http.MethodDelete, "/v1/settings/"+tc.key, adminToken, "")
 			if resp.StatusCode != tc.want {
 				t.Errorf("DELETE %s → %d, want %d", tc.key, resp.StatusCode, tc.want)
@@ -437,7 +470,8 @@ func TestSettings_EnvOverrideOutcomes(t *testing.T) {
 		{"nothing in the environment to take over", "library.url", true, http.StatusConflict},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv, fs := newSettingsServer(t)
+			harness := newSettingsHarness(t)
+			srv, fs := harness.Server, harness.Settings
 			body := `{"enabled":false}`
 			if tc.enabled {
 				body = `{"enabled":true}`
@@ -460,7 +494,8 @@ func TestSettings_EnvOverrideOutcomes(t *testing.T) {
 
 // GET /v1/settings/secrets/{name} is §4's eye toggle and never rotates.
 func TestSettings_SecretReveal(t *testing.T) {
-	srv, fs := newSettingsServer(t)
+	harness := newSettingsHarness(t)
+	srv, fs := harness.Server, harness.Settings
 
 	for _, name := range []string{"api_token", "playout_token"} {
 		resp := do(t, srv, http.MethodGet, "/v1/settings/secrets/"+name, adminToken, "")
@@ -484,7 +519,8 @@ func TestSettings_SecretReveal(t *testing.T) {
 }
 
 func TestSettings_RetiredSessionSecretRoutesAreRejected(t *testing.T) {
-	srv, fs := newSettingsServer(t)
+	harness := newSettingsHarness(t)
+	srv, fs := harness.Server, harness.Settings
 	const oldName = "session_secret" // retired-ok: rejected compatibility probe for the removed setting
 	for _, path := range []string{
 		"/v1/settings/secrets/" + oldName,
@@ -550,37 +586,6 @@ func (a mediaSourceAdapter) Connect(ctx context.Context) (string, int, error) {
 
 func (a mediaSourceAdapter) LibrariesReady(context.Context) (bool, error) { return false, nil }
 
-func newAutoWireServer(t *testing.T, live, source *fakeConnector, cfg map[string]string) *httptest.Server {
-	srv, _ := newAutoWireServerWithChannels(t, live, source, cfg, &fakeSettings{}, nil)
-	return srv
-}
-
-func newAutoWireServerWithChannels(t *testing.T, live, source *fakeConnector, cfg map[string]string,
-	settings *fakeSettings, channelSvc api.ChannelService) (*httptest.Server, store.Store) {
-	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/s.db")
-	t.Cleanup(func() { _ = st.Close() })
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:         st,
-		Auth:          api.NewTokenAuthorizer(adminToken),
-		Log:           slog.New(slog.DiscardHandler),
-		Settings:      settings,
-		Channels:      channelSvc,
-		LiveTV:        live,
-		TunarrConnect: mediaSourceAdapter{inner: source},
-		BackendTransition: &testkit.BackendTransition{Desired: func() string {
-			return cfg["playout.backend"]
-		}},
-		LiveConfig: func(k string) string { return cfg[k] },
-		LibraryConfigured: func() bool {
-			return cfg["library.flavor"] != "" && cfg["library.url"] != "" && cfg["library.token"] != ""
-		},
-	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv, st
-}
-
 // Saving a connection enters the durable transition seam and independently wires the Tunarr
 // media source. Live TV itself must never be wired by a duplicate HTTP-layer algorithm.
 func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
@@ -591,7 +596,9 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 
 	t.Run("a connection save fires both wiring actions", func(t *testing.T) {
 		live, source := &fakeConnector{}, &fakeConnector{}
-		srv := newAutoWireServer(t, live, source, configured)
+		srv := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source, Config: configured,
+		}).Server
 		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
 			`{"edits":{"tunarr.url":"http://tunarr:8000"}}`)
 		if resp.StatusCode != http.StatusOK {
@@ -604,7 +611,9 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 
 	t.Run("a non-connection save wires nothing", func(t *testing.T) {
 		live, source := &fakeConnector{}, &fakeConnector{}
-		srv := newAutoWireServer(t, live, source, configured)
+		srv := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source, Config: configured,
+		}).Server
 		do(t, srv, http.MethodPatch, "/v1/settings", adminToken, `{"edits":{"job.workers":"9"}}`)
 		if live.calls != 0 || source.calls != 0 {
 			t.Errorf("touched no connection key but wired: live=%d source=%d", live.calls, source.calls)
@@ -613,7 +622,9 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 
 	t.Run("a wiring failure never fails the save", func(t *testing.T) {
 		live, source := &fakeConnector{fail: true}, &fakeConnector{fail: true}
-		srv := newAutoWireServer(t, live, source, configured)
+		srv := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source, Config: configured,
+		}).Server
 		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
 			`{"edits":{"library.url":"http://emby:8096"}}`)
 		if resp.StatusCode != http.StatusOK {
@@ -624,7 +635,10 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 	t.Run("live TV wires even before the media server is set", func(t *testing.T) {
 		live, source := &fakeConnector{}, &fakeConnector{}
 		// Only Tunarr configured — livetv needs just tunarr.url; media source needs both.
-		srv := newAutoWireServer(t, live, source, map[string]string{"tunarr.url": "http://tunarr:8000"})
+		srv := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source,
+			Config: map[string]string{"tunarr.url": "http://tunarr:8000"},
+		}).Server
 		do(t, srv, http.MethodPatch, "/v1/settings", adminToken, `{"edits":{"tunarr.url":"http://tunarr:8000"}}`)
 		if live.calls != 0 {
 			t.Errorf("HTTP layer invoked legacy Live TV wiring: %d", live.calls)
@@ -640,7 +654,9 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 			"tunarr.url": "http://tunarr:8000", "library.flavor": "jellyfin",
 			"library.url": "http://jellyfin:8096",
 		}
-		srv := newAutoWireServer(t, live, source, cfg)
+		srv := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source, Config: cfg,
+		}).Server
 		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
 			`{"edits":{"library.url":"http://jellyfin:8096"}}`)
 		if live.calls != 0 || source.calls != 0 {
@@ -654,7 +670,9 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 			"playout.backend":   "internal",
 			"server.public_url": "http://loomarr:8080",
 		}
-		srv := newAutoWireServer(t, live, source, cfg)
+		srv := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source, Config: cfg,
+		}).Server
 		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
 			`{"edits":{"playout.backend":"internal"}}`)
 		if resp.StatusCode != http.StatusOK {
@@ -674,7 +692,9 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 			"playout.backend":   "internal",
 			"server.public_url": "http://loomarr-new:8080",
 		}
-		srv := newAutoWireServer(t, live, source, cfg)
+		srv := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source, Config: cfg,
+		}).Server
 		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
 			`{"edits":{"server.public_url":"http://loomarr-new:8080"}}`)
 		if live.calls != 0 {
@@ -687,7 +707,10 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 
 	t.Run("internal Live TV waits for a reachable public URL", func(t *testing.T) {
 		live, source := &fakeConnector{}, &fakeConnector{}
-		srv := newAutoWireServer(t, live, source, map[string]string{"playout.backend": "internal"})
+		srv := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source,
+			Config: map[string]string{"playout.backend": "internal"},
+		}).Server
 		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
 			`{"edits":{"playout.backend":"internal"}}`)
 		if live.calls != 0 || source.calls != 0 {
@@ -697,7 +720,10 @@ func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
 
 	t.Run("Tunarr Live TV still requires its URL", func(t *testing.T) {
 		live, source := &fakeConnector{}, &fakeConnector{}
-		srv := newAutoWireServer(t, live, source, map[string]string{"playout.backend": "tunarr"})
+		srv := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source,
+			Config: map[string]string{"playout.backend": "tunarr"},
+		}).Server
 		do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
 			`{"edits":{"playout.backend":"tunarr"}}`)
 		if live.calls != 0 || source.calls != 0 {
@@ -721,7 +747,10 @@ func TestSettings_BackendTransitionDoesNotUseLegacyHTTPReconcileOrWiring(t *test
 	live, source := &fakeConnector{}, &fakeConnector{}
 	reconciledBeforeWire := -1
 	live.beforeCall = func() { reconciledBeforeWire = len(channelSvc.reconciledIDs) }
-	srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+	harness := newSettingsHarness(t, settingsHarnessConfig{
+		Settings: settings, LiveTV: live, Source: source, Config: cfg, Channels: channelSvc,
+	})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "inherits", "Follows default", 1, "")
 	seedChannel(t, st, "pinned", "Pinned internal", 2, schedule.PlayoutBackendInternal)
 
@@ -754,7 +783,10 @@ func TestSettings_BackendTransitionFailureRemainsPostSaveAndRetryable(t *testing
 	}}
 	channelSvc := &fakeChannelSvc{err: context.DeadlineExceeded}
 	live, source := &fakeConnector{}, &fakeConnector{}
-	srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+	harness := newSettingsHarness(t, settingsHarnessConfig{
+		Settings: settings, LiveTV: live, Source: source, Config: cfg, Channels: channelSvc,
+	})
+	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "inherits", "Follows default", 1, "")
 
 	resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
@@ -788,7 +820,10 @@ func TestSettings_LiveTVRegistrationChecksAreOwnedByTransitionModule(t *testing.
 	t.Run("matching current URLs need neither convergence nor connect", func(t *testing.T) {
 		channelSvc := &fakeChannelSvc{err: context.DeadlineExceeded}
 		live, source := &fakeConnector{wired: true}, &fakeConnector{}
-		srv, st := newAutoWireServerWithChannels(t, live, source, configured, &fakeSettings{}, channelSvc)
+		harness := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source, Config: configured, Channels: channelSvc,
+		})
+		srv, st := harness.Server, harness.Store
 		seedChannel(t, st, "inherits", "Follows default", 1, "")
 
 		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
@@ -805,7 +840,10 @@ func TestSettings_LiveTVRegistrationChecksAreOwnedByTransitionModule(t *testing.
 	t.Run("lookup failure keeps existing registration untouched", func(t *testing.T) {
 		channelSvc := &fakeChannelSvc{}
 		live, source := &fakeConnector{wiredErr: context.DeadlineExceeded}, &fakeConnector{}
-		srv, st := newAutoWireServerWithChannels(t, live, source, configured, &fakeSettings{}, channelSvc)
+		harness := newSettingsHarness(t, settingsHarnessConfig{
+			LiveTV: live, Source: source, Config: configured, Channels: channelSvc,
+		})
+		srv, st := harness.Server, harness.Store
 		seedChannel(t, st, "inherits", "Follows default", 1, "")
 
 		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
@@ -836,7 +874,10 @@ func TestSettings_ClearAndEnvOverrideHotApplyBackendChanges(t *testing.T) {
 		live, source := &fakeConnector{}, &fakeConnector{}
 		seenBeforeWire := -1
 		live.beforeCall = func() { seenBeforeWire = len(channelSvc.reconciledIDs) }
-		srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+		harness := newSettingsHarness(t, settingsHarnessConfig{
+			Settings: settings, LiveTV: live, Source: source, Config: cfg, Channels: channelSvc,
+		})
+		srv, st := harness.Server, harness.Store
 		seedChannel(t, st, "inherits", "Follows default", 1, "")
 
 		resp := do(t, srv, http.MethodDelete, "/v1/settings/playout.backend", adminToken, "")
@@ -864,7 +905,10 @@ func TestSettings_ClearAndEnvOverrideHotApplyBackendChanges(t *testing.T) {
 		live, source := &fakeConnector{}, &fakeConnector{}
 		seenBeforeWire := -1
 		live.beforeCall = func() { seenBeforeWire = len(channelSvc.reconciledIDs) }
-		srv, st := newAutoWireServerWithChannels(t, live, source, cfg, settings, channelSvc)
+		harness := newSettingsHarness(t, settingsHarnessConfig{
+			Settings: settings, LiveTV: live, Source: source, Config: cfg, Channels: channelSvc,
+		})
+		srv, st := harness.Server, harness.Store
 		seedChannel(t, st, "inherits", "Follows default", 1, "")
 
 		resp := do(t, srv, http.MethodPut, "/v1/settings/playout.backend/env-override", adminToken,

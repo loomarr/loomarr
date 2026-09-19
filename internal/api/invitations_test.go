@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -17,37 +15,39 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func invitationServer(t *testing.T, publicURL string) (*httptest.Server, string) {
-	return invitationServerWithDelivery(t, publicURL, nil)
+type invitationHarnessConfig struct {
+	PublicURL string
+	Delivery  api.InvitationDeliveryService
 }
 
-func invitationServerWithDelivery(
-	t *testing.T,
-	publicURL string,
-	delivery api.InvitationDeliveryService,
-) (*httptest.Server, string) {
+type invitationHarness struct {
+	*apiHarness
+	Bearer string
+}
+
+// newInvitationHarness owns the store-backed invitation service and varies
+// only its public recipient URL and optional delivery behavior.
+func newInvitationHarness(t *testing.T, config invitationHarnessConfig) *invitationHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/invitations.db")
-	t.Cleanup(func() { _ = st.Close() })
 	now := time.Unix(1_900_000_000, 0).UTC()
 	bearer := strings.Repeat("a", 64)
-	service := invitation.NewService(
-		st,
-		testkit.LibraryAccountResolver{Accounts: map[string]invitation.LibraryAccount{
-			"library-42": {ID: "library-42", Name: "Grace Hopper"},
-		}},
-		func() string { return "invitation-1" },
-		func() (string, error) { return bearer, nil },
-		func() time.Time { return now },
-	)
-	handler := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		Invitations: service, InvitationDelivery: delivery,
-		AccessPublicURL: func() string { return publicURL },
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		service := invitation.NewService(
+			defaults.Store,
+			testkit.LibraryAccountResolver{Accounts: map[string]invitation.LibraryAccount{
+				"library-42": {ID: "library-42", Name: "Grace Hopper"},
+			}},
+			func() string { return "invitation-1" },
+			func() (string, error) { return bearer, nil },
+			func() time.Time { return now },
+		)
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
+			Invitations: service, InvitationDelivery: config.Delivery,
+			AccessPublicURL: func() string { return config.PublicURL },
+		})
 	})
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-	return srv, bearer
+	return &invitationHarness{apiHarness: base, Bearer: bearer}
 }
 
 type fakeInvitationDelivery struct {
@@ -67,7 +67,8 @@ func (f *fakeInvitationDelivery) LatestEmail(context.Context, string) (notificat
 }
 
 func TestInvitations_AdminLifecycleAndBearerMinimization(t *testing.T) {
-	srv, bearer := invitationServer(t, "https://loomarr.example.test/")
+	harness := newInvitationHarness(t, invitationHarnessConfig{PublicURL: "https://loomarr.example.test/"})
+	srv, bearer := harness.Server, harness.Bearer
 
 	member := do(t, srv, http.MethodPost, "/v1/invitations", memberToken,
 		`{"kind":"local","username":"Ada"}`)
@@ -141,7 +142,8 @@ func TestInvitations_AdminLifecycleAndBearerMinimization(t *testing.T) {
 }
 
 func TestInvitationGrantRequiresConfiguredRecipientURL(t *testing.T) {
-	srv, bearer := invitationServer(t, "")
+	harness := newInvitationHarness(t, invitationHarnessConfig{})
+	srv, bearer := harness.Server, harness.Bearer
 	created := do(t, srv, http.MethodPost, "/v1/invitations", adminToken,
 		`{"kind":"local","username":"Ada"}`)
 	if created.StatusCode != http.StatusCreated {
@@ -160,7 +162,9 @@ func TestInvitationEmailIsAnExplicitIdempotentAdminAction(t *testing.T) {
 	delivery := &fakeInvitationDelivery{result: notifications.DeliverySummary{
 		Status: notifications.StatusQueued, AttemptNumber: 1, UpdatedAt: now,
 	}}
-	srv, _ := invitationServerWithDelivery(t, "https://loomarr.example.test", delivery)
+	srv := newInvitationHarness(t, invitationHarnessConfig{
+		PublicURL: "https://loomarr.example.test", Delivery: delivery,
+	}).Server
 	created := do(t, srv, http.MethodPost, "/v1/invitations", adminToken,
 		`{"kind":"local","username":"Ada","contactEmail":"ada@example.com"}`)
 	if created.StatusCode != http.StatusCreated {

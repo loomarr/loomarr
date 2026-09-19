@@ -3,9 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -30,33 +28,60 @@ func (f *fakeSessions) RevokeHash(_ context.Context, hash string) error {
 	return nil
 }
 
-func newSessionsServer(t *testing.T) (*httptest.Server, *fakeSessions, store.Store) {
+type sessionsHarnessConfig struct {
+	DefaultQuota int
+}
+
+// sessionsHarness hides the fixed session and user-route assembly behind the
+// common API lifecycle. Tests vary only session-manager behavior and the
+// configured default quota observable through the user list.
+type sessionsHarness struct {
+	*apiHarness
+	Sessions *fakeSessions
+}
+
+func newSessionsHarness(t *testing.T, configs ...sessionsHarnessConfig) *sessionsHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/s.db")
-	t.Cleanup(func() { _ = st.Close() })
-	if err := st.UpsertUser(context.Background(), store.User{ID: "u1", Name: "Ada", Role: store.RoleAdmin}); err != nil {
-		t.Fatal(err)
+	if len(configs) > 1 {
+		t.Fatalf("newSessionsHarness accepts at most one configuration, got %d", len(configs))
 	}
+	config := sessionsHarnessConfig{}
+	if len(configs) == 1 {
+		config = configs[0]
+	}
+
 	fs := &fakeSessions{}
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      slog.New(slog.DiscardHandler),
-		Sessions: fs,
-	}))
-	t.Cleanup(srv.Close)
-	return srv, fs, st
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		if err := defaults.Store.UpsertUser(context.Background(), store.User{
+			ID: "u1", Name: "Ada", Role: store.RoleAdmin,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return api.Router(defaults.Log, api.Options{
+			Store:    defaults.Store,
+			Auth:     defaults.Auth,
+			Log:      defaults.Log,
+			Sessions: fs,
+			LiveConfigInt: func(key string) int {
+				if key == "suggest.max_acquisitions" {
+					return config.DefaultQuota
+				}
+				return 0
+			},
+		})
+	})
+	return &sessionsHarness{apiHarness: base, Sessions: fs}
 }
 
 // §19 negative case: session routes expose who is signed in and can sign them out, so a
 // member must be refused both.
 func TestSessions_RequireAdmin(t *testing.T) {
-	srv, _, _ := newSessionsServer(t)
+	harness := newSessionsHarness(t)
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/users/u1/sessions"},
 		{http.MethodDelete, "/v1/sessions/abc123"},
 	} {
-		if resp := do(t, srv, tc.method, tc.path, "", ""); resp.StatusCode != http.StatusUnauthorized {
+		if resp := harness.Do(tc.method, tc.path, "", ""); resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
 	}
@@ -65,13 +90,13 @@ func TestSessions_RequireAdmin(t *testing.T) {
 // The list carries a revocable handle and the timestamps an admin judges staleness by.
 // It must NEVER carry anything that could authenticate — the id is the stored hash.
 func TestSessions_ListShapesForReview(t *testing.T) {
-	srv, fs, _ := newSessionsServer(t)
+	harness := newSessionsHarness(t)
 	now := time.Unix(1_700_000_000, 0).UTC()
-	fs.list = []store.Session{
+	harness.Sessions.list = []store.Session{
 		{TokenHash: "hash-a", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 	}
 
-	resp := do(t, srv, http.MethodGet, "/v1/users/u1/sessions", adminToken, "")
+	resp := harness.Do(http.MethodGet, "/v1/users/u1/sessions", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list → %d, want 200", resp.StatusCode)
 	}
@@ -105,8 +130,8 @@ func TestSessions_ListShapesForReview(t *testing.T) {
 // A 404 on an unknown user, so an admin acting on a stale user list gets a real answer
 // rather than a confusing empty session list.
 func TestSessions_UnknownUserIs404(t *testing.T) {
-	srv, _, _ := newSessionsServer(t)
-	if resp := do(t, srv, http.MethodGet, "/v1/users/nope/sessions", adminToken, ""); resp.StatusCode != http.StatusNotFound {
+	harness := newSessionsHarness(t)
+	if resp := harness.Do(http.MethodGet, "/v1/users/nope/sessions", adminToken, ""); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown user → %d, want 404", resp.StatusCode)
 	}
 }
@@ -115,15 +140,15 @@ func TestSessions_UnknownUserIs404(t *testing.T) {
 // render and click (expiry, or the user signing out), and erroring there would be noise
 // about an outcome they already have.
 func TestSessions_RevokeIsIdempotent(t *testing.T) {
-	srv, fs, _ := newSessionsServer(t)
+	harness := newSessionsHarness(t)
 	for range 2 {
-		resp := do(t, srv, http.MethodDelete, "/v1/sessions/hash-a", adminToken, "")
+		resp := harness.Do(http.MethodDelete, "/v1/sessions/hash-a", adminToken, "")
 		if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 			t.Fatalf("revoke → %d, want 2xx", resp.StatusCode)
 		}
 	}
-	if len(fs.revoked) != 2 || fs.revoked[0] != "hash-a" {
-		t.Errorf("revoked = %v, want the hash passed through twice", fs.revoked)
+	if len(harness.Sessions.revoked) != 2 || harness.Sessions.revoked[0] != "hash-a" {
+		t.Errorf("revoked = %v, want the hash passed through twice", harness.Sessions.revoked)
 	}
 }
 
@@ -135,27 +160,9 @@ func TestSessions_RevokeIsIdempotent(t *testing.T) {
 // This wires an int seam that would have panicked under the old code, so the Users list
 // is exercised on the path a real install actually takes.
 func TestListUsers_ReadsTheIntConfigSeam(t *testing.T) {
-	st := openTestStore(t, t.TempDir()+"/u.db")
-	t.Cleanup(func() { _ = st.Close() })
-	if err := st.UpsertUser(context.Background(), store.User{ID: "u1", Name: "Ada", Role: store.RoleAdmin}); err != nil {
-		t.Fatal(err)
-	}
+	harness := newSessionsHarness(t, sessionsHarnessConfig{DefaultQuota: 7})
 
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
-		// The seam a real composition root wires. Its absence is what hid the bug.
-		LiveConfigInt: func(key string) int {
-			if key == "suggest.max_acquisitions" {
-				return 7
-			}
-			return 0
-		},
-	}))
-	t.Cleanup(srv.Close)
-
-	resp := do(t, srv, http.MethodGet, "/v1/users", adminToken, "")
+	resp := harness.Do(http.MethodGet, "/v1/users", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list users → %d, want 200 (a 500 here is the panic)", resp.StatusCode)
 	}

@@ -2,9 +2,7 @@ package api_test
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 
@@ -18,23 +16,33 @@ type fakeRestart struct{ calls atomic.Int64 }
 
 func (f *fakeRestart) Restart() { f.calls.Add(1) }
 
-func serverWithRestart(t *testing.T, opts api.Options) *httptest.Server {
+type systemRestartHarnessConfig struct {
+	Restart         api.RestartService
+	PlayoutObserver api.PlayoutObserver
+	RestartDrift    func() []string
+}
+
+// newSystemRestartHarness names the three observable restart-route behaviors
+// without exposing the generic router options bag to each test.
+func newSystemRestartHarness(t *testing.T, config systemRestartHarnessConfig) *apiHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/r.db")
-	t.Cleanup(func() { _ = st.Close() })
-	opts.Store = st
-	opts.Auth = api.NewTokenAuthorizer(adminToken)
-	opts.Log = slog.New(slog.DiscardHandler)
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
-	t.Cleanup(srv.Close)
-	return srv
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store:           defaults.Store,
+			Auth:            defaults.Auth,
+			Log:             defaults.Log,
+			Restart:         config.Restart,
+			PlayoutObserver: config.PlayoutObserver,
+			RestartDrift:    config.RestartDrift,
+		})
+	})
 }
 
 // §19 negative: restarting interrupts playback for every internally-streamed channel, so
 // all three routes are admin-only.
 func TestSystemRestart_RequiresAdmin(t *testing.T) {
 	fake := &fakeRestart{}
-	srv := serverWithRestart(t, api.Options{Restart: fake})
+	srv := newSystemRestartHarness(t, systemRestartHarnessConfig{Restart: fake}).Server
 
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/system/restart"},
@@ -56,7 +64,7 @@ func TestSystemRestart_RequiresAdmin(t *testing.T) {
 // A handler built without a generation loop behind it (tests, the integration harness)
 // reports 501 rather than offering a button that silently does nothing.
 func TestSystemRestart_NotAvailable501(t *testing.T) {
-	srv := serverWithRestart(t, api.Options{}) // no Restart wired
+	srv := newSystemRestartHarness(t, systemRestartHarnessConfig{}).Server // no Restart wired
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/restart", adminToken, "")
 	if resp.StatusCode != http.StatusNotImplemented {
@@ -80,7 +88,7 @@ func TestSystemRestart_NotAvailable501(t *testing.T) {
 
 func TestSystemRestart_TriggersTheLoop(t *testing.T) {
 	fake := &fakeRestart{}
-	srv := serverWithRestart(t, api.Options{Restart: fake})
+	srv := newSystemRestartHarness(t, systemRestartHarnessConfig{Restart: fake}).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/restart", adminToken, "")
 	// ⚠ 202, and the response arrives BEFORE the drain — a client that never gets a
@@ -97,11 +105,11 @@ func TestSystemRestart_TriggersTheLoop(t *testing.T) {
 // once Loomarr owns the encoder (§9.1): internally-played channels drop while
 // Tunarr-backed ones keep playing, and only the server knows how many of each are live.
 func TestSystemRestart_ReportsWhatItWouldCost(t *testing.T) {
-	srv := serverWithRestart(t, api.Options{
+	srv := newSystemRestartHarness(t, systemRestartHarnessConfig{
 		Restart:         &fakeRestart{},
 		PlayoutObserver: &fakePlayoutSessions{stats: make([]playout.SessionStat, 3)},
 		RestartDrift:    func() []string { return []string{"DATABASE_URL"} },
-	})
+	}).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/restart", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -126,7 +134,7 @@ func TestSystemRestart_ReportsWhatItWouldCost(t *testing.T) {
 // A Tunarr-backed install streams nothing itself, so zero is the correct answer — and
 // restartRequired stays false when no restart-scoped setting changed.
 func TestSystemRestart_CostIsZeroWhenNothingIsStreaming(t *testing.T) {
-	srv := serverWithRestart(t, api.Options{Restart: &fakeRestart{}})
+	srv := newSystemRestartHarness(t, systemRestartHarnessConfig{Restart: &fakeRestart{}}).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/restart", adminToken, "")
 	var cost api.RestartCost
@@ -145,7 +153,7 @@ func TestSystemRestart_CostIsZeroWhenNothingIsStreaming(t *testing.T) {
 // wizard renders — one probe implementation, so the two can never disagree.
 func TestSystemReload_ReturnsChecksWithoutRestarting(t *testing.T) {
 	fake := &fakeRestart{}
-	srv := serverWithRestart(t, api.Options{Restart: fake})
+	srv := newSystemRestartHarness(t, systemRestartHarnessConfig{Restart: fake}).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/reload", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
