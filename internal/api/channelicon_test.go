@@ -10,7 +10,6 @@ import (
 	"image/color"
 	"image/png"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -34,24 +33,45 @@ import (
 // validates it" — an SVG carrying <script> gets stored and served from Loomarr's own origin by
 // the PUBLIC serve half. Deleting the sniff is a one-line change that no other test notices.
 
-func newIconUploadServer(t *testing.T) (*httptest.Server, store.Store, *fakeImageService) {
+type channelIconHarness struct {
+	*apiHarness
+	Images *fakeImageService
+}
+
+type channelIconHarnessOptions struct {
+	BeforeLink func(context.Context, store.Store) error
+}
+
+func newChannelIconHarness(t *testing.T) *channelIconHarness {
+	return newChannelIconHarnessWithOptions(t, channelIconHarnessOptions{})
+}
+
+func newChannelIconHarnessWithOptions(t *testing.T, options channelIconHarnessOptions) *channelIconHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/iconupload.db")
-	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	imgs := newFakeImageService()
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		routeStore := defaults.Store
+		if options.BeforeLink != nil {
+			routeStore = &staleOnceChannelStore{
+				Store: defaults.Store,
+				before: func(ctx context.Context, _ store.Channel) error {
+					return options.BeforeLink(ctx, defaults.Store)
+				},
+			}
+		}
+		return api.Router(defaults.Log, api.Options{
+			Store:  routeStore,
+			Auth:   defaults.Auth,
+			Images: imgs,
+			Log:    defaults.Log,
+		})
+	})
+	if _, err := base.Store.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	imgs := newFakeImageService()
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:  st,
-		Auth:   testAuthorizer{},
-		Images: imgs,
-		Log:    slog.New(slog.DiscardHandler),
-	}))
-	t.Cleanup(srv.Close)
-	return srv, st, imgs
+	return &channelIconHarness{apiHarness: base, Images: imgs}
 }
 
 // pngBytes is a real 1x1 PNG — encoded rather than hardcoded so the byte signature is
@@ -114,7 +134,8 @@ func postIcon(t *testing.T, srv *httptest.Server, token, filename, declaredType 
 // The upload now hands the bytes to the image service (§22, V52 phase 5) instead of writing a
 // BLOB to `channel_icons`, and points the channel's logo at the content-addressed URL. retired-ok
 func TestUploadChannelIcon_IngestsAndLinksTheChannel(t *testing.T) {
-	srv, st, imgs := newIconUploadServer(t)
+	harness := newChannelIconHarness(t)
+	srv, st, imgs := harness.Server, harness.Store, harness.Images
 	want := pngBytes(t)
 
 	resp := postIcon(t, srv, adminToken, "logo.png", "image/png", want)
@@ -182,16 +203,7 @@ func TestUploadChannelIcon_IngestsAndLinksTheChannel(t *testing.T) {
 // not a whole-channel edit. If another edit lands after the handler's read, the upload must reload
 // the winner and retry so it links the ingested image without reverting the concurrent edit.
 func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
-	base := openTestStore(t, t.TempDir()+"/icon-concurrent.db")
-	t.Cleanup(func() { _ = base.Close() })
-	if _, err := base.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	wrapped := &staleOnceChannelStore{Store: base}
-	wrapped.before = func(ctx context.Context, _ store.Channel) error {
+	harness := newChannelIconHarnessWithOptions(t, channelIconHarnessOptions{BeforeLink: func(ctx context.Context, base store.Store) error {
 		winner, err := base.GetChannel(ctx, "ch-1")
 		if err != nil {
 			return err
@@ -199,16 +211,8 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 		winner.Name = "Star Trek: Concurrent Cut"
 		_, err = base.SaveChannel(ctx, winner)
 		return err
-	}
-
-	imgs := newFakeImageService()
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:  wrapped,
-		Auth:   testAuthorizer{},
-		Images: imgs,
-		Log:    slog.New(slog.DiscardHandler),
-	}))
-	t.Cleanup(srv.Close)
+	}})
+	srv := harness.Server
 
 	resp := postIcon(t, srv, adminToken, "logo.png", "image/png", pngBytes(t))
 	defer func() { _ = resp.Body.Close() }()
@@ -241,30 +245,14 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 // If purge wins after ingestion but before the channel link is saved, the upload reports the
 // missing resource and must not recreate the deleted channel from its stale snapshot.
 func TestUploadChannelIcon_ConcurrentChannelDeleteReturnsNotFound(t *testing.T) {
-	base := openTestStore(t, t.TempDir()+"/icon-delete.db")
-	t.Cleanup(func() { _ = base.Close() })
-	if _, err := base.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	wrapped := &staleOnceChannelStore{Store: base}
-	wrapped.before = func(ctx context.Context, _ store.Channel) error {
+	harness := newChannelIconHarnessWithOptions(t, channelIconHarnessOptions{BeforeLink: func(ctx context.Context, base store.Store) error {
 		current, err := base.GetChannel(ctx, "ch-1")
 		if err != nil {
 			return err
 		}
 		return base.DeleteChannel(ctx, current.ID, current.Revision)
-	}
-
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:  wrapped,
-		Auth:   testAuthorizer{},
-		Images: newFakeImageService(),
-		Log:    slog.New(slog.DiscardHandler),
-	}))
-	t.Cleanup(srv.Close)
+	}})
+	srv := harness.Server
 
 	resp := postIcon(t, srv, adminToken, "logo.png", "image/png", pngBytes(t))
 	defer func() { _ = resp.Body.Close() }()
@@ -287,7 +275,8 @@ func TestUploadChannelIcon_ConcurrentChannelDeleteReturnsNotFound(t *testing.T) 
 // downstream caches. If this ever regresses to a channel-addressed URL, Tunarr and Emby serve a
 // stale logo indefinitely and nothing else in the suite notices.
 func TestUploadChannelIcon_URLFollowsTheBytesNotTheChannel(t *testing.T) {
-	srv, _, _ := newIconUploadServer(t)
+	harness := newChannelIconHarness(t)
+	srv := harness.Server
 
 	logoFor := func(data []byte) string {
 		t.Helper()
@@ -322,7 +311,8 @@ func TestUploadChannelIcon_URLFollowsTheBytesNotTheChannel(t *testing.T) {
 // this guards against is a WIRING one — the resolver returning nil, or the handler forgetting to
 // pass it — and a direct call to the mapper would pass while the endpoint served nothing.
 func TestChannel_CarriesLogoImageAfterUpload(t *testing.T) {
-	srv, _, _ := newIconUploadServer(t)
+	harness := newChannelIconHarness(t)
+	srv := harness.Server
 	png := pngBytes(t)
 
 	up := postIcon(t, srv, adminToken, "logo.png", "image/png", png)
@@ -376,7 +366,8 @@ func TestChannel_CarriesLogoImageAfterUpload(t *testing.T) {
 //
 // Neither the unit suite nor the visual baselines could see it: nothing there fetches a rendition.
 func TestChannel_OmitsAvifSrcsetUntilTheRenditionExists(t *testing.T) {
-	srv, _, imgs := newIconUploadServer(t)
+	harness := newChannelIconHarness(t)
+	srv, imgs := harness.Server, harness.Images
 
 	resp := postIcon(t, srv, adminToken, "logo.png", "image/png", pngBytes(t))
 	defer func() { _ = resp.Body.Close() }()
@@ -427,7 +418,8 @@ func TestChannel_OmitsAvifSrcsetUntilTheRenditionExists(t *testing.T) {
 // guessed — or that treated any non-empty logo as one of ours — would either 404 the record or
 // hand <Image> a fabricated one.
 func TestChannel_OmitsLogoImageForAnExternalURL(t *testing.T) {
-	srv, st, _ := newIconUploadServer(t)
+	harness := newChannelIconHarness(t)
+	srv, st := harness.Server, harness.Store
 	ch, err := st.GetChannel(context.Background(), "ch-1")
 	if err != nil {
 		t.Fatal(err)
@@ -460,7 +452,8 @@ func TestChannel_OmitsLogoImageForAnExternalURL(t *testing.T) {
 // ONLY thing standing between this payload and a stored, publicly-served script is the byte
 // sniff in uploadChannelIcon. If that sniff is removed, this is the test that goes red.
 func TestUploadChannelIcon_RefusesSVGDeclaredAsPNG(t *testing.T) {
-	srv, _, imgs := newIconUploadServer(t)
+	harness := newChannelIconHarness(t)
+	srv, imgs := harness.Server, harness.Images
 	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`)
 
 	resp := postIcon(t, srv, adminToken, "logo.png", "image/png", svg)
@@ -481,7 +474,8 @@ func TestUploadChannelIcon_RefusesSVGDeclaredAsPNG(t *testing.T) {
 }
 
 func TestUploadChannelIcon_RefusesOversize(t *testing.T) {
-	srv, _, _ := newIconUploadServer(t)
+	harness := newChannelIconHarness(t)
+	srv := harness.Server
 	// A real PNG header followed by padding past the 2 MiB cap, so it fails on SIZE rather
 	// than on the sniff — otherwise this would pass for the wrong reason.
 	big := append(pngBytes(t), make([]byte, 3<<20)...)
@@ -497,7 +491,8 @@ func TestUploadChannelIcon_RefusesOversize(t *testing.T) {
 // refused. Pinned because the upload moved from a hand-written requireRole check to the
 // operation's declared role — the whole point is that the answer did not change.
 func TestUploadChannelIcon_RoleBoundary(t *testing.T) {
-	srv, _, _ := newIconUploadServer(t)
+	harness := newChannelIconHarness(t)
+	srv := harness.Server
 	data := pngBytes(t)
 
 	for _, tc := range []struct {

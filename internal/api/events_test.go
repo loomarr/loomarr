@@ -4,9 +4,7 @@ import (
 	"bufio"
 	"context"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"regexp"
 	"sort"
@@ -41,16 +39,33 @@ func newFakeBus() *fakeBus { return &fakeBus{ch: make(chan events.Event, 8)} }
 
 func (f *fakeBus) Subscribe() (<-chan events.Event, func()) { return f.ch, func() {} }
 
-func newEventsServer(t *testing.T) (*httptest.Server, *fakeBus) {
+type eventsHarness struct {
+	*apiHarness
+	Bus      *fakeBus
+	Shutdown chan struct{}
+}
+
+func newEventsHarness(t *testing.T) *eventsHarness {
+	return startEventsHarness(t, false)
+}
+
+func newShuttingDownEventsHarness(t *testing.T) *eventsHarness {
+	return startEventsHarness(t, true)
+}
+
+func startEventsHarness(t *testing.T, withShutdown bool) *eventsHarness {
 	t.Helper()
 	bus := newFakeBus()
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Auth:   testAuthorizer{},
-		Log:    slog.New(slog.DiscardHandler),
-		Events: bus,
-	}))
-	t.Cleanup(srv.Close)
-	return srv, bus
+	var shutdown chan struct{}
+	if withShutdown {
+		shutdown = make(chan struct{})
+	}
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Auth: defaults.Auth, Log: defaults.Log, Events: bus, Shutdown: shutdown,
+		})
+	})
+	return &eventsHarness{apiHarness: base, Bus: bus, Shutdown: shutdown}
 }
 
 // publishedFrame matches `Type: "name", Payload: api.TypeName{` across a publish site, which
@@ -141,7 +156,8 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 		{"playout", api.PlayoutEvent{Active: 2}},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
-			srv, bus := newEventsServer(t)
+			harness := newEventsHarness(t)
+			srv, bus := harness.Server, harness.Bus
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -181,12 +197,8 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 }
 
 func TestEventStreamClosesWhenGenerationShutsDown(t *testing.T) {
-	bus := newFakeBus()
-	shutdown := make(chan struct{})
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Events: bus, Shutdown: shutdown,
-	}))
-	defer srv.Close()
+	harness := newShuttingDownEventsHarness(t)
+	srv, shutdown := harness.Server, harness.Shutdown
 
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/events", nil)
 	req.Header.Set("Authorization", "Bearer "+memberToken)
@@ -212,7 +224,7 @@ func TestEventStreamClosesWhenGenerationShutsDown(t *testing.T) {
 // §19 negative case: the stream is member-visible, so anonymous is refused. Pinned because
 // /v1/events moved from a hand-written requireRole check to the operation's declared role.
 func TestEventStream_RequiresASession(t *testing.T) {
-	srv, _ := newEventsServer(t)
+	srv := newEventsHarness(t).Server
 	resp := do(t, srv, http.MethodGet, "/v1/events", "", "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {

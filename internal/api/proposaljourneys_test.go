@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -28,7 +26,7 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 		Proposal: &proposalworkflow.ProposalRef{ID: "proposal-1", Status: proposalworkflow.ProposalSubmitted, Proposal: suggest.Proposal{Trace: suggest.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Disposition: "selected", Reason: "selected"}}}}},
 		Actions:  []proposalworkflow.Action{proposalworkflow.ActionReview},
 	}}
-	srv := proposalJourneyServer(t, workflow)
+	srv := newProposalJourneyHarness(t, workflow).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-1", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
@@ -56,7 +54,7 @@ func TestReviseProposalJourneyKeepsTheStableJob(t *testing.T) {
 	t.Parallel()
 
 	workflow := &fakeProposalWorkflow{}
-	srv := proposalJourneyServer(t, workflow)
+	srv := newProposalJourneyHarness(t, workflow).Server
 	resp := do(t, srv, http.MethodPost, "/v1/proposal-jobs/job-1/revise", adminToken,
 		`{"description":"80s comedies with more variety","runtimeTargetMin":240}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -80,7 +78,7 @@ func TestReviseProposalJourneyRequiresAdminAndCurrentReview(t *testing.T) {
 	t.Parallel()
 
 	workflow := &fakeProposalWorkflow{}
-	srv := proposalJourneyServer(t, workflow)
+	srv := newProposalJourneyHarness(t, workflow).Server
 	member := do(t, srv, http.MethodPost, "/v1/proposal-jobs/job-1/revise", memberToken,
 		`{"description":"more variety"}`)
 	defer func() { _ = member.Body.Close() }()
@@ -104,7 +102,7 @@ func TestProposalJourneyListEndpointUsesCallerScope(t *testing.T) {
 		Version: proposalworkflow.WorkflowVersion1, JobID: "job-running",
 		Milestone: proposalworkflow.MilestoneGenerating, Intent: suggest.Intent{Description: "Anime after school"},
 	}}}
-	srv := proposalJourneyServer(t, workflow)
+	srv := newProposalJourneyHarness(t, workflow).Server
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs?mine=true&status=generating", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
@@ -138,7 +136,7 @@ func TestProposalJourneyEndpointFailsClosedForForbiddenAndCorruptState(t *testin
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			srv := proposalJourneyServer(t, &fakeProposalWorkflow{err: tt.err})
+			srv := newProposalJourneyHarness(t, &fakeProposalWorkflow{err: tt.err}).Server
 			resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-1", memberToken, "")
 			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != tt.status {
@@ -160,10 +158,10 @@ func TestProposalJourneyFailureProjectionDoesNotSerializePrivateTrace(t *testing
 	}
 	failure := &proposalworkflow.Failure{Code: proposalworkflow.FailureGenerationFailed, Reason: proposalworkflow.FailureReasonProviderUnavailable,
 		RecoveryAction: proposalworkflow.RecoveryActionRetryLater, Message: "safe", Guidance: "safe", Trace: private}
-	srv := proposalJourneyServer(t, &fakeProposalWorkflow{journey: proposalworkflow.Journey{
+	srv := newProposalJourneyHarness(t, &fakeProposalWorkflow{journey: proposalworkflow.Journey{
 		Version: proposalworkflow.WorkflowVersion1, JobID: "job-failed", Milestone: proposalworkflow.MilestoneFailed,
 		Failure: failure, Attempts: []proposalworkflow.Attempt{{Version: proposalworkflow.WorkflowVersion1, Number: 1, Status: proposalworkflow.AttemptFailed, Failure: failure}},
-	}})
+	}}).Server
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-failed", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	var body map[string]any
@@ -251,12 +249,16 @@ func (f *fakeProposalWorkflow) Revise(
 	return f.err
 }
 
-func proposalJourneyServer(t *testing.T, workflow api.ProposalWorkflow) *httptest.Server {
+type proposalJourneyHarness struct {
+	*apiHarness
+}
+
+func newProposalJourneyHarness(t *testing.T, workflow api.ProposalWorkflow) *proposalJourneyHarness {
 	t.Helper()
-	handler := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), ProposalWorkflow: workflow,
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Auth: defaults.Auth, Log: defaults.Log, ProposalWorkflow: workflow,
+		})
 	})
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-	return srv
+	return &proposalJourneyHarness{apiHarness: base}
 }

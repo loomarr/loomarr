@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -62,25 +60,24 @@ func (f *fakeDatabase) Switchover(_ context.Context, dsn string) error {
 	return nil
 }
 
-func serverWithDatabase(t *testing.T, svc api.DatabaseService) *httptest.Server {
+// newSystemDatabaseHarness hides the fixed database-route assembly behind the
+// common API lifecycle. Tests vary only database-service behavior.
+func newSystemDatabaseHarness(t *testing.T, svc api.DatabaseService) *apiHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/api.db")
-	t.Cleanup(func() { _ = st.Close() })
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      slog.New(slog.DiscardHandler),
-		Database: svc,
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store:    defaults.Store,
+			Auth:     defaults.Auth,
+			Log:      defaults.Log,
+			Database: svc,
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv
 }
 
 // Every route is admin-only: a migration moves every row the instance owns, and the
 // backup it writes carries every secret.
 func TestSystemDatabase_RequiresAdmin(t *testing.T) {
-	srv := serverWithDatabase(t, &fakeDatabase{})
+	srv := newSystemDatabaseHarness(t, &fakeDatabase{}).Server
 	for _, tc := range []struct {
 		method, path, body string
 	}{
@@ -100,7 +97,7 @@ func TestSystemDatabase_RequiresAdmin(t *testing.T) {
 // An embedding that provides no database service gets an explicit 501 rather than a
 // fabricated status. The production composition root provides status on both backends.
 func TestSystemDatabase_NotConfigured501(t *testing.T) {
-	srv := serverWithDatabase(t, nil)
+	srv := newSystemDatabaseHarness(t, nil).Server
 	resp := do(t, srv, http.MethodGet, "/v1/system/database", adminToken, "")
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("status with no service → %d, want 501", resp.StatusCode)
@@ -111,7 +108,7 @@ func TestSystemDatabase_NotConfigured501(t *testing.T) {
 // A client that ignores the disabled button and POSTs straight to /migrate is refused.
 func TestSystemDatabase_BackupCannotBeSkipped(t *testing.T) {
 	fake := &fakeDatabase{migrateErr: api.ErrNoBackup}
-	srv := serverWithDatabase(t, fake)
+	srv := newSystemDatabaseHarness(t, fake).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
@@ -134,7 +131,7 @@ func TestSystemDatabase_BackupCannotBeSkipped(t *testing.T) {
 // so the operator learns which precondition is missing.
 func TestSystemDatabase_PreflightRequired(t *testing.T) {
 	fake := &fakeDatabase{migrateErr: api.ErrPreflightFailed}
-	srv := serverWithDatabase(t, fake)
+	srv := newSystemDatabaseHarness(t, fake).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
@@ -163,7 +160,7 @@ func TestSystemDatabase_PostgresMutationsFailAsConflicts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeDatabase{}
 			tc.configure(fake)
-			srv := serverWithDatabase(t, fake)
+			srv := newSystemDatabaseHarness(t, fake).Server
 			resp := do(t, srv, http.MethodPost, tc.path, adminToken,
 				`{"dsn":"postgres://u:p@h:5432/d"}`)
 			if resp.StatusCode != http.StatusConflict {
@@ -180,7 +177,7 @@ func TestSystemDatabase_PreflightReportsFailedChecks(t *testing.T) {
 		{Name: "Reachable", Detail: "connected in 3ms", OK: true},
 		{Name: "Target is empty", Detail: "10 table(s) already present", OK: false},
 	}}
-	srv := serverWithDatabase(t, fake)
+	srv := newSystemDatabaseHarness(t, fake).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/preflight", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
@@ -211,7 +208,7 @@ func TestSystemDatabase_PreflightPassedIsUnanimous(t *testing.T) {
 		{Name: "Reachable", OK: true},
 		{Name: "Version", OK: true},
 	}}
-	srv := serverWithDatabase(t, fake)
+	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/preflight", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
 	var body struct {
@@ -227,7 +224,7 @@ func TestSystemDatabase_PreflightPassedIsUnanimous(t *testing.T) {
 // on SQLite, and the operator's next step depends on which reason it was.
 func TestSystemDatabase_MigrationFailureIsAConflictNotA500(t *testing.T) {
 	fake := &fakeDatabase{migrateErr: errFake}
-	srv := serverWithDatabase(t, fake)
+	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
 	if resp.StatusCode != http.StatusConflict {
@@ -237,7 +234,7 @@ func TestSystemDatabase_MigrationFailureIsAConflictNotA500(t *testing.T) {
 
 func TestSystemDatabase_PinnedMigrationIsRejectedBeforeQueueing(t *testing.T) {
 	fake := &fakeDatabase{migrateErr: api.ErrDatabaseURLPinned}
-	srv := serverWithDatabase(t, fake)
+	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
 	if resp.StatusCode != http.StatusConflict {
@@ -255,7 +252,7 @@ func TestSystemDatabase_PinnedMigrationIsRejectedBeforeQueueing(t *testing.T) {
 
 func TestSystemDatabase_MigrationRequesterMustExist(t *testing.T) {
 	fake := &fakeDatabase{migrateErr: api.ErrMigrationUnavailable}
-	srv := serverWithDatabase(t, fake)
+	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/migrate", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
 	if resp.StatusCode != http.StatusNotImplemented {
@@ -267,7 +264,7 @@ func TestSystemDatabase_MigrationRequesterMustExist(t *testing.T) {
 // response that did not say so would leave the operator thinking the move was live.
 func TestSystemDatabase_SwitchoverRequiresRestart(t *testing.T) {
 	fake := &fakeDatabase{}
-	srv := serverWithDatabase(t, fake)
+	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/switchover", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
 	if resp.StatusCode != http.StatusOK {
@@ -293,7 +290,7 @@ func TestSystemDatabase_SwitchoverRequiresRestart(t *testing.T) {
 
 func TestSystemDatabase_LegacySwitchoverFailsClosedWithoutVerification(t *testing.T) {
 	fake := &fakeDatabase{switchErr: api.ErrMigrationNotVerified}
-	srv := serverWithDatabase(t, fake)
+	srv := newSystemDatabaseHarness(t, fake).Server
 	resp := do(t, srv, http.MethodPost, "/v1/system/database/switchover", adminToken,
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
 	if resp.StatusCode != http.StatusConflict {

@@ -3,9 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -57,24 +55,26 @@ func (f *fakeJobs) Trigger(_ context.Context, name string) error {
 	return nil
 }
 
-func serverWithJobs(t *testing.T, svc api.JobService) *httptest.Server {
+type jobsHarness struct {
+	*apiHarness
+}
+
+func newJobsHarness(t *testing.T, svc api.JobService) *jobsHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/api.db")
-	t.Cleanup(func() { _ = st.Close() })
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
-		Jobs:  svc,
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store,
+			Auth:  defaults.Auth,
+			Log:   defaults.Log,
+			Jobs:  svc,
+		})
 	})
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	return srv
+	return &jobsHarness{apiHarness: base}
 }
 
 // The jobs routes are admin-only (§18.1: they expose acquisition internals + can trigger work).
 func TestJobs_RequiresAdmin(t *testing.T) {
-	srv := serverWithJobs(t, &fakeJobs{})
+	srv := newJobsHarness(t, &fakeJobs{}).Server
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/jobs"},
 		{http.MethodGet, "/v1/jobs/reconcile/history"},
@@ -97,7 +97,7 @@ func TestJobs_HistoryReturnsRecentExecutionSummary(t *testing.T) {
 			Result: "error", Error: "media server unavailable", Trigger: "manual",
 		}},
 	}}
-	srv := serverWithJobs(t, svc)
+	srv := newJobsHarness(t, svc).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/jobs/reconcile/history", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -125,7 +125,7 @@ func TestJobs_ListReturnsJobs(t *testing.T) {
 		{Name: "reconcile", Title: "Reconcile downloads", Schedule: "0 */5 * * * *", ScheduleKey: "job.reconcile.schedule", LastResult: "ok"},
 		{Name: "channel-maintenance", Group: "channels", Title: "Maintain live channels", Schedule: "0 */10 * * * *"},
 	}}
-	srv := serverWithJobs(t, svc)
+	srv := newJobsHarness(t, svc).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/jobs", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -142,7 +142,7 @@ func TestJobs_ListReturnsJobs(t *testing.T) {
 
 func TestJobs_RunTriggers(t *testing.T) {
 	svc := &fakeJobs{unknown: "ghost"}
-	srv := serverWithJobs(t, svc)
+	srv := newJobsHarness(t, svc).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/jobs/reconcile/run", adminToken, "")
 	if resp.StatusCode != http.StatusAccepted {
@@ -168,7 +168,7 @@ func TestJobs_RunTriggers(t *testing.T) {
 // that is on their screen.
 func TestJobs_RunDisabledIsConflictNotFound(t *testing.T) {
 	svc := &fakeJobs{unknown: "ghost", disabled: "backup"}
-	srv := serverWithJobs(t, svc)
+	srv := newJobsHarness(t, svc).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/jobs/backup/run", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {
@@ -183,10 +183,10 @@ func TestJobs_RunDisabledIsConflictNotFound(t *testing.T) {
 // that looks broken.
 func TestJobs_ListCarriesDisabledReason(t *testing.T) {
 	const reason = "Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."
-	srv := serverWithJobs(t, &fakeJobs{list: []api.JobView{
+	srv := newJobsHarness(t, &fakeJobs{list: []api.JobView{
 		{Name: "reconcile", Title: "Reconcile"},
 		{Name: "backup", Title: "Back up the database", DisabledReason: reason},
-	}})
+	}}).Server
 
 	resp := do(t, srv, http.MethodGet, "/v1/jobs", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -211,7 +211,7 @@ func TestJobs_ListCarriesDisabledReason(t *testing.T) {
 
 // With no scheduler wired (nil service), the routes report unavailable rather than 500.
 func TestJobs_UnavailableWhenNoScheduler(t *testing.T) {
-	srv := serverWithJobs(t, nil)
+	srv := newJobsHarness(t, nil).Server
 	resp := do(t, srv, http.MethodGet, "/v1/jobs", adminToken, "")
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("list with no scheduler → %d, want 501", resp.StatusCode)
@@ -222,7 +222,7 @@ func TestJobs_UnavailableWhenNoScheduler(t *testing.T) {
 // the endpoint takes a body rather than being two routes, so "which way" is a real assertion.
 func TestJobs_PauseAndResume(t *testing.T) {
 	svc := &fakeJobs{}
-	srv := serverWithJobs(t, svc)
+	srv := newJobsHarness(t, svc).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/jobs/reconcile/pause", adminToken, `{"paused":true}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -244,7 +244,7 @@ func TestJobs_PauseAndResume(t *testing.T) {
 // happening at all, so it is squarely an admin action.
 func TestJobs_PauseIsAdminOnly(t *testing.T) {
 	svc := &fakeJobs{}
-	srv := serverWithJobs(t, svc)
+	srv := newJobsHarness(t, svc).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/jobs/reconcile/pause", memberToken, `{"paused":true}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -259,7 +259,7 @@ func TestJobs_PauseIsAdminOnly(t *testing.T) {
 // A job this backend cannot run at all is a 409, not a 404: it exists and is on the admin's
 // screen. Pausing it is refused because that is an environment fact, not a preference.
 func TestJobs_PauseDisabledIs409(t *testing.T) {
-	srv := serverWithJobs(t, &fakeJobs{disabled: "backup"})
+	srv := newJobsHarness(t, &fakeJobs{disabled: "backup"}).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/jobs/backup/pause", adminToken, `{"paused":true}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -271,7 +271,7 @@ func TestJobs_PauseDisabledIs409(t *testing.T) {
 // An unregistered name is a 404 — distinct from the 409 above, so an admin is not sent hunting
 // for a job that is on their screen.
 func TestJobs_PauseUnknownIs404(t *testing.T) {
-	srv := serverWithJobs(t, &fakeJobs{unknown: "nope"})
+	srv := newJobsHarness(t, &fakeJobs{unknown: "nope"}).Server
 
 	resp := do(t, srv, http.MethodPost, "/v1/jobs/nope/pause", adminToken, `{"paused":true}`)
 	defer func() { _ = resp.Body.Close() }()

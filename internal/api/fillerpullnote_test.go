@@ -9,7 +9,8 @@ import (
 )
 
 func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	ff.Candidates = []filler.AcquisitionCandidate{{
 		Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "reel-1"},
@@ -28,7 +29,8 @@ func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
 }
 
 func TestApproveFillerPull_NoteIsAnAnnotationForLegacySourceLevelPlan(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	harness := newFillerHarness(t)
+	srv, st, ff := harness.Server, harness.Store, harness.Filler
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	pull := filler.Pull{
 		ID: "legacy-pull", Status: filler.PullPending, Plan: []filler.PullPlanRow{{
