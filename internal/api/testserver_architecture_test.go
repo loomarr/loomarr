@@ -17,7 +17,6 @@ import (
 // harnesses while their common lifecycle is migrated behind apiHarness. Every
 // entry needs a route-family rationale, and stale entries fail the test.
 var testServerConstructors = map[string]string{
-	"api_test.go:newServer":                                            "legacy default-route compatibility",
 	"auth_flow_test.go:authServer":                                     "authentication flow",
 	"channelicon_test.go:newIconUploadServer":                          "channel icons",
 	"channelnumber_test.go:newServerWithNumbers":                       "channel numbering",

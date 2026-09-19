@@ -62,10 +62,10 @@ func TestResponses_ContainNoJSONNull(t *testing.T) {
 		t.Fatal("derived zero GET paths from the spec — the derivation broke, not the API")
 	}
 
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
-			resp := do(t, srv, http.MethodGet, p, adminToken, "")
+			resp := harness.Do(http.MethodGet, p, adminToken, "")
 			defer func() { _ = resp.Body.Close() }()
 
 			// Only success bodies make a claim about the response schema. A 4xx/5xx is a

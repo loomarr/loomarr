@@ -12,37 +12,37 @@ import (
 )
 
 func TestDiscoveryFeedbackExistingAndDetachedChannelRemainsIndependentOfHousehold(t *testing.T) {
-	srv, st := newServer(t)
+	harness := newAPIHarness(t)
 	ctx := context.Background()
 	channel := store.Channel{Channel: schedule.Channel{ID: "feedback-channel", Name: "Feedback Channel",
 		Number: 43, Strategy: schedule.Sequential, Status: schedule.StatusLive},
 		ReconcileDeadline: time.Now().Add(time.Hour)}
-	_, err := st.SaveChannel(ctx, channel)
+	_, err := harness.Store.SaveChannel(ctx, channel)
 	if err != nil {
 		t.Fatal(err)
 	}
 	channelEvent := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603","action":"never"}`
-	resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback", adminToken, channelEvent)
+	resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, channelEvent)
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
 		t.Fatalf("existing-channel feedback = %d, want 200", resp.StatusCode)
 	}
 	_ = resp.Body.Close()
-	resp = do(t, srv, http.MethodDelete, "/v1/channels/feedback-channel", adminToken, "")
+	resp = harness.Do(http.MethodDelete, "/v1/channels/feedback-channel", adminToken, "")
 	if resp.StatusCode != http.StatusNoContent {
 		_ = resp.Body.Close()
 		t.Fatalf("soft detach = %d, want 204", resp.StatusCode)
 	}
 	_ = resp.Body.Close()
 	detachedEvent := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603","action":"surprise"}`
-	resp = do(t, srv, http.MethodPost, "/v1/discovery/feedback", adminToken, detachedEvent)
+	resp = harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, detachedEvent)
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
 		t.Fatalf("detached-channel feedback = %d, want 200", resp.StatusCode)
 	}
 	_ = resp.Body.Close()
 	householdEvent := `{"scope":"household","targetKey":"movie:tmdb:603","action":"keep"}`
-	resp = do(t, srv, http.MethodPost, "/v1/discovery/feedback", adminToken, householdEvent)
+	resp = harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, householdEvent)
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
 		t.Fatalf("household feedback = %d, want 200", resp.StatusCode)
@@ -56,7 +56,7 @@ func TestDiscoveryFeedbackExistingAndDetachedChannelRemainsIndependentOfHousehol
 		{path: "/v1/discovery/feedback?scope=channel&scopeId=feedback-channel", action: "surprise"},
 		{path: "/v1/discovery/feedback?scope=household", action: "keep"},
 	} {
-		resp = do(t, srv, http.MethodGet, query.path, memberToken, "")
+		resp = harness.Do(http.MethodGet, query.path, memberToken, "")
 		if resp.StatusCode != http.StatusOK {
 			_ = resp.Body.Close()
 			t.Fatalf("list %s = %d, want 200", query.path, resp.StatusCode)
@@ -76,7 +76,7 @@ func TestDiscoveryFeedbackExistingAndDetachedChannelRemainsIndependentOfHousehol
 }
 
 func TestDiscoveryFeedbackMissingChannelIsBounded404AfterAuthorization(t *testing.T) {
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 	requests := []struct {
 		path string
 		body string
@@ -85,14 +85,14 @@ func TestDiscoveryFeedbackMissingChannelIsBounded404AfterAuthorization(t *testin
 		{path: "/v1/discovery/feedback/clear", body: `{"scope":"channel","scopeId":"missing-channel","targetKey":"movie:tmdb:603"}`},
 	}
 	for _, request := range requests {
-		resp := do(t, srv, http.MethodPost, request.path, memberToken, request.body)
+		resp := harness.Do(http.MethodPost, request.path, memberToken, request.body)
 		if resp.StatusCode != http.StatusForbidden {
 			_ = resp.Body.Close()
 			t.Fatalf("member %s = %d, want 403 before channel existence disclosure", request.path, resp.StatusCode)
 		}
 		_ = resp.Body.Close()
 
-		resp = do(t, srv, http.MethodPost, request.path, adminToken, request.body)
+		resp = harness.Do(http.MethodPost, request.path, adminToken, request.body)
 		if resp.StatusCode != http.StatusNotFound {
 			_ = resp.Body.Close()
 			t.Fatalf("admin %s = %d, want 404", request.path, resp.StatusCode)
@@ -104,7 +104,7 @@ func TestDiscoveryFeedbackMissingChannelIsBounded404AfterAuthorization(t *testin
 		}
 	}
 
-	resp := do(t, srv, http.MethodGet,
+	resp := harness.Do(http.MethodGet,
 		"/v1/discovery/feedback?scope=channel&scopeId=missing-channel", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
@@ -120,28 +120,28 @@ func TestDiscoveryFeedbackMissingChannelIsBounded404AfterAuthorization(t *testin
 }
 
 func TestDiscoveryFeedbackAuthorizationAndRoundTrip(t *testing.T) {
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 	body := `{"scope":"household","targetKey":"movie:tmdb:603","action":"keep","reason":"family favorite"}`
 
-	if resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback", "", body); resp.StatusCode != http.StatusUnauthorized {
+	if resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", "", body); resp.StatusCode != http.StatusUnauthorized {
 		_ = resp.Body.Close()
 		t.Fatalf("anonymous write = %d, want 401", resp.StatusCode)
 	} else {
 		_ = resp.Body.Close()
 	}
-	if resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback", memberToken, body); resp.StatusCode != http.StatusForbidden {
+	if resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", memberToken, body); resp.StatusCode != http.StatusForbidden {
 		_ = resp.Body.Close()
 		t.Fatalf("member write = %d, want 403", resp.StatusCode)
 	} else {
 		_ = resp.Body.Close()
 	}
-	if resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback", adminToken, body); resp.StatusCode != http.StatusOK {
+	if resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, body); resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
 		t.Fatalf("admin write = %d, want 200", resp.StatusCode)
 	} else {
 		_ = resp.Body.Close()
 	}
-	if resp := do(t, srv, http.MethodGet, "/v1/discovery/feedback?scope=household", memberToken, ""); resp.StatusCode != http.StatusOK {
+	if resp := harness.Do(http.MethodGet, "/v1/discovery/feedback?scope=household", memberToken, ""); resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
 		t.Fatalf("member read = %d, want 200", resp.StatusCode)
 	} else {
@@ -150,9 +150,9 @@ func TestDiscoveryFeedbackAuthorizationAndRoundTrip(t *testing.T) {
 }
 
 func TestDiscoveryFeedbackChannelReadExplainsHouseholdFallbackAfterUndo(t *testing.T) {
-	srv, st := newServer(t)
+	harness := newAPIHarness(t)
 	ctx := context.Background()
-	_, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{ID: "feedback-channel", Name: "Feedback Channel",
+	_, err := harness.Store.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{ID: "feedback-channel", Name: "Feedback Channel",
 		Number: 44, Strategy: schedule.Sequential, Status: schedule.StatusLive}, ReconcileDeadline: time.Now().Add(time.Hour)})
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +162,7 @@ func TestDiscoveryFeedbackChannelReadExplainsHouseholdFallbackAfterUndo(t *testi
 		`{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603","action":"never"}`,
 	}
 	for _, body := range requests {
-		resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback", adminToken, body)
+		resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, body)
 		if resp.StatusCode != http.StatusOK {
 			_ = resp.Body.Close()
 			t.Fatalf("record feedback = %d", resp.StatusCode)
@@ -170,13 +170,13 @@ func TestDiscoveryFeedbackChannelReadExplainsHouseholdFallbackAfterUndo(t *testi
 		_ = resp.Body.Close()
 	}
 	clear := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603"}`
-	resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback/clear", adminToken, clear)
+	resp := harness.Do(http.MethodPost, "/v1/discovery/feedback/clear", adminToken, clear)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("clear channel feedback = %d", resp.StatusCode)
 	}
 
-	resp = do(t, srv, http.MethodGet, "/v1/discovery/feedback?scope=channel&scopeId=feedback-channel", memberToken, "")
+	resp = harness.Do(http.MethodGet, "/v1/discovery/feedback?scope=channel&scopeId=feedback-channel", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	var got []discoveryFeedbackView
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
@@ -193,10 +193,10 @@ type discoveryFeedbackView struct {
 }
 
 func TestDiscoveryFeedbackRejectsNonCanonicalTargetKeys(t *testing.T) {
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 	for _, target := range []string{"movie:tmdb:not-a-number", "movie:tvdb:603", "movie:tmdb:0603", "movie:tmdb:603:extra"} {
 		body := `{"scope":"household","targetKey":"` + target + `","action":"keep"}`
-		resp := do(t, srv, http.MethodPost, "/v1/discovery/feedback", adminToken, body)
+		resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, body)
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("target %q status = %d, want 400", target, resp.StatusCode)

@@ -21,14 +21,14 @@ import (
 // TestEveryOperationDeclaresARole is the exhaustive guard; this one states the outcome in
 // terms an operator would recognise.
 func TestAnonymousIsRefusedOnMemberRoutes(t *testing.T) {
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 	for _, path := range []string{
 		"/v1/channels",
 		"/v1/titles?state=available",
 		"/v1/proposals",
 	} {
 		t.Run(path, func(t *testing.T) {
-			resp := do(t, srv, http.MethodGet, path, "", "")
+			resp := harness.Do(http.MethodGet, path, "", "")
 			defer func() { _ = resp.Body.Close() }()
 			// 401, not 403: the caller has no identity, so "sign in" is the actionable
 			// answer. 403 would tell someone with no account to go find an admin.
@@ -65,13 +65,13 @@ func TestAnonymousCannotSpendLLMTokens(t *testing.T) {
 // An admin still gets through, so the negatives above are proven to be refusals rather than
 // a route that stopped working for everyone.
 func TestAdminStillReachesMemberAndAdminRoutes(t *testing.T) {
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 	for _, tc := range []struct{ path string }{
 		{"/v1/channels"},               // member
 		{"/v1/settings"},               // admin
 		{"/v1/titles?state=available"}, // member
 	} {
-		resp := do(t, srv, http.MethodGet, tc.path, adminToken, "")
+		resp := harness.Do(http.MethodGet, tc.path, adminToken, "")
 		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			t.Errorf("admin GET %s → %d, want it allowed", tc.path, resp.StatusCode)
@@ -83,9 +83,9 @@ func TestAdminStillReachesMemberAndAdminRoutes(t *testing.T) {
 // that locked these would make the install unenterable, and it would look like a bug in
 // login rather than in authorization.
 func TestPublicRoutesStayReachableAnonymously(t *testing.T) {
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 	for _, path := range []string{"/v1/setup/state", "/v1/system/version"} {
-		resp := do(t, srv, http.MethodGet, path, "", "")
+		resp := harness.Do(http.MethodGet, path, "", "")
 		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			t.Errorf("anonymous GET %s → %d, want it public (§11)", path, resp.StatusCode)
