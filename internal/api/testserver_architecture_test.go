@@ -16,9 +16,7 @@ import (
 // testServerConstructors classifies the deliberately retained route-family
 // harnesses while their common lifecycle is migrated behind apiHarness. Every
 // entry needs a route-family rationale, and stale entries fail the test.
-var testServerConstructors = map[string]string{
-	"search_test.go:newConfiguredSearchHandler": "search",
-}
+var testServerConstructors = map[string]string{}
 
 func TestAPITestServerConstructorsStayClassified(t *testing.T) {
 	t.Helper()
