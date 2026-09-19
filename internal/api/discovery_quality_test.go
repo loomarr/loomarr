@@ -12,33 +12,33 @@ import (
 )
 
 func TestDiscoveryQualityExportIsAdminOnlyAndOmitsReceipts(t *testing.T) {
-	srv, st := newServer(t)
+	harness := newAPIHarness(t)
 	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	snapshot := quality.RunSnapshot{
 		ID: "run-1", SchemaVersion: 1, CorpusVersion: "corpus-1", RequestedModel: "model-1",
 		Provider: quality.ProviderOllama, BudgetProfile: "default", ApplicationVersion: "v1", CreatedAt: now,
 	}
-	if err := st.PutQualityRunSnapshot(t.Context(), snapshot); err != nil {
+	if err := harness.Store.PutQualityRunSnapshot(t.Context(), snapshot); err != nil {
 		t.Fatal(err)
 	}
 	const receipt = "private-receipt-key"
-	if err := st.RecordQualityObservation(t.Context(), quality.Observation{
+	if err := harness.Store.RecordQualityObservation(t.Context(), quality.Observation{
 		IdempotencyKey: receipt, At: now, Stage: quality.StageRetrieval, Outcome: quality.OutcomeSucceeded,
 		Duration: 250 * time.Millisecond, CandidateCount: 7, RunSnapshotID: snapshot.ID,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.MaintainQualityLedger(t.Context(), now.Add(31*24*time.Hour)); err != nil {
+	if err := harness.Store.MaintainQualityLedger(t.Context(), now.Add(31*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 
-	member := do(t, srv, http.MethodGet, "/v1/system/discovery-quality/export", memberToken, "")
+	member := harness.Do(http.MethodGet, "/v1/system/discovery-quality/export", memberToken, "")
 	defer func() { _ = member.Body.Close() }()
 	if member.StatusCode != http.StatusForbidden {
 		t.Fatalf("member status = %d, want 403", member.StatusCode)
 	}
 
-	admin := do(t, srv, http.MethodGet, "/v1/system/discovery-quality/export", adminToken, "")
+	admin := harness.Do(http.MethodGet, "/v1/system/discovery-quality/export", adminToken, "")
 	defer func() { _ = admin.Body.Close() }()
 	if admin.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(admin.Body)

@@ -164,12 +164,6 @@ func openTestStore(t *testing.T, path string) store.Store {
 	return st
 }
 
-func newServer(t *testing.T) (*httptest.Server, store.Store) {
-	t.Helper()
-	harness := newAPIHarness(t)
-	return harness.Server, harness.Store
-}
-
 func do(t *testing.T, srv *httptest.Server, method, path, token, body string) *http.Response {
 	t.Helper()
 	var rdr io.Reader

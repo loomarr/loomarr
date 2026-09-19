@@ -15,15 +15,15 @@ import (
 // /metrics is unauthenticated on the LAN (§7) and exposes both the Go runtime
 // collectors and Loomarr's own HTTP series (§18).
 func TestMetricsExposed(t *testing.T) {
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 
 	// Drive one request so the labelled HTTP vecs emit a series (Prometheus
 	// counter/histogram vecs produce no lines until a label set is observed).
-	if r := do(t, srv, http.MethodGet, "/v1/healthz", "", ""); r != nil {
+	if r := harness.Do(http.MethodGet, "/v1/healthz", "", ""); r != nil {
 		_ = r.Body.Close()
 	}
 
-	resp := do(t, srv, http.MethodGet, "/v1/metrics", "", "")
+	resp := harness.Do(http.MethodGet, "/v1/metrics", "", "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /v1/metrics without a token = %d, want 200 (unauthenticated ops)", resp.StatusCode)
@@ -51,14 +51,14 @@ func TestMetricsExposed(t *testing.T) {
 // A served request is recorded against its matched route pattern, not the raw
 // path — the label that keeps cardinality bounded (§18).
 func TestMetricsRecordsRoute(t *testing.T) {
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 
 	// Drive a request through a known, low-cardinality route.
-	if r := do(t, srv, http.MethodGet, "/v1/healthz", "", ""); r != nil {
+	if r := harness.Do(http.MethodGet, "/v1/healthz", "", ""); r != nil {
 		_ = r.Body.Close()
 	}
 
-	resp := do(t, srv, http.MethodGet, "/v1/metrics", "", "")
+	resp := harness.Do(http.MethodGet, "/v1/metrics", "", "")
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	text := string(body)

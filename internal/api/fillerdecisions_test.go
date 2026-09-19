@@ -32,10 +32,10 @@ type activityWire struct {
 }
 
 func TestFillerDecisionProjectionsKeepAuditAndDiagnosticsOutOfIncoming(t *testing.T) {
-	srv, st := newServer(t)
-	seedDecisionAPI(t, st)
+	harness := newAPIHarness(t)
+	seedDecisionAPI(t, harness.Store)
 
-	res := do(t, srv, http.MethodGet, "/v1/filler/decisions/overview", memberToken, "")
+	res := harness.Do(http.MethodGet, "/v1/filler/decisions/overview", memberToken, "")
 	var overview struct {
 		NextAction  string `json:"nextAction"`
 		ActionCount int    `json:"actionCount"`
@@ -47,14 +47,14 @@ func TestFillerDecisionProjectionsKeepAuditAndDiagnosticsOutOfIncoming(t *testin
 		t.Fatalf("overview = %+v", overview)
 	}
 
-	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/diagnostics", memberToken, "")
+	res = harness.Do(http.MethodGet, "/v1/filler/decisions/diagnostics", memberToken, "")
 	if res.StatusCode != http.StatusForbidden {
 		_ = res.Body.Close()
 		t.Fatalf("member diagnostics = %d, want 403", res.StatusCode)
 	}
 	_ = res.Body.Close()
 
-	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/diagnostics?limit=10", adminToken, "")
+	res = harness.Do(http.MethodGet, "/v1/filler/decisions/diagnostics?limit=10", adminToken, "")
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestFillerDecisionProjectionsKeepAuditAndDiagnosticsOutOfIncoming(t *testin
 		t.Fatalf("diagnostics = %+v", diagnostics)
 	}
 
-	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/activity?limit=10", memberToken, "")
+	res = harness.Do(http.MethodGet, "/v1/filler/decisions/activity?limit=10", memberToken, "")
 	raw, err = io.ReadAll(res.Body)
 	_ = res.Body.Close()
 	if err != nil || res.StatusCode != http.StatusOK {
@@ -95,7 +95,7 @@ func TestFillerDecisionProjectionsKeepAuditAndDiagnosticsOutOfIncoming(t *testin
 		{http.MethodGet, "/v1/filler/attention", ""},
 		{http.MethodPost, "/v1/filler/attention/review-1/actions", `{"actionId":"retired","kind":"admit"}`},
 	} {
-		res = do(t, srv, request.method, request.path, adminToken, request.body)
+		res = harness.Do(request.method, request.path, adminToken, request.body)
 		if res.StatusCode != http.StatusNotFound {
 			_ = res.Body.Close()
 			t.Fatalf("retired %s %s = %d, want 404", request.method, request.path, res.StatusCode)
@@ -105,9 +105,9 @@ func TestFillerDecisionProjectionsKeepAuditAndDiagnosticsOutOfIncoming(t *testin
 }
 
 func TestFillerDiagnosticRecoveryRequiresAdminAndIsIdempotent(t *testing.T) {
-	srv, st := newServer(t)
+	harness := newAPIHarness(t)
 	at := time.Date(2026, 9, 12, 16, 0, 0, 0, time.UTC)
-	if err := st.PutFillerDecision(t.Context(), fillerdecision.Record{
+	if err := harness.Store.PutFillerDecision(t.Context(), fillerdecision.Record{
 		ID: "retryable-hold", ClipHash: "clip-retry", EvidenceHash: "evidence-retry",
 		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
 		PolicyVersion: "p1", TaxonomyVersion: "t1", ApplicationMode: fillerdecision.ApplicationModeShadow,
@@ -118,17 +118,17 @@ func TestFillerDiagnosticRecoveryRequiresAdminAndIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := `{"actionId":"diagnostic-retry-1","action":"retry"}`
-	res := do(t, srv, http.MethodPost, "/v1/filler/decisions/diagnostics/retryable-hold/actions", memberToken, body)
+	res := harness.Do(http.MethodPost, "/v1/filler/decisions/diagnostics/retryable-hold/actions", memberToken, body)
 	if res.StatusCode != http.StatusForbidden {
 		_ = res.Body.Close()
 		t.Fatalf("member recovery = %d, want 403", res.StatusCode)
 	}
 	_ = res.Body.Close()
-	if _, found, err := st.FindFillerDiagnosticRecovery(t.Context(), "diagnostic-retry-1"); err != nil || found {
+	if _, found, err := harness.Store.FindFillerDiagnosticRecovery(t.Context(), "diagnostic-retry-1"); err != nil || found {
 		t.Fatalf("member recovery persisted = %v, %v", found, err)
 	}
 	for range 2 {
-		res = do(t, srv, http.MethodPost, "/v1/filler/decisions/diagnostics/retryable-hold/actions", adminToken, body)
+		res = harness.Do(http.MethodPost, "/v1/filler/decisions/diagnostics/retryable-hold/actions", adminToken, body)
 		if res.StatusCode != http.StatusOK {
 			raw, _ := io.ReadAll(res.Body)
 			_ = res.Body.Close()
@@ -136,12 +136,12 @@ func TestFillerDiagnosticRecoveryRequiresAdminAndIsIdempotent(t *testing.T) {
 		}
 		_ = res.Body.Close()
 	}
-	request, found, err := st.FindFillerDiagnosticRecovery(t.Context(), "diagnostic-retry-1")
+	request, found, err := harness.Store.FindFillerDiagnosticRecovery(t.Context(), "diagnostic-retry-1")
 	if err != nil || !found || request.ActorID != "api-token" {
 		t.Fatalf("recorded diagnostic recovery = %+v, %v, %v", request, found, err)
 	}
 
-	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/diagnostics?limit=10", adminToken, "")
+	res = harness.Do(http.MethodGet, "/v1/filler/decisions/diagnostics?limit=10", adminToken, "")
 	var diagnostics decisionListBody[diagnosticWire]
 	decodeDecisionResponse(t, res, &diagnostics)
 	if diagnostics.Total != 1 || diagnostics.Rows[0].Recovery.Mode != "automatic_retry" || diagnostics.Rows[0].Recovery.RetryAt == nil {
@@ -150,7 +150,7 @@ func TestFillerDiagnosticRecoveryRequiresAdminAndIsIdempotent(t *testing.T) {
 }
 
 func TestFillerDecisionProjectionsUseLatestOutcomeWithoutErasingHistory(t *testing.T) {
-	srv, st := newServer(t)
+	harness := newAPIHarness(t)
 	at := time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC)
 	for _, record := range []fillerdecision.Record{
 		{ID: "hold-old", ClipHash: "clip-recovered", EvidenceHash: "evidence-old", EvidenceVersion: "e1", SchemaVersion: 1,
@@ -161,18 +161,18 @@ func TestFillerDecisionProjectionsUseLatestOutcomeWithoutErasingHistory(t *testi
 			Result: filleradmission.Result{Decision: &filleradmission.Decision{Verdict: filleradmission.VerdictAdmit,
 				ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied}}}},
 	} {
-		if err := st.PutFillerDecision(t.Context(), record); err != nil {
+		if err := harness.Store.PutFillerDecision(t.Context(), record); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	res := do(t, srv, http.MethodGet, "/v1/filler/decisions/diagnostics?limit=10", adminToken, "")
+	res := harness.Do(http.MethodGet, "/v1/filler/decisions/diagnostics?limit=10", adminToken, "")
 	var diagnostics decisionListBody[diagnosticWire]
 	decodeDecisionResponse(t, res, &diagnostics)
 	if diagnostics.Total != 0 {
 		t.Fatalf("recovered hold remained in diagnostics: %+v", diagnostics)
 	}
-	res = do(t, srv, http.MethodGet, "/v1/filler/decisions/activity?limit=10", memberToken, "")
+	res = harness.Do(http.MethodGet, "/v1/filler/decisions/activity?limit=10", memberToken, "")
 	var activity decisionListBody[activityWire]
 	decodeDecisionResponse(t, res, &activity)
 	if activity.Total != 1 || activity.Rows[0].Kind != "automatic_admit" {
