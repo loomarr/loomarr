@@ -1,10 +1,12 @@
 import type { ProposalItem } from "@loomarr/api";
+import { getResolveMovieCollectionsMockHandler, getSearchMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { server } from "@/test/msw/server";
 import { ProposalEdit } from "./proposal-edit";
 
 const makeWrapper = () => {
@@ -18,22 +20,12 @@ const makeWrapper = () => {
 
 const render = (ui: ReactElement) => rtlRender(ui, { wrapper: makeWrapper() });
 
-const jsonResponse = (body: unknown) =>
-  new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-
-const stubSearch = (candidates: unknown[]) => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string) => {
-      if (typeof url === "string" && url.includes("/v1/search")) {
-        return Promise.resolve(jsonResponse({ candidates }));
-      }
-      return Promise.resolve(jsonResponse({}));
-    }),
+const stubSearch = (candidates: ProposalItem[]) => {
+  server.use(
+    getSearchMockHandler({ candidates }),
+    getResolveMovieCollectionsMockHandler({ collections: [], complete: true }),
   );
 };
-
-afterEach(() => vi.unstubAllGlobals());
 
 const heat: ProposalItem = { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true };
 const simpsons: ProposalItem = {
@@ -269,13 +261,14 @@ describe("ProposalEdit", () => {
   });
 
   it("checks the visible TMDB movies and renders the grounded collection response", async () => {
-    const fetch = vi.fn((url: string) => {
-      if (url.includes("/v1/movie-collections")) {
-        return Promise.resolve(jsonResponse({ collections: [harryPotter], complete: true }));
-      }
-      return Promise.resolve(jsonResponse({ candidates: [] }));
-    });
-    vi.stubGlobal("fetch", fetch);
+    let requestedKeys: string[] = [];
+    server.use(
+      getSearchMockHandler({ candidates: [] }),
+      getResolveMovieCollectionsMockHandler(({ request }) => {
+        requestedKeys = new URL(request.url).searchParams.getAll("key");
+        return { collections: [harryPotter], complete: true };
+      }),
+    );
 
     render(
       <ProposalEdit
@@ -288,10 +281,7 @@ describe("ProposalEdit", () => {
     );
 
     expect(await screen.findByText("Harry Potter Collection")).toBeVisible();
-    const request = fetch.mock.calls.map(([url]) => url).find((url) => url.includes("/v1/movie-collections"));
-    expect(request).toBeDefined();
-    const params = new URL(request ?? "", "http://loomarr.test").searchParams;
-    expect(params.getAll("key")).toEqual(["movie:tmdb:671", "movie:tmdb:672", "movie:tmdb:673"]);
+    expect(requestedKeys).toEqual(["movie:tmdb:671", "movie:tmdb:672", "movie:tmdb:673"]);
   });
 
   it("shows calm progress while collection choices are being checked", () => {
