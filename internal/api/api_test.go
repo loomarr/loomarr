@@ -209,8 +209,8 @@ func TestOpenAPISpec(t *testing.T) {
 
 // Enqueue requires admin; a valid admin token creates the title as `wanted`.
 func TestEnqueueTitleAdmin(t *testing.T) {
-	srv, _ := newServer(t)
-	resp := do(t, srv, http.MethodPost, "/v1/titles", adminToken,
+	harness := newAPIHarness(t)
+	resp := harness.Do(http.MethodPost, "/v1/titles", adminToken,
 		`{"mediaType":"movie","tmdbId":1111867,"name":"In Flames"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("enqueue → %d, want 200", resp.StatusCode)
@@ -225,15 +225,15 @@ func TestEnqueueTitleAdmin(t *testing.T) {
 // Enqueue is idempotent (§4 inv. 3): a second identical POST returns the current
 // record, not a duplicate or error.
 func TestEnqueueIdempotent(t *testing.T) {
-	srv, st := newServer(t)
+	harness := newAPIHarness(t)
 	for i := 0; i < 2; i++ {
-		resp := do(t, srv, http.MethodPost, "/v1/titles", adminToken, `{"mediaType":"movie","tmdbId":5}`)
+		resp := harness.Do(http.MethodPost, "/v1/titles", adminToken, `{"mediaType":"movie","tmdbId":5}`)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("enqueue %d → %d", i, resp.StatusCode)
 		}
 	}
 	// Exactly one wanted row.
-	recs, _ := st.ListTitlesByState(context.Background(), "wanted")
+	recs, _ := harness.Store.ListTitlesByState(context.Background(), "wanted")
 	if len(recs) != 1 {
 		t.Errorf("idempotent enqueue produced %d rows, want 1", len(recs))
 	}
@@ -241,9 +241,9 @@ func TestEnqueueIdempotent(t *testing.T) {
 
 // POST/DELETE /v1/titles require admin (§7) — anonymous and wrong-token → 403.
 func TestTitlesMutationRequiresAdmin(t *testing.T) {
-	srv, _ := newServer(t)
+	harness := newAPIHarness(t)
 	for _, tok := range []string{"", "wrong"} {
-		resp := do(t, srv, http.MethodPost, "/v1/titles", tok, `{"mediaType":"movie","tmdbId":1}`)
+		resp := harness.Do(http.MethodPost, "/v1/titles", tok, `{"mediaType":"movie","tmdbId":1}`)
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("POST with token %q → %d, want 401", tok, resp.StatusCode)
 		}
@@ -252,8 +252,8 @@ func TestTitlesMutationRequiresAdmin(t *testing.T) {
 
 // list requires the state filter (§7); missing → 400.
 func TestListRequiresState(t *testing.T) {
-	srv, _ := newServer(t)
-	resp := do(t, srv, http.MethodGet, "/v1/titles", adminToken, "")
+	harness := newAPIHarness(t)
+	resp := harness.Do(http.MethodGet, "/v1/titles", adminToken, "")
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("list without state → %d, want 400", resp.StatusCode)
 	}
@@ -261,8 +261,8 @@ func TestListRequiresState(t *testing.T) {
 
 // GET a missing title → 404.
 func TestGetMissingTitle(t *testing.T) {
-	srv, _ := newServer(t)
-	resp := do(t, srv, http.MethodGet, "/v1/titles/movie:tmdb:404", adminToken, "")
+	harness := newAPIHarness(t)
+	resp := harness.Do(http.MethodGet, "/v1/titles/movie:tmdb:404", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("get missing → %d, want 404", resp.StatusCode)
 	}
@@ -270,13 +270,13 @@ func TestGetMissingTitle(t *testing.T) {
 
 // DELETE gives up a title (→ unavailable), admin only.
 func TestDeleteTitle(t *testing.T) {
-	srv, st := newServer(t)
-	_ = do(t, srv, http.MethodPost, "/v1/titles", adminToken, `{"mediaType":"movie","tmdbId":7}`)
-	resp := do(t, srv, http.MethodDelete, "/v1/titles/movie:tmdb:7", adminToken, "")
+	harness := newAPIHarness(t)
+	_ = harness.Do(http.MethodPost, "/v1/titles", adminToken, `{"mediaType":"movie","tmdbId":7}`)
+	resp := harness.Do(http.MethodDelete, "/v1/titles/movie:tmdb:7", adminToken, "")
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete → %d, want 204", resp.StatusCode)
 	}
-	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:7")
+	rec, _ := harness.Store.GetTitle(context.Background(), "movie:tmdb:7")
 	if rec.State != "unavailable" {
 		t.Errorf("deleted title state = %s, want unavailable (audit-preserving give-up)", rec.State)
 	}
@@ -284,8 +284,8 @@ func TestDeleteTitle(t *testing.T) {
 
 // SQLite backend serves a backup snapshot; admin only.
 func TestBackupSQLite(t *testing.T) {
-	srv, _ := newServer(t)
-	resp := do(t, srv, http.MethodGet, "/v1/backup", adminToken, "")
+	harness := newAPIHarness(t)
+	resp := harness.Do(http.MethodGet, "/v1/backup", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("backup → %d, want 200", resp.StatusCode)
 	}
@@ -300,8 +300,8 @@ func TestBackupSQLite(t *testing.T) {
 
 // Backup requires admin.
 func TestBackupRequiresAdmin(t *testing.T) {
-	srv, _ := newServer(t)
-	resp := do(t, srv, http.MethodGet, "/v1/backup", "", "")
+	harness := newAPIHarness(t)
+	resp := harness.Do(http.MethodGet, "/v1/backup", "", "")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("backup without admin → %d, want 401", resp.StatusCode)
 	}
@@ -309,8 +309,8 @@ func TestBackupRequiresAdmin(t *testing.T) {
 
 // The API reference is offline: no external (CDN) asset references (§7.1).
 func TestDocsOffline(t *testing.T) {
-	srv, _ := newServer(t)
-	resp := do(t, srv, http.MethodGet, "/v1/reference", "", "")
+	harness := newAPIHarness(t)
+	resp := harness.Do(http.MethodGet, "/v1/reference", "", "")
 	b, _ := io.ReadAll(resp.Body)
 	page := string(b)
 	if strings.Contains(page, "cdn.") || strings.Contains(page, "unpkg") || strings.Contains(page, "jsdelivr") {
@@ -324,7 +324,7 @@ func TestDocsOffline(t *testing.T) {
 			t.Errorf("the reference page does not link %s; its links have drifted from cfg.OpenAPIPath", link)
 			continue
 		}
-		if r := do(t, srv, http.MethodGet, link, "", ""); r.StatusCode != http.StatusOK {
+		if r := harness.Do(http.MethodGet, link, "", ""); r.StatusCode != http.StatusOK {
 			t.Errorf("the reference page links %s, which answers %d", link, r.StatusCode)
 		}
 	}
