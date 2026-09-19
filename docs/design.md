@@ -9238,10 +9238,13 @@ V51b replaces the seven sweeps with **one ordered per-clip pipeline** and one dr
 vision → score`. Each stage answers two questions separately — *does this stage apply to this Clip,
 in this install?* (no exec, re-evaluated while the Clip is on the conveyor) and *do the work*.
 Missing optional capability records a skipped rung and does not block Ready. A later capability
-change enriches already-Ready Clips through the separate progressive-enrichment path; it never
-rewinds readiness or holds playable media (#1251).
+change enriches already-Ready Clips through the post-ready progressive-enrichment phase; it never
+rewinds readiness or holds playable media (#1251). Preparation and post-ready enrichment share the
+one `filler-pipeline` driver and task row, but retain different authority: preparation may establish
+Ready, while enrichment may only improve descriptive facts and suggestions.
 
-**Progressive enrichment is a separate, per-axis loop (#1251).** Readiness answers whether exact
+**Progressive enrichment is a separate-authority, per-axis loop inside the one pipeline driver
+(#1251).** Readiness answers whether exact
 bytes may play; enrichment incrementally improves their descriptive matching metadata. The axes are
 kind, era, brand, target audience, geography, language, and the controlled taxonomy dimensions product,
 format, seasonal, audience cue, and presentation. A missing descriptive answer never holds,
@@ -9293,13 +9296,18 @@ reopened by automation.
 
 **Context research is a suggestion path, not another evidence rank.** When a publicly acquired
 Clip still lacks verified era or geography after the ordinary passes, Loomarr may use its public
-item title and description to retrieve a bounded evidence packet from a documented, adapter-owned
-knowledge API. A configured text model may interpret only that packet; it receives no general web
-tool, returns no fetch targets, and cannot introduce a citation Loomarr did not retrieve. Local
-paths, private-library metadata, transcripts, and household data never become public lookup queries.
-The first adapter is MediaWiki search, with an identifying User-Agent, HTTPS, fixed host, three-result
-and response-size ceilings, cache/version identity, provider etiquette, and scheduled retry rather
-than bot evasion. Arbitrary pages and consumer search interfaces are not fetched.
+item title and description to build a deterministic bounded search plan. One retrieval module fans
+that plan out to documented fixed-host knowledge adapters, merges partial successes, de-duplicates
+URLs, and caps the final evidence packet. The default adapters search English Wikipedia for
+campaign/background context and Archive.org's metadata index for related historical items; exact
+public source metadata may also contribute an attributable citation without another fetch. Each
+adapter owns its query syntax, host validation, response limits, version and provider etiquette.
+A configured text model may interpret only the merged packet; it receives no general web tool,
+returns no fetch targets, and cannot introduce a citation Loomarr did not retrieve. Local paths,
+private-library metadata, transcripts, and household data never become public lookup queries.
+Arbitrary pages and consumer search interfaces are not fetched. YouTube-wide search is not a
+default dependency because its official API requires a separately configured Google project/key;
+the acquisition sidecar remains the exact YouTube-item evidence available without that credential.
 
 A context report persists separately from accepted axes and records the Clip/input revision,
 retrieval adapter/version, interpreting provider/model/prompt, completion time, confidence,
@@ -9311,8 +9319,10 @@ quiet when no model, network, or useful result exists; evidence detail is progre
 the exact-Clip panel. Commercial discovery adapters remain behind the same interface and require a
 fresh terms/retention review before selection.
 
-Transcript and frame catch-up use that same coordinator rather than putting a Ready Clip back on
-the readiness conveyor. Each enabled capability has its own provider/model/prompt identity and the
+Transcript, frame and context catch-up use that same post-ready coordinator rather than putting a
+Ready Clip back on the readiness conveyor. The `filler-pipeline` driver always advances bounded
+preparation first, then spends the independent enrichment budgets; a remote failure cannot change
+the preparation result. Each enabled capability has its own provider/model/prompt identity and the
 existing `MaxWhisper` or `MaxVision` per-pass bound. A Clip is eligible only while at least one axis
 that capability can inform remains unresolved, and an operator answer (including an intentional
 empty answer) closes that axis to automation. A successful media pass records its completion even

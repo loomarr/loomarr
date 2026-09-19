@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	MediaWikiAdapterVersion = "mediawiki-v1"
+	MediaWikiAdapterVersion = "mediawiki-v2"
 	mediaWikiEndpoint       = "https://en.wikipedia.org/w/api.php"
 	mediaWikiTimeout        = 12 * time.Second
 	mediaWikiMaxBody        = 64 << 10
@@ -33,6 +33,8 @@ type MediaWiki struct {
 	userAgent string
 	now       func() time.Time
 }
+
+func (*MediaWiki) Identity() (string, string) { return "mediawiki", MediaWikiAdapterVersion }
 
 func NewMediaWiki(config MediaWikiConfig) (*MediaWiki, error) {
 	raw := strings.TrimSpace(config.Endpoint)
@@ -75,17 +77,22 @@ type mediaWikiResponse struct {
 	} `json:"error,omitempty"`
 }
 
-func (m *MediaWiki) Retrieve(ctx context.Context, query string) (Packet, error) {
-	query = strings.Join(strings.Fields(query), " ")
-	if query == "" || len(query) > 240 {
-		return Packet{}, fmt.Errorf("%w: lookup query is empty or too long", ErrInvalid)
+func (m *MediaWiki) Retrieve(ctx context.Context, lookup Lookup) (Packet, error) {
+	if err := lookup.Validate(); err != nil {
+		return Packet{}, err
 	}
+	terms := lookup.Terms()
+	queries := make([]string, 0, len(terms))
+	for _, term := range terms {
+		queries = append(queries, quotedSearchPhrase(term))
+	}
+	query := strings.Join(queries, " OR ")
 	u := *m.endpoint
 	values := u.Query()
 	values.Set("action", "query")
 	values.Set("generator", "search")
 	values.Set("gsrsearch", query)
-	values.Set("gsrlimit", fmt.Sprint(MaxCitations))
+	values.Set("gsrlimit", fmt.Sprint(MaxAdapterResults))
 	values.Set("prop", "extracts|info")
 	values.Set("explaintext", "1")
 	values.Set("exchars", fmt.Sprint(MaxExtractBytes))
@@ -122,10 +129,10 @@ func (m *MediaWiki) Retrieve(ctx context.Context, query string) (Packet, error) 
 	if decoded.Error != nil {
 		return Packet{}, fmt.Errorf("retrieve MediaWiki evidence: %s: %s", decoded.Error.Code, decoded.Error.Info)
 	}
-	packet := Packet{Query: query, Adapter: "mediawiki", AdapterVersion: MediaWikiAdapterVersion,
+	packet := Packet{Query: lookup.CanonicalTitle(), Adapter: "mediawiki", AdapterVersion: MediaWikiAdapterVersion,
 		RetrievedAt: m.now().UTC()}
 	for _, page := range decoded.Query.Pages {
-		if len(packet.Citations) == MaxCitations {
+		if len(packet.Citations) == MaxAdapterResults {
 			break
 		}
 		extract := strings.TrimSpace(page.Extract)

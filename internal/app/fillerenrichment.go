@@ -228,6 +228,7 @@ func (l fillerResearchSignals) Load(_ context.Context, candidate fillerresearch.
 	if metadata, ok := filler.ReadSourceMetadataFS(l.files, candidate.Path); ok {
 		input.Title = metadata.Title
 		input.Description = metadata.Description
+		input.SourceURL = metadata.WebpageURL
 	}
 	input.SourceKind, _, _ = strings.Cut(candidate.SourceID, ":")
 	return input, nil

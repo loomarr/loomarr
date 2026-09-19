@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
@@ -34,14 +35,51 @@ type fillerEnrichmentRunner interface {
 	Run(context.Context) (fillerenrichment.RunResult, error)
 }
 
-func fillerEnrichmentJob(runner fillerEnrichmentRunner) scheduler.Job {
-	return scheduler.Job{
-		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-enrichment", Group: scheduler.GroupFiller, Title: "Add filler details",
-		Description: "Adds useful details from source metadata in the background without delaying playback.",
-		DefaultCron: "30 */2 * * * *",
-		Run:         func(ctx context.Context) error { _, err := runner.Run(ctx); return err },
+type fillerPipelineRunner interface {
+	Run(context.Context) error
+}
+
+// fillerPipelineDriver owns one operator-facing background loop while preserving two independent
+// authority boundaries inside it: readiness prepares clips for playback; details enrich clips
+// that are already ready. A preparation failure does not strand the ready backlog, but a cancelled
+// lease stops before beginning more work.
+type fillerPipelineDriver struct {
+	prepare func(context.Context) error
+	details func(context.Context) error
+}
+
+func newFillerPipelineDriver(pipeline *filler.Pipeline, details fillerEnrichmentRunner) fillerPipelineDriver {
+	return fillerPipelineDriver{
+		prepare: func(ctx context.Context) error {
+			if pipeline == nil {
+				return nil
+			}
+			_, err := pipeline.RunOnce(ctx)
+			return err
+		},
+		details: func(ctx context.Context) error {
+			if details == nil {
+				return nil
+			}
+			_, err := details.Run(ctx)
+			return err
+		},
 	}
+}
+
+func (d fillerPipelineDriver) Run(ctx context.Context) error {
+	var prepareErr error
+	if d.prepare != nil {
+		prepareErr = d.prepare(ctx)
+	}
+	if err := ctx.Err(); err != nil {
+		return errors.Join(prepareErr, err)
+	}
+	var detailsErr error
+	if d.details != nil {
+		detailsErr = d.details(ctx)
+	}
+	return errors.Join(prepareErr, detailsErr)
 }
 
 // fillerFetchJob declares auto-fetch (§10 V38b) — polling registered sources for new clips.
@@ -87,7 +125,7 @@ func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 // so an idle install does one cheap work-list query; a busy one advances the next clip promptly
 // instead of leaving a fresh download sitting for up to an hour. The sweeps had to be rare because
 // each one re-read the entire catalog.
-func fillerPipelineJob(p *filler.Pipeline) scheduler.Job {
+func fillerPipelineJob(runner fillerPipelineRunner) scheduler.Job {
 	return scheduler.Job{
 		// ⚠ **`Timeout` is not optional on this job.** It runs ffmpeg and whisper, and River's
 		// default ceiling is ONE MINUTE — under which a single `blackdetect`/`silencedetect`
@@ -97,9 +135,14 @@ func fillerPipelineJob(p *filler.Pipeline) scheduler.Job {
 		// point its claim would expire, and no further.
 		Timeout: scheduler.LongJobTimeout,
 		Name:    "filler-pipeline", Group: scheduler.GroupFiller, Title: "Prepare new filler",
-		Description: "Measures, converts, splits, transcribes, and classifies incoming clips so they are ready to air.",
+		Description: "Prepares incoming clips for playback, then fills in useful details for clips that are ready.",
 		DefaultCron: "0 */2 * * * *", ScheduleKey: "job.filler_pipeline.schedule",
-		Run: func(ctx context.Context) error { _, err := p.RunOnce(ctx); return err },
+		Run: func(ctx context.Context) error {
+			if runner == nil {
+				return nil
+			}
+			return runner.Run(ctx)
+		},
 	}
 }
 

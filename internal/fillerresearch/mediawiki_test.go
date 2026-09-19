@@ -17,7 +17,7 @@ func TestMediaWikiRetrievesBoundedAttributedEvidence(t *testing.T) {
 		}
 		query := r.URL.Query()
 		if query.Get("generator") != "search" || query.Get("gsrlimit") != "3" ||
-			query.Get("gsrsearch") != "Tootsie Pop Classic Commercial" || query.Get("maxlag") != "5" {
+			query.Get("gsrsearch") != `"Tootsie Pop Classic Commercial" OR "Tootsie Pop"` || query.Get("maxlag") != "5" {
 			t.Errorf("query = %v", query)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -35,7 +35,7 @@ func TestMediaWikiRetrievesBoundedAttributedEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packet, err := retriever.Retrieve(t.Context(), "  Tootsie   Pop Classic Commercial  ")
+	packet, err := retriever.Retrieve(t.Context(), Lookup{Title: "  Tootsie   Pop Classic Commercial  "})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,20 @@ func TestMediaWikiRejectsOversizedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := retriever.Retrieve(t.Context(), "commercial"); err == nil || !strings.Contains(err.Error(), "exceeds") {
+	if _, err := retriever.Retrieve(t.Context(), Lookup{Title: "commercial"}); err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("oversized response error = %v", err)
+	}
+}
+
+func TestLookupBuildsAConservativeProviderSubject(t *testing.T) {
+	lookup := Lookup{Title: "  Tootsie Pop: Classic TV Commercial (Vintage)  "}
+	if got := lookup.CanonicalTitle(); got != "Tootsie Pop: Classic TV Commercial (Vintage)" {
+		t.Fatalf("canonical title = %q", got)
+	}
+	if got := lookup.Subject(); got != "Tootsie Pop" {
+		t.Fatalf("subject = %q", got)
+	}
+	if got := lookup.Terms(); len(got) != 2 || got[0] != "Tootsie Pop: Classic TV Commercial (Vintage)" || got[1] != "Tootsie Pop" {
+		t.Fatalf("terms = %v", got)
 	}
 }

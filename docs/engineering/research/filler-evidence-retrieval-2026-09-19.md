@@ -9,11 +9,18 @@ provider's terms will remain unchanged.
 Loomarr will own retrieval. A configured language model may interpret a bounded evidence packet,
 but it does not receive a general web-search tool and does not choose which hosts Loomarr contacts.
 
-The first implementation uses direct, attributable public knowledge APIs and exact source metadata.
+The implementation uses direct, attributable public knowledge APIs and exact source metadata.
 It sends only metadata that already came from a public remote source; local filenames and private
 library metadata are not web-search queries. Results remain **context suggestions**, never verified
 clip facts, admission authority, or scheduling inputs. The UI must say “Likely” and link to the
 underlying pages.
+
+The default search is a bounded fan-out rather than one literal-title lookup. Loomarr derives a
+small deterministic subject query from the public title, searches English Wikipedia for general
+campaign context, searches Archive.org's public metadata index for related historical items, then
+de-duplicates and caps the combined evidence before model interpretation. Partial provider failure
+does not discard attributable evidence returned by another adapter. No adapter may turn a result URL
+into a second arbitrary fetch.
 
 Commercial search remains an adapter seam, not a dependency of the domain model. Before enabling
 one, its current terms must permit Loomarr's intended retention and display of evidence. Search
@@ -33,6 +40,29 @@ described.
 - [MediaWiki API etiquette](https://www.mediawiki.org/wiki/API:Etiquette)
 - [MediaWiki search API](https://www.mediawiki.org/wiki/API:Search)
 - [Wikimedia Foundation Terms of Use](https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use)
+
+### Internet Archive
+
+Internet Archive exposes public item metadata and metadata search through documented JSON APIs. The
+search adapter uses only the fixed `archive.org/advancedsearch.php` endpoint, strips query-language
+operators from public title text, requests a small fixed field set, and cites canonical
+`archive.org/details/{identifier}` pages. A related item is corroborating context, not proof that two
+uploads contain the same advert; interpretation must retain that uncertainty.
+
+- [Internet Archive item-search APIs](https://archive.org/developers/index.html)
+- [Internet Archive Metadata API](https://archive.org/developers/metadata.html)
+
+### YouTube search
+
+The official YouTube Data API supports relevance search, but it requires a Google Cloud project/API
+key and enforces project quota. Loomarr will not hide that setup behind the ordinary filler flow or
+scrape YouTube's consumer search page. The exact title, description, uploader and canonical page
+captured by yt-dlp during acquisition remain available as public item evidence. A future advanced
+adapter may use an explicitly configured YouTube Data API credential without changing the research
+module's external interface.
+
+- [YouTube Data API overview](https://developers.google.com/youtube/v3/getting-started)
+- [YouTube `search.list`](https://developers.google.com/youtube/v3/docs/search/list)
 
 ### Brave Search API
 
@@ -89,16 +119,17 @@ Loomarr does not attempt to look human or bypass anti-bot controls. Retrieval ad
 - use documented APIs, an identifying User-Agent, HTTPS, and provider rate-limit signals;
 - cap results, response bytes, redirects, request time, concurrency, and clips per pass;
 - retry only on a later scheduled pass, with bounded backoff and no CAPTCHA bypass;
-- cache by normalized query and adapter version so repeated enrichment does not repeat retrieval;
+- bind completed work to normalized plan and adapter versions so an unchanged Clip is not retrieved
+  again; a future shared query cache may remove duplicate lookups across distinct Clips;
 - contact only adapter-owned hosts; arbitrary model- or user-returned URLs never become fetch targets;
 - send public remote-source title/description only, never a local path or private library text;
 - preserve attribution and distinguish campaign context from exact-item evidence.
 
 ## Product inference
 
-For a title such as “Tootsie Pop Classic Commercial,” Wikimedia search can identify the long-running
-campaign and its US-television debut year. That is useful context, but it does not prove that the
-exact archived cut is the 1970 debut. Loomarr may therefore show “Likely 1970s · United States” with
-the citation and uncertainty. It may not write `era=1970` or `country=US` into the verified axes
-until exact item/content evidence supports those facts or the operator confirms them.
-
+For a title such as “Tootsie Pop Classic Commercial,” the subject query can identify the long-running
+campaign while Archive metadata can surface independently titled historical uploads. That is useful
+context, but neither proves that the exact archived cut is the 1970 debut. Loomarr may therefore show
+“Likely 1970s · United States” with citations and uncertainty. It may not write `era=1970` or
+`country=US` into the verified axes until exact item/content evidence supports those facts or the
+operator confirms them.

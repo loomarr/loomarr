@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 )
 
-const PromptVersion = "filler-context-v1"
+const PromptVersion = "filler-context-v2"
 
 type Researcher struct {
 	retriever Retriever
@@ -42,9 +42,13 @@ func (r *Researcher) Research(ctx context.Context, input Input) (Report, error) 
 	if input.KnownEra > 0 && strings.TrimSpace(input.KnownCountry) != "" {
 		return Report{}, fmt.Errorf("%w: the requested context is already verified", ErrInvalid)
 	}
-	query := strings.TrimSpace(input.Title)
-	packet, err := r.retriever.Retrieve(ctx, query)
+	lookup := Lookup{Title: input.Title, Description: input.Description}
+	packet, err := r.retriever.Retrieve(ctx, lookup)
 	if err != nil {
+		return Report{}, err
+	}
+	packet = withSourceCitation(packet, input)
+	if err := packet.Validate(); err != nil {
 		return Report{}, err
 	}
 	requested := make([]string, 0, 2)
@@ -93,4 +97,35 @@ JSON keys: year, decade, countryCode, country, confidence, explanation, citation
 		return Report{}, err
 	}
 	return report, nil
+}
+
+// withSourceCitation makes preserved provider metadata first-class evidence without another fetch.
+// The allowlist is enforced by Input.Validate; related search results remain behind it and are
+// renumbered so the interpreter can cite one stable packet-local namespace.
+func withSourceCitation(packet Packet, input Input) Packet {
+	if strings.TrimSpace(input.SourceURL) == "" {
+		return packet
+	}
+	extract := "Source item title: " + strings.Join(strings.Fields(input.Title), " ")
+	if description := strings.TrimSpace(input.Description); description != "" {
+		extract += "\nSource description: " + description
+	}
+	if len(extract) > MaxExtractBytes {
+		extract = extract[:MaxExtractBytes]
+	}
+	citations := make([]Citation, 0, min(MaxCitations, len(packet.Citations)+1))
+	citations = append(citations, Citation{ID: 1, Title: "Original source: " + strings.Join(strings.Fields(input.Title), " "),
+		URL: strings.TrimSpace(input.SourceURL), Extract: extract})
+	for _, citation := range packet.Citations {
+		if strings.EqualFold(strings.TrimSpace(citation.URL), strings.TrimSpace(input.SourceURL)) {
+			continue
+		}
+		citation.ID = len(citations) + 1
+		citations = append(citations, citation)
+		if len(citations) == MaxCitations {
+			break
+		}
+	}
+	packet.Citations = boundCitations(citations)
+	return packet
 }

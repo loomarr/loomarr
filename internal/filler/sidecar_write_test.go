@@ -82,12 +82,13 @@ func TestWriteSidecarTags_RoundTrips(t *testing.T) {
 
 func TestReadSourceMetadataFS_SeparatesUploadDateFromBroadcastSignals(t *testing.T) {
 	dir := t.TempDir()
-	raw := `{"title":"HP Sauce Advert","description":"Broadcast 1999 on Five.","upload_date":"20250107","loomarr":{"originalName":"hp-sauce.mp4","sourceId":"classic"}}`
+	raw := `{"id":"hp-ad","title":"HP Sauce Advert","description":"Broadcast 1999 on Five.","webpage_url":"https://archive.org/details/hp-ad","upload_date":"20250107","loomarr":{"originalName":"hp-sauce.mp4","sourceId":"classic"}}`
 	if err := os.WriteFile(filepath.Join(dir, "hp.info.json"), []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got, ok := filler.ReadSourceMetadataFS(os.DirFS(dir), "hp.mp4")
 	if !ok || got.Title != "HP Sauce Advert" || got.UploadDate != "20250107" ||
+		got.ItemID != "hp-ad" || got.WebpageURL != "https://archive.org/details/hp-ad" ||
 		got.OriginalName != "hp-sauce.mp4" || got.SourceID != "classic" {
 		t.Fatalf("ReadSourceMetadataFS = %+v, %v", got, ok)
 	}

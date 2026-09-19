@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -140,7 +141,6 @@ func buildFillerSubsystem(
 		"every", set.dur("filler.sync_every"))
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder)
-	jobs.Add(fillerPipelineJob(pipeline))
 	enrichmentSignals := fillerEnrichmentSignals{
 		store: st, files: layout.FS(),
 	}
@@ -173,18 +173,25 @@ func buildFillerSubsystem(
 	selection := activeFillerTextSelection(set, metricRecorder)
 	var researchRunner *fillerresearch.Runner
 	if selection.Provider != nil && strings.TrimSpace(selection.Model) != "" {
-		retriever, err := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
+		wiki, wikiErr := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
 			UserAgent: "Loomarr/1.0 (https://github.com/loomarr/loomarr)",
 		})
-		if err == nil {
+		archive, archiveErr := fillerresearch.NewArchive(fillerresearch.ArchiveConfig{
+			UserAgent: "Loomarr/1.0 (https://github.com/loomarr/loomarr)",
+		})
+		retriever, retrievalErr := fillerresearch.NewFederated(wiki, archive)
+		if err := errors.Join(wikiErr, archiveErr, retrievalErr); err != nil {
+			log.Warn("could not construct filler context retrieval", "err", err)
+		} else {
 			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,
 				selection.Model, time.Now)
 			researchRunner = fillerresearch.NewRunner(fillerResearchRepository{st: st}, researcher,
 				fillerResearchSignals{files: layout.FS()}.Load,
-				func() int { return min(3, set.intv("filler.pipeline.max_clips")) })
+				func() int { return min(1, set.intv("filler.pipeline.max_clips")) })
 		}
 	}
-	jobs.Add(fillerEnrichmentJob(fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner}))
+	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner}
+	jobs.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details)))
 	adapter.pipeline = pipeline
 	if decisionService != nil {
 		decisionService.WithDiagnosticRecovery(adapter)

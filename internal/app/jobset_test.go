@@ -31,7 +31,6 @@ func TestJobSet(t *testing.T) {
 		"backup | backup | 0 30 3 * * * | backup.schedule",
 		"channel-maintenance | channels | 0 */10 * * * * | job.channel_maintenance.schedule",
 		"channel-recurate | channels | 0 0 4 * * 0 | job.recurate.schedule",
-		"filler-enrichment | filler | 30 */2 * * * * | ",
 		// ⚠ Auto-fetch (§10 V38b) is the first job that reaches OUT to the internet unattended.
 		// Its presence here is the deliberate record of that: §15 previously said "there is no
 		// unattended crawler", and this row is what a future reader sees when they check whether
@@ -42,7 +41,8 @@ func TestJobSet(t *testing.T) {
 		// staggered minutes were a hand-maintained scheduling discipline that kept four expensive
 		// sweeps off each other's runner, and the note that used to sit here spelled it out. The
 		// pipeline runs ONE clip at a time through all the rungs in order, so there is nothing
-		// left to stagger.
+		// left to stagger. Progressive detail and public-context enrichment now run after readiness
+		// inside this same driver, so Tasks does not expose a second internal loop to ordinary users.
 		//
 		// ⚠ It also inherits the record the language row carried: this is the job that DELETES
 		// catalog rows unattended — now for several reasons rather than one (a wrong language, a

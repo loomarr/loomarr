@@ -39,6 +39,7 @@ RETIRED=(
   'JOB_FILLER_SPLIT_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
   'JOB_FILLER_TRANSCRIBE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
 	'JOB_FILLER_VISION_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+	'filler-enrichment|#1332: post-ready detail and context work belongs to the single filler-pipeline driver'
 	# #1254: the user-facing automatic-download policy is the only cadence authority. The
 	# scheduler's minute wake is fixed code and only asks the due-source planner for work.
 	'job.filler_fetch.schedule|#1254: use filler.fetch.every and per-source automatic-download policy'

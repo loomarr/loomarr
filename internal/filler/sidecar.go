@@ -29,8 +29,10 @@ import (
 // Archive.org's writer emits the same field names for the ones that matter. Unknown
 // fields are ignored, so a yt-dlp version bump can't break parsing.
 type sidecarInfo struct {
+	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
+	WebpageURL  string `json:"webpage_url"`
 	// yt-dlp records the uploader/channel; Archive.org records the collection. Either
 	// is a useful hint about what KIND of clip this is (a toy-ad channel vs a news reel).
 	Uploader string `json:"uploader"`
@@ -50,8 +52,10 @@ type sidecarInfo struct {
 // receiving the entire yt-dlp document. UploadDate is exposed explicitly so the enrichment module
 // can retain—and test—the rule that it never becomes broadcast era.
 type SourceMetadata struct {
+	ItemID       string
 	Title        string
 	Description  string
+	WebpageURL   string
 	Uploader     string
 	Channel      string
 	UploadDate   string
@@ -575,8 +579,10 @@ func ReadSourceMetadataFS(fsys fs.FS, mediaPath string) (SourceMetadata, bool) {
 		return SourceMetadata{}, false
 	}
 	return SourceMetadata{
-		Title: strings.TrimSpace(info.Title), Description: strings.TrimSpace(info.Description),
-		Uploader: strings.TrimSpace(info.Uploader), Channel: strings.TrimSpace(info.Channel),
+		ItemID: strings.TrimSpace(info.ID),
+		Title:  strings.TrimSpace(info.Title), Description: strings.TrimSpace(info.Description),
+		WebpageURL: strings.TrimSpace(info.WebpageURL),
+		Uploader:   strings.TrimSpace(info.Uploader), Channel: strings.TrimSpace(info.Channel),
 		UploadDate: strings.TrimSpace(info.UploadDate), OriginalName: strings.TrimSpace(tags.OriginalName),
 		SourceID: strings.TrimSpace(tags.SourceID),
 	}, true

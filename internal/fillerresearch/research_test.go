@@ -11,13 +11,14 @@ import (
 
 type fixtureRetriever struct {
 	packet Packet
-	query  string
+	lookup Lookup
 	calls  int
 }
 
-func (r *fixtureRetriever) Retrieve(_ context.Context, query string) (Packet, error) {
+func (r *fixtureRetriever) Identity() (string, string) { return "fixture", "fixture-v1" }
+func (r *fixtureRetriever) Retrieve(_ context.Context, lookup Lookup) (Packet, error) {
 	r.calls++
-	r.query = query
+	r.lookup = lookup
 	return r.packet, nil
 }
 
@@ -55,8 +56,9 @@ func TestResearchKeepsCampaignContextAsACitedSuggestion(t *testing.T) {
 		len(report.Cited()) != 1 || report.CompletedAt != at {
 		t.Fatalf("report = %+v", report)
 	}
-	if retriever.query != "Tootsie Pop Classic Commercial" || !provider.options.JSONMode || len(provider.messages) != 2 {
-		t.Fatalf("query/options/messages = %q %+v %#v", retriever.query, provider.options, provider.messages)
+	if retriever.lookup.Title != "Tootsie Pop Classic Commercial" || retriever.lookup.Description != "The classic commercial." ||
+		!provider.options.JSONMode || len(provider.messages) != 2 {
+		t.Fatalf("lookup/options/messages = %+v %+v %#v", retriever.lookup, provider.options, provider.messages)
 	}
 	if len(provider.options.Tools) != 0 {
 		t.Fatalf("model received tools: %+v", provider.options.Tools)
@@ -70,6 +72,32 @@ func TestResearchRejectsModelInventedCitation(t *testing.T) {
 		InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic"})
 	if err == nil || !strings.Contains(err.Error(), "outside its packet") {
 		t.Fatalf("invented citation error = %v", err)
+	}
+}
+
+func TestResearchIncludesCanonicalSourceMetadataAsEvidence(t *testing.T) {
+	provider := &fixtureProvider{content: `{"decade":1980,"countryCode":"GB","country":"United Kingdom","confidence":70,"explanation":"Likely from the source description.","citationIds":[1]}`}
+	researcher := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now)
+	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "HP Sauce Advert",
+		Description: "British condiment advertisement from the 1980s.", InputRevision: 1,
+		SourceKind: "archive", SourceID: "archive:classic", SourceURL: "https://archive.org/details/hp-sauce"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Packet.Citations) != 2 || report.Packet.Citations[0].ID != 1 ||
+		report.Packet.Citations[0].URL != "https://archive.org/details/hp-sauce" ||
+		report.Packet.Citations[1].ID != 2 || len(report.Cited()) != 1 {
+		t.Fatalf("packet = %+v", report.Packet)
+	}
+}
+
+func TestResearchRejectsAnArbitraryClaimedSourceURLBeforeRetrieval(t *testing.T) {
+	retriever := &fixtureRetriever{packet: researchPacket()}
+	researcher := New(retriever, &fixtureProvider{}, "fixture", "model", time.Now)
+	_, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "HP Sauce Advert",
+		InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic", SourceURL: "https://example.com/details/hp"})
+	if err == nil || retriever.calls != 0 {
+		t.Fatalf("arbitrary source err=%v calls=%d", err, retriever.calls)
 	}
 }
 

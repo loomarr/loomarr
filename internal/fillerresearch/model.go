@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	MaxCitations      = 3
+	MaxAdapterResults = 3
+	MaxCitations      = 5
 	MaxExtractBytes   = 5_000
-	MaxPacketBytes    = 15_000
+	MaxPacketBytes    = 20_000
 	MaxExplanationLen = 600
 )
 
@@ -33,6 +34,7 @@ type Input struct {
 	Description   string
 	SourceKind    string
 	SourceID      string
+	SourceURL     string
 	KnownEra      int
 	KnownCountry  string
 }
@@ -44,9 +46,31 @@ func (in Input) Validate() error {
 	}
 	switch strings.ToLower(strings.TrimSpace(in.SourceKind)) {
 	case "archive", "archive.org", "youtube":
+		if strings.TrimSpace(in.SourceURL) == "" {
+			return nil
+		}
+		if !validPublicSourceURL(in.SourceKind, in.SourceURL) {
+			return fmt.Errorf("%w: source URL is not canonical for %q", ErrInvalid, in.SourceKind)
+		}
 		return nil
 	default:
 		return fmt.Errorf("%w: source %q is not a public lookup source", ErrInvalid, in.SourceKind)
+	}
+}
+
+func validPublicSourceURL(kind, raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Host == "" || u.Fragment != "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "archive", "archive.org":
+		return (host == "archive.org" || host == "www.archive.org") && strings.HasPrefix(u.EscapedPath(), "/details/")
+	case "youtube":
+		return host == "youtube.com" || host == "www.youtube.com" || host == "m.youtube.com" || host == "youtu.be"
+	default:
+		return false
 	}
 }
 
@@ -173,6 +197,79 @@ func (r Report) Cited() []Citation {
 	return out
 }
 
+func boundCitations(citations []Citation) []Citation {
+	out := make([]Citation, 0, min(MaxCitations, len(citations)))
+	remaining := MaxPacketBytes
+	for _, citation := range citations {
+		if len(out) == MaxCitations || remaining <= 0 {
+			break
+		}
+		if len(citation.Extract) > MaxExtractBytes {
+			citation.Extract = citation.Extract[:MaxExtractBytes]
+		}
+		if len(citation.Extract) > remaining {
+			citation.Extract = citation.Extract[:remaining]
+		}
+		citation.ID = len(out) + 1
+		remaining -= len(citation.Extract)
+		out = append(out, citation)
+	}
+	return out
+}
+
+// Lookup is the bounded public search envelope. Adapters may derive provider-specific queries from
+// it, but cannot receive local paths, transcripts, or arbitrary fetch targets.
+type Lookup struct {
+	Title       string
+	Description string
+}
+
+func (l Lookup) Validate() error {
+	if strings.TrimSpace(l.Title) == "" || len(l.Title) > 240 || len(l.Description) > 2_000 {
+		return fmt.Errorf("%w: lookup title or description is invalid", ErrInvalid)
+	}
+	return nil
+}
+
+func (l Lookup) CanonicalTitle() string { return strings.Join(strings.Fields(l.Title), " ") }
+
+// Terms is the complete deterministic search plan. The literal provider title preserves exact
+// matches while Subject removes presentation noise that can bury the advertiser or product.
+func (l Lookup) Terms() []string {
+	literal, subject := l.CanonicalTitle(), l.Subject()
+	if subject == "" || strings.EqualFold(literal, subject) {
+		return []string{literal}
+	}
+	return []string{literal, subject}
+}
+
+// Subject returns a conservative subject query by removing presentation words that commonly bury
+// the actual brand/product in remote-source titles. It never adds a model-authored term or URL.
+func (l Lookup) Subject() string {
+	generic := map[string]bool{
+		"ad": true, "ads": true, "advert": true, "adverts": true, "advertisement": true,
+		"advertisements": true, "classic": true, "commercial": true, "commercials": true,
+		"retro": true, "television": true, "tv": true, "vintage": true,
+	}
+	words := strings.Fields(l.CanonicalTitle())
+	kept := make([]string, 0, len(words))
+	for _, word := range words {
+		trimmed := strings.Trim(word, ".,:;!?()[]{}\"'")
+		if trimmed == "" || generic[strings.ToLower(trimmed)] {
+			continue
+		}
+		kept = append(kept, trimmed)
+		if len(kept) == 12 {
+			break
+		}
+	}
+	if len(kept) == 0 {
+		return l.CanonicalTitle()
+	}
+	return strings.Join(kept, " ")
+}
+
 type Retriever interface {
-	Retrieve(ctx context.Context, query string) (Packet, error)
+	Identity() (adapter, version string)
+	Retrieve(ctx context.Context, lookup Lookup) (Packet, error)
 }
