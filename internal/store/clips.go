@@ -386,6 +386,10 @@ func (s *sqlStore) rekeyClipReferencesTx(ctx context.Context, tx *sql.Tx, oldHas
 		{`UPDATE clip_tags SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
 		{`UPDATE filler_clip_pipeline SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
 		{`UPDATE filler_split_proposals SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
+		// The manifest keeps the downloaded source bytes in media_sha256/media_path, but clip_hash
+		// is its binding to the current catalog identity. If that binding stays on the retired
+		// intake hash, the detail surface loses the exact public source URL after normalization.
+		{`UPDATE filler_acquisition_artifacts SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
 		{`UPDATE clips SET parent_hash = ? WHERE parent_hash = ?`, []any{newHash, oldHash}},
 		{`UPDATE image_refs SET owner_id = ? WHERE owner_kind = ? AND owner_id = ?`, []any{newHash, "clip", oldHash}},
 	}

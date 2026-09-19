@@ -139,15 +139,21 @@ func buildFillerSubsystem(
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder)
 	jobs.Add(fillerPipelineJob(pipeline))
+	enrichmentSignals := fillerEnrichmentSignals{
+		store: st, files: layout.FS(),
+		home: func() filler.Geography {
+			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
+		},
+	}
 	enrichment := fillerenrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: layout.FS()}.Load,
+		enrichmentSignals.Load,
 		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
 	)
 	enrichmentCoordinator := fillerenrichment.NewCoordinator(
 		enrichment, fillerEnrichmentRepository{st: st},
 		func() fillerenrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
-		fillerEnrichmentSignals{store: st, files: layout.FS()}.Load,
+		enrichmentSignals.Load,
 		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
 	).WithCapabilities(
 		fillerenrichment.NewCapabilityRunner(

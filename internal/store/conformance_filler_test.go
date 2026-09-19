@@ -730,6 +730,24 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
 	}
+	run := filler.AcquisitionRun{
+		ID: "identity-acquisition", Trigger: filler.AcquisitionSource, SourceID: "youtube:ads",
+		Status: filler.AcquisitionSuccess, Requested: 1, Fetched: 1,
+		StartedAt: now, CompletedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filler.AcquisitionArtifact{
+		ID: "identity-artifact", AcquisitionID: run.ID, SourceID: run.SourceID,
+		Provider: "youtube", SourceURL: "https://www.youtube.com/watch?v=identity-artifact",
+		RemoteID: "identity-artifact", MediaPath: old.Path,
+		MediaSHA256: strings.Repeat("a", 64), MediaBytes: 42, ClipHash: old.Hash,
+		State: filler.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.UpsertClipFingerprint(ctx, old.Hash, "dhash-v1", []uint64{1, 2, 3}); err != nil {
 		t.Fatal(err)
 	}
@@ -820,6 +838,10 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if _, found, err := cachedClipFingerprint(ctx, s, replacement.Hash, "dhash-v1"); err != nil || found {
 		t.Errorf("old-byte fingerprint was re-keyed onto replacement bytes: found=%v err=%v", found, err)
 	}
+	gotArtifact, found, err := s.AcquisitionArtifactForClip(ctx, replacement.Path, replacement.Hash)
+	if err != nil || !found || gotArtifact.ID != artifact.ID || gotArtifact.ClipHash != replacement.Hash {
+		t.Errorf("acquisition provenance did not follow replacement: %+v, found=%v err=%v", gotArtifact, found, err)
+	}
 }
 
 // A pending conditioned target may be reconstructed by Sync before the source row is re-keyed.
@@ -837,6 +859,24 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	source.Transcript = "source-owned transcript"
 	source.UpdatedAt = now
 	if err := s.UpsertClip(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	run := filler.AcquisitionRun{
+		ID: "conditioning-acquisition", Trigger: filler.AcquisitionSource, SourceID: "youtube:ads",
+		Status: filler.AcquisitionSuccess, Requested: 1, Fetched: 1,
+		StartedAt: now, CompletedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filler.AcquisitionArtifact{
+		ID: "conditioning-artifact", AcquisitionID: run.ID, SourceID: run.SourceID,
+		Provider: "youtube", SourceURL: "https://www.youtube.com/watch?v=conditioning-artifact",
+		RemoteID: "conditioning-artifact", MediaPath: source.Path,
+		MediaSHA256: strings.Repeat("b", 64), MediaBytes: 84, ClipHash: source.Hash,
+		State: filler.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
@@ -882,6 +922,10 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	}
 	if pipeline, found, err := s.GetClipPipeline(ctx, target.Hash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
 		t.Fatalf("adopted target pipeline = %+v, found=%v err=%v", pipeline, found, err)
+	}
+	gotArtifact, found, err := s.AcquisitionArtifactForClip(ctx, target.Path, target.Hash)
+	if err != nil || !found || gotArtifact.ID != artifact.ID || gotArtifact.ClipHash != target.Hash {
+		t.Fatalf("adopted target provenance = %+v, found=%v err=%v", gotArtifact, found, err)
 	}
 	if err := s.CommitConditioningPublication(ctx, publication, got); err != nil {
 		t.Fatalf("recognize post-rekey target: %v", err)
