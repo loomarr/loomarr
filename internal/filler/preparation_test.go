@@ -17,11 +17,11 @@ func TestProjectPreparationProgress(t *testing.T) {
 			PreparationAttempt: 1, Disposition: DispositionRunning, Stage: StageTranscode,
 			Status: StatusRunning, Progress: 50,
 			Stages: []StageRecord{{Stage: StageProbe, Status: StatusDone}},
-		}, want: 16},
+		}, want: 18},
 		{name: "skips count once and duplicates do not", row: ClipPipeline{
 			PreparationAttempt: 1,
 			Stages:             []StageRecord{{Stage: StageProbe, Status: StatusDone}, {Stage: StageProbe, Status: StatusDone}, {Stage: StageTranscode, Status: StatusSkipped}},
-		}, want: 22},
+		}, want: 25},
 		{name: "persisted maximum prevents regression", row: ClipPipeline{
 			PreparationAttempt: 1, PreparationProgress: 61,
 			Stages: []StageRecord{{Stage: StageProbe, Status: StatusDone}},
@@ -41,7 +41,7 @@ func TestEstimatePreparationReady(t *testing.T) {
 	now := time.Date(2026, time.September, 17, 12, 0, 0, 0, time.UTC)
 	current := PreparationWork{DurationMs: 30_000, Pipeline: ClipPipeline{
 		Stage: StageTranscode, Status: StatusRunning, Progress: 50, Disposition: DispositionRunning,
-		PreparationAttempt: 1, PreparationProgress: 16, PreparationStartedAt: now.Add(-time.Minute), UpdatedAt: now,
+		PreparationAttempt: 1, PreparationProgress: 18, PreparationStartedAt: now.Add(-time.Minute), UpdatedAt: now,
 		Stages: []StageRecord{{Stage: StageProbe, Status: StatusDone}},
 	}}
 	history := []PreparationWork{
@@ -50,8 +50,8 @@ func TestEstimatePreparationReady(t *testing.T) {
 		readyPreparationSample(now.Add(-3*time.Hour), 29_000, 30*time.Second),
 	}
 	estimate, ok := EstimatePreparationReady(current, history, nil, now)
-	if !ok || estimate.Lower != 75*time.Second || estimate.Upper != 225*time.Second {
-		t.Fatalf("estimate = %+v, ok=%t; want 75s–225s", estimate, ok)
+	if !ok || estimate.Lower != 65*time.Second || estimate.Upper != 195*time.Second {
+		t.Fatalf("estimate = %+v, ok=%t; want 65s–195s", estimate, ok)
 	}
 
 	withQueue, ok := EstimatePreparationReady(current, history, []PreparationWork{{
@@ -59,8 +59,8 @@ func TestEstimatePreparationReady(t *testing.T) {
 		Pipeline: ClipPipeline{Stage: StageProbe, Status: StatusQueued, Disposition: DispositionRunning,
 			PreparationAttempt: 1, PreparationProgress: 0, PreparationStartedAt: now, UpdatedAt: now},
 	}}, now)
-	if !ok || withQueue.Lower != 165*time.Second || withQueue.Upper != 495*time.Second {
-		t.Fatalf("queue estimate = %+v, ok=%t; want 165s–495s", withQueue, ok)
+	if !ok || withQueue.Lower != 145*time.Second || withQueue.Upper != 435*time.Second {
+		t.Fatalf("queue estimate = %+v, ok=%t; want 145s–435s", withQueue, ok)
 	}
 
 	for _, tc := range []struct {

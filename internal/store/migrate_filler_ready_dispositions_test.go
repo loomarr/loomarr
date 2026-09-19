@@ -129,6 +129,81 @@ func testRemoveFillerAdmissionRungMigration(t *testing.T, s *sqlStore, migration
 	}
 }
 
+func TestRetireFillerTaggingPathMigrationSQLite(t *testing.T) {
+	ctx := context.Background()
+	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "retire-tagging-path.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	testRetireFillerTaggingPathMigration(t, s, "migrations/sqlite")
+}
+
+func testRetireFillerTaggingPathMigration(t *testing.T, s *sqlStore, migrationDir string) {
+	t.Helper()
+	ctx := context.Background()
+	provider, err := newMigrationProvider(s.db, s.dialect, migrationDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 114); err != nil {
+		t.Fatalf("migrate through 114: %v", err)
+	}
+
+	at := time.Date(2026, time.September, 18, 18, 0, 0, 0, time.UTC)
+	hash := strings.Repeat("8", 64)
+	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO clips
+		(hash, path, name, kind, duration_ms, held, source, updated_at, created_at)
+		VALUES (?, ?, 'Interrupted text classification', 'commercial', 30000, ?, 'archive:classic', ?, ?)`),
+		hash, hash+".mp4", true, at.Unix(), at.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	legacyTagStage := filler.StageID("tag") // retired-ok: migration fixture
+	if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
+		ClipHash: hash, Stage: legacyTagStage, Status: filler.StatusRunning,
+		Disposition: filler.DispositionRunning, Attempts: 2, ForceRun: true,
+		Stages: []filler.StageRecord{
+			{Stage: filler.StageProbe, Status: filler.StatusDone, At: at},
+			{Stage: legacyTagStage, Status: filler.StatusDone, At: at},
+		},
+		EnrolledAt: at, UpdatedAt: at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO settings (key, value, updated_at, updated_by, env_override)
+		VALUES (?, 'true', ?, 'fixture', ?)`), "filler.ai_tagging", at.Unix(), false); err != nil { // retired-ok: migration fixture
+		t.Fatal(err)
+	}
+
+	if _, err := provider.UpTo(ctx, 115); err != nil {
+		t.Fatalf("apply tagging-path retirement: %v", err)
+	}
+	var stage, status, stagesJSON string
+	var attempts int
+	var forceRun bool
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT stage, status, attempts, force_run, stages_json
+		FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).Scan(&stage, &status, &attempts, &forceRun, &stagesJSON); err != nil {
+		t.Fatal(err)
+	}
+	if filler.StageID(stage) != filler.StageVision || filler.StageStatus(status) != filler.StatusQueued || attempts != 0 || forceRun {
+		t.Fatalf("interrupted row = stage=%s status=%s attempts=%d force=%t", stage, status, attempts, forceRun)
+	}
+	var stages []filler.StageRecord
+	if err := json.Unmarshal([]byte(stagesJSON), &stages); err != nil {
+		t.Fatal(err)
+	}
+	if len(stages) != 1 || stages[0].Stage != filler.StageProbe {
+		t.Fatalf("legacy text-classification record survived: %+v", stages)
+	}
+	var settings int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key = 'filler.ai_tagging'`).Scan(&settings); err != nil { // retired-ok: migration assertion
+		t.Fatal(err)
+	}
+	if settings != 0 {
+		t.Fatalf("retired setting rows = %d", settings)
+	}
+}
+
 // insertLegacyClipPipeline deliberately writes the pre-00113 shape used by migration fixtures.
 // The production writer always speaks the current schema and must not grow a compatibility path.
 func insertLegacyClipPipeline(ctx context.Context, s *sqlStore, p filler.ClipPipeline) error {

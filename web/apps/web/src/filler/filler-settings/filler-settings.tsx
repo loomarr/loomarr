@@ -303,7 +303,6 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       title: "Clip review",
       description: "Choose which background checks may identify, split, or set aside incoming clips.",
       keys: [
-        "filler.ai_tagging",
         "filler.transcribe.enabled",
         "filler.vision.enabled",
         "filler.autosplit.enabled",

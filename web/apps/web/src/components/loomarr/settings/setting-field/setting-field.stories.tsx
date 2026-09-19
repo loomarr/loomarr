@@ -74,7 +74,12 @@ const Enum: Story = {
 
 const Bool: Story = {
   args: {
-    entry: { ...base, key: "filler.ai_tagging", kind: "bool", doc: "AI-tag untagged commercials." },
+    entry: {
+      ...base,
+      key: "filler.transcribe.enabled",
+      kind: "bool",
+      doc: "Transcribe clips whose source details are sparse.",
+    },
     value: "true",
   },
 };

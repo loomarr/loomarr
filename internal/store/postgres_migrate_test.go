@@ -75,6 +75,16 @@ func TestPostgresRemoveFillerAdmissionRungMigration(t *testing.T) {
 	testRemoveFillerAdmissionRungMigration(t, s, "migrations/postgres")
 }
 
+func TestPostgresRetireFillerTaggingPathMigration(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgres(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	testRetireFillerTaggingPathMigration(t, s, "migrations/postgres")
+}
+
 func TestPostgresFillerStorageGovernorMigration(t *testing.T) {
 	ctx := context.Background()
 	s, err := openPostgres(ctx, startPostgres(t))

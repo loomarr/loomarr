@@ -313,7 +313,7 @@ func (p *Pipeline) invalidate(ctx context.Context, clip StoreClip, idx int) erro
 			return err
 		}
 	}
-	// StageTag and StageProbe clear nothing: probe has no derived state of its own beyond the
-	// measurements it overwrites, and tag is add-only (see the doc comment above).
+	// StageProbe clears nothing: it has no derived state of its own beyond the measurements it
+	// overwrites.
 	return nil
 }

@@ -383,9 +383,8 @@ type SettingResult struct {
 	Problem string `json:"problem,omitempty" doc:"Validation message when status=invalid (never echoes a secret, §4)."`
 }
 
-// FillerService backs the filler ingestion routes (§10): catalog sync and the AI
-// tagging job. Implemented by filler.Syncer + filler.Tagger. list/patch read/write
-// the store directly (no service needed).
+// FillerService backs filler acquisition and readiness routes (§10). Clip edits read/write the
+// store directly; descriptive enrichment is automatic background work rather than an API command.
 type FillerService interface {
 	// Readiness is the one server-owned operational summary used by the Filler overview.
 	Readiness(ctx context.Context) (filler.Readiness, error)
@@ -403,8 +402,6 @@ type FillerService interface {
 	// row and grant no acquisition authority; POST /v1/filler/sources remains that boundary.
 	SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error)
 	ResolveSource(ctx context.Context, provider, input string) (filler.SourceSuggestion, error)
-	// Tag runs AI classification over untagged commercials.
-	Tag(ctx context.Context) (considered, tagged, partial, skipped int, err error)
 	// Ingest downloads clips from the given source URLs into the drop-folder, returning
 	// a job id immediately (§10). Downloads take minutes to hours, so this is
 	// fire-and-report: progress arrives on the SSE bus as `filler_ingest` frames, the

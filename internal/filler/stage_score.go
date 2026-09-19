@@ -9,8 +9,8 @@ import (
 // the number decides what happens to it.
 //
 // ⚠ It scores what the rungs ABOVE produced; it never asks a model anything. The confidence is the
-// same grounding-capped ceiling `TagSuggestion.Score` computes — what could be VERIFIED in the
-// clip's own text sets the maximum, and nothing here may raise it.
+// grounding-capped confidence reflects what could be verified in the clip's own signals, and
+// nothing here may raise it.
 
 // ScoreClipStore is the slice of the store the score stage writes through.
 type ScoreClipStore interface {
@@ -55,26 +55,20 @@ func (s *ScoreStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 
 // ScoreClip computes a clip's grounding-capped confidence from what is on its row.
 //
-// ⚠ It reuses `TagSuggestion.Score` rather than re-deriving the ceilings, so the pipeline and the
-// tagger cannot disagree about what a clip is worth. In particular `SuggestedEra > 0` — an era the
-// model proposed but could not ground — caps the score below a fully-grounded result.
+// SuggestedEra > 0 means a historical model proposed an era it could not ground, so that retained
+// diagnostic remains capped below a fully grounded result. Confidence never controls readiness.
 func ScoreClip(c StoreClip) int {
-	sug := TagSuggestion{
-		Era:          c.Era,
-		Audience:     c.Audience,
-		Category:     c.Category,
-		Brand:        c.Brand,
-		SuggestedEra: c.SuggestedEra,
+	ceiling := 100
+	switch {
+	case c.SuggestedEra > 0:
+		ceiling = 40
+	case c.Audience == "" || c.Category == "":
+		ceiling = 50
+	case c.Era == 0:
+		ceiling = 60
 	}
-	// ⚠ **The persisted confidence is passed as the model layer, and that is what preserves the
-	// LOWERING half of `Score`.** The model's own self-report exists only inside the tag rung, which
-	// writes the layered result to the row; by the time this runs, that number is all that is left
-	// of it. Passing 0 here instead would let a clip the model was unsure about — but whose tags all
-	// happen to verify — score the full grounded 100 and become Ready unattended, silently undoing the
-	// asymmetry `Score` documents.
-	//
-	// Raising is still impossible: `Score` only ever takes the model layer when it is BELOW the
-	// grounded ceiling, so a stale high value on the row cannot lift a clip whose grounding got
-	// worse. A stale LOW one survives, which errs toward asking a human — the safe direction.
-	return sug.Score(c.Confidence)
+	if c.Confidence > 0 && c.Confidence < ceiling {
+		return c.Confidence
+	}
+	return ceiling
 }

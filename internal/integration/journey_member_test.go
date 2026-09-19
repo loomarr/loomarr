@@ -68,7 +68,6 @@ func TestJourney_Member(t *testing.T) {
 		{http.MethodPost, "/v1/proposals/x/approve", ""},
 		{http.MethodPost, "/v1/proposals/x/deny", `{}`},
 		{http.MethodPost, "/v1/filler/sync", ""},
-		{http.MethodPost, "/v1/filler/tag", ""},
 		// §10 V45a: the clip tag edit is PATCH /v1/filler/tags with the clip HASH in the body. The
 		// admin gate must 403 a member BEFORE the handler resolves the clip, so a bogus hash still 403s.
 		{http.MethodPatch, "/v1/filler/tags", `{"hash":"x","era":1990}`},

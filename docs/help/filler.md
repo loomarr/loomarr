@@ -66,8 +66,9 @@ Food matches clips assigned more-specific descendants such as Cereal. The clip e
 the tags actually selected; inherited parents remain derived, so changing the hierarchy later does
 not turn old rollups into false operator decisions.
 
-Enable **Tag clips with AI** to classify arrivals automatically. The classifier may resolve only
-known slugs, synonyms, and retired aliases; it cannot invent new taxonomy nodes. An admin owns
+When the household AI connection is available, Loomarr uses it automatically to fill details that
+the preserved source text does not answer. The classifier may resolve only known slugs, synonyms,
+and retired aliases; it cannot invent new taxonomy nodes. An admin owns
 vocabulary changes from the Taxonomy page. Brand is a separate grounded fact; correct or clear it
 beside kind, era, audience, and tags in a clip's editor rather than creating a brand taxon.
 Both text and vision classification use the current taxonomy shown on that page. Confirmed segments

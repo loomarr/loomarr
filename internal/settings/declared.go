@@ -683,11 +683,6 @@ func declared() []Setting {
 			Doc: "Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay.",
 		},
 		{
-			Key: "filler.ai_tagging", Label: "Tag clips with AI", EnvVar: "FILLER_AI_TAGGING", Group: GroupFiller,
-			Kind: KindBool, Default: false,
-			Doc: "Classify untagged commercials against the grounded era, audience, brand, and taxonomy vocabulary.",
-		},
-		{
 			// On-demand transcription (§10 V44). ⚠ OFF by default: it shares the whisper seam with
 			// the language gate on the local path (~341s per clip under QEMU), and spends provider
 			// credit on the hosted path, so it is a deliberate opt-in either way. The job is

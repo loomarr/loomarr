@@ -312,12 +312,12 @@ describe("SettingField", () => {
     const onChange = vi.fn();
     render(
       <SettingField
-        entry={entry({ key: "filler.ai_tagging", kind: "bool" })}
+        entry={entry({ key: "filler.transcribe.enabled", label: "Transcribe unclear clips", kind: "bool" })}
         value="false"
         onChange={onChange}
       />,
     );
-    await userEvent.click(screen.getByLabelText("Filler AI tagging"));
+    await userEvent.click(screen.getByLabelText("Transcribe unclear clips"));
     expect(onChange).toHaveBeenCalledWith("true");
   });
 

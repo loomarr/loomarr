@@ -68,7 +68,6 @@ var fillerOwners = map[string]Owner{
 	"filler.break_duration":            OwnerFillerBreaks,
 	"filler.pod_max":                   OwnerFillerBreaks,
 
-	"filler.ai_tagging":                       OwnerFillerReview,
 	"filler.transcribe.enabled":               OwnerFillerReview,
 	"filler.vision.enabled":                   OwnerFillerReview,
 	"filler.conditioning.normalize_loudness":  OwnerFillerReview,

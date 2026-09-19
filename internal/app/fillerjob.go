@@ -30,7 +30,11 @@ func fillerSyncJob(s *filler.Syncer) scheduler.Job {
 	}
 }
 
-func fillerEnrichmentJob(runner *fillerenrichment.Runner) scheduler.Job {
+type fillerEnrichmentRunner interface {
+	Run(context.Context) (fillerenrichment.RunResult, error)
+}
+
+func fillerEnrichmentJob(runner fillerEnrichmentRunner) scheduler.Job {
 	return scheduler.Job{
 		Timeout: scheduler.LongJobTimeout,
 		Name:    "filler-enrichment", Group: scheduler.GroupFiller, Title: "Add filler details",

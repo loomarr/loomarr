@@ -17,6 +17,7 @@ import (
 type Axis string
 
 const (
+	AxisKind         Axis = "kind"
 	AxisEra          Axis = "era"
 	AxisAudience     Axis = "audience"
 	AxisBrand        Axis = "brand"
@@ -30,7 +31,7 @@ const (
 )
 
 var axes = []Axis{
-	AxisEra, AxisAudience, AxisBrand, AxisGeography, AxisLanguage,
+	AxisKind, AxisEra, AxisAudience, AxisBrand, AxisGeography, AxisLanguage,
 	AxisProduct, AxisFormat, AxisSeasonal, AxisAudienceCue, AxisPresentation,
 }
 
@@ -237,6 +238,12 @@ func (s State) Validate() error {
 
 func validateValue(axis Axis, value Value) error {
 	switch axis {
+	case AxisKind:
+		switch value.Text {
+		case "", "commercial", "bumper", "station_id", "psa", "trailer", "interstitial":
+		default:
+			return fmt.Errorf("%w: kind is outside the supported vocabulary", ErrInvalidState)
+		}
 	case AxisEra:
 		if value.Year != 0 && (value.Year < 1930 || value.Year > 2100) {
 			return fmt.Errorf("%w: era year is outside the supported range", ErrInvalidState)
@@ -284,9 +291,13 @@ func Apply(current, candidate State) (State, bool, error) {
 	currentRank, _ := current.Evidence.Kind.Rank()
 	candidateRank, _ := candidate.Evidence.Kind.Rank()
 	refresh := candidateRank == currentRank && current.Evidence.Kind != EvidenceOperator &&
-		current.Evidence.Producer == candidate.Evidence.Producer &&
-		(current.Evidence.ProducerVersion != candidate.Evidence.ProducerVersion ||
-			current.Evidence.TaxonomyVersion != candidate.Evidence.TaxonomyVersion) &&
+		((current.Evidence.Producer == candidate.Evidence.Producer &&
+			(current.Evidence.ProducerVersion != candidate.Evidence.ProducerVersion ||
+				current.Evidence.TaxonomyVersion != candidate.Evidence.TaxonomyVersion)) ||
+			(current.Evidence.Kind == EvidenceInference && candidate.Evidence.Kind == EvidenceInference &&
+				strings.HasPrefix(current.Evidence.Producer, "text-model:") &&
+				strings.HasPrefix(candidate.Evidence.Producer, "text-model:") &&
+				current.Evidence.Producer != candidate.Evidence.Producer)) &&
 		(!candidate.Value.empty() || current.Value.empty())
 	operatorCorrection := current.Evidence.Kind == EvidenceOperator && candidate.Evidence.Kind == EvidenceOperator &&
 		candidate.Evidence.ObservedAt.After(current.Evidence.ObservedAt)
