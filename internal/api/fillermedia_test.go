@@ -2,7 +2,6 @@ package api_test
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,7 +28,12 @@ const (
 // row, and a secret outside the folder entirely. All three are load-bearing: the secret is what
 // makes a traversal assertion mean something, and the uncatalogued file is what proves the
 // catalog check is a real gate rather than a lookup.
-func newMediaServer(t *testing.T) (*httptest.Server, string, store.Store) {
+type fillerMediaHarness struct {
+	*apiHarness
+	Root string
+}
+
+func newFillerMediaHarness(t *testing.T) *fillerMediaHarness {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -51,39 +55,37 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, store.Store) {
 		t.Fatal(err)
 	}
 
-	st := openTestStore(t, t.TempDir()+"/m.db")
-	t.Cleanup(func() { _ = st.Close() })
+	layout, err := filler.NewLayout(fillerDir, "")
+	if err != nil {
+		t.Fatalf("filler.NewLayout: %v", err)
+	}
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store:        defaults.Store,
+			Auth:         defaults.Auth,
+			Log:          defaults.Log,
+			FillerLayout: layout,
+			// A saved desired value may differ until restart. Serving the clip successfully proves the
+			// byte route uses the applied layout above, not this live settings seam.
+			LiveConfig: func(key string) string {
+				if key == "filler.dir" {
+					return filepath.Join(root, "desired-after-restart")
+				}
+				return ""
+			},
+		})
+	})
 	// Hash → disk path. The wire identity is the hash (V45a); the route looks a clip up by hash
 	// then serves the row's path. A path is never addressable directly, only a catalogued hash.
 	for hash, p := range map[string]string{mediaHash: "80s/toys/intro.mp4", htmlHash: "notes.html"} {
-		if err := st.UpsertClip(ctx, store.Clip{
+		if err := base.Store.UpsertClip(ctx, store.Clip{
 			Clip:      filler.Clip{Hash: hash, Path: p, Name: p, Kind: filler.Commercial, DurationMs: 30_000},
 			UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	layout, err := filler.NewLayout(fillerDir, "")
-	if err != nil {
-		t.Fatalf("filler.NewLayout: %v", err)
-	}
-
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:        st,
-		Auth:         testAuthorizer{},
-		Log:          slog.New(slog.DiscardHandler),
-		FillerLayout: layout,
-		// A saved desired value may differ until restart. Serving the clip successfully proves the
-		// byte route uses the applied layout above, not this live settings seam.
-		LiveConfig: func(key string) string {
-			if key == "filler.dir" {
-				return filepath.Join(root, "desired-after-restart")
-			}
-			return ""
-		},
-	}))
-	t.Cleanup(srv.Close)
-	return srv, root, st
+	return &fillerMediaHarness{apiHarness: base, Root: root}
 }
 
 func getMedia(t *testing.T, srv *httptest.Server, path, token string) *http.Response {
@@ -107,7 +109,8 @@ func getMedia(t *testing.T, srv *httptest.Server, path, token string) *http.Resp
 // path whose file exists. Nesting is preserved on disk (V28) and the hash lookup finds it
 // regardless — the slash-in-URL hazard the old `{path...}` route carried is gone.
 func TestServeFillerMedia_ServesANestedCataloguedClip(t *testing.T) {
-	srv, _, _ := newMediaServer(t)
+	harness := newFillerMediaHarness(t)
+	srv := harness.Server
 
 	res := getMedia(t, srv, "/v1/filler/media/"+mediaHash, memberToken)
 
@@ -132,7 +135,8 @@ func TestServeFillerMedia_ServesANestedCataloguedClip(t *testing.T) {
 // addressable hash: the only value a caller could supply for it is one the store does not know,
 // which resolves to nothing and 404s. The drop-folder is not a public share.
 func TestServeFillerMedia_RefusesAFileThatIsNotACatalogRow(t *testing.T) {
-	srv, _, _ := newMediaServer(t)
+	harness := newFillerMediaHarness(t)
+	srv := harness.Server
 
 	// Sanity: a catalogued clip really is served, or this passes for the boring reason.
 	if res := getMedia(t, srv, "/v1/filler/media/"+mediaHash, memberToken); res.StatusCode != http.StatusOK {
@@ -150,7 +154,8 @@ func TestServeFillerMedia_RefusesAFileThatIsNotACatalogRow(t *testing.T) {
 // deliberately hostile fixture), exists on disk, and is contained. Only the extension check
 // stands between it and being served as a document from our own origin.
 func TestServeFillerMedia_RefusesNonMediaEvenWhenCatalogued(t *testing.T) {
-	srv, _, _ := newMediaServer(t)
+	harness := newFillerMediaHarness(t)
+	srv := harness.Server
 
 	res := getMedia(t, srv, "/v1/filler/media/"+htmlHash, memberToken)
 
@@ -170,7 +175,8 @@ func TestServeFillerMedia_RefusesNonMediaEvenWhenCatalogued(t *testing.T) {
 // `../../secret.txt` spellings are kept not because they could reach the file (they can't — there
 // is no path in the URL anymore) but to prove the classic attack yields a 404, never the secret.
 func TestServeFillerMedia_TraversalNeverReturnsBytes(t *testing.T) {
-	srv, root, _ := newMediaServer(t)
+	harness := newFillerMediaHarness(t)
+	srv, root := harness.Server, harness.Root
 
 	if _, err := os.ReadFile(filepath.Join(root, "secret.txt")); err != nil {
 		t.Fatalf("fixture unreadable, the traversal cases would prove nothing: %v", err)
@@ -191,7 +197,8 @@ func TestServeFillerMedia_TraversalNeverReturnsBytes(t *testing.T) {
 
 // §19 requires the negative. Unauthenticated must not reach clip bytes.
 func TestServeFillerMedia_RequiresASession(t *testing.T) {
-	srv, _, _ := newMediaServer(t)
+	harness := newFillerMediaHarness(t)
+	srv := harness.Server
 
 	if res := getMedia(t, srv, "/v1/filler/media/"+mediaHash, ""); res.StatusCode == http.StatusOK {
 		t.Error("served clip bytes with no credential")
