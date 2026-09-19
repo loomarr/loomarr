@@ -1,10 +1,12 @@
 import type { Proposal } from "@loomarr/api";
+import { getResolveMovieCollectionsMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { outlook } from "@/test/fixtures/outlook";
+import { server } from "@/test/msw/server";
 import { ProposalReview } from "./proposal-review";
 
 const renderReview = (ui: ReactElement) => {
@@ -61,6 +63,10 @@ const proposal: Proposal = {
 };
 
 describe("ProposalReview", () => {
+  beforeEach(() => {
+    server.use(getResolveMovieCollectionsMockHandler({ collections: [], complete: true }));
+  });
+
   it("leads with the brief, one availability sentence and no dashboard tiles", () => {
     renderReview(<ProposalReview proposal={proposal} selfService onRevise={vi.fn()} />);
     expect(screen.getByRole("heading", { name: "Review your channel" })).toBeInTheDocument();

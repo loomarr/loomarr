@@ -1,7 +1,24 @@
+import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { provisionKey } from "@loomarr/core/provision";
 import { Check, LoaderCircle, Plus } from "lucide-react";
 import { Button, Disclosure } from "@/components/ui";
 import type { MovieCollectionChoicesProps } from "./movie-collection-choices.type";
+
+const MAX_MOVIE_COLLECTION_KEYS = 24;
+
+const movieCollectionKeys = (items: readonly ProposalItem[]) => {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (item.mediaType !== "movie" || !Number.isInteger(item.tmdbId) || (item.tmdbId ?? 0) <= 0) continue;
+    const key = provisionKey(item);
+    if (!key.startsWith("movie:tmdb:") || seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
+    if (keys.length === MAX_MOVIE_COLLECTION_KEYS) break;
+  }
+  return keys;
+};
 
 const MovieCollectionChoices = ({
   collections,
@@ -126,4 +143,4 @@ const MovieCollectionChoices = ({
   );
 };
 
-export { MovieCollectionChoices };
+export { MAX_MOVIE_COLLECTION_KEYS, MovieCollectionChoices, movieCollectionKeys };

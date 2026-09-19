@@ -34,6 +34,9 @@ interface MockOptions {
   failedProposalJourney?: boolean;
   // Return a persisted, reviewable Journey for fresh-start route recovery coverage.
   proposalJourney?: boolean;
+  // Return a persisted movie proposal whose visible pick belongs to a grounded
+  // TMDB collection, so review can exercise the collection-choice journey.
+  movieCollectionJourney?: boolean;
   // Which setup/status checks are green before the operator does anything. The two
   // REQUIRED ones default green so the flow can reach the wiring steps.
   checks?: Record<string, boolean>;
@@ -60,6 +63,7 @@ interface MockBackend {
     // Same-Job revisions remain distinct from fresh submissions so a browser test
     // can prove that editing a landed brief did not restart the journey.
     proposalRevisionRequests: Array<{ jobId: string; intent: Record<string, unknown> }>;
+    movieCollectionRequests: string[][];
     // Mutation telemetry is deliberately request-level: no UI assertion can prove that a
     // failed Journey did not try a forbidden channel write before rendering its recovery.
     channelCreationRequests: Record<string, unknown>[];
@@ -86,6 +90,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     enqueued: [] as string[],
     proposalJobRequests: [] as Record<string, unknown>[],
     proposalRevisionRequests: [] as Array<{ jobId: string; intent: Record<string, unknown> }>,
+    movieCollectionRequests: [] as string[][],
     proposalRevisions: {} as Record<
       string,
       {
@@ -222,7 +227,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     // mock enforces the same rule the server does, so the smoke proves the UI honors a
     // real 403 rather than a hand-waved one.
     if (path === "/v1/proposals" && method === "POST") {
-      if (opts.failedProposalJourney || opts.proposalJourney) {
+      if (opts.failedProposalJourney || opts.proposalJourney || opts.movieCollectionJourney) {
         const intent = body();
         const prefix = opts.failedProposalJourney ? "failed-job" : "proposal-job";
         const jobId = `${prefix}-${state.proposalJobRequests.length + 1}`;
@@ -275,6 +280,62 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             guidance: "Broaden the request or add examples from your library.",
           },
           actions: ["edit", "retry"],
+          createdAt: "2026-09-07T12:00:00Z",
+          updatedAt: "2026-09-07T12:00:01Z",
+        });
+      }
+      if (opts.movieCollectionJourney && submission) {
+        return json(route, {
+          version: 1,
+          jobId,
+          milestone: "awaiting_approval",
+          intent: submission,
+          attempts: [
+            {
+              version: 1,
+              number: 1,
+              status: "succeeded",
+              startedAt: "2026-09-07T12:00:00Z",
+              completedAt: "2026-09-07T12:00:01Z",
+            },
+          ],
+          proposal: {
+            id: `proposal-${jobId}`,
+            status: "submitted",
+            proposal: {
+              intent: submission,
+              channelName: "Wizarding World Marathon",
+              rationale: "A movie marathon built from the requested series.",
+              lineup: [
+                {
+                  name: "Harry Potter and the Philosopher's Stone",
+                  year: 2001,
+                  mediaType: "movie",
+                  tmdbId: 671,
+                  inLibrary: true,
+                  libraryItemId: "library-671",
+                },
+              ],
+              acquisitions: [],
+              alternates: [],
+              scores: {
+                version: 1,
+                themeFit: 1,
+                availabilityRatio: 1,
+                eraBalance: null,
+                theme: {
+                  status: "supported",
+                  basis: "qualifiers",
+                  assessedItems: 1,
+                  unknownItems: 0,
+                  qualifiers: [{ term: "Harry Potter", supportedItems: 1 }],
+                },
+                era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
+              },
+              trace: { version: 1, surfacedTotal: 1, recordedTotal: 1, truncated: false, candidates: [] },
+            },
+          },
+          actions: ["review", "edit"],
           createdAt: "2026-09-07T12:00:00Z",
           updatedAt: "2026-09-07T12:00:01Z",
         });
@@ -421,6 +482,54 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     if (path === "/v1/search" && method === "GET") {
       return json(route, {
         candidates: [{ name: "The Matrix", year: 1999, mediaType: "movie", tmdbId: 603, inLibrary: false }],
+      });
+    }
+    if (path === "/v1/movie-collections" && method === "GET") {
+      const keys = url.searchParams.getAll("key");
+      state.movieCollectionRequests.push(keys);
+      return json(route, {
+        complete: true,
+        collections:
+          opts.movieCollectionJourney && keys.includes("movie:tmdb:671")
+            ? [
+                {
+                  tmdbId: 1241,
+                  name: "Harry Potter Collection",
+                  members: [
+                    {
+                      name: "Harry Potter and the Philosopher's Stone",
+                      year: 2001,
+                      mediaType: "movie",
+                      tmdbId: 671,
+                      inLibrary: true,
+                      libraryItemId: "library-671",
+                    },
+                    {
+                      name: "Harry Potter and the Chamber of Secrets",
+                      year: 2002,
+                      mediaType: "movie",
+                      tmdbId: 672,
+                      inLibrary: false,
+                    },
+                    {
+                      name: "Harry Potter and the Prisoner of Azkaban",
+                      year: 2004,
+                      mediaType: "movie",
+                      tmdbId: 673,
+                      inLibrary: true,
+                      libraryItemId: "library-673",
+                    },
+                    {
+                      name: "Harry Potter and the Goblet of Fire",
+                      year: 2005,
+                      mediaType: "movie",
+                      tmdbId: 674,
+                      inLibrary: false,
+                    },
+                  ],
+                },
+              ]
+            : [],
       });
     }
     if (path === "/v1/proposals" && method === "GET") {

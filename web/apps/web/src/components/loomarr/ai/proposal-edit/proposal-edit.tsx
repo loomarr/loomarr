@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { MovieCollectionChoices } from "@/suggest/movie-collection-choices";
+import { MovieCollectionChoices, movieCollectionKeys } from "@/suggest/movie-collection-choices";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
 import { SearchCommand } from "../../shell";
 import { episodeSelectionLabel } from "../episode-selection-label";
@@ -20,7 +20,6 @@ import type { ProposalEditProps } from "./proposal-edit.type";
 
 type PickKind = "ready" | "missing";
 type Keyed = { item: ProposalItem; key: string; kind: PickKind };
-const MAX_COLLECTION_LOOKUP_KEYS = 24;
 
 const mediaLabel = (item: ProposalItem) => (item.mediaType === "series" ? "Series" : "Movie");
 
@@ -199,15 +198,14 @@ const ProposalEdit = (props: ProposalEditProps) => {
   // grounded in a movie the reviewer can already see, never in an unrelated
   // model guess. Current picks take precedence over optional suggestions when
   // the API's bounded request is full.
-  const collectionKeys: string[] = [];
-  const seenCollectionKeys = new Set<string>();
-  for (const item of [...lineup, ...acquisitions, ...added, ...optionalSuggestions, ...alternates]) {
-    const key = provisionKey(item);
-    if (!key.startsWith("movie:tmdb:") || seenCollectionKeys.has(key)) continue;
-    seenCollectionKeys.add(key);
-    collectionKeys.push(key);
-    if (collectionKeys.length === MAX_COLLECTION_LOOKUP_KEYS) break;
-  }
+  const collectionKeys = movieCollectionKeys([
+    ...lineup,
+    ...acquisitions,
+    ...added,
+    ...optionalSuggestions,
+    ...alternates,
+  ]);
+  const seenCollectionKeys = new Set(collectionKeys);
   const collectionResolution = searchApi.useResolveMovieCollections(
     { key: collectionKeys },
     {
@@ -218,10 +216,9 @@ const ProposalEdit = (props: ProposalEditProps) => {
       },
     },
   );
-  const resolvedMovieCollections =
-    unwrap(collectionResolution.data, (body) => body)?.collections.filter((collection) =>
-      collection.members.some((member) => seenCollectionKeys.has(provisionKey(member))),
-    ) ?? [];
+  const resolvedMovieCollections = (
+    unwrap(collectionResolution.data, (body) => body)?.collections ?? []
+  ).filter((collection) => collection.members.some((member) => seenCollectionKeys.has(provisionKey(member))));
   const displayedMovieCollections = injectedMovieCollections ? movieCollections : resolvedMovieCollections;
   const displayedMovieCollectionsLoading =
     movieCollectionsLoading ||
