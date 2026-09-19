@@ -32,7 +32,8 @@ func seedApprovedProposal(t *testing.T, st store.Store, jobID, propID string) {
 // an approved proposal came up with an EMPTY lineup (0 programs). It must copy the
 // approved proposal's in-library lineup into the channel (§7/§9).
 func TestCreateChannelBindsApprovedLineup(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedApprovedProposal(t, st, "job-abc", "prop-1")
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
@@ -62,7 +63,8 @@ func TestCreateChannelBindsApprovedLineup(t *testing.T) {
 // channel seam: a channel cannot be built from an intent whose proposal was never
 // approved (prime directive #3 — unapproved content must not reach a live channel).
 func TestCreateChannelRejectsUnapprovedIntent(t *testing.T) {
-	srv, st, chSvc, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 	// A proposal exists but is still "submitted" (not approved).
 	if err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: "prop-x", JobID: "job-unapproved", Status: "submitted",
@@ -88,7 +90,8 @@ func TestCreateChannelRejectsUnapprovedIntent(t *testing.T) {
 // TestCreateHandMadeChannelNoIntent confirms a channel with no intentRef still
 // works (hand-made): empty lineup is legitimate, filled later via PUT.
 func TestCreateHandMadeChannelNoIntent(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
 		`{"id":"manual","name":"Manual","number":9,"strategy":"sequential"}`)
 	if resp.StatusCode != http.StatusOK {
@@ -136,7 +139,8 @@ func seedApprovedProposalWithAcquisition(t *testing.T, st store.Store, jobID, pr
 // lands. This asserts the acquisition key is present in the stored lineup, which
 // the old `continue`-on-`!InLibrary` code dropped (would yield 1 entry, not 2).
 func TestCreateChannelBindsAcquisitionsAsPendingEntries(t *testing.T) {
-	srv, st, _, _ := newServerWithScheduler(t)
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
 	seedApprovedProposalWithAcquisition(t, st, "job-mtx", "prop-mtx")
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
