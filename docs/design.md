@@ -9156,6 +9156,27 @@ unconfirmed suggestion.
    unchanged; this is a review presentation and evidence-lifecycle change, not a new admission
    path.
 
+   **Proposed names describe the exact segment instead of its storage order (V69).** Chapter titles
+   remain source-authored names. Otherwise the already-budgeted split vision response may propose
+   one short household-readable name from text it read in that segment's bounded frames; transcript
+   rescue may do the same from the exact subsegment transcript. This adds no second model request.
+   A proposed identity is accepted only when its identifying phrase occurs in that exact signal,
+   after case and punctuation normalisation. Generic, unsupported, malformed, overlong, wordless,
+   and abstaining answers are rejected independently of valid tags or role evidence. They fall back
+   to **Clip N from &lt;readable recording name&gt;**, or **Clip N from this recording** when the parent
+   name is opaque. Provider failure follows the same non-blocking fallback path.
+
+   The proposal records `source-authored`, `model-proposed`, `fallback`, or `operator-edited` plus a
+   bounded evidence excerpt for a model proposal. That provenance stays inside the existing
+   collapsed name-edit disclosure (and the selected-clip Details area once the planned shared
+   right-side sheet owns inspection), never as another always-visible row. The server—not the confirm
+   body—is authoritative: an unchanged name on the same exact span recovers
+   its persisted provenance; a rename, boundary edit, or merge keeps the operator's chosen display
+   name, clears machine evidence, and becomes operator-edited. The chosen name reaches the confirmed
+   child. Naming is descriptive enrichment only and is deliberately absent from role, language,
+   suitability, boundary-confidence, and admission inputs. Split review performs no web search and
+   does not require a model to finish.
+
    ⚠ **The player is clamped to `[startMs, endMs]` and reports the SEGMENT's length, never the reel's.** A 30-second cut of a 22-minute recording reads `0:04 / 0:30`. Handing the readout the reel's own numbers would present the whole recording as if it were the clip, which is precisely what makes a preview useless for judging one cut. One preview is open at a time and collapsing **unmounts** the element — otherwise every row the operator has ever clicked holds a range request open against a 20-minute file.
 
    ⚠ **This was "not optional, ever" until V43, and the blanket rule was over-applied.** Boundary

@@ -264,7 +264,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 			}
 			continue
 		}
-		prompt := visionPrompt(forest)
+		prompt := splitVisionPrompt(forest)
 		resp, err := s.vision.Provider.AskAboutImages(ctx, prompt, frames)
 		if err != nil {
 			// A separately routed direct-video model may still settle the temporal role. Only a
@@ -299,7 +299,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 		var roleEvidence *StructureRoleEvidence
 		var roleErr error
 		if parsed {
-			roleEvidence, roleErr = structureRoleEvidenceFromVision(source, segs[i], prompt, frames, resp, out, s.structureAssessedAt())
+			roleEvidence, roleErr = structureRoleEvidenceFromVision(source, segs[i], splitVisionPromptVersion, prompt, frames, resp, out, s.structureAssessedAt())
 		}
 		if roleEvidence == nil {
 			if evidence, attempted, escalationErr := s.escalateSegmentRole(ctx, source, file, segs[i]); attempted {
@@ -325,6 +325,13 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 		segs[i].Tags = unionLeaves(segs[i].Tags, v.Tags)
 		segs[i].Category = v.Category
 		segs[i].Era = v.Era
+		if segs[i].NameOrigin == SplitNameFallback {
+			if name, evidence, ok := groundSegmentName(out.ProposedTitle, v.VisibleText); ok {
+				segs[i].Name = name
+				segs[i].NameOrigin = SplitNameModelProposed
+				segs[i].NameEvidence = evidence
+			}
+		}
 		// ⚠ `SuggestedEra` is deliberately NOT stamped here, though the vision RUNG does stamp it.
 		// The gate treats a suggested era as an automatic refusal at every threshold — "an era
 		// Loomarr GUESSED is exactly the case a human should see" — so writing one would make this

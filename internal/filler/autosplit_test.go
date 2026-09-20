@@ -50,6 +50,18 @@ func TestAutoConfirmable_AcceptsAnUnambiguousReel(t *testing.T) {
 	}
 }
 
+func TestAutoConfirmable_IgnoresDescriptiveNaming(t *testing.T) {
+	base := goodSeg(0, 0, 30_000)
+	before := filler.AutoConfirmable(proposalOf(base), policy(true, 85, 120*time.Second), floor).Verdict()
+	base.Name = "Toys R Us commercial"
+	base.NameOrigin = "model-proposed"
+	base.NameEvidence = "TOYS R US"
+	after := filler.AutoConfirmable(proposalOf(base), policy(true, 85, 120*time.Second), floor).Verdict()
+	if before != after || after != filler.AutoSplitOK {
+		t.Fatalf("naming changed admission: before=%q after=%q", before, after)
+	}
+}
+
 // ⚠ OFF by default is the safety property, so it is asserted rather than assumed.
 func TestAutoConfirmable_RefusesWhenDisabled(t *testing.T) {
 	p := proposalOf(goodSeg(0, 0, 30_000))
