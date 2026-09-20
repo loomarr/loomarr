@@ -77,12 +77,12 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run --build-tags '$(TAGS_CSV)' $(PKG)
 
 .PHONY: test
-# Local `make test` retains both self-contained prerequisites. CI's lane-scoped invocations omit
-# them because `go-contracts` runs eval-contract exactly once and packages that exercise the real
-# image worker already acquire it through internal/testkit. Repeating both prerequisites in every
-# hosted lane cost roughly 96 seconds per cold runner without adding coverage. The lane runner owns
-# this branch because CI Makefiles deliberately reject conditional directives as unaudited control
-# flow; its release-verifier test pins both paths.
+# Local `make test` retains both explicit prerequisites. CI's lane-scoped invocations omit them
+# because `go-contracts` runs eval-contract exactly once and composition packages acquire the real
+# image worker through internal/testkit at their explicit override seam. Repeating both prerequisites
+# in every hosted lane cost roughly 96 seconds per cold runner without adding coverage. The lane
+# runner owns this branch because CI Makefiles deliberately reject conditional directives as
+# unaudited control flow; its release-verifier test pins both paths.
 test: ## unit tests; unsharded runs include Rust worker and eval contracts (never network — §19)
 # ⚠ **-timeout is set explicitly because Go's default is 10m PER PACKAGE and `internal/api` grew
 # past it.** Measured 2026-08-09: that package alone is 267s locally under `-race`, and a CI runner

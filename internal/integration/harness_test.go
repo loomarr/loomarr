@@ -122,11 +122,16 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
+	imageWorker, err := testkit.RustImageWorker()
+	if err != nil {
+		t.Fatalf("prepare required image worker: %v", err)
+	}
 
 	application, err := app.Build(ctx, st, testkit.Logger(), app.Overrides{
-		Programmer:  h.tun,
-		LLM:         h.llm,
-		TMDBBaseURL: h.tmdb.URL,
+		Programmer:            h.tun,
+		LLM:                   h.llm,
+		TMDBBaseURL:           h.tmdb.URL,
+		ImageWorkerExecutable: imageWorker,
 	})
 	if err != nil {
 		t.Fatal(err)

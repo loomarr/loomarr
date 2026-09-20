@@ -587,9 +587,9 @@ started its ordinary package phase. Those prerequisites ran identically in all s
 
 The resulting architecture preserves the same work with fewer runners. Two ordinary lanes use
 bounded `-p=4`, and the two serial certification lanes remain unchanged. Lane-scoped `make test`
-omits the eager Rust and eval
-prerequisites: `go-contracts` executes `eval-contract` once, while the only Go packages that need
-the real image worker acquire it through `internal/testkit`. Unsharded local `make test` retains
+omits the eager Rust and eval prerequisites: `go-contracts` executes `eval-contract` once, while
+composition packages that need the real image worker acquire it through `internal/testkit` and
+pass its executable at the explicit application override seam. Unsharded local `make test` retains
 both explicit prerequisites and remains self-contained.
 
 The first authoritative two-ordinary-lane run, 35510845578, proved that balancing aggregate work
@@ -606,8 +606,17 @@ backend tests remain serial because they mutate process environment. Same-machin
 controls measured `fillerreview` at 115.237s serial versus 41.154s parallel; the other three
 packages completed together in 58.83s versus 82.61s with their internal parallelism disabled.
 Scaling the hosted weights by those ratios and repartitioning yields 921/920 aggregate seconds and
-244/231-second bounded-worker makespans. The next merge-group run remains the authority for hosted
-latency and replaces those provisional scaled weights.
+244/231-second bounded-worker makespans. Those scaled weights remain provisional until consecutive
+successful merge-group runs replace them with complete hosted measurements.
+
+Merge-group run 35515087033 measured ordinary lane 1/2 at 8m31s job time and 8m02s test time,
+while ordinary lane 2/2 reached its test failure in 8m10s. Certification lane 2/2 passed in 5m09s;
+lane 1/2 passed in 7m00s after waiting 2m39s for the repository's 20-runner concurrency ceiling.
+The run was not accepted: lane 2/2 exposed that the integration composition harness had relied on
+the old eager Rust build instead of acquiring its required worker. The harness now obtains the
+worker through `internal/testkit` and passes it through `app.Overrides.ImageWorkerExecutable`, so a
+focused clean `go test ./internal/integration` is self-contained without rebuilding Rust in lanes
+that do not consume it. Fresh consecutive merge-group passes remain required.
 
 `make go-shard-verify SHARDS=2` rejects missing or duplicated packages, an ordinary aggregate above
 1,200 seconds, a bounded-worker or serial-certification makespan above nine minutes, or more than 25%

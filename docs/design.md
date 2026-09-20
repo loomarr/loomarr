@@ -12904,8 +12904,9 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   race-policy order preservation, certification package grouping, lane parallelism, workflow lanes
   and timeout. Lane-scoped CI invocations omit `make test`'s eager Rust
   worker and evaluation prerequisites: the repository-contract job runs `eval-contract` exactly
-  once, and packages that exercise the production image protocol acquire the real debug worker
-  through `internal/testkit`. Unsharded local `make test` retains both prerequisites. The release
+  once, and composition packages that exercise the production image protocol acquire the real
+  debug worker through `internal/testkit` and pass it at the explicit application override seam.
+  Unsharded local `make test` retains both prerequisites. The release
   verifier also requires every top-level job in `ci.yml` to appear in
   `ci-ok.needs`; adding a job without aggregating its result fails closed.
   SQLite store conformance builds one fully migrated, boot-seeded, clean template database per

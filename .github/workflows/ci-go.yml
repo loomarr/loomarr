@@ -57,10 +57,10 @@ jobs:
           # frozen-key bug the note below exists to prevent — so it re-froze a slice of the
           # very cache the rolling key was added to keep fresh.
           cache: false
-      # `make test` builds the real debug image worker its Go tests execute. Install the pinned
-      # toolchain but deliberately do not cache Cargo/target here: the old combined cache reached
-      # 1.36GB and cost longer to restore/save than this focused build. Static Rust checks and
-      # release certification still run once in `go-contracts`.
+      # Composition tests acquire the real debug image worker through internal/testkit. Install
+      # the pinned toolchain but deliberately do not cache Cargo/target here: the old combined
+      # cache reached 1.36GB and cost longer to restore/save than the focused build. Static Rust
+      # checks and release certification still run once in `go-contracts`.
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.93.0 --profile minimal
       # Each test shard keeps only its Go module and compiler caches. Lint and static Rust checks
