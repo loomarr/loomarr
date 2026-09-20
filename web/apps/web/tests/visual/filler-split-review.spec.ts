@@ -44,6 +44,24 @@ test("split review opens one exact preview from mouse or keyboard", async ({ pag
   expect(rootOverflow.scroll).toBeLessThanOrEqual(rootOverflow.client);
 });
 
+test("split naming evidence stays quiet until requested and clears after an edit", async ({ page }) => {
+  await page.goto(story("filler-splitrevieweditor--review"));
+  const row = page.getByRole("region", { name: "Segment 1: Sunny D — Dude!" });
+  const details = row.locator("details").filter({ hasText: "Rename or adjust timing" });
+
+  await expect(details).not.toHaveAttribute("open", "");
+  await row.getByText("Rename or adjust timing", { exact: true }).click();
+  await expect(details).toHaveAttribute("open", "");
+  await expect(row.getByText(/Name suggested from this clip/)).toContainText("SUNNY D — DUDE!");
+
+  await row.getByLabel("Name").fill("Sunny D family commercial");
+  // The section's accessible name intentionally follows the edited clip name. Re-resolve the row
+  // rather than keeping a locator whose own selector still asks for the old name.
+  const editedRow = page.getByRole("region", { name: "Segment 1: Sunny D family commercial" });
+  await expect(editedRow.getByText("Name edited during review.")).toBeVisible();
+  await expect(editedRow.getByText(/Name suggested from this clip/)).toHaveCount(0);
+});
+
 test("a 50-clip timeline scrolls without starting 50 streams", async ({ page }) => {
   await page.goto(story("filler-segmentfilmstrip--long-reel"));
   const timeline = page.getByRole("list", { name: "Detected clips, in order" });

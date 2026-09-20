@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 )
 
-func structureRoleEvidenceFromVision(source SplitSourceAsset, segment SplitSegment, prompt string, frames [][]byte, response llm.Response, out visionOutput, assessedAt time.Time) (*StructureRoleEvidence, error) {
+func structureRoleEvidenceFromVision(source SplitSourceAsset, segment SplitSegment, promptVersion, prompt string, frames [][]byte, response llm.Response, out visionOutput, assessedAt time.Time) (*StructureRoleEvidence, error) {
 	role := StructureSegmentRole(strings.TrimSpace(out.Role))
 	if !validStructureSegmentRole(role) || strings.TrimSpace(out.RoleReason) == "" {
 		return nil, nil
@@ -21,7 +21,7 @@ func structureRoleEvidenceFromVision(source SplitSourceAsset, segment SplitSegme
 	tokens := response.Attribution.Tokens
 	evidence, err := NewStructureRoleEvidence(StructureRoleEvidenceInput{
 		Source: source, StartMs: segment.StartMs, EndMs: segment.EndMs, Role: role, Reason: out.RoleReason,
-		Frames: frames, PromptVersion: visionPromptVersion, Prompt: prompt, Response: response.Content,
+		Frames: frames, PromptVersion: promptVersion, Prompt: prompt, Response: response.Content,
 		RequestedProvider: response.Attribution.RequestedProvider, ResolvedProvider: response.Attribution.ResolvedProvider,
 		RequestedModel: response.Attribution.RequestedModel, ResolvedModel: response.Attribution.ResolvedModel,
 		Modalities: slices.Clone(response.Attribution.Modalities),

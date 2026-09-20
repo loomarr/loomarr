@@ -9493,6 +9493,10 @@ components:
           type: boolean
         name:
           type: string
+        nameEvidence:
+          type: string
+        nameOrigin:
+          type: string
         startEvidence:
           type: string
         startMs:
@@ -9551,6 +9555,10 @@ components:
         looked:
           type: boolean
         name:
+          type: string
+        nameEvidence:
+          type: string
+        nameOrigin:
           type: string
         startEvidence:
           type: string
