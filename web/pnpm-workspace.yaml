@@ -28,8 +28,8 @@ packageExtensions:
   "dependency-cruiser@18.2.0":
     dependencies:
       typescript: "~6.0.3"
-  # Native Storybook runs in lite mode inside each Expo app, where React Native, Reanimated,
-  # SVG, and safe-area are already supplied at Expo-compatible versions. Its published full-UI
+  # Native Storybook runs in lite mode inside each Expo app. The workspace supplies compatible
+  # peer versions for tooling without making every peer a direct production-app dependency. Its published full-UI
   # peers otherwise make pnpm auto-install a second React Native plus gesture and bottom-sheet
   # modules that the lite UI deliberately does not load.
   "@storybook/react-native@10.5.4":
