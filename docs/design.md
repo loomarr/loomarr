@@ -7939,8 +7939,8 @@ The one retained 300-case development cohort crosses the household licensing ret
 single, offline, fail-closed refresh, not through a legacy reader in the audit or runtime. The refresh
 owns the exact locked manifest, packet JSONL, product mapping, and negative content-review bytes from
 the v3/v1 reference contract. Every legacy packet must be schema 1, bind its manifest case and content
-hash, contain exactly one deterministic decoder fact and exactly one `source_license=eligible`
-source-policy fact, and otherwise match the closed packet shape. The refresh removes only that retired
+hash, contain exactly one deterministic decoder fact and exactly one eligible source-policy fact with
+the legacy evidence ID `source-license`, and otherwise match the closed packet shape. The refresh removes only that retired
 licensing fact, advances the packet to schema 2 / `filler-evidence-v2`, recomputes the case evidence
 digest, and advances the corpus lock. Case, content, source, provenance, semantic truth, role, slices,
 taxonomy, policy flags, independent label attestations, and adjudication remain byte-equivalent under

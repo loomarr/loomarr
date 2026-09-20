@@ -20,7 +20,6 @@ const (
 	refreshReportKind              = "filler_reference_contract_refresh"
 	refreshReportSchemaVersion     = 1
 	refreshedCorpusSuffix          = "-license-free-v2"
-	legacyLicenseClaim             = filleradmission.Claim("source_license")
 	legacyLicenseFactID            = "source-license"
 	legacyLicenseEligible          = "eligible"
 )
@@ -225,7 +224,7 @@ func validateRefreshInputs(manifest fillereval.Manifest, packets map[string]fill
 }
 
 func isLegacyLicenseFact(fact filleradmission.Evidence) bool {
-	return fact.ID == legacyLicenseFactID && fact.Claim == legacyLicenseClaim && fact.Value == legacyLicenseEligible && fact.Kind == filleradmission.KindSourcePolicy && strings.TrimSpace(fact.Source) != "" && fact.Derivative == "" && fact.Location == "" && fact.AtMS == 0 && fact.EvaluationID == ""
+	return fact.ID == legacyLicenseFactID && strings.TrimSpace(string(fact.Claim)) != "" && fact.Claim != filleradmission.ClaimMediaUsability && fact.Value == legacyLicenseEligible && fact.Kind == filleradmission.KindSourcePolicy && strings.TrimSpace(fact.Source) != "" && fact.Derivative == "" && fact.Location == "" && fact.AtMS == 0 && fact.EvaluationID == ""
 }
 
 func marshalIndented(value any) ([]byte, error) {

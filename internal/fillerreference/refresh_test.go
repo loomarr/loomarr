@@ -30,7 +30,7 @@ func TestRefreshProducesCurrentArtifactsThatReplayThroughAudit(t *testing.T) {
 	if result.Report.Denominators.Cases != 300 || result.Report.Denominators.Packets != 300 || result.Report.Denominators.RemovedSourceLicenseFacts != 300 || result.Report.Denominators.LabelReviews != 600 {
 		t.Fatalf("denominators = %+v", result.Report.Denominators)
 	}
-	if strings.Contains(string(result.Packets), "source_license") || strings.Contains(string(result.Packets), "source-license") {
+	if strings.Contains(string(result.Packets), "source-license") {
 		t.Fatal("refreshed packets retained retired licensing evidence")
 	}
 	if _, err := fillerreference.BuildAudit(fillerreference.RawAuditInputs{
@@ -148,7 +148,7 @@ func legacyRefreshFixture(t *testing.T) (fillerreference.RawRefreshInputs, []byt
 		packet.SchemaVersion = 1
 		packet.EvidenceVersion = legacyEvidence
 		packet.Facts = append(packet.Facts, filleradmission.Evidence{
-			ID: "source-license", Claim: filleradmission.Claim("source_license"), Value: "eligible",
+			ID: "source-license", Claim: filleradmission.Claim("legacy-provider-eligibility"), Value: "eligible",
 			Kind: filleradmission.KindSourcePolicy, Source: "rights:" + id,
 		})
 		packets[id] = packet
