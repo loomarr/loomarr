@@ -38,7 +38,7 @@ jobs:
       - name: Static analysis and repository contracts
         run: make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify
       - name: The test shards cover every package
-        run: make go-shard-verify SHARDS=3
+        run: make go-shard-verify SHARDS=6
       - name: OpenAPI spec is committed and current
         run: make openapi-verify
       - name: Config docs are committed and current

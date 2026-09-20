@@ -54,7 +54,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},
 		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
 		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts", runsOn: "ubuntu-latest"},
-		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3}}},
+		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", timeoutMinutes: 15, strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4, 5, 6}}},
 		{workflow: "ci-image-certification.yml", job: "run"}: {name: "Rust image — runtime certification", runsOn: "ubuntu-latest"},
 		{workflow: "ci-image.yml", job: "run"}: {
 			name: "Image — release build (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}", timeoutMinutes: 45,

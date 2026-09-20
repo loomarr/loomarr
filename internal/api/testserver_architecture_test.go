@@ -17,7 +17,6 @@ import (
 // harnesses while their common lifecycle is migrated behind apiHarness. Every
 // entry needs a route-family rationale, and stale entries fail the test.
 var testServerConstructors = map[string]string{
-	"auth_flow_test.go:authServer":                        "authentication flow",
 	"channelicon_test.go:newIconUploadServer":             "channel icons",
 	"channelnumber_test.go:newServerWithNumbers":          "channel numbering",
 	"channels_test.go:newInternalServerWithoutTunarr":     "channels internal backend",
@@ -26,9 +25,6 @@ var testServerConstructors = map[string]string{
 	"channeltimeline_test.go:newTimelineServerWithImages": "channel timeline images",
 	"dashboard_panels_test.go:serverWithPanels":           "dashboard panels",
 	"dashboard_test.go:newDashboardServer":                "dashboard playout",
-	"device_flow_test.go:deviceServer":                    "device authentication",
-	"devlogin_test.go:devLoginServer":                     "development login",
-	"devlogin_test.go:gatedServer":                        "development route gates",
 	"events_test.go:newEventsServer":                      "events",
 	"filler_test.go:newFillerServer":                      "filler",
 	"filler_test.go:newFillerServerWithConfig":            "filler configuration",
@@ -42,15 +38,10 @@ var testServerConstructors = map[string]string{
 	"icons_test.go:newIconsHandlerWithConfig":             "icon handler configuration",
 	"icons_test.go:newIconsServer":                        "icons",
 	"icons_test.go:newIconsServerWithConfig":              "icon configuration",
-	"invitations_test.go:invitationServer":                "invitations",
-	"invitations_test.go:invitationServerWithDelivery":    "invitation delivery",
 	"jobs_test.go:serverWithJobs":                         "jobs",
-	"locations_test.go:locationServer":                    "installation location",
-	"passwordrecovery_test.go:passwordRecoveryServer":     "password recovery",
 	"pods_test.go:newPodsServer":                          "filler pods",
 	"proposaljourneys_test.go:proposalJourneyServer":      "proposal journeys",
 	"search_test.go:newConfiguredSearchHandler":           "search",
-	"ssoroutes_test.go:serverWithSSO":                     "single sign-on",
 }
 
 func TestAPITestServerConstructorsStayClassified(t *testing.T) {

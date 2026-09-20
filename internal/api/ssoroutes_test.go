@@ -2,7 +2,6 @@ package api_test
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -52,18 +51,13 @@ func noRedirectClient() *http.Client {
 	return &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
-func serverWithSSO(t *testing.T, svc api.SSOService) *httptest.Server {
+func newSSOHarness(t *testing.T, svc api.SSOService) *apiHarness {
 	t.Helper()
-	st := openTestStore(t, t.TempDir()+"/sso.db")
-	t.Cleanup(func() { _ = st.Close() })
-	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
-		SSO:   svc,
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, SSO: svc,
+		})
+	})
 }
 
 func get(t *testing.T, srv *httptest.Server, path string) *http.Response {
@@ -132,7 +126,7 @@ func sessionCookieValue(resp *http.Response) string {
 // With no provider wired the routes are NOT MOUNTED — a 404, not a 501. An unconfigured
 // install should look like one that never had SSO, so nothing offers a button that cannot work.
 func TestSSORoutes_NotMountedWithoutAProvider(t *testing.T) {
-	srv := serverWithSSO(t, nil)
+	srv := newSSOHarness(t, nil).Server
 	for _, path := range []string{"/v1/auth/sso/start", "/v1/auth/sso/callback"} {
 		resp := get(t, srv, path)
 		if resp.StatusCode != http.StatusNotFound {
@@ -143,7 +137,7 @@ func TestSSORoutes_NotMountedWithoutAProvider(t *testing.T) {
 
 func TestSSOStart_RedirectsToTheProvider(t *testing.T) {
 	fake := &fakeSSO{available: true, authURL: "https://auth.test/authorize?state=state-1"}
-	srv := serverWithSSO(t, fake)
+	srv := newSSOHarness(t, fake).Server
 
 	resp := get(t, srv, "/v1/auth/sso/start")
 	if resp.StatusCode != http.StatusFound {
@@ -184,7 +178,7 @@ func TestSSOStart_RefusesAnOffSiteReturnPath(t *testing.T) {
 	} {
 		t.Run(next, func(t *testing.T) {
 			fake := &fakeSSO{available: true, authURL: "https://auth.test/authorize"}
-			srv := serverWithSSO(t, fake)
+			srv := newSSOHarness(t, fake).Server
 
 			resp := get(t, srv, "/v1/auth/sso/start?next="+next)
 			if resp.StatusCode != http.StatusFound {
@@ -203,7 +197,7 @@ func TestSSOStart_RefusesAnOffSiteReturnPath(t *testing.T) {
 // above would be indistinguishable from dropping every value.
 func TestSSOStart_KeepsASameAppReturnPath(t *testing.T) {
 	fake := &fakeSSO{available: true, authURL: "https://auth.test/authorize"}
-	srv := serverWithSSO(t, fake)
+	srv := newSSOHarness(t, fake).Server
 
 	resp := get(t, srv, "/v1/auth/sso/start?next=/guide")
 	if resp.StatusCode != http.StatusFound {
@@ -216,12 +210,12 @@ func TestSSOStart_KeepsASameAppReturnPath(t *testing.T) {
 
 // A successful callback issues the session cookie and lands the person where they started.
 func TestSSOCallback_IssuesTheSessionAndReturns(t *testing.T) {
-	srv := serverWithSSO(t, &fakeSSO{
+	srv := newSSOHarness(t, &fakeSSO{
 		available: true,
 		user:      store.User{ID: "u-sam", Name: "sam", Role: "member"},
 		claims:    auth.SSOClaims{PreferredUsername: "sam"},
 		returnTo:  "/guide",
-	})
+	}).Server
 
 	resp := startThenCallback(t, srv, "state=state-1&code=abc")
 	if resp.StatusCode != http.StatusFound {
@@ -254,11 +248,11 @@ func TestSSOCallback_RefusesACallbackFromAnotherBrowser(t *testing.T) {
 		{"a cookie from a different login", "state-from-another-browser"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := serverWithSSO(t, &fakeSSO{
+			srv := newSSOHarness(t, &fakeSSO{
 				available: true,
 				user:      store.User{ID: "u-sam", Name: "sam", Role: "member"},
 				returnTo:  "/guide",
-			})
+			}).Server
 
 			req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/auth/sso/callback?state=state-1&code=abc", nil)
 			if err != nil {
@@ -286,10 +280,10 @@ func TestSSOCallback_RefusesACallbackFromAnotherBrowser(t *testing.T) {
 // The state cookie must be single-use: replaying one callback URL cannot mint a second
 // session. /start clears nothing, so the CALLBACK has to expire it on every outcome.
 func TestSSOCallback_ClearsTheStateCookie(t *testing.T) {
-	srv := serverWithSSO(t, &fakeSSO{
+	srv := newSSOHarness(t, &fakeSSO{
 		available: true,
 		user:      store.User{ID: "u-sam", Name: "sam"},
-	})
+	}).Server
 
 	resp := startThenCallback(t, srv, "state=state-1&code=abc")
 	for _, c := range resp.Cookies() {
@@ -309,7 +303,7 @@ func TestSSOCallback_ClearsTheStateCookie(t *testing.T) {
 // pass. No stub IdP performs a real cross-site redirect, so nothing else in the unit suite can
 // catch it.
 func TestSSOStart_StateCookieIsLaxAndScoped(t *testing.T) {
-	srv := serverWithSSO(t, &fakeSSO{available: true, authURL: "https://auth.test/authorize"})
+	srv := newSSOHarness(t, &fakeSSO{available: true, authURL: "https://auth.test/authorize"}).Server
 
 	resp := get(t, srv, "/v1/auth/sso/start")
 	for _, c := range resp.Cookies() {
@@ -343,7 +337,7 @@ func TestSSOCallback_RefusalsCarryAReasonCodeAndNoCookie(t *testing.T) {
 		{"provider not configured", "sso_unavailable", auth.ErrSSONotConfigured},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := serverWithSSO(t, &fakeSSO{available: true, exchangeErr: tc.err})
+			srv := newSSOHarness(t, &fakeSSO{available: true, exchangeErr: tc.err}).Server
 
 			resp := startThenCallback(t, srv, "state=state-1&code=c")
 			if resp.StatusCode != http.StatusFound {
@@ -375,11 +369,11 @@ func TestSSOCallback_RefusalsCarryAReasonCodeAndNoCookie(t *testing.T) {
 func TestSSOCallback_WillNotRedirectOffSiteEvenIfHandedOne(t *testing.T) {
 	for _, returnTo := range []string{"https://evil.test/login", "//evil.test", `/\evil.test`} {
 		t.Run(returnTo, func(t *testing.T) {
-			srv := serverWithSSO(t, &fakeSSO{
+			srv := newSSOHarness(t, &fakeSSO{
 				available: true,
 				user:      store.User{ID: "u-sam", Name: "sam"},
 				returnTo:  returnTo,
-			})
+			}).Server
 
 			resp := startThenCallback(t, srv, "state=state-1&code=abc")
 			if loc := resp.Header.Get("Location"); loc != "/" {
@@ -392,7 +386,7 @@ func TestSSOCallback_WillNotRedirectOffSiteEvenIfHandedOne(t *testing.T) {
 // A provider that refuses before we see a code (the person cancelled, or their client is
 // misconfigured) says so, rather than reporting a state mismatch that points at us.
 func TestSSOCallback_ProviderErrorIsItsOwnReason(t *testing.T) {
-	srv := serverWithSSO(t, &fakeSSO{available: true})
+	srv := newSSOHarness(t, &fakeSSO{available: true}).Server
 
 	resp := get(t, srv, "/v1/auth/sso/callback?error=access_denied&error_description=user+cancelled")
 	if loc := resp.Header.Get("Location"); !strings.Contains(loc, "sso_provider_error") {
