@@ -97,6 +97,9 @@ const Storage: Story = {
 const Details: Story = {
   args: { section: "details" },
   decorators: [withRouter("/filler/settings/details")],
+  play: async ({ canvas }) => {
+    await canvas.findByText(/4 of 4 sources on/);
+  },
 };
 
 export default meta;

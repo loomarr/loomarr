@@ -92,6 +92,17 @@ const fillerRefinementSettings: SettingsListOutputBody = {
       ...fillerSetting("filler.research.enabled", "Find missing clip details", "true", "bool"),
       presentation: "switch",
     },
+    ...(
+      [
+        ["filler.research.wikidata_enabled", "Wikidata"],
+        ["filler.research.wikipedia_enabled", "Wikipedia"],
+        ["filler.research.archive_enabled", "Archive.org"],
+        ["filler.research.loc_enabled", "Library of Congress"],
+      ] as const
+    ).map(([key, label]) => ({
+      ...fillerSetting(key, label, "true", "bool", true),
+      presentation: "switch" as const,
+    })),
     fillerSetting("filler.research.web_provider", "Web search provider", "none", "enum", true),
     {
       ...fillerSetting("filler.research.brave_api_key", "Brave Search API key", "", "secret", true),
