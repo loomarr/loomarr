@@ -8,6 +8,7 @@ import (
 )
 
 func TestNormalizeTemporalTruthLabelsUsesConservativePrecedence(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		labels fillereval.Labels
@@ -54,6 +55,7 @@ func TestNormalizeTemporalTruthLabelsUsesConservativePrecedence(t *testing.T) {
 }
 
 func TestNormalizeTemporalTruthLabelsRejectsMalformedRecoveredRows(t *testing.T) {
+	t.Parallel()
 	labels := temporalTruthValidLabels(fillereval.TruthEligible, "", "commercial")
 	labels.Evidence = nil
 	if _, err := normalizeTemporalTruthLabels("legacy", labels); err == nil || !strings.Contains(err.Error(), "at least one evidence") {

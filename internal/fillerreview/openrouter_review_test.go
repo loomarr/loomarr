@@ -20,6 +20,7 @@ import (
 )
 
 func TestRunOpenRouterReviewRejectsStaleSnapshotBeforeTransport(t *testing.T) {
+	t.Parallel()
 	retrievedAt := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	var requests atomic.Int32
 	client := &http.Client{Transport: httpfixture.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
@@ -40,6 +41,7 @@ func TestRunOpenRouterReviewRejectsStaleSnapshotBeforeTransport(t *testing.T) {
 }
 
 func TestRunOpenRouterReviewAllowsOnlyOneConcurrentWriter(t *testing.T) {
+	t.Parallel()
 	packageDir, transcript := reviewPackageFixture(t)
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -129,6 +131,7 @@ func TestRunOpenRouterReviewAllowsOnlyOneConcurrentWriter(t *testing.T) {
 }
 
 func TestEnsureOpenRouterCheckpointDirRevalidatesConcurrentExistingPath(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, string){
 		"symlink": func(t *testing.T, path string) {
 			t.Helper()
@@ -168,6 +171,7 @@ func TestEnsureOpenRouterCheckpointDirRevalidatesConcurrentExistingPath(t *testi
 }
 
 func TestRunOpenRouterReviewCrashStaleLockRequiresExplicitRecovery(t *testing.T) {
+	t.Parallel()
 	packageDir, transcript := reviewPackageFixture(t)
 	checkpointDir := filepath.Join(t.TempDir(), "private-review-state")
 	if err := os.Mkdir(checkpointDir, 0o700); err != nil {
@@ -226,6 +230,7 @@ func TestRunOpenRouterReviewCrashStaleLockRequiresExplicitRecovery(t *testing.T)
 }
 
 func TestRunOpenRouterReviewResumesOnlyFailedAlias(t *testing.T) {
+	t.Parallel()
 	packageDir, transcript := reviewPackageFixture(t)
 	checkpointDir := filepath.Join(t.TempDir(), "private-review-state")
 	requests := 0
@@ -270,6 +275,7 @@ func TestRunOpenRouterReviewResumesOnlyFailedAlias(t *testing.T) {
 }
 
 func TestRunOpenRouterReviewRejectsCheckpointResultHashDrift(t *testing.T) {
+	t.Parallel()
 	packageDir, transcript := reviewPackageFixture(t)
 	checkpointDir := filepath.Join(t.TempDir(), "private-review-state")
 	requests := 0
@@ -319,6 +325,7 @@ func TestRunOpenRouterReviewRejectsCheckpointResultHashDrift(t *testing.T) {
 }
 
 func TestRunOpenRouterReviewPreservesAcceptedCasesAcrossFailedAliasRetry(t *testing.T) {
+	t.Parallel()
 	packageDir, transcripts := twoCaseOpenRouterReviewFixture(t)
 	checkpointDir := filepath.Join(t.TempDir(), "private-review-state")
 	requestAliases := make([]string, 0, 3)
@@ -415,6 +422,7 @@ func TestRunOpenRouterReviewPreservesAcceptedCasesAcrossFailedAliasRetry(t *test
 }
 
 func TestPublishReviewRejectsHostedAttemptLedgerHashMismatch(t *testing.T) {
+	t.Parallel()
 	out := filepath.Join(t.TempDir(), "completed-review")
 	reviewedAt := time.Date(2026, 8, 27, 22, 0, 0, 0, time.UTC)
 	submissions := []fillereval.LabelSubmission{{
@@ -445,6 +453,7 @@ func TestPublishReviewRejectsHostedAttemptLedgerHashMismatch(t *testing.T) {
 }
 
 func TestPublishReviewRejectsAttemptsOutsideSerialSubmissionOrder(t *testing.T) {
+	t.Parallel()
 	out := filepath.Join(t.TempDir(), "completed-review")
 	reviewedAt := time.Date(2026, 8, 27, 22, 0, 0, 0, time.UTC)
 	submissions := []fillereval.LabelSubmission{
@@ -486,6 +495,7 @@ func TestPublishReviewRejectsAttemptsOutsideSerialSubmissionOrder(t *testing.T) 
 }
 
 func TestRunOpenRouterReviewResumeKeepsOriginalCeilings(t *testing.T) {
+	t.Parallel()
 	t.Run("requests", func(t *testing.T) {
 		assertOpenRouterResumeCeiling(t, 2, 6_000_000, 2_000_000)
 	})
@@ -586,6 +596,7 @@ func openRouterReviewSnapshot(baseURL string, now time.Time) fillerbakeoff.OpenR
 }
 
 func TestRunOpenRouterReviewPinsZDRRouteAndPaidAccounting(t *testing.T) {
+	t.Parallel()
 	packageDir, transcript := reviewPackageFixture(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/chat/completions" {

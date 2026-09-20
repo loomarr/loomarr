@@ -15,6 +15,7 @@ import (
 )
 
 func TestLockTemporalModelAssessmentBindsPostHumanResult(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalModelLockFixture(t)
 	output := filepath.Join(t.TempDir(), "locked-model")
 	locked, err := LockTemporalModelAssessment(TemporalModelAssessmentLockConfig{
@@ -52,6 +53,7 @@ func TestLockTemporalModelAssessmentBindsPostHumanResult(t *testing.T) {
 }
 
 func TestLockTemporalModelAssessmentFailsClosed(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalModelLockFixture(t)
 	base := TemporalModelAssessmentLockConfig{
 		PackagePath: fixture.packagePath, PrivateMapPath: fixture.mapPath, ResultPath: fixture.resultPath,

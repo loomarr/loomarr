@@ -16,6 +16,7 @@ import (
 )
 
 func TestBuildTemporalHumanReviewPackageCreatesDistinctBlindedHardlinkBatches(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalHumanReviewFixture(t)
 	first := fixture.build(t, "batch-one", "seed-one")
 	repeat := fixture.build(t, "batch-one", "seed-one")
@@ -65,6 +66,7 @@ func TestBuildTemporalHumanReviewPackageCreatesDistinctBlindedHardlinkBatches(t 
 }
 
 func TestTemporalHumanReviewLeakageAuditFailsWithoutPublishing(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "visible.txt"), []byte("private-case-id"), 0o640); err != nil {
 		t.Fatal(err)
@@ -87,6 +89,7 @@ func TestTemporalHumanReviewLeakageAuditFailsWithoutPublishing(t *testing.T) {
 }
 
 func TestTemporalLeakageMatcherFindsSecretsAcrossReadChunks(t *testing.T) {
+	t.Parallel()
 	matcher := newTemporalLeakageMatcher([]string{"private-prefix", "private-secret", "selection-history"})
 	match, err := matcher.Find(iotest.OneByteReader(strings.NewReader("public bytes then private-secret then more")))
 	if err != nil || match != "private-secret" {
@@ -99,6 +102,7 @@ func TestTemporalLeakageMatcherFindsSecretsAcrossReadChunks(t *testing.T) {
 }
 
 func TestLockTemporalHumanReviewEmitsCanonicalBoundArtifacts(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalHumanReviewFixture(t)
 	batch := fixture.build(t, "batch-lock", "seed-lock")
 	packPath := filepath.Join(batch, "public", "manifest.json")
@@ -141,6 +145,7 @@ func TestLockTemporalHumanReviewEmitsCanonicalBoundArtifacts(t *testing.T) {
 }
 
 func TestTemporalHumanReviewAttestationChangesWithEveryAcceptedAuthority(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalHumanReviewFixture(t)
 	batch := fixture.build(t, "batch-attestation", "seed-attestation")
 	packPath := filepath.Join(batch, "public", "manifest.json")
@@ -206,6 +211,7 @@ func TestTemporalHumanReviewAttestationChangesWithEveryAcceptedAuthority(t *test
 }
 
 func TestLockTemporalHumanReviewFailsClosed(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalHumanReviewFixture(t)
 	batch := fixture.build(t, "batch-fail-closed", "seed-fail-closed")
 	packPath := filepath.Join(batch, "public", "manifest.json")

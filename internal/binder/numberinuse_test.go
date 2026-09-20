@@ -40,6 +40,7 @@ func seedNumberedChannel(t *testing.T, st store.Store, id string, number int) {
 }
 
 func TestNumberInUse(t *testing.T) {
+	t.Parallel()
 	log := slog.New(slog.DiscardHandler)
 
 	tests := []struct {

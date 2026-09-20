@@ -12,6 +12,7 @@ import (
 )
 
 func TestPublishTemporalStructureDecisionsConfirmsAgreementWithoutPrivateTruth(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureComparisonFixture(t)
 	first := fixture.assessmentSet("assessor-a", "gemini", "google/model")
 	second := fixture.assessmentSet("assessor-b", "seed", "bytedance/model")
@@ -45,6 +46,7 @@ func TestPublishTemporalStructureDecisionsConfirmsAgreementWithoutPrivateTruth(t
 }
 
 func TestPublishTemporalStructureDecisionsHoldsEveryConflictClass(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureComparisonFixture(t)
 	first := fixture.assessmentSet("assessor-a", "gemini", "google/model")
 	second := fixture.assessmentSet("assessor-b", "seed", "bytedance/model")
@@ -98,6 +100,7 @@ func TestPublishTemporalStructureDecisionsHoldsEveryConflictClass(t *testing.T) 
 }
 
 func TestTemporalStructureDecisionCountsOneVotePerModelFamily(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureComparisonFixture(t)
 	first := fixture.assessmentSet("assessor-a", "same-family", "model/route-a")
 	second := fixture.assessmentSet("assessor-b", "same-family", "model/route-b")

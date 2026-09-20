@@ -9,6 +9,7 @@ import (
 )
 
 func TestPublishTemporalStructureCompleteShadowDecisionSetReplaysBlindedFamilies(t *testing.T) {
+	t.Parallel()
 	config, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	firstPath := temporalStructureCompleteFamilyArtifactFixture(t, config.WindowSetManifestPath, "family-a", time.Date(2026, 9, 13, 5, 0, 0, 0, time.UTC))
 	secondPath := temporalStructureCompleteFamilyArtifactFixture(t, config.WindowSetManifestPath, "family-b", time.Date(2026, 9, 13, 6, 0, 0, 0, time.UTC))

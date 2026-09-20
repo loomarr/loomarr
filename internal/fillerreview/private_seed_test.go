@@ -8,6 +8,7 @@ import (
 )
 
 func TestLoadPrivateSeedRequiresOneOwnerOnlyLine(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	valid := filepath.Join(root, "valid")
 	if err := os.WriteFile(valid, []byte("private-value\n"), 0o600); err != nil {

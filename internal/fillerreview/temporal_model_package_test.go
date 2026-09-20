@@ -13,6 +13,7 @@ import (
 )
 
 func TestBuildTemporalModelReviewPackageCreatesIndependentReproducibleBatches(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalHumanReviewFixture(t)
 	first, firstResult := buildTemporalModelFixture(t, fixture, "model-batch-a", "panel-a", "seed-a")
 	repeat, repeatResult := buildTemporalModelFixture(t, fixture, "model-batch-a", "panel-a", "seed-a")
@@ -80,6 +81,7 @@ func TestBuildTemporalModelReviewPackageCreatesIndependentReproducibleBatches(t 
 }
 
 func TestTemporalModelReviewPackageFailsClosedOnTamperAndDrift(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalHumanReviewFixture(t)
 	root, _ := buildTemporalModelFixture(t, fixture, "model-batch-fail", "panel-a", "seed-fail")
 	packagePath := filepath.Join(root, "public", "manifest.json")
@@ -114,6 +116,7 @@ func TestTemporalModelReviewPackageFailsClosedOnTamperAndDrift(t *testing.T) {
 }
 
 func TestTemporalModelReviewPackageRejectsUnknownManifestFields(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalHumanReviewFixture(t)
 	root, _ := buildTemporalModelFixture(t, fixture, "model-batch-unknown", "panel-a", "seed-unknown")
 	packagePath := filepath.Join(root, "public", "manifest.json")

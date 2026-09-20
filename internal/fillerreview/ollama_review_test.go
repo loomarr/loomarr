@@ -18,6 +18,7 @@ import (
 )
 
 func TestRunOllamaReviewProducesOneContentBoundBlindSubmission(t *testing.T) {
+	t.Parallel()
 	packageDir, transcript := reviewPackageFixture(t)
 	digest := strings.Repeat("a", 64)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +65,7 @@ func TestRunOllamaReviewProducesOneContentBoundBlindSubmission(t *testing.T) {
 }
 
 func TestPublishReviewAtomicallyWritesAttestationAndSubmission(t *testing.T) {
+	t.Parallel()
 	out := filepath.Join(t.TempDir(), "completed-review")
 	submissions := []fillereval.LabelSubmission{{Alias: "review-one", ReviewerID: "reviewer-a", BatchID: "blind-a", ReviewedAt: time.Date(2026, 8, 27, 22, 0, 0, 0, time.UTC), Labels: fillereval.Labels{Truth: fillereval.TruthEligible, ContentRole: "commercial", Slices: []string{"commercial"}, Evidence: []fillereval.Evidence{{ID: "frame-01", Kind: "frame", Claim: "content_role", Value: "commercial", Provenance: "cases/review-one/frame-01.jpg", AtMS: 1000}}}}}
 	run := ReviewRun{SchemaVersion: ReviewRunSchemaVersion, BatchID: "blind-a", ReviewerID: "reviewer-a", ResolvedModel: "reviewer-a@sha256:test", Cases: 1, Requests: 1, Calls: []ReviewCall{{Alias: "review-one", ReviewedAt: submissions[0].ReviewedAt}}, SubmissionSHA256: submissionSHA256(submissions)}
@@ -84,6 +86,7 @@ func TestPublishReviewAtomicallyWritesAttestationAndSubmission(t *testing.T) {
 }
 
 func TestValidateReviewPackageAcceptsDecoderOnlyUnusableCase(t *testing.T) {
+	t.Parallel()
 	packageDir, _ := reviewPackageFixture(t)
 	manifest, err := readStrictJSON[Package](filepath.Join(packageDir, "manifest.json"))
 	if err != nil {
@@ -105,6 +108,7 @@ func TestValidateReviewPackageAcceptsDecoderOnlyUnusableCase(t *testing.T) {
 }
 
 func TestValidateOllamaReviewConfigLeavesTimeoutToPerCaseContext(t *testing.T) {
+	t.Parallel()
 	_, client, err := validateOllamaReviewConfig(OllamaReviewConfig{PackageDir: "/tmp/review", BaseURL: "http://127.0.0.1:11434", Model: "reviewer:1", ModelDigest: strings.Repeat("a", 64), ReviewerID: "reviewer-a", ExpectedCases: 300, PerCaseTimeout: 5 * time.Minute})
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +119,7 @@ func TestValidateOllamaReviewConfigLeavesTimeoutToPerCaseContext(t *testing.T) {
 }
 
 func TestIndexReviewTranscriptsRejectsExtraHiddenCase(t *testing.T) {
+	t.Parallel()
 	packageDir, transcript := reviewPackageFixture(t)
 	manifest, err := readStrictJSON[Package](filepath.Join(packageDir, "manifest.json"))
 	if err != nil {
@@ -130,6 +135,7 @@ func TestIndexReviewTranscriptsRejectsExtraHiddenCase(t *testing.T) {
 }
 
 func TestValidateReviewEvidenceAcceptsHashBoundEmptyTranscript(t *testing.T) {
+	t.Parallel()
 	packageDir, transcript := reviewPackageFixture(t)
 	manifest, err := readStrictJSON[Package](filepath.Join(packageDir, "manifest.json"))
 	if err != nil {

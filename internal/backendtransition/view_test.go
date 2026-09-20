@@ -10,6 +10,7 @@ import (
 )
 
 func TestDurableViewObservesExternalCheckpointWrites(t *testing.T) {
+	t.Parallel()
 	st := testkit.SQLiteStore(t)
 	ctx := context.Background()
 	state, err := Load(ctx, st, BackendTunarr)
@@ -39,6 +40,7 @@ func TestDurableViewObservesExternalCheckpointWrites(t *testing.T) {
 }
 
 func TestDurableViewFailsClosedWithoutInitializing(t *testing.T) {
+	t.Parallel()
 	st := testkit.SQLiteStore(t)
 	view := NewDurableView(st)
 	if _, err := view.Snapshot(context.Background()); !errors.Is(err, ErrInvalidState) {

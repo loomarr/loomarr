@@ -10,6 +10,7 @@ import (
 )
 
 func TestRunTemporalStructureMediaCommandRejectsSuccessfulProcessWithErrorOutput(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("LOOMARR_TEMPORAL_MEDIA_ERROR_HELPER") == "1" {
 		_, _ = fmt.Fprintln(os.Stderr, "damaged input packet")
 		os.Exit(0)

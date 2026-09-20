@@ -55,7 +55,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make check-static` |  | repository contracts without the unit-test suite (CI runs this once beside test shards) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `observability-verify` `vet` `platform-vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
+| `make check-static` |  | repository contracts without the unit-test suite (CI runs this once beside test lanes) <br>*runs:* `rust-check` `fmt` `shellcheck` `privacy-verify` `observability-verify` `vet` `platform-vet` `tags-verify` `vet-tags` `lint` `agent-harness-test` `compose-verify` `release-verify` `go-race-verify` |
 | `make observability-verify` | ✅ | validate the metric manifest, Prometheus rules, and Grafana provisioning (needs Docker and jq) |
 | `make rust-check` | ✅ | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
 | `make rust-test-worker` |  | build the debug Rust image worker required by Go unit tests |
@@ -69,8 +69,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make vet-tags` |  | go vet over custom-tagged sources |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
-| `make test` | ✅ | unit tests with their required Rust worker (never touch the network — §19) <br>*runs:* `rust-test-worker` `eval-contract` |
-| `make go-shard-verify` | ✅ | the GO_SHARD split must cover every package within its latency and balance budgets |
+| `make test` | ✅ | unit tests; unsharded runs include Rust worker and eval contracts (never network — §19) |
+| `make go-shard-verify` | ✅ | Go test lanes must cover every package within their latency and balance budgets |
 | `make go-race-verify` |  | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
 | `make test-ffmpeg` |  | media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in comprehensive verification) |
 | `make eval-contract` |  | hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB |

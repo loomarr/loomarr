@@ -16,12 +16,7 @@ var now = time.Date(2026, 7, 13, 20, 0, 0, 0, time.UTC)
 
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/a.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
+	return testkit.MigratedSQLiteStore(t)
 }
 
 // Session tokens are stored SHA-256-hashed: the DB never holds the raw cookie.

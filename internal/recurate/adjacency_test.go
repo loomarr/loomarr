@@ -48,6 +48,7 @@ func seedChannelWithLineup(t *testing.T, st store.Store, id, jobID string, lineu
 // refine intent (§8.3) — that is what makes re-curation consult both corpora in one run
 // rather than alternating between them.
 func TestRunner_SeedsAdjacencyFromTheChannelsLineup(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedJob(t, st, "job-1", "80s action")
 	seedChannelWithLineup(t, st, "ch-1", "job-1", []schedule.LineupEntry{
@@ -88,6 +89,7 @@ func TestRunner_SeedsAdjacencyFromTheChannelsLineup(t *testing.T) {
 // A failing walk must NOT fail the run: adjacency widens a re-curation, it never gates one.
 // The LLM corpus alone is the pre-adjacency behaviour and remains a correct outcome.
 func TestRunner_AdjacencyFailureStillRefines(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedJob(t, st, "job-1", "80s action")
 	seedChannelWithLineup(t, st, "ch-1", "job-1", []schedule.LineupEntry{
@@ -112,6 +114,7 @@ func TestRunner_AdjacencyFailureStillRefines(t *testing.T) {
 // No adjacency wired at all ⇒ exactly the pre-§8.3 behaviour. An install without TMDB keeps
 // re-curating on the LLM corpus alone.
 func TestRunner_NoAdjacencyCorpusIsUnchangedBehaviour(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedJob(t, st, "job-1", "80s action")
 	seedChannelWithLineup(t, st, "ch-1", "job-1", []schedule.LineupEntry{
@@ -134,6 +137,7 @@ func TestRunner_NoAdjacencyCorpusIsUnchangedBehaviour(t *testing.T) {
 // A lineup with no TMDB-keyed titles has no graph to walk (a TVDB-only series channel), so
 // the walk is skipped entirely rather than called with zero seeds.
 func TestRunner_NonTMDBLineupSkipsTheWalk(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedJob(t, st, "job-1", "classic tv")
 	seedChannelWithLineup(t, st, "ch-1", "job-1", []schedule.LineupEntry{
@@ -165,6 +169,7 @@ func adjItem(tmdbID int, name string, confidence float64) suggest.ProposalItem {
 // nor can see, so a model that scores only what it found itself would silently zero out the
 // entire second corpus — and the drop count would read as "the bar is working".
 func TestCurator_UnscoredAdjacencyPickSurvivesTheBar(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
@@ -187,6 +192,7 @@ func TestCurator_UnscoredAdjacencyPickSurvivesTheBar(t *testing.T) {
 // The floor lifts an ABSENT score, never a low one. A model that looked and judged the title
 // weak keeps its judgement — otherwise this would be a bypass rather than a floor.
 func TestCurator_ScoredAdjacencyPickKeepsTheModelsJudgement(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
@@ -207,6 +213,7 @@ func TestCurator_ScoredAdjacencyPickKeepsTheModelsJudgement(t *testing.T) {
 // for it and declined to stand behind it, which IS a real signal about spending. The floor is
 // narrow on purpose — it applies to the adjacency corpus alone.
 func TestCurator_UnscoredLLMPickIsStillDropped(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{

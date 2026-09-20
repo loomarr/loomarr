@@ -19,6 +19,23 @@ func TestRepositoryCIContainerDownloadsAreBounded(t *testing.T) {
 	}
 }
 
+func TestRepositoryScriptAuditSkipsTransientBuildOutputs(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFixtureFile(t, filepath.Join(root, "scripts", "tracked.sh"), "#!/usr/bin/env bash\necho tracked\n")
+	writeFixtureFile(t, filepath.Join(root, "target", "debug", "build-script.sh"), "#!/usr/bin/env bash\ndocker pull busybox:stable\n")
+	audit, err := newRepositoryScriptAudit(root)
+	if err != nil {
+		t.Fatalf("index repository shell scripts: %v", err)
+	}
+	if _, ok := audit.sources["scripts/tracked.sh"]; !ok {
+		t.Fatal("tracked repository script was omitted")
+	}
+	if _, ok := audit.sources["target/debug/build-script.sh"]; ok {
+		t.Fatal("transient Rust build output was indexed as repository source")
+	}
+}
+
 func TestTestcontainersRyukImageMatchesBoundedMakeAuthority(t *testing.T) {
 	t.Parallel()
 	//nolint:staticcheck // The deprecated symbol is the only public accessor for the pinned dependency's Ryuk default.

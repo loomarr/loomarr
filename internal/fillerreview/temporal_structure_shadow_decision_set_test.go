@@ -11,6 +11,7 @@ import (
 )
 
 func TestPublishTemporalStructureWindowShadowDecisionSetReplaysBlindedFamilies(t *testing.T) {
+	t.Parallel()
 	config, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	firstPath := temporalStructureWindowFamilyArtifactFixture(t, config.WindowSetManifestPath, "family-a", 5, time.Date(2026, 9, 13, 5, 0, 0, 0, time.UTC))
 	secondPath := temporalStructureWindowFamilyArtifactFixture(t, config.WindowSetManifestPath, "family-b", 6, time.Date(2026, 9, 13, 6, 0, 0, 0, time.UTC))
@@ -42,6 +43,7 @@ func TestPublishTemporalStructureWindowShadowDecisionSetReplaysBlindedFamilies(t
 }
 
 func TestPublishTemporalStructureWindowShadowDecisionSetRejectsTimeAndFamilyDrift(t *testing.T) {
+	t.Parallel()
 	config, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	firstPath := temporalStructureWindowFamilyArtifactFixture(t, config.WindowSetManifestPath, "family-a", 5, time.Date(2026, 9, 13, 5, 0, 0, 0, time.UTC))
 	secondPath := temporalStructureWindowFamilyArtifactFixture(t, config.WindowSetManifestPath, "family-b", 6, time.Date(2026, 9, 13, 6, 0, 0, 0, time.UTC))
@@ -66,6 +68,7 @@ func TestPublishTemporalStructureWindowShadowDecisionSetRejectsTimeAndFamilyDrif
 }
 
 func TestValidateTemporalStructureShadowDecisionSetRejectsArtifactMutation(t *testing.T) {
+	t.Parallel()
 	config, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	firstPath := temporalStructureWindowFamilyArtifactFixture(t, config.WindowSetManifestPath, "family-a", 5, time.Date(2026, 9, 13, 5, 0, 0, 0, time.UTC))
 	secondPath := temporalStructureWindowFamilyArtifactFixture(t, config.WindowSetManifestPath, "family-b", 6, time.Date(2026, 9, 13, 6, 0, 0, 0, time.UTC))

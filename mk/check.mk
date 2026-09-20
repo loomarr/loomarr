@@ -7,7 +7,7 @@ verify: ## run affected local evidence; SCOPE=all runs the comprehensive reposit
 ## ---- explicit complete audit --------------------------------------------
 
 .PHONY: check-static
-check-static: rust-check fmt shellcheck privacy-verify observability-verify vet platform-vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test shards)
+check-static: rust-check fmt shellcheck privacy-verify observability-verify vet platform-vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify ## repository contracts without the unit-test suite (CI runs this once beside test lanes)
 
 .PHONY: observability-verify
 observability-verify: ## validate the metric manifest, Prometheus rules, and Grafana provisioning (needs Docker and jq)
@@ -77,7 +77,13 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run --build-tags '$(TAGS_CSV)' $(PKG)
 
 .PHONY: test
-test: rust-test-worker eval-contract ## unit tests with their required Rust worker (never touch the network — §19)
+# Local `make test` retains both explicit prerequisites. CI's lane-scoped invocations omit them
+# because `go-contracts` runs eval-contract exactly once and composition packages acquire the real
+# image worker through internal/testkit at their explicit override seam. Repeating both prerequisites
+# in every hosted lane cost roughly 96 seconds per cold runner without adding coverage. The lane
+# runner owns this branch because CI Makefiles deliberately reject conditional directives as
+# unaudited control flow; its release-verifier test pins both paths.
+test: ## unit tests; unsharded runs include Rust worker and eval contracts (never network — §19)
 # ⚠ **-timeout is set explicitly because Go's default is 10m PER PACKAGE and `internal/api` grew
 # past it.** Measured 2026-08-09: that package alone is 267s locally under `-race`, and a CI runner
 # is roughly twice as slow — so it tripped the default and the job died with `panic: test timed out
@@ -90,40 +96,35 @@ test: rust-test-worker eval-contract ## unit tests with their required Rust work
 # is ~500 tests each paying a fresh SQLite open plus migrations, and the fix when this bites again is
 # to share that setup, NOT to raise the number a second time.
 #
-# GO_SHARD is a CI-only passthrough (`make test GO_SHARD=1/2`): EMPTY by default, so a local
+# GO_TEST_LANE is a CI-only passthrough (`make test GO_TEST_LANE=1/2`): EMPTY by default, so a local
 # `make test` — and `make verify SCOPE=all` — runs the whole tree. Sharding must
 # never be implicit, or someone runs a fraction of the gate and reads the green as the whole thing.
-# The shard COUNT lives in ci.yml's `matrix.shard`; see scripts/go-shard.sh for the split.
+# The four literal lanes live in ci-go.yml's `matrix.lane`; see scripts/go-test-lane.sh.
 #
 # ⚠ `&&`, not a `$(shell ...)` expansion. `$(shell)` swallows a non-zero exit and yields the empty
-# string, and `go test` with NO packages exits 0 — so a bad GO_SHARD would have produced a silent
+# string, and `go test` with NO packages exits 0 — so a bad lane would have produced a silent
 # green over zero tests, which is the exact failure this sharding must not be able to cause. Here a
 # failing helper fails the recipe: `pkgs=$(...)` carries the substitution's status into the `&&`.
 #
-# `-race` is scoped, not tree-wide: scripts/go-race-policy.sh splits this shard's packages into the
+# `-race` is scoped, not tree-wide: scripts/go-race-policy.sh splits this lane's packages into the
 # ones that run UNDER -race (the default — everything with any concurrency, incl. every httptest
 # server) and a short, verified opt-out set of concurrency-free config/table-test packages that run
 # without it, to skip the detector's ~2-3x overhead where no race is possible. `make go-race-verify`
-# guards the opt-out list; the split is per-shard so it composes with GO_SHARD.
+# guards the opt-out list; the policy composes with every lane.
 #
 # ⚠ Each `go test` runs ONLY IF its list is non-empty. A shard whose opt-out subset is empty is
 # normal (data-dependent on the split), but `go test` with no packages exits 0 — the same silent-
 # green trap as above — so an empty list must SKIP the invocation, never invoke `go test` with none.
-	@set -e; \
-	pkgs="$$(./scripts/go-shard.sh $(GO_SHARD))"; \
-	race_pkgs="$$(printf '%s\n' "$$pkgs" | ./scripts/go-race-policy.sh --race)"; \
-	norace_pkgs="$$(printf '%s\n' "$$pkgs" | ./scripts/go-race-policy.sh --no-race)"; \
-	if [ -n "$$race_pkgs" ]; then GO_BIN="$(GO)" GO_SHARD="$(GO_SHARD)" ./scripts/go-test-packages.sh race 25m $$race_pkgs; fi; \
-	if [ -n "$$norace_pkgs" ]; then GO_BIN="$(GO)" GO_SHARD="$(GO_SHARD)" ./scripts/go-test-packages.sh plain 25m $$norace_pkgs; fi
+	@GO_BIN="$(GO)" GO_TEST_LANE="$(GO_TEST_LANE)" ./scripts/go-test-lane.sh
 
 .PHONY: go-shard-verify
-go-shard-verify: ## the GO_SHARD split must cover every package within its latency and balance budgets
+go-shard-verify: ## Go test lanes must cover every package within their latency and balance budgets
 # ⚠ THIS IS A REAL GATE, not a sanity check. Sharding is the one optimization here that can
 # QUIETLY SHRINK the suite: a split that drops a package does not fail — those tests simply never
-# run, every shard reports success, and CI is green over code it never executed. Nothing else in
-# the pipeline would notice. SHARDS must match ci.yml's `matrix.shard` count; CI passes it from
-# `strategy.job-total` so the two cannot drift apart.
-	@./scripts/go-shard.sh --verify $(or $(SHARDS),6)
+# run, every lane reports success, and CI is green over code it never executed. Nothing else in
+# the pipeline would notice. The release verifier pins SHARDS=2 and the workflow's two ordinary
+# identities plus its two certification identities, so execution and coverage authority cannot drift.
+	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
 
 .PHONY: go-race-verify
 go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package

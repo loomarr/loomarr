@@ -36,7 +36,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
 		}
 	' "$log" | sort -t $'\t' -k1,1nr)"
 	{
-		echo "### Go ${label} package timings (${GO_SHARD:-unsharded})"
+		echo "### Go ${label} package timings (${GO_TEST_LANE:-unsharded})"
 		echo
 		if [[ -n "$timings" ]]; then
 			echo '| Package | Seconds |'

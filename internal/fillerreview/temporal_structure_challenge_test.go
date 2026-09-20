@@ -19,6 +19,7 @@ import (
 )
 
 func TestBuildTemporalStructureChallengeSeparatesBlindedMediaFromConstructionAuthority(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureFixture(t)
 	first, firstResult := fixture.build(t, "seed-one")
 	if fixture.media.probeCalls != 3 {
@@ -80,6 +81,7 @@ func TestBuildTemporalStructureChallengeSeparatesBlindedMediaFromConstructionAut
 }
 
 func TestBuildTemporalStructureChallengeSupportsProgrammeWithInsertedSpot(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureFixture(t)
 	fixture.authoring.Cases = append(fixture.authoring.Cases, TemporalStructureChallengeCase{
 		ID: "programme-spots-case-secret", Unit: fillereval.UnitProgrammeSpots,
@@ -117,6 +119,7 @@ func TestBuildTemporalStructureChallengeSupportsProgrammeWithInsertedSpot(t *tes
 }
 
 func TestLoadTemporalStructureChallengeFailsClosedOnPublicAndPrivateTamper(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "load-tamper")
 	manifestPath := filepath.Join(root, "public", "manifest.json")
@@ -164,6 +167,7 @@ func TestLoadTemporalStructureChallengeFailsClosedOnPublicAndPrivateTamper(t *te
 }
 
 func TestBuildTemporalStructureChallengeRejectsInvalidConstructionAndTamperAtomically(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*temporalStructureFixture)
@@ -205,6 +209,7 @@ func TestBuildTemporalStructureChallengeRejectsInvalidConstructionAndTamperAtomi
 }
 
 func TestTemporalStructureChallengeRejectsUnknownAuthoringFields(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureFixture(t)
 	raw, err := json.Marshal(fixture.authoring)
 	if err != nil {
@@ -229,6 +234,7 @@ func TestTemporalStructureChallengeRejectsUnknownAuthoringFields(t *testing.T) {
 }
 
 func TestBuildTemporalStructureChallengeReportsObservedOversizedMedia(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureFixture(t)
 	fixture.media.renderBytes = TemporalTruthMaximumVideoBytes + 1
 	output := filepath.Join(fixture.root, "oversized")
@@ -242,6 +248,7 @@ func TestBuildTemporalStructureChallengeReportsObservedOversizedMedia(t *testing
 }
 
 func TestAuditTemporalStructureChallengeLeakageIncludesReceiptOnlySecrets(t *testing.T) {
+	t.Parallel()
 	publicRoot := t.TempDir()
 	secret := "receipt-only-evidence-alias"
 	if err := os.WriteFile(filepath.Join(publicRoot, "manifest.json"), []byte(secret), 0o600); err != nil {
@@ -254,6 +261,7 @@ func TestAuditTemporalStructureChallengeLeakageIncludesReceiptOnlySecrets(t *tes
 }
 
 func TestTemporalStructureConcatArgumentsPinDeterministicMetadataFreeCopy(t *testing.T) {
+	t.Parallel()
 	arguments := strings.Join(fillerstructuremedia.ConcatArguments("concat.txt", "result.mp4"), " ")
 	for _, required := range []string{"-safe 1", "-map_metadata -1", "-map_chapters -1", "-c copy", "-fflags +bitexact", "creation_time=", "encoder="} {
 		if !strings.Contains(arguments, required) {
@@ -263,6 +271,7 @@ func TestTemporalStructureConcatArgumentsPinDeterministicMetadataFreeCopy(t *tes
 }
 
 func TestTemporalStructurePartArgumentsPinOneJoinCompatibleProfile(t *testing.T) {
+	t.Parallel()
 	arguments := strings.Join(fillerstructuremedia.PartArguments("source.mp4", 1_000, 2_000, "part.mp4"), " ")
 	for _, required := range []string{
 		"-ss 1.000", "-t 2.000", "fps=30", "scale=w=960:h=720:force_original_aspect_ratio=decrease",

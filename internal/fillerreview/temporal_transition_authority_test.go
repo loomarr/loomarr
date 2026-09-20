@@ -13,6 +13,7 @@ import (
 )
 
 func TestBuildTemporalTransitionAuthorityMeasuresEveryCaseAndReproducesBytes(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	build := func(output string) TemporalTransitionAuthorityResult {
 		t.Helper()
@@ -45,6 +46,7 @@ func TestBuildTemporalTransitionAuthorityMeasuresEveryCaseAndReproducesBytes(t *
 }
 
 func TestBuildTemporalTransitionAuthorityFailsAtomicallyOnMeasurementError(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	output := filepath.Join(t.TempDir(), "authority")
 	_, err := BuildTemporalTransitionAuthority(context.Background(), TemporalTransitionAuthorityConfig{
@@ -61,6 +63,7 @@ func TestBuildTemporalTransitionAuthorityFailsAtomicallyOnMeasurementError(t *te
 }
 
 func TestLoadTemporalTransitionAuthorityRejectsChangedSourceBinding(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	authority := readStrictTestJSON[TemporalTransitionAuthority](t, fixture.transition)
 	authority.Cases[0].SourceSHA256 = strings.Repeat("f", 64)
@@ -81,6 +84,7 @@ func TestLoadTemporalTransitionAuthorityRejectsChangedSourceBinding(t *testing.T
 }
 
 func TestParseTemporalTransitionDetectorsPreservesBoundaryIntervals(t *testing.T) {
+	t.Parallel()
 	raw := "[blackdetect @ 0x1] black_start:0 black_end:0.080 black_duration:0.080\n" +
 		"[silencedetect @ 0x2] silence_start: 0.950\n"
 	black, silence, err := parseTemporalTransitionDetectors(raw, 5_000, 6_000)
@@ -93,6 +97,7 @@ func TestParseTemporalTransitionDetectorsPreservesBoundaryIntervals(t *testing.T
 }
 
 func TestParseTemporalTransitionDetectorsClampsToleratedBoundaryDrift(t *testing.T) {
+	t.Parallel()
 	raw := "[blackdetect @ 0x1] black_start:-0.021 black_end:1.019 black_duration:1.040\n" +
 		"[silencedetect @ 0x2] silence_start: -0.010\n" +
 		"[silencedetect @ 0x2] silence_end: 1.012 | silence_duration: 1.022\n"
@@ -107,6 +112,7 @@ func TestParseTemporalTransitionDetectorsClampsToleratedBoundaryDrift(t *testing
 }
 
 func TestParseTemporalTransitionDetectorsMergesOverlappingIntervals(t *testing.T) {
+	t.Parallel()
 	raw := "[blackdetect @ 0x1] black_start:0.100 black_end:0.400 black_duration:0.300\n" +
 		"[blackdetect @ 0x1] black_start:0.350 black_end:0.600 black_duration:0.250\n" +
 		"[silencedetect @ 0x2] silence_start: 0.200\n" +
@@ -126,6 +132,7 @@ func TestParseTemporalTransitionDetectorsMergesOverlappingIntervals(t *testing.T
 }
 
 func TestParseTemporalTransitionDetectorsRejectsDriftBeyondTolerance(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{
 		"[blackdetect @ 0x1] black_start:-0.035 black_end:0.100 black_duration:0.135\n",
 		"[silencedetect @ 0x2] silence_start: 1.035\n",
@@ -137,6 +144,7 @@ func TestParseTemporalTransitionDetectorsRejectsDriftBeyondTolerance(t *testing.
 }
 
 func TestParseTemporalTransitionDetectorsRejectsMalformedOrInconsistentOutput(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{
 		"[blackdetect @ 0x1] black_start:nope black_end:0.100 black_duration:0.100\n",
 		"[blackdetect @ 0x1] black_start:0.100 black_end:0.400 black_duration:0.100\n",

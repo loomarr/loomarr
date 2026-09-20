@@ -14,6 +14,7 @@ import (
 )
 
 func TestRunOpenRouterTemporalSuitabilityBindsFullVideoFlagsAndRawResponse(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalHumanReviewFixture(t)
 	manifest, _, err := LoadTemporalTruthEvidence(fixture.manifest)
@@ -51,6 +52,7 @@ func TestRunOpenRouterTemporalSuitabilityBindsFullVideoFlagsAndRawResponse(t *te
 }
 
 func TestRunOpenRouterTemporalSuitabilityHoldsInsufficientCoverage(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalHumanReviewFixture(t)
 	manifest, _, err := LoadTemporalTruthEvidence(fixture.manifest)
@@ -69,6 +71,7 @@ func TestRunOpenRouterTemporalSuitabilityHoldsInsufficientCoverage(t *testing.T)
 }
 
 func TestRunOpenRouterTemporalSuitabilityTurnsInvalidSemanticsIntoFailure(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalHumanReviewFixture(t)
 	manifest, _, err := LoadTemporalTruthEvidence(fixture.manifest)
@@ -88,6 +91,7 @@ func TestRunOpenRouterTemporalSuitabilityTurnsInvalidSemanticsIntoFailure(t *tes
 }
 
 func TestRunOpenRouterTemporalSuitabilityRequiresSnapshotVideoModality(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalHumanReviewFixture(t)
 	server := newTemporalSuitabilityServer(t, nil, `{}`)

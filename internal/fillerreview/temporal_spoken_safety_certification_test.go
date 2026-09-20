@@ -13,6 +13,7 @@ import (
 )
 
 func TestPublishTemporalSpokenSafetyCertificationPassesLockedFamilyAndCleanGates(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalSpokenSafetyCertificationFixture(t)
 	output := filepath.Join(t.TempDir(), "certification.json")
 	report, digest, err := PublishTemporalSpokenSafetyCertification(fixture.config(output))
@@ -47,6 +48,7 @@ func TestPublishTemporalSpokenSafetyCertificationPassesLockedFamilyAndCleanGates
 }
 
 func TestPublishTemporalSpokenSafetyCertificationFailsMissAndCleanFalsePositive(t *testing.T) {
+	t.Parallel()
 	t.Run("positive interval miss", func(t *testing.T) {
 		fixture := newTemporalSpokenSafetyCertificationFixture(t)
 		fixture.projection.SourceDispositions[0].Matches = nil
@@ -81,6 +83,7 @@ func TestPublishTemporalSpokenSafetyCertificationFailsMissAndCleanFalsePositive(
 }
 
 func TestTemporalSpokenSafetyExactLower95ReportsPartialRecall(t *testing.T) {
+	t.Parallel()
 	if got := temporalSpokenSafetyExactLower95(17, 59); math.Abs(got-0.192640999722) > 1e-12 {
 		t.Fatalf("17/59 exact lower = %.12f, want 0.192640999722", got)
 	}
@@ -96,6 +99,7 @@ func TestTemporalSpokenSafetyExactLower95ReportsPartialRecall(t *testing.T) {
 }
 
 func TestPublishTemporalSpokenSafetyCertificationRejectsPostProjectionAuthority(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalSpokenSafetyCertificationFixture(t)
 	fixture.authority.AuthoredAt = fixture.projection.ProjectedAt.Add(time.Second)
 	writeTemporalSpokenSafetyJSON(t, fixture.authorityPath, fixture.authority)
@@ -106,6 +110,7 @@ func TestPublishTemporalSpokenSafetyCertificationRejectsPostProjectionAuthority(
 }
 
 func TestPublishTemporalSpokenSafetyCertificationCannotPromoteDevelopmentControls(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalSpokenSafetyCertificationFixture(t)
 	fixture.authority.ChallengeKind = TemporalSpokenSafetyChallengeDevelopment
 	writeTemporalSpokenSafetyJSON(t, fixture.authorityPath, fixture.authority)

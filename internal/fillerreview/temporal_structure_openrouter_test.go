@@ -18,6 +18,7 @@ import (
 const temporalStructureStandaloneResponse = `{"segments":[{"endMs":10000,"role":"commercial","decisiveAtMs":[200],"reason":"one complete product offer"}]}`
 
 func TestRunOpenRouterTemporalStructureRejectsFutureChallengeBeforeRequest(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "future-challenge")
 	manifestPath := filepath.Join(root, "public", "manifest.json")
@@ -38,6 +39,7 @@ func TestRunOpenRouterTemporalStructureRejectsFutureChallengeBeforeRequest(t *te
 }
 
 func TestRunOpenRouterTemporalStructureRejectsReservationBelowSnapshotPriceBound(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "price-bound")
@@ -60,6 +62,7 @@ func TestRunOpenRouterTemporalStructureRejectsReservationBelowSnapshotPriceBound
 }
 
 func TestRunOpenRouterTemporalStructureBindsOneAtomicVideoAssessment(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, challenge := fixture.build(t, "direct-video")
@@ -94,6 +97,7 @@ func TestRunOpenRouterTemporalStructureBindsOneAtomicVideoAssessment(t *testing.
 }
 
 func TestRunOpenRouterTemporalStructureRecordsChargeAboveReservationAndStops(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "over-reservation")
@@ -130,6 +134,7 @@ func TestRunOpenRouterTemporalStructureRecordsChargeAboveReservationAndStops(t *
 }
 
 func TestRunOpenRouterTemporalStructureExplicitlyEnablesRequiredReasoning(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "required-reasoning")
@@ -149,6 +154,7 @@ func TestRunOpenRouterTemporalStructureExplicitlyEnablesRequiredReasoning(t *tes
 }
 
 func TestValidateTemporalStructureOpenRouterResultRejectsEvidenceAccountingDrift(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "result-drift")
@@ -186,6 +192,7 @@ func TestValidateTemporalStructureOpenRouterResultRejectsEvidenceAccountingDrift
 }
 
 func TestRunOpenRouterTemporalStructureTurnsRedundantWholeFileClaimIntoFailure(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "invalid-role")
@@ -204,6 +211,7 @@ func TestRunOpenRouterTemporalStructureTurnsRedundantWholeFileClaimIntoFailure(t
 }
 
 func TestRunOpenRouterTemporalStructureRequiresSnapshotVideoModality(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "snapshot-modality")
@@ -219,6 +227,7 @@ func TestRunOpenRouterTemporalStructureRequiresSnapshotVideoModality(t *testing.
 }
 
 func TestTemporalStructureOpenRouterWireEnforcesCompleteSegmentShape(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		wire temporalStructureOpenRouterWire
@@ -242,6 +251,7 @@ func TestTemporalStructureOpenRouterWireEnforcesCompleteSegmentShape(t *testing.
 }
 
 func TestTemporalStructureAssessmentDerivesWholeFileClaimFromSegmentTimeline(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		segments []temporalStructureOpenRouterSegmentWire
@@ -273,6 +283,7 @@ func TestTemporalStructureAssessmentDerivesWholeFileClaimFromSegmentTimeline(t *
 }
 
 func TestTemporalStructureOpenRouterSchemaRequiresCompleteSegmentPlan(t *testing.T) {
+	t.Parallel()
 	schema := temporalStructureOpenRouterSchema(1_000)
 	required, ok := schema["required"].([]string)
 	if !ok || !slices.Contains(required, "segments") {
@@ -304,6 +315,7 @@ func TestTemporalStructureOpenRouterSchemaRequiresCompleteSegmentPlan(t *testing
 }
 
 func TestNormalizeTemporalStructureOpenRouterWireSortsMechanicalTimestamps(t *testing.T) {
+	t.Parallel()
 	wire := temporalStructureOpenRouterWire{
 		Segments: []temporalStructureOpenRouterSegmentWire{{EndMS: 1_000, Role: "promo", DecisiveAtMS: []int64{800, 200}, Reason: "programme promotion"}},
 	}
@@ -317,6 +329,7 @@ func TestNormalizeTemporalStructureOpenRouterWireSortsMechanicalTimestamps(t *te
 }
 
 func TestNormalizeTemporalStructureOpenRouterWireCoalescesOnlyAdjacentProgrammeObservations(t *testing.T) {
+	t.Parallel()
 	wire := temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{
 		{EndMS: 4_500, Role: "programme_fragment", DecisiveAtMS: []int64{0, 1_000, 4_800}, Reason: "programme title card"},
 		{EndMS: 9_500, Role: "programme_fragment", DecisiveAtMS: []int64{5_000, 9_000}, Reason: "programme title"},
@@ -338,6 +351,7 @@ func TestNormalizeTemporalStructureOpenRouterWireCoalescesOnlyAdjacentProgrammeO
 }
 
 func TestNormalizeTemporalStructureOpenRouterWirePreservesAdjacentSameRoleFiller(t *testing.T) {
+	t.Parallel()
 	wire := temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{
 		{EndMS: 500, Role: "commercial", DecisiveAtMS: []int64{200}, Reason: "first offer"},
 		{EndMS: 1_000, Role: "commercial", DecisiveAtMS: []int64{700}, Reason: "second offer"},
@@ -349,6 +363,7 @@ func TestNormalizeTemporalStructureOpenRouterWirePreservesAdjacentSameRoleFiller
 }
 
 func TestTemporalStructureAssessmentDerivesCompleteCoverageFromExclusiveEnds(t *testing.T) {
+	t.Parallel()
 	wire := temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{
 		{EndMS: 20_000, Role: "programme_fragment", DecisiveAtMS: []int64{1_000, 15_000}, Reason: "programme opening"},
 		{EndMS: 79_000, Role: "commercial", DecisiveAtMS: []int64{22_000, 73_000}, Reason: "complete product offer"},
@@ -364,6 +379,7 @@ func TestTemporalStructureAssessmentDerivesCompleteCoverageFromExclusiveEnds(t *
 }
 
 func TestRunOpenRouterTemporalStructureTurnsInvalidConditionalRoleIntoFailure(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "invalid-role")
@@ -382,6 +398,7 @@ func TestRunOpenRouterTemporalStructureTurnsInvalidConditionalRoleIntoFailure(t 
 }
 
 func TestTemporalStructureOpenRouterWireEnforcesClosedConditionalShape(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		wire temporalStructureOpenRouterWire
@@ -403,6 +420,7 @@ func TestTemporalStructureOpenRouterWireEnforcesClosedConditionalShape(t *testin
 }
 
 func TestNormalizeTemporalStructureOpenRouterWireSortsAndDeduplicatesEvidenceTimes(t *testing.T) {
+	t.Parallel()
 	wire := temporalStructureOpenRouterWire{Segments: []temporalStructureOpenRouterSegmentWire{
 		{EndMS: 131_500, Role: "commercial", DecisiveAtMS: []int64{59_000, 102_000, 131_500, 20_150, 20_150}, Reason: "offer"},
 		{EndMS: 132_000, Role: "promo", DecisiveAtMS: []int64{300, 100, 300}, Reason: "promotion"},

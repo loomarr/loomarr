@@ -12,6 +12,7 @@ import (
 )
 
 func TestLockTemporalStructureAssessmentBindsRawResultSnapshotAndPrivateTruth(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, challenge := fixture.build(t, "lock-result")
@@ -56,6 +57,7 @@ func TestLockTemporalStructureAssessmentBindsRawResultSnapshotAndPrivateTruth(t 
 }
 
 func TestLockTemporalStructureAssessmentRejectsRawResponseTamper(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "lock-tamper")
@@ -87,6 +89,7 @@ func TestLockTemporalStructureAssessmentRejectsRawResponseTamper(t *testing.T) {
 }
 
 func TestLockTemporalStructureAssessmentRejectsSnapshotRouteDrift(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "lock-route-drift")
@@ -115,6 +118,7 @@ func TestLockTemporalStructureAssessmentRejectsSnapshotRouteDrift(t *testing.T) 
 }
 
 func TestLockTemporalStructureAssessmentReproducesSnapshotPriceBound(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "lock-price-drift")

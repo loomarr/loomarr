@@ -20,6 +20,7 @@ func (temporalStructureCompleteNoopLedger) Settle(context.Context, fillerstructu
 }
 
 func TestNewTemporalStructureCompleteOpenRouterFamilyPinsSnapshotPriceAndProductionRuntime(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC)
 	config := temporalStructureCompleteOpenRouterFamilyTestConfig(t, now)
 	family, err := NewTemporalStructureCompleteOpenRouterFamily(config)
@@ -35,6 +36,7 @@ func TestNewTemporalStructureCompleteOpenRouterFamilyPinsSnapshotPriceAndProduct
 }
 
 func TestNewTemporalStructureCompleteOpenRouterFamilyRejectsStaleOrUnderReservedRoute(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC)
 	stale := temporalStructureCompleteOpenRouterFamilyTestConfig(t, now)
 	stale.Snapshot.RetrievedAt = now.Add(-25 * time.Hour)

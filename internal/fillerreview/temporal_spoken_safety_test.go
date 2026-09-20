@@ -17,6 +17,7 @@ import (
 )
 
 func TestPublishTemporalSpokenSafetyProjectsOpaqueMatchesAndFailsMissingCoverageClosed(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalSpokenSafetyFixture(t)
 	output := filepath.Join(t.TempDir(), "spoken-safety.json")
 	report, digest, err := PublishTemporalSpokenSafety(fixture.config(output))
@@ -56,6 +57,7 @@ func TestPublishTemporalSpokenSafetyProjectsOpaqueMatchesAndFailsMissingCoverage
 }
 
 func TestPublishTemporalSpokenSafetyRejectsTranscriptAndPolicyDrift(t *testing.T) {
+	t.Parallel()
 	t.Run("transcript", func(t *testing.T) {
 		fixture := newTemporalSpokenSafetyFixture(t)
 		artifacts, err := readStrictHistoryJSONL[fillerbakeoff.TranscriptArtifact](fixture.transcripts)
@@ -82,6 +84,7 @@ func TestPublishTemporalSpokenSafetyRejectsTranscriptAndPolicyDrift(t *testing.T
 }
 
 func TestTemporalSpokenSafetyMatcherSpansOnlyBoundedAdjacentSegments(t *testing.T) {
+	t.Parallel()
 	policy := TemporalSpokenSafetyPolicy{
 		SchemaVersion: TemporalSpokenSafetyPolicySchemaVersion, ContractVersion: TemporalSpokenSafetyPolicyContractVersion,
 		PolicyID: "policy-fixture", GeneratedAt: time.Unix(1, 0).UTC(), MaximumInterSegmentGapMS: 500,
@@ -98,6 +101,7 @@ func TestTemporalSpokenSafetyMatcherSpansOnlyBoundedAdjacentSegments(t *testing.
 }
 
 func TestTemporalSpokenSafetyMatcherAppliesPrefixOnlyToFinalPolicyToken(t *testing.T) {
+	t.Parallel()
 	policy := TemporalSpokenSafetyPolicy{
 		SchemaVersion: TemporalSpokenSafetyPolicySchemaVersion, ContractVersion: TemporalSpokenSafetyPolicyContractVersion,
 		PolicyID: "policy-fixture", GeneratedAt: time.Unix(1, 0).UTC(), MaximumInterSegmentGapMS: 500,
@@ -114,6 +118,7 @@ func TestTemporalSpokenSafetyMatcherAppliesPrefixOnlyToFinalPolicyToken(t *testi
 }
 
 func TestTemporalSpokenSafetyPolicyIDAllowsVersionDigitsButRejectsUppercase(t *testing.T) {
+	t.Parallel()
 	if !validTemporalSpokenSafetyPolicyID("policy-known-prohibited-spoken-v1") {
 		t.Fatal("versioned policy id rejected")
 	}
@@ -383,6 +388,7 @@ func (fixture temporalSpokenSafetyFixture) rewriteArchivedStructure(t *testing.T
 }
 
 func TestPublishTemporalSpokenSafetyRejectsMalformedArchivedStructureWithoutOutput(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name   string
 		mutate func(t *testing.T, fixture temporalSpokenSafetyFixture)
@@ -447,6 +453,7 @@ func TestPublishTemporalSpokenSafetyRejectsMalformedArchivedStructureWithoutOutp
 }
 
 func TestPublishTemporalSpokenSafetyReplaysArchivedStructureV1(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalSpokenSafetyFixture(t)
 	fixture.archiveStructure(t)
 	report, _, err := PublishTemporalSpokenSafety(fixture.config(filepath.Join(t.TempDir(), "spoken-safety.json")))

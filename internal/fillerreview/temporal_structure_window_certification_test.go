@@ -11,6 +11,7 @@ import (
 )
 
 func TestPublishTemporalStructureWindowCertificationJoinsTwoBlindedFamiliesToPrivateSuite(t *testing.T) {
+	t.Parallel()
 	config, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	if _, err := BuildTemporalStructureWindowCertificationSuite(t.Context(), config); err != nil {
 		t.Fatal(err)
@@ -41,6 +42,7 @@ func TestPublishTemporalStructureWindowCertificationJoinsTwoBlindedFamiliesToPri
 }
 
 func TestPublishTemporalStructureWindowCertificationRejectsFamilyOrTimeDrift(t *testing.T) {
+	t.Parallel()
 	config, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	if _, err := BuildTemporalStructureWindowCertificationSuite(t.Context(), config); err != nil {
 		t.Fatal(err)
