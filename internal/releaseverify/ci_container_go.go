@@ -154,7 +154,7 @@ func verifyPostgresContainerSeams(root string) error {
 
 func excludedContainerScanDirectory(name string) bool {
 	switch name {
-	case ".git", ".worktrees", ".artifacts", ".cache", ".gocache", "node_modules", "vendor", "generated":
+	case ".git", ".worktrees", ".artifacts", ".cache", ".gocache", "node_modules", "target", "vendor", "generated":
 		return true
 	default:
 		return false

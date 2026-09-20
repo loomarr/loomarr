@@ -297,6 +297,7 @@ var unchecked = postgres.Run
 		"vendor/example/container.go",
 		"generated/example/container.go",
 		".artifacts/cache/container.go",
+		"target/debug/build/container.go",
 		"futurepkg/container.gen.go",
 	} {
 		writeFixtureFile(t, filepath.Join(root, filepath.FromSlash(path)), badSource)
