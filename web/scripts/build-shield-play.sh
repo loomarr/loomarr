@@ -61,7 +61,7 @@ record_ccache_evidence() {
   mkdir -p "${ANDROID_BUILD_PROFILE_DIR}"
   "${CCACHE_LAUNCHER}" --version > "${ANDROID_BUILD_PROFILE_DIR}/ccache-version.txt"
   "${CCACHE_LAUNCHER}" --show-config > "${ANDROID_BUILD_PROFILE_DIR}/ccache-config.txt"
-  "${CCACHE_LAUNCHER}" --show-stats --format=json > "${ANDROID_BUILD_PROFILE_DIR}/ccache-stats-${phase}.json"
+  "${CCACHE_LAUNCHER}" --print-stats --format=json > "${ANDROID_BUILD_PROFILE_DIR}/ccache-stats-${phase}.json"
 }
 record_ccache_evidence pre
 
@@ -138,7 +138,9 @@ fi
 record_ccache_evidence post
 
 if [[ -n "${CCACHE_LAUNCHER}" ]]; then
-  mapfile -t ninja_rules < <(find "${APP_DIR}/android/.cxx" -type f -name rules.ninja -print 2>/dev/null | sort)
+  mapfile -t ninja_rules < <(
+    find "${WEB_ROOT}" -type f -path '*/.cxx/*/CMakeFiles/rules.ninja' -print 2>/dev/null | sort
+  )
   ((${#ninja_rules[@]} > 0)) || { printf 'CMake generated no Ninja rules for ccache proof\n' >&2; exit 1; }
   for ninja_rule in "${ninja_rules[@]}"; do
     grep -Fq -- "${CCACHE_LAUNCHER}" "${ninja_rule}" || {
