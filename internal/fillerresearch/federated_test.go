@@ -51,6 +51,12 @@ func TestFederatedMergesDeduplicatesCapsAndKeepsStableIdentity(t *testing.T) {
 			t.Fatalf("citation ids = %+v", got.Citations)
 		}
 	}
+	wantURLs := []string{wikiURLs[0], archiveURLs[0], archiveURLs[1], wikiURLs[2], archiveURLs[2]}
+	for i, want := range wantURLs {
+		if got.Citations[i].URL != want {
+			t.Fatalf("round-robin citation %d = %q, want %q", i, got.Citations[i].URL, want)
+		}
+	}
 }
 
 func TestFederatedContinuesAfterOneAdapterFails(t *testing.T) {

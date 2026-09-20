@@ -49,7 +49,7 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 	if r == nil || r.repository == nil || r.researcher == nil || r.load == nil || r.limit() <= 0 {
 		return result, nil
 	}
-	adapter, adapterVersion := r.researcher.retriever.Identity()
+	adapter, adapterVersion := r.researcher.Identity()
 	candidates, err := r.repository.ListCandidates(ctx, r.researcher.producer, r.researcher.version,
 		adapter, adapterVersion, r.limit())
 	if err != nil {

@@ -33,6 +33,7 @@ var ownerTitles = map[Owner]string{
 	OwnerBackup: "Backups", OwnerTasks: "Background tasks", OwnerDiagnostics: "Diagnostics",
 	OwnerAdvanced: "Advanced settings", OwnerFillerFolders: "Filler — Clip folders",
 	OwnerFillerDownloads: "Filler — Automatic downloads", OwnerFillerStorage: "Filler — Storage limits",
+	OwnerFillerDetails:  "Filler — Clip details",
 	OwnerFillerIncoming: "Filler — Incoming history", OwnerFillerBreaks: "Filler — Break assembly",
 	OwnerFillerReview: "Filler — Clip review", OwnerFillerPlayback: "Filler — Clip eligibility and sound",
 	OwnerFillerLimits: "Filler — Processing limits", OwnerFillerTools: "Filler — Processing tools",

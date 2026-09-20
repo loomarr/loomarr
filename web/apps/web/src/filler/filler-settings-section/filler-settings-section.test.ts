@@ -15,6 +15,7 @@ describe("Filler settings task links", () => {
       "downloads",
       "folders",
       "storage",
+      "details",
       "incoming",
       "breaks",
       "review",

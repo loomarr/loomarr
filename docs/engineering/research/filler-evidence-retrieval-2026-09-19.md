@@ -118,7 +118,9 @@ Loomarr does not attempt to look human or bypass anti-bot controls. Retrieval ad
 
 - use documented APIs, an identifying User-Agent, HTTPS, and provider rate-limit signals;
 - cap results, response bytes, redirects, request time, concurrency, and clips per pass;
-- retry only on a later scheduled pass, with bounded backoff and no CAPTCHA bypass;
+- retry a failed structured provider only on a later scheduled pass, with bounded backoff and no
+  CAPTCHA bypass; reserve optional general-web fallback durably at most once per Clip input revision,
+  including failed requests, so provider failure cannot create an unattended cost loop;
 - bind completed work to normalized plan and adapter versions so an unchanged Clip is not retrieved
   again; a future shared query cache may remove duplicate lookups across distinct Clips;
 - contact only adapter-owned hosts; arbitrary model- or user-returned URLs never become fetch targets;
@@ -133,3 +135,64 @@ context, but neither proves that the exact archived cut is the 1970 debut. Looma
 “Likely 1970s · United States” with citations and uncertainty. It may not write `era=1970` or
 `country=US` into the verified axes until exact item/content evidence supports those facts or the
 operator confirms them.
+
+## Structured authorities and geography-aware catalogs (2026-09-20)
+
+### Wikidata
+
+Wikidata documents the fixed entity endpoint `https://www.wikidata.org/wiki/Special:EntityData/{QID}.json`
+and public Query Service at `https://query.wikidata.org/sparql`. Entity lookup is deterministic once
+a Q-ID is known; a bounded SPARQL query can project label, description, and the entity URI without
+fetching an arbitrary result page. Use a fixed query shape with language filters, `LIMIT`, and a
+short timeout. Wikidata requires a meaningful `User-Agent`, gzip/deflate, low concurrency, and
+stopping on 429 while honoring `Retry-After`; MediaWiki requests should use `maxlag`. This is a
+subject/entity authority, not an advertisement catalog or media license. The entity URI is the
+canonical public URL and should be retained with attribution and retrieval time.
+
+- [Wikidata data access and best practices](https://www.wikidata.org/wiki/Wikidata:Data_access/en)
+- [Wikidata Query Service](https://www.wikidata.org/wiki/Wikidata:SPARQL_query_service)
+- [MediaWiki API etiquette](https://www.mediawiki.org/wiki/API:Etiquette)
+
+### Library of Congress (US)
+
+The LoC JSON API uses fixed host `www.loc.gov` and requires no API key. The documented shape is
+`GET https://www.loc.gov/search/?q={terms}&fo=json&at=results&c={small-cap}`. Results provide title,
+summary bibliographic fields, and an `id`/`url` canonical LoC page. A result's own path may be
+requested with `?fo=json&at=item,resources`; arbitrary external URLs must not be followed. LoC
+recommends no more than 1,000 items/page and caps deep paging at 100,000 results. Its documented
+JSON rate is 20 requests/minute; excess traffic can be blocked for an hour, and 429/CAPTCHA can
+occur under load. No identifying header is mandated in the cited API docs, but Loomarr should send
+its descriptive User-Agent and honor backoff. It is a useful US-first context/catalog source, not
+a complete national bibliography.
+
+- [LoC endpoints and search query](https://www.loc.gov/apis/json-and-yaml/requests/endpoints/)
+- [LoC result fields and canonical URLs](https://www.loc.gov/apis/json-and-yaml/responses/search-results/)
+- [LoC rate and page limits](https://www.loc.gov/apis/json-and-yaml/working-within-limits/)
+
+### Geography-specific candidates
+
+Australia has an official, versioned Trove API v3 at `https://api.trove.nla.gov.au/v3`, with an
+OpenAPI specification. Trove is explicitly intended for non-human traffic and can return bounded
+record metadata and public record URLs. It is not a no-configuration default: API-key, quota, and
+current terms must be pinned and reviewed before enabling an AU adapter. This note does not claim an
+unverified quota or authorize acquiring a key.
+
+- [Trove API v3 announcement and OpenAPI link](https://trove.nla.gov.au/sites/default/files/2023-02/Introducing%20Trove%20API%20v3.pdf)
+- [Trove API for non-human traffic](https://trove.nla.gov.au/blocked.htm?partId=nla.obj-96148230)
+
+For GB and CA, this review found no equally clear, stable, unauthenticated national-catalog JSON
+search contract suitable for selection solely from installation country. Do not guess at British
+Library or Library and Archives Canada endpoints, and do not create an unbounded provider registry.
+Open Library is global, but its official guidance limits it to low-volume human-facing discovery,
+requires an identifying User-Agent plus email (1 request/sec default, 3/sec identified), and says
+it is not a backend for third-party services; it is not a geography-selected v1 provider.
+
+- [Open Library API scope and rate guidance](https://openlibrary.org/developers/api)
+
+### v1 recommendation
+
+Ship Wikidata and LoC as fixed structured providers, selected by adapter configuration rather than
+model/user hosts. Keep AU Trove behind an explicit API-key setting and later terms/quota review.
+For GB and CA, return no country-specific catalog result in v1. Normalize every provider result to
+`{title, snippet, canonical_url, provider, retrieved_at}` with bounded count/bytes and no follow-up
+fetch of `canonical_url`.

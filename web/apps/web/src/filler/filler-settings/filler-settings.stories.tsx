@@ -1,5 +1,9 @@
 import type { FillerReadinessDTO } from "@loomarr/api";
-import { getFillerReadinessQueryKey, getListFillerSourcesQueryKey } from "@loomarr/api/endpoints/filler";
+import {
+  getFillerReadinessQueryKey,
+  getFillerResearchStatusQueryKey,
+  getListFillerSourcesQueryKey,
+} from "@loomarr/api/endpoints/filler";
 import { getSettingsListQueryKey } from "@loomarr/api/endpoints/settings";
 import { fillerRefinementSettings } from "@loomarr/fixtures";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
@@ -57,6 +61,19 @@ const withSettings: Decorator = (Story) => {
     data: readiness,
     headers: new Headers(),
   });
+  client.setQueryData(getFillerResearchStatusQueryKey(), {
+    status: 200,
+    data: {
+      structuredEnabled: true,
+      provider: "none",
+      configured: false,
+      state: "unconfigured",
+      month: "2026-09",
+      requestCount: 0,
+      requestLimit: 100,
+    },
+    headers: new Headers(),
+  });
   return (
     <QueryClientProvider client={client}>
       <SettingsEditsProvider>
@@ -77,6 +94,10 @@ const Storage: Story = {
   args: { section: "storage" },
   decorators: [withRouter("/filler")],
 };
+const Details: Story = {
+  args: { section: "details" },
+  decorators: [withRouter("/filler/settings/details")],
+};
 
 export default meta;
-export { Downloads, Storage };
+export { Details, Downloads, Storage };

@@ -60,7 +60,7 @@ func NewArchive(config ArchiveConfig) (*Archive, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &Archive{client: client, endpoint: endpoint, userAgent: userAgent, now: now}, nil
+	return &Archive{client: sameOriginClient(client, endpoint), endpoint: endpoint, userAgent: userAgent, now: now}, nil
 }
 
 func (*Archive) Identity() (string, string) { return "archive-search", ArchiveAdapterVersion }

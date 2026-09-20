@@ -64,6 +64,11 @@ var fillerOwners = map[string]Owner{
 
 	"filler.fetch.max_catalog_clips":   OwnerFillerStorage,
 	"filler.storage.library_budget_gb": OwnerFillerStorage,
+	"filler.research.enabled":          OwnerFillerDetails,
+	"filler.research.web_provider":     OwnerFillerDetails,
+	"filler.research.brave_api_key":    OwnerFillerDetails,
+	"filler.research.searxng_url":      OwnerFillerDetails,
+	"filler.research.monthly_limit":    OwnerFillerDetails,
 	"filler.incoming.ready_window":     OwnerFillerIncoming,
 	"filler.break_duration":            OwnerFillerBreaks,
 	"filler.pod_max":                   OwnerFillerBreaks,
@@ -114,7 +119,7 @@ var knownOwners = map[Owner]struct{}{
 	OwnerConnections: {}, OwnerAI: {}, OwnerDefaults: {}, OwnerNotifications: {},
 	OwnerLocation: {}, OwnerSharing: {}, OwnerAccess: {}, OwnerPlayback: {},
 	OwnerStorage: {}, OwnerBackup: {}, OwnerTasks: {}, OwnerDiagnostics: {}, OwnerAdvanced: {},
-	OwnerFillerFolders: {}, OwnerFillerDownloads: {}, OwnerFillerStorage: {},
+	OwnerFillerFolders: {}, OwnerFillerDownloads: {}, OwnerFillerStorage: {}, OwnerFillerDetails: {},
 	OwnerFillerIncoming: {}, OwnerFillerBreaks: {}, OwnerFillerReview: {},
 	OwnerFillerPlayback: {}, OwnerFillerLimits: {}, OwnerFillerTools: {},
 }

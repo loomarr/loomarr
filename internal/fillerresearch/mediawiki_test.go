@@ -72,6 +72,26 @@ func TestMediaWikiRejectsOversizedResponse(t *testing.T) {
 	}
 }
 
+func TestMediaWikiRejectsCrossOriginRedirect(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("cross-origin redirect target was contacted")
+	}))
+	t.Cleanup(target.Close)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	t.Cleanup(server.Close)
+	retriever, err := NewMediaWiki(MediaWikiConfig{Client: server.Client(), Endpoint: server.URL,
+		AllowInsecureTestURL: true, UserAgent: "Loomarr/test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := retriever.Retrieve(t.Context(), Lookup{Title: "commercial"}); err == nil ||
+		!strings.Contains(err.Error(), "configured origin") {
+		t.Fatalf("redirect error = %v", err)
+	}
+}
+
 func TestLookupBuildsAConservativeProviderSubject(t *testing.T) {
 	lookup := Lookup{Title: "  Tootsie Pop: Classic TV Commercial (Vintage)  "}
 	if got := lookup.CanonicalTitle(); got != "Tootsie Pop: Classic TV Commercial (Vintage)" {

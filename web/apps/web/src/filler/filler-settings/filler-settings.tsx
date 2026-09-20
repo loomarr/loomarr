@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
+import { ClipDetailsSettings } from "../clip-details-settings";
 import { type FillerSettingsSection, SETTINGS_SECTIONS } from "../filler-settings-section";
 
 const downloadIntervalSeconds = (value: string): number => {
@@ -250,6 +251,16 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       description: "Loomarr chooses a safe allowance automatically. Set your own only if you need to.",
       keys: ["filler.storage.library_budget_gb", "filler.fetch.max_catalog_clips"],
       footer: <StorageSummary storage={storage} />,
+    },
+    {
+      section: "details",
+      group: "filler",
+      title: "Clip details",
+      description: "Fill in useful context without making search another job to manage.",
+      keys: ["filler.research.enabled"],
+      footer: ({ liveValue, setEdit }) => (
+        <ClipDetailsSettings entries={entries} liveValue={liveValue} setEdit={setEdit} />
+      ),
     },
     {
       section: "incoming",

@@ -220,13 +220,18 @@ func boundCitations(citations []Citation) []Citation {
 // Lookup is the bounded public search envelope. Adapters may derive provider-specific queries from
 // it, but cannot receive local paths, transcripts, or arbitrary fetch targets.
 type Lookup struct {
-	Title       string
-	Description string
+	Title         string
+	Description   string
+	ClipHash      string
+	InputRevision int64
 }
 
 func (l Lookup) Validate() error {
 	if strings.TrimSpace(l.Title) == "" || len(l.Title) > 240 || len(l.Description) > 2_000 {
 		return fmt.Errorf("%w: lookup title or description is invalid", ErrInvalid)
+	}
+	if (strings.TrimSpace(l.ClipHash) == "") != (l.InputRevision == 0) || l.InputRevision < 0 {
+		return fmt.Errorf("%w: lookup attempt identity is incomplete", ErrInvalid)
 	}
 	return nil
 }

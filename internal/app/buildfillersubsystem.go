@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
@@ -31,6 +32,7 @@ type fillerBuild struct {
 	decisions *fillerdecision.Service
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
+	research  api.FillerResearchService
 }
 
 func buildFillerSubsystem(
@@ -54,6 +56,7 @@ func buildFillerSubsystem(
 	if st == nil {
 		return result
 	}
+	result.research = newFillerResearchSettingsAdapter(st, set, metricRecorder)
 	decisionService, err := fillerdecision.New(st)
 	if err != nil {
 		log.Error("could not construct filler decision service", "err", err)
@@ -175,21 +178,45 @@ func buildFillerSubsystem(
 	selection := activeFillerTextSelection(set, metricRecorder)
 	var researchRunner *fillerresearch.Runner
 	if selection.Provider != nil && strings.TrimSpace(selection.Model) != "" {
+		const researchUserAgent = "Loomarr/1.0 (https://github.com/loomarr/loomarr)"
+		structuredClient := httpx.NewNamedObserved("filler_structured_research", httpx.TimeoutReference, metricRecorder)
 		wiki, wikiErr := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
-			UserAgent: "Loomarr/1.0 (https://github.com/loomarr/loomarr)",
+			Client: structuredClient, UserAgent: researchUserAgent,
+		})
+		wikidata, wikidataErr := fillerresearch.NewWikidata(fillerresearch.WikidataConfig{
+			Client: structuredClient, UserAgent: researchUserAgent,
 		})
 		archive, archiveErr := fillerresearch.NewArchive(fillerresearch.ArchiveConfig{
-			UserAgent: "Loomarr/1.0 (https://github.com/loomarr/loomarr)",
+			Client: structuredClient, UserAgent: researchUserAgent,
 		})
-		retriever, retrievalErr := fillerresearch.NewFederated(wiki, archive)
-		if err := errors.Join(wikiErr, archiveErr, retrievalErr); err != nil {
+		loc, locErr := fillerresearch.NewLOC(fillerresearch.LOCConfig{
+			Client: structuredClient, UserAgent: researchUserAgent,
+		})
+		retriever, retrievalErr := fillerresearch.NewFederated(wikidata, wiki, archive, loc)
+		if err := errors.Join(wikiErr, wikidataErr, archiveErr, locErr, retrievalErr); err != nil {
 			log.Warn("could not construct filler context retrieval", "err", err)
 		} else {
+			web := fillerresearch.NewWeb(func() fillerresearch.WebConfig {
+				return fillerresearch.WebConfig{
+					Provider:     fillerresearch.WebProvider(set.str("filler.research.web_provider")),
+					BraveAPIKey:  set.str("filler.research.brave_api_key"),
+					SearXNGURL:   set.str("filler.research.searxng_url"),
+					MonthlyLimit: set.intv("filler.research.monthly_limit"),
+				}
+			}, st, fillerresearch.WebOptions{
+				Client: httpx.NewNamedObserved("filler_web_search", httpx.TimeoutReference, metricRecorder),
+				Now:    time.Now,
+			})
 			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,
-				selection.Model, time.Now)
+				selection.Model, time.Now).WithFallback(web)
 			researchRunner = fillerresearch.NewRunner(fillerResearchRepository{st: st}, researcher,
 				fillerResearchSignals{files: layout.FS()}.Load,
-				func() int { return min(1, set.intv("filler.pipeline.max_clips")) })
+				func() int {
+					if !set.boolOn("filler.research.enabled") {
+						return 0
+					}
+					return min(1, set.intv("filler.pipeline.max_clips"))
+				})
 		}
 	}
 	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner}

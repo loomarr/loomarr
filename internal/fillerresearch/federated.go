@@ -53,8 +53,8 @@ func (f *Federated) Retrieve(ctx context.Context, lookup Lookup) (Packet, error)
 	}
 	packet := Packet{Query: lookup.CanonicalTitle(), Adapter: "federated",
 		AdapterVersion: FederatedAdapterVersion}
-	seen := make(map[string]bool, MaxCitations)
 	var failures []error
+	packets := make([]Packet, 0, len(f.retrievers))
 	for _, retriever := range f.retrievers {
 		if err := ctx.Err(); err != nil {
 			return Packet{}, err
@@ -71,7 +71,19 @@ func (f *Federated) Retrieve(ctx context.Context, lookup Lookup) (Packet, error)
 		if candidate.RetrievedAt.After(packet.RetrievedAt) {
 			packet.RetrievedAt = candidate.RetrievedAt
 		}
-		for _, citation := range candidate.Citations {
+		packets = append(packets, candidate)
+	}
+	// Take one result from each successful peer before taking a second. Sequential append let the
+	// first adapter consume three of five slots and made adding another source capable of starving
+	// the peers that followed it.
+	seen := make(map[string]bool, MaxCitations)
+	for index := 0; len(packet.Citations) < MaxCitations; index++ {
+		added := false
+		for _, candidate := range packets {
+			if index >= len(candidate.Citations) {
+				continue
+			}
+			citation := candidate.Citations[index]
 			key := strings.ToLower(strings.TrimSpace(citation.URL))
 			if key == "" || seen[key] {
 				continue
@@ -79,11 +91,12 @@ func (f *Federated) Retrieve(ctx context.Context, lookup Lookup) (Packet, error)
 			seen[key] = true
 			citation.ID = len(packet.Citations) + 1
 			packet.Citations = append(packet.Citations, citation)
+			added = true
 			if len(packet.Citations) == MaxCitations {
 				break
 			}
 		}
-		if len(packet.Citations) == MaxCitations {
+		if !added {
 			break
 		}
 	}
