@@ -131,12 +131,18 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 	if err := os.WriteFile(runner, []byte("#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s|%s|%s\\n' \"${GO_TEST_LANE:-}\" \"${GOFLAGS:-}\" \"$*\" >> \"$GO_TEST_LOG\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	baseEnv := make([]string, 0, len(os.Environ()))
+	for _, value := range os.Environ() {
+		if !strings.HasPrefix(value, "GOFLAGS=") {
+			baseEnv = append(baseEnv, value)
+		}
+	}
 
 	run := func(lane string, extra ...string) error {
 		t.Helper()
 		cmd := exec.Command("bash", filepath.Join("scripts", "go-test-lane.sh"))
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(),
+		cmd.Env = append(baseEnv,
 			"GO_TEST_LANE="+lane,
 			"GO_TEST_SHARDER="+sharder,
 			"GO_TEST_RACE_POLICY="+policy,
