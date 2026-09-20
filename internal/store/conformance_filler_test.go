@@ -3352,7 +3352,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence, Language: "en", LanguageChecked: true},
 			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true, RoleEvidence: &videoRoleEvidence},
-			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …", LanguageChecked: true, LanguageNote: "Language could not be checked"},
+			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …", LanguageChecked: true, LanguageReason: filler.SplitLanguageFailed, LanguageNote: "Language could not be checked"},
 		},
 	}
 	if err := s.UpsertSplitProposal(ctx, p); err != nil {
@@ -3374,7 +3374,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if !got.Segments[2].Unsplittable || got.Segments[2].Transcript == "" {
 		t.Errorf("unsplittable marker/transcript lost: %+v", got.Segments[2])
 	}
-	if got.Segments[0].Language != "en" || !got.Segments[0].LanguageChecked || !got.Segments[2].LanguageChecked || got.Segments[2].LanguageNote == "" {
+	if got.Segments[0].Language != "en" || !got.Segments[0].LanguageChecked || !got.Segments[2].LanguageChecked || got.Segments[2].LanguageReason != filler.SplitLanguageFailed || got.Segments[2].LanguageNote == "" {
 		t.Errorf("pre-review language fields lost: %+v / %+v", got.Segments[0], got.Segments[2])
 	}
 	if !reflect.DeepEqual(got.Segments[0].RoleEvidence, &roleEvidence) {

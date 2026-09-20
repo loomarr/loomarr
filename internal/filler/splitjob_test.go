@@ -1043,8 +1043,14 @@ func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 	if !proposal.Segments[0].LanguageChecked || proposal.Segments[0].Language != "" {
 		t.Errorf("unknown language was not recorded honestly: %+v", proposal.Segments[0])
 	}
+	if proposal.Segments[0].LanguageReason != filler.SplitLanguageInconclusive {
+		t.Errorf("unknown language reason = %q, want inconclusive", proposal.Segments[0].LanguageReason)
+	}
 	if !proposal.Segments[1].LanguageChecked || proposal.Segments[1].LanguageNote != "Language could not be checked" {
 		t.Errorf("failed check was not retained for review: %+v", proposal.Segments[1])
+	}
+	if proposal.Segments[1].LanguageReason != filler.SplitLanguageFailed {
+		t.Errorf("failed language reason = %q, want failed", proposal.Segments[1].LanguageReason)
 	}
 }
 
@@ -1075,6 +1081,9 @@ func TestPropose_UnavailableLanguageBackendLeavesCandidatesReviewable(t *testing
 	for _, segment := range proposal.Segments {
 		if !segment.LanguageChecked || segment.Language != "" || segment.LanguageNote != detector.unavailable {
 			t.Errorf("unavailable outcome was not explained on %+v", segment)
+		}
+		if segment.LanguageReason != filler.SplitLanguageUnavailable {
+			t.Errorf("unavailable language reason = %q, want unavailable", segment.LanguageReason)
 		}
 	}
 }

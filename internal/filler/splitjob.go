@@ -193,11 +193,14 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 	unavailable := policy.Detector.UnavailableReason()
 	if unavailable != "" || limit == 0 {
 		note := unavailable
+		reason := SplitLanguageUnavailable
 		if note == "" {
 			note = "Language checks are paused by the processing limit"
+			reason = SplitLanguagePaused
 		}
 		for i := p.Language.Next; i < len(p.Segments); i++ {
 			p.Segments[i].LanguageChecked = true
+			p.Segments[i].LanguageReason = reason
 			p.Segments[i].LanguageNote = note
 		}
 		p.Language.Next = len(p.Segments)
@@ -212,10 +215,14 @@ func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *
 				if ctx.Err() != nil {
 					return false, err
 				}
+				segment.LanguageReason = SplitLanguageFailed
 				segment.LanguageNote = "Language could not be checked"
 				continue
 			}
 			segment.Language = NormalizeLanguage(detected)
+			if segment.Language == LangUndetermined {
+				segment.LanguageReason = SplitLanguageInconclusive
+			}
 		}
 		p.Language.Next = endIndex
 	}
@@ -1178,6 +1185,7 @@ func bindSplitLanguageEvidence(submitted, persisted []SplitSegment) []SplitSegme
 	for i := range out {
 		out[i].Language = ""
 		out[i].LanguageChecked = false
+		out[i].LanguageReason = ""
 		out[i].LanguageNote = ""
 		original, ok := bySpan[span{out[i].StartMs, out[i].EndMs}]
 		if !ok {
@@ -1185,6 +1193,7 @@ func bindSplitLanguageEvidence(submitted, persisted []SplitSegment) []SplitSegme
 		}
 		out[i].Language = original.Language
 		out[i].LanguageChecked = original.LanguageChecked
+		out[i].LanguageReason = original.LanguageReason
 		out[i].LanguageNote = original.LanguageNote
 	}
 	return out

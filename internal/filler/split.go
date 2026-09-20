@@ -292,7 +292,11 @@ type SplitSegment struct {
 	// checked-but-unknown answer distinct from a legacy segment that has never been heard.
 	Language        string `json:"language,omitempty"`
 	LanguageChecked bool   `json:"languageChecked,omitempty"`
-	LanguageNote    string `json:"languageNote,omitempty"`
+	// LanguageReason is a stable machine-readable explanation when a check produced no language.
+	// LanguageNote retains optional technical detail for diagnostics; clients must not parse it to
+	// decide what happened or expose it as primary copy.
+	LanguageReason string `json:"languageReason,omitempty"`
+	LanguageNote   string `json:"languageNote,omitempty"`
 }
 
 // SplitDetectionProgress is the private durable checkpoint for coarse boundary detection. It is
@@ -326,6 +330,16 @@ type SplitLanguageProgress struct {
 }
 
 const SplitExclusionLanguageMismatch = "language_mismatch"
+
+// Stable unresolved-language outcomes carried to review. A code, rather than prose, keeps the
+// interface useful while backend diagnostics change and lets clients explain configuration
+// absence separately from an attempted check that failed or could not reach a confident answer.
+const (
+	SplitLanguageUnavailable  = "unavailable"
+	SplitLanguageFailed       = "failed"
+	SplitLanguageInconclusive = "inconclusive"
+	SplitLanguagePaused       = "paused"
+)
 
 // SplitLanguageExclusion is the durable, user-visible receipt for one detected span that the
 // installation language kept out of review. It retains the exact interval and the evidence behind

@@ -98,8 +98,27 @@ const AUDIENCE_LABEL: Record<string, string> = {
 const languageNeedsRecheck = {
   language: "",
   languageChecked: false,
+  languageReason: "",
   languageNote: "Language will be checked again after this edit.",
 } as const;
+
+const unresolvedLanguageMessage = (segment: SplitSegment): string | undefined => {
+  switch (segment.languageReason) {
+    case "unavailable":
+      return "Language wasn’t checked because speech recognition isn’t set up. This clip is still included.";
+    case "failed":
+      return "Language couldn’t be checked because speech recognition had a problem. This clip is still included.";
+    case "inconclusive":
+      return "Loomarr heard speech but couldn’t confidently identify the language. This clip is still included.";
+    case "paused":
+      return "Language checking is paused by the processing limit. This clip is still included.";
+    default:
+      if (segment.languageNote === languageNeedsRecheck.languageNote)
+        return languageNeedsRecheck.languageNote;
+      if (segment.languageNote) return "Language couldn’t be confirmed. This clip is still included.";
+      return undefined;
+  }
+};
 
 const SplitReviewEditor = ({
   proposal,
@@ -255,6 +274,7 @@ const SegmentRow = ({
   const n = position + 1;
   const span = spanMs(segment);
   const valid = isValid(segment);
+  const languageMessage = unresolvedLanguageMessage(segment);
   const ref = useRef<HTMLDivElement>(null);
 
   // ⚠ Clicking a strip block has to SHOW the row, not merely tint it. A long reel puts most of
@@ -397,11 +417,9 @@ const SegmentRow = ({
           ) : null}
         </div>
 
-        {!segment.language && segment.languageNote ? (
+        {!segment.language && languageMessage ? (
           <p className="text-muted-foreground text-sm" title={segment.languageNote}>
-            {segment.languageNote === languageNeedsRecheck.languageNote
-              ? languageNeedsRecheck.languageNote
-              : "Language couldn’t be confirmed. This clip is still included."}
+            {languageMessage}
           </p>
         ) : null}
 

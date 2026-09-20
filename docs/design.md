@@ -9106,7 +9106,10 @@ unconfirmed suggestion.
    not one language: each span samples its own bounded audio window using the same detector and
    single installation choice as the ordinary language rung. A confident mismatch is omitted and
    counted in the proposal receipt; wordless, unknown, unavailable-backend and failed-backend
-   outcomes remain reviewable. The work is cursor-persisted and bounded by the existing whisper
+   outcomes remain reviewable. An unresolved span carries a stable reason — `unavailable`,
+   `failed`, `inconclusive`, or `paused` — plus optional technical detail, so review can distinguish
+   speech recognition that is not set up from a real attempt that failed or could not identify the
+   language confidently. The work is cursor-persisted and bounded by the existing whisper
    allowance, and a proposal is not reviewable until every span has a terminal outcome. Every
    finished proposal also records the installation language it used, so review can identify a
    later preference change and offer an explicit recheck. Every confident mismatch remains in the

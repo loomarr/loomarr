@@ -48,6 +48,7 @@ const proposal: SplitProposal = {
       unsplittable: true,
       transcript: "[01:01] And now a word from our sponsor.",
       languageChecked: true,
+      languageReason: "failed",
       languageNote: "Language could not be checked",
     }),
   ],
@@ -81,7 +82,36 @@ describe("SplitReviewEditor", () => {
     const second = screen.getByRole("region", { name: /segment 2: second ad/i });
     expect(within(second).getByText("No speech")).toBeInTheDocument();
     const third = screen.getByRole("region", { name: /segment 3: long block/i });
-    expect(within(third).getByText(/language couldn’t be confirmed/i)).toBeInTheDocument();
+    expect(within(third).getByText(/speech recognition had a problem/i)).toBeInTheDocument();
+  });
+
+  it("distinguishes recognition that is not set up from a genuinely inconclusive result", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({
+              name: "Not checked",
+              languageChecked: true,
+              languageReason: "unavailable",
+              languageNote: "the local language model is not configured",
+            }),
+            seg({
+              index: 1,
+              name: "Not clear",
+              languageChecked: true,
+              languageReason: "inconclusive",
+            }),
+          ],
+        }}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/speech recognition isn’t set up/i)).toBeInTheDocument();
+    expect(screen.getByText(/couldn’t confidently identify the language/i)).toBeInTheDocument();
   });
 
   it("renders the duplicate flag, the unsplittable marker, and the transcript behind a toggle", () => {
