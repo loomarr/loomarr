@@ -1,0 +1,44 @@
+# Measured `go test -race` package seconds from merge-group run 35472062915.
+# Packages below five seconds use the conservative one-second floor in go-shard.sh.
+# Keep only material weights here: the CI summary identifies entries that need refreshing.
+internal/suggest	360
+internal/auth	255
+internal/fillerreview	221
+internal/store	212
+internal/backendtransition	171
+internal/app	165
+internal/api	162
+internal/recurate	123
+internal/integration	111
+internal/reconcile	109
+internal/binder	84
+internal/playoutcert	81
+cmd/playout-load-cert	66
+internal/clipfetch	61
+internal/releaseverify	37
+internal/images	35
+internal/fillersafetyreview	24
+internal/fillerreference	20
+internal/schedule	18
+internal/secretprotection	18
+internal/channels	13
+internal/fillervisualsafety	13
+internal/playout	13
+internal/notifications	12
+internal/proposalworkflow	12
+cmd/seed	11
+internal/fillereval	11
+cmd/image-cert	10
+internal/filler	9
+internal/scheduler	9
+internal	8
+internal/fillersafetycert	8
+internal/fillersafetycorpus	8
+internal/fillerstructurewindowcert	8
+internal/installationlocation	8
+cmd/filler-reference-audit	7
+internal/devbootstrap	7
+internal/inventory	7
+internal/invitation	7
+internal/mediatools	6
+internal/proposaloutlook	6

@@ -12856,14 +12856,17 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   distribution package. The download archive is cached by its exact digest, verified on every
   use before extraction or execution, and its installed pair must report the declared build.
   Installer, Go workflow, and Dockerfile pin-source changes select the complete Go runtime gate. The Go shard workflow admits only the literal `GOFLAGS=-p=1` for its test
-  step, with other environment overrides still rejected. Go package shards consume the alphabetic `go list ./...` stream in rows the
-  width of the shard count and alternate each row's direction. This serpentine distribution avoids
-  a recurring every-N phase alignment without introducing a hand-maintained package-cost table;
-  adding or removing a package still fails safe because every package remains assigned by the
-  current tree. `go-shard-verify` proves the test shards remain an exact partition of
-  `go list ./...`, and the release-verification suite pins the alternating assignment itself so a
-  coverage-preserving regression to straight round-robin cannot silently restore the measured
-  imbalance. The release verifier also requires every top-level job in `ci.yml` to appear in
+  step, with other environment overrides still rejected. Go package shards use
+  longest-processing-time assignment over the reviewed material package timings in
+  `scripts/go-race-weights.tsv`; unlisted packages receive a conservative one-second planning
+  floor, so additions remain covered before their first hosted measurement. The six-shard plan
+  reserves at most nine modeled test minutes per worker and rejects a slowest shard more than 25%
+  above the lightest. The workflow independently caps every shard job at 15 wall-clock minutes,
+  preserving six minutes for setup, compilation, and cache variance while making latency
+  regressions fail loud. `go-shard-verify` proves the shards remain an exact partition of
+  `go list ./...` and enforces both modeled budgets; the release-verification suite pins the
+  weighted assignment and the workflow's shard count and timeout. The release verifier also
+  requires every top-level job in `ci.yml` to appear in
   `ci-ok.needs`; adding a job without aggregating its result fails closed.
   SQLite store conformance builds one fully migrated, boot-seeded, clean template database per
   suite run, closes it, and gives every assertion a private file copy opened without replaying

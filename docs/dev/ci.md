@@ -549,14 +549,16 @@ contract out of the test shards cannot make it optional.
 `make go-shard-verify` runs in `go-contracts` and asserts the Go shards are a true partition of
 `go list ./...` — a split that drops a package would otherwise pass by not running it.
 
-The Go partition is serpentine over the alphabetic package stream: an N-package row assigns
-left-to-right, the next right-to-left, and so on. This keeps assignment derived from the current tree
-without a package-cost table, but breaks the every-N phase alignment straight round-robin can create.
-The 2026-09-01 merge-group run placed `internal/app`, `internal/channels`, and `internal/store` on
-shard 1: its test step took 11m57s versus 6m30s and 5m40s. Replaying the reported package durations
-through the serpentine assignment models 766/683/816 package-seconds instead of 1058/683/523. The
-partition guard proves coverage, while `TestGoShardUsesSerpentineRows` independently pins the
-alternating assignment.
+The Go partition uses longest-processing-time assignment over a reviewed table containing only
+material package timings. Packages below five measured seconds, including new packages awaiting a
+hosted measurement, receive a one-second planning floor and remain fail-safe members of the exact
+partition. Merge-group run 35472062915 exposed 1430/657/583 package-seconds in the former three-way
+alphabetical split and a 31m10s critical path. Its measured weights produce a six-way plan of about
+450 seconds per shard. `make go-shard-verify SHARDS=6` rejects missing or duplicated packages, a
+modeled shard above nine test minutes, or more than 25% imbalance. The workflow also caps each whole
+job at 15 minutes, leaving six minutes for setup and compilation while making renewed latency drift a
+hard failure. `TestGoShardUsesMeasuredLongestProcessingTime` pins deterministic assignment, and
+`TestGoShardBalancesMeasuredRaceWork` pins the latency and balance budgets against the current tree.
 
 Within the SQLite store package, conformance assertions clone one closed, fully migrated template
 database rather than replaying the complete migration history for every assertion. The 2026-09-01

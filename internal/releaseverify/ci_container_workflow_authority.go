@@ -268,7 +268,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify": exactWorkflowStep(4, "Static analysis and repository contracts", workflowStepAuthority{targets: []string{"fmt", "shellcheck", "privacy-verify", "vet", "tags-verify", "vet-tags", "lint", "agent-harness-test", "compose-verify", "release-verify", "go-race-verify"}}),
-			"make go-shard-verify SHARDS=3": exactWorkflowStep(5, "The test shards cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}}),
+			"make go-shard-verify SHARDS=6": exactWorkflowStep(5, "The test shards cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}}),
 			"make openapi-verify":           exactWorkflowStep(6, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}}),
 			"make config-docs-verify":       exactWorkflowStep(7, "Config docs are committed and current", workflowStepAuthority{targets: []string{"config-docs-verify"}}),
 			"make arch-docs-verify":         exactWorkflowStep(8, "The §2 package map is committed and current", workflowStepAuthority{targets: []string{"arch-docs-verify"}}),
