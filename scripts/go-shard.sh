@@ -4,8 +4,8 @@
 #
 #   ./scripts/go-shard.sh          -> "./..."   (the whole tree — the default, always)
 #   ./scripts/go-shard.sh 2/6      -> the 2nd ordinary measured-weight slice
-#   ./scripts/go-shard.sh --isolated
-#                                  -> the reviewed media-certification lane
+#   ./scripts/go-shard.sh --certification 2/2
+#                                  -> the second reviewed media-certification lane
 #   ./scripts/go-shard.sh --plan 6 -> print each ordinary shard's modeled package-seconds
 #   ./scripts/go-shard.sh --verify 6
 #                                  -> assert exact coverage and every latency/balance budget
@@ -14,8 +14,9 @@
 # package costs. Packages below the materiality floor cost one modeled second, so every current and
 # future package remains assigned even before it has a hosted timing. This replaces alphabetical
 # placement, which drifted from a balanced 2026-09-01 sample to 1430/657/583 package-seconds in
-# merge-group run 35472062915. Latency-sensitive media packages live in one reviewed serial lane;
-# the remaining weighted packages are balanced across six ordinary lanes.
+# merge-group run 35472062915. Latency-sensitive media packages live in two reviewed serial lanes;
+# the remaining weighted packages are balanced across six ordinary lanes. Separate runners let the
+# two certification groups overlap without allowing package concurrency inside either group.
 #
 # ⚠ THE --verify MODE IS NOT OPTIONAL DECORATION. A sharding bug that DROPS a package does not
 # fail anything: the dropped tests simply never run and every shard stays green, which is the
@@ -27,7 +28,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 WEIGHTS="${GO_SHARD_WEIGHTS:-$ROOT/scripts/go-race-weights.tsv}"
-ISOLATED="${GO_SHARD_ISOLATED:-$ROOT/scripts/go-isolated-packages.txt}"
+CERTIFICATION="${GO_SHARD_CERTIFICATION:-$ROOT/scripts/go-certification-lanes.tsv}"
+CERTIFICATION_LANES=2
 MAX_WEIGHT_SECONDS=540
 MAX_IMBALANCE_PERCENT=125
 
@@ -35,39 +37,53 @@ if [[ ! -r "$WEIGHTS" ]]; then
   echo "go-shard: weight file is not readable: $WEIGHTS" >&2
   exit 2
 fi
-if [[ ! -r "$ISOLATED" ]]; then
-  echo "go-shard: isolated package file is not readable: $ISOLATED" >&2
+if [[ ! -r "$CERTIFICATION" ]]; then
+  echo "go-shard: certification lane file is not readable: $CERTIFICATION" >&2
   exit 2
 fi
 
 # One `go list` per invocation, reused: it walks the module and is far from free.
 packages() { go list ./...; }
 
-# Expand the reviewed module-relative manifest to import paths without sorting it. The manifest
-# order is reviewable and stable; set operations sort their own copies when required.
-isolated_paths() {
-  local module line
+# Expand the reviewed module-relative manifest to `lane<TAB>import-path` rows without sorting it.
+# The manifest order is reviewable and stable; set operations sort their own copies when required.
+certification_rows() {
+  local module line lane path extra
   module="$(go list -m)"
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%%#*}"
     line="${line#"${line%%[![:space:]]*}"}"
     line="${line%"${line##*[![:space:]]}"}"
     [[ -z "$line" ]] && continue
-    if [[ "$line" = "$module"/* ]]; then
-      printf '%s\n' "$line"
-    elif [[ "$line" = ./* ]]; then
-      printf '%s/%s\n' "$module" "${line#./}"
-    elif [[ "$line" != /* && "$line" != *[[:space:]]* ]]; then
-      printf '%s/%s\n' "$module" "$line"
-    else
-      echo "go-shard: invalid isolated package row: $line" >&2
+    read -r lane path extra <<< "$line"
+    if [[ -n "$extra" || ! "$lane" =~ ^[12]$ || -z "$path" ]]; then
+      echo "go-shard: invalid certification lane row: $line" >&2
       return 2
     fi
-  done < "$ISOLATED"
+    if [[ "$path" = "$module"/* ]]; then
+      printf '%s\t%s\n' "$lane" "$path"
+    elif [[ "$path" = ./* ]]; then
+      printf '%s\t%s/%s\n' "$lane" "$module" "${path#./}"
+    elif [[ "$path" != /* && "$path" != *[[:space:]]* ]]; then
+      printf '%s\t%s/%s\n' "$lane" "$module" "$path"
+    else
+      echo "go-shard: invalid certification package path: $path" >&2
+      return 2
+    fi
+  done < "$CERTIFICATION"
+}
+
+certification_paths() {
+  certification_rows | cut -f2
+}
+
+certification_lane_paths() {
+  local lane="$1"
+  certification_rows | awk -v target="$lane" '$1 == target { print $2 }'
 }
 
 ordinary_packages() {
-  comm -23 <(packages | sort) <(isolated_paths | sort -u)
+  comm -23 <(packages | sort) <(certification_paths | sort -u)
 }
 
 # Assign the largest measured package to the currently lightest shard. Ties are deterministic:
@@ -132,10 +148,10 @@ partition() {
   '
 }
 
-isolated_load() {
-  local module
+certification_load() {
+  local lane="$1" module
   module="$(go list -m)"
-  isolated_paths | awk -v module="$module" -v weights_file="$WEIGHTS" '
+  certification_lane_paths "$lane" | awk -v module="$module" -v weights_file="$WEIGHTS" '
     BEGIN {
       while ((getline line < weights_file) > 0) {
         if (line ~ /^[[:space:]]*(#|$)/) continue
@@ -163,11 +179,11 @@ plan() {
 }
 
 usage() {
-  echo "usage: go-shard.sh [i/n | --isolated | --plan n | --verify n]" >&2
+  echo "usage: go-shard.sh [i/n | --certification i/2 | --plan n | --verify n]" >&2
   exit 2
 }
 
-# --verify: every package appears in exactly one ordinary shard or the certification lane.
+# --verify: every package appears in exactly one ordinary shard or certification lane.
 if [ "${1:-}" = "--verify" ]; then
   total="${2:-}"
   if ! [[ "$total" =~ ^[0-9]+$ ]] || [ "$total" -lt 1 ]; then
@@ -175,13 +191,13 @@ if [ "${1:-}" = "--verify" ]; then
   fi
 
   all="$(packages | sort)"
-  union="$( { for ((i = 1; i <= total; i++)); do slice "$i" "$total"; done; isolated_paths; } | sort)"
+  union="$( { for ((i = 1; i <= total; i++)); do slice "$i" "$total"; done; certification_paths; } | sort)"
 
   # Compare the SORTED UNION against the full list. `comm` needs sorted input and reports
   # both directions, so a package that went missing and one that got duplicated into two
   # shards are distinguishable in the output rather than both reading as "differs".
   if [ "$all" = "$union" ]; then
-    coverage="go-shard: OK — $total ordinary shards plus certification cover all $(echo "$all" | wc -l | tr -d ' ') packages, no duplicates"
+    coverage="go-shard: OK — $total ordinary shards plus $CERTIFICATION_LANES certification lanes cover all $(echo "$all" | wc -l | tr -d ' ') packages, no duplicates"
   else
     echo "go-shard: LANE SPLIT IS NOT A PARTITION of go list ./... (ordinary shards=$total)" >&2
     echo "--- packages missing from every shard (these would go UNTESTED, green) ---" >&2
@@ -203,24 +219,40 @@ if [ "${1:-}" = "--verify" ]; then
     done <<< "$modeled"
     exit 1
   fi
-  certification_seconds="$(isolated_load)"
-  if [ "$certification_seconds" -gt "$MAX_WEIGHT_SECONDS" ]; then
-    echo "go-shard: certification lane exceeds ${MAX_WEIGHT_SECONDS}s modeled budget (${certification_seconds}s)" >&2
+  certification_modeled="$(for ((i = 1; i <= CERTIFICATION_LANES; i++)); do printf '%s %s\n' "$i" "$(certification_load "$i")"; done)"
+  if ! printf '%s\n' "$certification_modeled" | awk -v max="$MAX_WEIGHT_SECONDS" -v ratio="$MAX_IMBALANCE_PERCENT" '
+    NR == 1 { min = $2; high = $2 }
+    { if ($2 < min) min = $2; if ($2 > high) high = $2 }
+    END { exit !(min > 0 && high <= max && high * 100 <= min * ratio) }
+  '; then
+    echo "go-shard: certification split exceeds ${MAX_WEIGHT_SECONDS}s or ${MAX_IMBALANCE_PERCENT}% balance budget" >&2
+    while read -r lane seconds; do
+      printf '  certification lane %s/%s: %ss\n' "$lane" "$CERTIFICATION_LANES" "$seconds" >&2
+    done <<< "$certification_modeled"
     exit 1
   fi
   echo "$coverage"
   while read -r shard seconds; do
     printf 'go-shard: modeled shard %s = %ss\n' "$shard" "$seconds"
   done <<< "$modeled"
-  printf 'go-shard: modeled certification lane = %ss\n' "$certification_seconds"
+  while read -r lane seconds; do
+    printf 'go-shard: modeled certification lane %s/%s = %ss\n' "$lane" "$CERTIFICATION_LANES" "$seconds"
+  done <<< "$certification_modeled"
   exit 0
 fi
 
-if [ "${1:-}" = "--isolated" ]; then
-  [ "$#" -eq 1 ] || usage
-  out="$(isolated_paths)"
+if [ "${1:-}" = "--certification" ]; then
+  [ "$#" -eq 2 ] || usage
+  spec="$2"
+  index="${spec%%/*}"
+  total="${spec##*/}"
+  [[ "$index" =~ ^[0-9]+$ ]] || usage
+  [[ "$total" =~ ^[0-9]+$ ]] || usage
+  [ "$total" -eq "$CERTIFICATION_LANES" ] || usage
+  [ "$index" -ge 1 ] && [ "$index" -le "$CERTIFICATION_LANES" ] || usage
+  out="$(certification_lane_paths "$index")"
   if [ -z "$out" ]; then
-    echo "go-shard: certification lane is EMPTY" >&2
+    echo "go-shard: certification lane $spec is EMPTY" >&2
     exit 2
   fi
   echo "$out"

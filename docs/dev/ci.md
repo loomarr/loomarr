@@ -541,8 +541,8 @@ failing native result.
 ## Sharding
 
 Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go and
-Rust contracts run once in `go-contracts`, in parallel with six ordinary Go test lanes, one serial
-media-certification lane, and the independent release-worker certification. Their union is the same
+Rust contracts run once in `go-contracts`, in parallel with six ordinary Go test lanes, two serial
+media-certification lanes, and the independent release-worker certification. Their union is the same
 assurance as `make verify SCOPE=all` plus the existing CI-only certification. The `ci-ok` aggregate
 requires every job, so moving a contract out of the test lanes cannot make it optional.
 
@@ -554,15 +554,20 @@ material package timings. Packages below five measured seconds, including new pa
 hosted measurement, receive a one-second planning floor and remain fail-safe members of the exact
 partition. Merge-group run 35472062915 exposed 1430/657/583 package-seconds in the former three-way
 alphabetical split and a 31m10s critical path. Six ordinary lanes use bounded `-p=2` package
-parallelism; the reviewed latency-sensitive playout/capacity set runs concurrently in a seventh
-`-p=1` lane so synthetic media targets never compete with each other. The measured weights produce
-an ordinary six-way plan of about 440 seconds per lane before bounded overlap, while the serial lane
-models about 343 seconds. `make go-shard-verify SHARDS=6` rejects missing or duplicated packages, a
-modeled lane above nine test minutes, or more than 25% ordinary-lane imbalance. Release verification
-additionally rejects an unreviewed serial package or workflow lane. The workflow also caps each whole
-job at 15 minutes, leaving six minutes for setup and compilation while making renewed latency drift a
-hard failure. `TestGoShardUsesMeasuredLongestProcessingTime` pins deterministic assignment, and
-`TestGoShardBalancesMeasuredRaceWork` pins the latency and balance budgets against the current tree.
+parallelism. The reviewed latency-sensitive playout/capacity set runs in two concurrent `-p=1`
+lanes, so each group remains serial while separate runners safely overlap the groups. Merge-group
+run 35497917692 measured the former combined certification lane at 9m53s, including `internal/app`
+at 159.215 seconds and the complementary playout packages at 157.874 reported package-seconds.
+That natural seam produces modeled certification groups of 171 and 172 seconds. The same run
+measured the refactored `internal/suggest` at 34.908 seconds; refreshing its obsolete 368-second
+weight produces an ordinary six-way plan of 385 seconds per lane before bounded overlap.
+`make go-shard-verify SHARDS=6` rejects missing or duplicated packages, a modeled lane above nine
+test minutes, or more than 25% imbalance within either the ordinary or certification group. Release
+verification additionally rejects an unreviewed serial package, grouping or workflow lane. The
+workflow also caps each whole job at 15 minutes, leaving six minutes for setup and compilation while
+making renewed latency drift a hard failure. `TestGoShardUsesMeasuredLongestProcessingTime` pins
+deterministic assignment, and `TestGoShardBalancesMeasuredRaceWork` pins the latency and balance
+budgets against the current tree.
 
 Within the SQLite store package, conformance assertions clone one closed, fully migrated template
 database rather than replaying the complete migration history for every assertion. The 2026-09-01

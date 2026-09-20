@@ -16,12 +16,12 @@ case "$lane" in
     lane_flags="${GOFLAGS:-}"
     lane_label="unsharded"
     ;;
-  isolated)
+  certification-[12]/2)
     if [[ -n "${GOFLAGS:-}" ]]; then
       echo "go-test-lane: lane-scoped GOFLAGS are owned by the runner" >&2
       exit 2
     fi
-    shard_args=(--isolated)
+    shard_args=(--certification "${lane#certification-}")
     lane_flags="-p=1"
     lane_label="$lane"
     ;;
@@ -35,7 +35,7 @@ case "$lane" in
     lane_label="$lane"
     ;;
   *)
-    echo "go-test-lane: invalid lane '$lane' (want 1/6..6/6, isolated, or empty for the full local suite)" >&2
+    echo "go-test-lane: invalid lane '$lane' (want 1/6..6/6, certification-1/2, certification-2/2, or empty for the full local suite)" >&2
     exit 2
     ;;
 esac

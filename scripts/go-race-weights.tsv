@@ -1,8 +1,9 @@
-# Conservative `go test -race` package seconds: the greater of the existing weight and the
-# observed upper envelope from merge-group runs 35481945657, 35485325595, and 35486394498.
+# Conservative `go test -race` package seconds from the observed upper envelope of the current
+# implementation. Most rows come from merge-group runs 35481945657, 35485325595, and 35486394498;
+# internal/suggest reflects the post-refactor 34.908s result from run 35497917692.
 # Packages below five seconds use the conservative one-second floor in go-shard.sh.
 # Keep only material weights here: the CI summary identifies entries that need refreshing.
-internal/suggest	368
+internal/suggest	35
 internal/auth	265
 internal/fillerreview	221
 internal/store	294

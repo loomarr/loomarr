@@ -12866,12 +12866,13 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   `check-static` contract half and its race-policy-aware `test` half as parallel jobs, and may shard
   the latter or run independent runtime certification beside both, but the required aggregate
   succeeds only when every constituent succeeds. Splitting execution must not delete, skip, or
-  weaken an assertion. The Go test module exposes one `make test` interface over seven protected
+  weaken an assertion. The Go test module exposes one `make test` interface over eight protected
   internal lanes: six measured ordinary-package shards run with bounded `-p=2` package parallelism,
-  while one reviewed certification lane runs the latency-sensitive synthetic playout packages with
+  while two reviewed certification lanes run the latency-sensitive synthetic playout packages with
   `-p=1`. The lanes execute concurrently, so protecting media latency does not serialize unrelated
-  repository packages; the certification lane itself remains serial so independent synthetic
-  targets never compete for the same worker while asserting latency and capacity. Race
+  repository packages. Each certification lane remains serial so independent synthetic targets
+  never compete for the same worker while asserting latency and capacity; the two balanced groups
+  use separate runners and therefore overlap without sharing worker resources. Race
   instrumentation, within-package concurrency and the complete package partition remain unchanged.
   The Postgres Make target pins `-p=1` directly; its
   release-verifier contract requires that exact recipe and still rejects workflow environment
@@ -12880,19 +12881,20 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   distribution package. The download archive is cached by its exact digest, verified on every
   use before extraction or execution, and its installed pair must report the declared build.
   Installer, Go workflow, and Dockerfile pin-source changes select the complete Go runtime gate. The
-  Go workflow admits only the seven literal lane identities; `scripts/go-test-lane.sh` owns their
+  Go workflow admits only the eight literal lane identities; `scripts/go-test-lane.sh` owns their
   exact `-p=2` ordinary and `-p=1` certification execution policy and rejects lane-scoped `GOFLAGS`
   overrides. Go package shards use
   longest-processing-time assignment over the reviewed material package timings in
   `scripts/go-race-weights.tsv`; unlisted packages receive a conservative one-second planning
   floor, so additions remain covered before their first hosted measurement. The six ordinary-shard
   plan reserves at most nine modeled test minutes per worker and rejects a slowest shard more than
-  25% above the lightest; the certification lane has the same nine-minute modeled ceiling. The
+  25% above the lightest. Each certification lane has the same nine-minute modeled ceiling, and the
+  two certification groups may not differ by more than 25%. The
   workflow independently caps every lane job at 15 wall-clock minutes,
   preserving six minutes for setup, compilation, and cache variance while making latency
-  regressions fail loud. `go-shard-verify` proves the six ordinary shards plus the certification
-  lane remain an exact partition of `go list ./...` and enforces both modeled budgets; the
-  release-verification suite pins the weighted assignment, certification package set, lane
+  regressions fail loud. `go-shard-verify` proves the six ordinary shards plus both certification
+  lanes remain an exact partition of `go list ./...` and enforces both modeled budgets; the
+  release-verification suite pins the weighted assignment, certification package grouping, lane
   parallelism, workflow lanes and timeout. The release verifier also
   requires every top-level job in `ci.yml` to appear in
   `ci-ok.needs`; adding a job without aggregating its result fails closed.

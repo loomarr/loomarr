@@ -93,7 +93,7 @@ test: rust-test-worker eval-contract ## unit tests with their required Rust work
 # GO_TEST_LANE is a CI-only passthrough (`make test GO_TEST_LANE=1/6`): EMPTY by default, so a local
 # `make test` — and `make verify SCOPE=all` — runs the whole tree. Sharding must
 # never be implicit, or someone runs a fraction of the gate and reads the green as the whole thing.
-# The seven literal lanes live in ci-go.yml's `matrix.lane`; see scripts/go-test-lane.sh.
+# The eight literal lanes live in ci-go.yml's `matrix.lane`; see scripts/go-test-lane.sh.
 #
 # ⚠ `&&`, not a `$(shell ...)` expansion. `$(shell)` swallows a non-zero exit and yields the empty
 # string, and `go test` with NO packages exits 0 — so a bad lane would have produced a silent
@@ -117,7 +117,7 @@ go-shard-verify: ## Go test lanes must cover every package within their latency 
 # QUIETLY SHRINK the suite: a split that drops a package does not fail — those tests simply never
 # run, every lane reports success, and CI is green over code it never executed. Nothing else in
 # the pipeline would notice. The release verifier pins SHARDS=6 and the workflow's six ordinary
-# identities plus its certification identity, so execution and coverage authority cannot drift.
+# identities plus its two certification identities, so execution and coverage authority cannot drift.
 	@./scripts/go-shard.sh --verify $(or $(SHARDS),6)
 
 .PHONY: go-race-verify

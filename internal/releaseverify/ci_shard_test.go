@@ -50,7 +50,7 @@ example.invalid/i`
 		t.Run(shard, func(t *testing.T) {
 			cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), shard)
 			cmd.Dir = root
-			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_ISOLATED="+isolated)
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated)
 			var stderr strings.Builder
 			cmd.Stderr = &stderr
 			output, err := cmd.Output()
@@ -77,11 +77,11 @@ example.invalid/cert`
 		t.Fatal(err)
 	}
 	weights := filepath.Join(t.TempDir(), "weights.tsv")
-	if err := os.WriteFile(weights, []byte("a 8\nmedia 7\nb 6\ncert 5\n"), 0o600); err != nil {
+	if err := os.WriteFile(weights, []byte("a 8\nmedia 7\nb 6\ncert 6\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	isolated := filepath.Join(t.TempDir(), "isolated.txt")
-	if err := os.WriteFile(isolated, []byte("# reviewed media certification packages\nmedia\ncert\n"), 0o600); err != nil {
+	if err := os.WriteFile(isolated, []byte("# lane reviewed media certification package\n1 media\n2 cert\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,7 +90,7 @@ example.invalid/cert`
 		t.Helper()
 		cmd := exec.Command("bash", append([]string{filepath.Join("scripts", "go-shard.sh")}, args...)...)
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_ISOLATED="+isolated)
+		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated)
 		var stderr strings.Builder
 		cmd.Stderr = &stderr
 		output, err := cmd.Output()
@@ -100,16 +100,19 @@ example.invalid/cert`
 		return strings.TrimSpace(string(output))
 	}
 
-	if got := run("--isolated"); got != "example.invalid/media\nexample.invalid/cert" {
-		t.Fatalf("isolated lane =\n%s\nwant reviewed package order", got)
+	if got := run("--certification", "1/2"); got != "example.invalid/media" {
+		t.Fatalf("certification lane 1/2 =\n%s\nwant reviewed package", got)
+	}
+	if got := run("--certification", "2/2"); got != "example.invalid/cert" {
+		t.Fatalf("certification lane 2/2 =\n%s\nwant reviewed package", got)
 	}
 	ordinary := run("1/1")
 	if ordinary != "example.invalid/a\nexample.invalid/b" {
 		t.Fatalf("ordinary lane =\n%s\nwant certification packages excluded", ordinary)
 	}
 	verification := run("--verify", "1")
-	if !strings.Contains(verification, "1 ordinary shards plus certification cover all 4 packages, no duplicates") {
-		t.Fatalf("verification did not prove exact seven-lane coverage:\n%s", verification)
+	if !strings.Contains(verification, "1 ordinary shards plus 2 certification lanes cover all 4 packages, no duplicates") {
+		t.Fatalf("verification did not prove exact three-lane coverage:\n%s", verification)
 	}
 }
 
@@ -160,8 +163,11 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 	if err := run("2/6"); err != nil {
 		t.Fatalf("ordinary lane: %v", err)
 	}
-	if err := run("isolated"); err != nil {
-		t.Fatalf("certification lane: %v", err)
+	if err := run("certification-1/2"); err != nil {
+		t.Fatalf("certification lane 1/2: %v", err)
+	}
+	if err := run("certification-2/2"); err != nil {
+		t.Fatalf("certification lane 2/2: %v", err)
 	}
 	if err := run("", "GOFLAGS=-count=1"); err != nil {
 		t.Fatalf("unsharded local suite: %v", err)
@@ -172,8 +178,10 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 	}
 	want := "2/6|-p=2|race 25m example.invalid/race\n" +
 		"2/6|-p=2|plain 25m example.invalid/plain\n" +
-		"isolated|-p=1|race 25m example.invalid/race\n" +
-		"isolated|-p=1|plain 25m example.invalid/plain\n" +
+		"certification-1/2|-p=1|race 25m example.invalid/race\n" +
+		"certification-1/2|-p=1|plain 25m example.invalid/plain\n" +
+		"certification-2/2|-p=1|race 25m example.invalid/race\n" +
+		"certification-2/2|-p=1|plain 25m example.invalid/plain\n" +
 		"unsharded|-count=1|race 25m example.invalid/race\n" +
 		"unsharded|-count=1|plain 25m example.invalid/plain\n"
 	if got := string(contents); got != want {
@@ -188,7 +196,7 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Clean(filepath.Join("..", ".."))
-	contents, err := os.ReadFile(filepath.Join(root, "scripts", "go-isolated-packages.txt"))
+	contents, err := os.ReadFile(filepath.Join(root, "scripts", "go-certification-lanes.tsv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,16 +204,16 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 	for _, line := range strings.Split(string(contents), "\n") {
 		line = strings.TrimSpace(strings.SplitN(line, "#", 2)[0])
 		if line != "" {
-			packages = append(packages, line)
+			packages = append(packages, strings.Join(strings.Fields(line), " "))
 		}
 	}
 	want := []string{
-		"cmd/playout-load-cert",
-		"internal/app",
-		"internal/playout",
-		"internal/playoutcert",
-		"internal/prepared",
-		"internal/testkit/playoutcertfixture",
+		"1 internal/app",
+		"1 internal/prepared",
+		"1 internal/testkit/playoutcertfixture",
+		"2 cmd/playout-load-cert",
+		"2 internal/playout",
+		"2 internal/playoutcert",
 	}
 	if strings.Join(packages, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("certification lane packages = %v, want reviewed set %v", packages, want)
@@ -235,19 +243,21 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 			loads[shard-1] += max(weights[relative], 1)
 		}
 	}
-	cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--isolated")
-	cmd.Dir = root
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("go certification lane: %v\n%s", err, stderr.String())
-	}
-	isolatedLoad := 0
-	for _, pkg := range strings.Fields(string(output)) {
-		relative := strings.TrimPrefix(pkg, "github.com/loomarr/loomarr/")
-		seenPackages[relative] = true
-		isolatedLoad += max(weights[relative], 1)
+	certificationLoads := make([]int, 2)
+	for lane := 1; lane <= 2; lane++ {
+		cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--certification", strconv.Itoa(lane)+"/2")
+		cmd.Dir = root
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		output, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("go certification lane %d/2: %v\n%s", lane, err, stderr.String())
+		}
+		for _, pkg := range strings.Fields(string(output)) {
+			relative := strings.TrimPrefix(pkg, "github.com/loomarr/loomarr/")
+			seenPackages[relative] = true
+			certificationLoads[lane-1] += max(weights[relative], 1)
+		}
 	}
 	for weightedPackage := range weights {
 		if !seenPackages[weightedPackage] {
@@ -266,8 +276,11 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 	if maxLoad*100 > minLoad*125 {
 		t.Fatalf("modeled race shards differ by more than 25%%: loads=%v", loads)
 	}
-	if isolatedLoad > 540 {
-		t.Fatalf("modeled certification lane exceeds nine test minutes: load=%d", isolatedLoad)
+	if max(certificationLoads[0], certificationLoads[1]) > 540 {
+		t.Fatalf("modeled certification lane exceeds nine test minutes: loads=%v", certificationLoads)
+	}
+	if max(certificationLoads[0], certificationLoads[1])*100 > min(certificationLoads[0], certificationLoads[1])*125 {
+		t.Fatalf("modeled certification lanes differ by more than 25%%: loads=%v", certificationLoads)
 	}
 }
 
